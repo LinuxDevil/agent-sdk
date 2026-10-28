@@ -3,7 +3,8 @@
  * panels' GETs same-origin, because the daemon itself serves no CORS
  * headers. A dead daemon answers 502 with the `lousho observe start` hint.
  * Writes go through only when OBSERVE_WRITE_ALLOWLIST names the method and
- * path (feedback scores, a prompt label move, a hub publish); every other non-GET stays 405.
+ * path (feedback scores, a prompt label move, a hub publish, dataset and
+ * example writes); every other non-GET stays 405.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'node:http';
@@ -24,6 +25,7 @@ describe('observe proxy', () => {
   let app: ReturnType<typeof createApp>;
   let daemon: http.Server | undefined;
   let daemonUrl: string;
+  let lastDelete: { url: string | undefined; contentType: string | null; body: string } | undefined;
   const prevEnv = process.env.LOUSHO_OBSERVE_URL;
 
   beforeEach(async () => {
@@ -43,6 +45,12 @@ describe('observe proxy', () => {
       let body = '';
       req.on('data', (chunk: Buffer) => (body += chunk.toString()));
       req.on('end', () => {
+        if (req.method === 'DELETE') {
+          lastDelete = { url: req.url, contentType: req.headers['content-type'] ?? null, body };
+          res.writeHead(204);
+          res.end();
+          return;
+        }
         res.writeHead(req.method === 'POST' ? 201 : 200, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
@@ -117,6 +125,49 @@ describe('observe proxy', () => {
     expect(res.body.body).toEqual({ version: 2 });
   });
 
+  it('forwards POST /api/v1/datasets (a new dataset) with its JSON body', async () => {
+    const res = await request(app).post('/observe/api/v1/datasets').send({ name: 'golden', description: 'd' });
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({
+      echoed: '/api/v1/datasets',
+      method: 'POST',
+      contentType: 'application/json',
+      body: { name: 'golden', description: 'd' },
+    });
+  });
+
+  it('forwards POST /api/v1/datasets/:name/examples (add from a trace) with its JSON body', async () => {
+    const res = await request(app).post('/observe/api/v1/datasets/golden/examples').send({ from_trace_id: 't1' });
+    expect(res.status).toBe(201);
+    expect(res.body.echoed).toBe('/api/v1/datasets/golden/examples');
+    expect(res.body.body).toEqual({ from_trace_id: 't1' });
+  });
+
+  it('forwards DELETE /api/v1/datasets/:name/examples/:id with no body and passes the 204 back', async () => {
+    lastDelete = undefined;
+    const res = await request(app).delete('/observe/api/v1/datasets/golden/examples/e1');
+    expect(res.status).toBe(204);
+    expect(res.text).toBe('');
+    expect(lastDelete).toEqual({ url: '/api/v1/datasets/golden/examples/e1', contentType: null, body: '' });
+  });
+
+  it.each([
+    ['delete', '/observe/api/v1/datasets/golden'],
+    ['delete', '/observe/api/v1/datasets/golden/examples'],
+    ['put', '/observe/api/v1/datasets/golden/examples/e1'],
+    ['post', '/observe/api/v1/datasets/golden/examples/e1'],
+    ['post', '/observe/api/v1/datasets/golden'],
+    ['delete', '/observe/api/v1/traces/t1'],
+  ] as const)('keeps the dataset-adjacent write %s %s at 405', async (method, url) => {
+    const res = await request(app)[method](url).send({});
+    expect(res.status).toBe(405);
+  });
+
+  it('keeps a DELETE whose example segment is a dot or an encoded slash at 405', async () => {
+    expect((await request(app).delete('/observe/api/v1/datasets/golden/examples/%2e%2e')).status).toBe(405);
+    expect((await request(app).delete('/observe/api/v1/datasets/a%2Fb/examples/e1')).status).toBe(405);
+  });
+
   it.each([
     ['post', '/observe/api/v1/prompts'],
     ['put', '/observe/api/v1/prompts/mira'],
@@ -150,8 +201,8 @@ describe('observe proxy', () => {
     expect(res.status).toBe(413);
   });
 
-  it('exports one write allowlist of method + path pairs: feedback scores, the label move and hub publishes', () => {
-    expect(OBSERVE_WRITE_ALLOWLIST.map((entry) => entry.method)).toEqual(['POST', 'PUT', 'POST']);
+  it('exports one write allowlist of method + path pairs: feedback scores, the label move, hub publishes and dataset writes', () => {
+    expect(OBSERVE_WRITE_ALLOWLIST.map((entry) => entry.method)).toEqual(['POST', 'PUT', 'POST', 'POST', 'POST', 'DELETE']);
     expect(OBSERVE_WRITE_ALLOWLIST.every((entry) => entry.path instanceof RegExp)).toBe(true);
   });
 });

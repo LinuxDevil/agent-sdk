@@ -13,6 +13,10 @@ import { STUDIO_TOKEN_HEADER, loadStudioToken } from '../runtime/studioToken';
 import type {
   ObserveAgentRow,
   NewHubEntry,
+  ObserveDataset,
+  ObserveDatasetDetail,
+  ObserveDatasetList,
+  ObserveExample,
   ObserveHealth,
   ObserveHubEntry,
   ObserveHubScope,
@@ -138,6 +142,15 @@ export interface HubEntryFilter {
   limit?: number;
 }
 
+/** A page request (`limit`/`offset`) for the dataset list and a dataset's examples. */
+export interface PageQuery {
+  limit?: number;
+  offset?: number;
+}
+
+/** The body of {@link ObserveClient.addExample}: a literal example, or one copied from a trace's root input/output. */
+export type NewExample = { input: unknown; expected?: unknown } | { from_trace_id: string };
+
 export interface InsightsFilter {
   days?: number;
   since?: number;
@@ -169,7 +182,7 @@ export class ObserveClient {
 
   private async request<T>(
     path: string,
-    opts: { query?: Record<string, string | number | undefined>; method?: 'GET' | 'POST' | 'PUT'; body?: unknown } = {}
+    opts: { query?: Record<string, string | number | undefined>; method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; body?: unknown } = {}
   ): Promise<T> {
     const headers = new Headers({ accept: 'application/json' });
     // The studio token only travels same-origin (to the studio server's
@@ -195,6 +208,8 @@ export class ObserveClient {
       const body = (await res.json().catch(() => undefined)) as { error?: string } | undefined;
       throw new ObserveApiError(body?.error || `Request to ${path} failed with ${res.status}`, res.status);
     }
+    // 204 No Content (an example delete) has no body to parse.
+    if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   }
 
@@ -313,6 +328,43 @@ export class ObserveClient {
   /** `POST /api/v1/scores` - a human feedback score (append-only); the daemon's 404/400 surface as `ObserveApiError`. */
   postScore(score: NewScore): Promise<{ score_id: string }> {
     return this.request('/api/v1/scores', { method: 'POST', body: score });
+  }
+
+  /** `GET /api/v1/datasets` - a page of datasets (with example counts), newest first. */
+  listDatasets(page: PageQuery = {}): Promise<ObserveDatasetList> {
+    return this.request('/api/v1/datasets', { query: { ...page } });
+  }
+
+  /** `GET /api/v1/datasets/:name` - the dataset plus a page of its examples, oldest first; `undefined` on the daemon's 404. */
+  async dataset(name: string, page: PageQuery = {}): Promise<ObserveDatasetDetail | undefined> {
+    try {
+      return await this.request(`/api/v1/datasets/${encodeURIComponent(name)}`, { query: { ...page } });
+    } catch (error) {
+      if (error instanceof ObserveApiError && error.status === 404) return undefined;
+      throw error;
+    }
+  }
+
+  /** `POST /api/v1/datasets` - a new, empty dataset; a taken name is the daemon's 409 (`ObserveApiError`). */
+  async createDataset(input: { name: string; description?: string }): Promise<ObserveDataset> {
+    const body = await this.request<{ dataset: ObserveDataset }>('/api/v1/datasets', { method: 'POST', body: input });
+    return body.dataset;
+  }
+
+  /** `POST /api/v1/datasets/:name/examples` - one example, literal or `{ from_trace_id }` (the trace root's input/output). */
+  async addExample(name: string, example: NewExample): Promise<ObserveExample> {
+    const body = await this.request<{ example: ObserveExample }>(`/api/v1/datasets/${encodeURIComponent(name)}/examples`, {
+      method: 'POST',
+      body: example,
+    });
+    return body.example;
+  }
+
+  /** `DELETE /api/v1/datasets/:name/examples/:id` - removes one example (204). */
+  async deleteExample(name: string, exampleId: string): Promise<void> {
+    await this.request(`/api/v1/datasets/${encodeURIComponent(name)}/examples/${encodeURIComponent(exampleId)}`, {
+      method: 'DELETE',
+    });
   }
 
   /** `GET /api/v1/prompts/:name/:ref` (ref = `latest`, a version number or a label); `undefined` on the daemon's 404. */

@@ -6,9 +6,11 @@
  * duplicating effect logic.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { observeClient, ObserveDaemonDownError, type HubEntryFilter, type InsightsFilter, type ScoreListFilter, type SessionListFilter, type TraceListFilter } from './observeClient';
+import { observeClient, ObserveDaemonDownError, type HubEntryFilter, type InsightsFilter, type PageQuery, type ScoreListFilter, type SessionListFilter, type TraceListFilter } from './observeClient';
 import type {
   ObserveAgentRow,
+  ObserveDatasetDetail,
+  ObserveDatasetList,
   ObserveHealth,
   ObserveHubEntry,
   ObserveInsights,
@@ -180,4 +182,14 @@ export function useHubEntries(filter: HubEntryFilter | undefined, refreshKey?: u
     () => (filter === undefined ? Promise.resolve([]) : observeClient.listHubEntries(filter)),
     [JSON.stringify(filter), refreshKey]
   );
+}
+
+/** `GET /api/v1/datasets` - one page of datasets. */
+export function useDatasets(page: PageQuery, refreshKey?: unknown): ObserveQuery<ObserveDatasetList> {
+  return useObserveQuery(() => observeClient.listDatasets(page), [JSON.stringify(page), refreshKey]);
+}
+
+/** `GET /api/v1/datasets/:name` - the dataset and one page of its examples; `undefined` data when it does not exist. */
+export function useDataset(name: string, page: PageQuery, refreshKey?: unknown): ObserveQuery<ObserveDatasetDetail | undefined> {
+  return useObserveQuery(() => observeClient.dataset(name, page), [name, JSON.stringify(page), refreshKey]);
 }

@@ -252,3 +252,39 @@ export interface NewHubEntry {
   scope?: ObserveHubScope;
   ttl?: number;
 }
+
+/** One row of `GET /api/v1/datasets` (and the `dataset` of the detail/create answers). Datasets are addressed by `name`. */
+export interface ObserveDataset {
+  dataset_id: string;
+  name: string;
+  description: string | null;
+  created_at: number;
+  example_count: number;
+}
+
+/** One dataset example: `input`/`expected` are parsed JSON values; `source_trace_id` is set when it was copied from a trace. */
+export interface ObserveExample {
+  example_id: string;
+  dataset_id: string;
+  input: unknown;
+  expected: unknown;
+  source_trace_id: string | null;
+  created_at: number;
+}
+
+/** `GET /api/v1/datasets`: a page of datasets, newest first. */
+export interface ObserveDatasetList {
+  datasets: ObserveDataset[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** `GET /api/v1/datasets/:name`: the dataset and a page of its examples, oldest first. */
+export interface ObserveDatasetDetail {
+  dataset: ObserveDataset;
+  examples: ObserveExample[];
+  total: number;
+  limit: number;
+  offset: number;
+}

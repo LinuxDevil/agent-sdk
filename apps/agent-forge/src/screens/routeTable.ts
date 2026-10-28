@@ -7,6 +7,7 @@ export type ScreenId =
   | 'threads'
   | 'monitoring'
   | 'scores'
+  | 'datasets'
   | 'evals'
   | 'prompts'
   | 'hub'
@@ -34,8 +35,10 @@ export const ROUTES: readonly RouteEntry[] = [
   { pattern: '/threads/:sessionId', screen: 'threads', example: '/threads/e2e-session' },
   { pattern: '/monitoring', screen: 'monitoring', example: '/monitoring' },
   { pattern: '/evals/scores', screen: 'scores', example: '/evals/scores' },
-  { pattern: '/evals/:section', screen: 'evals', example: '/evals/datasets' },
-  { pattern: '/evals/:section/:id', screen: 'evals', example: '/evals/datasets/e2e-dataset' },
+  { pattern: '/evals/datasets', screen: 'datasets', example: '/evals/datasets' },
+  { pattern: '/evals/datasets/:name', screen: 'datasets', example: '/evals/datasets/e2e-dataset' },
+  { pattern: '/evals/:section', screen: 'evals', example: '/evals/evaluators' },
+  { pattern: '/evals/:section/:id', screen: 'evals', example: '/evals/evaluators/e2e-evaluator' },
   { pattern: '/prompts', screen: 'prompts', example: '/prompts' },
   { pattern: '/prompts/:name', screen: 'prompts', example: '/prompts/e2e-prompt' },
   { pattern: '/hub', screen: 'hub', example: '/hub' },

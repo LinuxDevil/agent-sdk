@@ -11,10 +11,12 @@ import { AgentsScreen } from './agents/AgentsScreen';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
+import { DatasetsScreen } from './datasets/DatasetsScreen';
 import { PlaygroundRoute } from './playground/PlaygroundScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
 import { ROUTES, type ScreenId } from './routeTable';
+import { EvalsTabs } from './evals/EvalsTabs';
 
 /** The screen a hash shows, or `null` for an empty hash / unknown route. */
 export function screenFor(hash: string): ScreenId | null {
@@ -37,7 +39,7 @@ export function useScreen(): ScreenId {
 }
 
 const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string }>> = {
-  evals: { title: 'Evaluations', blurb: 'Datasets, evaluators and annotation queues for scoring runs.' },
+  evals: { title: 'Evaluations', blurb: 'Evaluators and annotation queues for scoring runs.' },
 };
 
 /** `#/traces/:traceId`: the trace id comes from the hash; a new id remounts the screen. */
@@ -69,11 +71,12 @@ export function Screens() {
   else if (screen === 'trace') content = <TraceRoute />;
   else if (screen === 'monitoring') content = <MonitoringScreen />;
   else if (screen === 'scores') content = <ScoresScreen />;
+  else if (screen === 'datasets') content = <DatasetsScreen />;
   else if (screen === 'playground') content = <PlaygroundRoute />;
   else if (screen === 'threads') content = <ThreadsScreen />;
   else if (screen === 'prompts') content = <PromptsScreen />;
   else if (screen === 'hub') content = <HubScreen />;
-  else if (placeholder) content = <Placeholder {...placeholder} />;
+  else if (placeholder) content = <Placeholder {...placeholder} nav={screen === 'evals' ? <EvalsTabs /> : undefined} />;
   else
     content = (
       <div className="screen-settings">

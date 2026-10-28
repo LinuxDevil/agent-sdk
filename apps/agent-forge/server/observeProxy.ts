@@ -11,8 +11,9 @@
  * GET is forwarded for every path. Writes are forwarded only when
  * {@link OBSERVE_WRITE_ALLOWLIST} names the method and path - a short list of
  * Studio actions (human feedback scores, moving a prompt label, editing a
- * Context Hub fleet entry) - with the JSON body app.ts's `express.json`
- * already parsed, re-serialised and capped at 1 MiB. Every other non-GET - the ingest endpoint above all - answers 405
+ * Context Hub fleet entry, dataset and example writes) - with the JSON body
+ * app.ts's `express.json` already parsed, re-serialised and capped at 1 MiB
+ * (a DELETE forwards no body, and its 204 passes back empty). Every other non-GET - the ingest endpoint above all - answers 405
  * and stays reporter-only. `/observe` sits in app.ts's API_PREFIXES, so it
  * carries the same per-launch token requirement as the rest of the studio API.
  */
@@ -25,7 +26,7 @@ const MAX_WRITE_BODY_BYTES = 1024 * 1024;
 
 /** A daemon write the proxy forwards: the method plus a regex over the path after `/observe` (no query). */
 export interface ObserveWrite {
-  method: 'POST' | 'PUT';
+  method: 'POST' | 'PUT' | 'DELETE';
   path: RegExp;
 }
 
@@ -34,6 +35,9 @@ export const OBSERVE_WRITE_ALLOWLIST: readonly ObserveWrite[] = [
   { method: 'POST', path: /^\/api\/v1\/scores$/ },
   { method: 'PUT', path: /^\/api\/v1\/prompts\/[^/]+\/labels\/[^/]+$/ },
   { method: 'POST', path: /^\/api\/v1\/hub$/ },
+  { method: 'POST', path: /^\/api\/v1\/datasets$/ },
+  { method: 'POST', path: /^\/api\/v1\/datasets\/[^/]+\/examples$/ },
+  { method: 'DELETE', path: /^\/api\/v1\/datasets\/[^/]+\/examples\/[^/]+$/ },
 ];
 
 /**
@@ -73,8 +77,9 @@ export function registerObserveProxy(app: Express): void {
       res.status(405).json({ error: 'The observe proxy only forwards GET reads and allowlisted Studio writes.' });
       return;
     }
-    const body = isWrite ? writeBody(req) : undefined;
-    if (isWrite && body === undefined) {
+    const hasBody = isWrite && req.method !== 'DELETE';
+    const body = hasBody ? writeBody(req) : undefined;
+    if (hasBody && body === undefined) {
       res.status(413).json({ error: 'Observe write bodies are capped at 1 MiB.' });
       return;
     }
@@ -88,7 +93,7 @@ export function registerObserveProxy(app: Express): void {
     try {
       response = await fetch(upstream, {
         method: req.method,
-        headers: isWrite ? { accept: 'application/json', 'content-type': 'application/json' } : { accept: 'application/json' },
+        headers: hasBody ? { accept: 'application/json', 'content-type': 'application/json' } : { accept: 'application/json' },
         body,
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });
@@ -99,6 +104,10 @@ export function registerObserveProxy(app: Express): void {
       return;
     }
     res.status(response.status);
+    if (response.status === 204) {
+      res.end();
+      return;
+    }
     const contentType = response.headers.get('content-type');
     if (contentType) res.setHeader('content-type', contentType);
     res.send(Buffer.from(await response.arrayBuffer()));

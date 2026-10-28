@@ -193,4 +193,36 @@ describe('ObserveClient', () => {
     expect(init.method).toBe('POST');
     expect(JSON.parse(String(init.body))).toEqual(body);
   });
+  it('reads datasets: the paged list, one dataset with its examples page, undefined on 404', async () => {
+    const fetchFn = vi.fn(async (url: string) =>
+      url.includes('/datasets/nope')
+        ? jsonResponse(404, { error: "No dataset 'nope'.", code: 'LOUSHO_REQUEST_INVALID' })
+        : jsonResponse(200, { datasets: [], total: 0, limit: 50, offset: 0 })
+    );
+    const client = clientWith(fetchFn as unknown as typeof fetch);
+    await client.listDatasets({ limit: 50, offset: 100 });
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/datasets?limit=50&offset=100', expect.anything());
+    await client.dataset('golden.v1', { limit: 50, offset: 0 });
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/datasets/golden.v1?limit=50&offset=0', expect.anything());
+    expect(await client.dataset('nope')).toBeUndefined();
+  });
+
+  it('writes datasets: create and add-example POST JSON, delete-example sends a bodiless DELETE and takes the 204', async () => {
+    const fetchFn = vi.fn(async (_url: string, init?: RequestInit) =>
+      init?.method === 'DELETE' ? new Response(null, { status: 204 }) : jsonResponse(201, { dataset: {}, example: {} })
+    );
+    const client = clientWith(fetchFn as unknown as typeof fetch);
+    await client.createDataset({ name: 'golden' });
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/datasets', expect.objectContaining({ method: 'POST', body: '{"name":"golden"}' }));
+    await client.addExample('golden', { from_trace_id: 't1' });
+    expect(fetchFn).toHaveBeenLastCalledWith(
+      '/observe/api/v1/datasets/golden/examples',
+      expect.objectContaining({ method: 'POST', body: '{"from_trace_id":"t1"}' })
+    );
+    await expect(client.deleteExample('golden', 'e/1')).resolves.toBeUndefined();
+    const [url, init] = fetchFn.mock.calls.at(-1)!;
+    expect(url).toBe('/observe/api/v1/datasets/golden/examples/e%2F1');
+    expect(init?.method).toBe('DELETE');
+    expect(init?.body).toBeUndefined();
+  });
 });

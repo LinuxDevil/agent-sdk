@@ -1,6 +1,8 @@
 import type { Page, Route } from '@playwright/test';
 import type {
   ObserveAgentRow,
+  ObserveDataset,
+  ObserveExample,
   ObserveHubEntry,
   ObserveInsights,
   ObservePromptVersion,
@@ -14,8 +16,8 @@ import type {
  * A fake observe daemon behind the studio's `/observe` proxy, so the e2e specs
  * scan the screens' populated states rather than "daemon down". One agent, one
  * thread with one trace (an LLM call and a tool call), one prompt with two
- * versions, an eval's scores, and a Context Hub namespace with a fleet and a
- * private entry.
+ * versions, an eval's scores, a Context Hub namespace with a fleet and a
+ * private entry, and a dataset with two examples (one copied from the trace).
  */
 const NOW = Date.now();
 const T0 = NOW - 60_000;
@@ -174,6 +176,32 @@ const hubEntry = (key: string, value: string, scope: ObserveHubEntry['scope'], t
 });
 const hubEntries = [hubEntry('order-policy', '{"returns_days":30}', 'fleet', null), hubEntry('last-customer', 'cust-42', 'private', 24 * HOUR)];
 
+const dataset: ObserveDataset = {
+  dataset_id: 'e2e-dataset-id',
+  name: 'e2e-dataset',
+  description: 'Support cases the agent must get right',
+  created_at: T0 - HOUR,
+  example_count: 2,
+};
+const examples: ObserveExample[] = [
+  {
+    example_id: 'e2e-example-1',
+    dataset_id: dataset.dataset_id,
+    input: 'Where is my order?',
+    expected: 'It ships tomorrow.',
+    source_trace_id: 'e2e-trace',
+    created_at: T0,
+  },
+  {
+    example_id: 'e2e-example-2',
+    dataset_id: dataset.dataset_id,
+    input: [{ role: 'user', content: 'Can I return it?' }],
+    expected: null,
+    source_trace_id: null,
+    created_at: T0 + 1_000,
+  },
+];
+
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -201,6 +229,10 @@ export async function stubObserve(page: Page): Promise<void> {
       const scope = q.get('scope');
       return json(route, { entries: hubEntries.filter((e) => (!ns || e.namespace === ns) && (!scope || e.scope === scope)) });
     }
+    if (path === '/api/v1/datasets' && route.request().method() === 'GET')
+      return json(route, { datasets: [dataset], total: 1, limit: Number(q.get('limit') ?? 100), offset: 0 });
+    if (path === '/api/v1/datasets/e2e-dataset')
+      return json(route, { dataset, examples, total: examples.length, limit: Number(q.get('limit') ?? 1000), offset: 0 });
     if (path === '/api/v1/scores') {
       if (q.get('aggregate') === 'eval')
         return json(route, { evals: [{ name: 'e2e-eval', count: 4, passed: 3, pass_rate: 0.75, avg_value: 0.75, last_ts: T0 + 2_000 }] });

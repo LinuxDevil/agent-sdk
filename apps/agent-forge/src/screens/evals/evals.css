@@ -1,0 +1,26 @@
+/* Evaluations sub-navigation (#/evals/*). Tokens only. */
+.evals-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.screen-placeholder .evals-tabs {
+  margin-bottom: 16px;
+}
+/* Two classes: outranks a screen's own `a` colour (the placeholder's accent links). */
+.evals-tabs .evals-tab {
+  padding: 6px 10px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-decoration: none;
+}
+.evals-tabs .evals-tab:hover {
+  color: var(--text);
+}
+.evals-tabs .evals-tab[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font-weight: 600;
+}
