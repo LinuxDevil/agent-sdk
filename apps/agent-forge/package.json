@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "test": "vitest",
     "lint": "eslint src server",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p e2e/tsconfig.json",
     "server:dev": "tsx watch server/index.ts",
     "server:start": "tsx server/index.ts",
     "server:build": "tsup --config server/tsup.config.ts",
