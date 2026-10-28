@@ -240,11 +240,13 @@ function ProfileEditor({ profileDraft, isActive, onChange, onSave, onActivate }:
       </div>
       <div className="toggle-row">
         <span>Enable OTel tracing</span>
-        <div
+        <button
+          type="button"
           className={`switch${profileDraft.otelEnabled ? ' on' : ''}`}
           onClick={() => onChange({ ...profileDraft, otelEnabled: !profileDraft.otelEnabled })}
           role="switch"
           aria-checked={profileDraft.otelEnabled}
+          aria-label="Enable OTel tracing"
         />
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
