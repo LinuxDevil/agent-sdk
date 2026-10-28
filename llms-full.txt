@@ -2119,14 +2119,21 @@ Every status in the Studio is the same pill:
 
 Everything under Observe, Evaluate and Assets reads the observe daemon
 (`lousho observe start`) through the Studio server's `/observe` proxy. The
-Studio finds it at `LOUSHO_OBSERVE_URL` (default `http://127.0.0.1:7777`),
-or `LOUSHO_OBSERVE` when that is set, and sends `LOUSHO_OBSERVE_TOKEN` as the
-bearer token when set. The proxy only forwards reads plus the writes the
-screens make (feedback scores, prompt label moves, hub entry edits, dataset
-and example writes, annotation queue writes); every other write, ingest
-above all, is refused.
+proxy reads only `LOUSHO_OBSERVE_URL` (default `http://127.0.0.1:7777`);
+`LOUSHO_OBSERVE` does not change where the screens read (it only picks where
+builder runs report, see the [walkthrough](#first-agent-walkthrough)). The
+proxy sends no bearer token: `LOUSHO_OBSERVE_TOKEN` is used only by run
+reporting and the judge evaluators (the claim loop and the judge test
+route). So point the screens at a loopback daemon
+started without `--require-token`. Against a daemon that requires a token,
+`/health` still answers (the collector item says running), but every
+`/api/` read comes back `401` and the screens show that error instead of
+data. The proxy only forwards reads plus the writes the screens make
+(feedback scores, prompt label moves, hub entry edits, dataset and example
+writes, annotation queue writes); every other write, ingest above all, is
+refused.
 
-The last nav item says whether the daemon answers: **Collector: checking...**
+The last nav item says whether the daemon answers: **Collector: checking…**
 until the first probe, **Collector: running at `<url>`**, or **Collector:
 not reachable**. The probe keeps polling. While the daemon is down, each
 daemon screen shows the command to start it instead of an error, keeps its
@@ -2576,7 +2583,7 @@ daemon bound beyond loopback. A daemon that is down does not slow or fail the ru
 
 ## Settings, secrets and deploy wiring
 
-The Settings screen (`#/settings`, the last nav item) and the builder
+The Settings screen (`#/settings`, the last screen in the nav) and the builder
 drawer's **Settings** tab show the same three parts: provider API keys
 (OpenAI and Anthropic, stored encrypted under `.lousho/` and never shown
 again), named settings profiles (provider, deploy adapter, hook timeout,
