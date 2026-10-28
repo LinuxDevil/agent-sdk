@@ -29,6 +29,19 @@ function listShape(query: URLSearchParams): Pick<TraceFilter, 'sort' | 'order' |
   return { sort: sort as TraceSort | undefined, order: order as 'asc' | 'desc' | undefined, min_duration_ms };
 }
 
+/** `prompt=<name>` or `prompt=<name>@<version>`: absent, the parsed filter, or the message for the 400 a bad value earns. */
+function promptParam(query: URLSearchParams): TraceFilter['prompt'] | string {
+  const raw = query.get('prompt');
+  if (raw === null) return undefined;
+  const at = raw.lastIndexOf('@');
+  const name = at === -1 ? raw : raw.slice(0, at);
+  const version = at === -1 ? undefined : raw.slice(at + 1);
+  if (name.trim() === '' || (version !== undefined && !/^\d+$/.test(version))) {
+    return `Invalid prompt '${raw}': expected <name> or <name>@<version> (an integer).`;
+  }
+  return version === undefined ? { name } : { name, version: Number(version) };
+}
+
 export const tracesRoutes: readonly Route[] = [
   {
     method: 'GET',
@@ -36,6 +49,8 @@ export const tracesRoutes: readonly Route[] = [
     handle: ({ db, res, query }) => {
       const shape = listShape(query);
       if (typeof shape === 'string') return badRequest(res, shape);
+      const prompt = promptParam(query);
+      if (typeof prompt === 'string') return badRequest(res, prompt);
       const filter: TraceFilter = {
         agent_id: query.get('agent_id') ?? undefined,
         project: query.get('project') ?? undefined,
@@ -47,6 +62,7 @@ export const tracesRoutes: readonly Route[] = [
         to: timeParam(query, 'to'),
         q: query.get('q') ?? undefined,
         model: query.get('model') ?? undefined,
+        prompt,
         ...shape,
         limit: intParam(query, 'limit', 50, LIST_LIMIT),
         offset: intParam(query, 'offset', 0, { min: 0, max: Number.MAX_SAFE_INTEGER }),

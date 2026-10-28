@@ -124,4 +124,51 @@ describe('ObserveClient', () => {
       expect.anything()
     );
   });
+
+  it('passes the prompt trace filter through', async () => {
+    const fetchFn = vi.fn(async () => jsonResponse(200, { traces: [], total: 0, limit: 50, offset: 0 }));
+    await clientWith(fetchFn as typeof fetch).listTraces({ prompt: 'mira@2' });
+    expect(fetchFn).toHaveBeenCalledWith('/observe/api/v1/traces?prompt=mira%402', expect.anything());
+  });
+
+  it('lists prompts and reads one prompt history, undefined on 404', async () => {
+    const fetchFn = vi.fn(async (url: string) =>
+      url.endsWith('/prompts')
+        ? jsonResponse(200, { prompts: [{ name: 'mira', version: 2, labels: ['prod'], versions: 2, uses: 3 }] })
+        : jsonResponse(404, { error: "No prompt 'x'.", code: 'LOUSHO_REQUEST_INVALID' })
+    );
+    const client = clientWith(fetchFn as unknown as typeof fetch);
+    expect((await client.listPrompts())[0]).toMatchObject({ name: 'mira', uses: 3 });
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/prompts', expect.anything());
+    expect(await client.promptVersions('x y')).toBeUndefined();
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/prompts/x%20y', expect.anything());
+  });
+
+  it('movePromptLabel PUTs {version} as JSON with the studio token and returns the move', async () => {
+    window.sessionStorage.setItem('lousho-studio-token', 'tok-123');
+    try {
+      const fetchFn = vi.fn(async (_url: unknown, init?: RequestInit) => {
+        void init;
+        return jsonResponse(200, { name: 'mira', label: 'prod', version: 2, previous_version: 1 });
+      });
+      const moved = await clientWith(fetchFn as typeof fetch).movePromptLabel('mira', 'prod', 2);
+      expect(moved).toEqual({ name: 'mira', label: 'prod', version: 2, previous_version: 1 });
+      const [url, init] = fetchFn.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/observe/api/v1/prompts/mira/labels/prod');
+      expect(init.method).toBe('PUT');
+      expect(JSON.parse(String(init.body))).toEqual({ version: 2 });
+      const headers = new Headers(init.headers);
+      expect(headers.get('content-type')).toBe('application/json');
+      expect(headers.get('x-lousho-studio-token')).toBe('tok-123');
+    } finally {
+      window.sessionStorage.removeItem('lousho-studio-token');
+    }
+  });
+
+  it('maps write failures like reads: 502 is daemon-down, other errors carry the daemon message', async () => {
+    const down = clientWith((async () => jsonResponse(502, { error: 'unreachable' })) as typeof fetch);
+    await expect(down.movePromptLabel('mira', 'prod', 2)).rejects.toBeInstanceOf(ObserveDaemonDownError);
+    const missing = clientWith((async () => jsonResponse(404, { error: "No prompt 'mira@9'." })) as typeof fetch);
+    await expect(missing.movePromptLabel('mira', 'prod', 9)).rejects.toMatchObject({ status: 404, message: "No prompt 'mira@9'." });
+  });
 });

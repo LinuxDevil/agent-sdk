@@ -11,6 +11,8 @@ import type {
   ObserveAgentRow,
   ObserveHealth,
   ObserveInsights,
+  ObservePromptHistory,
+  ObservePromptRow,
   ObserveScorePassRate,
   ObserveScoreRow,
   ObserveSessionDetail,
@@ -161,4 +163,12 @@ export function useDaemonDown(
     return () => clearInterval(timer);
   }, [down, pollMs]);
   return down;
+}
+
+export function usePrompts(refreshKey?: unknown): ObserveQuery<ObservePromptRow[]> {
+  return useObserveQuery(() => observeClient.listPrompts(), [refreshKey]);
+}
+
+export function usePromptVersions(name: string, refreshKey?: unknown): ObserveQuery<ObservePromptHistory | undefined> {
+  return useObserveQuery(() => observeClient.promptVersions(name), [name, refreshKey]);
 }

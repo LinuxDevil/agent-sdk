@@ -874,3 +874,43 @@ describe('insights math and per-agent series (O14)', () => {
     }
   });
 });
+
+describe('trace list prompt filter', () => {
+  // t1 ran mira@1, t2 ran mira@2 (on a child generation), t3 ran other@1, t4 ran no prompt
+  const seed = (database: SqlDatabase): void => {
+    const insert = database.prepare(
+      'INSERT INTO prompts (prompt_id, name, version, labels, text, variables, hash, created_at) VALUES (?, ?, ?, NULL, ?, NULL, NULL, ?)'
+    );
+    insert.run('p-mira-1', 'mira', 1, 'v1', T0);
+    insert.run('p-mira-2', 'mira', 2, 'v2', T0);
+    insert.run('p-other-1', 'other', 1, 'o1', T0);
+    ingestBatch(database, [
+      obs({ obs_id: 'r1', trace_id: 't1', start: T0 }),
+      obs({ obs_id: 'r2', trace_id: 't2', start: T0 + 1000 }),
+      obs({ obs_id: 'g2', trace_id: 't2', parent_obs_id: 'r2', kind: 'generation', start: T0 + 1001 }),
+      obs({ obs_id: 'r3', trace_id: 't3', start: T0 + 2000 }),
+      obs({ obs_id: 'r4', trace_id: 't4', start: T0 + 3000 }),
+      { type: 'prompt_use', data: { obs_id: 'r1', prompt_id: 'p-mira-1', version: 1 } },
+      { type: 'prompt_use', data: { obs_id: 'g2', prompt_id: 'p-mira-2', version: 2 } },
+      { type: 'prompt_use', data: { obs_id: 'r3', prompt_id: 'p-other-1', version: 1 } },
+    ]);
+  };
+  const list = (database: SqlDatabase, prompt: { name: string; version?: number }) =>
+    listTraces(database, { prompt, limit: 50, offset: 0 });
+
+  it('keeps traces with any observation linked to the prompt, any version or one version', () => {
+    const database = db();
+    try {
+      seed(database);
+      expect(list(database, { name: 'mira' }).traces.map((t) => t.trace_id)).toEqual(['t2', 't1']);
+      expect(list(database, { name: 'mira' }).total).toBe(2);
+      expect(list(database, { name: 'mira', version: 2 }).traces.map((t) => t.trace_id)).toEqual(['t2']);
+      expect(list(database, { name: 'mira', version: 2 }).total).toBe(1);
+      expect(list(database, { name: 'other' }).traces.map((t) => t.trace_id)).toEqual(['t3']);
+      expect(list(database, { name: 'mira', version: 9 }).total).toBe(0);
+      expect(list(database, { name: 'nope' }).total).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+});

@@ -78,6 +78,11 @@
 .dt-row-open:focus {
   background: var(--surface-2);
 }
+.dt-row-selected,
+.dt-row-selected:hover,
+.dt-row-selected:focus {
+  background: var(--accent-soft);
+}
 .data-table[aria-busy='true'] tbody {
   opacity: 0.6;
 }

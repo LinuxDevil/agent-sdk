@@ -53,6 +53,8 @@ interface DataTableProps<T> {
   sort?: TableSort;
   onSortChange?: (next: TableSort | undefined) => void;
   onRowOpen?: (r: T) => void;
+  /** The row (by `rowKey`) shown as the current selection: `aria-current="true"` plus the selected tint. */
+  selectedKey?: string;
   page?: { offset: number; limit: number; total: number; onChange: (offset: number) => void };
   density?: 'compact' | 'comfortable';
   loading?: boolean;
@@ -266,16 +268,19 @@ interface BodyRowProps<T> {
   index: number;
   columns: Column<T>[];
   active: boolean;
+  selected: boolean;
   onOpen?: (index: number) => void;
 }
 
-function BodyRow<T>({ row, index, columns, active, onOpen }: BodyRowProps<T>) {
+function BodyRow<T>({ row, index, columns, active, selected, onOpen }: BodyRowProps<T>) {
   const openable = Boolean(onOpen);
+  const className = [openable && 'dt-row-open', selected && 'dt-row-selected'].filter(Boolean).join(' ');
   return (
     <tr
       data-row-index={index}
       tabIndex={openable ? (active ? 0 : -1) : undefined}
-      className={openable ? 'dt-row-open' : undefined}
+      className={className || undefined}
+      aria-current={selected ? true : undefined}
       onClick={openable ? (e) => !(e.target as Element).closest('a, button, input, select, textarea') && onOpen!(index) : undefined}
     >
       {columns.map((c) => (
@@ -351,7 +356,7 @@ function Pager({ offset, limit, total, onChange }: NonNullable<DataTableProps<un
  * columns remembered per `id`, responsive `hideBelow` columns, and a pager.
  */
 export function DataTable<T>(props: DataTableProps<T>) {
-  const { id, columns, rows, rowKey, sort, onSortChange, onRowOpen, page, density = 'compact', loading, empty } = props;
+  const { id, columns, rows, rowKey, sort, onSortChange, onRowOpen, selectedKey, page, density = 'compact', loading, empty } = props;
   const wrapRef = useRef<HTMLDivElement>(null);
   const containerWidth = useContainerWidth(wrapRef);
   const { widths, setWidth, persist } = useColumnWidths(id);
@@ -396,7 +401,15 @@ export function DataTable<T>(props: DataTableProps<T>) {
             </tr>
           ) : (
             rows.map((r, i) => (
-              <BodyRow key={rowKey(r)} row={r} index={i} columns={visible} active={i === current} onOpen={open} />
+              <BodyRow
+                key={rowKey(r)}
+                row={r}
+                index={i}
+                columns={visible}
+                active={i === current}
+                selected={selectedKey !== undefined && rowKey(r) === selectedKey}
+                onOpen={open}
+              />
             ))
           )}
         </tbody>

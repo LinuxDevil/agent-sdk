@@ -148,4 +148,18 @@ describe('TracesScreen', () => {
     await flush();
     expect(window.location.hash).toBe('#/traces/trace-err');
   });
+
+  it('passes a prompt URL param to the daemon and shows it as a removable chip', async () => {
+    const container = await mountAt('#/traces?prompt=mira%402&status=error');
+    expect(listRequests().at(-1)!.get('prompt')).toBe('mira@2');
+    const chip = container.querySelector('.traces-prompt-chip');
+    expect(chip?.textContent).toContain('Prompt: mira@2');
+    const remove = chip!.querySelector('button')!;
+    expect(remove.getAttribute('aria-label')).toBe('Remove prompt filter mira@2');
+    act(() => remove.click());
+    await flush();
+    expect(window.location.hash).toBe('#/traces?status=error');
+    expect(listRequests().at(-1)!.get('prompt')).toBeNull();
+    expect(container.querySelector('.traces-prompt-chip')).toBeNull();
+  });
 });

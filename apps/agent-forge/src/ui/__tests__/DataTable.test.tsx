@@ -91,6 +91,14 @@ describe('DataTable rendering', () => {
     expect(bodyRows(c)[0].querySelectorAll('td')[1].classList.contains('dt-right')).toBe(true);
   });
 
+  it('marks the selectedKey row with aria-current and the selected class', () => {
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} selectedKey="b" empty="x" />);
+    const selected = c.querySelectorAll('tbody tr[aria-current="true"]');
+    expect(selected).toHaveLength(1);
+    expect(selected[0].textContent).toContain('beta');
+    expect(selected[0].classList.contains('dt-row-selected')).toBe(true);
+  });
+
   it('renders `empty` in one full-width cell when there are no rows and not loading', () => {
     setWidth(1200);
     const c = render(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} empty={<em>No runs</em>} />);
