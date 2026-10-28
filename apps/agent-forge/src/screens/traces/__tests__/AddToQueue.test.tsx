@@ -9,12 +9,12 @@ type Call = { path: string; method: string; body: unknown };
 
 let calls: Call[];
 let queues: { queue_id: string; name: string }[];
-let added: number;
+let alreadyQueued: boolean;
 
-/** Daemon stub behind `/observe`: the `queues` list; adding items answers `{ added, skipped_existing }`. */
+/** Daemon stub behind `/observe`: the `queues` list; adding items answers `{ added: ItemRow[], skipped_existing: traceId[] }`. */
 function stubDaemon() {
   calls = [];
-  added = 1;
+  alreadyQueued = false;
   queues = [
     { queue_id: 'q1', name: 'support-review' },
     { queue_id: 'q2', name: 'billing-review' },
@@ -31,7 +31,10 @@ function stubDaemon() {
         const rows = queues.map((q) => ({ ...q, rubric: [], created_at: 1, counts: { pending: 0, done: 0, skipped: 0 } }));
         return json({ queues: rows, total: rows.length, limit: 1000, offset: 0 });
       }
-      if (/^\/api\/v1\/queues\/[^/]+\/items$/.test(path)) return json({ added, skipped_existing: 1 - added }, 201);
+      if (/^\/api\/v1\/queues\/[^/]+\/items$/.test(path)) {
+        const queued = { item_id: 'i1', queue_id: 'q1', trace_id: 't1', status: 'pending', reviewer: null, created_at: 1, done_at: null };
+        return json(alreadyQueued ? { added: [], skipped_existing: ['t1'] } : { added: [queued], skipped_existing: [] }, 201);
+      }
       return json({ error: 'unexpected' }, 500);
     }),
   );
@@ -88,7 +91,7 @@ describe('AddToQueue', () => {
   });
 
   it('says so when the trace is already in the queue', async () => {
-    added = 0;
+    alreadyQueued = true;
     const { container } = await mount();
     await act(async () => buttonNamed(container, 'Add')!.click());
     await flush();

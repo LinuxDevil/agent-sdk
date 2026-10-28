@@ -36,7 +36,7 @@ function QueueDialog({ traceId, onClose }: { traceId: string; onClose: () => voi
       const result = await observeClient.addQueueItems(selected.queue_id, [traceId]);
       toast.show({
         tone: 'success',
-        message: result.added ? `Added trace to ${selected.name}.` : `The trace is already in ${selected.name}.`,
+        message: result.added.length > 0 ? `Added trace to ${selected.name}.` : `The trace is already in ${selected.name}.`,
         action: { label: 'Review queue', onClick: () => navigate(queuePath(selected.queue_id)) },
       });
       onClose();

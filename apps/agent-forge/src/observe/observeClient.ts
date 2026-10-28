@@ -394,8 +394,8 @@ export class ObserveClient {
     return body.queue;
   }
 
-  /** `POST /api/v1/queues/:id/items` - queue traces for review; ones already in the queue count as `skipped_existing`. */
-  addQueueItems(queueId: string, traceIds: string[]): Promise<{ added: number; skipped_existing: number }> {
+  /** `POST /api/v1/queues/:id/items` - queue traces for review: the new items, and the trace ids already in the queue. */
+  addQueueItems(queueId: string, traceIds: string[]): Promise<{ added: ObserveQueueItem[]; skipped_existing: string[] }> {
     return this.request(`/api/v1/queues/${encodeURIComponent(queueId)}/items`, { method: 'POST', body: { trace_ids: traceIds } });
   }
 

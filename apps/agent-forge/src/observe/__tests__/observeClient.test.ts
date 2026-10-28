@@ -253,6 +253,8 @@ describe('ObserveClient', () => {
       '/observe/api/v1/queues',
       expect.objectContaining({ method: 'POST', body: '{"name":"review","rubric":[{"name":"helpful","min":0,"max":5}]}' })
     );
+    const addFetch = vi.fn(async () => jsonResponse(201, { added: [], skipped_existing: ['t1'] }));
+    expect(await clientWith(addFetch as unknown as typeof fetch).addQueueItems('q1', ['t1'])).toEqual({ added: [], skipped_existing: ['t1'] });
     await client.addQueueItems('q1', ['t1']);
     expect(fetchFn).toHaveBeenLastCalledWith(
       '/observe/api/v1/queues/q1/items',
