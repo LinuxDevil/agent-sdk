@@ -47,7 +47,7 @@ async function call(
     params: matched.params,
     query: new URLSearchParams(search),
     readBody: () => Promise.resolve(text),
-    evaluators,
+    evaluators: evaluators ?? startEvaluatorWorker(database),
   });
   return captured;
 }

@@ -166,7 +166,6 @@ export const evaluatorsRoutes: readonly Route[] = [
       if (rule.kind === 'judge') {
         return sendJson(res, 409, { error: 'judge evaluators run through Agent Forge', code: 'LOUSHO_REQUEST_INVALID' });
       }
-      if (evaluators === undefined) throw new Error('the evaluator worker is not running');
       const result = await evaluators.runOnce(rule, trace_id);
       if (result === undefined) {
         return sendJson(res, 404, { error: `No trace '${trace_id}' with a root observation.`, code: 'LOUSHO_REQUEST_INVALID' });

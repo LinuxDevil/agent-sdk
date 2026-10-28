@@ -30,8 +30,8 @@ export interface RouteContext {
    * `LOUSHO_REQUEST_INVALID` on a second call.
    */
   readBody(limitBytes: number): Promise<string>;
-  /** The daemon's online-evaluator worker (absent in route tests that do not need it). */
-  evaluators?: EvaluatorWorker;
+  /** The daemon's online-evaluator worker (ingest notifies it; the evaluator `/test` route dry-runs through it). */
+  evaluators: EvaluatorWorker;
 }
 
 export interface Route {

@@ -14,8 +14,7 @@ import { ingestBatch } from '../store';
 import { sendJson, parseJsonBody, type Route } from './httpKit';
 
 /** Hand the worker the batch's ended roots; a worker fault never reaches the response. */
-function notifyEvaluators(worker: EvaluatorWorker | undefined, batch: readonly IngestEvent[]): void {
-  if (worker === undefined) return;
+function notifyEvaluators(worker: EvaluatorWorker, batch: readonly IngestEvent[]): void {
   try {
     worker.notifyRootsEnded(rootsEndedIn(batch));
   } catch {
