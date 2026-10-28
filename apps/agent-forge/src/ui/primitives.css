@@ -1,8 +1,7 @@
 /*
  * Studio kit primitives: StatusPill tones, EmptyState, Toast.
  * Base pill shape (.status-pill, .dot) lives in ui/base.css; the
- * tone classes below decide its colour. Two-class selectors so they beat the
- * single-class legacy .status-* rules regardless of load order.
+ * tone classes below decide its colour.
  */
 
 /* ---------- StatusPill tones ---------- */

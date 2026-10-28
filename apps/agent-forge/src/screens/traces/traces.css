@@ -9,9 +9,6 @@
 .traces-error {
   color: var(--danger);
 }
-.traces-detail {
-  min-height: 0;
-}
 .traces-prompt-chip {
   display: inline-flex;
   align-self: flex-start;
