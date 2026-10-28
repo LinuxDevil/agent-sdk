@@ -67,8 +67,10 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * (2026-10-24); packed budget raised to 5 MiB (~10% headroom).
  * CI measured 16,796,541 bytes (~16.0 MiB) unpacked on 2026-10-29 (Studio
  * revamp dist plus docs); unpacked budget raised to 18 MiB (~10% headroom).
+ * CI counted 853 entries on 2026-10-29 (online evaluators); entry budget
+ * raised to 940 (~10% headroom).
  */
-const MAX_ENTRIES = 850;
+const MAX_ENTRIES = 940;
 const MAX_UNPACKED_BYTES = 18 * 1024 * 1024;
 const MAX_PACKED_BYTES = 5 * 1024 * 1024;
 
