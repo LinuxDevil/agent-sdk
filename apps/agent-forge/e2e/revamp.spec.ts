@@ -123,6 +123,8 @@ const FILTERS: Record<ScreenId, string> = {
   threads: `?agent=orders-bot&status=ended&from=${FROM}&to=${TO}`,
   monitoring: '?window=7d&agent=orders-bot',
   scores: '?eval=e2e-eval&agent=orders-bot&source=eval&range=7d&open=e2e-eval',
+  // The only URL state Datasets keeps is the server-side page (`offset`).
+  datasets: '?offset=50',
   evals: '',
   prompts: '?diff=1,2',
   hub: '?agent=triage-bot&scope=fleet',
@@ -148,6 +150,11 @@ async function expectCustomRange(main: Locator) {
   await expect(range.getByRole('button', { name: 'Custom' })).toHaveAttribute('aria-pressed', 'true');
   await expect(range.getByLabel('From')).toHaveValue(localInput(FROM));
   await expect(range.getByLabel('To')).toHaveValue(localInput(TO));
+}
+
+/** The pager is past page one (`?offset=`): Previous is enabled. */
+async function expectPreviousPage(main: Locator) {
+  await expect(main.locator('.dt-pager').getByRole('button', { name: 'Previous' })).toBeEnabled();
 }
 
 /** What each screen's filter controls must show after the reload (list routes; detail routes keep only the URL). */
@@ -182,6 +189,12 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
     await expectFacet(main, 'Source', 'eval');
     await expect(main.getByRole('region', { name: 'Eval e2e-eval' })).toBeVisible();
   },
+  '/evals/datasets': async (main) => {
+    await expectPreviousPage(main);
+  },
+  '/evals/datasets/:name': async (main) => {
+    await expectPreviousPage(main);
+  },
   '/prompts/:name': async (main) => {
     await expect(main.getByRole('combobox', { name: 'Compare version A' })).toHaveValue('1');
     await expect(main.getByRole('combobox', { name: 'Compare version B' })).toHaveValue('2');
@@ -203,8 +216,8 @@ CONTROLS['/hub/:namespace'] = CONTROLS['/hub'];
 const NO_CONTROLS = new Set([
   '/agents', // canonicalises to the open agent; nothing to filter
   '/threads/:sessionId', // a thread's turns; the list's filters only ride along in the URL
-  '/evals/:section', // placeholder screen
-  '/evals/:section/:id', // placeholder screen
+  '/evals/:section', // evaluators / annotation placeholder screen
+  '/evals/:section/:id', // evaluators / annotation placeholder screen
   '/prompts', // the registry list has no filters
   '/settings', // no URL state
 ]);
