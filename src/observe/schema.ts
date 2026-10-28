@@ -211,6 +211,27 @@ export const OBSERVE_MIGRATIONS: readonly string[] = [
       AND j.value NOT GLOB '*[@/ ]*'
     GROUP BY p.name, j.value;
   `,
+  `
+  -- Datasets: named sets of eval examples. input/expected are JSON text;
+  -- source_trace_id records the trace an example was copied from and is
+  -- deliberately not a foreign key - retention may prune that trace, the
+  -- example stays. Retention never touches these tables.
+  CREATE TABLE datasets (
+    dataset_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE dataset_examples (
+    example_id TEXT PRIMARY KEY,
+    dataset_id TEXT NOT NULL REFERENCES datasets(dataset_id) ON DELETE CASCADE,
+    input TEXT NOT NULL,
+    expected TEXT,
+    source_trace_id TEXT,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX dataset_examples_by_dataset ON dataset_examples (dataset_id, created_at);
+  `,
 ];
 
 /**
