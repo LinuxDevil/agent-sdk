@@ -232,6 +232,23 @@ export const OBSERVE_MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX dataset_examples_by_dataset ON dataset_examples (dataset_id, created_at);
   `,
+  `
+  -- Online evaluator rules: which traces to score (filter JSON, sample_rate
+  -- in [0, 1]) and how (kind 'code' with config { source }, or 'judge' with
+  -- config { model, rubric }). Stored only; the runner reads them in
+  -- created_at order.
+  CREATE TABLE evaluator_rules (
+    rule_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    filter TEXT NOT NULL DEFAULT '{}',
+    sample_rate REAL NOT NULL DEFAULT 1,
+    kind TEXT NOT NULL CHECK(kind IN ('code','judge')),
+    config TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 /**
