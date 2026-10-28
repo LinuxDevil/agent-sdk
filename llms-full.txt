@@ -14388,6 +14388,39 @@ example body may be up to 1 MiB.
 Retention never deletes datasets or examples. An example keeps its
 `source_trace_id` after that trace is pruned.
 
+### Online evaluator rules
+
+An evaluator rule says which new traces to score and how. A `code` rule holds
+the source of a function `(trace) => number | { value, comment }`, and a
+`judge` rule holds a model and a rubric to grade by. The daemon only stores
+rules for now: it does not compile a `source` or call a model yet. Running
+rules on new traces comes separately. The routes take the same token as
+ingest:
+
+| Route | Answer |
+| --- | --- |
+| `POST /api/v1/evaluators` `{ "name", "kind", "config", "filter"?, "sample_rate"?, "enabled"? }` | `201 { evaluator }`. A taken name is a `409`. |
+| `GET /api/v1/evaluators?limit&offset&kind&enabled` | `{ evaluators, total, limit, offset }`, oldest first. `limit` defaults to 100 (max 1000). `kind` is `code` or `judge` and `enabled` is `true` or `false`; any other value is a `400`. |
+| `GET /api/v1/evaluators/:id` | `{ evaluator }`. |
+| `PUT /api/v1/evaluators/:id` | `{ evaluator }`. The body is any subset of the create fields. The merged rule is checked as a whole, so changing `kind` needs a matching `config` in the same request. Renaming onto a taken name is a `409`. |
+| `DELETE /api/v1/evaluators/:id` | `204`. |
+
+A rule row is `{ rule_id, name, enabled, filter, sample_rate, kind, config,
+created_at, updated_at }`. The fields are:
+
+- `name`: 1-200 characters after trimming, unique.
+- `enabled`: a boolean, `true` by default.
+- `filter`: `{ "agent_id"?, "status"?, "name_contains"? }`, `{}` by default.
+  `status` is `ok` or `error`, and each value is a non-empty string.
+- `sample_rate`: a number from 0 to 1, `1` by default.
+- `kind` and `config`: `code` takes `{ "source" }` (up to 64 KiB of text), and
+  `judge` takes `{ "model", "rubric" }` (up to 200 and 20 000 characters).
+
+An unknown field, an unknown `kind` or a `config` that does not match the
+`kind` is a `400` with code `LOUSHO_REQUEST_INVALID`. An unknown rule is a
+`404` with the same code. `updated_at` moves on every `PUT`. The body may be up
+to 128 KiB. Retention never deletes rules.
+
 ### Retention
 
 The daemon keeps 30 days of runs by default. On its first sweep after start,
