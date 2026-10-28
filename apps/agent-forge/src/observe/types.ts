@@ -29,6 +29,16 @@ export interface ObserveTraceRow {
   input_tokens: number;
   output_tokens: number;
   cost_usd: number;
+  /** The agent's registered name, or null. */
+  agent_name: string | null;
+  /** The first generation's model (by start), or null. */
+  model: string | null;
+  /** The first failed observation's error text, or null. */
+  error_message: string | null;
+  /** The root observation's input, first 200 chars. */
+  input_preview: string | null;
+  /** The root observation's output, first 200 chars. */
+  output_preview: string | null;
 }
 
 export interface ObserveTraceList {

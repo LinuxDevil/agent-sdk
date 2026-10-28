@@ -105,10 +105,6 @@ export function useInsights(filter: InsightsFilter, refreshKey?: unknown): Obser
   return useObserveQuery(() => observeClient.insights(filter), [JSON.stringify(filter), refreshKey]);
 }
 
-export function useScores(filter: ScoreListFilter, refreshKey?: unknown): ObserveQuery<ObserveScoreRow[]> {
-  return useObserveQuery(() => observeClient.listScores(filter), [JSON.stringify(filter), refreshKey]);
-}
-
 /**
  * One eval's score rows (`eval=<name>` plus `filter`); no request while
  * `evalName` is empty. `data` is only ever rows of the current `evalName`:

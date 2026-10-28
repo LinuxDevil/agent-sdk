@@ -30,6 +30,14 @@ export function fmtDateTime(epochMs: number | null | undefined): string {
   return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${d.toTimeString().slice(0, 5)}`;
 }
 
+/** Local `15:29:30`, prefixed with `Oct 24` when the day is not `now`'s day. */
+export function fmtStarted(epochMs: number, now: number = Date.now()): string {
+  const d = new Date(epochMs);
+  const time = d.toTimeString().slice(0, 8);
+  if (d.toDateString() === new Date(now).toDateString()) return time;
+  return `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${time}`;
+}
+
 /** `3s ago` / `4m ago` / `2h ago` / `1d ago` for the fleet heartbeat column. */
 export function fmtAge(ageMs: number | null | undefined): string {
   if (ageMs === null || ageMs === undefined) return 'never';
