@@ -65,15 +65,36 @@ test('the slowest run in the last 24 h is the first row in 3 interactions', asyn
   const main = page.getByRole('main');
   const range = main.getByRole('group', { name: 'Time range' });
 
+  const tracesRequests: URL[] = [];
+  page.on('request', (r) => {
+    const url = new URL(r.url());
+    if (url.pathname === '/observe/api/v1/traces') tracesRequests.push(url);
+  });
+  /** The newest traces request asks the daemon for the last 24 h (half-open, ending about now). */
+  const expectLast24h = () => {
+    const q = tracesRequests[tracesRequests.length - 1]?.searchParams;
+    const from = Number(q?.get('from'));
+    const to = Number(q?.get('to'));
+    expect(to - from, 'window length').toBe(86_400_000);
+    expect(Math.abs(Date.now() - to), 'window ends now').toBeLessThan(60_000);
+    return q!;
+  };
+
   // 1. Traces.
   await ui.step(() => primaryNav(page).getByRole('link', { name: 'Traces' }).click());
   await expect(bodyRows(page).first()).toBeVisible();
-  // 2. Time range "24h" (a visible preset, one click).
+  // 2. Time range "24h" (a visible preset, one click). It is the default window, so the URL stays bare
+  //    (defaults are never written) and the list keeps asking for the last 24 h.
   await ui.step(() => range.getByRole('button', { name: '24h', exact: true }).click());
   await expect(range.getByRole('button', { name: '24h', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  expect(new URL(page.url()).hash).toBe('#/traces');
+  expectLast24h();
   // 3. Sort by duration (slowest first on the first click).
   await ui.step(() => main.getByRole('button', { name: 'Duration' }).click());
   await expect(main.getByRole('columnheader', { name: 'Duration' })).toHaveAttribute('aria-sort', 'descending');
+  expect(new URL(page.url()).hash).toBe('#/traces?sort=duration&order=desc');
+  await expect.poll(() => tracesRequests[tracesRequests.length - 1]?.searchParams.get('sort')).toBe('duration');
+  expect(expectLast24h().get('order')).toBe('desc');
   await expect(bodyRows(page).first()).toContainText(SEED_SLOWEST_24H.input_preview!);
   await expect(bodyRows(page).first()).toContainText('2.6s');
   expect(ui.count).toBe(3);
@@ -175,6 +196,19 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
 };
 CONTROLS['/hub/:namespace'] = CONTROLS['/hub'];
 
+/**
+ * Routes with no filter controls of their own to re-check (the reload still
+ * checks the hash and the screen). A route in neither CONTROLS nor here fails.
+ */
+const NO_CONTROLS = new Set([
+  '/agents', // canonicalises to the open agent; nothing to filter
+  '/threads/:sessionId', // a thread's turns; the list's filters only ride along in the URL
+  '/evals/:section', // placeholder screen
+  '/evals/:section/:id', // placeholder screen
+  '/prompts', // the registry list has no filters
+  '/settings', // no URL state
+]);
+
 /** What identifies the screen: the current Primary nav item and the screen's first heading (Agents' builder has none). */
 async function screenIdentity(page: Page) {
   await page.waitForLoadState('networkidle');
@@ -200,11 +234,21 @@ async function ensureSavedAgent(page: Page) {
 
 for (const { pattern, screen, example } of ROUTES) {
   test(`${pattern} survives a reload with its filters`, async ({ page }) => {
+    // Guards for a route added after this suite (the typecheck catches a missing FILTERS key too).
+    const filters = FILTERS[screen] as string | undefined;
+    expect(filters, `FILTERS has no entry for screen '${screen}' (${pattern}): add its filter query, '' if none`).toBeDefined();
+    const controls = CONTROLS[pattern] as ((main: Locator, page: Page) => Promise<void>) | undefined;
+    expect(
+      controls !== undefined || NO_CONTROLS.has(pattern),
+      `route ${pattern} has no CONTROLS check: add one, or list it in NO_CONTROLS`,
+    ).toBe(true);
+    expect(controls !== undefined && NO_CONTROLS.has(pattern), `route ${pattern} is in both CONTROLS and NO_CONTROLS`).toBe(false);
+
     if (screen === 'agents') await ensureSavedAgent(page);
-    const hash = `#${example}${FILTERS[screen]}`;
-    await openApp(page, `${example}${FILTERS[screen]}`);
+    const hash = `#${example}${filters}`;
+    await openApp(page, `${example}${filters}`);
     const main = page.getByRole('main');
-    await CONTROLS[pattern]?.(main, page);
+    await controls?.(main, page);
     const before = await screenIdentity(page);
     const settled = new URL(page.url()).hash;
     // Bare #/agents is replaced by the open agent's #/agents/:id (its canonical URL); every other URL stays as given.
@@ -215,7 +259,7 @@ for (const { pattern, screen, example } of ROUTES) {
     await expect(page.locator('.app')).toBeVisible();
     expect(await screenIdentity(page)).toEqual(before);
     expect(new URL(page.url()).hash).toBe(settled);
-    await CONTROLS[pattern]?.(main, page);
+    await controls?.(main, page);
   });
 }
 

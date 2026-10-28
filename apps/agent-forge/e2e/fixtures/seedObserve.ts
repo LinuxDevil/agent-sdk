@@ -79,7 +79,7 @@ const runs: SeedRun[] = Array.from({ length: 60 }, (_, i) => {
   return seedRun(`seed-${String(i).padStart(3, '0')}`, i, NOW - (i + 1) * 18 * MINUTE, duration, failure);
 });
 // Older than 24 h and slower than anything inside it.
-runs.push(seedRun('seed-old-slow', 60,NOW - 30 * HOUR, 3_400, null));
+runs.push(seedRun('seed-old-slow', 60, NOW - 30 * HOUR, 3_400, null));
 
 /** Every seeded trace row, newest first. */
 const SEED_TRACES: readonly ObserveTraceRow[] = runs.map((r) => r.row);
