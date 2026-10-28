@@ -176,8 +176,8 @@ exists.
    steps in the same viewer: each step's kind (model call, tool call or
    span), model, tokens and duration, failed steps in the error colour with
    the failure message in the inspector, and steps still running ticking
-   live. Selecting a step highlights its node on the canvas. The list refreshes when
-   a run ends. The files are the ones `lousho traces` reads, in
+   live. Selecting a step highlights its node on the canvas. The list
+   refreshes when a run ends. The files are the ones `lousho traces` reads, in
    `.lousho/agents/<agent id>/traces/<day>/<trace id>.jsonl` under the
    directory `lousho studio` was started in (see
    [Local traces](observability.md#local-traces)):
@@ -185,10 +185,10 @@ exists.
    runs in the terminal, and deleting the agent's folder deletes its traces.
    The tab shows what the spans hold: model and tool names, token counts,
    cost, durations and error messages, and in the inspector's Input,
-   Output and Attributes sections the attributes, which carry prompt and tool content. The server reads traces
-   only from that folder (an id with a path separator is a 400) and never
-   sends the file path to the browser. Keep `.lousho/` out of version
-   control.
+   Output and Attributes sections the attributes, which carry prompt and
+   tool content. The server reads traces only from that folder (an id with
+   a path separator is a 400) and never sends the file path to the browser.
+   Keep `.lousho/` out of version control.
 5. **Chat with it.** The **Chat** tab is a separate conversational
    transport (`POST /agents/:id/message`, streamed back over the same
    WebSocket as everything else) - send it a message and it replies in the

@@ -148,6 +148,10 @@ describe('TracePanel with trace history', () => {
     // A failed trace opens on its first error, with the span's message in the Error banner.
     expect(container.querySelector('.run-inspector')?.getAttribute('data-obs-id')).toBe('trace-new');
     expect(container.querySelector('[role=alert]')?.textContent).toContain('boom');
+    // Drawer runs are not observe traces: no dead "Open in Playground" link on the model call.
+    act(() => (container.querySelector('[data-obs-id="c1"] .run-row-main') as HTMLElement).click());
+    expect(container.querySelector('.run-inspector')?.getAttribute('data-obs-id')).toBe('c1');
+    expect(container.querySelectorAll('.run-playground-link')).toHaveLength(0);
   });
 
   it('selecting a step inspects it and highlights its canvas node', async () => {

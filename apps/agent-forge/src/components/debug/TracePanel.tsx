@@ -43,6 +43,8 @@ function SpanTrace({ spans, jumpToLogs }: { spans: SpanEvent[]; jumpToLogs: bool
       mode={mode}
       onModeChange={setMode}
       now={now}
+      // Studio runs reach the observe daemon only when LOUSHO_OBSERVE is set, so the Playground could not load them.
+      playgroundLinks={false}
     />
   );
 }

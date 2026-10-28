@@ -157,6 +157,9 @@ describe('TraceScreen', () => {
     expect(window.location.hash).toBe('#/traces/t1?obs=gen1');
     expect(window.history.length).toBe(before);
     await waitFor(() => inspectedId(c) === 'gen1');
+    // The observe trace screen keeps the generation's Playground links (row and inspector).
+    expect(c.querySelector('.run-tree [data-obs-id="gen1"] .run-playground-link')?.getAttribute('href')).toBe('#/playground?trace=t1&fromObs=gen1');
+    expect(c.querySelector('.run-inspector .run-playground-link')).not.toBeNull();
   });
 
   it('shows an EmptyState with "Back to traces" for a missing trace', async () => {

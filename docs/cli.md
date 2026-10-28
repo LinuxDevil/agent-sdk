@@ -283,9 +283,9 @@ npx lousho observe token create --project myapp # bearer key for non-loopback au
 Runs the local collector every agent reports to when `LOUSHO_OBSERVE` is
 set: traces, fleet monitoring, eval scores, the prompt registry and the
 context hub in one SQLite file (default `~/.lousho/observe.db`). Studio's
-Traces, Threads, Monitoring and Scores screens read it. `start` takes `--port` (or `LOUSHO_OBSERVE_PORT`),
-`--db`, `--host`, `--require-token` and a repeatable `--webhook` for alert
-hooks. Each daemon writes its own `<db name>.pid` beside the db
+Traces, Threads, Monitoring and Scores screens read it. `start` takes
+`--port` (or `LOUSHO_OBSERVE_PORT`), `--db`, `--host`, `--require-token`
+and a repeatable `--webhook` for alert hooks. Each daemon writes its own `<db name>.pid` beside the db
 (`observe.db` gives `observe.pid`), so two dbs in one folder never share a
 pidfile. `start` exits 1 when the port already serves a different db, and
 `stop` refuses to signal when the daemon at the pidfile's port reports another

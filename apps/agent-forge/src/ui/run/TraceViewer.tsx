@@ -15,7 +15,8 @@ export type TraceViewMode = 'tree' | 'waterfall';
  * Props for {@link TraceViewer}. The caller owns both the selection and the
  * mode; pass `onModeChange` to get a Tree/Waterfall toggle. `now` is the clock
  * open observations run to (defaults to `Date.now()`). `renderFeedback` is
- * handed to the inspector (see {@link RunInspectorProps}).
+ * handed to the inspector (see {@link RunInspectorProps}). `playgroundLinks:
+ * false` hides the "Open in Playground" links (default true).
  */
 export interface TraceViewerProps {
   observations: ObserveObservationRow[];
@@ -26,6 +27,7 @@ export interface TraceViewerProps {
   onModeChange?: (mode: TraceViewMode) => void;
   now?: number;
   renderFeedback?: RunInspectorProps['renderFeedback'];
+  playgroundLinks?: boolean;
 }
 
 const MODES: { mode: TraceViewMode; label: string }[] = [
@@ -60,6 +62,7 @@ export function TraceViewer({
   onModeChange,
   now,
   renderFeedback,
+  playgroundLinks = true,
 }: TraceViewerProps) {
   const inspected = useMemo(() => pickInspected(observations, selectedObsId), [observations, selectedObsId]);
   if (inspected === undefined) {
@@ -78,10 +81,10 @@ export function TraceViewer({
             ))}
           </div>
         )}
-        {mode === 'waterfall' ? <Waterfall {...listProps} /> : <RunTree {...listProps} />}
+        {mode === 'waterfall' ? <Waterfall {...listProps} /> : <RunTree {...listProps} playgroundLinks={playgroundLinks} />}
       </div>
       <div className="run-viewer-inspector">
-        <RunInspector observation={inspected} scores={scores} now={now} renderFeedback={renderFeedback} />
+        <RunInspector observation={inspected} scores={scores} now={now} renderFeedback={renderFeedback} playgroundLinks={playgroundLinks} />
       </div>
     </div>
   );

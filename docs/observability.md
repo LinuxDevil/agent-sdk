@@ -444,12 +444,12 @@ beyond loopback (`--require-token` plus `lousho observe token create`).
 One SQLite file (default `~/.lousho/observe.db`, WAL mode) holds the fleet's
 observations, sessions, eval scores, prompt versions and shared context.
 `npx lousho studio` renders it in its Traces, Threads, Monitoring and
-Scores screens: trace trees with latency
-waterfalls, per-agent insights (runs/day, p50/p95 latency, cost, error
-rate), a live fleet monitor (heartbeat-derived status — a crashed agent's
-open sessions flip to `interrupted`), and eval score history. Alerts on
-`down` transitions or error-rate thresholds POST to `--webhook` URLs or an
-`alerts.json` next to the db.
+Scores screens: trace trees with latency waterfalls, per-agent insights
+(runs/day, p50/p95 latency, cost, error rate), a live fleet monitor
+(heartbeat-derived status — a crashed agent's open sessions flip to
+`interrupted`), and eval score history. Alerts on `down` transitions or
+error-rate thresholds POST to `--webhook` URLs or an `alerts.json` next to
+the db.
 
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an

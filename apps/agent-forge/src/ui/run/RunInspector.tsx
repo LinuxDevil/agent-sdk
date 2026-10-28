@@ -14,13 +14,16 @@ import './run.css';
  * observation, the trace-level scores with `obs_id === null`). `now` is the
  * clock a running observation's duration counts to (defaults to `Date.now()`).
  * `renderFeedback` adds a control (e.g. a feedback form) under the Feedback
- * section's score list, for the observation shown.
+ * section's score list, for the observation shown. `playgroundLinks: false`
+ * hides a generation's "Open in Playground" link (for steps the observe
+ * daemon never received, which the Playground could not load).
  */
 export interface RunInspectorProps {
   observation: ObserveObservationRow;
   scores: ObserveScoreRow[];
   now?: number;
   renderFeedback?: (observation: ObserveObservationRow) => ReactNode;
+  playgroundLinks?: boolean;
 }
 
 /** `attrs.error` as a string, else `attrs.error.message`, else a generic line. */
@@ -100,7 +103,7 @@ function Usage({ row }: { row: ObserveObservationRow }) {
  * `MessageView`) → Feedback (scores) → Tokens/Cost/Model → Attributes
  * (`JsonView` of `attrs`, omitted when null). A truncated row says so.
  */
-export function RunInspector({ observation: row, scores, now, renderFeedback }: RunInspectorProps) {
+export function RunInspector({ observation: row, scores, now, renderFeedback, playgroundLinks = true }: RunInspectorProps) {
   const ms = elapsedMs(row, now ?? Date.now());
   return (
     <div className="run-inspector" data-obs-id={row.obs_id}>
@@ -112,7 +115,7 @@ export function RunInspector({ observation: row, scores, now, renderFeedback }: 
           {fmtDuration(ms)}
           {isRunning(row) ? ' running' : ''}
         </span>
-        {row.kind === 'generation' && (
+        {playgroundLinks && row.kind === 'generation' && (
           <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)}>
             Open in Playground
           </a>

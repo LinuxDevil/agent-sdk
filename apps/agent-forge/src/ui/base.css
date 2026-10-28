@@ -151,11 +151,6 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-.chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
 .chip {
   display: inline-flex;
   align-items: center;
