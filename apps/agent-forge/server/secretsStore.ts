@@ -50,6 +50,12 @@ import type { ProviderKeyStatus } from '../shared/wireTypes';
 const SECRET_PROVIDERS = ['openai', 'anthropic'] as const;
 export type SecretProvider = (typeof SECRET_PROVIDERS)[number];
 
+/** The env var each managed provider falls back to when no key is stored (buildAgent.ts resolves runs with it; `list()` reports whether it is set). */
+export const PROVIDER_KEY_ENV: Record<SecretProvider, string> = {
+  openai: 'OPENAI_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+};
+
 export function isSecretProvider(value: string): value is SecretProvider {
   return (SECRET_PROVIDERS as readonly string[]).includes(value);
 }
@@ -169,13 +175,13 @@ export class SecretsStore {
     }
   }
 
-  /** Masked status for every managed provider - safe to return from a GET route. */
+  /** Masked status for every managed provider, plus whether its env var is set (never its value) - safe to return from a GET route. */
   list(): ProviderKeyStatus[] {
     const records = this.loadRecords();
     return SECRET_PROVIDERS.map((provider) => {
       const hasKey = provider in records;
       const key = hasKey ? this.getKey(provider) : undefined;
-      return { provider, hasKey: hasKey && !!key, masked: key ? maskKey(key) : null };
+      return { provider, hasKey: hasKey && !!key, masked: key ? maskKey(key) : null, envKey: !!process.env[PROVIDER_KEY_ENV[provider]] };
     });
   }
 }

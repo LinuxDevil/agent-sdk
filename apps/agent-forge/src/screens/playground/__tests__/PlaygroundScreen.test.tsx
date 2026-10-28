@@ -61,7 +61,7 @@ function server(extra: Route = () => undefined) {
     const url = String(input);
     const answer = await extra(url, init);
     if (answer) return answer;
-    if (url === '/settings/providers') return json(200, [{ provider: 'openai', hasKey: true, masked: '••••1234' }]);
+    if (url === '/settings/providers') return json(200, [{ provider: 'openai', hasKey: true, masked: '••••1234', envKey: false }]);
     if (url === '/agents') return json(200, []);
     if (url.startsWith('/observe/api/v1/traces/t1')) return json(200, TRACE);
     if (url.startsWith('/observe/api/v1/traces/')) return json(404, { error: 'No trace.' });

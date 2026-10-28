@@ -31,7 +31,7 @@ import {
 } from '@lousho/build-ai-agent';
 import type { AgentFlow } from '@lousho/build-ai-agent/flows';
 import { compileHooksFromSpecPolicy } from './compileHooks';
-import { isSecretProvider, type SecretsStore } from './secretsStore';
+import { PROVIDER_KEY_ENV, isSecretProvider, type SecretsStore } from './secretsStore';
 
 /**
  * Local, server-only tools available to a spec's `tools` list in ADDITION
@@ -84,11 +84,6 @@ export interface BuiltAgent {
   sandbox: SandboxAdapter;
 }
 
-const REAL_KEYED_PROVIDER_ENV: Record<string, string> = {
-  openai: 'OPENAI_API_KEY',
-  anthropic: 'ANTHROPIC_API_KEY',
-};
-
 /** Real provider types this app doesn't manage a stored key for (no plain-API-key concept, or not yet wired into secretsStore) - env-var-only. */
 const REAL_ENV_ONLY_PROVIDERS = new Set(['ollama', 'openrouter']);
 
@@ -121,8 +116,8 @@ function resolveProviderForSpec(type: string, model: string, secretsStore?: Secr
 
   if (isSecretProvider(lower)) {
     const storedKey = secretsStore?.getKey(lower);
-    const key = storedKey || process.env[REAL_KEYED_PROVIDER_ENV[lower]];
-    if (!key) throw missingProviderKey(lower, REAL_KEYED_PROVIDER_ENV[lower]);
+    const key = storedKey || process.env[PROVIDER_KEY_ENV[lower]];
+    if (!key) throw missingProviderKey(lower, PROVIDER_KEY_ENV[lower]);
     return LLMProviderRegistry.create(lower, { defaultModel: model, apiKey: key });
   }
 

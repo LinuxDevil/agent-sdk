@@ -221,7 +221,12 @@ describe('settings/secrets HTTP routes', () => {
   let baseDir: string;
   let app: ReturnType<typeof createApp>;
 
+  // The provider env vars feed `envKey`: cleared for each test so a developer's own keys don't leak into the expectations.
+  const savedEnv = { OPENAI_API_KEY: process.env.OPENAI_API_KEY, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
+
   beforeEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-r-app-test-'));
     const agentStore = createFsAgentStore(baseDir);
     const runManager = new RunManager({
@@ -235,6 +240,10 @@ describe('settings/secrets HTTP routes', () => {
   });
 
   afterEach(() => {
+    for (const [name, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     fs.rmSync(baseDir, { recursive: true, force: true });
   });
 
@@ -242,15 +251,25 @@ describe('settings/secrets HTTP routes', () => {
     const res = await request(app).get('/settings/providers');
     expect(res.status).toBe(200);
     expect(res.body).toEqual([
-      { provider: 'openai', hasKey: false, masked: null },
-      { provider: 'anthropic', hasKey: false, masked: null },
+      { provider: 'openai', hasKey: false, masked: null, envKey: false },
+      { provider: 'anthropic', hasKey: false, masked: null, envKey: false },
     ]);
+  });
+
+  it('GET /settings/providers reports a provider whose env var is set as envKey, never its value', async () => {
+    process.env.OPENAI_API_KEY = 'env-key-placeholder';
+    const res = await request(app).get('/settings/providers');
+    expect(res.body).toEqual([
+      { provider: 'openai', hasKey: false, masked: null, envKey: true },
+      { provider: 'anthropic', hasKey: false, masked: null, envKey: false },
+    ]);
+    expect(JSON.stringify(res.body)).not.toContain('env-key-placeholder');
   });
 
   it('PUT /settings/providers/:provider stores a key and never echoes it back', async () => {
     const res = await request(app).put('/settings/providers/openai').send({ apiKey: 'sk-super-secret' });
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ provider: 'openai', hasKey: true, masked: '••••••••cret' });
+    expect(res.body).toEqual({ provider: 'openai', hasKey: true, masked: '••••••••cret', envKey: false });
     expect(JSON.stringify(res.body)).not.toContain('sk-super-secret');
 
     const raw = fs.readFileSync(path.join(baseDir, '.lousho', 'secrets.json'), 'utf8');

@@ -2,8 +2,10 @@
  * The evaluator form the list's "New evaluator" and the edit view share:
  * name, kind (`code` with a function textarea, or `judge` with a model and a
  * rubric), the trace filter (agent, status, name contains), the sample rate
- * and the enabled flag. A judge needs a provider key: without one in Studio's
- * settings the judge option is disabled, with a hint that links Settings.
+ * and the enabled flag. A judge needs a provider key, stored in Studio's
+ * settings or set as the provider's env var where Studio runs (judges run
+ * with either): without one the judge option is disabled, with a hint that
+ * links Settings.
  * A failed save (a taken name is the daemon's 409) shows inline.
  */
 import { useState, type FormEvent, type ReactNode } from 'react';
@@ -20,6 +22,9 @@ const saveError = (error: unknown): string =>
   error instanceof ObserveApiError && error.status === 409
     ? 'Could not save: an evaluator with that name exists.'
     : `Could not save the evaluator: ${(error as Error).message}`;
+
+/** The providers a judge can run on: a key stored in Settings or the provider's env var (`envKey`) both count. */
+const judgeKeys = (keys: readonly ProviderKeyStatus[]): ProviderKeyStatus[] => keys.map((k) => ({ ...k, hasKey: k.hasKey || k.envKey }));
 
 function KindField({
   draft,
@@ -155,11 +160,12 @@ export function EvaluatorForm({ title, initial, keys, agents, submitLabel, onSub
   const [error, setError] = useState<string | undefined>();
   const [saving, setSaving] = useState(false);
   const set: SetField = (field, value) => setDraft((d) => ({ ...d, [field]: value }));
-  const judgeAllowed = keys.some((k) => k.hasKey) || initial.kind === 'judge';
+  const usable = judgeKeys(keys);
+  const judgeAllowed = usable.some((k) => k.hasKey) || initial.kind === 'judge';
   const problem = draftProblem(draft);
   // The keys load after the draft is made: a judge with no model typed yet starts on the first keyed provider.
   const choose = (kind: EvaluatorDraft['kind']) =>
-    setDraft((d) => (kind === 'judge' && d.kind !== 'judge' && d.model === '' ? { ...d, kind, provider: defaultProvider(keys) } : { ...d, kind }));
+    setDraft((d) => (kind === 'judge' && d.kind !== 'judge' && d.model === '' ? { ...d, kind, provider: defaultProvider(usable) } : { ...d, kind }));
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -214,7 +220,7 @@ export function EvaluatorForm({ title, initial, keys, agents, submitLabel, onSub
           />
         </label>
       ) : (
-        <JudgeFields draft={draft} set={set} keys={keys} />
+        <JudgeFields draft={draft} set={set} keys={usable} />
       )}
       <FilterFields draft={draft} set={set} agents={agents} />
       <div className="queues-form-actions">

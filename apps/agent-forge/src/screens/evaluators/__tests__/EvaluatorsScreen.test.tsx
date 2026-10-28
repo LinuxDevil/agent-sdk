@@ -53,10 +53,12 @@ let putStatus: number;
 let testStatus: number;
 
 const NO_KEYS: ProviderKeyStatus[] = [
-  { provider: 'openai', hasKey: false, masked: null },
-  { provider: 'anthropic', hasKey: false, masked: null },
+  { provider: 'openai', hasKey: false, masked: null, envKey: false },
+  { provider: 'anthropic', hasKey: false, masked: null, envKey: false },
 ];
-const OPENAI_KEY: ProviderKeyStatus[] = [{ provider: 'openai', hasKey: true, masked: '••••abcd' }, NO_KEYS[1]];
+const OPENAI_KEY: ProviderKeyStatus[] = [{ provider: 'openai', hasKey: true, masked: '••••abcd', envKey: false }, NO_KEYS[1]];
+/** Only `ANTHROPIC_API_KEY` in the server's environment: nothing stored in Settings. */
+const ANTHROPIC_ENV_ONLY: ProviderKeyStatus[] = [NO_KEYS[0], { ...NO_KEYS[1], envKey: true }];
 
 /** Daemon stub behind `/observe`, plus the Studio's `/settings/providers`. */
 function stubDaemon() {
@@ -287,6 +289,16 @@ describe('New evaluator', () => {
       kind: 'judge',
       config: { model: 'openai/gpt-4o-mini', rubric: 'Score 1 if helpful.' },
     });
+  });
+
+  it('enables the judge option, on that provider, when the only key is a provider env var', async () => {
+    keys = ANTHROPIC_ENV_ONLY;
+    const container = await openNewForm();
+    const judge = container.querySelector('input[name="evaluator-kind"][value="judge"]') as HTMLInputElement;
+    expect(judge.disabled).toBe(false);
+    expect(container.querySelector('#evaluator-judge-hint')).toBeNull();
+    await click(judge);
+    expect(field<HTMLSelectElement>(container, 'evaluator-provider').value).toBe('anthropic');
   });
 
   it('disables the judge option with a Settings hint when Studio has no provider key', async () => {

@@ -8,20 +8,36 @@ describe('SecretsStore', () => {
   let baseDir: string;
   let store: SecretsStore;
 
+  const savedEnv = { OPENAI_API_KEY: process.env.OPENAI_API_KEY, ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY };
+
   beforeEach(() => {
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-r-secrets-'));
     store = new SecretsStore(baseDir);
   });
 
   afterEach(() => {
+    for (const [name, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
     fs.rmSync(baseDir, { recursive: true, force: true });
   });
 
   it('reports no key stored for a fresh provider', () => {
     const status = store.list();
     expect(status).toEqual([
-      { provider: 'openai', hasKey: false, masked: null },
-      { provider: 'anthropic', hasKey: false, masked: null },
+      { provider: 'openai', hasKey: false, masked: null, envKey: false },
+      { provider: 'anthropic', hasKey: false, masked: null, envKey: false },
+    ]);
+  });
+
+  it('reports envKey from the provider env var, independent of a stored key', () => {
+    process.env.ANTHROPIC_API_KEY = 'env-key-placeholder';
+    expect(store.list().map((s) => [s.provider, s.hasKey, s.envKey])).toEqual([
+      ['openai', false, false],
+      ['anthropic', false, true],
     ]);
   });
 
