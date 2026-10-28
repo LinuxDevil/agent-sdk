@@ -35,6 +35,7 @@
   "devDependencies": {
     "@ai-sdk/anthropic": "^0.0.42",
     "@ai-sdk/openai": "^0.0.42",
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "^1.63.0",
     "@types/dagre": "^0.7.52",
     "@types/express": "^5.0.5",

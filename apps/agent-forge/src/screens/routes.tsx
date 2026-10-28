@@ -14,39 +14,7 @@ import { ScoresScreen } from './scores/ScoresScreen';
 import { PlaygroundRoute } from './playground/PlaygroundScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
-
-export type ScreenId =
-  | 'agents'
-  | 'playground'
-  | 'traces'
-  | 'trace'
-  | 'threads'
-  | 'monitoring'
-  | 'scores'
-  | 'evals'
-  | 'prompts'
-  | 'hub'
-  | 'settings';
-
-/** Hash route patterns, first match wins. Deep-link params are accepted now and read by the screens that land later. */
-const ROUTES: { pattern: string; screen: ScreenId }[] = [
-  { pattern: '/agents', screen: 'agents' },
-  { pattern: '/agents/:id', screen: 'agents' },
-  { pattern: '/playground', screen: 'playground' },
-  { pattern: '/traces', screen: 'traces' },
-  { pattern: '/traces/:traceId', screen: 'trace' },
-  { pattern: '/threads', screen: 'threads' },
-  { pattern: '/threads/:sessionId', screen: 'threads' },
-  { pattern: '/monitoring', screen: 'monitoring' },
-  { pattern: '/evals/scores', screen: 'scores' },
-  { pattern: '/evals/:section', screen: 'evals' },
-  { pattern: '/evals/:section/:id', screen: 'evals' },
-  { pattern: '/prompts', screen: 'prompts' },
-  { pattern: '/prompts/:name', screen: 'prompts' },
-  { pattern: '/hub', screen: 'hub' },
-  { pattern: '/hub/:namespace', screen: 'hub' },
-  { pattern: '/settings', screen: 'settings' },
-];
+import { ROUTES, type ScreenId } from './routeTable';
 
 /** The screen a hash shows, or `null` for an empty hash / unknown route. */
 export function screenFor(hash: string): ScreenId | null {

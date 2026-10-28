@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useAppState } from '../../state/AppState';
-import type { ScreenId } from '../routes';
+import type { ScreenId } from '../routeTable';
 import { confirmDiscardChanges } from './unsavedChanges';
 
 /**
