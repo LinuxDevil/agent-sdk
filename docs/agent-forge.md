@@ -148,7 +148,8 @@ exists.
    observe daemon as agent `<agent id>`, the same way the Playground does:
    when `LOUSHO_OBSERVE` is set its reporter is used (nothing is reported
    twice), a daemon that is down only drops events and never fails the run,
-   and message content is sent only to a loopback daemon. Run sends a fixed
+   and message content is sent only to a loopback daemon (never to the
+   trace files or the live Trace tab). Run sends a fixed
    prompt, which the Chat tab shows
    as a **Run input** bubble instead of a message from you. If the studio
    server goes away, a banner says the connection was lost and the studio

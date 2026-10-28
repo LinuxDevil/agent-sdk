@@ -43,6 +43,14 @@ describe('nodeRunStatuses', () => {
     expect(statuses[toolId]).toBe('running');
   });
 
+  it('reads an open span as running only while the run is running', () => {
+    for (const s of ['stopped', 'done', 'error', 'idle'] as const) {
+      expect(nodeRunStatuses(graph, [tool()], status(s))[toolId]).toBe('idle');
+    }
+    expect(nodeRunStatuses(graph, [tool()], undefined)[toolId]).toBe('idle');
+    expect(nodeRunStatuses(graph, [tool()], status('paused'))[toolId]).toBe('paused');
+  });
+
   it('marks a failed span error', () => {
     const statuses = nodeRunStatuses(graph, [chat({ endTime: 5, status: { code: 'error' } })], status('error'));
     expect(statuses[llmId]).toBe('error');

@@ -32,6 +32,18 @@ describe('EmptyCanvas', () => {
     }
   });
 
+  it('steps aside while something is dragged, so a palette drop lands on the canvas', () => {
+    const container = render(<EmptyCanvas />);
+    act(() => {
+      window.dispatchEvent(new Event('dragstart'));
+    });
+    expect(container.querySelector('.canvas-empty')).toBeNull();
+    act(() => {
+      window.dispatchEvent(new Event('dragend'));
+    });
+    expect(container.querySelector('.canvas-empty')).not.toBeNull();
+  });
+
   it('renders nothing once the canvas has a node', () => {
     appState.graph = specToGraph(appState.spec);
     const container = render(<EmptyCanvas />);

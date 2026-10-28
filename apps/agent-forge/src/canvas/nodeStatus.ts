@@ -6,7 +6,11 @@ import { nodeIdForSpan } from '../components/debug/nodeLookup';
 export type NodeRunStatus = 'idle' | 'running' | 'paused' | 'done' | 'error';
 
 function spanStatus(span: SpanEvent, runStatus: AgentRunStatusPayload | undefined): NodeRunStatus {
-  if (span.endTime === undefined) return runStatus?.status === 'paused' ? 'paused' : 'running';
+  if (span.endTime === undefined) {
+    // An open span is live only while its run is: a stopped or finished run's never-ended span is not running.
+    const run = runStatus?.status;
+    return run === 'running' || run === 'paused' ? run : 'idle';
+  }
   return span.status?.code === 'error' ? 'error' : 'done';
 }
 
@@ -15,7 +19,8 @@ const RANK: Record<NodeRunStatus, number> = { idle: 0, done: 1, error: 2, paused
 
 /**
  * Each node's status in the current run, from the live span feed: the node
- * of an open span is running (paused while the run is), a node whose spans
+ * of an open span is running while the run is running (paused while it is
+ * paused, idle once it stopped or ended), a node whose spans
  * all ended is done (error if one failed), the tool a run is paused on for
  * approval is paused, and every other node is idle.
  */

@@ -15,6 +15,7 @@ import {
   observeExporter,
   observeExporterFromEnv,
   type ObserveExporterOptions,
+  type Span,
   type TraceExporter,
 } from '@lousho/build-ai-agent/traces';
 import { observeTarget } from './observeProxy';
@@ -73,5 +74,32 @@ export function observeReporting(options: ObserveReportingOptions): ObserveRepor
         agentName,
       })),
     captureContent: () => (fromEnv() ? envTargetIsLoopback() : isLoopbackUrl(url())),
+  };
+}
+
+/** The opt-in `gen_ai.*` content attributes `captureContent` records (the SDK's CAPTURED_CONTENT_KEYS). */
+const CAPTURED_CONTENT_KEYS: ReadonlySet<string> = new Set([
+  'gen_ai.system_instructions',
+  'gen_ai.input.messages',
+  'gen_ai.output.messages',
+  'gen_ai.tool.call.arguments',
+  'gen_ai.tool.call.result',
+]);
+
+function stripContent(span: Span): Span {
+  const kept = Object.entries(span.attributes).filter(([key]) => !CAPTURED_CONTENT_KEYS.has(key));
+  return kept.length === Object.keys(span.attributes).length ? span : { ...span, attributes: Object.fromEntries(kept) };
+}
+
+/**
+ * `exporter` seeing every span without its captured content - for the
+ * exporters next to the observe reporter (trace file, live feed), so content
+ * captured for a loopback daemon stays observe-only, as the SDK's
+ * `capturedContentForObserveOnly` does for `createAgent`.
+ */
+export function withoutCapturedContent(exporter: TraceExporter): TraceExporter {
+  return {
+    onSpanStart: (span) => exporter.onSpanStart(stripContent(span)),
+    onSpanEnd: (span) => exporter.onSpanEnd(stripContent(span)),
   };
 }

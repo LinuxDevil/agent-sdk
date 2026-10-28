@@ -12,7 +12,7 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { fanOutExporters, fileTraceExporter, type ObserveExporterOptions } from '@lousho/build-ai-agent/traces';
 import { agentTraceDir } from './traceStore';
-import { observeReporting, type ObserveReporting } from './observeReporting';
+import { observeReporting, withoutCapturedContent, type ObserveReporting } from './observeReporting';
 import { AgentExecutor, ToolRegistry, resumeAfterApproval } from '@lousho/build-ai-agent/executor';
 import {
   type AgentEvent,
@@ -346,8 +346,9 @@ export class RunManager extends EventEmitter {
    * WS channel (as `{type:'span', ...}` messages, see wsServer.ts) rather
    * than a second tracing pipeline. It also writes the run to the
    * agent's trace folder (see traceStore.ts), so the Trace tab can reopen it,
-   * and reports it to the observe daemon when `observe` is set. The root
-   * span's id is the run's trace id, kept on the status.
+   * and reports it to the observe daemon when `observe` is set (captured
+   * content goes to that reporter only). The root span's id is the run's
+   * trace id, kept on the status.
    */
   private makeTraceExporter(agentId: string): TraceExporter {
     const live: TraceExporter = {
@@ -358,8 +359,11 @@ export class RunManager extends EventEmitter {
       onSpanEnd: (span) => this.emitSpan(agentId, span),
     };
     const file = fileTraceExporter({ dir: agentTraceDir(this.opts.baseDir, agentId) });
+    // Content captured for a loopback daemon is for the reporter alone: the
+    // trace file and the live feed see each span without it.
+    const local = this.captureContentFor(agentId) ? [live, file].map(withoutCapturedContent) : [live, file];
     // The SDK's fan-out, so AgentExecutor sees an env reporter in it and adds none of its own.
-    return fanOutExporters([live, file, this.reportingFor(agentId)?.exporter()]) as TraceExporter;
+    return fanOutExporters([...local, this.reportingFor(agentId)?.exporter()]) as TraceExporter;
   }
 
   private reportingFor(agentId: string): ObserveReporting | undefined {

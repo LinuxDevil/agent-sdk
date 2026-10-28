@@ -10,6 +10,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import type { AgentSpec } from '@lousho/build-ai-agent';
 import { RunManager } from '../runRegistry';
+import { agentTraceDir } from '../traceStore';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 
@@ -96,6 +97,25 @@ describe('builder run reporting', () => {
     };
     expect(await reportTo('http://127.0.0.1:7998', 'local-agent')).toContain('gen_ai.input.messages');
     expect(await reportTo('http://observe.internal:7777', 'remote-agent')).not.toContain('gen_ai.input.messages');
+  });
+
+  it('keeps captured content observe-only: the trace file and live feed get none', async () => {
+    const runManager = makeManager({ url: 'http://127.0.0.1:7998', fetchFn: fetchFn(), registerExitHooks: false, flushIntervalMs: 10 });
+    const live: string[] = [];
+    runManager.on('span', (payload: unknown) => live.push(JSON.stringify(payload)));
+    const done = waitForDone(runManager, 'private-agent');
+    await runManager.run('private-agent', 'hello', SPEC);
+    await done;
+    await vi.waitFor(() => expect(rootEnd()).toBeDefined());
+    expect(JSON.stringify(ingested)).toContain('gen_ai.input.messages');
+
+    const traceFiles = (fs.readdirSync(agentTraceDir(baseDir, 'private-agent'), { recursive: true }) as string[])
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => fs.readFileSync(path.join(agentTraceDir(baseDir, 'private-agent'), f), 'utf8'));
+    expect(traceFiles.join('')).toContain('invoke_agent');
+    expect(traceFiles.join('')).not.toContain('gen_ai.input.messages');
+    expect(live.length).toBeGreaterThan(0);
+    expect(live.join('')).not.toContain('gen_ai.input.messages');
   });
 
   it('a daemon that is down never fails the run', async () => {

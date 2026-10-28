@@ -23,6 +23,14 @@ const baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-forge-e2e-'));
 const port = Number(process.env.LOUSHO_STUDIO_E2E_PORT ?? 4799);
 /** The API needs the per-launch token; pin one so the spec can open `/?token=...`. */
 const E2E_STUDIO_TOKEN = 'e2e-studio-token';
+/**
+ * Builder and playground runs report to the observe daemon: point them at a
+ * closed loopback port so e2e runs never reach a real daemon on this machine
+ * (the reporter only drops-and-counts), and ignore an inherited LOUSHO_OBSERVE.
+ */
+const inheritedEnv = { ...process.env };
+delete inheritedEnv.LOUSHO_OBSERVE;
+const E2E_OBSERVE_URL = process.env.LOUSHO_STUDIO_E2E_OBSERVE_URL ?? 'http://127.0.0.1:1';
 
 export default defineConfig({
   testDir: './e2e',
@@ -39,7 +47,14 @@ export default defineConfig({
   webServer: {
     command: 'node dist-server/index.cjs',
     cwd: moduleDir,
-    env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BASE_DIR: baseDir, LOUSHO_STUDIO_TOKEN: E2E_STUDIO_TOKEN },
+    env: {
+      ...inheritedEnv,
+      PORT: String(port),
+      HOST: '127.0.0.1',
+      BASE_DIR: baseDir,
+      LOUSHO_STUDIO_TOKEN: E2E_STUDIO_TOKEN,
+      LOUSHO_OBSERVE_URL: E2E_OBSERVE_URL,
+    },
     url: `http://127.0.0.1:${port}/health`,
     reuseExistingServer: false,
     timeout: 20_000,
