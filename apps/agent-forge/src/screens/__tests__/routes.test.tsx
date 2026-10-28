@@ -22,6 +22,7 @@ vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 import { screenFor, useScreen } from '../routes';
 import { ROUTES } from '../routeTable';
 import { Placeholder } from '../Placeholder';
+import { EvalsTabs } from '../evals/EvalsTabs';
 import { Topbar } from '../../components/Topbar';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -63,7 +64,10 @@ describe('screenFor', () => {
     expect(screenFor('#/traces/abc?obs=1')).toBe('trace');
     expect(screenFor('#/monitoring?window=24h')).toBe('monitoring');
     expect(screenFor('#/evals/scores')).toBe('scores');
-    expect(screenFor('#/evals/datasets')).toBe('evals');
+    expect(screenFor('#/evals/datasets')).toBe('datasets');
+    expect(screenFor('#/evals/datasets/golden.v1?offset=50')).toBe('datasets');
+    expect(screenFor('#/evals/evaluators')).toBe('evals');
+    expect(screenFor('#/evals/queues/q1')).toBe('evals');
     expect(screenFor('#/playground')).toBe('playground');
     expect(screenFor('#/threads/s1')).toBe('threads');
     expect(screenFor('#/prompts/greeting@v2')).toBe('prompts');
@@ -172,5 +176,21 @@ describe('Placeholder', () => {
     expect(container.querySelector('h2')?.textContent).toBe('Playground');
     expect(container.textContent).toContain('Coming soon.');
     expect(container.querySelector('a[href="#/agents"]')).not.toBeNull();
+  });
+});
+
+describe('EvalsTabs', () => {
+  it('links every Evaluations screen and marks the current one', () => {
+    window.history.replaceState(null, '', '/?token=secret#/evals/datasets/golden');
+    render(<EvalsTabs />);
+    const nav = container.querySelector('nav[aria-label="Evaluations"]')!;
+    const links = [...nav.querySelectorAll('a')].map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(links).toEqual([
+      ['Scores', '#/evals/scores'],
+      ['Datasets', '#/evals/datasets'],
+      ['Evaluators', '#/evals/evaluators'],
+      ['Annotation queues', '#/evals/queues'],
+    ]);
+    expect([...nav.querySelectorAll('[aria-current="page"]')].map((a) => a.textContent)).toEqual(['Datasets']);
   });
 });

@@ -11,10 +11,12 @@ import { AgentsScreen } from './agents/AgentsScreen';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
+import { DatasetsScreen } from './datasets/DatasetsScreen';
 import { PlaygroundRoute } from './playground/PlaygroundScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
 import { ROUTES, type ScreenId } from './routeTable';
+import { EvalsTabs } from './evals/EvalsTabs';
 
 /** The screen a hash shows, or `null` for an empty hash / unknown route. */
 export function screenFor(hash: string): ScreenId | null {
@@ -36,8 +38,8 @@ export function useScreen(): ScreenId {
   return screen ?? 'agents';
 }
 
-const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string }>> = {
-  evals: { title: 'Evaluations', blurb: 'Datasets, evaluators and annotation queues for scoring runs.' },
+const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string; nav?: ReactNode }>> = {
+  evals: { title: 'Evaluations', blurb: 'Evaluators and annotation queues for scoring runs.', nav: <EvalsTabs /> },
 };
 
 /** `#/traces/:traceId`: the trace id comes from the hash; a new id remounts the screen. */
@@ -58,21 +60,28 @@ function ScreenFrame({ children }: { children: ReactNode }) {
   );
 }
 
+/** The screens that render with no props, by id (Agents, the placeholders and Settings are handled in `Screens`). */
+const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
+  traces: TracesScreen,
+  trace: TraceRoute,
+  monitoring: MonitoringScreen,
+  scores: ScoresScreen,
+  datasets: DatasetsScreen,
+  playground: PlaygroundRoute,
+  threads: ThreadsScreen,
+  prompts: PromptsScreen,
+  hub: HubScreen,
+};
+
 /** Renders the screen the hash route names; leaving Agents with unsaved changes asks first. */
 export function Screens() {
   const screen = useLeaveAgentsGuard(useScreen());
   if (screen === 'agents') return <AgentsScreen />;
 
+  const Screen = SCREENS[screen];
   const placeholder = PLACEHOLDERS[screen];
   let content: ReactNode;
-  if (screen === 'traces') content = <TracesScreen />;
-  else if (screen === 'trace') content = <TraceRoute />;
-  else if (screen === 'monitoring') content = <MonitoringScreen />;
-  else if (screen === 'scores') content = <ScoresScreen />;
-  else if (screen === 'playground') content = <PlaygroundRoute />;
-  else if (screen === 'threads') content = <ThreadsScreen />;
-  else if (screen === 'prompts') content = <PromptsScreen />;
-  else if (screen === 'hub') content = <HubScreen />;
+  if (Screen) content = <Screen />;
   else if (placeholder) content = <Placeholder {...placeholder} />;
   else
     content = (

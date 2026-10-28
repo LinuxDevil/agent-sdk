@@ -9,6 +9,7 @@ import { DataTable, type Column } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
 import { FilterBar, type FacetDef } from '../../ui/FilterBar';
 import { formatTimeRange, toWindow, type TimeRange } from '../../ui/TimeRangePicker';
+import { EvalsTabs } from '../evals/EvalsTabs';
 import { EVAL_ROW_LIMIT, EvalDetail } from './EvalDetail';
 import {
   formatEvals,
@@ -142,11 +143,13 @@ export function ScoresScreen() {
   if (down)
     return (
       <div className="scores-screen">
+        <EvalsTabs />
         <ObserveDaemonDown />
       </div>
     );
   return (
     <div className="scores-screen">
+      <EvalsTabs />
       <h2 className="visually-hidden">Scores</h2>
       <FilterBar facets={facets} range={{ value: f.range, onChange: f.setRange }} />
       <ObserveError error={rates.error} />

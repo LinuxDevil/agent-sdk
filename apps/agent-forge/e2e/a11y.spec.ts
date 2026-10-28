@@ -128,7 +128,7 @@ async function expectNoSeriousAxeViolations(page: Page, label: string) {
 // Every route in the table (new screens are covered automatically): one <main>, one h1,
 // the banner and the primary nav, and an axe scan of the populated (stubbed daemon) state.
 // Plus the deep-link states that render a different view on the same route.
-// Placeholder routes (/evals/:section, /evals/:section/:id) scan the Placeholder today; when their real
+// The datasets routes scan the stub's datasets fixtures. Placeholder routes (/evals/:section, /evals/:section/:id) scan the Placeholder today; when their real
 // screens land, add their endpoints to e2e/observeStub.ts or they get scanned in a 404/empty state.
 const SCANS = [
   ...ROUTES.map(({ pattern, example }) => ({ label: pattern, path: example })),
@@ -169,6 +169,17 @@ test('a #/traces/:id deep link with no daemon shows the down state and keeps the
   await page.goto('/?token=e2e-studio-token#/traces/e2e-trace?obs=e2e-obs');
   await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
   expect(new URL(page.url()).hash).toBe('#/traces/e2e-trace?obs=e2e-obs');
+});
+
+test('#/evals/datasets/:name with no daemon shows the down state, keeps the URL and the Evaluations tabs', async ({ page }) => {
+  await page.route('**/observe/**', (route) =>
+    route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"down"}' }),
+  );
+  await page.goto('/?token=e2e-studio-token#/evals/datasets/golden?offset=50');
+  await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
+  const tabs = page.getByRole('navigation', { name: 'Evaluations' });
+  await expect(tabs.locator('[aria-current="page"]')).toHaveText('Datasets');
+  expect(new URL(page.url()).hash).toBe('#/evals/datasets/golden?offset=50');
 });
 
 test('#/monitoring with no daemon shows the down state and keeps window/agent in the URL', async ({ page }) => {
