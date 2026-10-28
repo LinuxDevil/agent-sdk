@@ -27,6 +27,19 @@ describe('ObserveClient', () => {
     );
   });
 
+  it('lists sessions with their filter params and reads one session, undefined on 404', async () => {
+    const fetchFn = vi.fn(async (url: string) =>
+      url.includes('/sessions/')
+        ? jsonResponse(404, { error: 'No session', code: 'LOUSHO_REQUEST_INVALID' })
+        : jsonResponse(200, { sessions: [], total: 0, limit: 50, offset: 0 })
+    );
+    const client = clientWith(fetchFn as unknown as typeof fetch);
+    await client.listSessions({ agent_id: 'a1', status: 'active', from: 1, to: 2, limit: 50, offset: 0 });
+    expect(fetchFn).toHaveBeenCalledWith('/observe/api/v1/sessions?agent_id=a1&status=active&from=1&to=2&limit=50&offset=0', expect.anything());
+    expect(await client.session('s/1')).toBeUndefined();
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/sessions/s%2F1', expect.anything());
+  });
+
   it('maps a proxy 502 and a network failure to ObserveDaemonDownError', async () => {
     const via502 = clientWith((async () => jsonResponse(502, { error: 'unreachable' })) as typeof fetch);
     await expect(via502.listTraces()).rejects.toBeInstanceOf(ObserveDaemonDownError);

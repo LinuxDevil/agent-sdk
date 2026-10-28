@@ -4,6 +4,7 @@ import { useRoute } from '../router/useRoute';
 import { Topbar } from '../components/Topbar';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { TracesScreen } from './traces/TracesScreen';
+import { ThreadsScreen } from './threads/ThreadsScreen';
 import { AgentsScreen } from './agents/AgentsScreen';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
@@ -66,7 +67,6 @@ export function useScreen(): ScreenId {
 }
 
 const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string }>> = {
-  threads: { title: 'Threads', blurb: 'Multi-turn conversations grouped by session, with every run in each thread.' },
   evals: { title: 'Evaluations', blurb: 'Datasets, evaluators and annotation queues for scoring runs.' },
   prompts: { title: 'Prompts', blurb: 'Versioned prompts you can compare, pin and pull into your agents.' },
   hub: { title: 'Context Hub', blurb: 'The shared context namespaces your agents read from, browsable by namespace.' },
@@ -102,6 +102,7 @@ export function Screens() {
   else if (screen === 'monitoring') content = <MonitoringScreen />;
   else if (screen === 'scores') content = <ScoresScreen />;
   else if (screen === 'playground') content = <PlaygroundRoute />;
+  else if (screen === 'threads') content = <ThreadsScreen />;
   else if (placeholder) content = <Placeholder {...placeholder} />;
   else
     content = (

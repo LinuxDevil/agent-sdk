@@ -1,0 +1,74 @@
+/* Threads (#/threads, #/threads/:sessionId). Tokens only. */
+.threads-screen,
+.thread-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+}
+.thread-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.thread-title code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.thread-summary,
+.thread-turn-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.thread-note,
+.thread-loading {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.thread-turns {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.thread-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.thread-turn-index {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+.thread-turn-link {
+  margin-left: auto;
+  color: var(--accent);
+}
+.thread-error {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.thread-error-label {
+  font-weight: 600;
+}

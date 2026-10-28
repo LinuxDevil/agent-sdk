@@ -10,19 +10,19 @@
  * itself once the health probe sees the daemon.
  */
 import './traces.css';
-import { useEffect, useMemo, useRef, type MutableRefObject } from 'react';
+import { useEffect, useMemo } from 'react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useAgents, useDaemonHealth, useTraces } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { ObserveDaemonDownError, type TraceSort } from '../../observe/observeClient';
-import type { ObserveAgentRow, ObserveTraceRow } from '../../observe/types';
+import type { ObserveTraceRow } from '../../observe/types';
 import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../observe/format';
 import { DataTable, type Column, type TableSort } from '../../ui/DataTable';
-import { FilterBar, type FacetDef } from '../../ui/FilterBar';
-import { formatTimeRange, toWindow, type TimeRange } from '../../ui/TimeRangePicker';
+import { FilterBar } from '../../ui/FilterBar';
 import { EmptyState } from '../../ui/EmptyState';
 import { StatusPill } from '../../ui/StatusPill';
+import { Clip, agentFacet, facet, useRangeFilter } from '../listFilters';
 import {
   PAGE_SIZE,
   formatTracesQuery,
@@ -34,16 +34,6 @@ import {
 
 const STATUSES = ['ok', 'error', 'running', 'interrupted'];
 const SORTABLE: readonly string[] = ['duration', 'tokens', 'cost'];
-
-/** A preview cell: one line, ellipsised by CSS, the full text in `title`. */
-function Clip({ text, className = 'traces-clip' }: { text: string | null; className?: string }) {
-  if (!text) return null;
-  return (
-    <span className={className} title={text}>
-      {text}
-    </span>
-  );
-}
 
 function columns(now: number): Column<ObserveTraceRow>[] {
   return [
@@ -61,7 +51,7 @@ function columns(now: number): Column<ObserveTraceRow>[] {
       key: 'error',
       header: 'Error',
       width: 200,
-      render: (t) => <Clip text={t.error_message} className="traces-clip traces-error" />,
+      render: (t) => <Clip text={t.error_message} className="list-clip traces-error" />,
     },
     { key: 'model', header: 'Model', width: 130, hideBelow: 1000, render: (t) => <Clip text={t.model} /> },
     { key: 'started', header: 'Started', width: 130, render: (t) => fmtStarted(t.start, now) },
@@ -82,37 +72,8 @@ function columns(now: number): Column<ObserveTraceRow>[] {
   ];
 }
 
-/** Single-value facet over FilterBar's multi-select: the newest pick wins, clearing it drops the filter. */
-function facet(key: string, label: string, options: string[], value: string | undefined, set: (v: string | undefined) => void): FacetDef {
-  const all = value && !options.includes(value) ? [value, ...options] : options;
-  return {
-    key,
-    label,
-    options: all.map((o) => ({ value: o, label: o })),
-    value: value ? [value] : [],
-    onChange: (next) => set(next.find((v) => v !== value) ?? (value && next.includes(value) ? value : undefined)),
-  };
-}
-
 const uniqueSorted = (values: (string | null | undefined)[]): string[] =>
   [...new Set(values.filter((v): v is string => Boolean(v)))].sort();
-
-function agentFacet(agents: ObserveAgentRow[], value: string | undefined, set: (v: string | undefined) => void): FacetDef {
-  const def = facet('agent', 'Agent', agents.map((a) => a.agent_id), value, set);
-  const names = new Map(agents.map((a) => [a.agent_id, a.name ?? a.agent_id.slice(0, 8)]));
-  return { ...def, options: def.options.map((o) => ({ ...o, label: names.get(o.value) ?? o.value })) };
-}
-
-/**
- * The picker's value. The URL only holds absolute bounds; a preset picked here
- * is remembered alongside the bounds it produced, so the picker keeps showing
- * "7d" until the window changes (a reload then shows it as Custom).
- */
-function rangeValue(state: TracesUrlState, picked: MutableRefObject<{ range: TimeRange; key: string } | undefined>): TimeRange {
-  if (!state.window) return { preset: '24h' };
-  const key = formatTimeRange(state.window);
-  return picked.current?.key === key ? picked.current.range : state.window;
-}
 
 function TracesList() {
   const route = useRoute();
@@ -123,7 +84,6 @@ function TracesList() {
   const filter = useMemo(() => toTraceFilter(state, now), [state, now]);
   const traces = useTraces(filter);
   const agents = useAgents();
-  const picked = useRef<{ range: TimeRange; key: string } | undefined>(undefined);
 
   useEffect(() => rememberListQuery(formatTracesQuery(state)), [state]);
 
@@ -132,16 +92,7 @@ function TracesList() {
     navigate(`/traces${formatTracesQuery({ ...state, offset: 0, ...patch })}`, { replace: true });
   const setText = (key: 'agent' | 'status' | 'model' | 'project' | 'q') => (v: string | undefined) => update({ [key]: v || undefined });
 
-  const onRange = (r: TimeRange) => {
-    if ('preset' in r && r.preset === '24h') {
-      picked.current = undefined;
-      update({ window: undefined });
-      return;
-    }
-    const window = toWindow(r, Date.now());
-    picked.current = { range: r, key: formatTimeRange(window) };
-    update({ window });
-  };
+  const range = useRangeFilter(state.window, '24h', (window) => update({ window }));
   const onSort = (next: TableSort | undefined) =>
     update({ sort: next && SORTABLE.includes(next.key) ? { key: next.key as TraceSort, order: next.order } : undefined });
 
@@ -161,7 +112,7 @@ function TracesList() {
       <FilterBar
         search={{ value: state.q ?? '', onChange: (q) => setText('q')(q.trim()), placeholder: 'Search name, input or output' }}
         facets={facets}
-        range={{ value: rangeValue(state, picked), onChange: onRange }}
+        range={range}
       />
       <ObserveError error={traces.error} />
       <DataTable

@@ -10,6 +10,7 @@
  * never written, so a bare `#/traces` stays bare.
  */
 import type { TraceListFilter, TraceSort } from '../../observe/observeClient';
+import { parseWindow, toInt, writeWindow } from '../urlState';
 
 /** Rows per page, requested from the daemon (`limit`). */
 export const PAGE_SIZE = 50;
@@ -27,14 +28,6 @@ export type TracesUrlState = Partial<Record<TextKey, string>> & {
   sort?: { key: TraceSort; order: 'asc' | 'desc' };
   offset: number;
 };
-
-const toInt = (s: string | null): number | undefined => (s !== null && /^\d+$/.test(s) ? Number(s) : undefined);
-
-function parseWindow(query: URLSearchParams): TracesUrlState['window'] {
-  const from = toInt(query.get('from'));
-  const to = toInt(query.get('to'));
-  return from !== undefined && to !== undefined && from < to ? { from, to } : undefined;
-}
 
 function parseSort(query: URLSearchParams): TracesUrlState['sort'] {
   const key = query.get('sort') as TraceSort | null;
@@ -58,10 +51,7 @@ export function parseTracesQuery(query: URLSearchParams): TracesUrlState {
 export function formatTracesQuery(state: TracesUrlState): string {
   const params = new URLSearchParams();
   for (const key of TEXT_KEYS) if (state[key]) params.set(key, state[key]!);
-  if (state.window) {
-    params.set('from', String(state.window.from));
-    params.set('to', String(state.window.to));
-  }
+  writeWindow(params, state.window);
   const { sort } = state;
   if (sort && !(sort.key === 'start' && sort.order === 'desc')) {
     params.set('sort', sort.key);
