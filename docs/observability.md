@@ -628,7 +628,8 @@ however old. With a trace go its scores and its prompt-use links; scores older
 than the window whose trace has no observations left go too. A session is
 deleted only when it is not `active`, ended (or, with no end, started) before
 the window, and no remaining observation references it, so an old thread
-that is still active is never pruned.
+that is still active is never pruned. Idle sessions end on their own (see
+[Idle sessions](#idle-sessions)), so finished conversations do age out.
 
 Pruning never touches the Insights rollups (charts for pruned days stay),
 the prompt registry, hub entries, the agent registry or tokens. The daily
@@ -693,11 +694,36 @@ session row is `{ session_id, agent_id, agent_name, status, started_at,
 ended_at, traces, input_tokens, output_tokens, cost_usd, last_input_preview }`:
 `traces` counts distinct trace ids, tokens and cost sum the session's
 observations, and `last_input_preview` is the first 200 characters of the root
-input of its latest trace.
+input of its latest trace. `status` is `active`, `ended` (idle, see below) or
+`interrupted` (its agent went down).
 
 `GET /api/v1/sessions/:id` returns `{ session, traces }` with the traces
 (same rows as the trace list) ordered by start ascending, capped at 500; an
 unknown id is a 404 with code `LOUSHO_REQUEST_INVALID`.
+
+### Idle sessions
+
+The SDK sends no "session closed" event: a session row exists because its
+runs carry its id, so the daemon decides when a conversation is over. Each
+sweep (every 30 s) marks a session `ended` when none of its runs is still open
+(a run in progress keeps it `active` however long it takes) and nothing in it
+has started or finished for `--session-idle-minutes` (default 30; `0` turns
+this off). A run marked `interrupted` (its process died while the agent kept
+running) no longer counts as in progress; it counts as activity at the moment
+it was interrupted. Its `ended_at` is the time of that last activity, not the time of
+the sweep. A session no run references falls back to when the daemon last
+updated it. Sessions in a db written by an older daemon close on the first
+sweep that finds them idle.
+
+A new run in an `ended` session makes it `active` again (`ended_at` follows
+its runs again), and so does new activity in an `interrupted` one. A
+re-sent or reordered event for activity at or before the session's
+`ended_at` does not reopen it. The idle pass never touches `interrupted`
+sessions. Once ended, a session is pruned by [retention](#retention) like
+any other finished session, so Threads shows only live conversations as
+`active`. The idle window is judged against the timestamps your agents
+report, so an agent clock far behind the daemon's can end a session early;
+its next run reopens it.
 
 ## The built server
 

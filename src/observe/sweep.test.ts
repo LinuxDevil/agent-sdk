@@ -471,3 +471,169 @@ describe('retention: the sweep prune pass', () => {
     expect(error.mock.calls.some((args) => String(args[0]).includes('prune'))).toBe(true);
   });
 });
+
+describe('idle sessions: the sweep session pass', () => {
+  const MIN = 60_000;
+  const IDLE = 30 * MIN;
+  const session = (database: SqlDatabase, id: string) =>
+    database.prepare('SELECT status, ended_at, updated_at FROM sessions WHERE session_id = ?').get(id);
+  const sweepAt = (database: SqlDatabase, at: number, sessionIdleMs = IDLE) => {
+    const sweep = startStatusSweep(database, { intervalMs: 0, now: () => at, sessionIdleMs });
+    sweeps.push(sweep);
+    return sweep;
+  };
+
+  it('ends a session whose traces all closed longer ago than the window, at its last activity', () => {
+    const database = db();
+    ingestBatch(
+      database,
+      [
+        obs({ obs_id: 'r1', trace_id: 't1', start: T0, end: T0 + 100 }),
+        obs({ obs_id: 'r2', trace_id: 't2', start: T0 + 1000, end: T0 + 5000 }),
+        obs({ obs_id: 'c2', trace_id: 't2', parent_obs_id: 'r2', start: T0 + 2000, end: T0 + 3000 }),
+      ],
+      T0 + 5000
+    );
+    // still inside the window: stays active
+    sweepAt(database, T0 + 5000 + IDLE - 1);
+    expect(session(database, 's1')?.status).toBe('active');
+    const at = T0 + 5000 + IDLE + 1;
+    sweepAt(database, at);
+    expect(session(database, 's1')).toMatchObject({ status: 'ended', ended_at: T0 + 5000, updated_at: at });
+  });
+
+  it('keeps a session with an open root active however old it is', () => {
+    const database = db();
+    ingestBatch(
+      database,
+      [
+        obs({ obs_id: 'done', trace_id: 't1', start: T0, end: T0 + 100 }),
+        obs({ obs_id: 'open', trace_id: 't2', start: T0 + 200, end: undefined, status: undefined }),
+      ],
+      T0
+    );
+    sweepAt(database, T0 + 100 * IDLE);
+    expect(session(database, 's1')?.status).toBe('active');
+  });
+
+  it('falls back to updated_at for a session no observation references', () => {
+    const database = db();
+    database
+      .prepare("INSERT INTO sessions (session_id, agent_id, started_at, ended_at, status, updated_at) VALUES ('bare', 'a1', ?, NULL, 'active', ?)")
+      .run(T0, T0 + 10);
+    sweepAt(database, T0 + 10 + IDLE + 1);
+    expect(session(database, 'bare')).toMatchObject({ status: 'ended', ended_at: T0 + 10 });
+  });
+
+  it('an instance interrupted while its sibling stays healthy no longer holds the session open', () => {
+    const database = db();
+    const beat = (instance: string, ts: number, pid: number): IngestEvent => ({
+      type: 'agent.heartbeat',
+      data: { agent_id: 'a1', project: 'proj', name: 'a', ts, heartbeat_interval_ms: 60_000, instance_id: instance, hostname: 'h1', pid },
+    });
+    ingestBatch(database, [beat('A', T0, 100), beat('B', T0, 200)], T0);
+    ingestBatch(database, [obs({ obs_id: 'runA', end: undefined, status: undefined, attrs: { 'lousho.instance_id': 'A' } })], T0);
+    const sweep = sweepAt(database, T0);
+    // only B keeps heartbeating, so the sweep interrupts A's open run
+    const tick = (t: number) => {
+      ingestBatch(database, [beat('B', t, 200)], t);
+      sweep.run(t);
+    };
+    for (let t = T0 + 60_000; t <= T0 + 600_000; t += 60_000) tick(t);
+    const runA = database.prepare("SELECT status, updated_at FROM observations WHERE obs_id = 'runA'").get();
+    expect(runA?.status).toBe('interrupted');
+    const interruptedAt = Number(runA?.updated_at);
+    expect(interruptedAt).toBeGreaterThan(T0);
+    // the idle window counts from the interrupt, not from the run's old start
+    tick(interruptedAt + IDLE - 1);
+    expect(session(database, 's1')?.status).toBe('active');
+    tick(interruptedAt + IDLE + 1);
+    expect(session(database, 's1')).toMatchObject({ status: 'ended', ended_at: interruptedAt });
+  });
+
+  it('an interrupted run beside a genuinely open one keeps the session active', () => {
+    const database = db();
+    ingestBatch(
+      database,
+      [
+        obs({ obs_id: 'dead', trace_id: 't1', end: undefined, status: undefined }),
+        obs({ obs_id: 'live', trace_id: 't2', end: undefined, status: undefined }),
+      ],
+      T0
+    );
+    database.prepare("UPDATE observations SET status = 'interrupted', updated_at = ? WHERE obs_id = 'dead'").run(T0 + 1);
+    sweepAt(database, T0 + 100 * IDLE);
+    expect(session(database, 's1')?.status).toBe('active');
+  });
+
+  it('a window of 0 (or unset) never ends a session', () => {
+    for (const sessionIdleMs of [0, undefined]) {
+      const database = db();
+      ingestBatch(database, [obs()], T0);
+      const sweep = startStatusSweep(database, { intervalMs: 0, now: () => T0 + 1000 * IDLE, ...(sessionIdleMs !== undefined ? { sessionIdleMs } : {}) });
+      sweeps.push(sweep);
+      expect(session(database, 's1')?.status).toBe('active');
+    }
+  });
+
+  it('leaves interrupted sessions alone', () => {
+    const database = db();
+    ingestBatch(database, [obs()], T0);
+    database.prepare("UPDATE sessions SET status = 'interrupted', ended_at = ? WHERE session_id = 's1'").run(T0 + 7);
+    sweepAt(database, T0 + 100 * IDLE);
+    expect(session(database, 's1')).toMatchObject({ status: 'interrupted', ended_at: T0 + 7 });
+  });
+
+  it('a failing session pass does not break the status sweep', () => {
+    const database = db();
+    ingestBatch(database, [heartbeat('a1', T0)], T0);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const realPrepare = database.prepare.bind(database);
+    vi.spyOn(database, 'prepare').mockImplementation((sql: string) => {
+      if (sql.includes("status = 'ended'")) throw new Error('disk on fire');
+      return realPrepare(sql);
+    });
+    const sweep = sweepAt(database, T0);
+    const result = sweep.run(T0 + 310_000);
+    expect(result.transitions).toEqual([expect.objectContaining({ agent_id: 'a1', to: 'down' })]);
+    expect(error.mock.calls.some((args) => String(args[0]).includes('session'))).toBe(true);
+  });
+
+  it('an ended session past the retention cutoff is pruned with its traces', () => {
+    const database = db();
+    const DAY = 86_400_000;
+    const OLD = T0 - 40 * DAY;
+    ingestBatch(database, [obs({ start: OLD, end: OLD + 100 })], OLD);
+    sweepAt(database, OLD + 100 + IDLE + 1);
+    expect(session(database, 's1')?.status).toBe('ended');
+    expect(pruneBefore(database, T0 - 30 * DAY)).toMatchObject({ observations: 1, sessions: 1 });
+    expect(session(database, 's1')).toBeUndefined();
+  });
+});
+
+describe('idle sessions: the daemon window', () => {
+  const MIN = 60_000;
+  const seeded = (): SqlDatabase => {
+    const database = db();
+    ingestBatch(database, [obs()], T0);
+    return database;
+  };
+  const status = (database: SqlDatabase) => database.prepare("SELECT status FROM sessions WHERE session_id = 's1'").get()?.status;
+
+  it('defaults to 30 minutes', async () => {
+    const database = seeded();
+    const daemon = await start({ db: database, sweepIntervalMs: 0, nowFn: () => T0 + 100 + 30 * MIN - 1, retentionDays: 0 });
+    expect(status(database)).toBe('active');
+    daemon.sweep.run(T0 + 100 + 30 * MIN + 1);
+    expect(status(database)).toBe('ended');
+  });
+
+  it('takes sessionIdleMinutes, and 0 turns the pass off', async () => {
+    const custom = seeded();
+    await start({ db: custom, sweepIntervalMs: 0, nowFn: () => T0 + 100 + 5 * MIN + 1, retentionDays: 0, sessionIdleMinutes: 5 });
+    expect(status(custom)).toBe('ended');
+    const off = seeded();
+    await start({ db: off, sweepIntervalMs: 0, nowFn: () => T0 + 1000 * MIN, retentionDays: 0, sessionIdleMinutes: 0 });
+    expect(status(off)).toBe('active');
+  });
+});

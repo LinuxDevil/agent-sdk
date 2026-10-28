@@ -84,10 +84,23 @@ export interface ObserveDaemonOptions {
    * it; `0`, a negative value or `NaN` disables pruning.
    */
   retentionDays?: number;
+  /**
+   * Idle window in minutes after which the sweep ends an `active` session
+   * with no open observation (default {@link OBSERVE_SESSION_IDLE_MINUTES_DEFAULT}).
+   * Only a finite number `> 0` enables it; `0` keeps sessions active until
+   * their agent goes down.
+   */
+  sessionIdleMinutes?: number;
 }
 
 /** `lousho observe start`'s default retention window: finished traces older than 30 days are pruned daily. */
 export const OBSERVE_RETENTION_DAYS_DEFAULT = 30;
+
+/** `lousho observe start`'s default idle window: a session quiet for 30 minutes with nothing running is ended. */
+export const OBSERVE_SESSION_IDLE_MINUTES_DEFAULT = 30;
+
+/** The sweep's idle window in ms from {@link ObserveDaemonOptions.sessionIdleMinutes} (absent = the default). */
+const minutesToMs = (minutes: number = OBSERVE_SESSION_IDLE_MINUTES_DEFAULT): number => minutes * 60_000;
 
 export interface ObserveDaemon {
   port: number;
@@ -236,7 +249,8 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
   // The monitoring sweep: rewrites agents.status from heartbeat freshness,
   // interrupts a crashed agent's open work, and posts alerts to webhooks
   // (fire-and-forget; delivery lives in alerts.ts). It also runs the daily
-  // retention prune (sweep.ts) - never a VACUUM, which would stall ingest.
+  // retention prune (sweep.ts) - never a VACUUM, which would stall ingest -
+  // and ends idle sessions.
   const alerter = createAlerter(alertConfig, options.fetchFn ?? fetch);
   const sweep = startStatusSweep(db, {
     intervalMs: options.sweepIntervalMs,
@@ -244,6 +258,7 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
     errorRateThreshold: alertConfig.errorRateThreshold,
     onAlerts: (alerts) => alerter.post(alerts),
     retentionDays: options.retentionDays ?? OBSERVE_RETENTION_DAYS_DEFAULT,
+    sessionIdleMs: minutesToMs(options.sessionIdleMinutes),
   });
 
   return {

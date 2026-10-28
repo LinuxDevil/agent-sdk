@@ -26,12 +26,19 @@
  * then at most one pass per 24h prune finished traces older than the window
  * (`pruneBefore`; open runs and active sessions are kept). The sweep never
  * VACUUMs - `lousho observe prune` does that on demand.
+ *
+ * Idle sessions close on the same loop: with `sessionIdleMs` > 0, every pass
+ * ends the `active` sessions with no open observation whose last activity is
+ * older than the window (`endIdleSessions`), so retention can prune them and
+ * Threads stops showing finished conversations as live. New activity reopens
+ * one on ingest (store.ts).
  */
 
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import type { AlertEvent } from './alerts';
 import {
   HEARTBEAT_INTERVAL_DEFAULT_MS,
+  endIdleSessions,
   freshnessStatus,
   heartbeatIntervalFromMeta,
   interruptAgentWork,
@@ -217,12 +224,37 @@ export interface StatusSweepOptions {
    * enables it: unset, `0`, a negative value or `NaN` never prunes.
    */
   retentionDays?: number;
+  /**
+   * Idle window in ms: each pass ends `active` sessions with no open
+   * observation and no activity for this long. Only a finite number `> 0`
+   * enables it: unset, `0`, a negative value or `NaN` never ends a session.
+   */
+  sessionIdleMs?: number;
 }
 
 export interface StatusSweep {
   /** Run one pass now - the timer's tick, and the test/daemon hook for an on-demand sweep. */
   run(at?: number): SweepResult;
   stop(): void;
+}
+
+/**
+ * The session pass {@link startStatusSweep} runs first each tick: before the
+ * prune (a session idle past the retention window goes in the same pass) and
+ * before the status pass, so a session that finished cleanly ends as `ended`
+ * rather than `interrupted` when its agent goes down in this pass. Kept apart
+ * like the prune: a failure is logged and never costs the pass its alerts.
+ */
+function idleSessionPass(db: SqlDatabase, idleMs: number | undefined): (at: number) => void {
+  // Anything but a finite positive number (unset, 0, negative, NaN) disables it.
+  if (idleMs === undefined || !Number.isFinite(idleMs) || idleMs <= 0) return () => undefined;
+  return (at) => {
+    try {
+      endIdleSessions(db, at, idleMs);
+    } catch (error) {
+      console.error('[lousho observe] idle session pass failed:', error);
+    }
+  };
 }
 
 /**
@@ -250,7 +282,9 @@ export function startStatusSweep(db: SqlDatabase, options: StatusSweepOptions = 
       console.error('[lousho observe] retention prune failed:', error);
     }
   };
+  const endIdle = idleSessionPass(db, options.sessionIdleMs);
   const run = (at: number = now()): SweepResult => {
+    endIdle(at);
     prune(at);
     const result = sweepAgents(db, at, {
       ...(options.errorRateThreshold !== undefined ? { errorRateThreshold: options.errorRateThreshold } : {}),

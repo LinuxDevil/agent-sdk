@@ -2,7 +2,7 @@
  * `lousho observe` - the collector daemon command. It owns the single writer
  * to `~/.lousho/observe.db` and serves the ingest + Studio read API.
  *
- *   lousho observe start [--port N] [--db path] [--host H] [--require-token] [--retention-days N]
+ *   lousho observe start [--port N] [--db path] [--host H] [--require-token] [--retention-days N] [--session-idle-minutes N]
  *   lousho observe status [--port N | --url U]
  *   lousho observe stop [--db path]
  *   lousho observe rebuild-rollups [--db path]
@@ -25,6 +25,7 @@ import {
   defaultPidPath,
   isObserveDaemon,
   OBSERVE_RETENTION_DAYS_DEFAULT,
+  OBSERVE_SESSION_IDLE_MINUTES_DEFAULT,
   sameDbPath,
   probeHealth,
   startObserveDaemon,
@@ -38,7 +39,7 @@ import { VERSION } from '../version';
 import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 
 const USAGE = `Usage: lousho observe <command> [options]
-  observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL] [--retention-days N]
+  observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL] [--retention-days N] [--session-idle-minutes N]
   observe status [--port N] [--url U]
   observe stop [--db path]
   observe rebuild-rollups [--db path]
@@ -63,6 +64,10 @@ Options:
                     'start': once a day, delete finished traces older than N days (default
                     ${OBSERVE_RETENTION_DAYS_DEFAULT}; 0 keeps everything). Open runs, active sessions,
                     rollups, prompts and hub entries are never pruned.
+  --session-idle-minutes N
+                    'start': end a session once nothing in it has run for N minutes (default
+                    ${OBSERVE_SESSION_IDLE_MINUTES_DEFAULT}; 0 keeps sessions active until their agent goes down).
+                    New activity reopens it; retention then prunes ended sessions.
   --older-than <N>d 'prune': delete finished traces older than N days now, then VACUUM the db
   --since <N>d      'export': only traces that started within the last N days (or <N>h / <N>m)
   --agent X         'export': only this agent (its agent_id, or its name when that names one agent)
@@ -76,10 +81,11 @@ type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'prun
 const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
   start: {
     command: 'observe start',
-    usage: 'Usage: lousho observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL] [--retention-days N]',
+    usage: 'Usage: lousho observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL] [--retention-days N] [--session-idle-minutes N]',
     options: {
       port: { type: 'string' },
       'retention-days': { type: 'string' },
+      'session-idle-minutes': { type: 'string' },
       db: { type: 'string' },
       host: { type: 'string' },
       'require-token': { type: 'boolean' },
@@ -135,11 +141,17 @@ function stringListValue(value: string | boolean | (string | boolean)[] | undefi
 
 const DAY_MS = 86_400_000;
 
-/** `--retention-days N`: a non-negative integer (0 disables the daily prune), or the default when absent. */
-function retentionDaysValue(spec: CommandSpec, value: string | boolean | (string | boolean)[] | undefined): number {
+/** A non-negative integer flag (`--retention-days N`, `--session-idle-minutes N`; 0 disables), or `fallback` when absent. */
+function wholeNumberValue(
+  spec: CommandSpec,
+  flag: string,
+  meaning: string,
+  value: string | boolean | (string | boolean)[] | undefined,
+  fallback: number
+): number {
   const given = stringValue(value);
-  if (given === undefined) return OBSERVE_RETENTION_DAYS_DEFAULT;
-  if (!/^\d+$/.test(given)) throw usageError(spec, `--retention-days must be a non-negative integer (days; 0 disables pruning), got '${given}'.`);
+  if (given === undefined) return fallback;
+  if (!/^\d+$/.test(given)) throw usageError(spec, `${flag} must be a non-negative integer (${meaning}), got '${given}'.`);
   return Number(given);
 }
 
@@ -210,12 +222,19 @@ async function runStart(args: string[]): Promise<number> {
   const host = stringValue(values.host) ?? '127.0.0.1';
   const requireToken = values['require-token'] === true;
   const webhooks = stringListValue(values.webhook);
-  const retentionDays = retentionDaysValue(spec, values['retention-days']);
+  const retentionDays = wholeNumberValue(spec, '--retention-days', 'days; 0 disables pruning', values['retention-days'], OBSERVE_RETENTION_DAYS_DEFAULT);
+  const sessionIdleMinutes = wholeNumberValue(
+    spec,
+    '--session-idle-minutes',
+    'minutes; 0 never ends idle sessions',
+    values['session-idle-minutes'],
+    OBSERVE_SESSION_IDLE_MINUTES_DEFAULT
+  );
   const pidPath = defaultPidPath(dbPath);
 
   let daemon;
   try {
-    daemon = await startObserveDaemon({ dbPath, port, host, requireToken, pidPath, webhooks, retentionDays });
+    daemon = await startObserveDaemon({ dbPath, port, host, requireToken, pidPath, webhooks, retentionDays, sessionIdleMinutes });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') return reportPortInUse(port, host, dbPath);
     throw error;
