@@ -21,7 +21,7 @@ import { EmptyState } from '../../ui/EmptyState';
 import { useToast } from '../../ui/Toast';
 import { LabelChips } from './LabelChips';
 import { PromptDiff } from './PromptDiff';
-import { parseDiff, parsePromptParam, promptPath, promptPlaygroundHref, promptRunsHref, resolveRef } from './promptsUrl';
+import { parseDiff, parsePromptRoute, promptPath, promptPlaygroundHref, promptRunsHref, resolveRef } from './promptsUrl';
 
 const BackLink = () => <a href="#/prompts">Back to prompts</a>;
 
@@ -167,7 +167,7 @@ function SelectedVersion({
 
 /** `#/prompts/:name[@ref]`; an unknown prompt or ref shows an empty state with the way back. */
 export function PromptDetail({ param }: { param: string }) {
-  const { name, ref } = parsePromptParam(param);
+  const { name, ref } = parsePromptRoute(param);
   const route = useRoute();
   const [refreshKey, setRefreshKey] = useState(0);
   const history = usePromptVersions(name, refreshKey);

@@ -2,7 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PromptsScreen } from '../PromptsScreen';
-import { parsePromptParam, parseDiff, promptPath } from '../promptsUrl';
+import { parsePromptRoute, parseDiff, promptPath } from '../promptsUrl';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
 import { parsePromptParam as parsePlaygroundPrompt } from '../../playground/prefill';
@@ -84,9 +84,9 @@ afterEach(() => {
 
 describe('promptsUrl', () => {
   it('splits name@ref out of the :name param and round-trips the path', () => {
-    expect(parsePromptParam('mira@2')).toEqual({ name: 'mira', ref: '2' });
-    expect(parsePromptParam('mira@prod')).toEqual({ name: 'mira', ref: 'prod' });
-    expect(parsePromptParam('mira')).toEqual({ name: 'mira', ref: undefined });
+    expect(parsePromptRoute('mira@2')).toEqual({ name: 'mira', ref: '2' });
+    expect(parsePromptRoute('mira@prod')).toEqual({ name: 'mira', ref: 'prod' });
+    expect(parsePromptRoute('mira')).toEqual({ name: 'mira', ref: undefined });
     expect(parseDiff(new URLSearchParams('diff=1,3'))).toEqual([1, 3]);
     expect(parseDiff(new URLSearchParams('diff=1'))).toBeUndefined();
     expect(parseDiff(new URLSearchParams('diff=a,b'))).toBeUndefined();

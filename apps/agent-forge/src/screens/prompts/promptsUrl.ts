@@ -12,7 +12,7 @@ import type { ObservePromptVersion } from '../../observe/types';
 import { toInt } from '../urlState';
 
 /** `name@ref` from the decoded `:name` route param (`ref` absent = latest). */
-export function parsePromptParam(param: string): { name: string; ref: string | undefined } {
+export function parsePromptRoute(param: string): { name: string; ref: string | undefined } {
   const at = param.indexOf('@');
   if (at === -1) return { name: param, ref: undefined };
   return { name: param.slice(0, at), ref: param.slice(at + 1) || undefined };
