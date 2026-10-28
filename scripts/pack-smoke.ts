@@ -65,9 +65,11 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * scripts/size-check.ts holds the tighter, committed budget.
  * Measured 4,721,107 bytes (~4.5 MiB) packed after the observe parity work
  * (2026-10-24); packed budget raised to 5 MiB (~10% headroom).
+ * CI measured 16,796,541 bytes (~16.0 MiB) unpacked on 2026-10-29 (Studio
+ * revamp dist plus docs); unpacked budget raised to 18 MiB (~10% headroom).
  */
 const MAX_ENTRIES = 850;
-const MAX_UNPACKED_BYTES = 16 * 1024 * 1024;
+const MAX_UNPACKED_BYTES = 18 * 1024 * 1024;
 const MAX_PACKED_BYTES = 5 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
