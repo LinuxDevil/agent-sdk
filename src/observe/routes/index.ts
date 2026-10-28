@@ -1,6 +1,6 @@
 /**
  * The daemon's route registry. One file per feature area (ingest, traces,
- * insights, agents, scores, status, prompts, hub, datasets, evaluators) exports a `routes` array; this index
+ * insights, agents, scores, status, prompts, hub, datasets, evaluators, queues) exports a `routes` array; this index
  * concatenates them - so a later child spec (prompts, hub, alerts) adds a
  * file here and never touches the daemon's dispatch internals.
  *
@@ -17,6 +17,7 @@ import { hubRoutes } from './hub';
 import { ingestRoutes } from './ingest';
 import { insightsRoutes } from './insights';
 import { promptsRoutes } from './prompts';
+import { queuesRoutes } from './queues';
 import { scoresRoutes } from './scores';
 import { sessionsRoutes } from './sessions';
 import { statusRoutes } from './status';
@@ -42,6 +43,7 @@ const routes: readonly Route[] = [
   ...hubRoutes,
   ...datasetsRoutes,
   ...evaluatorsRoutes,
+  ...queuesRoutes,
 ];
 
 interface CompiledRoute {
