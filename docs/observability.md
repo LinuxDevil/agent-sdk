@@ -708,7 +708,9 @@ runs carry its id, so the daemon decides when a conversation is over. Each
 sweep (every 30 s) marks a session `ended` when none of its runs is still open
 (a run in progress keeps it `active` however long it takes) and nothing in it
 has started or finished for `--session-idle-minutes` (default 30; `0` turns
-this off). Its `ended_at` is the time of that last activity, not the time of
+this off). A run marked `interrupted` (its process died while the agent kept
+running) no longer counts as in progress; it counts as activity at the moment
+it was interrupted. Its `ended_at` is the time of that last activity, not the time of
 the sweep. A session no run references falls back to when the daemon last
 updated it. Sessions in a db written by an older daemon close on the first
 sweep that finds them idle.

@@ -505,23 +505,37 @@ export function interruptAgentWork(db: SqlDatabase, agentId: string, now: number
   return { sessions: Number(sessions.changes), observations: interruptOpenObservations(db, agentId, now) };
 }
 
-/** A session's last activity: its observations' latest end (or start), else the row's own `updated_at`. */
+/**
+ * A run the sweep gave up on: `end` still unset, but marked `interrupted`
+ * (its process died). It no longer holds a session open. `IS`, not `=`: an
+ * open run's status is NULL, and `NOT (... = ...)` on NULL would hide it.
+ */
+const DEAD_RUN = `(o."end" IS NULL AND o.status IS 'interrupted')`;
+
+/**
+ * A session's last activity: its observations' latest end (or start), else
+ * the row's own `updated_at`. An interrupted run counts from when it was
+ * interrupted (its `updated_at`, which the interrupt writes), so the idle
+ * window starts there rather than at the dead run's old start.
+ */
 const SESSION_LAST_ACTIVITY = `COALESCE(
-  (SELECT MAX(COALESCE(o."end", o.start)) FROM observations o WHERE o.session_id = sessions.session_id),
+  (SELECT MAX(CASE WHEN ${DEAD_RUN} THEN MAX(o.start, o.updated_at) ELSE COALESCE(o."end", o.start) END)
+     FROM observations o WHERE o.session_id = sessions.session_id),
   sessions.updated_at)`;
 
 /**
  * The idle close: every `active` session with no open observation (`end IS
- * NULL`) whose last activity is older than `idleMs` becomes `ended`, with
- * `ended_at` = that last activity (not `now`). `interrupted` sessions are left
- * alone; new activity reopens an ended one on ingest. Returns how many ended.
+ * NULL` and not `interrupted`) whose last activity is older than `idleMs`
+ * becomes `ended`, with `ended_at` = that last activity (not `now`).
+ * `interrupted` sessions are left alone; new activity reopens an ended one on
+ * ingest. Returns how many ended.
  */
 export function endIdleSessions(db: SqlDatabase, now: number, idleMs: number): number {
   const result = db
     .prepare(
       `UPDATE sessions SET status = 'ended', ended_at = ${SESSION_LAST_ACTIVITY}, updated_at = ?
        WHERE status = 'active'
-         AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.session_id = sessions.session_id AND o."end" IS NULL)
+         AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.session_id = sessions.session_id AND o."end" IS NULL AND NOT ${DEAD_RUN})
          AND ${SESSION_LAST_ACTIVITY} < ?`
     )
     .run(now, now - idleMs);

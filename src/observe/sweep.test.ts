@@ -525,6 +525,47 @@ describe('idle sessions: the sweep session pass', () => {
     expect(session(database, 'bare')).toMatchObject({ status: 'ended', ended_at: T0 + 10 });
   });
 
+  it('an instance interrupted while its sibling stays healthy no longer holds the session open', () => {
+    const database = db();
+    const beat = (instance: string, ts: number, pid: number): IngestEvent => ({
+      type: 'agent.heartbeat',
+      data: { agent_id: 'a1', project: 'proj', name: 'a', ts, heartbeat_interval_ms: 60_000, instance_id: instance, hostname: 'h1', pid },
+    });
+    ingestBatch(database, [beat('A', T0, 100), beat('B', T0, 200)], T0);
+    ingestBatch(database, [obs({ obs_id: 'runA', end: undefined, status: undefined, attrs: { 'lousho.instance_id': 'A' } })], T0);
+    const sweep = sweepAt(database, T0);
+    // only B keeps heartbeating, so the sweep interrupts A's open run
+    const tick = (t: number) => {
+      ingestBatch(database, [beat('B', t, 200)], t);
+      sweep.run(t);
+    };
+    for (let t = T0 + 60_000; t <= T0 + 600_000; t += 60_000) tick(t);
+    const runA = database.prepare("SELECT status, updated_at FROM observations WHERE obs_id = 'runA'").get();
+    expect(runA?.status).toBe('interrupted');
+    const interruptedAt = Number(runA?.updated_at);
+    expect(interruptedAt).toBeGreaterThan(T0);
+    // the idle window counts from the interrupt, not from the run's old start
+    tick(interruptedAt + IDLE - 1);
+    expect(session(database, 's1')?.status).toBe('active');
+    tick(interruptedAt + IDLE + 1);
+    expect(session(database, 's1')).toMatchObject({ status: 'ended', ended_at: interruptedAt });
+  });
+
+  it('an interrupted run beside a genuinely open one keeps the session active', () => {
+    const database = db();
+    ingestBatch(
+      database,
+      [
+        obs({ obs_id: 'dead', trace_id: 't1', end: undefined, status: undefined }),
+        obs({ obs_id: 'live', trace_id: 't2', end: undefined, status: undefined }),
+      ],
+      T0
+    );
+    database.prepare("UPDATE observations SET status = 'interrupted', updated_at = ? WHERE obs_id = 'dead'").run(T0 + 1);
+    sweepAt(database, T0 + 100 * IDLE);
+    expect(session(database, 's1')?.status).toBe('active');
+  });
+
   it('a window of 0 (or unset) never ends a session', () => {
     for (const sessionIdleMs of [0, undefined]) {
       const database = db();

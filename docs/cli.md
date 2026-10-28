@@ -309,7 +309,7 @@ error (exit 2). See [Retention](./observability.md#retention).
 `start --session-idle-minutes N` sets when a conversation counts as finished
 (default 30; `0` turns it off, so a session stays `active` until its agent goes
 down). The daemon's sweep marks a session `ended` once none of its runs is
-still open and nothing in it has started or finished for N minutes; its
+still open (a run marked `interrupted` does not count) and nothing in it has started or finished for N minutes; its
 `ended_at` is the time of that last activity. A new run in an `ended` (or
 `interrupted`) session makes it `active` again. Ended sessions are then pruned
 by `--retention-days` like any other finished session. A bad N is a usage
