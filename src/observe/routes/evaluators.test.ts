@@ -276,6 +276,14 @@ describe('POST /api/v1/evaluators/:id/test', () => {
       const unknownTrace = await call(database, 'POST', `/api/v1/evaluators/${code.rule_id}/test`, { trace_id: 'nope' }, worker);
       expect(unknownTrace.status).toBe(404);
       expect(unknownTrace.body).toMatchObject(invalid);
+      ingestBatch(database, [
+        {
+          type: 'observation',
+          data: { obs_id: 'kid', trace_id: 't-orphan', parent_obs_id: 'gone', kind: 'tool', start: 1, end: 2 },
+        },
+      ]);
+      const rootless = await call(database, 'POST', `/api/v1/evaluators/${code.rule_id}/test`, { trace_id: 't-orphan' }, worker);
+      expect(rootless.status).toBe(404);
       await expect(call(database, 'POST', `/api/v1/evaluators/${code.rule_id}/test`, {}, worker)).rejects.toMatchObject(invalid);
       await expect(
         call(database, 'POST', `/api/v1/evaluators/${code.rule_id}/test`, { trace_id: 't1', x: 1 }, worker)

@@ -224,6 +224,27 @@ describe('evaluator worker', () => {
     expect(h.warnings).toHaveLength(hasIsolatedVm ? 0 : 1);
   });
 
+  it('runOnce serializes dry runs and answers undefined for a trace with no root', async () => {
+    let active = 0;
+    let peak = 0;
+    const h = harness(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active--;
+      return 1;
+    });
+    const rule = createEvaluatorRule(h.db, codeRule());
+    if (rule === undefined) throw new Error('rule not created');
+    ingestBatch(h.db, [rootEnd('t1'), child('orphan')]);
+    const results = await Promise.all([h.worker.runOnce(rule, 't1'), h.worker.runOnce(rule, 't1'), h.worker.runOnce(rule, 't1')]);
+    expect(results).toEqual([1, 1, 1].map((value) => ({ value, comment: null })));
+    expect(peak).toBe(1);
+    await expect(h.worker.runOnce(rule, 'orphan')).resolves.toBeUndefined();
+    await expect(h.worker.runOnce(rule, 'nope')).resolves.toBeUndefined();
+    expect(onlineScores(h.db, 't1')).toEqual([]);
+  });
+
   it('drops and counts traces past maxQueue', async () => {
     const h = harness(() => 1, { maxQueue: 2 });
     createEvaluatorRule(h.db, codeRule());
@@ -299,7 +320,7 @@ describe('ingest with the evaluator worker', () => {
         sandbox: () => ({
           driver: 'fake',
           run: async () => {
-            await new Promise((resolve) => setTimeout(resolve, 200));
+            await new Promise((resolve) => setTimeout(resolve, 1000));
             throw new SandboxError('driver gone', 'driver', 'isolate');
           },
         }),

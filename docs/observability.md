@@ -660,7 +660,9 @@ the daemon restarts, so those traces never get online scores.
 `POST /api/v1/evaluators/:id/test` `{ "trace_id": "<trace-id>" }` dry-runs a
 rule on one trace and answers `200 { "result": { "value", "comment" } }`. It
 ignores `enabled`, `filter` and `sample_rate`, and it writes no score. An
-unknown rule or trace is a `404`, and a bad body is a `400`. A `judge` rule is a
+unknown rule is a `404`, and so is a trace that does not exist or has no root
+observation. A bad body is a `400`. Dry runs go one at a time: a second
+request waits until the one in flight finishes. A `judge` rule is a
 `409` (`judge evaluators run through Agent Forge`). Without the isolate it
 answers `{ "result": { "value": null, "comment": "isolate_unavailable" } }`.
 

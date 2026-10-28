@@ -63,8 +63,13 @@ export interface EvaluatorWorkerOptions {
 export interface EvaluatorWorker {
   /** Queue these traces (their root ended). Synchronous, never throws, never waits. */
   notifyRootsEnded(traceIds: readonly string[]): void;
-  /** Run `rule` on `traceId` once, ignoring `enabled`, `filter` and `sample_rate`; writes nothing. */
-  runOnce(rule: EvaluatorRuleRow, traceId: string): Promise<EvaluatorResult>;
+  /**
+   * Run `rule` on `traceId` once, ignoring `enabled`, `filter` and
+   * `sample_rate`; writes nothing. `undefined` when the trace has no root
+   * observation (or does not exist). Dry runs are serialized: a second call
+   * waits for the one in flight, so parallel calls never run parallel isolates.
+   */
+  runOnce(rule: EvaluatorRuleRow, traceId: string): Promise<EvaluatorResult | undefined>;
   /** Resolves once the queue is empty and nothing is running. */
   idle(): Promise<void>;
   stats(): EvaluatorWorkerStats;
@@ -190,6 +195,8 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
   let stopped = false;
   let warned = false;
   let draining: Promise<void> | undefined;
+  /** The tail of the dry-run lane: `runOnce` calls run one after another. */
+  let dryRuns: Promise<unknown> = Promise.resolve();
 
   const runCode = async (rule: EvaluatorRuleRow, trace: EvaluatorTrace): Promise<EvaluatorResult> => {
     if (rule.kind !== 'code') return { value: null, comment: 'unsupported_kind' };
@@ -283,13 +290,17 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
       }
       schedule();
     },
-    async runOnce(rule, traceId) {
-      const trace = evaluatorTrace(db, traceId);
-      if (trace === undefined) return { value: null, comment: 'trace_missing' };
-      const runner = runnerFor(rule);
-      if (runner === undefined) return { value: null, comment: 'unsupported_kind' };
-      if (!isolateAvailable()) return { value: null, comment: 'isolate_unavailable' };
-      return runner(trace);
+    runOnce(rule, traceId) {
+      const run = dryRuns.then(async (): Promise<EvaluatorResult | undefined> => {
+        const trace = evaluatorTrace(db, traceId);
+        if (trace === undefined) return undefined;
+        const runner = runnerFor(rule);
+        if (runner === undefined) return { value: null, comment: 'unsupported_kind' };
+        if (!isolateAvailable()) return { value: null, comment: 'isolate_unavailable' };
+        return runner(trace);
+      });
+      dryRuns = run.catch(() => undefined);
+      return run;
     },
     async idle() {
       while (draining !== undefined) await draining;

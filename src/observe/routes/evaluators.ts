@@ -30,7 +30,6 @@ import {
   updateEvaluatorRule,
   type EvaluatorRuleFields,
 } from '../evaluators';
-import { traceDetail } from '../store';
 import { intParam, requireJsonBody, sendJson, type Route } from './httpKit';
 
 const RULE_BODY_LIMIT = 128 * 1024;
@@ -167,11 +166,12 @@ export const evaluatorsRoutes: readonly Route[] = [
       if (rule.kind === 'judge') {
         return sendJson(res, 409, { error: 'judge evaluators run through Agent Forge', code: 'LOUSHO_REQUEST_INVALID' });
       }
-      if (traceDetail(db, trace_id) === undefined) {
-        return sendJson(res, 404, { error: `No trace '${trace_id}'.`, code: 'LOUSHO_REQUEST_INVALID' });
-      }
       if (evaluators === undefined) throw new Error('the evaluator worker is not running');
-      sendJson(res, 200, { result: await evaluators.runOnce(rule, trace_id) });
+      const result = await evaluators.runOnce(rule, trace_id);
+      if (result === undefined) {
+        return sendJson(res, 404, { error: `No trace '${trace_id}' with a root observation.`, code: 'LOUSHO_REQUEST_INVALID' });
+      }
+      sendJson(res, 200, { result });
     },
   },
   {
