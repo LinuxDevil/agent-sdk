@@ -37,7 +37,7 @@ const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
 /**
  * Tab-switching chrome, now with real content for the
  * Logs/Trace/Output tabs: `LogsPanel` (a live filtered/virtualized log
- * feed), `TracePanel` (a real span waterfall) and `OutputPanel` (a
+ * feed), `TracePanel` (the run's spans in the shared trace viewer) and `OutputPanel` (a
  * collapsible JSON tree of the final/paused ExecutionResult). `DebugBar`
  * surfaces above Trace whenever debug mode is on or a run is paused
  * at a breakpoint. Chat and Settings are still later

@@ -197,7 +197,7 @@ export interface ChatSessionRecord extends ChatSessionMeta {
  * forwards one of the run's `AgentEvent`s (run.start/text.done/tool.start/
  * tool.done/run.done/...) for lightweight visibility into an in-progress
  * run. `type: 'log'`/`'span'`/`'debug'` are the structured log stream
- *, span waterfall and step-debugger state, all derived from
+ *, Trace-tab spans and step-debugger state, all derived from
  * the same run rather than a second parallel event system. `type: 'chat'`
  * is the live chat transcript, sent on every reconciled update and
  * once immediately on connect (mirroring 'status').

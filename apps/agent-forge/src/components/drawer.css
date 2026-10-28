@@ -133,27 +133,13 @@
 .log-msg { color: var(--text); white-space: pre-wrap; word-break: break-word; }
 .log-msg b { color: var(--text-muted); font-weight: 600; }
 
-/* ---------- Trace tab ---------- */
-.trace-panel {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow-y: auto;
-}
+/* ---------- Trace tab (the shared ui/run TraceViewer beside the history list) ---------- */
 .trace-empty {
   padding: 16px;
   color: var(--text-faint);
   font-family: var(--font-ui);
 }
-.trace-row { display: flex; align-items: center; gap: 8px; padding: 5px 12px; cursor: pointer; border-radius: 5px; }
-.trace-row:hover, .trace-row.selected { background: var(--surface-2); }
-.trace-bar-track { position: relative; flex: 1; height: 16px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
-.trace-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); }
-.trace-bar.pending { background: repeating-linear-gradient(45deg, var(--accent), var(--accent) 4px, transparent 4px, transparent 8px); }
-.trace-name { width: 150px; flex: none; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.trace-dur { width: 56px; flex: none; text-align: right; color: var(--text-muted); }
+.trace-main .run-viewer { height: 100%; }
 
 /* ---------- History tab (time travel) ---------- */
 .history-panel { display: flex; flex-direction: column; gap: 10px; }
@@ -440,9 +426,9 @@
   opacity: 0.6;
 }
 
-/* Persisted trace history next to the waterfall */
+/* Persisted trace history next to the trace viewer */
 .trace-layout { display: flex; height: 100%; min-height: 0; }
-.trace-main { flex: 1; min-width: 0; height: 100%; }
+.trace-main { flex: 1; min-width: 0; height: 100%; overflow: auto; padding: 8px; box-sizing: border-box; }
 .trace-history { display: flex; flex-direction: column; gap: 4px; width: 240px; flex: none; padding: 8px; overflow-y: auto; border-right: 1px solid var(--border); }
 .trace-item { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
 .trace-item:hover, .trace-item.selected { background: var(--surface-2); }
@@ -451,9 +437,6 @@
 .trace-item-meta { color: var(--text-muted); }
 .trace-item-error .trace-item-status, .trace-history-error { color: var(--danger); }
 .trace-history-note { padding: 4px; color: var(--text-faint); font-size: 12px; }
-.trace-kind { flex: none; color: var(--text-faint); font-size: 11px; }
-.trace-bar.error { background: var(--danger); }
-.trace-row-error .trace-name { color: var(--danger); }
 @media (max-width: 700px) {
   .trace-layout { flex-direction: column; }
   .trace-history { width: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--border); }
