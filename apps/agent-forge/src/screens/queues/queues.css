@@ -1,0 +1,97 @@
+/* Annotation queues (#/evals/queues, #/evals/queues/:id). Builds on datasets.css; tokens only. */
+.queues-rubric {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.queues-rubric legend {
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.queues-rubric-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.queues-field-narrow {
+  flex: 0 1 120px;
+}
+.queues-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.queues-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.queues-empty-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* Review: the trace beside the score form; stacked on narrow screens. */
+.queues-review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+@media (max-width: 900px) {
+  .queues-review {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.queues-review-trace {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.queues-review-trace h3 a {
+  font-family: var(--font-mono);
+  font-weight: 400;
+}
+.queues-rubric-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.queues-score {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.queues-score .datasets-field input,
+.queues-comment {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.queues-keys {
+  font-size: 12px;
+}

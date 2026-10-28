@@ -225,4 +225,45 @@ describe('ObserveClient', () => {
     expect(init?.method).toBe('DELETE');
     expect(init?.body).toBeUndefined();
   });
+  it('reads queues: the paged list, one queue (undefined on 404), the next item (undefined on 204)', async () => {
+    const queue = { queue_id: 'q 1', name: 'review', rubric: [], created_at: 1, counts: { pending: 1, done: 0, skipped: 0 } };
+    const item = { item_id: 'i1', queue_id: 'q 1', trace_id: 't1', status: 'pending', reviewer: null, created_at: 1, done_at: null };
+    const fetchFn = vi.fn(async (url: string) => {
+      if (url.includes('/queues/nope')) return jsonResponse(404, { error: 'No queue.', code: 'LOUSHO_REQUEST_INVALID' });
+      if (url.includes('/queues/empty/next')) return new Response(null, { status: 204 });
+      if (url.endsWith('/next')) return jsonResponse(200, { item });
+      if (url.includes('/queues/q%201')) return jsonResponse(200, { queue });
+      return jsonResponse(200, { queues: [queue], total: 1, limit: 50, offset: 0 });
+    });
+    const client = clientWith(fetchFn as unknown as typeof fetch);
+    await client.listQueues({ limit: 50, offset: 50 });
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/queues?limit=50&offset=50', expect.anything());
+    expect(await client.queue('q 1')).toEqual(queue);
+    expect(await client.queue('nope')).toBeUndefined();
+    expect(await client.nextQueueItem('q 1')).toEqual(item);
+    expect(fetchFn).toHaveBeenLastCalledWith('/observe/api/v1/queues/q%201/next', expect.anything());
+    expect(await client.nextQueueItem('empty')).toBeUndefined();
+  });
+
+  it('writes queues: create, add items and complete POST JSON to their paths', async () => {
+    const fetchFn = vi.fn(async () => jsonResponse(201, { queue: { queue_id: 'q1' }, item: {}, score_ids: [] }));
+    const client = clientWith(fetchFn as unknown as typeof fetch);
+    await client.createQueue({ name: 'review', rubric: [{ name: 'helpful', min: 0, max: 5 }] });
+    expect(fetchFn).toHaveBeenLastCalledWith(
+      '/observe/api/v1/queues',
+      expect.objectContaining({ method: 'POST', body: '{"name":"review","rubric":[{"name":"helpful","min":0,"max":5}]}' })
+    );
+    const addFetch = vi.fn(async () => jsonResponse(201, { added: [], skipped_existing: ['t1'] }));
+    expect(await clientWith(addFetch as unknown as typeof fetch).addQueueItems('q1', ['t1'])).toEqual({ added: [], skipped_existing: ['t1'] });
+    await client.addQueueItems('q1', ['t1']);
+    expect(fetchFn).toHaveBeenLastCalledWith(
+      '/observe/api/v1/queues/q1/items',
+      expect.objectContaining({ method: 'POST', body: '{"trace_ids":["t1"]}' })
+    );
+    await client.completeQueueItem('q1', 'i/1', { scores: [], status: 'skipped' });
+    expect(fetchFn).toHaveBeenLastCalledWith(
+      '/observe/api/v1/queues/q1/items/i%2F1/complete',
+      expect.objectContaining({ method: 'POST', body: '{"scores":[],"status":"skipped"}' })
+    );
+  });
 });

@@ -4,6 +4,7 @@ import { StatusPill } from '../../ui/StatusPill';
 import { useToast } from '../../ui/Toast';
 import { displayName, displayStatus, elapsedMs } from '../../ui/run/rows';
 import { AddToDataset } from './AddToDataset';
+import { AddToQueue } from './AddToQueue';
 
 /** Trace-wide totals, summed over every observation the way the daemon's trace list does. */
 function traceTotals(rows: ObserveObservationRow[]): { tokens: number | null; cost: number | null } {
@@ -54,7 +55,8 @@ function CopyLinkButton() {
  * (to the agent-filtered trace list), model, start, duration (counting to
  * `now` while running), total tokens and cost, session (to its thread), a
  * copy-link button that copies the current URL, `?obs=` included, and
- * "Add to dataset" (copies the trace's input/output into a dataset).
+ * "Add to dataset" (copies the trace's input/output into a dataset) and
+ * "Add to queue" (queues the trace for review in an annotation queue).
  */
 export function TraceHeader({
   root,
@@ -76,6 +78,7 @@ export function TraceHeader({
         <StatusPill status={displayStatus(root)} live={displayStatus(root) === 'running'} />
         <CopyLinkButton />
         <AddToDataset traceId={root.trace_id} />
+        <AddToQueue traceId={root.trace_id} />
       </div>
       <dl className="trace-facts">
         {root.agent_id && (

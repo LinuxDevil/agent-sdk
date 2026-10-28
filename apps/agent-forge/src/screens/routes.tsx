@@ -12,6 +12,7 @@ import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
 import { DatasetsScreen } from './datasets/DatasetsScreen';
+import { QueuesScreen } from './queues/QueuesScreen';
 import { PlaygroundRoute } from './playground/PlaygroundScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { Placeholder } from './Placeholder';
@@ -39,7 +40,7 @@ export function useScreen(): ScreenId {
 }
 
 const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string; nav?: ReactNode }>> = {
-  evals: { title: 'Evaluations', blurb: 'Evaluators and annotation queues for scoring runs.', nav: <EvalsTabs /> },
+  evals: { title: 'Evaluations', blurb: 'Evaluators for scoring runs.', nav: <EvalsTabs /> },
 };
 
 /** `#/traces/:traceId`: the trace id comes from the hash; a new id remounts the screen. */
@@ -67,6 +68,7 @@ const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   monitoring: MonitoringScreen,
   scores: ScoresScreen,
   datasets: DatasetsScreen,
+  queues: QueuesScreen,
   playground: PlaygroundRoute,
   threads: ThreadsScreen,
   prompts: PromptsScreen,

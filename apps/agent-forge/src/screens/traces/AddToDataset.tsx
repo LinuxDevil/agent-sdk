@@ -5,15 +5,17 @@
  * copies the trace root's input/output in as the example. A new name is
  * created first (`POST /api/v1/datasets`; a 409 means it already exists, so
  * the add goes ahead). The outcome is a toast; success links to the dataset.
- * Escape or Cancel closes the dialog, and focus returns to the button.
+ * Escape or Cancel closes the dialog, and focus returns to the button
+ * (the shell is `HeaderPopover`).
  */
 import '../datasets/datasets.css';
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { navigate } from '../../router/router';
 import { useDatasets } from '../../observe/useObserve';
 import { ObserveApiError, observeClient } from '../../observe/observeClient';
 import { useToast } from '../../ui/Toast';
 import { datasetPath } from '../datasets/datasetsUrl';
+import { HeaderPopover } from './HeaderPopover';
 
 /** The dataset picker lists at most this many (the daemon's max page). */
 const PICKER_LIMIT = 1000;
@@ -63,69 +65,41 @@ function AddDialog({ traceId, onClose }: { traceId: string; onClose: () => void 
     }
   };
 
-  const onKeyDown = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape') return;
-    e.stopPropagation();
-    onClose();
-  };
-
   return (
-    <div className="add-to-dataset-dialog" role="dialog" aria-label="Add to dataset" onKeyDown={onKeyDown}>
-      <form onSubmit={(e) => void submit(e)} aria-labelledby={titleId}>
-        <h3 id={titleId} className="datasets-section-title">
-          Add this trace to a dataset
-        </h3>
+    <form onSubmit={(e) => void submit(e)} aria-labelledby={titleId}>
+      <h3 id={titleId} className="datasets-section-title">
+        Add this trace to a dataset
+      </h3>
+      <label className="datasets-field">
+        <span>Dataset</span>
+        <select ref={firstField} value={selected} onChange={(e) => setChoice(e.target.value)}>
+          {names.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+          <option value={NEW}>New dataset...</option>
+        </select>
+      </label>
+      {selected === NEW && (
         <label className="datasets-field">
-          <span>Dataset</span>
-          <select ref={firstField} value={selected} onChange={(e) => setChoice(e.target.value)}>
-            {names.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-            <option value={NEW}>New dataset...</option>
-          </select>
+          <span>New dataset name</span>
+          <input name="new-dataset-name" type="text" value={newName} onChange={(e) => setNewName(e.target.value)} />
         </label>
-        {selected === NEW && (
-          <label className="datasets-field">
-            <span>New dataset name</span>
-            <input name="new-dataset-name" type="text" value={newName} onChange={(e) => setNewName(e.target.value)} />
-          </label>
-        )}
-        <div className="add-to-dataset-actions">
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button type="submit" className="btn" disabled={saving || !target}>
-            Add
-          </button>
-        </div>
-      </form>
-    </div>
+      )}
+      <div className="add-to-dataset-actions">
+        <button type="button" className="btn btn-ghost" onClick={onClose}>
+          Cancel
+        </button>
+        <button type="submit" className="btn" disabled={saving || !target}>
+          Add
+        </button>
+      </div>
+    </form>
   );
 }
 
 /** The trace header's "Add to dataset" button and its dialog. */
 export function AddToDataset({ traceId }: { traceId: string }) {
-  const [open, setOpen] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const close = () => {
-    setOpen(false);
-    trigger.current?.focus();
-  };
-  return (
-    <div className="add-to-dataset">
-      <button
-        ref={trigger}
-        type="button"
-        className="btn btn-ghost"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={() => (open ? close() : setOpen(true))}
-      >
-        Add to dataset
-      </button>
-      {open && <AddDialog traceId={traceId} onClose={close} />}
-    </div>
-  );
+  return <HeaderPopover label="Add to dataset">{(close) => <AddDialog traceId={traceId} onClose={close} />}</HeaderPopover>;
 }
