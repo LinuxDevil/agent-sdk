@@ -6,12 +6,9 @@
  * secretsStore beats the env var; a real provider with no key fails with
  * `LOUSHO_PROVIDER_MISSING_API_KEY`) by compiling the request into a
  * throwaway `AgentSpec` named `playground`. Every run reports to the observe
- * daemon the Studio reads (`LOUSHO_OBSERVE_URL`, default
- * `http://127.0.0.1:7777`, the same target as observeProxy.ts) as agent
- * `playground`, through the SDK's own `observeExporter()` - so a daemon that
- * is down only means the reporter drops-and-counts; the stream never waits on
- * it. When `LOUSHO_OBSERVE` is set for the studio process, its reporter is
- * used instead, so the run is not reported twice.
+ * daemon the Studio reads as agent `playground` (observeReporting.ts: a
+ * daemon that is down only means the reporter drops-and-counts; the stream
+ * never waits on it, and `LOUSHO_OBSERVE`'s reporter wins when set).
  *
  * `promptRef` (`name`, `name@label`, `name@3`) is only recorded, as the root
  * span's `lousho.prompt.ref` attribute: the client already sends the resolved
@@ -26,16 +23,9 @@ import {
   type AgentSpec,
   type Message,
 } from '@lousho/build-ai-agent';
-import {
-  fanOutExporters,
-  observeExporter,
-  observeExporterFromEnv,
-  type ObserveExporterOptions,
-  type Span,
-  type TraceExporter,
-} from '@lousho/build-ai-agent/traces';
+import { fanOutExporters, type ObserveExporterOptions, type Span, type TraceExporter } from '@lousho/build-ai-agent/traces';
 import { buildAgentFromSpec } from './buildAgent';
-import { observeTarget } from './observeProxy';
+import { observeReporting, type ObserveReporting } from './observeReporting';
 import type { SecretsStore } from './secretsStore';
 import type { PlaygroundEvent, PlaygroundMessage, PlaygroundRunRequest } from '../shared/wireTypes';
 
@@ -103,20 +93,6 @@ function providerOf(model: string): AgentSpec['provider'] {
   return slash === -1 ? { type: model.trim(), model: '' } : { type: model.slice(0, slash).trim(), model: model.slice(slash + 1).trim() };
 }
 
-const isLoopbackUrl = (url: string): boolean => {
-  try {
-    return ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(url).hostname.toLowerCase());
-  } catch {
-    return false;
-  }
-};
-
-/** Content capture defaults on for a loopback collector, as `createAgent` does under `LOUSHO_OBSERVE`. */
-function envTargetIsLoopback(): boolean {
-  const value = process.env.LOUSHO_OBSERVE?.trim() ?? '';
-  return /^(1|true|on|yes)$/i.test(value) || isLoopbackUrl(value);
-}
-
 /**
  * Stamps `lousho.prompt.ref` on the run's root span and remembers its id (the
  * observe trace id). It mutates the span in place and runs first in the
@@ -138,31 +114,6 @@ export interface PlaygroundOptions {
   baseDir: string;
   /** Reporter overrides (tests: `fetchFn`, `registerExitHooks`, `flushIntervalMs`); the agent name stays `playground`. */
   observe?: Partial<ObserveExporterOptions>;
-}
-
-interface PlaygroundReporting {
-  exporter: () => TraceExporter;
-  captureContent: () => boolean;
-}
-
-/** The observe reporter, made on the first run (no heartbeat until the playground is used). */
-function playgroundReporting(options: PlaygroundOptions): PlaygroundReporting {
-  let own: TraceExporter | undefined;
-  const url = () => options.observe?.url ?? observeTarget();
-  const fromEnv = () => (options.observe ? undefined : observeExporterFromEnv({ agentName: PLAYGROUND_AGENT_NAME }));
-  return {
-    exporter: () =>
-      fromEnv() ??
-      (own ??= observeExporter({
-        cwd: options.baseDir,
-        // Parity with the LOUSHO_OBSERVE reporter: a daemon bound beyond loopback demands the bearer.
-        ...(process.env.LOUSHO_OBSERVE_TOKEN ? { token: process.env.LOUSHO_OBSERVE_TOKEN } : {}),
-        ...options.observe,
-        url: url(),
-        agentName: PLAYGROUND_AGENT_NAME,
-      })),
-    captureContent: () => (fromEnv() ? envTargetIsLoopback() : isLoopbackUrl(url())),
-  };
 }
 
 /** The SSE response of one run; `send` stops after the first terminal (`done` / `error`) event. */
@@ -238,7 +189,7 @@ export async function pumpRunEvents(events: AsyncIterable<AgentEvent>, stream: S
   if (!stream.ended) stream.send({ type: 'error', message: failure ?? 'The run ended without a result' });
 }
 
-async function streamRun(res: Response, stream: SseStream, request: PlaygroundRunRequest, options: PlaygroundOptions, reporting: PlaygroundReporting): Promise<void> {
+async function streamRun(res: Response, stream: SseStream, request: PlaygroundRunRequest, options: PlaygroundOptions, reporting: ObserveReporting): Promise<void> {
   const abort = new AbortController();
   // The client went away: abort the run (the reporter still records it, as aborted).
   res.on('close', () => abort.abort());
@@ -283,7 +234,7 @@ function failStream(res: Response, stream: SseStream, error: unknown, next: (err
 
 /** Registers `POST /playground/run`. */
 export function registerPlaygroundRoute(app: Express, options: PlaygroundOptions): void {
-  const reporting = playgroundReporting(options);
+  const reporting = observeReporting({ agentName: PLAYGROUND_AGENT_NAME, baseDir: options.baseDir, overrides: options.observe });
   app.post('/playground/run', (req, res, next) => {
     const parsed = parsePlaygroundRequest(req.body);
     if (typeof parsed === 'string') {

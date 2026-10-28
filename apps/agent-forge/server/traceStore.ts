@@ -10,7 +10,6 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { TraceExporter } from '@lousho/build-ai-agent';
 import { listTraces, readTrace, type TraceSummary } from '@lousho/build-ai-agent/traces';
 import type { SpanEvent, TraceSummaryPayload } from '../shared/wireTypes';
 
@@ -31,14 +30,6 @@ export function agentTraceDir(baseDir: string, agentId: string): string {
 
 export function traceDirExists(baseDir: string, agentId: string): boolean {
   return fs.existsSync(agentTraceDir(baseDir, agentId));
-}
-
-/** A TraceExporter that calls every exporter in turn. */
-export function fanOutExporter(...exporters: TraceExporter[]): TraceExporter {
-  return {
-    onSpanStart: (span) => exporters.forEach((exporter) => exporter.onSpanStart?.(span)),
-    onSpanEnd: (span) => exporters.forEach((exporter) => exporter.onSpanEnd?.(span)),
-  };
 }
 
 function toPayload(summary: TraceSummary): TraceSummaryPayload {

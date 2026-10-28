@@ -10,8 +10,9 @@
  */
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
-import { agentTraceDir, fanOutExporter } from './traceStore';
+import { fanOutExporters, fileTraceExporter, type ObserveExporterOptions } from '@lousho/build-ai-agent/traces';
+import { agentTraceDir } from './traceStore';
+import { observeReporting, withoutCapturedContent, type ObserveReporting } from './observeReporting';
 import { AgentExecutor, ToolRegistry, resumeAfterApproval } from '@lousho/build-ai-agent/executor';
 import {
   type AgentEvent,
@@ -79,6 +80,8 @@ interface RunEntry {
   lastSpec?: AgentSpec;
   /** `<provider>/<model>` the last run actually used, for the Topbar's env pill. */
   provider?: string;
+  /** Root span id of the latest run (its trace id), for the top bar's "Open trace" link. */
+  traceId?: string;
   /** Live step-through debug session for this agent's in-flight run, if any. */
   debugSession?: DebugSession;
   /**
@@ -120,6 +123,13 @@ export interface RunManagerOptions {
   secretsStore?: SecretsStore;
   /** Active settings profile source (hook timeout today; provider/deploy-adapter selection lives on the profile too, for the Settings UI). */
   settingsStore?: SettingsStore;
+  /**
+   * Report every run to the observe daemon as agent `<agentId>` (see
+   * observeReporting.ts): `true` in the studio, or reporter overrides
+   * (tests: `url`, `fetchFn`, ...). Omitted, the manager makes no reporter of
+   * its own (the SDK's `LOUSHO_OBSERVE` one still applies).
+   */
+  observe?: true | Partial<ObserveExporterOptions>;
 }
 
 export class AgentNotFoundError extends Error {}
@@ -190,6 +200,8 @@ export class RunManager extends EventEmitter {
   private readonly breakpoints = new Map<string, Set<BreakpointKey>>();
   /** Chat transcript persistence (see chatStore.ts). */
   private readonly chatStore: FileChatStore;
+  /** One observe reporter per agent id, made on its first run. */
+  private readonly reporting = new Map<string, ObserveReporting>();
 
   constructor(private readonly opts: RunManagerOptions) {
     super();
@@ -212,6 +224,7 @@ export class RunManager extends EventEmitter {
       resultText: entry.resultText,
       result: entry.result,
       provider: entry.provider,
+      traceId: entry.traceId,
       updatedAt: entry.updatedAt,
     };
   }
@@ -332,14 +345,41 @@ export class RunManager extends EventEmitter {
    * every real span start/end notification for this run over the existing
    * WS channel (as `{type:'span', ...}` messages, see wsServer.ts) rather
    * than a second tracing pipeline. It also writes the run to the
-   * agent's trace folder (see traceStore.ts), so the Trace tab can reopen it.
+   * agent's trace folder (see traceStore.ts), so the Trace tab can reopen it,
+   * and reports it to the observe daemon when `observe` is set (captured
+   * content goes to that reporter only). The root span's id is the run's
+   * trace id, kept on the status.
    */
   private makeTraceExporter(agentId: string): TraceExporter {
     const live: TraceExporter = {
-      onSpanStart: (span) => this.emitSpan(agentId, span),
+      onSpanStart: (span) => {
+        if (span.parentId === undefined) this.setEntry(agentId, { traceId: span.id });
+        this.emitSpan(agentId, span);
+      },
       onSpanEnd: (span) => this.emitSpan(agentId, span),
     };
-    return fanOutExporter(live, fileTraceExporter({ dir: agentTraceDir(this.opts.baseDir, agentId) }));
+    const file = fileTraceExporter({ dir: agentTraceDir(this.opts.baseDir, agentId) });
+    // Content captured for a loopback daemon is for the reporter alone: the
+    // trace file and the live feed see each span without it.
+    const local = this.captureContentFor(agentId) ? [live, file].map(withoutCapturedContent) : [live, file];
+    // The SDK's fan-out, so AgentExecutor sees an env reporter in it and adds none of its own.
+    return fanOutExporters([...local, this.reportingFor(agentId)?.exporter()]) as TraceExporter;
+  }
+
+  private reportingFor(agentId: string): ObserveReporting | undefined {
+    const { observe } = this.opts;
+    if (!observe) return undefined;
+    let reporting = this.reporting.get(agentId);
+    if (!reporting) {
+      reporting = observeReporting({ agentName: agentId, baseDir: this.opts.baseDir, ...(observe === true ? {} : { overrides: observe }) });
+      this.reporting.set(agentId, reporting);
+    }
+    return reporting;
+  }
+
+  /** Content goes on the run's spans only when its reporter's target is loopback; `undefined` keeps the SDK default. */
+  private captureContentFor(agentId: string): boolean | undefined {
+    return this.reportingFor(agentId)?.captureContent();
   }
 
   /** (re)creates the debug session for a fresh run(), seeded from this agent's persisted breakpoints. */
@@ -524,6 +564,7 @@ export class RunManager extends EventEmitter {
         reason: undefined,
         pendingApproval: undefined,
         resultText: undefined,
+        traceId: undefined,
         runInput: options.runInput,
         lastSpec: resolvedSpec,
         provider: `${provider.name}/${resolvedSpec.provider.model}`,
@@ -559,6 +600,7 @@ export class RunManager extends EventEmitter {
       approvalStore: this.opts.approvalStore,
       onAgentEvent: (event) => this.emitEvent(agentId, event),
       exporter: this.makeTraceExporter(agentId),
+      captureContent: this.captureContentFor(agentId),
       skipSystemPromptInjection: options.skipSystemPromptInjection,
       // Hooks compiled from this agent's graph (spec.policy.hooks)
       // and the SandboxAdapter they (and any requiresSandbox tool) run
@@ -756,6 +798,7 @@ export class RunManager extends EventEmitter {
       {
         onAgentEvent: (event) => this.emitEvent(agentId, event),
         exporter: this.makeTraceExporter(agentId),
+        captureContent: this.captureContentFor(agentId),
         // Hooks must fire on the deferred, post-approval tool
         // execution path too (see resume.ts in the core SDK) - not just
         // the initial run() - so the same compiled hooks/sandbox are

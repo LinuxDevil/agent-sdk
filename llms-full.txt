@@ -2034,15 +2034,28 @@ exists.
    call**, **Approval gate**, **Response / output**), or click (or press
    Enter on) a palette item to add it at the centre of the canvas, and
    connect them by
-   dragging between their handles. Click a node to edit its settings
-   (prompt, provider/model, tools, breakpoints) in the Inspector on the
-   right.
+   dragging between their handles. Each node card shows its name, an LLM
+   node's `provider/model` chip and tool count, and the node's status in the
+   current run (`idle` until a run reaches it). Click a node to edit its
+   settings (prompt, provider/model, tools, breakpoints) in the Inspector on
+   the right; its **Node**, **Debug** and **Hooks** sections collapse, and
+   each stays the way you left it. An agent whose canvas has no nodes shows
+   the templates on the canvas: choosing one fills the canvas (unsaved until
+   it autosaves, like any edit) and keeps the agent's name.
 3. **Run it.** Click **Run** in the top bar. With the `mock` provider
    there's nothing to configure - it returns deterministic canned output,
    which is exactly the point for trying the rest of the UI without needing
    a real LLM API key. The status pill in the top bar tracks the run
    (`running` → `done`, `stopped` after you press **Stop**, `error` or
-   `awaiting approval`). Run sends a fixed prompt, which the Chat tab shows
+   `awaiting approval`), and once the run's trace id is known an **Open
+   trace** link next to it opens the run at `#/traces/<traceId>` (in the
+   narrow layout it is in the **More** menu). Builder runs report to the
+   observe daemon as agent `<agent id>`, the same way the Playground does:
+   when `LOUSHO_OBSERVE` is set its reporter is used (nothing is reported
+   twice), a daemon that is down only drops events and never fails the run,
+   and message content is sent only to a loopback daemon (never to the
+   trace files or the live Trace tab). Run sends a fixed
+   prompt, which the Chat tab shows
    as a **Run input** bubble instead of a message from you. If the studio
    server goes away, a banner says the connection was lost and the studio
    reconnects when it is back.
@@ -2054,7 +2067,9 @@ exists.
    with the debug bar's **Step**/**Continue** controls; expand "Live
    message array" there to inspect the in-flight message list. **Output**
    shows the full `ExecutionResult` (messages, tool calls, usage, steps) as
-   a collapsible JSON tree once the run finishes or pauses.
+   a collapsible JSON tree once the run finishes or pauses. Drag the
+   drawer's top edge (or focus it and use the arrow keys) to resize it;
+   the height is remembered.
 
    **Trace history.** Every run is also saved as a trace file, so the
    **Trace** tab keeps the runs of the agent after the page is reloaded or the

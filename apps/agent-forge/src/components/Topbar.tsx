@@ -4,6 +4,7 @@ import { downloadSpec, importSpecFile } from '../persistence/importExport';
 import { ApprovalCard } from './ApprovalCard';
 import { errorMessage } from './errorMessage';
 import { StatusPill } from '../ui/StatusPill';
+import { RunStatus, lastRunTraceId } from './RunStatus';
 import { navigate } from '../router/router';
 import { useRoute } from '../router/useRoute';
 import { NAV_ITEMS, isActive } from '../shell/NavRail';
@@ -288,13 +289,13 @@ interface TopbarProps {
 }
 
 function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
-  const { spec, dirty, runStatus, debugMode, setDebugMode, setDrawerTab } = useAppState();
+  const { spec, dirty, runStatus, spans, debugMode, setDebugMode, setDrawerTab } = useAppState();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
   const toggle = onTogglePanel ?? (() => undefined);
 
-  const status = runStatus?.status ?? 'idle';
-  const isRunning = status === 'running';
+  const isRunning = runStatus?.status === 'running';
+  const traceId = lastRunTraceId(runStatus, spans);
 
   const items: OverflowItem[] = [
     {
@@ -311,6 +312,8 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
     // The old Build/Observe switch's menu entry, kept for muscle memory: Observe is now Traces.
     // Last: the menu focuses its first item on open (e2e expects Debug).
     { label: 'Observe surface', onSelect: () => navigate('/traces') },
+    // The wide bar's "Open trace" link, which has no room next to Run at 375px.
+    ...(traceId ? [{ label: 'Open trace', onSelect: () => navigate(`/traces/${encodeURIComponent(traceId)}`) }] : []),
   ];
 
   return (
@@ -325,7 +328,7 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
         {spec.provider.type === 'mock' && <span className="mock-badge">MOCK</span>}
       </div>
       <RunNotices runStatus={runStatus} actionError={actionError} />
-      <StatusPill status={status} live />
+      <RunStatus showTraceLink={false} />
       {isRunning ? (
         <button className="btn btn-danger" onClick={() => void handleStop()}>
           Stop
@@ -379,8 +382,7 @@ function WideTopbar() {
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
 
-  const status = runStatus?.status ?? 'idle';
-  const isRunning = status === 'running';
+  const isRunning = runStatus?.status === 'running';
 
   return (
     <header className="topbar">
@@ -395,7 +397,8 @@ function WideTopbar() {
 
       <RunNotices runStatus={runStatus} actionError={actionError} />
 
-      <StatusPill status={status} live />
+      {/* The last run's status, and its "Open trace" link once known. */}
+      <RunStatus />
 
       {/*
         R3: real per-environment settings profile (name + provider type),

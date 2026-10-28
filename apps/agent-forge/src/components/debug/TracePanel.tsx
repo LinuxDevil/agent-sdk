@@ -2,22 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useAppState } from '../../state/AppState';
 import { orderSpansForWaterfall } from '../../state/spanReducer';
 import type { SpanEvent, TraceSummaryPayload } from '../../../shared/wireTypes';
-import type { AgentGraphSpec } from '../../graph/types';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { errorMessage } from '../errorMessage';
-import { findLlmNodeId, findToolNodeId } from './nodeLookup';
+import { nodeIdForSpan } from './nodeLookup';
 import { LIVE_ENTRY, TraceHistory } from './TraceHistory';
-
-function nodeIdForSpan(graph: AgentGraphSpec, span: SpanEvent): string | undefined {
-  // SDK spans follow the OpenTelemetry GenAI conventions: the operation is
-  // `chat` (model call) or `execute_tool` (tool call).
-  const operation = span.attributes['gen_ai.operation.name'];
-  if (operation === 'chat') return findLlmNodeId(graph);
-  if (operation === 'execute_tool') {
-    return findToolNodeId(graph, span.attributes['gen_ai.tool.name'] as string | undefined);
-  }
-  return undefined;
-}
 
 function timeBounds(spans: SpanEvent[]): { minStart: number; maxEnd: number } {
   if (spans.length === 0) return { minStart: 0, maxEnd: 1 };

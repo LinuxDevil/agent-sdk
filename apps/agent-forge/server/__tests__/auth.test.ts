@@ -22,7 +22,7 @@ describe('studio access control', () => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-auth-test-'));
     staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-auth-static-'));
     fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><title>forge</title>');
-    handle = await startStudioServer({ baseDir, port: 0, staticDir, token: TOKEN });
+    handle = await startStudioServer({ baseDir, port: 0, staticDir, token: TOKEN, observe: false });
     origin = `http://127.0.0.1:${handle.port}`;
   });
 

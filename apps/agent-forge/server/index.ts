@@ -52,6 +52,13 @@ export interface StartStudioServerOptions {
    * minted random one.
    */
   token?: string;
+  /**
+   * Report builder runs to the observe daemon (`LOUSHO_OBSERVE_URL`, see
+   * server/observeReporting.ts) so the top bar's "Open trace" resolves.
+   * Defaults to true; pass `false` to make no reporter (an embedding or a
+   * test that must not reach a daemon).
+   */
+  observe?: boolean;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -95,6 +102,8 @@ export async function startStudioServer(
     saveSpec: (agentId, spec) => agentStore.save(agentId, spec),
     secretsStore,
     settingsStore,
+    // Builder runs report to the observe daemon, so "Open trace" resolves.
+    ...(options.observe === false ? {} : { observe: true as const }),
   });
 
   const token = options.token ?? (process.env[STUDIO_TOKEN_ENV] || mintStudioToken());
