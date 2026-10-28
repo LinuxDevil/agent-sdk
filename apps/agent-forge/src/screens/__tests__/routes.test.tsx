@@ -67,7 +67,8 @@ describe('screenFor', () => {
     expect(screenFor('#/evals/datasets')).toBe('datasets');
     expect(screenFor('#/evals/datasets/golden.v1?offset=50')).toBe('datasets');
     expect(screenFor('#/evals/evaluators')).toBe('evals');
-    expect(screenFor('#/evals/queues/q1')).toBe('evals');
+    expect(screenFor('#/evals/queues')).toBe('queues');
+    expect(screenFor('#/evals/queues/q1')).toBe('queues');
     expect(screenFor('#/playground')).toBe('playground');
     expect(screenFor('#/threads/s1')).toBe('threads');
     expect(screenFor('#/prompts/greeting@v2')).toBe('prompts');

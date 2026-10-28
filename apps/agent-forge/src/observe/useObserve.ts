@@ -11,6 +11,9 @@ import type {
   ObserveAgentRow,
   ObserveDatasetDetail,
   ObserveDatasetList,
+  ObserveQueue,
+  ObserveQueueItem,
+  ObserveQueueList,
   ObserveHealth,
   ObserveHubEntry,
   ObserveInsights,
@@ -192,4 +195,19 @@ export function useDatasets(page: PageQuery, refreshKey?: unknown): ObserveQuery
 /** `GET /api/v1/datasets/:name` - the dataset and one page of its examples; `undefined` data when it does not exist. */
 export function useDataset(name: string, page: PageQuery, refreshKey?: unknown): ObserveQuery<ObserveDatasetDetail | undefined> {
   return useObserveQuery(() => observeClient.dataset(name, page), [name, JSON.stringify(page), refreshKey]);
+}
+
+/** `GET /api/v1/queues` - one page of annotation queues. */
+export function useQueues(page: PageQuery, refreshKey?: unknown): ObserveQuery<ObserveQueueList> {
+  return useObserveQuery(() => observeClient.listQueues(page), [JSON.stringify(page), refreshKey]);
+}
+
+/** `GET /api/v1/queues/:id` - one annotation queue; `undefined` data when it does not exist. */
+export function useQueue(queueId: string, refreshKey?: unknown): ObserveQuery<ObserveQueue | undefined> {
+  return useObserveQuery(() => observeClient.queue(queueId), [queueId, refreshKey]);
+}
+
+/** `GET /api/v1/queues/:id/next` - the queue's next pending item; `undefined` data when the queue is empty. */
+export function useNextQueueItem(queueId: string, refreshKey?: unknown): ObserveQuery<ObserveQueueItem | undefined> {
+  return useObserveQuery(() => observeClient.nextQueueItem(queueId), [queueId, refreshKey]);
 }

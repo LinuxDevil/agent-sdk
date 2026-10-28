@@ -288,3 +288,46 @@ export interface ObserveDatasetDetail {
   limit: number;
   offset: number;
 }
+
+/** One rubric entry of an annotation queue: a score name, an optional description and optional value bounds. */
+export interface ObserveRubricEntry {
+  name: string;
+  description?: string;
+  min?: number;
+  max?: number;
+}
+
+/** One annotation queue (`GET /api/v1/queues` row, and the `queue` of the detail/create answers), with its item counts per status. */
+export interface ObserveQueue {
+  queue_id: string;
+  name: string;
+  rubric: ObserveRubricEntry[];
+  created_at: number;
+  counts: { pending: number; done: number; skipped: number };
+}
+
+/** `GET /api/v1/queues`: a page of queues, newest first. */
+export interface ObserveQueueList {
+  queues: ObserveQueue[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** An annotation queue item: one trace waiting for (or given) a review. */
+export interface ObserveQueueItem {
+  item_id: string;
+  queue_id: string;
+  trace_id: string;
+  status: 'pending' | 'done' | 'skipped';
+  reviewer: string | null;
+  created_at: number;
+  done_at: number | null;
+}
+
+/** One score of a queue item's review: a rubric name and its value, with an optional comment. */
+export interface NewQueueScore {
+  name: string;
+  value: number;
+  comment?: string;
+}

@@ -6,6 +6,8 @@ import type {
   ObserveHubEntry,
   ObserveInsights,
   ObservePromptVersion,
+  ObserveQueue,
+  ObserveQueueItem,
   ObserveScoreRow,
   ObserveSessionRow,
   ObserveTraceDetail,
@@ -17,7 +19,8 @@ import type {
  * scan the screens' populated states rather than "daemon down". One agent, one
  * thread with one trace (an LLM call and a tool call), one prompt with two
  * versions, an eval's scores, a Context Hub namespace with a fleet and a
- * private entry, and a dataset with two examples (one copied from the trace).
+ * private entry, a dataset with two examples (one copied from the trace), and
+ * an annotation queue whose next pending item is the trace.
  */
 const NOW = Date.now();
 const T0 = NOW - 60_000;
@@ -202,6 +205,26 @@ const examples: ObserveExample[] = [
   },
 ];
 
+const queue: ObserveQueue = {
+  queue_id: 'e2e-queue',
+  name: 'support-review',
+  rubric: [
+    { name: 'helpfulness', description: 'Did the reply answer the question?', min: 0, max: 5 },
+    { name: 'tone', min: 1, max: 3 },
+  ],
+  created_at: T0 - HOUR,
+  counts: { pending: 1, done: 2, skipped: 0 },
+};
+const queueItem: ObserveQueueItem = {
+  item_id: 'e2e-item',
+  queue_id: queue.queue_id,
+  trace_id: 'e2e-trace',
+  status: 'pending',
+  reviewer: null,
+  created_at: T0,
+  done_at: null,
+};
+
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -233,6 +256,10 @@ export async function stubObserve(page: Page): Promise<void> {
       return json(route, { datasets: [dataset], total: 1, limit: Number(q.get('limit') ?? 100), offset: 0 });
     if (path === '/api/v1/datasets/e2e-dataset')
       return json(route, { dataset, examples, total: examples.length, limit: Number(q.get('limit') ?? 1000), offset: 0 });
+    if (path === '/api/v1/queues' && route.request().method() === 'GET')
+      return json(route, { queues: [queue], total: 1, limit: Number(q.get('limit') ?? 100), offset: 0 });
+    if (path === '/api/v1/queues/e2e-queue') return json(route, { queue });
+    if (path === '/api/v1/queues/e2e-queue/next') return json(route, { item: queueItem });
     if (path === '/api/v1/scores') {
       if (q.get('aggregate') === 'eval')
         return json(route, { evals: [{ name: 'e2e-eval', count: 4, passed: 3, pass_rate: 0.75, avg_value: 0.75, last_ts: T0 + 2_000 }] });

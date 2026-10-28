@@ -128,7 +128,7 @@ async function expectNoSeriousAxeViolations(page: Page, label: string) {
 // Every route in the table (new screens are covered automatically): one <main>, one h1,
 // the banner and the primary nav, and an axe scan of the populated (stubbed daemon) state.
 // Plus the deep-link states that render a different view on the same route.
-// The datasets routes scan the stub's datasets fixtures. Placeholder routes (/evals/:section, /evals/:section/:id) scan the Placeholder today; when their real
+// The datasets and queues routes scan the stub's dataset and annotation queue fixtures. Placeholder routes (/evals/:section, /evals/:section/:id) scan the Placeholder today; when their real
 // screens land, add their endpoints to e2e/observeStub.ts or they get scanned in a 404/empty state.
 const SCANS = [
   ...ROUTES.map(({ pattern, example }) => ({ label: pattern, path: example })),
@@ -182,6 +182,17 @@ test('#/evals/datasets/:name with no daemon shows the down state, keeps the URL 
   expect(new URL(page.url()).hash).toBe('#/evals/datasets/golden?offset=50');
 });
 
+test('#/evals/queues/:id with no daemon shows the down state, keeps the URL and the Evaluations tabs', async ({ page }) => {
+  await page.route('**/observe/**', (route) =>
+    route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"down"}' }),
+  );
+  await page.goto('/?token=e2e-studio-token#/evals/queues/e2e-queue');
+  await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
+  const tabs = page.getByRole('navigation', { name: 'Evaluations' });
+  await expect(tabs.locator('[aria-current="page"]')).toHaveText('Annotation queues');
+  expect(new URL(page.url()).hash).toBe('#/evals/queues/e2e-queue');
+});
+
 test('#/monitoring with no daemon shows the down state and keeps window/agent in the URL', async ({ page }) => {
   await page.route('**/observe/**', (route) =>
     route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"down"}' }),
@@ -223,6 +234,8 @@ test('the axe scans see the stubbed daemon data, not the down state', async ({ p
     ['/prompts/e2e-prompt', 'how can I help today?'],
     ['/hub', 'e2e-namespace'],
     ['/hub/e2e-namespace', 'order-policy'],
+    ['/evals/queues', 'support-review'],
+    ['/evals/queues/e2e-queue', 'lookup_order'],
   ]) {
     await page.goto(`/?token=e2e-studio-token#${path}`);
     await expect(main.getByText(text).first(), path).toBeVisible();

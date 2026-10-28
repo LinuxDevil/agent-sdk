@@ -13,10 +13,15 @@ import { STUDIO_TOKEN_HEADER, loadStudioToken } from '../runtime/studioToken';
 import type {
   ObserveAgentRow,
   NewHubEntry,
+  NewQueueScore,
   ObserveDataset,
   ObserveDatasetDetail,
   ObserveDatasetList,
   ObserveExample,
+  ObserveQueue,
+  ObserveQueueItem,
+  ObserveQueueList,
+  ObserveRubricEntry,
   ObserveHealth,
   ObserveHubEntry,
   ObserveHubScope,
@@ -364,6 +369,54 @@ export class ObserveClient {
   async deleteExample(name: string, exampleId: string): Promise<void> {
     await this.request(`/api/v1/datasets/${encodeURIComponent(name)}/examples/${encodeURIComponent(exampleId)}`, {
       method: 'DELETE',
+    });
+  }
+
+  /** `GET /api/v1/queues` - a page of annotation queues (with item counts per status), newest first. */
+  listQueues(page: PageQuery = {}): Promise<ObserveQueueList> {
+    return this.request('/api/v1/queues', { query: { ...page } });
+  }
+
+  /** `GET /api/v1/queues/:id` - one annotation queue; `undefined` on the daemon's 404. */
+  async queue(queueId: string): Promise<ObserveQueue | undefined> {
+    try {
+      const body = await this.request<{ queue: ObserveQueue }>(`/api/v1/queues/${encodeURIComponent(queueId)}`);
+      return body.queue;
+    } catch (error) {
+      if (error instanceof ObserveApiError && error.status === 404) return undefined;
+      throw error;
+    }
+  }
+
+  /** `POST /api/v1/queues` - a new, empty annotation queue; a taken name is the daemon's 409 (`ObserveApiError`). */
+  async createQueue(input: { name: string; rubric: ObserveRubricEntry[] }): Promise<ObserveQueue> {
+    const body = await this.request<{ queue: ObserveQueue }>('/api/v1/queues', { method: 'POST', body: input });
+    return body.queue;
+  }
+
+  /** `POST /api/v1/queues/:id/items` - queue traces for review; ones already in the queue count as `skipped_existing`. */
+  addQueueItems(queueId: string, traceIds: string[]): Promise<{ added: number; skipped_existing: number }> {
+    return this.request(`/api/v1/queues/${encodeURIComponent(queueId)}/items`, { method: 'POST', body: { trace_ids: traceIds } });
+  }
+
+  /** `GET /api/v1/queues/:id/next` - the oldest pending item (not claimed); `undefined` when the queue is empty (204). */
+  async nextQueueItem(queueId: string): Promise<ObserveQueueItem | undefined> {
+    const body = await this.request<{ item: ObserveQueueItem } | undefined>(`/api/v1/queues/${encodeURIComponent(queueId)}/next`);
+    return body?.item;
+  }
+
+  /**
+   * `POST /api/v1/queues/:id/items/:item/complete` - finish one item: `done` with its scores, or `skipped` with none.
+   * An item someone already finished is the daemon's 409 (`ObserveApiError`).
+   */
+  async completeQueueItem(
+    queueId: string,
+    itemId: string,
+    outcome: { scores: NewQueueScore[]; status?: 'done' | 'skipped' }
+  ): Promise<{ item: ObserveQueueItem; score_ids: string[] }> {
+    return this.request(`/api/v1/queues/${encodeURIComponent(queueId)}/items/${encodeURIComponent(itemId)}/complete`, {
+      method: 'POST',
+      body: outcome,
     });
   }
 

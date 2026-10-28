@@ -4,7 +4,7 @@
  * headers. A dead daemon answers 502 with the `lousho observe start` hint.
  * Writes go through only when OBSERVE_WRITE_ALLOWLIST names the method and
  * path (feedback scores, a prompt label move, a hub publish, dataset and
- * example writes); every other non-GET stays 405.
+ * example writes, annotation queue writes); every other non-GET stays 405.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as http from 'node:http';
@@ -169,6 +169,29 @@ describe('observe proxy', () => {
   });
 
   it.each([
+    ['/api/v1/queues', { name: 'review', rubric: [{ name: 'helpful', min: 0, max: 5 }] }],
+    ['/api/v1/queues/q1/items', { trace_ids: ['t1'] }],
+    ['/api/v1/queues/q1/items/i1/complete', { scores: [{ name: 'helpful', value: 4 }] }],
+  ] as const)('forwards the annotation queue write POST %s with its JSON body', async (path, body) => {
+    const res = await request(app).post(`/observe${path}`).send(body);
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ echoed: path, method: 'POST', contentType: 'application/json', body });
+  });
+
+  it.each([
+    ['delete', '/observe/api/v1/queues/q1'],
+    ['post', '/observe/api/v1/queues/q1'],
+    ['put', '/observe/api/v1/queues/q1/items'],
+    ['post', '/observe/api/v1/queues/q1/next'],
+    ['post', '/observe/api/v1/queues/q1/items/i1'],
+    ['post', '/observe/api/v1/queues/q1/items/i1/complete/x'],
+    ['post', '/observe/api/v1/queues/q1/items/%2e%2e/complete'],
+  ] as const)('keeps the queue-adjacent write %s %s at 405', async (method, url) => {
+    const res = await request(app)[method](url).send({});
+    expect(res.status).toBe(405);
+  });
+
+  it.each([
     ['post', '/observe/api/v1/prompts'],
     ['put', '/observe/api/v1/prompts/mira'],
     ['put', '/observe/api/v1/prompts/mira/labels/prod/extra'],
@@ -201,8 +224,8 @@ describe('observe proxy', () => {
     expect(res.status).toBe(413);
   });
 
-  it('exports one write allowlist of method + path pairs: feedback scores, the label move, hub publishes and dataset writes', () => {
-    expect(OBSERVE_WRITE_ALLOWLIST.map((entry) => entry.method)).toEqual(['POST', 'PUT', 'POST', 'POST', 'POST', 'DELETE']);
+  it('exports one write allowlist of method + path pairs: feedback scores, the label move, hub publishes, dataset and queue writes', () => {
+    expect(OBSERVE_WRITE_ALLOWLIST.map((entry) => entry.method)).toEqual(['POST', 'PUT', 'POST', 'POST', 'POST', 'DELETE', 'POST', 'POST', 'POST']);
     expect(OBSERVE_WRITE_ALLOWLIST.every((entry) => entry.path instanceof RegExp)).toBe(true);
   });
 });
