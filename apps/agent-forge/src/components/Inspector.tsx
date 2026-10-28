@@ -13,6 +13,7 @@ import {
   updateEdgeCondition,
 } from '../canvas/graphMutations';
 import { HOOK_TEMPLATES } from '../hooks/hookTemplates';
+import { InspectorSection } from './InspectorSection';
 import type { AgentGraphEdge, AgentGraphNode, AgentGraphSpec, AgentNodeHookInstance } from '../graph/types';
 
 type SetGraph = (updater: (graph: AgentGraphSpec) => AgentGraphSpec) => void;
@@ -174,7 +175,6 @@ function HooksField({ node, setGraph }: { node: AgentGraphNode; setGraph: SetGra
 
   return (
     <div className="field">
-      <label>Hooks</label>
       <HookGroup label="Pre-call" hooks={hooks.filter((h) => h.phase === 'pre')} renderChip={renderChip} />
       <HookGroup label="Post-call" hooks={hooks.filter((h) => h.phase === 'post')} renderChip={renderChip} />
 
@@ -461,11 +461,13 @@ function BreakpointSection({ breakpointKey }: { breakpointKey: string }) {
   const { debugMode, debugState, setBreakpoints } = useAppState();
   if (!debugMode) return null;
   return (
-    <BreakpointField
-      breakpointKey={breakpointKey}
-      breakpoints={breakpointsOf(debugState)}
-      setBreakpoints={setBreakpoints}
-    />
+    <InspectorSection id="debug" title="Debug">
+      <BreakpointField
+        breakpointKey={breakpointKey}
+        breakpoints={breakpointsOf(debugState)}
+        setBreakpoints={setBreakpoints}
+      />
+    </InspectorSection>
   );
 }
 
@@ -482,22 +484,27 @@ function NodeInspector({ selected }: { selected: AgentGraphNode }) {
         <div className="v">{selected.label}</div>
       </div>
       <div className="inspector-body">
-        <div className="field">
-          <label htmlFor="node-label">Label</label>
-          <input
-            id="node-label"
-            className="input"
-            value={selected.label}
-            onChange={(e) => setGraph((g) => renameNode(g, selected.id, e.target.value))}
-          />
-        </div>
+        {/* Collapsible sections, each remembered per viewer (InspectorSection.tsx). */}
+        <InspectorSection id="node" title="Node">
+          <div className="field">
+            <label htmlFor="node-label">Label</label>
+            <input
+              id="node-label"
+              className="input"
+              value={selected.label}
+              onChange={(e) => setGraph((g) => renameNode(g, selected.id, e.target.value))}
+            />
+          </div>
 
-        <NodeTypeFields node={selected} graph={graph} setGraph={setGraph} patch={patch} />
+          <NodeTypeFields node={selected} graph={graph} setGraph={setGraph} patch={patch} />
+        </InspectorSection>
 
         {breakpointKey && (
           <>
             <BreakpointSection breakpointKey={breakpointKey} />
-            <HooksField node={selected} setGraph={setGraph} />
+            <InspectorSection id="hooks" title="Hooks">
+              <HooksField node={selected} setGraph={setGraph} />
+            </InspectorSection>
           </>
         )}
       </div>

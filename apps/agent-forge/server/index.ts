@@ -95,6 +95,8 @@ export async function startStudioServer(
     saveSpec: (agentId, spec) => agentStore.save(agentId, spec),
     secretsStore,
     settingsStore,
+    // Builder runs report to the observe daemon, so "Open trace" resolves.
+    observe: true,
   });
 
   const token = options.token ?? (process.env[STUDIO_TOKEN_ENV] || mintStudioToken());

@@ -59,6 +59,8 @@ export interface AgentRunStatusPayload {
   result?: unknown;
   /** `<provider>/<model>` the latest run actually used (e.g. `openai/gpt-4o-mini`, `mock/mock-1`). */
   provider?: string;
+  /** Trace id (root span id) of the latest run, once its first span started - the top bar's "Open trace" link. */
+  traceId?: string;
   updatedAt: string;
 }
 

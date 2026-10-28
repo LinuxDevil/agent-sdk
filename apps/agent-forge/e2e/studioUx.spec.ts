@@ -32,6 +32,8 @@ test('a new agent is named what you typed; a finished run says done and labels i
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.locator('.topbar [role="status"]')).toContainText('done', { timeout: 15_000 });
   await expect(page.locator('.topbar [role="status"]')).not.toContainText('stopped');
+  // The finished run links to its trace (builder runs report to the observe daemon).
+  await expect(page.getByRole('link', { name: 'Open trace' })).toHaveAttribute('href', /^#\/traces\/[^/]+$/);
 
   const runBubble = page.locator('.chat-msg.run-input');
   await expect(runBubble).toBeVisible();
@@ -87,6 +89,11 @@ test('the Output node is drawn once and the minimap shows the graph', async ({ p
   const id = `ux-minimap-${Date.now()}`;
   await page.goto(`/?token=${TOKEN}`);
   await createAgent(page, id);
+
+  // Node cards: the LLM node shows its provider/model chip and an idle status before any run.
+  const llm = page.locator('[data-node-type="llm"]');
+  await expect(llm.locator('.node-model')).toHaveText('mock/mock-1');
+  await expect(llm.locator('.status-pill')).toHaveText('idle');
 
   // React Flow's built-in `output` type used to add its own border/padding box around ours.
   await expect(page.locator('.react-flow__node-output')).toHaveCount(0);

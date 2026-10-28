@@ -28,6 +28,8 @@ import {
   renameNode,
 } from '../canvas/graphMutations';
 import { autoLayout } from '../canvas/layout';
+import { EmptyCanvas } from '../canvas/EmptyCanvas';
+import { nodeRunStatuses, type NodeRunStatus } from '../canvas/nodeStatus';
 import { isEdgeTypeAllowed } from '../graph/connectionRules';
 import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { pickHookTemplate } from '../canvas/paletteActions';
@@ -68,14 +70,19 @@ export function applyDimensionChanges(prev: MeasuredSizes, changes: NodeChange[]
   return next;
 }
 
-function toRfNodes(
-  graph: AgentGraphSpec,
-  selectedNodeId: string | undefined,
-  onRename: (id: string, label: string) => void,
-  highlightedNodeId: string | undefined,
-  breakpoints: string[],
-  measured: MeasuredSizes = {}
-): Node<AgentNodeData>[] {
+/** What each card shows beyond its own graph node: selection, highlight, breakpoints and run status. */
+interface NodeDecor {
+  selectedNodeId: string | undefined;
+  onRename: (id: string, label: string) => void;
+  highlightedNodeId: string | undefined;
+  breakpoints: string[];
+  statuses: Record<string, NodeRunStatus>;
+}
+
+function toRfNodes(graph: AgentGraphSpec, decor: NodeDecor, measured: MeasuredSizes = {}): Node<AgentNodeData>[] {
+  const { selectedNodeId, onRename, highlightedNodeId, breakpoints, statuses } = decor;
+  // An agent's tools are all its tool nodes (graphToSpec.ts's flat `tools` list).
+  const toolCount = graph.nodes.filter((n) => n.type === 'tool').length;
   return graph.nodes.map((n) => ({
     id: n.id,
     type: flowNodeType(n.type),
@@ -87,6 +94,8 @@ function toRfNodes(
       onRename,
       highlighted: n.id === highlightedNodeId,
       hasBreakpoint: hasBreakpointOn(n, breakpoints),
+      toolCount: n.type === 'llm' ? toolCount : undefined,
+      status: statuses[n.id],
     },
   }));
 }
@@ -357,7 +366,7 @@ function CanvasToolbar({
  * state, so there is nowhere for the two to drift apart.
  */
 function CanvasInner() {
-  const { graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeId, debugState } = useAppState();
+  const { graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeId, debugState, spans, runStatus } = useAppState();
   const { connectError, flashError } = useConnectError();
 
   const onRename = useCallback(
@@ -370,9 +379,10 @@ function CanvasInner() {
   const breakpoints = debugState?.breakpoints ?? [];
   const breakpointsKey = breakpoints.join(',');
   const [measured, setMeasured] = useState<MeasuredSizes>({});
+  const statuses = useMemo(() => nodeRunStatuses(graph, spans, runStatus), [graph, spans, runStatus]);
   const nodes = useMemo(
-    () => toRfNodes(graph, selectedNodeId, onRename, highlightedNodeId, breakpoints, measured),
-    [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey, measured]
+    () => toRfNodes(graph, { selectedNodeId, onRename, highlightedNodeId, breakpoints, statuses }, measured),
+    [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey, statuses, measured]
   );
   const edges = useMemo(() => toRfEdges(graph), [graph]);
 
@@ -390,6 +400,7 @@ function CanvasInner() {
         onFitView={handleFitView}
         onDuplicate={handleDuplicate}
       />
+      <EmptyCanvas />
       {connectError && (
         <div className="canvas-connect-error" role="alert">
           {connectError}

@@ -1,12 +1,15 @@
 import { memo, useState, type KeyboardEvent } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import type { AgentGraphNode, AgentGraphNodeType } from '../graph/types';
+import { StatusPill } from '../ui/StatusPill';
 
 /**
  * Custom ReactFlow node renderer for every `AgentGraphNodeType`, styled to
  * match `.design-ref/agent-forge-mockup.html`'s `.node` chrome: a colored
- * type-swatch header, a body of key/value config rows read straight from
- * the node's `AgentGraphSpec` data (nothing hardcoded per-node), and
+ * type-swatch header with the node's name, a meta line (an LLM node's
+ * `provider/model` chip and tool count, and the node's run status pill), a
+ * body of key/value config rows read straight from the node's
+ * `AgentGraphSpec` data (nothing hardcoded per-node), and
  * left/right ports drawn with ReactFlow's own `<Handle>` so pipeline
  * connections attach to a real, draggable anchor rather than a picture of
  * one.
@@ -42,10 +45,8 @@ function orUnset(value: string | undefined): string {
 
 const ROW_BUILDERS: { [T in AgentGraphNodeType]: RowBuilder<T> } = {
   trigger: (node) => [{ k: 'type', v: orUnset(node.data.trigger.type) }],
-  llm: (node) => [
-    { k: 'provider', v: orUnset(node.data.provider.type) },
-    { k: 'model', v: orUnset(node.data.provider.model) },
-  ],
+  // The provider/model is the card's model chip instead.
+  llm: () => [],
   tool: (node) => [{ k: 'tool', v: orUnset(node.data.toolName) }],
   approval: (node) => [{ k: 'requiresApproval', v: node.data.policy.requiresApproval ? 'yes' : 'no' }],
   output: () => [],
@@ -64,6 +65,10 @@ export interface AgentNodeData extends Record<string, unknown> {
   highlighted?: boolean;
   /** True when this node has an active breakpoint set. */
   hasBreakpoint?: boolean;
+  /** Tools the agent can call, shown on its LLM node (omitted or 0: no count). */
+  toolCount?: number;
+  /** This node's status in the current run (see nodeStatus.ts); omitted reads idle. */
+  status?: string;
 }
 
 /**
@@ -155,8 +160,30 @@ function NodeTitle({ label, rename }: { label: string; rename: RenameDraft }) {
   );
 }
 
+/** `provider/model` for an LLM node, else nothing. */
+function modelChipOf(graphNode: AgentGraphNode): string | undefined {
+  if (graphNode.type !== 'llm') return undefined;
+  return `${orUnset(graphNode.data.provider.type)}/${orUnset(graphNode.data.provider.model)}`;
+}
+
+function NodeMeta({ graphNode, toolCount = 0, status }: Pick<AgentNodeData, 'graphNode' | 'toolCount' | 'status'>) {
+  const model = modelChipOf(graphNode);
+  return (
+    <div className="rf-node-meta">
+      {model && (
+        <code className="node-chip node-model" title="Provider/model">
+          {model}
+        </code>
+      )}
+      {toolCount > 0 && <span className="node-chip node-tools">{toolCount === 1 ? '1 tool' : `${toolCount} tools`}</span>}
+      <span className="rf-node-meta-spacer" />
+      <StatusPill status={status ?? 'idle'} />
+    </div>
+  );
+}
+
 function AgentNodeImpl({ data, selected }: NodeProps) {
-  const { graphNode, onRename, highlighted, hasBreakpoint } = data as unknown as AgentNodeData;
+  const { graphNode, onRename, highlighted, hasBreakpoint, toolCount, status } = data as unknown as AgentNodeData;
   const meta = NODE_META[graphNode.type];
   const rename = useRenameDraft(graphNode, onRename);
   const rows = rowsFor(graphNode);
@@ -170,13 +197,14 @@ function AgentNodeImpl({ data, selected }: NodeProps) {
       {meta.hasIn && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {meta.hasOut && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
       <HookBadges graphNode={graphNode} />
-      <div className="rf-node-head" style={rows.length > 0 ? { borderBottom: '1px solid var(--border)' } : undefined}>
+      <div className="rf-node-head">
         <span className="node-swatch" style={{ background: meta.color, width: 16, height: 16, borderRadius: 5 }}>
           {meta.icon}
         </span>
         <NodeTitle label={graphNode.label} rename={rename} />
       </div>
-      {/* No empty body box under a node with nothing to show (output, router). */}
+      <NodeMeta graphNode={graphNode} toolCount={toolCount} status={status} />
+      {/* No empty body box under a node with nothing to show (llm, output, router). */}
       {rows.length > 0 && (
         <div className="rf-node-body">
           {rows.map((row) => (
