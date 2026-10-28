@@ -14483,10 +14483,10 @@ Retention never deletes datasets or examples. An example keeps its
 
 An evaluator rule says which new traces to score and how. A `code` rule holds
 the source of a function `(trace) => number | { value, comment }`, and a
-`judge` rule holds a model and a rubric to grade by. The daemon only stores
-rules for now: it does not compile a `source` or call a model yet. Running
-rules on new traces comes separately. The routes take the same token as
-ingest:
+`judge` rule holds a model and a rubric to grade by. The daemon runs `code`
+rules on new traces (see [Online evaluators](#online-evaluators)); `judge`
+rules are stored here and run through Agent Forge. The routes take the same
+token as ingest:
 
 | Route | Answer |
 | --- | --- |
@@ -14511,6 +14511,54 @@ An unknown field, an unknown `kind` or a `config` that does not match the
 `kind` is a `400` with code `LOUSHO_REQUEST_INVALID`. An unknown rule is a
 `404` with the same code. `updated_at` moves on every `PUT`. The body may be up
 to 128 KiB. Retention never deletes rules.
+
+### Online evaluators
+
+When a trace's root observation ends, the daemon runs every enabled `code`
+rule whose `filter` matches the root (`agent_id`, `status`, and
+`name_contains` on its name). A rule runs when `Math.random() < sample_rate`,
+so `0` never runs and `1` always does. Each run writes one score with
+`source: "online"`, `name` = the rule's name, the root's `agent_id`, and no
+`obs_id`. A trace that already has an online score with that name is not scored
+again.
+
+The rule's `source` runs as `(<source>)(trace)` in the isolate sandbox
+(`sandbox({ driver: 'isolate', timeoutMs: 2000 })`). `trace` is a plain JSON
+object:
+
+```json
+{ "trace_id": "<trace-id>", "agent_id": "<agent-id>", "name": "<root name>",
+  "status": "ok", "start": 0, "end": 0, "duration_ms": 0,
+  "input": "<root input>", "output": "<root output>", "error_message": null,
+  "observations": [] }
+```
+
+`observations` holds the trace's rows, oldest first, capped at 200. The
+function returns a finite number (the score's `value`) or
+`{ "value": <number | null>, "comment"?: "<text>" }` (the comment is cut at
+1000 characters). Anything else scores `value: null` with comment
+`invalid_result`. A run that fails scores `value: null` with the sandbox error
+kind as the comment: `timeout`, `oom`, or `driver`. An error your code throws
+carries no kind, so it reports as `driver`.
+
+The isolate driver needs the optional `isolated-vm` package
+(`npm install isolated-vm`). On Node 20 and later the daemon also needs
+`NODE_OPTIONS=--no-node-snapshot`. Without them, code rules are skipped and
+the daemon warns once.
+
+Rules run off the ingest request, one trace at a time, so ingest stays fast
+even when an evaluator is slow or fails. Up to 1000 traces wait in memory;
+past that, new traces are dropped (and counted). Waiting traces are lost when
+the daemon restarts, so those traces never get online scores.
+
+`POST /api/v1/evaluators/:id/test` `{ "trace_id": "<trace-id>" }` dry-runs a
+rule on one trace and answers `200 { "result": { "value", "comment" } }`. It
+ignores `enabled`, `filter` and `sample_rate`, and it writes no score. An
+unknown rule is a `404`, and so is a trace that does not exist or has no root
+observation. A bad body is a `400`. Dry runs go one at a time: a second
+request waits until the one in flight finishes. A `judge` rule is a
+`409` (`judge evaluators run through Agent Forge`). Without the isolate it
+answers `{ "result": { "value": null, "comment": "isolate_unavailable" } }`.
 
 ### Annotation queues
 

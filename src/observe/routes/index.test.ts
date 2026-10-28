@@ -3,6 +3,7 @@
  * `:param` segments capture one decoded segment, and method, segment count
  * or a literal miss return `undefined`.
  */
+import { startEvaluatorWorker } from '../evaluatorWorker';
 import { describe, expect, it } from 'vitest';
 import { openDb } from '../store';
 import { matchRoute, type RouteContext } from './index';
@@ -48,6 +49,7 @@ describe('GET /api/v1/traces query params', () => {
       void hit.route.handle({
         db,
         dbPath: ':memory:',
+        evaluators: startEvaluatorWorker(db),
         req: {} as RouteContext['req'],
         res,
         params: hit.params,
@@ -102,6 +104,7 @@ describe('sessions API', () => {
     void hit.route.handle({
       db,
       dbPath: ':memory:',
+      evaluators: startEvaluatorWorker(db),
       req: {} as RouteContext['req'],
       res,
       params: hit.params,

@@ -44,8 +44,8 @@ export const OBSERVE_MAX_BATCH_EVENTS = 1000;
 const OBSERVATION_KINDS = ['span', 'generation', 'tool', 'event'] as const;
 export type ObservationKind = (typeof OBSERVATION_KINDS)[number];
 
-/** A score's origin: an eval assertion, an llmJudge verdict, or human feedback. */
-export const SCORE_SOURCES = ['eval', 'judge', 'human'] as const;
+/** A score's origin: an eval assertion, an llmJudge verdict, human feedback, or an online evaluator rule. */
+export const SCORE_SOURCES = ['eval', 'judge', 'human', 'online'] as const;
 
 /** `agent.heartbeat` - one row of the fleet registry, refreshed on the reporter's interval. */
 const agentHeartbeatData = z.object({

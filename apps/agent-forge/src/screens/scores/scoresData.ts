@@ -13,7 +13,7 @@ import type { TimeSeries } from '../../ui/TimeSeriesChart';
 import { formatTimeRange, parseTimeRange, toWindow, type TimeRange } from '../../ui/TimeRangePicker';
 
 /** The score sources the daemon accepts for `source=`. */
-export const SCORE_SOURCES = ['eval', 'judge', 'human'] as const;
+export const SCORE_SOURCES = ['eval', 'judge', 'human', 'online'] as const;
 
 const DEFAULT_RANGE: TimeRange = { preset: '30d' };
 const HOUR = 3_600_000;

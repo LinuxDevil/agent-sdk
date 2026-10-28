@@ -27,6 +27,7 @@ import { OBSERVE_DEFAULT_PORT, OBSERVE_SERVICE } from './envelope';
 import { BodyTooLargeError, matchRoute, sendJson, type RouteContext } from './routes/index';
 import { createAlerter, resolveAlertConfig, type AlertConfig } from './alerts';
 import { startStatusSweep, type StatusSweep } from './sweep';
+import { startEvaluatorWorker, type EvaluatorWorker, type EvaluatorWorkerOptions } from './evaluatorWorker';
 import { openDb, verifyToken } from './store';
 
 /** `~/.lousho/observe.db`. */
@@ -91,6 +92,8 @@ export interface ObserveDaemonOptions {
    * their agent goes down.
    */
   sessionIdleMinutes?: number;
+  /** Seams of the online-evaluator worker (tests inject a fake sandbox); defaults run code rules in the isolate. */
+  evaluators?: EvaluatorWorkerOptions;
 }
 
 /** `lousho observe start`'s default retention window: finished traces older than 30 days are pruned daily. */
@@ -115,6 +118,8 @@ export interface ObserveDaemon {
   alerts: AlertConfig;
   /** The running status sweep (`run()` forces a pass; `stop()` is called by `close()`). */
   sweep: StatusSweep;
+  /** The online-evaluator worker: scores each new trace whose root ends (`stop()` is called by `close()`). */
+  evaluators: EvaluatorWorker;
   close(): Promise<void>;
 }
 
@@ -176,6 +181,7 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
   const alertConfig = resolveAlertConfig(dbPath, options.webhooks ?? []);
   const db = options.db ?? openDb(dbPath);
   const requireToken = options.requireToken === true || !isLoopbackHost(host);
+  const evaluators = startEvaluatorWorker(db, options.evaluators);
 
   const onRequest = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     const { pathname, searchParams } = new URL(req.url ?? '/', 'http://localhost');
@@ -195,6 +201,7 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
       res,
       params: match.params,
       query: searchParams,
+      evaluators,
       readBody(limitBytes: number) {
         bodyRead ??= readBodyCapped(req, limitBytes);
         return bodyRead;
@@ -232,6 +239,7 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
     // A failed bind (EADDRINUSE and friends) must not leak the db handle the
     // daemon opened above - the CLI exits on the error, but tests and embedded
     // callers would keep the WAL lock forever.
+    evaluators.stop();
     if (!options.db) db.close();
     throw error;
   }
@@ -270,9 +278,11 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
     db,
     alerts: alertConfig,
     sweep,
+    evaluators,
     ...(pidPath !== undefined ? { pidPath } : {}),
     close: async () => {
       sweep.stop();
+      evaluators.stop();
       if (pidPath !== undefined) {
         try {
           fs.rmSync(pidPath, { force: true });

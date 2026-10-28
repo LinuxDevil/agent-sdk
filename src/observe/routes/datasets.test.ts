@@ -3,6 +3,7 @@
  * from a trace's root observation), delete examples, and retention leaving
  * datasets alone.
  */
+import { startEvaluatorWorker } from '../evaluatorWorker';
 import { describe, expect, it } from 'vitest';
 import type * as http from 'node:http';
 import type { IngestEvent } from '../envelope';
@@ -43,6 +44,7 @@ async function call(
   await matched.route.handle({
     db: database,
     dbPath: ':memory:',
+    evaluators: startEvaluatorWorker(database),
     req: {} as http.IncomingMessage,
     res,
     params: matched.params,
