@@ -16,6 +16,8 @@ import { scoreAssertion, type EvalResult } from './evalResult';
 import { isJudgeScorer } from './llmJudge';
 import { evalCaseObservation } from './observe';
 import { matchesTagFilter, recordEvalResult } from './recorder';
+import { fetchDatasetCases, type DatasetCase } from './dataset';
+import { observeUrlFromEnv } from '../observe/reporter';
 import { remoteTargetFromEnv } from './remoteTarget';
 import { SDKError } from '../execution/errors';
 import {
@@ -108,6 +110,14 @@ export interface TrajectoryEvalConfig<C = Record<string, never>> extends RepeatC
   tags?: string[];
   /** Dataset: `test` runs once per case. A case's `label` (or `name`, or its `input`) names it in reports. */
   cases?: readonly C[];
+  /**
+   * A dataset in the observe daemon's registry (`LOUSHO_OBSERVE`), by name:
+   * its examples are fetched when vitest collects the file and `test` runs
+   * once per example, each a {@link DatasetCase} labelled `#1`, `#2`, ....
+   * An unreachable daemon, an unknown name or an empty dataset fails the
+   * eval with `LOUSHO_DATASET_UNAVAILABLE`. Not together with `cases`.
+   */
+  dataset?: string;
   /** Judge provider for `t.judge()`. Without it `t.judge()` throws; no LLM is ever called implicitly. */
   judge?: EvalJudgeConfig;
   /**
@@ -231,20 +241,65 @@ const missingAgent: AgentSource = () => {
   throw new SDKError("defineEval() needs an `agent` (or a `target`) to run the cases against", 'LOUSHO_CONFIG_MISSING_AGENT');
 };
 
-function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
-  const { test, expect } = currentVitest();
-  // expect.getState().testPath is only set while a test runs, not at collection.
-  const file = () => currentTestPath(expect);
-  const register = matchesTagFilter(config.tags ?? []) ? test : test.skip;
+/** `test` or `test.skip`: what a case registers with. */
+type Register = (name: string, fn: (context: Vitest.TestContext) => Promise<void>, timeout?: number) => void;
+
+function registerCases(config: TrajectoryEvalConfig<unknown>, cases: readonly unknown[], register: Register, file: () => string | undefined): void {
   const tags = config.tags ?? [];
-  if (config.cases === undefined) {
-    register(config.name, (context) => runTrajectory(config, NO_CASE, { name: config.name, tags }, file(), context), config.timeoutMs);
-    return;
-  }
-  config.cases.forEach((c, index) => {
+  cases.forEach((c, index) => {
     const { label, key } = caseLabel(c, index);
     const ref = { name: config.name, tags, label, key, index };
     register(`${config.name} [${label}]`, (context) => runTrajectory(config, c, ref, file(), context), config.timeoutMs);
+  });
+}
+
+function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
+  if (config.cases !== undefined && config.dataset !== undefined) {
+    throw new SDKError(`defineEval({ name: '${config.name}' }) takes \`cases\` or \`dataset\`, not both`, 'LOUSHO_EVALS_INVALID');
+  }
+  const vitest = currentVitest();
+  // expect.getState().testPath is only set while a test runs, not at collection.
+  const file = () => currentTestPath(vitest.expect);
+  const selected = matchesTagFilter(config.tags ?? []);
+  const register = selected ? vitest.test : vitest.test.skip;
+  if (config.dataset !== undefined) {
+    // A tag-filtered-out dataset eval needs no daemon: one skipped test, no fetch.
+    if (selected) defineDatasetEval(config, config.dataset, vitest, file);
+    else register(config.name, () => undefined);
+    return;
+  }
+  if (config.cases === undefined) {
+    register(config.name, (context) => runTrajectory(config, NO_CASE, { name: config.name, tags: config.tags ?? [] }, file(), context), config.timeoutMs);
+    return;
+  }
+  registerCases(config, config.cases, register, file);
+}
+
+/**
+ * Registers a `dataset` eval's cases inside an async suite: vitest awaits the
+ * factory at collection, so each daemon example becomes its own test. The
+ * daemon URL and token are read when `defineEval()` is called. A failed fetch
+ * registers one failing test (and a failed result row for `lousho eval`),
+ * never zero tests.
+ */
+function defineDatasetEval(config: TrajectoryEvalConfig<unknown>, dataset: string, vitest: VitestApi, file: () => string | undefined): void {
+  const source = {
+    url: observeUrlFromEnv(),
+    ...(process.env.LOUSHO_OBSERVE_TOKEN ? { token: process.env.LOUSHO_OBSERVE_TOKEN } : {}),
+  };
+  vitest.describe(config.name, async () => {
+    let cases: DatasetCase[];
+    try {
+      cases = await fetchDatasetCases(dataset, source);
+    } catch (error) {
+      vitest.test(config.name, () => {
+        const message = error instanceof Error ? error.message : String(error);
+        recordEvalResult({ name: config.name, tags: config.tags ?? [], passed: false, assertions: [], durationMs: 0, steps: 0, toolCalls: [], error: message, file: file() });
+        throw error;
+      });
+      return;
+    }
+    registerCases(config, cases, vitest.test, file);
   });
 }
 
@@ -261,12 +316,14 @@ function defineTrajectoryEval(config: TrajectoryEvalConfig<unknown>): void {
  * exactly the instance the running test file registers with; with vitest
  * `globals` enabled, the global test/expect are used as a fallback.
  */
-function currentVitest(): Pick<typeof Vitest, 'test' | 'expect'> {
+type VitestApi = Pick<typeof Vitest, 'test' | 'expect' | 'describe'>;
+
+function currentVitest(): VitestApi {
   const g = globalThis as Record<string, unknown>;
   const api = g.__vitest_index__ as typeof Vitest | undefined;
   if (api && typeof api.test === 'function') return api;
   if (typeof g.test === 'function' && typeof g.expect === 'function') {
-    return { test: g.test as typeof Vitest.test, expect: g.expect as typeof Vitest.expect };
+    return { test: g.test as typeof Vitest.test, expect: g.expect as typeof Vitest.expect, describe: g.describe as typeof Vitest.describe };
   }
   throw new SDKError('defineEval() must be called from a test file running under vitest', 'LOUSHO_EVALS_INVALID');
 }
@@ -323,6 +380,8 @@ function defineClassicEval(config: EvalConfig): void {
  *   `score >= threshold`.
  * - Trajectory: `{ name, agent, cases?, test(t, c) }` drives a
  *   `createAgent()` agent and asserts on its tool calls, steps and reply.
+ *   `{ dataset: 'name' }` in place of `cases` runs it over a dataset stored in
+ *   the observe daemon (`LOUSHO_OBSERVE`), one {@link DatasetCase} per example.
  *
  * Run evals with `lousho eval` for a summary table and JUnit/JSON reports.
  *
@@ -340,6 +399,7 @@ function defineClassicEval(config: EvalConfig): void {
  * ```
  */
 export function defineEval(config: EvalConfig): void;
+export function defineEval(config: TrajectoryEvalConfig<DatasetCase> & { dataset: string; cases?: undefined }): void;
 export function defineEval<C = Record<string, never>>(config: TrajectoryEvalConfig<C>): void;
 export function defineEval(config: EvalConfig | TrajectoryEvalConfig<unknown>): void {
   if ('test' in config) defineTrajectoryEval(config);
