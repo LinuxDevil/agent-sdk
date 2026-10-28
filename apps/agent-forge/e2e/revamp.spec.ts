@@ -125,6 +125,8 @@ const FILTERS: Record<ScreenId, string> = {
   scores: '?eval=e2e-eval&agent=orders-bot&source=eval&range=7d&open=e2e-eval',
   // The only URL state Datasets keeps is the server-side page (`offset`).
   datasets: '?offset=50',
+  // Queues pages server-side the same way (`?offset=`).
+  queues: '?offset=50',
   evals: '',
   prompts: '?diff=1,2',
   hub: '?agent=triage-bot&scope=fleet',
@@ -195,6 +197,9 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
   '/evals/datasets/:name': async (main) => {
     await expectPreviousPage(main);
   },
+  '/evals/queues': async (main) => {
+    await expectPreviousPage(main);
+  },
   '/prompts/:name': async (main) => {
     await expect(main.getByRole('combobox', { name: 'Compare version A' })).toHaveValue('1');
     await expect(main.getByRole('combobox', { name: 'Compare version B' })).toHaveValue('2');
@@ -218,6 +223,7 @@ const NO_CONTROLS = new Set([
   '/threads/:sessionId', // a thread's turns; the list's filters only ride along in the URL
   '/evals/:section', // evaluators / annotation placeholder screen
   '/evals/:section/:id', // evaluators / annotation placeholder screen
+  '/evals/queues/:id', // one queue's review pane; no URL-backed controls beyond the id
   '/prompts', // the registry list has no filters
   '/settings', // no URL state
 ]);

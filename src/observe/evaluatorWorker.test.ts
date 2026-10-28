@@ -7,7 +7,7 @@
 import { createRequire } from 'node:module';
 import type * as http from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createEvaluatorRule, type EvaluatorRuleFields } from './evaluators';
+import { createEvaluatorRule, deleteEvaluatorRule, updateEvaluatorRule, type EvaluatorRuleFields } from './evaluators';
 import {
   rootsEndedIn,
   startEvaluatorWorker,
@@ -159,7 +159,7 @@ describe('evaluator worker', () => {
     }
   });
 
-  it('ignores child ends, open roots, disabled rules, judge rules and sample_rate 0', async () => {
+  it('ignores child ends, open roots, disabled rules and sample_rate 0; never runs a judge rule itself', async () => {
     const h = harness();
     createEvaluatorRule(h.db, codeRule({ name: 'off', enabled: false }));
     createEvaluatorRule(h.db, codeRule({ name: 'never', sample_rate: 0 }));
@@ -168,7 +168,7 @@ describe('evaluator worker', () => {
     await ingestAndWait(h, [rootEnd('t1')]);
     expect(h.runs).toEqual([]);
     expect(onlineScores(h.db, 't1')).toEqual([]);
-    expect(h.worker.stats()).toMatchObject({ ran: 0, skipped: 0 });
+    expect(h.worker.stats()).toMatchObject({ ran: 0, skipped: 0, judge_queued: 1 });
   });
 
   it('samples with random() < sample_rate', async () => {
@@ -278,6 +278,112 @@ describe('evaluator worker', () => {
     expect(h.worker.stats()).toMatchObject({ queued: 0, ran: 0 });
     h.worker.notifyRootsEnded(['t2']);
     expect(h.worker.stats().queued).toBe(0);
+  });
+});
+
+const judgeRule = (over: Partial<EvaluatorRuleFields> = {}): EvaluatorRuleFields =>
+  ({ name: 'helpful', enabled: true, filter: {}, sample_rate: 1, kind: 'judge', config: { model: 'mock', rubric: 'Is it helpful?' }, ...over }) as EvaluatorRuleFields;
+
+describe('judge jobs', () => {
+  /** A harness whose judge leases run on a clock the test moves. */
+  function judgeHarness(opts: EvaluatorWorkerOptions = {}): Harness & { clock: { now: number } } {
+    const clock = { now: T0 };
+    return { ...harness(() => 1, { now: () => clock.now, ...opts }), clock };
+  }
+
+  it('a matching judge rule queues one job and writes no score until a result', async () => {
+    const h = judgeHarness();
+    const rule = createEvaluatorRule(h.db, judgeRule({ filter: { agent_id: 'support' } }));
+    createEvaluatorRule(h.db, judgeRule({ name: 'other-agent', filter: { agent_id: 'billing' } }));
+    await ingestAndWait(h, [rootEnd('t1'), child('t1')]);
+    // The same root ending again does not queue a second job.
+    await ingestAndWait(h, [rootEnd('t1')]);
+    expect(h.runs).toEqual([]);
+    expect(onlineScores(h.db, 't1')).toEqual([]);
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 1, judge_leased: 0, ran: 0 });
+
+    const [job, ...rest] = h.worker.claimJudgeJobs(5, 60_000);
+    expect(rest).toEqual([]);
+    expect(job.rule).toEqual(rule);
+    expect(job.trace).toMatchObject({ trace_id: 't1', agent_id: 'support', status: 'ok', input: 'hi', output: 'hello', error_message: 'lookup failed' });
+    expect(job.trace.observations).toHaveLength(2);
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 0, judge_leased: 1 });
+    // Leased, so still deduped.
+    await ingestAndWait(h, [rootEnd('t1')]);
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 0, judge_leased: 1 });
+
+    const scoreId = h.worker.completeJudgeJob(job.job_id, { value: 0.8, comment: 'clear answer' });
+    expect(typeof scoreId).toBe('string');
+    expect(onlineScores(h.db, 't1')).toEqual([
+      expect.objectContaining({ score_id: scoreId, name: 'helpful', value: 0.8, comment: 'clear answer', source: 'online', agent_id: 'support' }),
+    ]);
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 0, judge_leased: 0, judge_scored: 1 });
+    // Scored now: a new root end queues nothing, and the job is gone.
+    await ingestAndWait(h, [rootEnd('t1')]);
+    expect(h.worker.stats().judge_queued).toBe(0);
+    expect(h.worker.completeJudgeJob(job.job_id, { value: 1, comment: null })).toBeUndefined();
+  });
+
+  it('an expired lease goes back to the front of the queue and its late result is refused', async () => {
+    const h = judgeHarness();
+    createEvaluatorRule(h.db, judgeRule());
+    await ingestAndWait(h, [rootEnd('t1'), rootEnd('t2')]);
+    await ingestAndWait(h, [rootEnd('t3')]);
+    const first = h.worker.claimJudgeJobs(1, 1000);
+    expect(first.map((j) => j.trace.trace_id)).toEqual(['t1']);
+    h.clock.now += 500;
+    expect(h.worker.claimJudgeJobs(1, 1000).map((j) => j.trace.trace_id)).toEqual(['t2']);
+    h.clock.now += 600; // t1's lease is over, t2's is not
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 2, judge_leased: 1 });
+    expect(h.worker.completeJudgeJob(first[0].job_id, { value: 1, comment: null })).toBeUndefined();
+    const again = h.worker.claimJudgeJobs(5, 1000);
+    expect(again.map((j) => j.trace.trace_id)).toEqual(['t1', 't3']);
+    expect(again[0].job_id).toBe(first[0].job_id);
+    expect(h.worker.completeJudgeJob(first[0].job_id, { value: null, comment: 'invalid_judge_output' })).toEqual(expect.any(String));
+    expect(onlineScores(h.db, 't1')).toEqual([expect.objectContaining({ value: null, comment: 'invalid_judge_output' })]);
+  });
+
+  it('drops and counts a job past maxJudgeJobs (pending + leased)', async () => {
+    const h = judgeHarness({ maxJudgeJobs: 2 });
+    createEvaluatorRule(h.db, judgeRule());
+    await ingestAndWait(h, [rootEnd('t1')]);
+    h.worker.claimJudgeJobs(1, 60_000);
+    await ingestAndWait(h, [rootEnd('t2'), rootEnd('t3')]);
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 1, judge_leased: 1, judge_dropped: 1 });
+  });
+
+  it('holds 500 jobs by default: the 501st drops and counts', async () => {
+    const h = judgeHarness();
+    createEvaluatorRule(h.db, judgeRule());
+    await ingestAndWait(h, Array.from({ length: 501 }, (_, i) => rootEnd(`t${i}`)));
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 500, judge_dropped: 1 });
+  });
+
+  it('discards a job at claim time whose rule was deleted, disabled or switched to code', async () => {
+    const h = judgeHarness();
+    const gone = createEvaluatorRule(h.db, judgeRule({ name: 'gone' }));
+    const off = createEvaluatorRule(h.db, judgeRule({ name: 'off' }));
+    const switched = createEvaluatorRule(h.db, judgeRule({ name: 'switched' }));
+    const kept = createEvaluatorRule(h.db, judgeRule({ name: 'kept' }));
+    await ingestAndWait(h, [rootEnd('t1')]);
+    expect(h.worker.stats().judge_queued).toBe(4);
+    deleteEvaluatorRule(h.db, gone?.rule_id ?? '');
+    updateEvaluatorRule(h.db, off?.rule_id ?? '', judgeRule({ name: 'off', enabled: false }));
+    updateEvaluatorRule(h.db, switched?.rule_id ?? '', codeRule({ name: 'switched' }));
+    const jobs = h.worker.claimJudgeJobs(5, 60_000);
+    expect(jobs.map((j) => j.rule.rule_id)).toEqual([kept?.rule_id]);
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 0, judge_leased: 1, judge_discarded: 3 });
+  });
+
+  it('stop() clears judge jobs and refuses claims and results', async () => {
+    const h = judgeHarness();
+    createEvaluatorRule(h.db, judgeRule());
+    await ingestAndWait(h, [rootEnd('t1'), rootEnd('t2')]);
+    const [job] = h.worker.claimJudgeJobs(1, 60_000);
+    h.worker.stop();
+    expect(h.worker.claimJudgeJobs(5, 60_000)).toEqual([]);
+    expect(h.worker.completeJudgeJob(job.job_id, { value: 1, comment: null })).toBeUndefined();
+    expect(h.worker.stats()).toMatchObject({ judge_queued: 0, judge_leased: 0 });
   });
 });
 

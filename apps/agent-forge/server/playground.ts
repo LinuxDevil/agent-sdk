@@ -88,7 +88,7 @@ export function substituteVariables(content: string, variables: Record<string, s
 }
 
 /** `provider/model` split at the first `/`; a bare `mock` names the provider alone. */
-function providerOf(model: string): AgentSpec['provider'] {
+export function providerOf(model: string): AgentSpec['provider'] {
   const slash = model.indexOf('/');
   return slash === -1 ? { type: model.trim(), model: '' } : { type: model.slice(0, slash).trim(), model: model.slice(slash + 1).trim() };
 }

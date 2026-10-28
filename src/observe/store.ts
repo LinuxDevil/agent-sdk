@@ -937,28 +937,51 @@ export function listTraces(db: SqlDatabase, filter: TraceFilter): { traces: Trac
   return { traces: rows.map(traceRow), total };
 }
 
+/** One observation (span) as the daemon stores and serves it (`GET /api/v1/traces/:id`'s `observations`). */
 export interface ObservationRow {
+  /** The observation (span) id. */
   obs_id: string;
+  /** The trace it belongs to. */
   trace_id: string;
+  /** The reporting session, when known. */
   session_id: string | null;
+  /** The agent that reported it. */
   agent_id: string | null;
+  /** The parent observation; `null` for a root. */
   parent_obs_id: string | null;
+  /** `span`, `generation`, `tool`, ... */
   kind: string;
+  /** The span name (e.g. `invoke_agent <agent>`). */
   name: string | null;
+  /** Start, epoch ms. */
   start: number;
+  /** End, epoch ms; `null` while open. */
   end: number | null;
+  /** `ok`, `error`, `interrupted`, ...; `null` while open. */
   status: string | null;
+  /** Captured input text, when content capture is on. */
   input: string | null;
+  /** Captured output text, when content capture is on. */
   output: string | null;
+  /** The model a generation called. */
   model: string | null;
+  /** Input tokens of a generation. */
   usage_input_tokens: number | null;
+  /** Output tokens of a generation. */
   usage_output_tokens: number | null;
+  /** Cached input tokens of a generation. */
   usage_cached_tokens: number | null;
+  /** Reasoning tokens of a generation. */
   usage_reasoning_tokens: number | null;
+  /** Cost in USD, when priced. */
   cost_usd: number | null;
+  /** The cost misses some priced parts. */
   cost_partial: boolean | null;
+  /** The token counts are estimates. */
   usage_estimated: boolean | null;
+  /** Some content was cut to fit the size caps. */
   truncated: boolean;
+  /** The remaining span attributes. */
   attrs: Record<string, unknown> | null;
 }
 

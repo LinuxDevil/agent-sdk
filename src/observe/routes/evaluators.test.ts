@@ -294,3 +294,89 @@ describe('POST /api/v1/evaluators/:id/test', () => {
     });
   });
 });
+
+describe('judge-job routes', () => {
+  /** A worker with one queued judge job for trace t1. */
+  async function queued(database: SqlDatabase, clock: { now: number }): Promise<EvaluatorWorker> {
+    ingestBatch(database, [
+      {
+        type: 'observation',
+        data: { obs_id: 'root', trace_id: 't1', agent_id: 'ag', kind: 'span', name: 'invoke_agent a', start: 1, end: 11, status: 'ok' },
+      },
+    ]);
+    await create(database, judgeRule);
+    const worker = startEvaluatorWorker(database, { isolateAvailable: () => true, now: () => clock.now });
+    worker.notifyRootsEnded(['t1']);
+    await worker.idle();
+    return worker;
+  }
+
+  it('route order: judge-jobs never reads as a rule id', () => {
+    expect(matchRoute('POST', '/api/v1/evaluators/judge-jobs/claim')?.route.path).toBe('/api/v1/evaluators/judge-jobs/claim');
+    expect(matchRoute('POST', '/api/v1/evaluators/judge-jobs/j1/result')?.params).toEqual({ job_id: 'j1' });
+  });
+
+  it('claims with defaults (empty body), posts a result as an online score, then 404s the spent job', async () => {
+    await withDb(async (database) => {
+      const clock = { now: 1000 };
+      const worker = await queued(database, clock);
+      const claimed = await call(database, 'POST', '/api/v1/evaluators/judge-jobs/claim', '', worker);
+      expect(claimed.status).toBe(200);
+      const jobs = (claimed.body as { jobs: Array<{ job_id: string; rule: EvaluatorRuleRow; trace: { trace_id: string } }> }).jobs;
+      expect(jobs).toHaveLength(1);
+      expect(jobs[0].rule).toMatchObject({ name: 'helpful', kind: 'judge' });
+      expect(jobs[0].trace).toMatchObject({ trace_id: 't1', agent_id: 'ag', duration_ms: 10 });
+      // Leased for the default 60 s: nothing more to claim.
+      clock.now += 59_000;
+      expect((await call(database, 'POST', '/api/v1/evaluators/judge-jobs/claim', { max: 20 }, worker)).body).toEqual({ jobs: [] });
+
+      const path = `/api/v1/evaluators/judge-jobs/${jobs[0].job_id}/result`;
+      const posted = await call(database, 'POST', path, { value: 0.8, comment: 'good' }, worker);
+      expect(posted.status).toBe(201);
+      const { score_id } = posted.body as { score_id: string };
+      expect(listScores(database, { trace_id: 't1', source: 'online', limit: 10 }).scores).toEqual([
+        expect.objectContaining({ score_id, name: 'helpful', value: 0.8, comment: 'good' }),
+      ]);
+      const again = await call(database, 'POST', path, { value: 0.8 }, worker);
+      expect(again.status).toBe(404);
+      expect(again.body).toMatchObject(invalid);
+      worker.stop();
+    });
+  });
+
+  it('honours lease_ms: an expired job 404s its result and is claimable again', async () => {
+    await withDb(async (database) => {
+      const clock = { now: 1000 };
+      const worker = await queued(database, clock);
+      const first = (await call(database, 'POST', '/api/v1/evaluators/judge-jobs/claim', { max: 1, lease_ms: 1000 }, worker)).body as {
+        jobs: Array<{ job_id: string }>;
+      };
+      clock.now += 1000;
+      const late = await call(database, 'POST', `/api/v1/evaluators/judge-jobs/${first.jobs[0].job_id}/result`, { value: null }, worker);
+      expect(late.status).toBe(404);
+      const second = (await call(database, 'POST', '/api/v1/evaluators/judge-jobs/claim', {}, worker)).body as { jobs: Array<{ job_id: string }> };
+      expect(second.jobs.map((j) => j.job_id)).toEqual([first.jobs[0].job_id]);
+      worker.stop();
+    });
+  });
+
+  it('400s bad claim and result bodies; 404s an unknown job', async () => {
+    await withDb(async (database) => {
+      const worker = await queued(database, { now: 1000 });
+      const claim = (body: unknown) => call(database, 'POST', '/api/v1/evaluators/judge-jobs/claim', body, worker);
+      for (const body of [{ max: 0 }, { max: 21 }, { max: 1.5 }, { lease_ms: 999 }, { lease_ms: 300_001 }, { other: 1 }, 'nope']) {
+        await expect(claim(body)).rejects.toMatchObject(invalid);
+      }
+      const [job] = worker.claimJudgeJobs(1, 60_000);
+      const result = (body: unknown) => call(database, 'POST', `/api/v1/evaluators/judge-jobs/${job.job_id}/result`, body, worker);
+      for (const body of [{}, { value: 1.01 }, { value: -0.1 }, { value: '0.5' }, { value: 0.5, comment: 'x'.repeat(1001) }, { value: 0.5, extra: 1 }]) {
+        await expect(result(body)).rejects.toMatchObject(invalid);
+      }
+      const unknown = await call(database, 'POST', '/api/v1/evaluators/judge-jobs/nope/result', { value: 1 }, worker);
+      expect(unknown.status).toBe(404);
+      // The leased job survived the bad bodies; a null comment is accepted.
+      expect((await result({ value: 1, comment: null })).status).toBe(201);
+      worker.stop();
+    });
+  });
+});

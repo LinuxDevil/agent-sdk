@@ -16,3 +16,7 @@ export {
   type ObserveExporterOptions,
   type ObserveReporter,
 } from '../observe/reporter';
+// The trace object online evaluators receive, shared with Agent Forge's
+// judge runs (pure: no node builtins).
+export { evaluatorTraceFrom, type EvaluatorTrace } from '../observe/evaluatorTrace';
+export type { ObservationRow } from '../observe/store';

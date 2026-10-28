@@ -13,7 +13,11 @@
  * - `code` rules run their `config.source` as `(source)(trace)` in
  *   `sandbox({ driver: 'isolate', timeoutMs: 2000 })`. Without a loadable
  *   `isolated-vm` (or on Node >= 20 without `--no-node-snapshot`) they are
- *   skipped with one warning per worker. `judge` rules have no runner here.
+ *   skipped with one warning per worker.
+ * - `judge` rules do not run here (the daemon holds no provider keys): a
+ *   match queues a judge job (judgeJobs.ts, bounded at 500) that Agent Forge
+ *   claims, runs with its stored keys, and answers with a result, which the
+ *   worker writes as the same `online` score.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -24,8 +28,10 @@ import { sandbox as realSandbox, sandboxErrorKind, type Sandbox, type SandboxOpt
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import { moduleDir } from '../utils/moduleDir';
 import type { IngestEvent } from './envelope';
-import { listEvaluatorRules, type EvaluatorRuleFilter, type EvaluatorRuleRow } from './evaluators';
-import { ingestBatch, listScores, traceDetail, type ObservationRow } from './store';
+import { getEvaluatorRule, listEvaluatorRules, type EvaluatorRuleFilter, type EvaluatorRuleRow } from './evaluators';
+import { evaluatorTraceFrom, type EvaluatorTrace } from './evaluatorTrace';
+import { createJudgeJobs, type ClaimedJudgeJob, type JudgeJobStats, type JudgeScore } from './judgeJobs';
+import { ingestBatch, listScores, traceDetail } from './store';
 
 /** What one evaluator run produced: the score's value and comment. */
 export interface EvaluatorResult {
@@ -43,6 +49,16 @@ export interface EvaluatorWorkerStats {
   ran: number;
   /** Rule runs skipped because no runner could take them (no isolate). */
   skipped: number;
+  /** Judge jobs waiting for Agent Forge to claim them. */
+  judge_queued: number;
+  /** Judge jobs claimed and not yet answered (lease running). */
+  judge_leased: number;
+  /** Judge jobs dropped because the judge queue (500) was full. */
+  judge_dropped: number;
+  /** Judge jobs discarded at claim time (rule deleted, disabled or no longer `judge`; trace gone). */
+  judge_discarded: number;
+  /** Judge results written as scores. */
+  judge_scored: number;
 }
 
 /** Options of {@link startEvaluatorWorker}; every one is a test seam with a production default. */
@@ -57,6 +73,10 @@ export interface EvaluatorWorkerOptions {
   maxQueue?: number;
   /** Whether the isolate driver can run here; default a cached probe for `isolated-vm`. */
   isolateAvailable?: () => boolean;
+  /** Most judge jobs pending + leased at once; default 500. */
+  maxJudgeJobs?: number;
+  /** The clock judge-job leases run on; default `Date.now`. */
+  now?: () => number;
 }
 
 /** The running worker the daemon owns. */
@@ -73,6 +93,10 @@ export interface EvaluatorWorker {
   /** Resolves once the queue is empty and nothing is running. */
   idle(): Promise<void>;
   stats(): EvaluatorWorkerStats;
+  /** Lease up to `max` judge jobs for `leaseMs` (expired leases requeue first; stale jobs are discarded). */
+  claimJudgeJobs(max: number, leaseMs: number): ClaimedJudgeJob[];
+  /** Write a claimed judge job's result as its score; the score id, or `undefined` for an unknown or expired job. */
+  completeJudgeJob(jobId: string, result: EvaluatorResult): string | undefined;
   /** Drop the queue and stop taking traces; an in-flight run writes nothing. */
   stop(): void;
 }
@@ -82,29 +106,12 @@ const EVALUATOR_QUEUE_DEFAULT = 1000;
 
 /** A code rule's wall-clock cap. */
 const CODE_TIMEOUT_MS = 2000;
-/** Most observations handed to an evaluator (the oldest are kept). */
-const MAX_OBSERVATIONS = 200;
 const MAX_COMMENT = 1000;
 const RULES_PAGE = 1000;
 
 const ISOLATE_WARNING =
   "[lousho observe] code evaluators are skipped: the 'isolate' sandbox needs the optional isolated-vm package " +
   '(npm install isolated-vm) and, on Node >= 20, NODE_OPTIONS=--no-node-snapshot.';
-
-/** What a code evaluator receives. */
-interface EvaluatorTrace {
-  trace_id: string;
-  agent_id: string | null;
-  name: string | null;
-  status: string | null;
-  start: number;
-  end: number | null;
-  duration_ms: number | null;
-  input: string | null;
-  output: string | null;
-  error_message: string | null;
-  observations: ObservationRow[];
-}
 
 /**
  * Whether `isolated-vm` resolves beside the SDK and this process can load it
@@ -126,31 +133,10 @@ function probeIsolate(): boolean {
 let isolateProbe: boolean | undefined;
 const defaultIsolateAvailable = (): boolean => (isolateProbe ??= probeIsolate());
 
-function errorMessageOf(observations: readonly ObservationRow[]): string | null {
-  const failed = observations.find((o) => o.status === 'error' && o.attrs?.error !== undefined && o.attrs.error !== null);
-  if (failed === undefined) return null;
-  const error = failed.attrs?.error;
-  return typeof error === 'string' ? error : JSON.stringify(error);
-}
-
-/** The trace as an evaluator sees it, or `undefined` when it has no root observation. */
+/** The trace as an evaluator sees it, or `undefined` when it does not exist or has no root observation. */
 function evaluatorTrace(db: SqlDatabase, traceId: string): EvaluatorTrace | undefined {
   const detail = traceDetail(db, traceId);
-  const root = detail?.observations.find((o) => o.parent_obs_id === null);
-  if (detail === undefined || root === undefined) return undefined;
-  return {
-    trace_id: traceId,
-    agent_id: root.agent_id,
-    name: root.name,
-    status: root.status,
-    start: root.start,
-    end: root.end,
-    duration_ms: root.end === null ? null : root.end - root.start,
-    input: root.input,
-    output: root.output,
-    error_message: errorMessageOf(detail.observations),
-    observations: detail.observations.slice(0, MAX_OBSERVATIONS),
-  };
+  return detail === undefined ? undefined : evaluatorTraceFrom(traceId, detail.observations);
 }
 
 /** Whether every key the filter sets matches the trace's root. */
@@ -183,6 +169,15 @@ export function rootsEndedIn(batch: readonly IngestEvent[]): string[] {
   return [...ids];
 }
 
+/** The judge queue's counters under their `judge_` stats names. */
+const judgeStats = (stats: JudgeJobStats): Pick<EvaluatorWorkerStats, `judge_${keyof JudgeJobStats}`> => ({
+  judge_queued: stats.queued,
+  judge_leased: stats.leased,
+  judge_dropped: stats.dropped,
+  judge_discarded: stats.discarded,
+  judge_scored: stats.scored,
+});
+
 /** Start the worker over `db`. */
 export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptions = {}): EvaluatorWorker {
   const makeSandbox = opts.sandbox ?? realSandbox;
@@ -208,29 +203,35 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
     }
   };
 
-  /** The runner for a rule's kind; `judge` has none yet (Agent Forge runs those). */
-  const runnerFor = (rule: EvaluatorRuleRow): ((trace: EvaluatorTrace) => Promise<EvaluatorResult>) | undefined =>
-    rule.kind === 'code' ? (trace) => runCode(rule, trace) : undefined;
-
   const alreadyScored = (rule: EvaluatorRuleRow, traceId: string): boolean =>
     listScores(db, { trace_id: traceId, name: rule.name, source: 'online', limit: 1 }).scores.length > 0;
 
-  const writeScore = (rule: EvaluatorRuleRow, trace: EvaluatorTrace, result: EvaluatorResult): void => {
+  const writeScore = (score: JudgeScore): string => {
+    const score_id = randomUUID();
     ingestBatch(db, [
       {
         type: 'score',
         data: {
-          score_id: randomUUID(),
-          trace_id: trace.trace_id,
-          name: rule.name,
-          value: result.value ?? undefined,
+          score_id,
+          trace_id: score.trace_id,
+          name: score.rule_name,
+          value: score.value ?? undefined,
           source: 'online',
-          comment: result.comment ?? undefined,
-          agent_id: trace.agent_id ?? undefined,
+          comment: score.comment ?? undefined,
+          agent_id: score.agent_id ?? undefined,
         },
       },
     ]);
+    return score_id;
   };
+
+  const judgeJobs = createJudgeJobs({
+    getRule: (ruleId) => getEvaluatorRule(db, ruleId),
+    loadTrace: (traceId) => evaluatorTrace(db, traceId),
+    writeScore,
+    now: opts.now,
+    maxJobs: opts.maxJudgeJobs,
+  });
 
   const skipCode = (): void => {
     counts.skipped++;
@@ -240,13 +241,14 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
   };
 
   const evaluateRule = async (rule: EvaluatorRuleRow, trace: EvaluatorTrace): Promise<void> => {
-    const runner = runnerFor(rule);
-    if (runner === undefined || !matchesFilter(rule.filter, trace) || !(random() < rule.sample_rate)) return;
-    if (alreadyScored(rule, trace.trace_id)) return;
+    if (!matchesFilter(rule.filter, trace) || !(random() < rule.sample_rate)) return;
+    if (alreadyScored(rule, trace.trace_id) || judgeJobs.has(rule.rule_id, trace.trace_id)) return;
+    // The daemon cannot run a judge: Agent Forge claims the job (judgeJobs.ts).
+    if (rule.kind === 'judge') return void judgeJobs.enqueue(rule.rule_id, trace.trace_id);
     if (!isolateAvailable()) return skipCode();
-    const result = await runner(trace);
+    const result = await runCode(rule, trace);
     if (stopped) return;
-    writeScore(rule, trace, result);
+    writeScore({ rule_name: rule.name, trace_id: trace.trace_id, agent_id: trace.agent_id, ...result });
     counts.ran++;
   };
 
@@ -294,10 +296,9 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
       const run = dryRuns.then(async (): Promise<EvaluatorResult | undefined> => {
         const trace = evaluatorTrace(db, traceId);
         if (trace === undefined) return undefined;
-        const runner = runnerFor(rule);
-        if (runner === undefined) return { value: null, comment: 'unsupported_kind' };
+        if (rule.kind !== 'code') return { value: null, comment: 'unsupported_kind' };
         if (!isolateAvailable()) return { value: null, comment: 'isolate_unavailable' };
-        return runner(trace);
+        return runCode(rule, trace);
       });
       dryRuns = run.catch(() => undefined);
       return run;
@@ -305,10 +306,13 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
     async idle() {
       while (draining !== undefined) await draining;
     },
-    stats: () => ({ queued: pending.length, ...counts }),
+    stats: () => ({ queued: pending.length, ...counts, ...judgeStats(judgeJobs.stats()) }),
+    claimJudgeJobs: (max, leaseMs) => (stopped ? [] : judgeJobs.claim(max, leaseMs)),
+    completeJudgeJob: (jobId, result) => (stopped ? undefined : judgeJobs.complete(jobId, result)),
     stop() {
       stopped = true;
       pending.length = 0;
+      judgeJobs.clear();
     },
   };
 }

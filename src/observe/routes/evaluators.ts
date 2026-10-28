@@ -1,7 +1,6 @@
 /**
  * Online evaluator rules (LangSmith "online evaluators", the config half):
- * which traces to score and how. Rules are stored only; running them on new
- * traces is a separate piece.
+ * which traces to score and how (evaluatorWorker.ts runs them on new traces).
  *
  * - `GET /api/v1/evaluators?limit&offset&kind&enabled` ->
  *   `{ evaluators, total, limit, offset }`, oldest first (the runner's order).
@@ -14,6 +13,14 @@
  * - `POST /api/v1/evaluators/:id/test` `{ trace_id }` -> `{ result: { value, comment } }`:
  *   a dry run of the rule on one trace, ignoring `enabled`, `filter` and
  *   `sample_rate`; no score is written. A `judge` rule is a 409.
+ *
+ * - `POST /api/v1/evaluators/judge-jobs/claim` `{ max?: 1..20 (5), lease_ms?: 1000..300000 (60000) }`
+ *   -> `{ jobs: [{ job_id, rule, trace }] }` (possibly empty): leases queued
+ *   judge jobs to Agent Forge, which runs them with its provider keys
+ *   (judgeJobs.ts). An expired lease requeues the job.
+ * - `POST /api/v1/evaluators/judge-jobs/:job_id/result` `{ value: number in [0, 1] | null, comment?: string <= 1000 | null }`
+ *   -> `201 { score_id }`, the `online` score; an unknown or expired job is a 404.
+ *   These two sit before the `:id` routes so `judge-jobs` never reads as a rule id.
  *
  * Auth is the daemon's global API-token check; nothing per-route.
  */
@@ -66,6 +73,19 @@ const updateBody = z.object(fieldShape).partial().strict();
 
 const testBody = z.object({ trace_id: nonEmpty }).strict();
 
+const claimBody = z
+  .object({
+    max: z.number().int().min(1).max(20).default(5),
+    lease_ms: z.number().int().min(1000).max(300_000).default(60_000),
+  })
+  .strict();
+
+const resultBody = z
+  .object({ value: z.number().finite().min(0).max(1).nullable(), comment: z.string().max(1000).nullish() })
+  .strict();
+
+const JUDGE_BODY_LIMIT = 16 * 1024;
+
 const configSchemas = {
   code: z.object({ source: z.string().min(1).max(65_536) }).strict(),
   judge: z.object({ model: z.string().min(1).max(200), rubric: z.string().min(1).max(20_000) }).strict(),
@@ -112,7 +132,33 @@ function listFilters(query: URLSearchParams): { kind?: 'code' | 'judge'; enabled
   };
 }
 
+/** Judge-job routes; listed before the `:id` routes. */
+const judgeJobRoutes: readonly Route[] = [
+  {
+    method: 'POST',
+    path: '/api/v1/evaluators/judge-jobs/claim',
+    handle: async ({ res, readBody, evaluators }) => {
+      const text = await readBody(JUDGE_BODY_LIMIT);
+      const { max, lease_ms } = requireJsonBody(claimBody, text.trim() === '' ? '{}' : text, 'judge-job claim');
+      sendJson(res, 200, { jobs: evaluators.claimJudgeJobs(max, lease_ms) });
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/evaluators/judge-jobs/:job_id/result',
+    handle: async ({ res, params, readBody, evaluators }) => {
+      const { value, comment } = requireJsonBody(resultBody, await readBody(JUDGE_BODY_LIMIT), 'judge-job result');
+      const score_id = evaluators.completeJudgeJob(params.job_id, { value, comment: comment ?? null });
+      if (score_id === undefined) {
+        return sendJson(res, 404, { error: `No leased judge job '${params.job_id}' (unknown, or its lease expired).`, code: 'LOUSHO_REQUEST_INVALID' });
+      }
+      sendJson(res, 201, { score_id });
+    },
+  },
+];
+
 export const evaluatorsRoutes: readonly Route[] = [
+  ...judgeJobRoutes,
   {
     method: 'GET',
     path: '/api/v1/evaluators',

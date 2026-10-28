@@ -8,6 +8,24 @@
 export const DEFAULT_TRACE_DIR = ".lousho/traces";
 
 // @public
+export interface EvaluatorTrace {
+    agent_id: string | null;
+    duration_ms: number | null;
+    end: number | null;
+    error_message: string | null;
+    input: string | null;
+    name: string | null;
+    observations: ObservationRow[];
+    output: string | null;
+    start: number;
+    status: string | null;
+    trace_id: string;
+}
+
+// @public
+export function evaluatorTraceFrom(traceId: string, observations: readonly ObservationRow[]): EvaluatorTrace | undefined;
+
+// @public
 export function fanOutExporters(exporters: readonly (TraceExporter | undefined | null)[]): TraceExporter | undefined;
 
 // @public
@@ -25,6 +43,32 @@ export function listTraces(options?: ListTracesOptions): Promise<TraceSummary[]>
 export interface ListTracesOptions {
     dir?: string;
     limit?: number;
+}
+
+// @public
+export interface ObservationRow {
+    agent_id: string | null;
+    attrs: Record<string, unknown> | null;
+    cost_partial: boolean | null;
+    cost_usd: number | null;
+    end: number | null;
+    input: string | null;
+    kind: string;
+    model: string | null;
+    name: string | null;
+    obs_id: string;
+    output: string | null;
+    parent_obs_id: string | null;
+    session_id: string | null;
+    start: number;
+    status: string | null;
+    trace_id: string;
+    truncated: boolean;
+    usage_cached_tokens: number | null;
+    usage_estimated: boolean | null;
+    usage_input_tokens: number | null;
+    usage_output_tokens: number | null;
+    usage_reasoning_tokens: number | null;
 }
 
 // @public

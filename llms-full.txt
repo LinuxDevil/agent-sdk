@@ -14485,7 +14485,7 @@ An evaluator rule says which new traces to score and how. A `code` rule holds
 the source of a function `(trace) => number | { value, comment }`, and a
 `judge` rule holds a model and a rubric to grade by. The daemon runs `code`
 rules on new traces (see [Online evaluators](#online-evaluators)); `judge`
-rules are stored here and run through Agent Forge. The routes take the same
+rules run through Agent Forge (see [Judge rules](#judge-rules-through-agent-forge)). The routes take the same
 token as ingest:
 
 | Route | Answer |
@@ -14559,6 +14559,53 @@ observation. A bad body is a `400`. Dry runs go one at a time: a second
 request waits until the one in flight finishes. A `judge` rule is a
 `409` (`judge evaluators run through Agent Forge`). Without the isolate it
 answers `{ "result": { "value": null, "comment": "isolate_unavailable" } }`.
+
+#### Judge rules (through Agent Forge)
+
+The daemon holds no provider keys, so it cannot run a `judge` rule itself.
+When a `judge` rule matches a new trace (same `filter`, `sample_rate` and
+"already scored" check as code rules), the daemon queues a job for that rule
+and trace. Agent Forge (`lousho studio`) pulls the jobs, runs each judge with
+the provider keys it already has (a key saved in Studio settings wins over the
+provider's env var, as in the playground), and posts the result back. The
+daemon writes it as the same `source: "online"` score. So judges run only
+while Studio is running. Until then the jobs wait.
+
+- At most 500 jobs wait at once (pending plus claimed). Past that, new jobs
+  are dropped and counted. Jobs live in memory, so a daemon restart loses
+  them.
+- The judge is one model call to the rule's `model` (`provider/model`, or
+  `mock`). The system prompt is a fixed grading instruction plus the rule's
+  `rubric`. The user message holds the trace's name, status, input, output and
+  error, each cut at about 8 KB. The model must reply with a JSON object
+  `{ "score": <0..1>, "comment": "<short reason>" }`. Agent Forge reads the
+  first JSON object in the reply. A reply with no valid score scores
+  `value: null` with comment `invalid_judge_output`. A provider error (a
+  missing key, for example) scores `value: null` with comment
+  `judge_error: <message>`.
+- The judge call makes no trace of its own, so it never triggers evaluators.
+
+The two endpoints Agent Forge uses (they take the same token as ingest, which
+Agent Forge sends from `LOUSHO_OBSERVE_TOKEN` when it is set):
+
+| Route | Answer |
+| --- | --- |
+| `POST /api/v1/evaluators/judge-jobs/claim` `{ "max"?: 1..20 (5), "lease_ms"?: 1000..300000 (60000) }` | `200 { "jobs": [{ "job_id", "rule", "trace" }] }` (an empty array when none wait). Each job is leased for `lease_ms`. A lease that runs out puts the job back at the front of the queue. A job whose rule was deleted, disabled or is no longer `judge` is discarded at claim time. `trace` is the same object a code rule receives. |
+| `POST /api/v1/evaluators/judge-jobs/:job_id/result` `{ "value": <0..1 or null>, "comment"?: "<at most 1000 characters>" or null }` | `201 { "score_id" }`, and the job leaves the queue. The score is named after the rule as it was at claim time, so a rule renamed while its job is leased scores under its old name. An unknown job, or one whose lease ran out, is a `404`. A bad body is a `400`. |
+
+Agent Forge claims up to 5 jobs every 2 seconds, with a 60-second lease, and
+runs them one at a time. Each judge call is cut off after 20 seconds, or
+sooner if less of the lease is left (a call cut off scores `value: null` with
+comment `judge_error: timed out after <n> ms`). A claimed job whose lease has
+run out before its turn is not run: it expires and is claimed again later. A
+daemon that is down only pauses the loop, and it logs once per outage. The
+dry run below has the same 20-second cap.
+
+To dry-run a judge rule, use Agent Forge: `POST /observe/api/v1/evaluators/:id/test`
+`{ "trace_id" }` on the Studio server runs the judge on that trace and answers
+`200 { "result": { "value", "comment" } }` without writing a score. For a
+`code` rule it forwards the request to the daemon unchanged. The daemon's own
+`/test` still answers `409` for a judge rule.
 
 ### Annotation queues
 
