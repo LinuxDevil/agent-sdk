@@ -9,7 +9,7 @@ export type ScreenId =
   | 'scores'
   | 'datasets'
   | 'queues'
-  | 'evals'
+  | 'evaluators'
   | 'prompts'
   | 'hub'
   | 'settings';
@@ -40,8 +40,8 @@ export const ROUTES: readonly RouteEntry[] = [
   { pattern: '/evals/datasets/:name', screen: 'datasets', example: '/evals/datasets/e2e-dataset' },
   { pattern: '/evals/queues', screen: 'queues', example: '/evals/queues' },
   { pattern: '/evals/queues/:id', screen: 'queues', example: '/evals/queues/e2e-queue' },
-  { pattern: '/evals/:section', screen: 'evals', example: '/evals/evaluators' },
-  { pattern: '/evals/:section/:id', screen: 'evals', example: '/evals/evaluators/e2e-evaluator' },
+  { pattern: '/evals/evaluators', screen: 'evaluators', example: '/evals/evaluators' },
+  { pattern: '/evals/evaluators/:id', screen: 'evaluators', example: '/evals/evaluators/e2e-evaluator' },
   { pattern: '/prompts', screen: 'prompts', example: '/prompts' },
   { pattern: '/prompts/:name', screen: 'prompts', example: '/prompts/e2e-prompt' },
   { pattern: '/hub', screen: 'hub', example: '/hub' },

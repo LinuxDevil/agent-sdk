@@ -26,23 +26,6 @@
   flex: 1;
   min-height: 0;
 }
-.screen-placeholder {
-  padding: 32px 24px;
-  max-width: 560px;
-  color: var(--text-muted);
-}
-.screen-placeholder h2 {
-  margin: 0 0 8px;
-  font-size: 18px;
-  color: var(--text);
-}
-.screen-placeholder p {
-  margin: 0 0 16px;
-}
-.screen-placeholder a {
-  color: var(--accent);
-}
-
 
 /* ---------- Top bar ---------- */
 .topbar {

@@ -11,7 +11,12 @@
  */
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from '../runtime/studioToken';
 import type {
+  EvaluatorPatch,
+  NewEvaluator,
   ObserveAgentRow,
+  ObserveEvaluator,
+  ObserveEvaluatorList,
+  ObserveEvaluatorTestResult,
   NewHubEntry,
   NewQueueScore,
   ObserveDataset,
@@ -121,7 +126,7 @@ export interface ScoreListFilter {
   /** Eval name: every score named `<eval>` or `<eval>/<check>`. */
   eval?: string;
   agent_id?: string;
-  /** `eval` | `judge` | `human`. */
+  /** `eval` | `judge` | `human` | `online`. */
   source?: string;
   /** `created_at` lower bound (epoch ms). */
   since?: number;
@@ -151,6 +156,12 @@ export interface HubEntryFilter {
 export interface PageQuery {
   limit?: number;
   offset?: number;
+}
+
+/** `GET /api/v1/evaluators` params: a page, optionally only one `kind` or only enabled/disabled rules. */
+export interface EvaluatorListFilter extends PageQuery {
+  kind?: 'code' | 'judge';
+  enabled?: boolean;
 }
 
 /** The body of {@link ObserveClient.addExample}: a literal example, or one copied from a trace's root input/output. */
@@ -418,6 +429,55 @@ export class ObserveClient {
       method: 'POST',
       body: outcome,
     });
+  }
+
+  /** `GET /api/v1/evaluators` - a page of online evaluator rules, oldest first. */
+  listEvaluators(filter: EvaluatorListFilter = {}): Promise<ObserveEvaluatorList> {
+    const { enabled, ...rest } = filter;
+    return this.request('/api/v1/evaluators', { query: { ...rest, enabled: enabled === undefined ? undefined : String(enabled) } });
+  }
+
+  /** `GET /api/v1/evaluators/:id` - one rule; `undefined` on the daemon's 404. */
+  async evaluator(ruleId: string): Promise<ObserveEvaluator | undefined> {
+    try {
+      const body = await this.request<{ evaluator: ObserveEvaluator }>(`/api/v1/evaluators/${encodeURIComponent(ruleId)}`);
+      return body.evaluator;
+    } catch (error) {
+      if (error instanceof ObserveApiError && error.status === 404) return undefined;
+      throw error;
+    }
+  }
+
+  /** `POST /api/v1/evaluators` - a new rule; a taken name is the daemon's 409 (`ObserveApiError`). */
+  async createEvaluator(input: NewEvaluator): Promise<ObserveEvaluator> {
+    const body = await this.request<{ evaluator: ObserveEvaluator }>('/api/v1/evaluators', { method: 'POST', body: input });
+    return body.evaluator;
+  }
+
+  /** `PUT /api/v1/evaluators/:id` - a partial update; renaming onto a taken name is a 409. */
+  async updateEvaluator(ruleId: string, patch: EvaluatorPatch): Promise<ObserveEvaluator> {
+    const body = await this.request<{ evaluator: ObserveEvaluator }>(`/api/v1/evaluators/${encodeURIComponent(ruleId)}`, {
+      method: 'PUT',
+      body: patch,
+    });
+    return body.evaluator;
+  }
+
+  /** `DELETE /api/v1/evaluators/:id` - removes the rule (204); its past scores stay. */
+  async deleteEvaluator(ruleId: string): Promise<void> {
+    await this.request(`/api/v1/evaluators/${encodeURIComponent(ruleId)}`, { method: 'DELETE' });
+  }
+
+  /**
+   * `POST /api/v1/evaluators/:id/test {trace_id}` - a dry run of the rule on one trace (no score written).
+   * Same-origin this is the Studio server's route: it runs a judge rule with Studio's provider keys and forwards a code rule to the daemon.
+   */
+  async testEvaluator(ruleId: string, traceId: string): Promise<ObserveEvaluatorTestResult> {
+    const body = await this.request<{ result: ObserveEvaluatorTestResult }>(`/api/v1/evaluators/${encodeURIComponent(ruleId)}/test`, {
+      method: 'POST',
+      body: { trace_id: traceId },
+    });
+    return body.result;
   }
 
   /** `GET /api/v1/prompts/:name/:ref` (ref = `latest`, a version number or a label); `undefined` on the daemon's 404. */

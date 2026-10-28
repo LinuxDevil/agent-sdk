@@ -21,7 +21,6 @@ vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 
 import { screenFor, useScreen } from '../routes';
 import { ROUTES } from '../routeTable';
-import { Placeholder } from '../Placeholder';
 import { EvalsTabs } from '../evals/EvalsTabs';
 import { Topbar } from '../../components/Topbar';
 
@@ -66,7 +65,8 @@ describe('screenFor', () => {
     expect(screenFor('#/evals/scores')).toBe('scores');
     expect(screenFor('#/evals/datasets')).toBe('datasets');
     expect(screenFor('#/evals/datasets/golden.v1?offset=50')).toBe('datasets');
-    expect(screenFor('#/evals/evaluators')).toBe('evals');
+    expect(screenFor('#/evals/evaluators')).toBe('evaluators');
+    expect(screenFor('#/evals/evaluators/r1?trace=t1')).toBe('evaluators');
     expect(screenFor('#/evals/queues')).toBe('queues');
     expect(screenFor('#/evals/queues/q1')).toBe('queues');
     expect(screenFor('#/playground')).toBe('playground');
@@ -79,6 +79,9 @@ describe('screenFor', () => {
     expect(screenFor('')).toBeNull();
     expect(screenFor('#/')).toBeNull();
     expect(screenFor('#/nope')).toBeNull();
+    // Every Evaluations section has its own screen now; an unknown one is an unknown route.
+    expect(screenFor('#/evals/nope')).toBeNull();
+    expect(screenFor('#/evals/nope/1')).toBeNull();
   });
   it("gives every route an example path that lands on that route's screen", () => {
     for (const { pattern, screen, example } of ROUTES) {
@@ -168,15 +171,6 @@ describe('Topbar', () => {
     act(() => item.click());
     expect(window.location.hash).toBe('#/traces');
     expect(window.location.search).toBe('?token=secret');
-  });
-});
-
-describe('Placeholder', () => {
-  it('shows a title, what is coming, and a link back to Agents', () => {
-    render(<Placeholder title="Playground" blurb="Coming soon." />);
-    expect(container.querySelector('h2')?.textContent).toBe('Playground');
-    expect(container.textContent).toContain('Coming soon.');
-    expect(container.querySelector('a[href="#/agents"]')).not.toBeNull();
   });
 });
 

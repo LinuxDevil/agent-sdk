@@ -13,11 +13,10 @@ import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
 import { DatasetsScreen } from './datasets/DatasetsScreen';
 import { QueuesScreen } from './queues/QueuesScreen';
+import { EvaluatorsScreen } from './evaluators/EvaluatorsScreen';
 import { PlaygroundRoute } from './playground/PlaygroundScreen';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
-import { Placeholder } from './Placeholder';
 import { ROUTES, type ScreenId } from './routeTable';
-import { EvalsTabs } from './evals/EvalsTabs';
 
 /** The screen a hash shows, or `null` for an empty hash / unknown route. */
 export function screenFor(hash: string): ScreenId | null {
@@ -39,10 +38,6 @@ export function useScreen(): ScreenId {
   return screen ?? 'agents';
 }
 
-const PLACEHOLDERS: Partial<Record<ScreenId, { title: string; blurb: string; nav?: ReactNode }>> = {
-  evals: { title: 'Evaluations', blurb: 'Evaluators for scoring runs.', nav: <EvalsTabs /> },
-};
-
 /** `#/traces/:traceId`: the trace id comes from the hash; a new id remounts the screen. */
 function TraceRoute() {
   const { path } = useRoute();
@@ -61,7 +56,7 @@ function ScreenFrame({ children }: { children: ReactNode }) {
   );
 }
 
-/** The screens that render with no props, by id (Agents, the placeholders and Settings are handled in `Screens`). */
+/** The screens that render with no props, by id (Agents and Settings are handled in `Screens`). */
 const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   traces: TracesScreen,
   trace: TraceRoute,
@@ -69,6 +64,7 @@ const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   scores: ScoresScreen,
   datasets: DatasetsScreen,
   queues: QueuesScreen,
+  evaluators: EvaluatorsScreen,
   playground: PlaygroundRoute,
   threads: ThreadsScreen,
   prompts: PromptsScreen,
@@ -81,10 +77,8 @@ export function Screens() {
   if (screen === 'agents') return <AgentsScreen />;
 
   const Screen = SCREENS[screen];
-  const placeholder = PLACEHOLDERS[screen];
   let content: ReactNode;
   if (Screen) content = <Screen />;
-  else if (placeholder) content = <Placeholder {...placeholder} />;
   else
     content = (
       <div className="screen-settings">

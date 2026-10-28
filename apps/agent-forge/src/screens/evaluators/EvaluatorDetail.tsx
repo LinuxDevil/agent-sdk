@@ -1,0 +1,152 @@
+/**
+ * `#/evals/evaluators/:id` - one online evaluator rule: the shared form (a
+ * save sends only the changed fields, `PUT /api/v1/evaluators/:id`), Delete
+ * (after a confirm), and "Test on trace" - a dry run of the rule on one trace
+ * through the Studio server (`POST /observe/api/v1/evaluators/:id/test`,
+ * which runs a judge with Studio's provider keys and forwards a code rule to
+ * the daemon), showing the value and comment; no score is written.
+ * `?trace=` prefills the trace id.
+ */
+import { useState, type FormEvent } from 'react';
+import { navigate } from '../../router/router';
+import { useRoute } from '../../router/useRoute';
+import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
+import { ObserveApiError, observeClient } from '../../observe/observeClient';
+import type { NewEvaluator, ObserveEvaluator, ObserveEvaluatorTestResult } from '../../observe/types';
+import { useAgents, useDaemonDown, useEvaluator } from '../../observe/useObserve';
+import { EmptyState } from '../../ui/EmptyState';
+import { useToast } from '../../ui/Toast';
+import { useProviderKeys } from '../playground/ModelPicker';
+import { draftFrom, evaluatorPatch } from './evaluatorDraft';
+import { EvaluatorForm } from './EvaluatorForm';
+import { evaluatorsPath, parseListState } from './evaluatorsUrl';
+
+/** "Test on trace": a trace id, a Test button, and the dry run's value and comment. */
+function TestOnTrace({ rule, prefill }: { rule: ObserveEvaluator; prefill: string }) {
+  const toast = useToast();
+  const [traceId, setTraceId] = useState(prefill);
+  const [result, setResult] = useState<ObserveEvaluatorTestResult | undefined>();
+  const [notFound, setNotFound] = useState(false);
+  const [running, setRunning] = useState(false);
+
+  const run = async (e: FormEvent) => {
+    e.preventDefault();
+    const id = traceId.trim();
+    if (!id) return;
+    setRunning(true);
+    setResult(undefined);
+    setNotFound(false);
+    try {
+      setResult(await observeClient.testEvaluator(rule.rule_id, id));
+    } catch (failure) {
+      if (failure instanceof ObserveApiError && failure.status === 404) setNotFound(true);
+      else toast.show({ tone: 'error', message: `Test failed: ${(failure as Error).message}` });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <form className="datasets-new" aria-label="Test on trace" onSubmit={(e) => void run(e)}>
+      <h3 className="datasets-section-title">Test on trace</h3>
+      <p className="datasets-note">Runs this rule once on one trace. No score is written.</p>
+      <div className="datasets-new-fields">
+        <label className="datasets-field datasets-field-wide">
+          <span>Trace id</span>
+          <input name="test-trace-id" type="text" value={traceId} onChange={(e) => setTraceId(e.target.value)} />
+        </label>
+        <button type="submit" className="btn" disabled={running || traceId.trim() === ''}>
+          Test
+        </button>
+      </div>
+      {notFound && (
+        <p className="datasets-form-error" role="alert">
+          Trace not found
+        </p>
+      )}
+      {result && (
+        <dl className="evaluators-result" aria-label="Test result">
+          <dt>Value</dt>
+          <dd>{result.value === null ? 'null' : String(result.value)}</dd>
+          <dt>Comment</dt>
+          <dd>{result.comment ?? '-'}</dd>
+        </dl>
+      )}
+    </form>
+  );
+}
+
+/** The edit form, Delete and Test on trace for a loaded rule; a save or delete reports through a toast. */
+function EditRule({ rule, back, onSaved }: { rule: ObserveEvaluator; back: string; onSaved: () => void }) {
+  const toast = useToast();
+  const keys = useProviderKeys();
+  const agents = useAgents();
+  const { query } = useRoute();
+
+  const save = async (body: NewEvaluator) => {
+    const patch = evaluatorPatch(rule, body);
+    if (Object.keys(patch).length === 0) {
+      toast.show({ message: 'No changes to save.' });
+      return false;
+    }
+    await observeClient.updateEvaluator(rule.rule_id, patch);
+    toast.show({ tone: 'success', message: `Saved evaluator ${body.name}.` });
+    onSaved();
+    return false;
+  };
+  const remove = async () => {
+    if (!window.confirm(`Delete evaluator ${rule.name}? Its past scores stay.`)) return;
+    try {
+      await observeClient.deleteEvaluator(rule.rule_id);
+      toast.show({ tone: 'success', message: `Deleted evaluator ${rule.name}.` });
+      navigate(back);
+    } catch (failure) {
+      toast.show({ tone: 'error', message: `Could not delete ${rule.name}: ${(failure as Error).message}` });
+    }
+  };
+
+  return (
+    <>
+      <EvaluatorForm
+        // A save re-reads the rule: a new `updated_at` restarts the form from it.
+        key={rule.updated_at}
+        title="Edit evaluator"
+        initial={draftFrom(rule, keys)}
+        keys={keys}
+        agents={agents.data ?? []}
+        submitLabel="Save changes"
+        onSubmit={save}
+        actions={
+          <button type="button" className="btn btn-ghost" onClick={() => void remove()}>
+            Delete
+          </button>
+        }
+      />
+      <TestOnTrace rule={rule} prefill={query.get('trace') ?? ''} />
+    </>
+  );
+}
+
+/** `#/evals/evaluators/:id`; an unknown rule shows an empty state with the way back. */
+export function EvaluatorDetail({ ruleId }: { ruleId: string }) {
+  const { query } = useRoute();
+  const [refreshKey, setRefreshKey] = useState(0);
+  const rule = useEvaluator(ruleId, refreshKey);
+  const back = evaluatorsPath(parseListState(query));
+  const backLink = <a href={`#${back}`}>All evaluators</a>;
+  if (useDaemonDown(false, [rule])) return <ObserveDaemonDown />;
+  let body;
+  if (rule.loading && !rule.data) body = <p className="datasets-note">Loading evaluator...</p>;
+  else if (rule.error) body = <ObserveError error={rule.error} />;
+  else if (!rule.data) body = <EmptyState title="Evaluator not found" hint={`No evaluator '${ruleId}'.`} action={backLink} />;
+  else body = <EditRule rule={rule.data} back={back} onSaved={() => setRefreshKey((k) => k + 1)} />;
+  return (
+    <>
+      <nav className="datasets-nav" aria-label="Breadcrumb">
+        {backLink}
+      </nav>
+      <h2 className="datasets-title">Evaluator {rule.data ? <code>{rule.data.name}</code> : null}</h2>
+      {body}
+    </>
+  );
+}

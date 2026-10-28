@@ -128,8 +128,8 @@ async function expectNoSeriousAxeViolations(page: Page, label: string) {
 // Every route in the table (new screens are covered automatically): one <main>, one h1,
 // the banner and the primary nav, and an axe scan of the populated (stubbed daemon) state.
 // Plus the deep-link states that render a different view on the same route.
-// The datasets and queues routes scan the stub's dataset and annotation queue fixtures. Placeholder routes (/evals/:section, /evals/:section/:id) scan the Placeholder today; when their real
-// screens land, add their endpoints to e2e/observeStub.ts or they get scanned in a 404/empty state.
+// The datasets, queues and evaluators routes scan the stub's dataset, annotation queue and evaluator fixtures; a new
+// screen's endpoints go in e2e/observeStub.ts too, or it gets scanned in a 404/empty state.
 const SCANS = [
   ...ROUTES.map(({ pattern, example }) => ({ label: pattern, path: example })),
   ...['/traces?status=error', '/traces/e2e-trace?obs=e2e-obs', '/threads?status=active', '/prompts/e2e-prompt?diff=1,2'].map((path) => ({ label: path, path })),

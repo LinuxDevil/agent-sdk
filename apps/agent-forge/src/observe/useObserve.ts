@@ -6,11 +6,13 @@
  * duplicating effect logic.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { observeClient, ObserveDaemonDownError, type HubEntryFilter, type InsightsFilter, type PageQuery, type ScoreListFilter, type SessionListFilter, type TraceListFilter } from './observeClient';
+import { observeClient, ObserveDaemonDownError, type EvaluatorListFilter, type HubEntryFilter, type InsightsFilter, type PageQuery, type ScoreListFilter, type SessionListFilter, type TraceListFilter } from './observeClient';
 import type {
   ObserveAgentRow,
   ObserveDatasetDetail,
   ObserveDatasetList,
+  ObserveEvaluator,
+  ObserveEvaluatorList,
   ObserveQueue,
   ObserveQueueItem,
   ObserveQueueList,
@@ -210,4 +212,19 @@ export function useQueue(queueId: string, refreshKey?: unknown): ObserveQuery<Ob
 /** `GET /api/v1/queues/:id/next` - the queue's next pending item; `undefined` data when the queue is empty. */
 export function useNextQueueItem(queueId: string, refreshKey?: unknown): ObserveQuery<ObserveQueueItem | undefined> {
   return useObserveQuery(() => observeClient.nextQueueItem(queueId), [queueId, refreshKey]);
+}
+
+/** `GET /api/v1/evaluators` - a page of online evaluator rules. */
+export function useEvaluators(filter: EvaluatorListFilter, refreshKey?: unknown): ObserveQuery<ObserveEvaluatorList> {
+  return useObserveQuery(() => observeClient.listEvaluators(filter), [JSON.stringify(filter), refreshKey]);
+}
+
+/** `GET /api/v1/evaluators/:id` - one rule; `data` is `undefined` for an unknown id. */
+export function useEvaluator(ruleId: string, refreshKey?: unknown): ObserveQuery<ObserveEvaluator | undefined> {
+  return useObserveQuery(() => observeClient.evaluator(ruleId), [ruleId, refreshKey]);
+}
+
+/** The newest `limit` online-evaluator scores (`GET /api/v1/scores?source=online`), newest first. */
+export function useOnlineScores(limit: number, refreshKey?: unknown): ObserveQuery<ObserveScoreRow[]> {
+  return useObserveQuery(() => observeClient.listScores({ source: 'online', limit }), [limit, refreshKey]);
 }

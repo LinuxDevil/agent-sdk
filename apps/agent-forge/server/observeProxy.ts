@@ -12,10 +12,11 @@
  * {@link OBSERVE_WRITE_ALLOWLIST} names the method and path - a short list of
  * Studio actions (human feedback scores, moving a prompt label, editing a
  * Context Hub fleet entry, dataset and example writes, annotation queue
- * writes) - with the JSON body
+ * writes, online evaluator rule create/update/delete) - with the JSON body
  * app.ts's `express.json` already parsed, re-serialised and capped at 1 MiB
  * (a DELETE forwards no body, and its 204 passes back empty). Every other non-GET - the ingest endpoint above all - answers 405
- * and stays reporter-only. `/observe` sits in app.ts's API_PREFIXES, so it
+ * and stays reporter-only. (`POST /observe/api/v1/evaluators/:id/test` never
+ * reaches this proxy: app.ts registers judge.ts's route for it first.) `/observe` sits in app.ts's API_PREFIXES, so it
  * carries the same per-launch token requirement as the rest of the studio API.
  */
 import type { Express, Request } from 'express';
@@ -42,6 +43,9 @@ export const OBSERVE_WRITE_ALLOWLIST: readonly ObserveWrite[] = [
   { method: 'POST', path: /^\/api\/v1\/queues$/ },
   { method: 'POST', path: /^\/api\/v1\/queues\/[^/]+\/items$/ },
   { method: 'POST', path: /^\/api\/v1\/queues\/[^/]+\/items\/[^/]+\/complete$/ },
+  { method: 'POST', path: /^\/api\/v1\/evaluators$/ },
+  { method: 'PUT', path: /^\/api\/v1\/evaluators\/[^/]+$/ },
+  { method: 'DELETE', path: /^\/api\/v1\/evaluators\/[^/]+$/ },
 ];
 
 /**
