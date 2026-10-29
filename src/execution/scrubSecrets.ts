@@ -31,7 +31,8 @@ const SECRET_PATTERNS: RegExp[] = [
   // Google API keys.
   /\bAIza[0-9A-Za-z_-]{35}/g,
   // JWTs: base64url header and payload (both `eyJ`, a `{"` object) and a signature.
-  /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
+  // Starts only at the head of a token run: a `\b` start also matched inside `eyJ-eyJ-…`, rescanning the run from each `eyJ` (quadratic).
+  /(?<![A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
 ];
 
 /** `Bearer <token>`: the word is kept, the token is redacted. */
@@ -44,4 +45,15 @@ export function scrubSecrets(text: string): string {
     scrubbed = scrubbed.replace(pattern, REDACTED);
   }
   return scrubbed;
+}
+
+/** A custom redactor that throws redacts that text whole: telemetry never fails a run. */
+export function safeRedactor(redact: (text: string) => string): (text: string) => string {
+  return (text) => {
+    try {
+      return redact(text);
+    } catch {
+      return REDACTED;
+    }
+  };
 }

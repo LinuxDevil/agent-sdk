@@ -26,7 +26,7 @@ import type { Span, SpanKind } from './tracing';
 import { estimateCost } from '../models';
 import { normalizeUsage } from '../models/usage';
 import type { Usage } from '../models/usage';
-import { REDACTED, scrubSecrets } from './scrubSecrets';
+import { safeRedactor, scrubSecrets } from './scrubSecrets';
 
 /** Name, kind and starting attributes for a span about to be opened. */
 interface SpanInit {
@@ -63,17 +63,6 @@ interface ContentOptions {
 type Redact = (text: string) => string;
 
 const keepText: Redact = (text) => text;
-
-/** A custom redactor that throws redacts that text whole: telemetry never fails a run. */
-function safeRedactor(redact: Redact): Redact {
-  return (text) => {
-    try {
-      return redact(text);
-    } catch {
-      return REDACTED;
-    }
-  };
-}
 
 /** The text mapping `redactContent` asks for on captured `gen_ai.*` content. */
 export function contentRedactor(content: ContentOptions): Redact {

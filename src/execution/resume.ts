@@ -242,7 +242,7 @@ function continueDecided(resume: DecidedResume): Promise<ExecutionResult> {
     );
   const init = runSpan();
   const resumed: ResumedRun = { ctx, claimed, pending, drift, staleCheckpoint, checkpointStore, runSpan, lease };
-  return withSpan(executeOptions.exporter, init.name, init.attributes, (span) => continueInRunSpan(resumed, span), executeOptions.parentSpanId, init.kind);
+  return withSpan(executeOptions.exporter, init.name, init.attributes, (span) => continueInRunSpan(resumed, span), executeOptions.parentSpanId, init.kind, contentRedactor(executeOptions));
 }
 
 /**

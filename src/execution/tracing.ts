@@ -10,7 +10,7 @@
  */
 
 import { newId } from '../utils/id';
-import { scrubSecrets } from './scrubSecrets';
+import { safeRedactor, scrubSecrets } from './scrubSecrets';
 import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from './semconv';
 
 /** OpenTelemetry span kind, for the kinds this SDK emits. */
@@ -46,13 +46,14 @@ export interface Span {
  * scrubber) like captured content; `error.type` is never redacted.
  */
 export function recordSpanError(span: Span, error: unknown, redact: (text: string) => string = scrubSecrets): void {
+  const scrub = safeRedactor(redact);
   const message = error instanceof Error ? error.message : error;
   span.attributes = {
     ...span.attributes,
-    [LegacyAttr.ERROR]: typeof message === 'string' ? redact(message) : message,
+    [LegacyAttr.ERROR]: typeof message === 'string' ? scrub(message) : message,
     [ErrorAttr.TYPE]: error instanceof Error ? error.name : ErrorAttr.OTHER,
   };
-  span.status = { code: 'error', message: redact(error instanceof Error ? error.message : String(error)) };
+  span.status = { code: 'error', message: scrub(error instanceof Error ? error.message : String(error)) };
 }
 
 /** Cost and estimation of the finished child spans of one open span. */

@@ -44,6 +44,18 @@ describe('scrubSecrets', () => {
     ['repeated JWT headers', 'eyJabcdefgh.'.repeat(40_000)],
     ['repeated JWT header and payload', 'eyJabcdefgh.eyJabcdefgh'.repeat(20_000)],
     ['repeated case-folded Bearer', 'bEaReR '.repeat(50_000)],
+    // A prefix recurring inside one long run that never completes a match (restart attack).
+    ['eyJ- restarts inside one token run', 'eyJ-'.repeat(40_000)],
+    ['eyJ restarts with one dot', 'eyJabcdefgh.eyJ-'.repeat(20_000)],
+    ['xox restarts in a short run', 'xoxb-short'.repeat(40_000)],
+    ['sk_ restarts in a short run', 'sk_live_short'.repeat(40_000)],
+    ['sk- restarts in a short run', 'sk-short'.repeat(40_000)],
+    ['lsv2_ restarts in a short run', 'lsv2_short'.repeat(40_000)],
+    ['ghp_ restarts in a short run', 'ghp_short'.repeat(40_000)],
+    ['github_pat_ restarts in a short run', 'github_pat_short'.repeat(30_000)],
+    ['AIza restarts in a short run', 'AIzaShort-'.repeat(40_000)],
+    ['Bearer then long whitespace', 'Bearer' + ' '.repeat(200_000)],
+    ['Bearer restarts with whitespace', 'Bearer   short '.repeat(30_000)],
   ])('scrubs %s in linear time', (_name, text) => {
     const start = performance.now();
     scrubSecrets(text);

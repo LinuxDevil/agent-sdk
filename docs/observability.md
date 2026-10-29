@@ -271,8 +271,10 @@ with `[redacted]`:
 
 The same scrubbing (or your function) runs on the error text recorded on a span, `error` and the error status message, so a token in a thrown error's message is redacted too; `error.type` (the class name) is kept. `redactContent: false` records error text as is.
 
-Each shape needs a long token (16+ characters) after its prefix, so words like
-`sk-learn` or `task-` are left alone. The scrubber catches common key formats,
+Each shape needs a long token after its prefix (16+ characters for `sk-`, `lsv2_`,
+`gh*_`, `github_pat_`, Stripe and Bearer; 10+ for Slack; 35 for Google; JWT parts of 8+), so
+words like `sk-learn` or `task-` are left alone. Bearer is case-insensitive, so a long
+word after "bearer" in prose can be redacted too. The scrubber catches common key formats,
 not every secret: a password typed into a prompt is still recorded, so set
 `captureContent: false` if content must never reach the local db.
 

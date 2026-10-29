@@ -391,6 +391,24 @@ describe('OpenTelemetry GenAI semantic conventions', () => {
       expect(tool.status?.message).toContain('remote rejected');
     });
 
+    it.each([
+      [false, true],
+      [undefined, false],
+    ])('redactContent %s keeps (%s) the provider error text on the run span', async (redactContent, keeps) => {
+      const { agent, toolRegistry } = setup();
+      const { exporter, spans } = memoryExporter();
+      const provider = mockModel([]);
+      provider.generate = async () => {
+        throw new Error(`provider said ${token}`);
+      };
+      await AgentExecutor.execute({ agent, input: 'hi', provider, toolRegistry, exporter, ...(redactContent === undefined ? {} : { redactContent }) }).catch(() => undefined);
+      const run = spans.find((s) => s.name.startsWith('invoke_agent'))!;
+      const chat = spans.find((s) => s.name.startsWith('chat'))!;
+      for (const span of [run, chat]) {
+        expect(JSON.stringify([span.attributes.error, span.status]).includes(secret)).toBe(keeps);
+      }
+    });
+
     it('scrubs the error recorded on the run span when the run itself fails', async () => {
       const { agent, toolRegistry } = setup();
       const { exporter, spans } = memoryExporter();

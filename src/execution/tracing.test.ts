@@ -33,6 +33,15 @@ describe('recordSpanError redaction', () => {
     expect(obj.attributes.error).toBe(value);
   });
 
+  it('a throwing redactor never replaces the run error', () => {
+    const span = fresh();
+    recordSpanError(span, new Error('real failure'), () => {
+      throw new Error('redactor bug');
+    });
+    expect(span.attributes.error).toBe('[redacted]');
+    expect(span.status).toEqual({ code: 'error', message: '[redacted]' });
+  });
+
   it('withSpan passes its redactor to the failure it records', async () => {
     const ends: Span[] = [];
     const exporter: TraceExporter = { onSpanStart: () => undefined, onSpanEnd: (span) => ends.push({ ...span }) };
