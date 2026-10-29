@@ -3,9 +3,10 @@ import { createRoot } from 'react-dom/client';
 import './fonts.css';
 import './theme.css';
 import { App } from './App';
-import { applyStoredTheme } from './shell/theme';
+import { applyStoredDensity, applyStoredTheme } from './shell/theme';
 
 applyStoredTheme();
+applyStoredDensity();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('main.tsx: #root element not found');

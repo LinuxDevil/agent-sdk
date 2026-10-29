@@ -1,43 +1,17 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { KeyRound, Rocket, SlidersHorizontal, type LucideIcon } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { KeyRound, Rocket, SlidersHorizontal } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { DeployResult, ProviderKeyStatus, SettingsFile, SettingsProfile } from '../../shared/wireTypes';
 import { errorMessage } from './errorMessage';
+import { AppearanceSection, CollectorSection, ShortcutsSection } from './SettingsAppSections';
+import { SettingsCard, TonePill } from './SettingsCard';
 
 type KeyedProviderId = 'openai' | 'anthropic';
 
-/** One settings section drawn as a card: an icon, title and one-line description over its fields. */
-function SettingsCard({
-  Icon,
-  title,
-  description,
-  children,
-}: {
-  Icon: LucideIcon;
-  title: string;
-  description: string;
-  children: ReactNode;
-}) {
-  return (
-    <section className="settings-card" aria-label={title}>
-      <div className="settings-card-head">
-        <span className="settings-card-icon" aria-hidden="true">
-          <Icon size={16} strokeWidth={1.75} />
-        </span>
-        <span>
-          <span className="settings-card-title">{title}</span>
-          <span className="settings-card-desc">{description}</span>
-        </span>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-const KEYED_PROVIDERS: { id: KeyedProviderId; label: string }[] = [
-  { id: 'openai', label: 'OpenAI API key' },
-  { id: 'anthropic', label: 'Anthropic API key' },
+const KEYED_PROVIDERS: { id: KeyedProviderId; label: string; envVar: string }[] = [
+  { id: 'openai', label: 'OpenAI API key', envVar: 'OPENAI_API_KEY' },
+  { id: 'anthropic', label: 'Anthropic API key', envVar: 'ANTHROPIC_API_KEY' },
 ];
 
 const PROVIDER_TYPES = ['mock', 'openai', 'anthropic', 'ollama', 'openrouter'];
@@ -157,6 +131,7 @@ function useDeploy(deployAdapter: string) {
 
 interface ProviderKeyFieldProps {
   label: string;
+  envVar: string;
   status: ProviderKeyStatus | undefined;
   draft: string | undefined;
   onDraftChange: (value: string) => void;
@@ -165,33 +140,47 @@ interface ProviderKeyFieldProps {
 }
 
 function keyPlaceholder(status: ProviderKeyStatus | undefined): string {
-  return status?.hasKey ? status.masked ?? 'set' : 'not set';
+  return status?.hasKey ? 'Replace the stored key' : 'Paste a key';
 }
 
-function keyStatusHint(status: ProviderKeyStatus | undefined): string {
-  return status?.hasKey ? `stored: ${status.masked}` : 'not set (runs use the mock provider)';
+/** "Set" (a stored key, with its masked form), "From environment" (only the env var), or "Not set". */
+function KeyStatus({ status, envVar }: { status: ProviderKeyStatus | undefined; envVar: string }) {
+  if (status?.hasKey)
+    return (
+      <span className="settings-key-status">
+        {status.masked && <span className="settings-key-masked">{status.masked}</span>}
+        <TonePill tone="ok" label="Set" />
+      </span>
+    );
+  if (status?.envKey)
+    return <TonePill tone="running" label="From environment" title={`Runs use ${envVar} from the server's environment`} />;
+  return <TonePill tone="neutral" label="Not set" />;
 }
 
-function ProviderKeyField({ label, status, draft, onDraftChange, onSave, onRemove }: ProviderKeyFieldProps) {
+function ProviderKeyField({ label, envVar, status, draft, onDraftChange, onSave, onRemove }: ProviderKeyFieldProps) {
   return (
-    <div className="field">
-      <label>{label}</label>
-      <input
-        aria-label={label}
-        className="input"
-        type="password"
-        placeholder={keyPlaceholder(status)}
-        value={draft ?? ''}
-        onChange={(e) => onDraftChange(e.target.value)}
-      />
-      <div className="hint settings-key-actions">
-        <button className="btn btn-sm" onClick={onSave} disabled={!draft?.trim()}>
-          Save
-        </button>
-        <button className="btn btn-ghost btn-sm" onClick={onRemove} disabled={!status?.hasKey}>
-          Remove
-        </button>
-        <span className="settings-key-status">{keyStatusHint(status)}</span>
+    <div className="field settings-key">
+      <div className="settings-key-head">
+        <label>{label}</label>
+        <KeyStatus status={status} envVar={envVar} />
+      </div>
+      <div className="settings-key-row">
+        <input
+          aria-label={label}
+          className="input"
+          type="password"
+          placeholder={keyPlaceholder(status)}
+          value={draft ?? ''}
+          onChange={(e) => onDraftChange(e.target.value)}
+        />
+        <span className="settings-key-actions">
+          <button className="btn btn-sm" onClick={onSave} disabled={!draft?.trim()}>
+            Save
+          </button>
+          <button className="btn btn-ghost btn-sm" onClick={onRemove} disabled={!status?.hasKey}>
+            Remove
+          </button>
+        </span>
       </div>
     </div>
   );
@@ -209,10 +198,11 @@ function ProviderKeysSection() {
   const { providers, keyDrafts, providerError, setDraft, saveKey, removeKey } = useProviderKeys();
   return (
     <SettingsCard Icon={KeyRound} title="Provider keys" description="Stored on this machine; never shown in full.">
-      {KEYED_PROVIDERS.map(({ id, label }) => (
+      {KEYED_PROVIDERS.map(({ id, label, envVar }) => (
         <ProviderKeyField
           key={id}
           label={label}
+          envVar={envVar}
           status={providers.find((p) => p.provider === id)}
           draft={keyDrafts[id]}
           onDraftChange={(value) => setDraft(id, value)}
@@ -390,28 +380,36 @@ function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
 }
 
 /**
- * Real Settings tab content, replacing the static placeholder
- * ("Provider keys and deploy target settings are wired up later.").
+ * The Settings content: the builder drawer's Settings tab, and (as
+ * `variant="screen"`) the routed `#/settings` screen.
  *
- * Three sections:
+ * Every variant has the agent-relevant sections:
  *  - Provider keys: add/replace/remove a stored key per provider, with
  *    the input always rendered blank (never pre-filled with a real key -
  *    the server only ever returns a masked status, see runtimeClient.ts's
- *    `ProviderKeyStatus`) and the current masked value shown as a hint.
+ *    `ProviderKeyStatus`) and a status pill: Set (with the masked value),
+ *    From environment, or Not set.
  *  - Settings profile: pick the active local/staging/prod profile,
  *    edit its provider type / deploy adapter / OTel toggle / hook timeout.
  *  - Deploy (R2): pick an adapter and run `lousho build` against this
  *    agent's saved spec, with a simple stdout/stderr log panel.
+ *
+ * The screen adds the app-level ones: Appearance (theme, table density),
+ * Collector and Keyboard shortcuts, in one left-aligned column.
  */
-export function SettingsPanel() {
+export function SettingsPanel({ variant = 'drawer' }: { variant?: 'drawer' | 'screen' }) {
   const [deployAdapter, setDeployAdapter] = useState<string>('node-server');
   const profiles = useSettingsProfiles(setDeployAdapter, deployAdapter);
+  const screen = variant === 'screen';
 
   return (
-    <div className="settings-panel">
+    <div className={screen ? 'settings-panel settings-panel-screen' : 'settings-panel'}>
+      {screen && <AppearanceSection />}
       <ProviderKeysSection />
       <ProfileSection profiles={profiles} />
       <DeploySection deployAdapter={deployAdapter} onAdapterChange={setDeployAdapter} />
+      {screen && <CollectorSection />}
+      {screen && <ShortcutsSection />}
     </div>
   );
 }

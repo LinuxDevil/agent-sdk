@@ -883,6 +883,13 @@ test("agents x: the routed settings screen shares the drawer's settings cards", 
   await open(page, '/settings');
   await expect(page.getByLabel('Deploy adapter')).toBeVisible();
   await shoot(page, 'x-agents-settings-screen');
+  // Every card at once (the column scrolls inside .screen-main), then the narrow stack.
+  await page.setViewportSize({ width: 1280, height: 1800 });
+  await shoot(page, 'x-settings-screen-full');
+  await page.setViewportSize({ width: 375, height: 800 });
+  await shoot(page, 'x-settings-screen-375');
+  await page.setViewportSize({ width: 375, height: 2600 });
+  await shoot(page, 'x-settings-screen-375-full');
 });
 
 // --- Evaluations states (x- shots: review-only, never used in the docs) -----

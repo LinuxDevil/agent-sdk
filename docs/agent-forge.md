@@ -144,7 +144,7 @@ The left navigation lists every screen, grouped:
 | Evaluate | **Evaluations** | Tabs for Scores, Datasets, Evaluators and Annotation queues. |
 | Assets | **Prompts** | The prompt registry: versions, labels, diffs. |
 | Assets | **Context Hub** | Shared key-values agents publish to the daemon. |
-| | **Settings** | Provider keys, settings profiles and deploy. |
+| | **Settings** | Appearance, provider keys, settings profiles, deploy, collector and shortcuts. |
 
 Off the Agents screen a page header names the screen and keeps the live run
 status pill. Under Settings, a small card shows the collector status (see
@@ -485,8 +485,14 @@ its TTL).
 
 ### Settings
 
-`#/settings` shows the same settings as the builder drawer's **Settings**
-tab; see [Settings, secrets and deploy wiring](#settings-secrets-and-deploy-wiring).
+`#/settings` is one column of cards: **Appearance** (theme Light, Dark or
+System, and table density Compact or Comfortable, both remembered in this
+browser; until you pick a density each table keeps its screen's default),
+**Provider keys**, **Settings profile**, **Deploy target**, **Collector**
+(whether the observe daemon answers, its address, and `lousho observe start`
+when it is down) and **Keyboard shortcuts** (the same list as the `?` sheet).
+The builder drawer's **Settings** tab shows only the provider keys, profile
+and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-and-deploy-wiring).
 
 ## First-agent walkthrough
 
@@ -747,9 +753,11 @@ daemon bound beyond loopback. A daemon that is down does not slow or fail the ru
 ## Settings, secrets and deploy wiring
 
 The Settings screen (`#/settings`, the last screen in the nav) and the builder
-drawer's **Settings** tab show the same three parts: provider API keys
+drawer's **Settings** tab share three parts: provider API keys
 (OpenAI and Anthropic, stored encrypted under `.lousho/` and never shown
-again), named settings profiles (provider, deploy adapter, hook timeout,
+again; each key shows **Set** with its masked last characters, **From
+environment** when only `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set, or
+**Not set**), named settings profiles (provider, deploy adapter, hook timeout,
 OpenTelemetry toggle; kept in `.lousho/settings.json`, which holds no
 secrets), and a **Deploy** section that picks an adapter (`node-server`,
 `docker` or `cloudflare-worker`) and runs `lousho build` for the selected
