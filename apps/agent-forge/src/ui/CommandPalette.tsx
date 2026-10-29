@@ -5,9 +5,11 @@ import {
   ArrowUp,
   Bot,
   CornerDownLeft,
+  Keyboard,
   Search,
   SunMoon,
   TextSearch,
+  X,
   type LucideIcon,
 } from 'lucide-react';
 import { navigate } from '../router/router';
@@ -286,18 +288,24 @@ function ShortcutSheet({ onClose }: { onClose: () => void }) {
   return (
     <Dialog label="Keyboard shortcuts" className="cmdk-sheet" onClose={onClose}>
       <div className="cmdk-sheet-head">
-        <h2 className="cmdk-sheet-title">Keyboard shortcuts</h2>
-        <button ref={close} type="button" className="btn btn-sm btn-ghost" onClick={onClose}>
-          Close
+        <span className="cmdk-sheet-icon" aria-hidden="true">
+          <Keyboard size={16} strokeWidth={1.75} />
+        </span>
+        <div className="cmdk-sheet-heading">
+          <h2 className="cmdk-sheet-title">Keyboard shortcuts</h2>
+          <p className="cmdk-sheet-hint">Press ? anywhere outside a text field to open this sheet.</p>
+        </div>
+        <button ref={close} type="button" className="btn btn-sm btn-ghost btn-icon" aria-label="Close" title="Close (Esc)" onClick={onClose}>
+          <X aria-hidden="true" />
         </button>
       </div>
       <dl className="cmdk-shortcuts">
         {SHORTCUTS.map((s) => (
           <div key={s.id} className="cmdk-shortcut">
-            <dt>
+            <dt>{s.description}</dt>
+            <dd>
               <kbd>{s.keys}</kbd>
-            </dt>
-            <dd>{s.description}</dd>
+            </dd>
           </div>
         ))}
       </dl>

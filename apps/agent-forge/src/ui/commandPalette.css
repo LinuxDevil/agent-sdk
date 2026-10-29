@@ -177,40 +177,69 @@
 }
 
 /* ---------- Shortcut sheet ---------- */
+/* The same dialog card (radius-lg, shadow-lg): icon tile + title + hint, an icon close button, then rows of
+   description left and kbd right on hairlines (like Settings' shortcuts card). */
 .cmdk-sheet {
   width: min(480px, 100%);
-  padding: 4px 16px 12px;
 }
 .cmdk-sheet-head {
   display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  flex: none;
+  padding: var(--space-4) var(--space-4) var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+.cmdk-sheet-icon {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  height: 48px;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.cmdk-sheet-heading {
+  flex: 1;
+  min-width: 0;
 }
 .cmdk-sheet-title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
+  line-height: 20px;
+}
+.cmdk-sheet-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  line-height: 1.5;
 }
 .cmdk-shortcuts {
   margin: 0;
+  padding: var(--space-1) var(--space-5) var(--space-3);
   overflow-y: auto;
 }
 .cmdk-shortcut {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-height: 36px;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: 40px;
   font-size: 13px;
+}
+.cmdk-shortcut + .cmdk-shortcut {
   border-top: 1px solid var(--border);
 }
 .cmdk-shortcut dt {
-  min-width: 110px;
+  min-width: 0;
+  color: var(--text);
 }
 .cmdk-shortcut dd {
+  flex: none;
   margin: 0;
-  color: var(--text-muted);
 }
 
 @media (prefers-reduced-motion: no-preference) {
