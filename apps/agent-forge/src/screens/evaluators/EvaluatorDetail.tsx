@@ -84,7 +84,7 @@ function TestOnTrace({ rule, prefill }: { rule: ObserveEvaluator; prefill: strin
           <dt>Value</dt>
           <dd>{result.value === null ? 'null' : String(result.value)}</dd>
           <dt>Comment</dt>
-          <dd>{result.comment ?? '-'}</dd>
+          <dd>{result.comment ?? <span className="value-missing">—</span>}</dd>
         </dl>
       )}
     </form>

@@ -70,10 +70,13 @@ function TracesLink({ agent, compact }: { agent: ObserveAgentRow; compact: boole
   );
 }
 
+/** A value the row does not have: a faint em dash. */
+const MISSING = <span className="value-missing">—</span>;
+
 function DroppedCell({ dropped }: { dropped: number | null | undefined }) {
   return (
     <span className={dropped ? 'mon-dropped' : undefined} data-dropped={dropped ?? ''}>
-      {dropped === null || dropped === undefined ? '—' : fmtInt(dropped)}
+      {dropped === null || dropped === undefined ? MISSING : fmtInt(dropped)}
     </span>
   );
 }
@@ -125,7 +128,7 @@ function fleetColumns(compact: boolean): Column<FleetRow>[] {
       hideBelow: 300,
       render: ({ agent }) => <ErrorRate rate={agent.error_rate_today} />,
     },
-    { key: 'p95', header: 'p95', label: 'p95 (24h)', width: 72, align: 'right', hideBelow: 640, render: ({ p95 }) => fmtDuration(p95) },
+    { key: 'p95', header: 'p95', label: 'p95 (24h)', width: 72, align: 'right', hideBelow: 640, render: ({ p95 }) => (Number.isFinite(p95) ? fmtDuration(p95) : MISSING) },
     {
       key: 'dropped',
       header: 'Dropped',

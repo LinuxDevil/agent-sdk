@@ -26,6 +26,12 @@
   border: 0;
 }
 
+/* a value the row does not have, in a key/value grid or a table cell: a faint em dash. */
+.value-missing {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
 /* ---------- Type utilities ---------- */
 .overline {
   font-size: var(--fs-overline);
@@ -99,11 +105,21 @@ kbd {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* Icons: 16px in a button, 14px in a small one - but only lucide's default (size 24) or an unsized svg;
+   an explicit `size` (width attribute) wins. */
 .btn svg {
-  width: 16px;
-  height: 16px;
   stroke-width: 1.75;
   flex: none;
+}
+.btn svg:not([width]),
+.btn svg[width='24'] {
+  width: 16px;
+  height: 16px;
+}
+.btn-sm svg:not([width]),
+.btn-sm svg[width='24'] {
+  width: 14px;
+  height: 14px;
 }
 .btn-sm {
   min-height: 28px;

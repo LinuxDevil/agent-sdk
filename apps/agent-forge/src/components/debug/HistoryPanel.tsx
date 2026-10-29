@@ -9,8 +9,10 @@ import type { ForkRunRequest, RunComparisonPayload, RunHistoryStep } from '../..
 
 type ForkPatch = NonNullable<ForkRunRequest['patch']>;
 
-
 const NUMERIC_COLUMNS = new Set(['Step', 'Tokens', 'Cost']);
+
+/** A value the step does not have: a faint em dash. */
+const MISSING = <span className="value-missing">—</span>;
 
 /** One row per checkpointed step of the run, each with an "Edit and replay from here" action. */
 export function HistoryList({ steps, onReplay }: { steps: RunHistoryStep[]; onReplay: (step: RunHistoryStep) => void }) {
@@ -32,10 +34,10 @@ export function HistoryList({ steps, onReplay }: { steps: RunHistoryStep[]; onRe
             <td>
               <TonePill tone={stepTone(s.status)} label={s.status} />
             </td>
-            <td className="mono">{s.finishReason ?? '-'}</td>
-            <td className="mono">{s.toolCalls.map((call) => call.name).join(', ') || '-'}</td>
-            <td className="num">{s.tokens ?? '-'}</td>
-            <td className="num">{s.costUsd === undefined ? '-' : `$${s.costUsd.toFixed(4)}`}</td>
+            <td className="mono">{s.finishReason ?? MISSING}</td>
+            <td className="mono">{s.toolCalls.map((call) => call.name).join(', ') || MISSING}</td>
+            <td className="num">{s.tokens ?? MISSING}</td>
+            <td className="num">{s.costUsd === undefined ? MISSING : `$${s.costUsd.toFixed(4)}`}</td>
             <td className="history-action">
               <button className="btn btn-ghost btn-sm" onClick={() => onReplay(s)}>
                 <RotateCcw size={14} strokeWidth={1.75} aria-hidden="true" />
@@ -86,7 +88,7 @@ function ReplayEditor({ step, onFork, onCancel }: { step: RunHistoryStep; onFork
 }
 
 function StepCell({ step }: { step: TrajectoryStep | undefined }) {
-  if (!step) return <div className="traj-cell traj-missing">-</div>;
+  if (!step) return <div className="traj-cell traj-missing">—</div>;
   return (
     <div className="traj-cell">
       {step.text && <div>{step.text}</div>}

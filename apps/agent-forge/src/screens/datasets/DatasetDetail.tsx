@@ -36,13 +36,13 @@ const SourceTrace = ({ traceId }: { traceId: string | null }) =>
       <ArrowUpRight size={12} strokeWidth={1.75} aria-hidden="true" />
     </a>
   ) : (
-    <span className="ds-faint">-</span>
+    <span className="value-missing">—</span>
   );
 
 /** An input/expected preview: one mono line, the full text as its tooltip. */
 const Preview = ({ value }: { value: unknown }) => {
   const text = valuePreview(value);
-  return text === null ? <span className="ds-faint">-</span> : <Clip text={text} className="list-clip ds-mono" />;
+  return text === null ? <span className="value-missing">—</span> : <Clip text={text} className="list-clip ds-mono" />;
 };
 
 function columns(onDelete: (example: ObserveExample) => void, busy: boolean): Column<ObserveExample>[] {

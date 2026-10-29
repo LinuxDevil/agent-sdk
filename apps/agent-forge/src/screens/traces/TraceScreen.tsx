@@ -129,6 +129,8 @@ export function TraceScreen({ traceId, pollMs = DEFAULT_POLL_MS }: { traceId: st
           onModeChange={setMode}
           now={now}
           renderFeedback={renderFeedback}
+          /* The header card's "Open in Playground" and the tree row's icon link already cover the selected step. */
+          inspectorPlaygroundLink={false}
         />
       </>
     );

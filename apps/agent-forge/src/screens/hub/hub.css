@@ -207,6 +207,12 @@
   color: var(--text);
   font-weight: 500;
 }
+/* no writer recorded: the faint em dash (base.css .value-missing), over the writer's own colour and weight. */
+.hub-card-writer.value-missing,
+.hub-facts dd.value-missing {
+  color: var(--text-faint);
+  font-weight: 400;
+}
 
 /* the open entry */
 .hub-entry {

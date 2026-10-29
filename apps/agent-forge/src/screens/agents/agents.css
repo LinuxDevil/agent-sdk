@@ -384,6 +384,9 @@ button.breakpoint-toggle {
   position: relative;
   overflow: hidden;
   background: var(--bg);
+  /* The dot grid (CanvasArea.tsx's <Background>): --border-strong stays subtle in light; on the
+     near-black dark canvas it all but vanishes, so dark lifts it halfway to --text-faint. */
+  --canvas-dot: light-dark(var(--border-strong), color-mix(in srgb, var(--border-strong) 55%, var(--text-faint)));
 }
 .canvas-wrap .react-flow {
   --xy-background-color: var(--bg);
@@ -407,6 +410,10 @@ button.breakpoint-toggle {
   --xy-selection-background-color: color-mix(in srgb, var(--accent) 8%, transparent);
   --xy-selection-border: 1px dashed var(--accent);
   --xy-attribution-background-color: transparent;
+}
+/* Until the first fit of a loaded graph lands (CanvasArea.tsx's useFitViewOnLoad), the nodes stay laid out but unseen. */
+.canvas-wrap[data-fitting] .react-flow__viewport {
+  visibility: hidden;
 }
 .canvas-wrap .react-flow__background {
   background: var(--bg);

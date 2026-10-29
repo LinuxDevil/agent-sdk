@@ -8,7 +8,10 @@ import {
   MiniMap,
   ReactFlow,
   SmoothStepEdge,
+  getNodesBounds,
+  getViewportForBounds,
   useReactFlow,
+  useStoreApi,
   type EdgeProps,
   type Connection,
   type Edge,
@@ -114,8 +117,18 @@ function GappedSmoothStepEdge(props: EdgeProps) {
 
 const EDGE_TYPES = { gapped: GappedSmoothStepEdge };
 
-/** Every fit (on load, on resize, the toolbar): the whole graph, never zoomed in past 1:1. */
+/** The toolbar's and the Controls' Fit view: the whole graph, never zoomed in past 1:1. */
 const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
+
+/**
+ * The automatic fits (on load, on resize, after auto layout) stop zooming out
+ * here, so node text stays legible; a graph too big for the pane at this zoom
+ * opens pinned to its top-left corner (where the trigger sits) instead of
+ * centred. The user can still zoom out to MIN_ZOOM, or press Fit view.
+ */
+const AUTO_FIT_MIN_ZOOM = 0.75;
+/** The inset (screen px) of a pinned graph's left/top edge. */
+const AUTO_FIT_INSET = 40;
 
 /**
  * React Flow's default floor (0.5) is too high for a 4-column graph in the
@@ -322,55 +335,79 @@ function useDropHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: 
 }
 
 /**
+ * An automatic fit: the whole graph when it fits at AUTO_FIT_MIN_ZOOM or more
+ * (never past 1:1), else that zoom with the graph's top-left corner in view.
+ */
+function useLegibleFit() {
+  const { getNodes, setViewport } = useReactFlow();
+  const store = useStoreApi();
+  return useCallback(
+    (duration?: number) => {
+      const nodes = getNodes();
+      const { width, height } = store.getState();
+      if (nodes.length === 0 || !width || !height) return;
+      const bounds = getNodesBounds(nodes);
+      const fit = getViewportForBounds(bounds, width, height, AUTO_FIT_MIN_ZOOM, 1, FIT_VIEW_OPTIONS.padding);
+      const x = bounds.width * fit.zoom > width ? AUTO_FIT_INSET - bounds.x * fit.zoom : fit.x;
+      const y = bounds.height * fit.zoom > height ? AUTO_FIT_INSET - bounds.y * fit.zoom : fit.y;
+      void setViewport({ x, y, zoom: fit.zoom }, duration ? { duration } : undefined);
+    },
+    [getNodes, setViewport, store]
+  );
+}
+
+/**
  * Refit the graph when the window is resized (e.g. rotating a
  * phone, or crossing the narrow-layout breakpoint), so it never sits
  * off-screen in a pane that changed size. Debounced to the last resize.
  */
 function useFitViewOnResize() {
-  const { fitView } = useReactFlow();
+  const fitLegibly = useLegibleFit();
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     function onResize() {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void fitView({ ...FIT_VIEW_OPTIONS, duration: 150 }), 150);
+      timer = setTimeout(() => fitLegibly(150), 150);
     }
     window.addEventListener('resize', onResize);
     return () => {
       window.removeEventListener('resize', onResize);
       if (timer) clearTimeout(timer);
     };
-  }, [fitView]);
+  }, [fitLegibly]);
 }
 
 /**
- * Fit the whole graph when an agent is opened and when an empty canvas is
- * filled (a template applied, or the first node dropped) - React Flow's own
- * `fitView` prop only fits once, on mount. Waits until every node has been
- * measured, so the fit uses real card sizes.
+ * The one owner of the first fit: when an agent is opened and when an empty
+ * canvas is filled (a template applied, or the first node dropped). Waits
+ * until every node has been measured, so the fit uses real card sizes, and
+ * returns `true` until that fit has landed - the canvas keeps its viewport
+ * hidden meanwhile, so the graph never shows unfitted and then jumps.
  */
-function useFitViewOnLoad(agentId: string, graph: AgentGraphSpec, measured: MeasuredSizes) {
-  const { fitView } = useReactFlow();
-  const pending = useRef(true);
+function useFitViewOnLoad(agentId: string, graph: AgentGraphSpec, measured: MeasuredSizes): boolean {
+  const fitLegibly = useLegibleFit();
   const loadKey = `${agentId}|${graph.nodes.length > 0 ? 'filled' : 'empty'}`;
-  useEffect(() => {
-    pending.current = true;
-  }, [loadKey]);
+  const [fittedKey, setFittedKey] = useState<string | null>(null);
   const allMeasured = graph.nodes.length > 0 && graph.nodes.every((n) => measured[n.id]);
   useEffect(() => {
-    if (!pending.current || !allMeasured) return;
-    pending.current = false;
-    const frame = window.requestAnimationFrame(() => void fitView(FIT_VIEW_OPTIONS));
+    if (fittedKey === loadKey || !allMeasured) return;
+    const frame = window.requestAnimationFrame(() => {
+      fitLegibly();
+      setFittedKey(loadKey);
+    });
     return () => window.cancelAnimationFrame(frame);
-  }, [loadKey, allMeasured, fitView]);
+  }, [loadKey, fittedKey, allMeasured, fitLegibly]);
+  return graph.nodes.length > 0 && fittedKey !== loadKey;
 }
 
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
 function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined) {
   const { fitView } = useReactFlow();
+  const fitLegibly = useLegibleFit();
 
   function handleAutoLayout() {
     setGraph((g) => autoLayout(g));
-    window.requestAnimationFrame(() => fitView({ ...FIT_VIEW_OPTIONS, duration: 200 }));
+    window.requestAnimationFrame(() => fitLegibly(200));
   }
 
   function handleFitView() {
@@ -462,7 +499,7 @@ function CanvasNavigator() {
         position="bottom-right"
         pannable
         zoomable
-        style={{ width: 160, height: 110 }}
+        style={{ width: 160, height: 100 }}
         nodeClassName={miniMapNodeClassName}
         nodeBorderRadius={6}
         ariaLabel="Graph overview"
@@ -518,10 +555,10 @@ function CanvasInner() {
   const { onDragOver, onDrop } = useDropHandlers(graph, setGraph, flashError);
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
   useFitViewOnResize();
-  useFitViewOnLoad(agentId, graph, measured);
+  const fitting = useFitViewOnLoad(agentId, graph, measured);
 
   return (
-    <main className="canvas-wrap" aria-label="Agent graph" onDrop={onDrop} onDragOver={onDragOver}>
+    <main className="canvas-wrap" aria-label="Agent graph" data-fitting={fitting || undefined} onDrop={onDrop} onDragOver={onDragOver}>
       <CanvasToolbar
         canDuplicate={!!selectedNodeId}
         onAutoLayout={handleAutoLayout}
@@ -545,12 +582,10 @@ function CanvasInner() {
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         deleteKeyCode={['Backspace', 'Delete']}
-        fitView
-        fitViewOptions={FIT_VIEW_OPTIONS}
         minZoom={MIN_ZOOM}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={2} color="var(--border-strong)" />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={2} color="var(--canvas-dot)" />
         {/* Nothing to overview or zoom on an empty canvas; the template card has the room. */}
         {graph.nodes.length > 0 && <CanvasNavigator />}
       </ReactFlow>

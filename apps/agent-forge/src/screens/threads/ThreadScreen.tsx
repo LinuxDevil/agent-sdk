@@ -133,9 +133,12 @@ function ThreadHeader({ session, now }: { session: ObserveSessionRow; now: numbe
           <Fact icon={Wallet} label="Cost">
             {fmtCost(session.cost_usd)}
           </Fact>
-          <Fact icon={Timer} label="Span">
-            {fmtDuration(session.ended_at === null ? null : session.ended_at - session.started_at)}
-          </Fact>
+          {/* An active thread has no span yet: no chip rather than a dash. */}
+          {session.ended_at !== null && (
+            <Fact icon={Timer} label="Span">
+              {fmtDuration(session.ended_at - session.started_at)}
+            </Fact>
+          )}
           <Fact icon={CalendarClock} label="Started">
             {fmtDateTime(session.started_at)}
           </Fact>

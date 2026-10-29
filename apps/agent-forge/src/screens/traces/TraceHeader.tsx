@@ -56,7 +56,8 @@ interface TraceHeaderProps {
  * current URL, `?obs=` included), "Add to dataset", "Add to queue" and, when
  * the trace has a generation, "Open in Playground" - then metric chips:
  * duration (counting to `now` while running), tokens, cost, model, start,
- * agent (to the agent-filtered trace list) and session (to its thread).
+ * agent (to the agent-filtered trace list) and session (to its thread). A
+ * chip whose value the trace does not have is left out, not shown as a dash.
  */
 export function TraceHeader({ root, observations, agentName, now, selectedObsId }: TraceHeaderProps) {
   const { tokens, cost } = traceTotals(observations);
@@ -86,16 +87,22 @@ export function TraceHeader({ root, observations, agentName, now, selectedObsId 
           <Fact icon={Timer} label="Duration">
             {fmtDuration(elapsedMs(root, now, latestEnd(observations)))}
           </Fact>
-          <Fact icon={Coins} label="Tokens">
-            {fmtInt(tokens)}
-            <FactUnit>tokens</FactUnit>
-          </Fact>
-          <Fact icon={Wallet} label="Cost">
-            {fmtCost(cost)}
-          </Fact>
-          <Fact icon={Cpu} label="Model">
-            {model ? <code>{model}</code> : '-'}
-          </Fact>
+          {tokens !== null && (
+            <Fact icon={Coins} label="Tokens">
+              {fmtInt(tokens)}
+              <FactUnit>tokens</FactUnit>
+            </Fact>
+          )}
+          {cost !== null && (
+            <Fact icon={Wallet} label="Cost">
+              {fmtCost(cost)}
+            </Fact>
+          )}
+          {model && (
+            <Fact icon={Cpu} label="Model">
+              <code>{model}</code>
+            </Fact>
+          )}
           <Fact icon={CalendarClock} label="Start">
             {fmtDateTime(root.start)}
           </Fact>

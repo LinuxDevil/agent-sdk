@@ -1,6 +1,8 @@
 /** Shared bits of the observe panels' chrome: the daemon-down empty state, inline API errors, status pills, filter controls. */
 
 import { useEffect, useState } from 'react';
+import { AlertCircle, Unplug } from 'lucide-react';
+import { EmptyState } from '../ui/EmptyState';
 import { observeClient } from './observeClient';
 import type { ObserveAgentRow } from './types';
 
@@ -48,11 +50,16 @@ export function ObserveDaemonDown() {
   const value = target === undefined || target.replace(/\/+$/, '') === DEFAULT_OBSERVE_URL ? '1' : target;
   return (
     <div className="observe-empty" role="status">
-      <p className="observe-empty-title">No data yet - the observe daemon is not reachable.</p>
-      <p>
-        Run <code>lousho observe start</code>, then set <code>LOUSHO_OBSERVE={value}</code> on your agents; their traces,
-        scores and heartbeats show up here automatically.
-      </p>
+      <EmptyState
+        icon={Unplug}
+        title="No data yet: the observe daemon is not reachable"
+        hint={
+          <>
+            Run <code>lousho observe start</code>, then set <code>LOUSHO_OBSERVE={value}</code> on your agents; their traces,
+            scores and heartbeats show up here automatically.
+          </>
+        }
+      />
     </div>
   );
 }
@@ -62,7 +69,8 @@ export function ObserveError({ error }: { error: Error | undefined }) {
   if (!error) return null;
   return (
     <div className="observe-error" role="alert">
-      {error.message}
+      <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
+      <span>{error.message}</span>
     </div>
   );
 }

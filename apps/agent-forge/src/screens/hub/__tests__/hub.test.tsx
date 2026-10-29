@@ -225,7 +225,7 @@ describe('HubScreen', () => {
     expect(readme.textContent).toContain('{"title":"Hi"');
     expect(readme.querySelector('.status-pill')?.textContent).toBe('fleet');
     expect(readme.textContent).toContain('zeta');
-    expect(readme.textContent).toMatch(/1h - expires in 5[89]m/);
+    expect(readme.textContent).toMatch(/1h · expires in 5[89]m/);
     const draft = rowFor(c, 'draft');
     expect(draft.querySelector('.status-pill')?.textContent).toBe('private');
     expect(draft.textContent).toContain('alpha');

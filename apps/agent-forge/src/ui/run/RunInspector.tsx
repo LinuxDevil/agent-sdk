@@ -39,6 +39,14 @@ function errorText(attrs: Record<string, unknown> | null): string {
   return 'This step failed.';
 }
 
+/** A value the step does not have, in a key/value grid: a faint em dash. */
+const MISSING = <span className="value-missing">—</span>;
+
+/** `format(value)`, or {@link MISSING} for null/undefined. */
+function orMissing<T>(value: T | null | undefined, format: (v: T) => ReactNode): ReactNode {
+  return value === null || value === undefined ? MISSING : format(value);
+}
+
 function scoresFor(row: ObserveObservationRow, scores: ObserveScoreRow[]): ObserveScoreRow[] {
   const isRoot = row.parent_obs_id === null;
   return scores.filter(
@@ -62,7 +70,7 @@ function Feedback({ scores }: { scores: ObserveScoreRow[] }) {
       {scores.map((s) => (
         <li key={s.score_id} className="run-score">
           <span className="run-score-name">{s.name}</span>
-          <span className="run-score-value">{s.value === null ? '-' : String(s.value)}</span>
+          <span className="run-score-value">{orMissing(s.value, String)}</span>
           <span className="run-score-source">{s.source}</span>
           {s.comment && <span className="run-score-comment">{s.comment}</span>}
         </li>
@@ -74,18 +82,18 @@ function Feedback({ scores }: { scores: ObserveScoreRow[] }) {
 function Usage({ row }: { row: ObserveObservationRow }) {
   const markers = [row.cost_partial && 'partial', row.usage_estimated && 'estimated'].filter(Boolean);
   const facts: [string, ReactNode][] = [
-    ['Input tokens', fmtInt(row.usage_input_tokens)],
-    ['Output tokens', fmtInt(row.usage_output_tokens)],
-    ['Cached tokens', fmtInt(row.usage_cached_tokens)],
-    ['Reasoning tokens', fmtInt(row.usage_reasoning_tokens)],
+    ['Input tokens', orMissing(row.usage_input_tokens, fmtInt)],
+    ['Output tokens', orMissing(row.usage_output_tokens, fmtInt)],
+    ['Cached tokens', orMissing(row.usage_cached_tokens, fmtInt)],
+    ['Reasoning tokens', orMissing(row.usage_reasoning_tokens, fmtInt)],
     [
       'Cost',
       <>
-        {fmtCost(row.cost_usd)}
+        {orMissing(row.cost_usd, fmtCost)}
         {markers.length > 0 && <span className="run-marker"> ({markers.join(', ')})</span>}
       </>,
     ],
-    ['Model', row.model ? <code>{row.model}</code> : '-'],
+    ['Model', row.model ? <code>{row.model}</code> : MISSING],
   ];
   return (
     <dl className="run-facts">

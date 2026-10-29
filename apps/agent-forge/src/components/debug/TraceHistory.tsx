@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { TraceSummaryPayload } from '../../../shared/wireTypes';
 import { statusTone } from '../../ui/StatusPill';
 import { TonePill } from './TonePill';
@@ -9,8 +10,9 @@ function formatDuration(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(2)}s`;
 }
 
-function formatCost(costUsd: number | undefined): string {
-  return costUsd === undefined ? '-' : `$${costUsd.toFixed(costUsd < 0.01 ? 6 : 4)}`;
+/** The cost, or a faint em dash when the run reported none. */
+function formatCost(costUsd: number | undefined): ReactNode {
+  return costUsd === undefined ? <span className="value-missing">—</span> : `$${costUsd.toFixed(costUsd < 0.01 ? 6 : 4)}`;
 }
 
 /** One line per persisted run: when, how long, model calls, tokens in/out, cost and status. */

@@ -120,7 +120,8 @@ function EntryFacts({ entry, writer, now }: { entry: ObserveHubEntry; writer: st
     <dl className="hub-facts">
       <div>
         <dt>Writer</dt>
-        <dd>{writer}</dd>
+        {/* No writer recorded: HubScreen's writerName gives a dash, drawn faint. */}
+        <dd className={entry.agent_id === null ? 'value-missing' : undefined}>{writer}</dd>
       </div>
       <div>
         <dt>Updated</dt>

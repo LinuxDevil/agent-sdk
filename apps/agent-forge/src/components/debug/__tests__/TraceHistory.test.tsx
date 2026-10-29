@@ -91,7 +91,7 @@ describe('TraceHistory', () => {
     expect(rows[0].textContent).toContain('$0.000043');
     expect(rows[0].textContent).toContain('error');
     expect(rows[1].textContent).toContain('420ms');
-    expect(rows[1].textContent).toContain('-');
+    expect(rows[1].querySelector('.value-missing')?.textContent).toBe('—');
     expect(rows[1].getAttribute('aria-selected')).toBe('true');
   });
 

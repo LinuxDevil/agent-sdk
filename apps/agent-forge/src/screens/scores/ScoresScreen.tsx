@@ -113,7 +113,7 @@ function evalColumns(open: string, toggle: (name: string) => void): Column<Obser
       align: 'right',
       width: 120,
       hideBelow: 480,
-      render: (r) => (r.avg_value === null ? '-' : r.avg_value.toFixed(2)),
+      render: (r) => (r.avg_value === null ? <span className="value-missing">{NONE}</span> : r.avg_value.toFixed(2)),
     },
     { key: 'last', header: 'Last seen', width: 150, hideBelow: 560, render: (r) => fmtDateTime(r.last_ts) },
   ];

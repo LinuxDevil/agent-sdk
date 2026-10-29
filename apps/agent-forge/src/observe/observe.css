@@ -1,39 +1,52 @@
 /*
  * Shared observe chrome (observe/chrome.tsx): the daemon-down empty state and
- * inline API errors, used by the Traces, Trace, Monitoring and Scores screens.
+ * inline API errors, used by every observe screen. Tokens only.
  */
 
+/* the daemon-down state: the kit's EmptyState in a card, centred under the screen header. */
 .observe-empty {
   max-width: 560px;
-  margin: 48px auto;
-  padding: 20px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-  border: 1px dashed var(--border);
-  border-radius: 10px;
+  margin: var(--space-10) auto;
   background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
 }
-.observe-empty-title {
-  font-weight: 700;
-  color: var(--text);
-  margin-top: 0;
+/* Straight under the screen header (a list screen returning the card in place of its content), add the
+   screens' own top padding, so the card sits 60px under the header on every screen. */
+.screen-main > .observe-empty {
+  margin-top: calc(var(--space-5) + var(--space-10));
+}
+.observe-empty .empty-state {
+  padding: var(--space-8) var(--space-6);
 }
 .observe-empty code {
-  font-family: var(--font-mono);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
   padding: 1px 5px;
-  border-radius: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
   color: var(--text);
-}
-.observe-error {
-  margin: 8px 0;
-  padding: 8px 12px;
-  border: 1px solid var(--danger);
-  border-radius: 8px;
-  background: var(--danger-soft);
-  color: var(--danger);
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  overflow-wrap: anywhere;
 }
 
+/* an inline API error (400/404/500): danger on its tint, with an alert icon. */
+.observe-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.observe-error svg {
+  flex: none;
+  margin-top: 2px;
+}
