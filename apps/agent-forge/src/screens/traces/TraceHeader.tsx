@@ -6,6 +6,13 @@ import { displayName, displayStatus, elapsedMs } from '../../ui/run/rows';
 import { AddToDataset } from './AddToDataset';
 import { AddToQueue } from './AddToQueue';
 
+/** The latest `end` over every observation, or `undefined` when none has ended. */
+function latestEnd(rows: ObserveObservationRow[]): number | undefined {
+  let latest: number | undefined;
+  for (const row of rows) if (row.end !== null && (latest === undefined || row.end > latest)) latest = row.end;
+  return latest;
+}
+
 /** Trace-wide totals, summed over every observation the way the daemon's trace list does. */
 function traceTotals(rows: ObserveObservationRow[]): { tokens: number | null; cost: number | null } {
   let tokens: number | null = null;
@@ -88,7 +95,7 @@ export function TraceHeader({
         )}
         <Fact label="Model">{model ? <code>{model}</code> : '-'}</Fact>
         <Fact label="Start">{fmtDateTime(root.start)}</Fact>
-        <Fact label="Duration">{fmtDuration(elapsedMs(root, now))}</Fact>
+        <Fact label="Duration">{fmtDuration(elapsedMs(root, now, latestEnd(observations)))}</Fact>
         <Fact label="Tokens">{fmtInt(tokens)}</Fact>
         <Fact label="Cost">{fmtCost(cost)}</Fact>
         {root.session_id && (

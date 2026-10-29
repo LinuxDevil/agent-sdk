@@ -30,20 +30,25 @@ export function totalTokens(row: ObserveObservationRow): number | null {
   return (row.usage_input_tokens ?? 0) + (row.usage_output_tokens ?? 0);
 }
 
-/** An open observation (`end === null`) is running, whatever its stored status says. */
+/** An open observation (`end === null`) is running unless its stored status is terminal (`interrupted` by the crash sweep, or `error`). */
 export function isRunning(row: ObserveObservationRow): boolean {
-  return row.end === null;
+  return row.end === null && row.status !== 'interrupted' && row.status !== 'error';
 }
 
-/** The status to display: a stored `error` always wins; else `running` for an open observation, else the stored status. */
+/** The status to display: a stored terminal status (`error`, `interrupted`) always wins; else `running` for an open observation, else the stored status. */
 export function displayStatus(row: ObserveObservationRow): string | null {
-  if (row.status === 'error') return 'error';
+  if (row.status === 'error' || row.status === 'interrupted') return row.status;
   return isRunning(row) ? 'running' : row.status;
 }
 
-/** Elapsed ms: `end - start`, or `now - start` while still running. */
-export function elapsedMs(row: ObserveObservationRow, now: number): number {
-  return Math.max(0, (row.end ?? now) - row.start);
+/**
+ * Elapsed ms: `end - start`, or `now - start` while still running. An open
+ * row with a terminal status stops at `fallbackEnd` (the latest known end
+ * among it and its descendants), else at its start; it never counts to `now`.
+ */
+export function elapsedMs(row: ObserveObservationRow, now: number, fallbackEnd?: number): number {
+  const end = row.end ?? (isRunning(row) ? now : (fallbackEnd ?? row.start));
+  return Math.max(0, end - row.start);
 }
 
 /** The href that opens a generation in the Playground (it loads the trace, then pre-fills from the observation). */

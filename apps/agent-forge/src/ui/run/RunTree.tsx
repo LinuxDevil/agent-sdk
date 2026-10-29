@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { VirtualList } from '../../components/debug/VirtualList';
 import { fmtDuration, fmtInt } from '../../observe/format';
-import type { ObservationNode } from '../../observe/tree';
+import { latestKnownEnd, type ObservationNode } from '../../observe/tree';
 import type { ObserveObservationRow } from '../../observe/types';
 import { StatusPill } from '../StatusPill';
 import {
@@ -56,8 +56,9 @@ function KindIcon({ kind }: { kind: string }) {
   );
 }
 
-function Duration({ row, now }: { row: ObserveObservationRow; now: number }) {
-  const ms = elapsedMs(row, now);
+function Duration({ node, now }: { node: ObservationNode; now: number }) {
+  const { row } = node;
+  const ms = elapsedMs(row, now, !isRunning(row) && row.end === null ? latestKnownEnd(node) : undefined);
   if (isRunning(row)) return <span className="run-dur run-dur-live">{fmtDuration(ms)} running</span>;
   return <span className="run-dur">{fmtDuration(ms)}</span>;
 }
@@ -96,7 +97,7 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
         {status !== 'ok' && status !== null && <StatusPill status={status} />}
         {row.model && <span className="run-model-chip">{row.model}</span>}
         {tokens !== null && <span className="run-tokens">{fmtInt(tokens)} tok</span>}
-        <Duration row={row} now={now} />
+        <Duration node={node} now={now} />
       </button>
       {playgroundLinks && row.kind === 'generation' && (
         <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)} title={`Open ${name} in Playground`}>

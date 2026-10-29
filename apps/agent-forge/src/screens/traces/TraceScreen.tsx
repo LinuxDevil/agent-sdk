@@ -9,6 +9,7 @@ import { useQueryState } from '../../router/useRoute';
 import { EmptyState } from '../../ui/EmptyState';
 import { tracesListPath } from './tracesUrl';
 import { TraceViewer, type TraceViewMode } from '../../ui/run/TraceViewer';
+import { isRunning } from '../../ui/run/rows';
 import { useNow } from '../../ui/run/useNow';
 import { TraceFeedback } from './TraceFeedback';
 import { TraceHeader } from './TraceHeader';
@@ -49,7 +50,7 @@ function useTrace(traceId: string, pollMs: number) {
 
   const observations = detail.data?.observations;
   const root = useMemo(() => (observations ? rootOf(observations) : undefined), [observations]);
-  const now = useNow(root?.end === null);
+  const now = useNow(root !== undefined && isRunning(root));
   const agentName = agents.data?.find((a) => a.agent_id === root?.agent_id)?.name ?? undefined;
   return { detail, down, root, now, agentName };
 }

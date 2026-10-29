@@ -13,7 +13,7 @@ import type { ObserveQueue, ObserveQueueItem } from '../../observe/types';
 import { useDaemonDown, useNextQueueItem, useQueue, useTraceDetail } from '../../observe/useObserve';
 import { EmptyState } from '../../ui/EmptyState';
 import { TraceViewer, type TraceViewMode } from '../../ui/run/TraceViewer';
-import { displayName } from '../../ui/run/rows';
+import { displayName, isRunning } from '../../ui/run/rows';
 import { useNow } from '../../ui/run/useNow';
 import { fmtInt } from '../../observe/format';
 import { RubricForm } from './RubricForm';
@@ -38,7 +38,7 @@ function ReviewItem({ queue, item, onDone }: { queue: ObserveQueue; item: Observ
   const [mode, setMode] = useState<TraceViewMode>('tree');
   const observations = trace.data?.observations;
   const root = useMemo(() => (observations ? nestObservations(observations)[0]?.row : undefined), [observations]);
-  const now = useNow(root?.end === null);
+  const now = useNow(root !== undefined && isRunning(root));
 
   let body;
   if (down) body = <ObserveDaemonDown />;

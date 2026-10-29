@@ -1,6 +1,6 @@
 import { VirtualList } from '../../components/debug/VirtualList';
 import { fmtDuration } from '../../observe/format';
-import { traceBounds, type ObservationNode } from '../../observe/tree';
+import { latestKnownEnd, traceBounds, type ObservationNode } from '../../observe/tree';
 import type { ObserveObservationRow } from '../../observe/types';
 import { VIRTUALISE_ABOVE, VIRTUAL_ROW_HEIGHT, cx, displayName, elapsedMs, isRunning, useFlatNodes } from './rows';
 import './run.css';
@@ -62,7 +62,7 @@ interface BarRowProps {
 
 function BarRow({ node, minStart, totalMs, now, selected, virtual, onSelect }: BarRowProps) {
   const { row } = node;
-  const ms = elapsedMs(row, now);
+  const ms = elapsedMs(row, now, !isRunning(row) && row.end === null ? latestKnownEnd(node) : undefined);
   const left = ((row.start - minStart) / totalMs) * 100;
   const width = Math.max(0.5, (ms / totalMs) * 100);
   const failed = row.status === 'error';

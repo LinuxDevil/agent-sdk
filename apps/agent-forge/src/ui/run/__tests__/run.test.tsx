@@ -65,6 +65,19 @@ const TRACE: ObserveObservationRow[] = [
 const row = (c: HTMLElement, id: string) => c.querySelector(`[data-obs-id="${id}"]`) as HTMLElement;
 
 describe('RunTree', () => {
+  it('treats an interrupted row with no end as terminal: no "running", elapsed stops at the latest known end', () => {
+    const rows = [
+      obs({ obs_id: 'iroot', end: null, status: 'interrupted' }),
+      obs({ obs_id: 'ichild', parent_obs_id: 'iroot', start: T0 + 10, end: T0 + 250 }),
+    ];
+    const c = render(<RunTree observations={rows} onSelect={() => {}} now={T0 + 60_000} />);
+    const r = row(c, 'iroot');
+    expect(r.querySelector('.run-dur')?.textContent).toBe('250ms');
+    expect(r.querySelector('.run-dur-live')).toBeNull();
+    expect(r.textContent).not.toContain('running');
+    expect(r.textContent).toContain('interrupted');
+  });
+
   it('indents rows by depth in depth-first order', () => {
     const c = render(<RunTree observations={TRACE} onSelect={() => {}} now={T0 + 5000} />);
     const rows = [...c.querySelectorAll<HTMLElement>('.run-tree-row')];
