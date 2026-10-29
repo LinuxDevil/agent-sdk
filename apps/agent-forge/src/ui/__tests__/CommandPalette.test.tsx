@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from './render';
@@ -292,6 +294,10 @@ describe('CommandPalette groups and look', () => {
     expect(footer.textContent).toMatch(/open/);
     expect(footer.textContent).toMatch(/close/);
     expect(footer.querySelectorAll('kbd').length).toBeGreaterThanOrEqual(3);
+    // The input has no outline of its own; the search row shows focus instead.
+    const css = readFileSync(resolve(__dirname, '../commandPalette.css'), 'utf8');
+    expect(css).toMatch(/\.cmdk-search:focus-within\s*\{[^}]*var\(--accent\)/);
+    expect(css).not.toMatch(/var\(--bg\) 60%/);
     // Still the one focusable control: Tab stays on the input.
     expect(palette.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])')).toHaveLength(0);
   });

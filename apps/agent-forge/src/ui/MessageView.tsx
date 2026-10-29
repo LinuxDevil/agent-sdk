@@ -143,7 +143,7 @@ function Bubble({ message }: { message: ChatMessage }) {
           {callId && <span className="mv-call-id">{callId}</span>}
         </div>
         {hasContent && (
-          <div className={`mv-content${message.role === 'tool' ? ' mv-mono' : ''}`}>
+          <div className={`mv-content${message.role === 'tool' && typeof message.content === 'string' ? ' mv-mono' : ''}`}>
             <Content content={message.content} />
           </div>
         )}
@@ -229,7 +229,7 @@ function Header({ label, children }: { label?: string; children?: ReactNode }) {
 /**
  * One payload block (an observation's input or output): chat bubbles for an
  * OpenAI-style message array (role avatar and label; user on --surface-2, assistant
- * on a bordered --surface, tool results as a mono block, system dashed; tool calls
+ * on a bordered --surface, string tool results as a mono block, system dashed; tool calls
  * as chips), a JSON tree
  * for other JSON, plain text otherwise. A Raw toggle shows the exact string,
  * a JSON toggle (when it parses) the parsed tree, and a copy button copies the string.

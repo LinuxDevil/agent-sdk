@@ -7,10 +7,10 @@
   justify-content: center;
   align-items: flex-start;
   padding: 12vh 16px 16px;
-  /* A 40% scrim: ink over the light canvas, the canvas colour (deeper) over the dark one. */
+  /* A 40% scrim: ink over the light canvas, the canvas colour over the dark one. */
   background: light-dark(
     color-mix(in srgb, var(--text) 40%, transparent),
-    color-mix(in srgb, var(--bg) 60%, transparent)
+    color-mix(in srgb, var(--bg) 40%, transparent)
   );
   backdrop-filter: blur(4px);
 }
@@ -39,6 +39,11 @@
   padding: 0 14px 0 16px;
   border-bottom: 1px solid var(--border);
 }
+/* The input draws no ring (see below): the row marks focus with an accent hairline. */
+.cmdk-search:focus-within {
+  border-bottom-color: var(--accent);
+  box-shadow: inset 0 -1px 0 var(--accent);
+}
 .cmdk-search-icon {
   flex: none;
   color: var(--text-faint);
@@ -58,7 +63,7 @@
   color: var(--text-faint);
   opacity: 1;
 }
-/* The input is the dialog's only control and always focused: the caret marks it, a ring would never go away. */
+/* The input is the dialog's only control and always focused; the search row's focus-within hairline marks it. */
 .cmdk-input:focus,
 .cmdk-input:focus-visible {
   outline: none;

@@ -371,18 +371,22 @@ function Legend({ series, hidden, onToggle }: { series: TimeSeries[]; hidden: Re
   );
 }
 
-/** Which series the legend has hidden. Ids no longer in `series` are ignored; if nothing is left visible, all are. */
+/**
+ * Which series the legend has hidden, pruned to the current ids; if that would hide
+ * every current series, none is hidden. Legend, plot and tooltip all read this one set.
+ */
 function useHiddenSeries(series: TimeSeries[]) {
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(() => new Set());
+  const [stored, setStored] = useState<ReadonlySet<string>>(() => new Set());
+  const current = series.filter((s) => stored.has(s.id)).map((s) => s.id);
+  const hidden: ReadonlySet<string> = new Set(current.length < series.length ? current : []);
   const visible = series.filter((s) => !hidden.has(s.id));
-  const toggle = (id: string) =>
-    setHidden((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (series.some((s) => s.id !== id && !next.has(s.id))) next.add(id);
-      return next;
-    });
-  return { hidden, visible: visible.length ? visible : series, toggle };
+  const toggle = (id: string) => {
+    const next = new Set(hidden);
+    if (next.has(id)) next.delete(id);
+    else if (visible.some((s) => s.id !== id)) next.add(id);
+    setStored(next);
+  };
+  return { hidden, visible, toggle };
 }
 
 /** Hovered bucket plus the pointer, keyboard and click handlers that drive it. */

@@ -72,6 +72,21 @@ describe('MessageView', () => {
     expect(unknown.querySelector('.mv-avatar svg')?.getAttribute('class')).toContain('lucide-message-square');
   });
 
+  it('uses the mono block only for string tool content; object content is a JsonView without it', () => {
+    const c = render(
+      <MessageView
+        value={JSON.stringify([
+          { role: 'tool', tool_call_id: 't1', content: { temp: 4 } },
+          { role: 'tool', tool_call_id: 't2', content: 'plain result' },
+        ])}
+      />,
+    );
+    const [obj, text] = bubbles(c);
+    expect(obj.querySelector('.json-view')).not.toBeNull();
+    expect(obj.querySelector('.mv-mono')).toBeNull();
+    expect(text.querySelector('.mv-content')?.classList.contains('mv-mono')).toBe(true);
+  });
+
   it('styles bubbles per role from theme tokens: user surface-2, assistant bordered surface, system dashed', () => {
     const css = readFileSync(resolve(__dirname, '../messageView.css'), 'utf8');
     /** The declarations of the first rule whose selector list ends with `sel`. */

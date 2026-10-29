@@ -4,7 +4,7 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TimeSeriesChart, type TimeSeries } from '../TimeSeriesChart';
-import { render } from './render';
+import { render, rerender } from './render';
 
 const MIN = 60_000;
 /** 10:00 local time on an arbitrary day, so HH:MM labels are predictable. */
@@ -268,6 +268,32 @@ describe('TimeSeriesChart', () => {
     expect(chip('Errors').getAttribute('aria-pressed')).toBe('true');
     expect(chip('Requests').disabled).toBe(false);
     expect(c.querySelector('circle[data-series="err"]')).not.toBeNull();
+  });
+
+  it('legend chips follow the plot when the series prop drops every visible series', () => {
+    const three: TimeSeries[] = [
+      { id: 'a', label: 'A', color: 'chart-1', points: [{ t: FROM, v: 1 }, { t: FROM + BUCKET, v: 2 }] },
+      { id: 'b', label: 'B', color: 'chart-2', points: [{ t: FROM, v: 3 }, { t: FROM + BUCKET, v: 4 }] },
+      { id: 'c', label: 'C', color: 'chart-3', points: [{ t: FROM, v: 5 }, { t: FROM + BUCKET, v: 6 }] },
+    ];
+    const chart = (s: TimeSeries[]) => <TimeSeriesChart series={s} from={FROM} to={TO} bucketMs={BUCKET} yFormat={fmt} />;
+    const c = render(chart(three));
+    const chip = (name: string) =>
+      [...c.querySelectorAll<HTMLButtonElement>('.tsc-legend button')].find((b) => b.textContent === name)!;
+    act(() => chip('B').click());
+    act(() => chip('C').click());
+    expect(c.querySelectorAll('polyline.tsc-line')).toHaveLength(1);
+    // A goes away: B and C are both drawn again, so both chips must read as on.
+    rerender(chart(three.slice(1)));
+    expect(c.querySelectorAll('polyline.tsc-line')).toHaveLength(2);
+    expect(chip('B').getAttribute('aria-pressed')).toBe('true');
+    expect(chip('C').getAttribute('aria-pressed')).toBe('true');
+    expect(chip('B').disabled).toBe(false);
+    // And one of them can be hidden again.
+    act(() => chip('B').click());
+    expect(chip('B').getAttribute('aria-pressed')).toBe('false');
+    expect(c.querySelector('[data-series="b"]')).toBeNull();
+    expect(chip('C').disabled).toBe(true);
   });
 
   it('legend prop: forced on for one series, off for many', () => {
