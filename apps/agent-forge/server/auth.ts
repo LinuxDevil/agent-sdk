@@ -9,7 +9,8 @@
  *   2. carries no `Origin`, or the studio's own origin - the browser sets
  *      `Origin` on every cross-origin fetch and on every WebSocket upgrade,
  *      so another site (or another local port) can't drive the API;
- *   3. (API and WebSocket only, not the static client) presents the
+ *   3. (everything except a GET/HEAD of `/health` or the static client - see
+ *      needsToken() in app.ts - and every WebSocket upgrade) presents the
  *      per-launch token `lousho studio` mints and prints in the studio URL,
  *      as the `x-lousho-studio-token` header or a `token` query parameter
  *      (the WebSocket can't set headers).
