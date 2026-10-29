@@ -331,13 +331,21 @@ test('queue review at 1280px: a trace tree row name never wraps one letter per l
   }
 });
 
-// The traces columns add up to ~1330px: at 1280 the table is wider than the screen, so its wrap scrolls
-// sideways (and the header cannot stick to the screen); at 1920 it fits (every column shown), the wrap only clips, and it sticks.
-test('traces at 1280px: a table wider than the screen scrolls sideways inside its wrap', async ({ page }) => {
+// The traces columns are sized to fit a 1280px window with the nav expanded, so the wrap only clips and the
+// header can stick; columns resized past the screen make the wrap scroll sideways instead (the header stops sticking).
+// At 1920 every column but the widest-only ones shows, and it still fits and sticks.
+test('traces at 1280px: the table fits its wrap, and resized past the screen it scrolls sideways inside it', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${APP}#/traces`);
   await expect(bodyRows(page).first()).toBeVisible();
   const wrap = page.getByRole('main').locator('.data-table-wrap');
+  await expect(wrap).not.toHaveClass(/dt-scroll-x/);
+  expect(await wrap.evaluate((w) => w.scrollWidth <= w.clientWidth)).toBe(true);
+
+  // A remembered column width wider than the screen (as if dragged there) overflows the wrap.
+  await page.evaluate(() => window.localStorage.setItem('forge.table.traces.widths', JSON.stringify({ input: 900 })));
+  await page.reload();
+  await expect(bodyRows(page).first()).toBeVisible();
   await expect(wrap).toHaveClass(/dt-scroll-x/);
   expect(await wrap.evaluate((w) => w.scrollWidth > w.clientWidth && getComputedStyle(w).overflowX === 'auto')).toBe(true);
 });

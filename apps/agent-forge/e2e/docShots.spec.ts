@@ -684,3 +684,111 @@ test('evals x: scores at 375 wide (header tabs all visible)', async ({ page }) =
   await expect(page.getByRole('navigation', { name: 'Evaluations' }).getByRole('link', { name: 'Annotation queues' })).toBeInViewport();
   await shoot(page, 'x-evals-scores-375');
 });
+
+// --- Traces list + trace detail review states (x- shots, P3) ----------------
+
+const LONG_TRACE = 'doc-long-trace';
+
+/**
+ * A 25-step trace nested four levels deep: an agent root, three planner
+ * turns, each with a sub-agent whose generations call tools (the last tool of
+ * the second turn fails), plus a final answer generation.
+ */
+function longTraceDetail() {
+  const start = NOW - 20 * MINUTE;
+  const base = {
+    trace_id: LONG_TRACE,
+    session_id: 'seed-session-0',
+    agent_id: 'orders-bot',
+    status: 'ok',
+    input: null,
+    output: null,
+    model: null,
+    usage_input_tokens: null,
+    usage_output_tokens: null,
+    usage_cached_tokens: null,
+    usage_reasoning_tokens: null,
+    cost_usd: null,
+    cost_partial: null,
+    usage_estimated: null,
+    truncated: false,
+    attrs: null,
+  };
+  const root = `${LONG_TRACE}-root`;
+  const observations: Record<string, unknown>[] = [
+    { ...base, obs_id: root, parent_obs_id: null, kind: 'agent', name: 'orders-bot turn', start, end: start + 9_400, status: 'error', input: 'Refund every damaged item in my last three orders', attrs: { error: 'order service 503' } },
+  ];
+  for (let turn = 0; turn < 3; turn += 1) {
+    const t0 = start + 40 + turn * 2_900;
+    const span = `${LONG_TRACE}-span-${turn}`;
+    const sub = `${LONG_TRACE}-sub-${turn}`;
+    observations.push({ ...base, obs_id: span, parent_obs_id: root, kind: 'span', name: `plan step ${turn + 1}`, start: t0, end: t0 + 2_800 });
+    observations.push({ ...base, obs_id: `${span}-gen`, parent_obs_id: span, kind: 'generation', name: 'llm', start: t0 + 10, end: t0 + 620, model: 'gpt-4o-mini', usage_input_tokens: 640 + turn * 80, usage_output_tokens: 42, cost_usd: 0.00012 });
+    observations.push({ ...base, obs_id: sub, parent_obs_id: span, kind: 'agent', name: 'refunds sub-agent', start: t0 + 640, end: t0 + 2_780 });
+    for (let call = 0; call < 2; call += 1) {
+      const c0 = t0 + 660 + call * 1_050;
+      const gen = `${sub}-gen-${call}`;
+      const failed = turn === 1 && call === 1;
+      observations.push({ ...base, obs_id: gen, parent_obs_id: sub, kind: 'generation', name: 'llm', start: c0, end: c0 + 480, model: 'gpt-4o-mini', usage_input_tokens: 820, usage_output_tokens: 31, cost_usd: 0.00014 });
+      observations.push({
+        ...base,
+        obs_id: `${gen}-tool`,
+        parent_obs_id: gen,
+        kind: 'tool',
+        name: call === 0 ? 'lookup_order' : 'issue_refund',
+        start: c0 + 500,
+        end: c0 + (failed ? 1_020 : 900),
+        input: `{"order":"ord_${50 + turn}","item":${call}}`,
+        ...(failed ? { status: 'error', attrs: { error: 'order service 503' } } : { output: '{"ok":true}' }),
+      });
+    }
+  }
+  observations.push({ ...base, obs_id: `${LONG_TRACE}-final`, parent_obs_id: root, kind: 'generation', name: 'llm', start: start + 8_800, end: start + 9_380, model: 'gpt-4o-mini', usage_input_tokens: 1_900, usage_output_tokens: 120, cost_usd: 0.0004, output: 'Two refunds were issued; the third failed.' });
+  return { trace_id: LONG_TRACE, scores: [], observations };
+}
+
+const downObserve = (page: Page) =>
+  page.route('**/observe/**', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"down"}' }));
+
+test('x-traces: list with the daemon down', async ({ page }) => {
+  await downObserve(page);
+  await open(page, '/traces');
+  await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
+  await shoot(page, 'x-traces-down');
+});
+
+test('x-traces: detail with the errored step selected', async ({ page }) => {
+  await open(page, `/traces/${SEED_NEWEST_FAILURE.trace_id}?obs=${SEED_NEWEST_FAILURE.trace_id}-gen-1`);
+  await expect(page.getByRole('main').getByRole('alert')).toContainText(SEED_ERROR);
+  await shoot(page, 'x-trace-error-selected');
+});
+
+test('x-traces: a long nested trace, tree and waterfall', async ({ page }) => {
+  await page.route(`**/observe/api/v1/traces/${LONG_TRACE}`, (route) => json(route, longTraceDetail()));
+  await open(page, `/traces/${LONG_TRACE}`);
+  const main = page.getByRole('main');
+  await expect(main.getByRole('alert')).toBeVisible();
+  await shoot(page, 'x-trace-long-tree');
+  await main.getByRole('button', { name: 'Waterfall' }).click();
+  await shoot(page, 'x-trace-long-waterfall');
+});
+
+test('x-traces: detail at 375 wide', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await open(page, `/traces/${SEED_NEWEST_FAILURE.trace_id}`);
+  await expect(page.getByRole('main').getByRole('alert')).toContainText(SEED_ERROR);
+  await shoot(page, 'x-trace-narrow');
+  await page.screenshot({ path: path.join(OUT, 'studio-x-trace-narrow-full.png'), fullPage: true });
+});
+
+test("x-traces: the Agents drawer's Trace tab (narrow host)", async ({ page }) => {
+  await newAgent(page, `drawer-trace-${Date.now()}`);
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('.topbar [role="status"]')).toContainText('done', { timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Trace', exact: true }).click();
+  const history = page.getByRole('listbox', { name: 'Trace history' });
+  await expect(history.getByRole('option').first()).toBeVisible({ timeout: 15_000 });
+  await history.getByRole('option').first().click();
+  await expect(page.locator('.run-inspector')).toBeVisible();
+  await shoot(page, 'x-drawer-trace');
+});

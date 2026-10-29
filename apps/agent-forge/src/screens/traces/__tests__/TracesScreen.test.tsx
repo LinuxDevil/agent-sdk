@@ -4,6 +4,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TracesScreen } from '../TracesScreen';
 import { render } from '../../../ui/__tests__/render';
 import type { ObserveTraceRow } from '../../../observe/types';
+import type { ScreenHeaderProps } from '../../../shell/ScreenHeader';
+
+// The shell's header needs the app state; here it renders its props in place.
+vi.mock('../../../shell/ScreenHeader', () => ({
+  ScreenHeader: ({ title, description, actions }: ScreenHeaderProps) => (
+    <header className="test-screen-header">
+      <h1>{title}</h1>
+      <p>{description}</p>
+      {actions}
+    </header>
+  ),
+}));
 
 const NOW = new Date(2026, 9, 25, 15, 30, 0).getTime();
 
@@ -161,5 +173,55 @@ describe('TracesScreen', () => {
     expect(window.location.hash).toBe('#/traces?status=error');
     expect(listRequests().at(-1)!.get('prompt')).toBeNull();
     expect(container.querySelector('.traces-prompt-chip')).toBeNull();
+  });
+
+  it('sets the page header: title, description, Refresh and an unpressed Live toggle', async () => {
+    const container = await mountAt('#/traces');
+    const header = container.querySelector('.test-screen-header')!;
+    expect(header.querySelector('h1')?.textContent).toBe('Traces');
+    expect(header.textContent).toContain('Every run reported to the collector');
+    expect(header.querySelector('button[aria-label="Refresh"]')).not.toBeNull();
+    const live = [...header.querySelectorAll('button')].find((b) => b.textContent === 'Live')!;
+    expect(live.getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('Refresh re-fetches with the rolling window ending at the new now', async () => {
+    const container = await mountAt('#/traces');
+    const before = listRequests().length;
+    vi.setSystemTime(NOW + 60_000);
+    act(() => (container.querySelector('button[aria-label="Refresh"]') as HTMLButtonElement).click());
+    await flush();
+    expect(listRequests().length).toBe(before + 1);
+    expect(listRequests().at(-1)!.get('to')).toBe(String(NOW + 60_000));
+    expect(window.location.hash).toBe('#/traces');
+  });
+
+  it('Live re-fetches every 5 s while pressed and stops when switched off', async () => {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] });
+    vi.setSystemTime(NOW);
+    const container = await mountAt('#/traces');
+    const live = [...container.querySelectorAll('button')].find((b) => b.textContent === 'Live')!;
+    act(() => live.click());
+    expect(live.getAttribute('aria-pressed')).toBe('true');
+    const before = listRequests().length;
+    act(() => vi.advanceTimersByTime(5_000));
+    await flush();
+    expect(listRequests().length).toBe(before + 1);
+    act(() => live.click());
+    expect(live.getAttribute('aria-pressed')).toBe('false');
+    act(() => vi.advanceTimersByTime(15_000));
+    await flush();
+    expect(listRequests().length).toBe(before + 1);
+    expect(window.location.hash).toBe('#/traces');
+  });
+
+  it('shows the agent and trace id under the name, and the model as a chip', async () => {
+    const container = await mountAt('#/traces');
+    const row = [...container.querySelectorAll('tbody tr')].find((tr) => tr.textContent?.includes('answer'))!;
+    expect(row.querySelector('.traces-name-title')?.textContent).toBe('answer');
+    expect(row.querySelector('.traces-name-agent')?.textContent).toBe('support-bot');
+    expect(row.querySelector('.traces-name-id')?.textContent).toBe('trace-ok');
+    expect(row.querySelector('.traces-model-chip')?.textContent).toBe('gpt-4o-mini');
   });
 });
