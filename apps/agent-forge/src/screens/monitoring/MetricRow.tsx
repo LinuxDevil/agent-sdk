@@ -30,6 +30,16 @@ export function MetricRow({
   // The delta's label is spoken only; this is its visible (and screen-reader silent) counterpart.
   const vs = (value: number | undefined) =>
     value === undefined ? undefined : <span aria-hidden="true">vs prev. {win}</span>;
+  // With a delta the visible line is the comparison; the weighting stays spoken (and in the tooltip).
+  const p95Hint =
+    m.p95.delta === undefined ? (
+      'runs-weighted'
+    ) : (
+      <>
+        {vs(m.p95.delta)}
+        <span className="visually-hidden">, runs-weighted</span>
+      </>
+    );
   return (
     <div className="mon-metrics">
       <MetricCard
@@ -54,7 +64,7 @@ export function MetricRow({
           label="p95 latency"
           value={fmtDuration(m.p95.value)}
           delta={delta(m.p95.delta, 'down')}
-          hint={m.p95.delta === undefined ? 'runs-weighted' : vs(m.p95.delta)}
+          hint={loading ? undefined : p95Hint}
           sparkline={m.p95.sparkline}
           loading={loading}
         />

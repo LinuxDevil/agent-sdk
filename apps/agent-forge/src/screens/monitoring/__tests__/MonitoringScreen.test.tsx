@@ -131,6 +131,10 @@ describe('MonitoringScreen', () => {
     expect(link.querySelector('.visually-hidden')?.textContent).toBe('View traces for Support bot');
     // Runs and error rate stay.
     expect(fleetRow(c, 'Support bot')!.textContent).toContain('25.0%');
+    // Health is the dot alone, with the status still in the cell (visually hidden) and as its tooltip.
+    const health = fleetRow(c, 'Support bot')!.querySelector('.mon-health-dot')!;
+    expect(health.getAttribute('title')).toBe('stale');
+    expect(health.querySelector('.status-pill.pill-warning .status-pill-label')?.textContent).toBe('stale');
   });
 
   it('renders a single-bucket series as a point', async () => {
@@ -202,7 +206,9 @@ describe('MonitoringScreen', () => {
     expect(card('Error rate').querySelector('.metric-delta')?.textContent).toContain('down 10 pp vs previous 24h');
     expect(card('Error rate').querySelector('.metric-delta')?.getAttribute('data-tone')).toBe('good');
     expect(card('p95 latency').querySelector('.metric-value')?.textContent).toBe('1.0s');
-    // With a delta on the line, the weighting moves to the card's tooltip.
+    // With a delta on the line, the weighting moves to the card's tooltip (and stays spoken).
+    const spoken = [...card('p95 latency').querySelectorAll('.metric-meta .visually-hidden')].map((e) => e.textContent).join(' ');
+    expect(spoken).toContain('runs-weighted');
     expect(card('p95 latency').closest('[title]')?.getAttribute('title')).toContain('Runs-weighted');
     expect(card('Cost').querySelector('.metric-value')?.textContent).toBe('$1.00');
     expect(card('Cost').querySelector('.metric-delta')?.getAttribute('data-tone')).toBe('good');
@@ -234,6 +240,7 @@ describe('MonitoringScreen', () => {
     expect(c.querySelector('.mon-charts[aria-busy="true"] [role="status"]')?.textContent).toBe('Loading charts');
     expect(c.querySelectorAll('.mon-chart .skeleton').length).toBe(5);
     expect(c.querySelectorAll('.metric-card[aria-busy="true"]').length).toBe(4);
+    expect(c.querySelector('.mon-metrics')?.textContent).not.toContain('runs-weighted');
     release();
     await waitFor(() => c.querySelector('.mon-charts-empty') !== null);
     expect(c.querySelector('.mon-charts-empty')?.textContent).toContain('No runs in this window');

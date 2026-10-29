@@ -81,12 +81,25 @@ function DroppedCell({ dropped }: { dropped: number | null | undefined }) {
 /**
  * The fleet columns. Fixed widths for everything but the agent name, which takes the rest;
  * columns drop out as the table narrows, and `compact` (phone widths) slims the ones that stay
- * so the name, health, runs and error rate still fit at 375 px.
+ * (health becomes its dot) so the name, health, runs and error rate still fit at 375 px.
  */
 function fleetColumns(compact: boolean): Column<FleetRow>[] {
   return [
     { key: 'agent', header: 'Agent', render: ({ agent }) => <AgentCell agent={agent} /> },
-    { key: 'status', header: 'Health', width: compact ? 100 : 104, render: ({ agent }) => <StatusPill status={agent.status} /> },
+    compact
+      ? {
+          // Dot only: the pill's label stays in the DOM, visually hidden, and is the dot's tooltip.
+          key: 'status',
+          header: <span className="visually-hidden">Health</span>,
+          label: 'Health',
+          width: 32,
+          render: ({ agent }) => (
+            <span className="mon-health-dot" title={agent.status}>
+              <StatusPill status={agent.status} />
+            </span>
+          ),
+        }
+      : { key: 'status', header: 'Health', width: 104, render: ({ agent }) => <StatusPill status={agent.status} /> },
     {
       key: 'heartbeat',
       header: 'Last heartbeat',

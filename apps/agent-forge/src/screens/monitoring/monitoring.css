@@ -71,6 +71,12 @@
   content: '';
   display: block;
 }
+/* The kit sizes this skeleton inline at 32px; max-height brings it to the 28px sparkline row
+   (and block keeps it off the text baseline), so a loading card is exactly a populated card's height. */
+.mon-metrics .metric-spark-skeleton {
+  display: block;
+  max-height: 28px;
+}
 .mon-metrics .metric-main {
   /* overline 15.4 + gap 4 + value 32 + gap 4 + one 18px meta line */
   min-height: 74px;
@@ -194,6 +200,23 @@
   .mon-rate-bar {
     display: none;
   }
+}
+/* Compact health: the pill's dot alone; its label is visually hidden, not removed. */
+.mon-health-dot {
+  display: inline-flex;
+}
+.mon-health-dot .status-pill {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.mon-health-dot .status-pill-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 @media (max-width: 480px) {
