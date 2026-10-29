@@ -42,7 +42,7 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
 
   // --- Create an agent from the "Support bot" template (trigger -> llm ->
   // tool -> output; its tool node starts pointed at 'http') ---
-  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(agentId);
   await page.locator('#new-agent-template').selectOption('support-bot');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -91,7 +91,7 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
 
 /** F5: the builder is the Agents screen, and `#/agents/:id` names the open agent. */
 async function createAgent(page: Page, id: string) {
-  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(id);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.crumbs b')).toHaveText(id);

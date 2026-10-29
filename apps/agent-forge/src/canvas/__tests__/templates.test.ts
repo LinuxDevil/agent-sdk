@@ -3,7 +3,7 @@ import { graphFromTemplate } from '../templates';
 import { graphToSpec } from '../../graph/graphToSpec';
 
 describe('graphFromTemplate', () => {
-  it('names the spec after the id typed in "+ New agent"', () => {
+  it('names the spec after the id typed in "New agent"', () => {
     expect(graphToSpec(graphFromTemplate('support-bot', 'my-helper')).name).toBe('my-helper');
     expect(graphToSpec(graphFromTemplate('blank', 'scratch')).name).toBe('scratch');
   });

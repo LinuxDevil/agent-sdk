@@ -1,8 +1,9 @@
 /* ---------- narrow layout (<= 860px) ----------
    The rail and the Inspector become slide-over drawers toggled from the top
-   bar (App.tsx's useSidePanels, Topbar.tsx's NarrowTopbar); Debug, Import,
-   Export and Save move into the top bar's "More" menu. Keep the breakpoint in
-   sync with useMediaQuery.ts's NARROW_QUERY. */
+   bar (AgentsScreen.tsx's useSidePanels, Topbar.tsx's NarrowTopbar); Debug,
+   Import, Export and the model badge move into the bar's "More actions" menu
+   (ToolbarMoreMenu.tsx). Run (or Stop) and Save stay in the bar. Keep the
+   breakpoint in sync with useMediaQuery.ts's NARROW_QUERY. */
 .overflow-menu {
   position: relative;
   flex: none;
@@ -12,68 +13,79 @@
   right: 0;
   top: calc(100% + 6px);
   z-index: 30;
-  min-width: 210px;
+  min-width: 220px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 4px;
+  padding: var(--space-1);
   display: flex;
   flex-direction: column;
 }
 .overflow-menu-env {
-  padding: 4px 4px 6px;
+  padding: var(--space-1) var(--space-1) 6px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 .overflow-menu-env .env-select {
-  flex-wrap: wrap;
+  max-width: 100%;
 }
 .overflow-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
   text-align: left;
   background: none;
   border: none;
-  border-radius: 6px;
-  padding: 8px 10px;
-  font-size: 12.5px;
-  font-weight: 600;
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text);
   cursor: pointer;
+}
+.overflow-menu-icon {
+  display: inline-flex;
+  width: 16px;
+  flex: none;
+  color: var(--text-muted);
+}
+.overflow-menu-label {
+  flex: 1;
+}
+.overflow-menu-check {
+  flex: none;
+  color: var(--accent);
 }
 .overflow-menu-item:hover,
 .overflow-menu-item:focus-visible {
   background: var(--surface-2);
+}
+.overflow-menu-item:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 .panel-toggle {
   flex: none;
-  padding: 6px 9px;
-  font-size: 15px;
-  line-height: 1;
 }
-.panel-toggle.active {
+.btn.panel-toggle.active {
   background: var(--accent-soft);
   color: var(--accent);
 }
 .topbar-narrow {
   gap: 6px;
-  padding: 0 8px;
+  padding: 0 var(--space-2);
   /* never widen the page: the crumbs ellipsize instead */
   min-width: 0;
 }
-.topbar-narrow .crumbs {
-  flex: 1;
-}
-.topbar-narrow .crumbs b {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.topbar-narrow .topbar-left {
+  gap: 6px;
   min-width: 0;
 }
-.topbar-narrow .crumbs .mock-badge,
-.topbar-narrow .crumbs .dirty-dot {
-  flex: none;
+.topbar-narrow .crumbs b {
+  max-width: none;
 }
 .topbar-narrow .run-error {
   max-width: 90px;
@@ -81,4 +93,23 @@
 /* The Chat tab shows the same approval card inline. */
 .topbar-narrow .approval-card {
   display: none;
+}
+/* At phone widths Run/Stop and Save keep only their icons (the label stays the accessible name). */
+@media (max-width: 520px) {
+  .topbar-narrow .btn-collapse {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .topbar-narrow .btn-collapse .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .topbar-narrow .crumbs {
+    font-size: 12px;
+  }
 }

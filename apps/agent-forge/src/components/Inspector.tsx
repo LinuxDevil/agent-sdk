@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
 import { javascript } from '@codemirror/lang-javascript';
+import { MousePointerClick, Plus, X } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import {
   updateNodeData,
@@ -14,6 +15,7 @@ import {
 } from '../canvas/graphMutations';
 import { HOOK_TEMPLATES } from '../hooks/hookTemplates';
 import { InspectorSection } from './InspectorSection';
+import { NODE_KINDS } from '../canvas/nodeKinds';
 import type { AgentGraphEdge, AgentGraphNode, AgentGraphSpec, AgentNodeHookInstance } from '../graph/types';
 
 type SetGraph = (updater: (graph: AgentGraphSpec) => AgentGraphSpec) => void;
@@ -81,8 +83,7 @@ function HookChip({ node, hook, selected, setGraph, onSelect, onRemoved }: HookC
       </button>
       <button
         type="button"
-        className="btn btn-ghost"
-        style={{ padding: '2px 6px' }}
+        className="btn btn-ghost btn-icon btn-sm hook-chip-remove"
         title="Remove this hook"
         aria-label={`Remove the ${hook.name} hook`}
         onClick={(e) => {
@@ -91,7 +92,7 @@ function HookChip({ node, hook, selected, setGraph, onSelect, onRemoved }: HookC
           onRemoved();
         }}
       >
-        &times;
+        <X size={14} strokeWidth={1.75} aria-hidden="true" />
       </button>
     </div>
   );
@@ -106,8 +107,8 @@ interface HookGroupProps {
 function HookGroup({ label, hooks, renderChip }: HookGroupProps) {
   return (
     <div className="hook-group">
-      <div className="hook-group-label">
-        {label} <span className="hook-count">({hooks.filter((h) => h.enabled).length} active)</span>
+      <div className="hook-group-label overline">
+        {label} <span className="hook-count">{hooks.filter((h) => h.enabled).length} active</span>
       </div>
       {hooks.map(renderChip)}
     </div>
@@ -117,15 +118,17 @@ function HookGroup({ label, hooks, renderChip }: HookGroupProps) {
 function HookTemplateButtons({ node, setGraph }: { node: AgentGraphNode; setGraph: SetGraph }) {
   const point = node.type === 'llm' ? 'generate' : 'toolCall';
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+    <div className="hook-templates">
       {HOOK_TEMPLATES.filter((t) => t.point === point).map((t) => (
         <button
           key={t.id}
-          className="btn btn-add-hook"
+          type="button"
+          className="btn btn-sm btn-add-hook"
           title={`Add ${t.name} (${t.when})`}
           onClick={() => setGraph((g) => addHookToNode(g, node.id, t))}
         >
-          + {t.name}
+          <Plus size={14} strokeWidth={1.75} aria-hidden="true" />
+          {t.name}
         </button>
       ))}
     </div>
@@ -209,19 +212,20 @@ function branchTargetLabel(edge: AgentGraphEdge, target: AgentGraphNode | undefi
 
 function BranchRow({ edge, target, setGraph }: BranchRowProps) {
   return (
-    <div className="branch-row" style={{ marginBottom: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-        <span className="hint" style={{ flex: 1 }}>
+    <div className="branch-row">
+      <div className="branch-row-head">
+        <span className="branch-target" title={branchTargetLabel(edge, target)}>
           &rarr; {branchTargetLabel(edge, target)}
-          {isDefaultBranch(edge) && ' (default)'}
+          {isDefaultBranch(edge) && <span className="branch-default"> (default)</span>}
         </span>
         <button
-          className="btn btn-ghost"
-          style={{ padding: '2px 6px' }}
+          type="button"
+          className="btn btn-ghost btn-icon btn-sm"
           title="Remove this branch"
+          aria-label="Remove this branch"
           onClick={() => setGraph((g) => removeEdge(g, edge.id))}
         >
-          &times;
+          <X size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
       </div>
       <input
@@ -303,7 +307,8 @@ function BreakpointField({
           void setBreakpoints(on ? breakpoints.filter((b) => b !== breakpointKey) : [...breakpoints, breakpointKey])
         }
       >
-        {on ? 'Break before this node ●' : 'Break before this node'}
+        <span className="breakpoint-dot" aria-hidden="true" />
+        Break before this node
       </button>
     </div>
   );
@@ -438,14 +443,37 @@ function breakpointKeyFor(node: AgentGraphNode): string | undefined {
   return undefined;
 }
 
+/** The header: the node's kind icon tile, its kind as an overline, and its label (truncated, full text in the tooltip). */
+function InspectorHead({ node }: { node: AgentGraphNode }) {
+  const { tone, Icon } = NODE_KINDS[node.type];
+  return (
+    <div className="inspector-head">
+      <span className={`node-kind node-kind-lg kind-${tone}`} aria-hidden="true">
+        <Icon size={16} strokeWidth={1.75} />
+      </span>
+      <div className="inspector-head-text">
+        <div className="k overline">Selected node ({node.type})</div>
+        <div className="v" title={node.label}>
+          {node.label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmptyInspector() {
   return (
     <aside className="inspector" id="studio-inspector" aria-label="Inspector">
       <div className="inspector-head">
-        <div className="k">Inspector</div>
-        <div className="v">No node selected</div>
+        <div className="inspector-head-text">
+          <div className="k overline">Inspector</div>
+        </div>
       </div>
-      <div className="inspector-body">
+      <div className="inspector-body inspector-empty">
+        <span className="inspector-empty-icon" aria-hidden="true">
+          <MousePointerClick size={20} strokeWidth={1.75} />
+        </span>
+        <div className="inspector-empty-title">No node selected</div>
         <div className="hint">Select a node on the canvas to view and edit its configuration.</div>
       </div>
     </aside>
@@ -478,10 +506,7 @@ function NodeInspector({ selected }: { selected: AgentGraphNode }) {
 
   return (
     <aside className="inspector" id="studio-inspector" aria-label="Inspector">
-      <div className="inspector-head">
-        <div className="k">Selected node ({selected.type})</div>
-        <div className="v">{selected.label}</div>
-      </div>
+      <InspectorHead node={selected} />
       <div className="inspector-body">
         {/* Collapsible sections, each remembered per viewer (InspectorSection.tsx). */}
         <InspectorSection id="node" title="Node">

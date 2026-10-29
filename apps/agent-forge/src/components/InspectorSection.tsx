@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { ChevronRight } from 'lucide-react';
 import { readStored, writeStored } from './storedValue';
 
 /** localStorage key prefix of each section's open/closed state (`forge.inspector.<id>`). */
@@ -23,9 +24,7 @@ export function InspectorSection({ id, title, children }: { id: string; title: s
     <section className="inspector-section">
       <h2 className="inspector-section-head">
         <button type="button" aria-expanded={open} aria-controls={bodyId} onClick={toggle}>
-          <span className="inspector-section-caret" aria-hidden="true">
-            {open ? '▾' : '▸'}
-          </span>
+          <ChevronRight className="inspector-section-caret" size={14} strokeWidth={1.75} aria-hidden="true" />
           {title}
         </button>
       </h2>

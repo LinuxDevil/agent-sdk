@@ -1,8 +1,9 @@
 import { memo, useState, type KeyboardEvent } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Flag, GitBranch, ShieldCheck, Sparkles, Wrench, Zap, type LucideIcon } from 'lucide-react';
+import { Wrench } from 'lucide-react';
 import type { AgentGraphNode, AgentGraphNodeType } from '../graph/types';
 import { StatusPill } from '../ui/StatusPill';
+import { NODE_KINDS } from './nodeKinds';
 
 /**
  * Custom ReactFlow node renderer for every `AgentGraphNodeType`: a 240px card
@@ -18,22 +19,19 @@ import { StatusPill } from '../ui/StatusPill';
  * kind tile's tone/icon, which ports are shown, and which data rows to render.
  */
 
-/** A kind tile's colour family: `kind-<tone>` in screens/agents/agents.css (also the MiniMap's node fill). */
-type KindTone = 'accent' | 'violet' | 'info' | 'warning' | 'success' | 'neutral';
-
-const NODE_META: Record<AgentGraphNodeType, { tone: KindTone; Icon: LucideIcon; hasIn: boolean; hasOut: boolean }> = {
-  trigger: { tone: 'accent', Icon: Zap, hasIn: false, hasOut: true },
-  llm: { tone: 'violet', Icon: Sparkles, hasIn: true, hasOut: true },
-  tool: { tone: 'info', Icon: Wrench, hasIn: true, hasOut: true },
-  // The approval gate is the canvas's "hook" kind: warning, like a pause.
-  approval: { tone: 'warning', Icon: ShieldCheck, hasIn: true, hasOut: true },
-  output: { tone: 'success', Icon: Flag, hasIn: true, hasOut: false },
-  // Router is neutral control flow; `hasOut: true` matters here more than
-  // anywhere else - it's the one node type actually expected to carry
-  // MULTIPLE outgoing edges (its branches), which ReactFlow already
-  // supports from a single source `Handle` (see llm -> multiple tool nodes,
-  // an existing pattern this reuses rather than needing per-branch ports).
-  router: { tone: 'neutral', Icon: GitBranch, hasIn: true, hasOut: true },
+/** Which ports each kind has. Its tone and icon come from nodeKinds.ts's NODE_KINDS. */
+const NODE_PORTS: Record<AgentGraphNodeType, { hasIn: boolean; hasOut: boolean }> = {
+  trigger: { hasIn: false, hasOut: true },
+  llm: { hasIn: true, hasOut: true },
+  tool: { hasIn: true, hasOut: true },
+  approval: { hasIn: true, hasOut: true },
+  output: { hasIn: true, hasOut: false },
+  // Router: `hasOut: true` matters here more than anywhere else - it's the
+  // one node type actually expected to carry MULTIPLE outgoing edges (its
+  // branches), which ReactFlow already supports from a single source
+  // `Handle` (see llm -> multiple tool nodes, an existing pattern this
+  // reuses rather than needing per-branch ports).
+  router: { hasIn: true, hasOut: true },
 };
 
 type NodeRow = { k: string; v: string };
@@ -210,7 +208,8 @@ function NodeRows({ rows }: { rows: NodeRow[] }) {
 function AgentNodeImpl({ data, selected }: NodeProps) {
   const nodeData = data as unknown as AgentNodeData;
   const { graphNode, onRename, toolCount, status } = nodeData;
-  const { tone, Icon, hasIn, hasOut } = NODE_META[graphNode.type];
+  const { tone, Icon } = NODE_KINDS[graphNode.type];
+  const { hasIn, hasOut } = NODE_PORTS[graphNode.type];
   const rename = useRenameDraft(graphNode, onRename);
 
   return (

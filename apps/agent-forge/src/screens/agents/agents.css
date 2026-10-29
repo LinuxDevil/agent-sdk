@@ -3,7 +3,8 @@
 /* ---------- Shell ---------- */
 .shell {
   display: grid;
-  grid-template-columns: 236px 1fr 300px;
+  /* Rails tightened (220 / 288) so the canvas pane gets the room. */
+  grid-template-columns: 220px minmax(0, 1fr) 288px;
   min-height: 0;
 }
 .rail,
@@ -22,96 +23,223 @@
   border-left: 1px solid var(--border);
 }
 
+/* ---------- Left rail (LeftRail.tsx) ---------- */
+/* The Agents/Nodes tablist, drawn as a segmented control. */
+.rail-tabs-wrap {
+  flex: none;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+}
 .rail-tabs {
   display: flex;
-  border-bottom: 1px solid var(--border);
-  flex: none;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
 }
 .rail-tab {
   flex: 1;
+  min-height: 26px;
   text-align: center;
-  padding: 9px 4px;
-  font-size: 11.5px;
-  font-weight: 600;
+  padding: 0 var(--space-2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-muted);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
   background: none;
-  border-left: none;
-  border-right: none;
-  border-top: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.rail-tab:hover {
+  color: var(--text);
 }
 .rail-tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm), 0 0 0 1px var(--border);
 }
 .rail-body {
   overflow-y: auto;
-  padding: 10px;
+  padding: var(--space-1) var(--space-3) var(--space-3);
   flex: 1;
 }
 .rail-section-title {
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--text-faint);
-  margin: 12px 4px 6px;
+  margin: var(--space-4) var(--space-1) 6px;
 }
-.rail-section-title:first-child {
-  margin-top: 2px;
+.rail-body > .rail-section-title:first-child,
+.palette-group:first-child .rail-section-title {
+  margin-top: var(--space-1);
 }
-
-.agent-card {
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 9px 10px;
-  margin-bottom: 7px;
-  cursor: pointer;
-  background: var(--surface);
-}
-.agent-card.selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.agent-card-top {
+.rail-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: var(--space-2);
+  margin: 0 0 6px;
 }
-.agent-name {
-  font-weight: 600;
-  font-size: 12.5px;
+.rail-head .rail-section-title {
+  margin: 0 var(--space-1);
 }
-.agent-meta {
-  color: var(--text-muted);
-  font-size: 11px;
-  margin-top: 3px;
-  font-family: var(--font-mono);
-  display: block;
+.rail-new {
+  flex: none;
 }
 
+/* Workspace rows: initials tile, name over model, status dot. */
+.agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-card {
+  position: relative;
+  border-radius: var(--radius);
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.agent-card:hover {
+  background: var(--surface-2);
+}
+.agent-card.selected {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
 .agent-card-main {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   width: 100%;
+  min-height: 44px;
+  padding: 6px var(--space-2);
   background: none;
   border: none;
-  padding: 0;
+  border-radius: var(--radius);
   margin: 0;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
+.agent-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.agent-card.selected .agent-avatar {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.agent-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+.agent-name {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-meta {
+  color: var(--text-faint);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.agent-dot.tone-ok {
+  background: var(--success);
+}
+.agent-dot.tone-error {
+  background: var(--danger);
+}
+.agent-dot.tone-warning {
+  background: var(--warning);
+}
+.agent-dot.tone-running {
+  background: var(--info);
+  animation: status-pulse 1.4s var(--ease) infinite;
+}
+.agent-dot.tone-violet {
+  background: var(--violet);
+}
+/* Rename/Delete: icon buttons over the row's right edge, shown on hover or keyboard focus. */
+.agent-row-actions {
+  position: absolute;
+  top: 8px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  padding-left: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.agent-card.selected .agent-row-actions {
+  background: var(--accent-soft);
+}
+.agent-card:hover .agent-row-actions,
+.agent-card:focus-within .agent-row-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .agent-row-actions {
+    opacity: 1;
+  }
+}
+.agent-row-error {
+  padding: 0 var(--space-2) 6px;
+}
+.agent-rename {
+  padding: 0 var(--space-2) var(--space-2);
+  margin: 0;
+}
 .agent-card-actions {
   display: flex;
   gap: 6px;
-  margin-top: 7px;
+  margin-top: var(--space-2);
 }
-.agent-card-actions .btn {
-  padding: 3px 9px;
-  font-size: 11.5px;
+.new-agent-form {
+  padding: var(--space-3);
+  margin-bottom: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+.new-agent-form .field {
+  margin-bottom: var(--space-3);
+}
+.new-agent-actions {
+  display: flex;
+  gap: 6px;
+}
+.new-agent-actions .btn-primary {
+  flex: 1;
+  justify-content: center;
 }
 
 /* shown while the live stream to the studio server is down. */
@@ -132,25 +260,52 @@
   box-shadow: var(--shadow);
 }
 
+/* Nodes palette: draggable cards (kind icon tile, name, one-line description). */
+.palette-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .node-palette-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  margin-bottom: 6px;
-  cursor: grab;
-  background: var(--surface);
-  font-size: 12px;
-  font-weight: 500;
-}
-/* palette items, hook switches/chips and toggles are native buttons. */
-button.node-palette-item {
+  gap: 10px;
   width: 100%;
-  text-align: left;
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
   color: var(--text);
   font-family: inherit;
+  text-align: left;
+  cursor: grab;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.node-palette-item:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.node-palette-item:active {
+  cursor: grabbing;
+}
+.palette-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.palette-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+.palette-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rail-panel {
   flex: 1;
@@ -159,9 +314,9 @@ button.node-palette-item {
   flex-direction: column;
 }
 .palette-notice {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--text-muted);
-  margin: 8px 4px 0;
+  margin: var(--space-3) var(--space-1) 0;
 }
 button.switch {
   padding: 0;
@@ -205,7 +360,22 @@ button.breakpoint-toggle {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+.agent-card-main:focus-visible,
+.drawer-tab:focus-visible {
+  outline-offset: -2px;
+}
 
+@media (prefers-reduced-motion: reduce) {
+  .rail-tab,
+  .agent-card,
+  .agent-row-actions,
+  .node-palette-item {
+    transition: none;
+  }
+  .agent-dot.tone-running {
+    animation: none;
+  }
+}
 
 /* ---------- Canvas (real ReactFlow / @xyflow/react) ---------- */
 /* React Flow's own chrome (controls, minimap, edges, handles) is themed through
@@ -661,36 +831,71 @@ button.breakpoint-toggle {
 
 /* ---------- Inspector ---------- */
 .inspector-head {
-  padding: 11px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
   flex: none;
 }
-.inspector-head .k {
-  font-size: 10.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-faint);
-  font-weight: 700;
+.node-kind.node-kind-lg {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+}
+.inspector-head-text {
+  min-width: 0;
 }
 .inspector-head .v {
-  font-weight: 700;
+  font-weight: 600;
   font-size: 13.5px;
-  margin-top: 2px;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .inspector-body {
   overflow-y: auto;
-  padding: 12px;
+  padding: var(--space-2) var(--space-4) var(--space-4);
   flex: 1;
 }
+.inspector-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+.inspector-empty-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+.inspector-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+.inspector-empty .hint {
+  max-width: 28ch;
+  font-size: 13px;
+  color: var(--text-muted);
+}
 
-/* Collapsible Inspector sections (InspectorSection.tsx). */
+/* Collapsible Inspector sections (InspectorSection.tsx): a chevron that turns when open. */
 .inspector-section + .inspector-section {
   border-top: 1px solid var(--border);
-  margin-top: 4px;
-  padding-top: 4px;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
 }
 .inspector-section-head {
-  margin: 0 0 6px;
+  margin: 0 0 var(--space-2);
   font-size: inherit;
 }
 .inspector-section-head button {
@@ -698,14 +903,16 @@ button.breakpoint-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 0;
+  min-height: 32px;
+  padding: 0;
   background: none;
   border: none;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   font: inherit;
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-size: var(--fs-overline);
+  font-weight: 600;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   cursor: pointer;
 }
@@ -717,7 +924,64 @@ button.breakpoint-toggle {
   outline-offset: 2px;
 }
 .inspector-section-caret {
-  width: 10px;
+  flex: none;
+  transition: transform var(--dur-fast) var(--ease);
+}
+.inspector-section-head button[aria-expanded='true'] .inspector-section-caret {
+  transform: rotate(90deg);
+}
+.inspector .textarea {
+  min-height: 96px;
+}
+/* Router branches. */
+.branch-row {
+  margin-bottom: var(--space-3);
+}
+.branch-row-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: var(--space-1);
+}
+.branch-target {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.branch-default {
+  color: var(--text-faint);
+}
+/* The debug-mode breakpoint toggle: a pill with a danger dot once on. */
+.breakpoint-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  font-size: 12px;
+}
+.breakpoint-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-faint);
+  flex: none;
+}
+.breakpoint-toggle.on {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+.breakpoint-toggle.on .breakpoint-dot {
+  border-color: var(--danger);
+  background: var(--danger);
 }
 
 /* ---------- Hooks ---------- */
@@ -752,75 +1016,88 @@ button.breakpoint-toggle {
 }
 
 .hook-group {
-  margin-bottom: 10px;
+  margin-bottom: var(--space-3);
 }
 .hook-group-label {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 10.5px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  color: var(--text-faint);
   margin-bottom: 6px;
 }
 .hook-group-label .hook-count {
-  font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   text-transform: none;
   letter-spacing: 0;
 }
+/* Hook chips: switch, name + when, remove. */
 .hook-chip {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
+  min-height: 36px;
   border: 1px solid var(--border);
   background: var(--surface);
-  border-radius: 8px;
-  padding: 6px 8px;
-  margin-bottom: 5px;
+  border-radius: var(--radius);
+  padding: 0 var(--space-1) 0 var(--space-2);
+  margin-bottom: 6px;
   cursor: pointer;
-  font-size: 11.5px;
+  font-size: 12px;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.hook-chip:hover {
+  border-color: var(--border-strong);
 }
 .hook-chip.selected {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
   background: var(--accent-soft);
 }
 .hook-chip .switch {
-  width: 24px;
-  height: 14px;
+  width: 26px;
+  height: 16px;
 }
 .hook-chip .switch::after {
-  width: 9px;
-  height: 9px;
+  width: 12px;
+  height: 12px;
 }
 .hook-chip .switch.on::after {
-  left: 12px;
+  transform: translateX(10px);
 }
 .hook-chip-name {
   font-family: var(--font-mono);
-  font-weight: 600;
+  font-weight: 500;
   flex: 1;
 }
 .hook-chip-when {
+  flex: none;
   color: var(--text-faint);
-  font-size: 9.5px;
+  font-size: 11px;
   font-family: var(--font-mono);
 }
 .hook-code {
   font-family: var(--font-mono);
-  font-size: 10.5px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  font-size: 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   overflow: hidden;
-  margin-top: 6px;
+  margin-top: var(--space-2);
+}
+.hook-templates {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: var(--space-3);
 }
 .btn-add-hook {
-  justify-content: center;
-  padding: 5px 9px;
-  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inspector-section-caret,
+  .hook-chip {
+    transition: none;
+  }
 }
 
 @media (max-width: 860px) {
@@ -838,7 +1115,7 @@ button.breakpoint-toggle {
     width: min(300px, 86vw);
     box-shadow: var(--shadow);
     visibility: hidden;
-    transition: transform 0.18s ease, visibility 0s linear 0.18s;
+    transition: transform var(--dur) var(--ease), visibility 0s linear var(--dur);
   }
   .rail {
     left: 0;
@@ -852,14 +1129,14 @@ button.breakpoint-toggle {
   .shell.inspector-open .inspector {
     transform: none;
     visibility: visible;
-    transition: transform 0.18s ease;
+    transition: transform var(--dur) var(--ease);
   }
   .shell-scrim {
     display: block;
     position: absolute;
     inset: 0;
     z-index: 15;
-    background: rgba(10, 12, 18, 0.35);
+    background: color-mix(in srgb, var(--bg) 55%, transparent);
   }
   .canvas-wrap .react-flow__minimap {
     display: none;

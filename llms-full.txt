@@ -1946,7 +1946,8 @@ npx lousho studio
 This starts one local server and prints its URL (default
 `http://127.0.0.1:4750/?token=<random>`). Open that exact URL in a browser.
 It lands on the Agents screen (`#/agents`): the left navigation, the build
-toolbar (Run, Stop, Debug, Import, Export, Save and the provider pill), the
+toolbar (the agent's name and run status, the model badge, then Debug, Stop,
+Run, Import, Export and Save), the
 agent rail (your saved agents plus a node/hook palette), the canvas, the
 Inspector (right), and a bottom drawer with Chat, Logs, Trace, Output,
 History and Settings tabs. The other screens are one click away in the
@@ -1955,8 +1956,9 @@ navigation; see [Navigation](#navigation).
 Below 860px wide the navigation becomes a drawer opened from the
 **Navigation** (menu) button at the top; picking a screen, the scrim or Esc
 closes it. On the Agents screen the agent rail and the Inspector become
-slide-over panels you open from the top bar, and Debug, Import, Export and
-Save move into its **More** (`⋯`) menu.
+slide-over panels you open from the top bar; Run (or Stop) and Save stay in
+the bar, and Debug, Import, Export and the model badge move into its **More
+actions** (`⋯`) menu.
 
 Useful flags:
 
@@ -2037,7 +2039,7 @@ The left navigation lists every screen, grouped:
 
 | Group | Item | Screen |
 | --- | --- | --- |
-| Build | **Agents** | The builder: canvas, Inspector, bottom drawer. The build toolbar (Run, Stop, Debug, Import, Export, Save, provider pill) shows only here. |
+| Build | **Agents** | The builder: canvas, Inspector, bottom drawer. The build toolbar (Run, Stop, Debug, Import, Export, Save, model badge) shows only here. |
 | Build | **Playground** | Try messages against a model without editing an agent. |
 | Observe | **Traces** | Every run the observe daemon holds, filtered and sorted; a row opens the trace. |
 | Observe | **Threads** | Sessions (conversations): one row per session, one turn per run. |
@@ -2359,7 +2361,7 @@ tab; see [Settings, secrets and deploy wiring](#settings-secrets-and-deploy-wiri
 ## First-agent walkthrough
 
 1. **Create an agent.** In the agent rail's **Agents** tab, click
-   **+ New agent**, give it a name, and pick a starting template - **Blank graph** (a single
+   **New agent**, give it a name, and pick a starting template - **Blank graph** (a single
    LLM node using the built-in `mock` provider) is the fastest way to try
    things out without any API keys. Agent Forge creates the agent under that
    name (`.lousho/agents/<name>.yaml`, with `name: <name>` in the spec) and

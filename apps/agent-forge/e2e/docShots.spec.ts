@@ -174,7 +174,7 @@ const rows = (page: Page) => page.getByRole('main').locator('table.data-table tb
 
 test('agents: the builder with an agent', async ({ page }) => {
   await open(page, '/agents');
-  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill('support-bot');
   await page.locator('#new-agent-template').selectOption('support-bot');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -287,7 +287,7 @@ test('x: 375 wide, Traces with the nav drawer closed and open', async ({ page })
  */
 async function newAgent(page: Page, name: string, template?: 'support-bot') {
   await open(page, '/agents');
-  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(name);
   if (template) await page.locator('#new-agent-template').selectOption(template);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -522,4 +522,74 @@ test('x-kit: command palette sections, scrolled to the last group', async ({ pag
   await page.keyboard.press('ArrowUp');
   await page.waitForTimeout(250);
   await page.screenshot({ path: path.join(OUT, 'studio-x-kit-palette-sections.png') });
+});
+
+/*
+ * Review-only shots of the Agents rails, toolbar and run drawer: every drawer
+ * tab after a real (mock-provider) chat that hit the `demo-approval` gate and
+ * was approved, the approval card itself, the Nodes palette, and the builder
+ * toolbar at 375 and 860 wide. A taller drawer gives the panels room.
+ */
+async function tallDrawer(page: Page) {
+  await page.addInitScript(() => window.localStorage.setItem('forge.drawer.height', '400'));
+}
+
+test('agents x: the drawer on every tab after an approved chat', async ({ page }) => {
+  test.setTimeout(90_000);
+  await tallDrawer(page);
+  await newAgent(page, `drawer-${Date.now()}`, 'support-bot');
+  await page.locator('[data-node-type="tool"]').click();
+  await page.locator('#node-tool-name').fill('demo-approval');
+  const chatInput = page.locator('.chat-input');
+  await chatInput.fill('Please call demo-approval to look something up for me.');
+  await page.locator('.btn-send').click();
+  const approval = page.locator('.chat-approval-card');
+  await expect(approval).toBeVisible({ timeout: 15_000 });
+  await shoot(page, 'x-agents-approval');
+
+  await approval.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(approval).toHaveCount(0, { timeout: 15_000 });
+  await expect(chatInput).toBeEnabled();
+  // From the top: the user's message, the tool call's mono block (with its result) and the reply.
+  await expect(page.locator('.chat-msg.agent').last()).toBeVisible();
+  await page.locator('.chat-messages').evaluate((el) => el.scrollTo({ top: 0 }));
+  await shoot(page, 'x-agents-drawer-chat');
+
+  for (const tab of ['Logs', 'Trace', 'Output', 'History', 'Settings'] as const) {
+    await page.getByRole('tab', { name: tab, exact: true }).click();
+    if (tab === 'Trace') {
+      const history = page.getByRole('listbox', { name: 'Trace history' });
+      await expect(history.getByRole('option').first()).toBeVisible({ timeout: 15_000 });
+      await history.getByRole('option').first().click();
+      await expect(page.locator('.run-inspector')).toBeVisible();
+    }
+    if (tab === 'History') await expect(page.locator('.history-panel, .logs-empty').first()).toBeVisible();
+    if (tab === 'Settings') await expect(page.getByLabel('Deploy adapter')).toBeVisible();
+    await shoot(page, `x-agents-drawer-${tab.toLowerCase()}`);
+  }
+});
+
+test('agents x: the Nodes palette in the left rail', async ({ page }) => {
+  await newAgent(page, `nodes-${Date.now()}`, 'support-bot');
+  await page.getByRole('tab', { name: 'Nodes', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'LLM step' })).toBeVisible();
+  await shoot(page, 'x-agents-rail-nodes');
+});
+
+test('agents x: the builder toolbar at 860 and 375 wide', async ({ page }) => {
+  await newAgent(page, `toolbar-${Date.now()}`, 'support-bot');
+  for (const width of [860, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(page.getByRole('button', { name: 'More actions' })).toBeVisible();
+    await shoot(page, `x-agents-toolbar-${width}`);
+  }
+  await page.getByRole('button', { name: 'More actions' }).click();
+  await expect(page.getByRole('menu', { name: 'More actions' })).toBeVisible();
+  await shoot(page, 'x-agents-toolbar-375-menu');
+});
+
+test("agents x: the routed settings screen shares the drawer's settings cards", async ({ page }) => {
+  await open(page, '/settings');
+  await expect(page.getByLabel('Deploy adapter')).toBeVisible();
+  await shoot(page, 'x-agents-settings-screen');
 });

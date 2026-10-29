@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const appState = vi.hoisted(() => ({
   spec: { name: 'demo', provider: { type: 'mock', model: 'echo' } },
+  graph: { nodes: [{ id: 'llm', type: 'llm', label: 'LLM', data: { provider: { type: 'mock', model: 'echo' } } }], edges: [] },
   agentId: 'demo',
   dirty: false,
   runStatus: undefined,
@@ -19,7 +20,11 @@ const appState = vi.hoisted(() => ({
 }));
 vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 
-import { screenFor, useScreen } from '../routes';
+// The off-Agents screens themselves are not under test here, only the frame around them.
+vi.mock('../traces/TracesScreen', () => ({ TracesScreen: () => null }));
+vi.mock('../monitoring/MonitoringScreen', () => ({ MonitoringScreen: () => null }));
+
+import { Screens, screenFor, useScreen } from '../routes';
 import { ROUTES } from '../routeTable';
 import { EvalsTabs } from '../evals/EvalsTabs';
 import { Topbar } from '../../components/Topbar';
@@ -135,9 +140,27 @@ describe('Topbar', () => {
     expect(container.querySelector('.env-select')).not.toBeNull();
   });
 
+  it("centres the LLM node's provider · model as the model badge, hidden when the graph has none", () => {
+    window.history.replaceState(null, '', '/?token=secret#/agents');
+    render(<Topbar />);
+    expect(container.querySelector('.env-select')?.textContent).toBe('mock · echoMOCK');
+    expect(container.querySelector('.crumbs')?.textContent).toBe('Agentsdemo');
+    act(() => root?.unmount());
+    const { graph } = appState;
+    appState.graph = { nodes: [], edges: [] };
+    try {
+      render(<Topbar />);
+      expect(container.querySelector('.env-select')).toBeNull();
+      expect(buttonNames()).toEqual(expect.arrayContaining(['Run', 'Save']));
+    } finally {
+      appState.graph = graph;
+    }
+  });
+
+  // Off Agents the Topbar is not rendered at all: the screen frame carries the shell's ScreenHeader.
   it('has no Build controls or model badge on #/traces', () => {
     window.history.replaceState(null, '', '/?token=secret#/traces');
-    render(<Topbar />);
+    render(<Screens />);
     for (const name of ['Run', 'Stop', 'Import', 'Export', 'Save', 'Debug', 'Build', 'Observe']) {
       expect(buttonNames()).not.toContain(name);
     }
@@ -149,7 +172,7 @@ describe('Topbar', () => {
 
   it('has no Build controls in the narrow layout off Agents either', () => {
     window.history.replaceState(null, '', '/?token=secret#/monitoring');
-    render(<Topbar narrow />);
+    render(<Screens />);
     expect(buttonNames()).not.toContain('Run');
     expect(container.querySelector('[aria-label="More actions"]')).toBeNull();
   });

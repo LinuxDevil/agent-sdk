@@ -10,7 +10,7 @@ const TOKEN = 'e2e-studio-token';
 const API = { headers: { 'x-lousho-studio-token': TOKEN } };
 
 async function createAgent(page: Page, id: string) {
-  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(id);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.crumbs b')).toHaveText(id);

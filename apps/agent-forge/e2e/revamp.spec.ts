@@ -254,7 +254,7 @@ async function ensureSavedAgent(page: Page) {
   const ids = ((await (await page.request.get('/agents', API)).json()) as { id: string }[]).map((a) => a.id);
   if (ids.includes(SAVED_AGENT)) return;
   await openApp(page);
-  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(SAVED_AGENT);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.crumbs b')).toHaveText(SAVED_AGENT);

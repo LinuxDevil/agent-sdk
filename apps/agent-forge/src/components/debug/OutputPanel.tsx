@@ -15,10 +15,8 @@ export function OutputPanel() {
   if (runStatus?.result) {
     return (
       <div className="output-json">
-        <div className="field">
-          <label>
-            {runStatus.status === 'paused' ? 'Paused ExecutionResult (awaiting approval)' : 'ExecutionResult'}
-          </label>
+        <div className="output-label overline">
+          {runStatus.status === 'paused' ? 'Paused ExecutionResult (awaiting approval)' : 'ExecutionResult'}
         </div>
         <JsonView value={runStatus.result} />
       </div>
@@ -27,9 +25,7 @@ export function OutputPanel() {
 
   return (
     <div className="output-json">
-      <div className="field">
-        <label>Agent spec (no run yet)</label>
-      </div>
+      <div className="output-label overline">Agent spec (no run yet)</div>
       <JsonView value={spec} />
     </div>
   );

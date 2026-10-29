@@ -7,12 +7,10 @@
 .app {
   height: 100%;
   display: grid;
-  /* The run drawer sizes itself (BottomDrawer.tsx, drawerHeight.tsx). */
-  grid-template-rows: 48px minmax(0, 1fr) auto;
-}
-/* Every screen but Agents: top bar over the screen, no run drawer. */
-.app-screen {
-  grid-template-rows: 48px minmax(0, 1fr);
+  /* The 52px builder toolbar; the run drawer sizes itself (BottomDrawer.tsx, drawerHeight.tsx). */
+  grid-template-rows: 52px minmax(0, 1fr) auto;
+  /* the toolbar and drawer never widen the screen past its column */
+  grid-template-columns: minmax(0, 1fr);
 }
 .screen-main {
   min-width: 0;
@@ -36,24 +34,12 @@
   border-bottom: 1px solid var(--border);
   background: var(--surface);
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-  margin-right: 6px;
-  white-space: nowrap;
-}
-.brand svg {
-  flex: none;
-}
 .crumbs {
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: 13px;
   min-width: 0;
   overflow: hidden;
 }
@@ -62,7 +48,8 @@
   font-weight: 600;
 }
 .crumb-sep {
-  opacity: 0.5;
+  flex: none;
+  color: var(--text-faint);
 }
 .dirty-dot {
   width: 6px;
@@ -74,53 +61,243 @@
 .topbar-spacer {
   flex: 1;
 }
-.env-select {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
+
+/* ---------- Builder toolbar (Topbar.tsx's WideTopbar / NarrowTopbar) ----------
+   Left: "Agents / <name>" and the run status; centre: the model badge;
+   right: [Debug] [Stop][Run] | [Import][Export] [Save]. */
+.topbar-builder {
+  gap: var(--space-3);
+  /* the shell's page gutter (24px docked, 16px narrow; the narrow bar tightens it below) */
+  padding: 0 var(--page-gutter, var(--space-4));
+  min-width: 0;
+  /* its buttons collapse to icons by the bar's own width (the @container rules below) */
+  container-type: inline-size;
+  container-name: builder-toolbar;
+}
+/* The left group and the centre share the room the actions leave; the agent's
+   name keeps 110px, and the spacer after the centre keeps it near the middle. */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.topbar-builder .crumbs {
+  flex: 0 1 auto;
+  /* the agent's name always keeps some room; the centre gives way first */
+  min-width: 110px;
+}
+.topbar-builder.topbar-narrow .crumbs {
+  min-width: 0;
+}
+.topbar-builder .crumbs b {
+  min-width: 6ch;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crumb-root {
+  flex: none;
+}
+.topbar-center {
+  display: flex;
+  justify-content: center;
+  /* gives way well before the name and status do */
+  flex: 0 8 auto;
+  min-width: 0;
+  max-width: 380px;
+}
+.topbar-center .env-select {
+  max-width: 240px;
+}
+/* The model badge keeps its full chip (up to 240px); the agent's name, which has a tooltip, truncates first. */
+.topbar-center:has(.env-select) {
+  flex-shrink: 0;
+}
+/* An approval in the centre never squeezes below its tool name's first 10ch and its buttons;
+   the left group (whose name keeps 110px) gives way instead. */
+.topbar-center:has(.approval-card-inline) {
+  flex-shrink: 1;
+  min-width: min-content;
+}
+.topbar-actions {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex: none;
+}
+.toolbar-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 var(--space-1);
+  background: var(--border);
+  flex: none;
+}
+/* Debug's pressed state: accent tint, not a second primary button. */
+.btn.btn-toggle.on {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+}
+/* As the bar narrows, Import/Export, then Debug and Stop, keep only their icons
+   (the label stays in the DOM as the accessible name). Run and Save keep theirs.
+   Idle, the labels hold down to a 960px bar (content box; 1280 with the docked nav); once a
+   run adds "Open trace" (or an approval), Import/Export go icon-only below 1180px. */
+.btn-collapse .btn-label {
+  white-space: nowrap;
+}
+@container builder-toolbar (max-width: 960px) {
+  .topbar-builder:not(.topbar-narrow) .collapse-1 {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .topbar-builder:not(.topbar-narrow) .collapse-1 .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+@container builder-toolbar (max-width: 1180px) {
+  .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1 {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1 .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+@container builder-toolbar (max-width: 920px) {
+  .topbar-builder:not(.topbar-narrow) .collapse-2 {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .topbar-builder:not(.topbar-narrow) .collapse-2 .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+  .topbar-builder:not(.topbar-narrow) .run-trace-link {
+    display: none;
+  }
+}
+/* While an approval sits in the centre of a shorter bar, Debug and Stop keep only
+   their icons and the trace link steps aside, so the name, status and decision fit. */
+@container builder-toolbar (max-width: 1180px) {
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .run-trace-link {
+    display: none;
+  }
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .collapse-2 {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .collapse-2 .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+
+/* The centre model badge: `provider · model` as a mono chip (Topbar.tsx's ModelBadge). */
+.env-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+.env-select-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 /* a mock agent is labelled as such, persistently. */
 .env-select-mock {
-  border-color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 45%, transparent);
 }
 .mock-badge {
-  font-weight: 700;
+  flex: none;
+  font-family: var(--font-ui);
+  font-weight: 600;
   font-size: 10px;
   letter-spacing: 0.04em;
   color: var(--warning);
   background: var(--warning-soft);
-  border-radius: 4px;
-  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  padding: 2px 6px;
+  line-height: 1.2;
 }
 
-/* inline human-in-the-loop approval card, shown in the Topbar while
-   a run is paused awaiting a tool-call decision (see AppState.runStatus /
-   Topbar.tsx). A minimal affordance by design - the richer version is
-   a later job (see server/types.ts's PendingApprovalInfo doc comment). */
+/* The approval card (ApprovalCard.tsx). `inline`: the toolbar's one-line
+   version while a run is paused awaiting a tool-call decision; `card`: the
+   Chat thread's version (drawer.css). */
 .approval-card {
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  background: var(--warning-soft);
+  color: var(--text);
+  border-radius: var(--radius);
+}
+.approval-card-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: 12px;
+  padding: 3px 4px 3px 8px;
+}
+.approval-card-inline .approval-icon {
+  flex: none;
+  color: var(--warning);
+}
+.approval-card-inline .approval-text {
+  flex: 0 1 auto;
+  min-width: 10ch;
+  max-width: 28ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.approval-actions {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
-  background: var(--warning-soft);
-  color: var(--warning);
-  border: 1px solid var(--warning);
-  border-radius: 7px;
-  padding: 4px 8px;
+  flex: none;
 }
 
-/* a run's error message, surfaced inline in the Topbar next to the
+/* a run's error message, surfaced inline in the toolbar next to the
    status pill - full log/trace display is a later job, this is just
    "don't silently swallow it". */
 .run-error {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--danger);
   max-width: 240px;
   overflow: hidden;
@@ -130,8 +307,9 @@
 
 /* The last builder run's trace (RunStatus.tsx), next to its status pill. */
 .run-trace-link {
+  flex: none;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--accent);
   white-space: nowrap;
   text-decoration: none;

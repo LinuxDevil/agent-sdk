@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useAppState } from '../../state/AppState';
 import { filterLogs } from '../../state/logReducer';
 import type { LogEntry, LogLevel, LogPhase } from '../../../shared/wireTypes';
+import type { StatusTone } from '../../ui/StatusPill';
+import { TonePill } from './TonePill';
 import type { AgentGraphSpec } from '../../graph/types';
 import { VirtualList } from './VirtualList';
 import { findLlmNodeId, findToolNodeId } from './nodeLookup';
@@ -9,7 +11,10 @@ import { formatTime } from '../formatTime';
 
 const LEVELS: LogLevel[] = ['info', 'warn', 'error', 'tool'];
 const PHASES: LogPhase[] = ['trigger', 'llm', 'tool', 'sandbox', 'checkpoint', 'approval', 'debug'];
-const ROW_HEIGHT = 22;
+const ROW_HEIGHT = 28;
+
+/** Each level's status-pill tone: info blue, warn amber, error red, tool violet. */
+const LEVEL_TONES: Record<LogLevel, StatusTone> = { info: 'running', warn: 'warning', error: 'error', tool: 'violet' };
 
 function nodeIdForLog(graph: AgentGraphSpec, entry: LogEntry): string | undefined {
   if (entry.phase === 'llm') return findLlmNodeId(graph);
@@ -71,15 +76,27 @@ function FilterToggles<T extends string>({
 function LogFilterBar({ filters }: { filters: LogFilters }) {
   return (
     <div className="logs-filter-bar">
-      <FilterToggles options={LEVELS} active={filters.levels} onToggle={filters.toggleLevel} titlePrefix="Filter by level" />
-      <FilterToggles
-        options={PHASES}
-        active={filters.phases}
-        onToggle={filters.togglePhase}
-        titlePrefix="Filter by phase/node"
-      />
+      {/* Two labelled groups, so the level "tool" and the phase "tool" are told apart. */}
+      <div className="logs-filter-group" role="group" aria-label="Level">
+        <span className="overline" aria-hidden="true">
+          Level
+        </span>
+        <FilterToggles options={LEVELS} active={filters.levels} onToggle={filters.toggleLevel} titlePrefix="Filter by level" />
+      </div>
+      <div className="logs-filter-group" role="group" aria-label="Phase">
+        <span className="overline" aria-hidden="true">
+          Phase
+        </span>
+        <FilterToggles
+          options={PHASES}
+          active={filters.phases}
+          onToggle={filters.togglePhase}
+          titlePrefix="Filter by phase/node"
+        />
+      </div>
       <input
         type="search"
+        className="input logs-search"
         aria-label="Search logs"
         placeholder="Search logs..."
         value={filters.search}
@@ -89,16 +106,25 @@ function LogFilterBar({ filters }: { filters: LogFilters }) {
   );
 }
 
+/** `[phase] message`, then the entry's detail as JSON when it has one. */
+export function logTitle(entry: LogEntry): string {
+  const line = `[${entry.phase}] ${entry.message}`;
+  return entry.detail === undefined ? line : `${line}\n${JSON.stringify(entry.detail)}`;
+}
+
 function LogRow({ entry, highlighted, onSelect }: { entry: LogEntry; highlighted: boolean; onSelect: () => void }) {
   return (
     <div
       className={`log-line${highlighted ? ' highlighted' : ''}`}
       style={{ height: ROW_HEIGHT }}
       onClick={onSelect}
-      title={entry.detail ? JSON.stringify(entry.detail) : undefined}
+      // The message truncates in its row: the tooltip carries it in full, plus any detail.
+      title={logTitle(entry)}
     >
       <span className="log-time">{formatTime(entry.timestamp)}</span>
-      <span className={`log-level lvl-${entry.level}`}>{entry.level}</span>
+      <span className={`log-level lvl-${entry.level}`}>
+        <TonePill tone={LEVEL_TONES[entry.level]} label={entry.level} />
+      </span>
       <span className="log-msg">
         <b>[{entry.phase}]</b> {entry.message}
       </span>
@@ -127,10 +153,18 @@ export function LogsPanel() {
   return (
     <div className="logs-panel">
       <LogFilterBar filters={filters} />
+      {filtered.length > 0 && (
+        <div className="log-line log-head" aria-hidden="true">
+          <span>Time</span>
+          <span>Level</span>
+          <span>Message</span>
+        </div>
+      )}
       <VirtualList
         items={filtered}
         rowHeight={ROW_HEIGHT}
         emptyMessage={emptyMessage}
+        label="Log lines"
         renderRow={(entry: LogEntry) => {
           const nodeId = nodeIdForLog(graph, entry);
           return (
