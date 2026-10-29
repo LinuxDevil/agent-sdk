@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { ChevronDown, Search } from 'lucide-react';
 import { TimeRangePicker, type TimeRange } from './TimeRangePicker';
 import './filterBar.css';
 
@@ -35,22 +36,25 @@ function SearchBox({ value, onChange, placeholder }: NonNullable<FilterBarProps[
   }, [value]);
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
-    <input
-      type="search"
-      className="filter-search"
-      aria-label={placeholder ?? 'Search'}
-      placeholder={placeholder}
-      value={text}
-      onChange={(e) => {
-        const next = e.target.value;
-        setText(next);
-        clearTimeout(timer.current);
-        timer.current = setTimeout(() => {
-          emitted.current = next;
-          latest.current(next);
-        }, SEARCH_DEBOUNCE_MS);
-      }}
-    />
+    <span className="filter-search-wrap">
+      <Search className="filter-search-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
+      <input
+        type="search"
+        className="filter-search"
+        aria-label={placeholder ?? 'Search'}
+        placeholder={placeholder}
+        value={text}
+        onChange={(e) => {
+          const next = e.target.value;
+          setText(next);
+          clearTimeout(timer.current);
+          timer.current = setTimeout(() => {
+            emitted.current = next;
+            latest.current(next);
+          }, SEARCH_DEBOUNCE_MS);
+        }}
+      />
+    </span>
   );
 }
 
@@ -92,6 +96,7 @@ function Facet({ facet }: { facet: FacetDef }) {
       >
         {facet.label}
         {selected > 0 && <span className="facet-count">{selected}</span>}
+        <ChevronDown className="facet-chevron" size={14} strokeWidth={1.75} aria-hidden="true" />
       </button>
       {open && (
         <div className="facet-pop" id={id} role="group" aria-label={facet.label}>

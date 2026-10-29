@@ -181,6 +181,26 @@ describe('TimeRangePicker via FilterBar', () => {
   });
 });
 
+describe('FilterBar look', () => {
+  it('presets and Custom sit in one segmented control; the group keeps its name', () => {
+    render(<FilterBar facets={[]} range={{ value: { preset: '24h' }, onChange: vi.fn() }} />);
+    const group = container.querySelector('.time-range[role="group"]') as HTMLElement;
+    expect(group.getAttribute('aria-label')).toBe('Time range');
+    const seg = group.querySelector('.segmented') as HTMLElement;
+    expect([...seg.querySelectorAll('button.seg-btn')].map((b) => b.textContent)).toEqual(['15m', '1h', '24h', '7d', '30d', 'Custom']);
+  });
+
+  it('the search box carries a decorative search icon; facet buttons a chevron', () => {
+    const facet: FacetDef = { key: 's', label: 'Status', options: [], value: [], onChange: vi.fn() };
+    render(<FilterBar search={{ value: '', onChange: vi.fn(), placeholder: 'Search' }} facets={[facet]} />);
+    expect(container.querySelector('.filter-search-wrap svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('input.filter-search')?.getAttribute('aria-label')).toBe('Search');
+    const btn = container.querySelector('button.facet-btn') as HTMLElement;
+    expect(btn.textContent).toBe('Status');
+    expect(btn.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
 describe('TimeRangePicker re-seeding', () => {
   const inputs = () => [...container.querySelectorAll('input[type="datetime-local"]')] as HTMLInputElement[];
   const ui = (value: TimeRange) => <FilterBar facets={[]} range={{ value, onChange: vi.fn() }} />;
