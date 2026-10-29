@@ -32,6 +32,79 @@ export function PlaygroundRoute() {
   return <PlaygroundScreen key={DEEP_LINK_KEYS.map((k) => query.get(k) ?? '').join('|')} />;
 }
 
+/** Ctrl/Cmd+Enter, not a key repeat and not mid-IME composition. */
+function isRunShortcut(e: KeyboardEvent): boolean {
+  if (e.key !== 'Enter' || e.repeat || e.nativeEvent.isComposing) return false;
+  return e.ctrlKey || e.metaKey;
+}
+
+type SaveDialogState = ReturnType<typeof useSaveDialog>;
+
+/** The page header: description, the loaded prompt's chip, and the Save prompt trigger. */
+function PlaygroundHeader({ prompt, save }: { prompt: Prefill['prompt']; save: SaveDialogState }) {
+  return (
+    <ScreenHeader
+      description="Try messages against a model without editing an agent."
+      status={
+        prompt ? (
+          <span className="chip pg-prompt-chip" title={prompt.promptRef}>
+            <FileText aria-hidden="true" />
+            {prompt.promptRef}
+          </span>
+        ) : null
+      }
+      actions={
+        <button
+          ref={save.triggerRef}
+          type="button"
+          className="btn pg-save-trigger"
+          aria-haspopup="dialog"
+          aria-expanded={save.open}
+          aria-controls="pg-save-dialog"
+          onClick={save.toggle}
+        >
+          <BookmarkPlus aria-hidden="true" />
+          Save prompt
+        </button>
+      }
+    />
+  );
+}
+
+interface ComposerProps {
+  messages: PlaygroundMessage[];
+  onChange: (messages: PlaygroundMessage[]) => void;
+  canRun: boolean;
+  running: boolean;
+  onRun: () => void;
+  onStop: () => void;
+}
+
+/** The Messages card and its run bar; Ctrl/Cmd+Enter anywhere in it runs, like the Run button. */
+function Composer({ messages, onChange, canRun, running, onRun, onStop }: ComposerProps) {
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (!isRunShortcut(e)) return;
+    e.preventDefault();
+    if (canRun) onRun();
+  };
+  return (
+    <section className="card pg-card pg-composer" aria-labelledby="pg-messages-title" onKeyDown={onKeyDown}>
+      <div className="pg-card-head">
+        <h2 id="pg-messages-title" className="pg-card-title">
+          Messages
+        </h2>
+        <span className="pg-card-meta tabular-nums">
+          {messages.length} {messages.length === 1 ? 'message' : 'messages'}
+        </span>
+      </div>
+      <div className="pg-card-body">
+        <MessageEditor messages={messages} onChange={onChange} />
+      </div>
+      <RunBar canRun={canRun} running={running} onRun={onRun} onStop={onStop} />
+    </section>
+  );
+}
+
 /**
  * `#/playground` - try messages against a model without editing an agent:
  * message rows, `{variable}` inputs, a model picker, tools borrowed from a
@@ -67,41 +140,11 @@ export function PlaygroundScreen() {
   const runNow = () => {
     if (body && !running) start(body);
   };
-  // Ctrl/Cmd+Enter anywhere in the composer runs it, like the Run button.
-  const onComposerKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.repeat || e.nativeEvent.isComposing) return;
-    e.preventDefault();
-    runNow();
-  };
   const save = useSaveDialog();
 
   return (
     <div className="pg-screen">
-      <ScreenHeader
-        description="Try messages against a model without editing an agent."
-        status={
-          prompt ? (
-            <span className="chip pg-prompt-chip" title={prompt.promptRef}>
-              <FileText aria-hidden="true" />
-              {prompt.promptRef}
-            </span>
-          ) : null
-        }
-        actions={
-          <button
-            ref={save.triggerRef}
-            type="button"
-            className="btn pg-save-trigger"
-            aria-haspopup="dialog"
-            aria-expanded={save.open}
-            aria-controls="pg-save-dialog"
-            onClick={save.toggle}
-          >
-            <BookmarkPlus aria-hidden="true" />
-            Save prompt
-          </button>
-        }
-      />
+      <PlaygroundHeader prompt={prompt} save={save} />
       <SaveDialog id="pg-save-dialog" open={save.open} onClose={save.close} triggerRef={save.triggerRef}>
         <SavePrompt promptName={prompt?.name} systemText={systemText} />
       </SaveDialog>
@@ -124,20 +167,14 @@ export function PlaygroundScreen() {
             <ToolToggles tools={tools} onChange={setTools} />
           </div>
         </aside>
-        <section className="card pg-card pg-composer" aria-labelledby="pg-messages-title" onKeyDown={onComposerKey}>
-          <div className="pg-card-head">
-            <h2 id="pg-messages-title" className="pg-card-title">
-              Messages
-            </h2>
-            <span className="pg-card-meta tabular-nums">
-              {messages.length} {messages.length === 1 ? 'message' : 'messages'}
-            </span>
-          </div>
-          <div className="pg-card-body">
-            <MessageEditor messages={messages} onChange={setMessages} />
-          </div>
-          <RunBar canRun={canRun} running={running} onRun={runNow} onStop={stop} />
-        </section>
+        <Composer
+          messages={messages}
+          onChange={setMessages}
+          canRun={canRun}
+          running={running}
+          onRun={runNow}
+          onStop={stop}
+        />
         <RunOutput run={run} />
       </div>
     </div>
