@@ -1,4 +1,5 @@
 import { act } from 'react';
+import { Search } from 'lucide-react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { render as mount } from './render';
@@ -97,12 +98,28 @@ describe('StatusPill', () => {
 
 describe('EmptyState', () => {
   it('renders the title, hint, action and a decorative icon', () => {
-    render(<EmptyState title="No traces yet" hint="Run an agent." action={<button type="button">Run</button>} icon={<svg />} />);
+    render(<EmptyState title="No traces yet" hint="Run an agent." action={<button type="button">Run</button>} icon={Search} />);
     const root = container.querySelector('.empty-state') as HTMLElement;
     expect(root.querySelector('.empty-state-title')?.textContent).toBe('No traces yet');
     expect(root.querySelector('.empty-state-hint')?.textContent).toBe('Run an agent.');
     expect(root.querySelector('.empty-state-action button')?.textContent).toBe('Run');
     expect(root.querySelector('.empty-state-icon')?.getAttribute('aria-hidden')).toBe('true');
+    const svg = root.querySelector('.empty-state-icon svg') as SVGElement;
+    expect(svg.classList.contains('lucide-search')).toBe(true);
+    expect(svg.getAttribute('width')).toBe('20');
+    expect(svg.getAttribute('stroke-width')).toBe('1.75');
+  });
+
+  it('defaults to the Inbox icon tile, and icon={null} renders no tile', () => {
+    render(
+      <>
+        <EmptyState title="A" hint="default icon" />
+        <EmptyState title="B" hint="no icon" icon={null} />
+      </>,
+    );
+    const [a, b] = [...container.querySelectorAll('.empty-state')];
+    expect(a.querySelector('.empty-state-icon svg')?.classList.contains('lucide-inbox')).toBe(true);
+    expect(b.querySelector('.empty-state-icon')).toBeNull();
   });
 
   it('accepts a hint without an action, and an action without a hint', () => {

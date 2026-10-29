@@ -11,6 +11,7 @@
  */
 import './traces.css';
 import { useEffect, useMemo } from 'react';
+import { SearchX } from 'lucide-react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useAgents, useDaemonDown, useDaemonHealth, useTraces } from '../../observe/useObserve';
@@ -159,6 +160,7 @@ function TracesList() {
         loading={traces.loading}
         empty={
           <EmptyState
+            icon={SearchX}
             title="No traces match these filters"
             hint="Traces appear once an agent with LOUSHO_OBSERVE=1 finishes a run. Try a wider time range."
           />

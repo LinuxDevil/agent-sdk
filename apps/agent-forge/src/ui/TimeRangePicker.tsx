@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CalendarRange } from 'lucide-react';
 import './filterBar.css';
 
 /** Preset window names, shortest first. */
@@ -54,7 +55,10 @@ interface TimeRangePickerProps {
   onChange: (next: TimeRange) => void;
 }
 
-/** Controlled range picker: five preset buttons plus "Custom" with two datetime-local inputs and an Apply button. */
+/**
+ * Controlled range picker: a segmented control of five presets plus "Custom",
+ * which opens two datetime-local inputs and an Apply button.
+ */
 export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
   const absolute = !('preset' in value);
   const key = formatTimeRange(value);
@@ -74,42 +78,45 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
 
   return (
     <div className="time-range" role="group" aria-label="Time range">
-      {PRESETS.map((p) => (
+      <div className="segmented">
+        {PRESETS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            className="seg-btn"
+            aria-pressed={!absolute && value.preset === p}
+            onClick={() => {
+              setCustomOpen(false);
+              onChange({ preset: p });
+            }}
+          >
+            {p}
+          </button>
+        ))}
         <button
-          key={p}
           type="button"
           className="seg-btn"
-          aria-pressed={!absolute && value.preset === p}
-          onClick={() => {
-            setCustomOpen(false);
-            onChange({ preset: p });
-          }}
+          aria-pressed={absolute}
+          aria-expanded={customOpen}
+          onClick={() => setCustomOpen((o) => !o)}
         >
-          {p}
+          <CalendarRange size={14} strokeWidth={1.75} aria-hidden="true" />
+          Custom
         </button>
-      ))}
-      <button
-        type="button"
-        className="seg-btn"
-        aria-pressed={absolute}
-        aria-expanded={customOpen}
-        onClick={() => setCustomOpen((o) => !o)}
-      >
-        Custom
-      </button>
+      </div>
       {customOpen && (
         <div className="time-range-custom">
           <label>
             From
-            <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <input type="datetime-local" className="input" value={from} onChange={(e) => setFrom(e.target.value)} />
           </label>
           <label>
             To
-            <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} />
+            <input type="datetime-local" className="input" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
           <button
             type="button"
-            className="seg-btn"
+            className="btn btn-sm btn-primary"
             disabled={!valid}
             onClick={() => onChange({ from: fromMs, to: toMs })}
           >
