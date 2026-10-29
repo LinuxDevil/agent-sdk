@@ -64,6 +64,8 @@ const PAIRS: [text: string, background: string][] = [
   ['on-accent', 'accent-solid-hover'],
   // A switched-on chip (Requires approval) draws --accent on the accent tint.
   ['accent', 'accent-soft'],
+  // MetricCard: a good delta draws --success on the card's --surface (a bad one --danger, listed above).
+  ['success', 'surface'],
 ];
 
 describe('theme contrast', () => {
