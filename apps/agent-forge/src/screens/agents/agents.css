@@ -384,6 +384,9 @@ button.breakpoint-toggle {
   position: relative;
   overflow: hidden;
   background: var(--bg);
+  /* The dot grid (CanvasArea.tsx's <Background>): --border-strong stays subtle in light; on the
+     near-black dark canvas it all but vanishes, so dark lifts it halfway to --text-faint. */
+  --canvas-dot: light-dark(var(--border-strong), color-mix(in srgb, var(--border-strong) 55%, var(--text-faint)));
 }
 .canvas-wrap .react-flow {
   --xy-background-color: var(--bg);
