@@ -230,6 +230,44 @@ function PromptHeader({ name, selected, latest }: { name: string; selected?: Obs
   );
 }
 
+interface PromptBodyProps {
+  name: string;
+  refParam: string | undefined;
+  history: ReturnType<typeof usePromptVersions>;
+  selected: ObservePromptVersion | undefined;
+  diff: ReturnType<typeof parseDiff>;
+  layout: DiffLayout;
+  onLayout: (layout: DiffLayout) => void;
+  onMoved: () => void;
+}
+
+/** The detail body for each load state: skeleton, error, not found, or the version grid. */
+function PromptBody({ name, refParam, history, selected, diff, layout, onLayout, onMoved }: PromptBodyProps) {
+  const versions = history.data?.versions ?? [];
+  if (history.loading && !history.data)
+    return (
+      <Card>
+        <SkeletonRows rows={8} />
+      </Card>
+    );
+  if (history.error) return <ObserveError error={history.error} />;
+  if (!history.data) return <EmptyState icon={FileQuestion} title="Prompt not found" hint={`No prompt '${name}'.`} action={<BackLink />} />;
+  if (!selected)
+    return (
+      <EmptyState icon={FileQuestion} title="Version not found" hint={`'${name}' has no version or label '${refParam}'.`} action={<BackLink />} />
+    );
+  // Side by side needs the room: the Compare card then spans the history rail's column too.
+  const has = (n: number) => versions.some((v) => v.version === n);
+  const wide = layout === 'split' && diff !== undefined && has(diff[0]) && has(diff[1]);
+  return (
+    <div className={wide ? 'prompt-detail-grid prompt-detail-grid-wide' : 'prompt-detail-grid'}>
+      <SelectedVersion name={name} selected={selected} versions={versions} onMoved={onMoved} />
+      <VersionTimeline versions={versions} selected={selected} onOpen={(v) => navigate(promptPath(name, v.version, diff), { replace: true })} />
+      <Compare name={name} refParam={refParam} selected={selected} versions={versions} diff={diff} layout={layout} onLayout={onLayout} />
+    </div>
+  );
+}
+
 /** `#/prompts/:name[@ref]`; an unknown prompt or ref shows an empty state with the way back. */
 export function PromptDetail({ param }: { param: string }) {
   const { name, ref } = parsePromptRoute(param);
@@ -241,39 +279,22 @@ export function PromptDetail({ param }: { param: string }) {
   const selected = resolveRef(versions, ref);
   const diff = parseDiff(route.query);
   const [layout, setLayout] = useState<DiffLayout>('unified');
-  // Side by side needs the room: the Compare card then spans the history rail's column too.
-  const has = (n: number) => versions.some((v) => v.version === n);
-  const wide = layout === 'split' && diff !== undefined && has(diff[0]) && has(diff[1]);
   if (down) return <ObserveDaemonDown />;
-
-  let body;
-  if (history.loading && !history.data)
-    body = (
-      <Card>
-        <SkeletonRows rows={8} />
-      </Card>
-    );
-  else if (history.error) body = <ObserveError error={history.error} />;
-  else if (!history.data)
-    body = <EmptyState icon={FileQuestion} title="Prompt not found" hint={`No prompt '${name}'.`} action={<BackLink />} />;
-  else if (!selected)
-    body = (
-      <EmptyState icon={FileQuestion} title="Version not found" hint={`'${name}' has no version or label '${ref}'.`} action={<BackLink />} />
-    );
-  else
-    body = (
-      <div className={wide ? 'prompt-detail-grid prompt-detail-grid-wide' : 'prompt-detail-grid'}>
-        <SelectedVersion name={name} selected={selected} versions={versions} onMoved={() => setRefreshKey((k) => k + 1)} />
-        <VersionTimeline versions={versions} selected={selected} onOpen={(v) => navigate(promptPath(name, v.version, diff), { replace: true })} />
-        <Compare name={name} refParam={ref} selected={selected} versions={versions} diff={diff} layout={layout} onLayout={setLayout} />
-      </div>
-    );
 
   return (
     <section className="prompt-screen" aria-label="Prompt">
       <PromptHeader name={name} selected={selected} latest={selected !== undefined && selected === versions[0]} />
       <h2 className="visually-hidden">Prompt {name}</h2>
-      {body}
+      <PromptBody
+        name={name}
+        refParam={ref}
+        history={history}
+        selected={selected}
+        diff={diff}
+        layout={layout}
+        onLayout={setLayout}
+        onMoved={() => setRefreshKey((k) => k + 1)}
+      />
     </section>
   );
 }
