@@ -1379,3 +1379,35 @@ test('evals x: queue review, queue is empty', async ({ page }) => {
   await expect(main(page).getByText('Queue is empty')).toBeVisible();
   await shoot(page, 'x-evals-queue-empty');
 });
+
+test('x-traces: a tool step selected, tree and waterfall', async ({ page }) => {
+  await page.route(`**/observe/api/v1/traces/${LONG_TRACE}`, (route) => json(route, longTraceDetail()));
+  await open(page, `/traces/${LONG_TRACE}?obs=${LONG_TRACE}-sub-0-gen-0-tool`);
+  const main = page.getByRole('main');
+  await expect(main.locator('.run-inspector')).toHaveAttribute('data-obs-id', `${LONG_TRACE}-sub-0-gen-0-tool`);
+  await shoot(page, 'x-trace-tool-selected');
+  await main.getByRole('button', { name: 'Waterfall' }).click();
+  await shoot(page, 'x-trace-tool-selected-waterfall');
+});
+
+test('x-shell: the ? shortcut sheet, at 1280 and 375 wide', async ({ page }) => {
+  await open(page, '/traces');
+  await expect(rows(page).first()).toBeVisible();
+  await page.keyboard.press('?');
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
+  await shoot(page, 'x-shortcut-sheet');
+  await page.setViewportSize({ width: 375, height: 800 });
+  await shoot(page, 'x-shortcut-sheet-375');
+});
+
+test('x-shell: the error boundary after a render crash, at 1280 and 375 wide', async ({ page }) => {
+  // A session id the thread list renders as text, sent as an object: React cannot render it, and the app-level boundary catches it.
+  await page.route(/\/observe\/api\/v1\/sessions(\?|$)/, (route) =>
+    json(route, { sessions: [{ ...sessions[0], session_id: { broken: true } }], total: 1, limit: 50, offset: 0 }),
+  );
+  await page.goto(`${APP}#/threads`);
+  await expect(page.getByRole('alert').getByText('Something went wrong')).toBeVisible();
+  await shoot(page, 'x-error-boundary');
+  await page.setViewportSize({ width: 375, height: 800 });
+  await shoot(page, 'x-error-boundary-375');
+});
