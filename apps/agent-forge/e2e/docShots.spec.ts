@@ -26,6 +26,9 @@ import { SEED_ERROR, SEED_NEWEST_FAILURE, seedObserve } from './fixtures/seedObs
  *                                       or relative to the process cwd)
  *   LOUSHO_DOC_SHOTS_SCHEME=light|dark  the colour scheme to shoot (default light)
  *
+ * Into docs/images (no OUT) the `x-` review shots are skipped, and a dark run
+ * writes only `studio-{agents,traces,trace,monitoring}-dark.png`.
+ *
  * The small fixtures below fill the screens the seed leaves thin: a fleet with
  * mixed health, a day of chart buckets for it, and a few threads.
  */
@@ -279,11 +282,32 @@ async function open(page: Page, hash: string) {
   await expect(page.locator('.app')).toBeVisible();
 }
 
+/** The docs set shot in dark too, written as `studio-<screen>-dark.png`. */
+const DARK_DOCS = new Set(['agents', 'traces', 'trace', 'monitoring']);
+
+/**
+ * Where `file` goes, or null to skip it. With LOUSHO_DOC_SHOTS_OUT set every
+ * shot is written as named (reviewers rely on the `x-` ones). Into docs/images
+ * the `x-` review shots never go, and a dark run writes only the DARK_DOCS set.
+ */
+function shotPath(file: string): string | null {
+  if (process.env.LOUSHO_DOC_SHOTS_OUT) return path.join(OUT, file);
+  if (/^(studio-)?x-/.test(file)) return null;
+  if (shotScheme() === 'light') return path.join(OUT, file);
+  const screen = /^studio-(.+)\.png$/.exec(file)?.[1];
+  return screen && DARK_DOCS.has(screen) ? path.join(OUT, `studio-${screen}-dark.png`) : null;
+}
+
+async function snap(page: Page, file: string, options: { fullPage?: boolean } = {}) {
+  const target = shotPath(file);
+  if (target) await page.screenshot({ ...options, path: target });
+}
+
 async function shoot(page: Page, screen: string) {
   // Let toasts, focus rings and chart transitions settle.
   await page.mouse.move(0, 0);
   await page.waitForTimeout(300);
-  await page.screenshot({ path: path.join(OUT, `studio-${screen}.png`) });
+  await snap(page, `studio-${screen}.png`);
 }
 
 /** Data rows only: a first load shows skeleton rows (`.skeleton-row`) until the rows arrive. */
@@ -373,7 +397,7 @@ for (const width of [860, 375]) {
     await monitoringReady(page);
     await page.mouse.move(0, 0);
     await page.waitForTimeout(300);
-    await page.screenshot({ path: path.join(OUT, `studio-x-monitoring-${width}.png`) });
+    await snap(page, `studio-x-monitoring-${width}.png`);
   });
 }
 
@@ -546,7 +570,7 @@ test('command palette: open over Traces', async ({ page }) => {
   await expect(input).toBeFocused();
   await input.fill('go');
   await page.waitForTimeout(150);
-  await page.screenshot({ path: path.join(OUT, 'studio-command-palette.png') });
+  await snap(page, 'studio-command-palette.png');
 });
 
 // Review-only shots of the shell (`x-` names: not in the docs set).
@@ -556,7 +580,7 @@ test('x: collapsed rail on Traces', async ({ page }) => {
   await page.getByRole('button', { name: 'Collapse navigation' }).click();
   await page.waitForTimeout(250);
   await page.mouse.move(0, 0);
-  await page.screenshot({ path: path.join(OUT, 'x-rail-collapsed.png') });
+  await snap(page, 'x-rail-collapsed.png');
 });
 
 test('x: 375 wide, Traces with the nav drawer closed and open', async ({ page }) => {
@@ -564,10 +588,10 @@ test('x: 375 wide, Traces with the nav drawer closed and open', async ({ page })
   await open(page, '/traces');
   await expect(rows(page).first()).toBeVisible();
   await page.waitForTimeout(300);
-  await page.screenshot({ path: path.join(OUT, 'x-narrow-traces.png') });
+  await snap(page, 'x-narrow-traces.png');
   await page.getByRole('button', { name: 'Navigation', exact: true }).click();
   await page.waitForTimeout(300);
-  await page.screenshot({ path: path.join(OUT, 'x-narrow-drawer-open.png') });
+  await snap(page, 'x-narrow-drawer-open.png');
 });
 
 /*
@@ -714,7 +738,7 @@ test('x-kit: filter bar with a facet and the custom range open', async ({ page }
   await main.locator('.facet-btn').first().click();
   await expect(main.locator('.facet-pop')).toBeVisible();
   await page.waitForTimeout(300);
-  await page.screenshot({ path: path.join(OUT, 'studio-x-kit-filters.png') });
+  await snap(page, 'studio-x-kit-filters.png');
 });
 
 // --- Overlay/message/chart kit states (x- shots, D3b) -------------------------
@@ -800,7 +824,7 @@ test('x-kit: chart tooltip, crosshair and legend with a series toggled off', asy
   await page.mouse.move(box.x + box.width * 0.62, box.y + box.height / 2);
   await expect(runs.locator('.tsc-crosshair')).toHaveCount(1); // a zero-width line never counts as visible
   await page.waitForTimeout(200);
-  await page.screenshot({ path: path.join(OUT, 'studio-x-kit-chart-hover.png') });
+  await snap(page, 'studio-x-kit-chart-hover.png');
 });
 
 test('x-kit: toasts (info and error)', async ({ page }) => {
@@ -822,7 +846,7 @@ test('x-kit: toasts (info and error)', async ({ page }) => {
   await expect(page.getByRole('alert').filter({ hasText: 'Could not disable' })).toBeVisible();
   await page.mouse.move(0, 0);
   await page.waitForTimeout(200);
-  await page.screenshot({ path: path.join(OUT, 'studio-x-kit-toasts.png') });
+  await snap(page, 'studio-x-kit-toasts.png');
 });
 
 test('x-kit: command palette sections, scrolled to the last group', async ({ page }) => {
@@ -834,7 +858,7 @@ test('x-kit: command palette sections, scrolled to the last group', async ({ pag
   // ArrowUp from the first option wraps to the last one (Toggle theme), scrolling the list to the end.
   await page.keyboard.press('ArrowUp');
   await page.waitForTimeout(250);
-  await page.screenshot({ path: path.join(OUT, 'studio-x-kit-palette-sections.png') });
+  await snap(page, 'studio-x-kit-palette-sections.png');
 });
 
 /*
@@ -1119,7 +1143,7 @@ test('x-traces: detail at 375 wide', async ({ page }) => {
   await open(page, `/traces/${SEED_NEWEST_FAILURE.trace_id}`);
   await expect(page.getByRole('main').getByRole('alert')).toContainText(SEED_ERROR);
   await shoot(page, 'x-trace-narrow');
-  await page.screenshot({ path: path.join(OUT, 'studio-x-trace-narrow-full.png'), fullPage: true });
+  await snap(page, 'studio-x-trace-narrow-full.png', { fullPage: true });
 });
 
 test("x-traces: the Agents drawer's Trace tab (narrow host)", async ({ page }) => {
@@ -1253,7 +1277,7 @@ test('x-threads: detail with long turns (collapsed, expanded, errored)', async (
   await shoot(page, 'x-thread-expanded');
   await turnsOf(page).nth(2).scrollIntoViewIfNeeded();
   await shoot(page, 'x-thread-error');
-  await page.screenshot({ path: path.join(OUT, 'studio-x-thread-long-full.png'), fullPage: true });
+  await snap(page, 'studio-x-thread-long-full.png', { fullPage: true });
 });
 
 test('x-threads: detail at 375 wide', async ({ page }) => {
@@ -1262,7 +1286,7 @@ test('x-threads: detail at 375 wide', async ({ page }) => {
   await open(page, `/threads/${LONG_THREAD}`);
   await expect(turnsOf(page)).toHaveCount(THREAD_TURNS.length);
   await shoot(page, 'x-thread-narrow');
-  await page.screenshot({ path: path.join(OUT, 'studio-x-thread-narrow-full.png'), fullPage: true });
+  await snap(page, 'studio-x-thread-narrow-full.png', { fullPage: true });
 });
 
 // --- Evaluators and annotation queues (x- shots, P7) -------------------------

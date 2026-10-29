@@ -2196,24 +2196,30 @@ says so and keeps an empty editor, and runs still work. Runs go through the
 
 ### Traces
 
+The same list in the dark theme (Settings > Appearance, or **Toggle theme** in the command palette).
+
 `#/traces` lists the daemon's runs, newest first: status, name, agent,
 input and output previews, error message, model, start, duration, tokens
 and cost (narrow windows hide the less important columns). Filter with the
 search box (name, input or output), the **Agent**, **Status**, **Model** and
 **Project** facets, and a time range (15m, 1h, 24h, 7d, 30d or Custom;
 default the last 24 h). Click **Duration**, **Tokens** or **Cost** to sort
-by it. 50 rows a page. A `prompt` filter (set by the Prompts screen's
+by it. 50 rows a page. The page header's **Refresh** re-fetches the list
+now, and **Live** (a toggle) refreshes it every 5 seconds until you switch
+it off or the daemon goes down. A `prompt` filter (set by the Prompts screen's
 "Runs using this version" link) shows as a removable chip.
 
 ### Trace
 
 `#/traces/<trace id>` is one run. The header has its name, status, agent
 (a link to the agent's traces), model, start, duration, tokens, cost and
-session (a link to its thread), plus **Copy link**, **Add to dataset** and
-**Add to queue**.
+session (a link to its thread), plus **Copy link**, **Add to dataset**,
+**Add to queue** and, when the run has a model call, **Open in Playground**.
+**All traces** in the page header goes back to the list.
 
 Below it is the trace viewer the builder's Trace tab and the queue review
-also use: the steps as a **Tree** or a **Waterfall**, and an inspector for
+also use: the steps as a **Tree** or a **Waterfall** (a two-way switch above
+the steps), and an inspector for
 the selected step (a failed step is selected by default, else the root).
 The selected step is `?obs=` in the URL. The inspector shows, in order:
 
@@ -2733,12 +2739,23 @@ LOUSHO_DOC_SHOTS=1 npx playwright test -c apps/agent-forge/playwright.config.ts 
 ```
 
 It writes `docs/images/studio-<screen>.png` (1280x800, light theme) from the
-same fake daemon. The images are not part of the npm package.
+same fake daemon. The images are not part of the npm package. The dark
+examples (`studio-{agents,traces,trace,monitoring}-dark.png`) come from the
+same command with the dark scheme:
+
+```bash
+LOUSHO_DOC_SHOTS=1 LOUSHO_DOC_SHOTS_SCHEME=dark npx playwright test -c apps/agent-forge/playwright.config.ts docShots
+```
+
+Into `docs/images` the spec skips its `x-` review shots, and a dark run
+writes only those four.
 
 Two optional variables help review a restyle before and after:
 `LOUSHO_DOC_SHOTS_OUT=<dir>` writes the PNGs to another directory (absolute,
 or relative to where you run the command), and `LOUSHO_DOC_SHOTS_SCHEME=dark`
 shoots the dark theme (`light` is the default; any other value fails the run).
+With an output directory every shot is written under its own name, `x-`
+review shots included.
 
 ```bash
 LOUSHO_DOC_SHOTS=1 LOUSHO_DOC_SHOTS_OUT=/tmp/shots-dark LOUSHO_DOC_SHOTS_SCHEME=dark npx playwright test -c apps/agent-forge/playwright.config.ts docShots
