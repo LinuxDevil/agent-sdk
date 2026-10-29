@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -198,6 +200,19 @@ describe('FilterBar look', () => {
     const btn = container.querySelector('button.facet-btn') as HTMLElement;
     expect(btn.textContent).toBe('Status');
     expect(btn.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+describe('TimeRangePicker Custom open state', () => {
+  it('Custom reads as open (aria-expanded) while its inputs show, and the CSS styles that state', () => {
+    render(<FilterBar facets={[]} range={{ value: { preset: '24h' }, onChange: vi.fn() }} />);
+    const custom = byText('.time-range button', 'Custom');
+    expect(custom.getAttribute('aria-expanded')).toBe('false');
+    click(custom);
+    expect(custom.getAttribute('aria-expanded')).toBe('true');
+    expect(byText('.time-range button', '24h').getAttribute('aria-pressed')).toBe('true');
+    const css = readFileSync(resolve(__dirname, '../filterBar.css'), 'utf8');
+    expect(css).toMatch(/\.seg-btn\[aria-expanded='true'\]:not\(\[aria-pressed='true'\]\)\s*\{[^}]*background:\s*var\(--accent-soft\)/);
   });
 });
 

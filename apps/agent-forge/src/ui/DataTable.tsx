@@ -64,6 +64,12 @@ interface DataTableProps<T> {
   density?: 'compact' | 'comfortable';
   loading?: boolean;
   empty: ReactNode;
+  /**
+   * Opt-in bounded scroller: the wrap scrolls both ways inside this height (px
+   * number or CSS length) and the header sticks inside it. Without it the
+   * header sticks to the screen's scroller while the table fits its width.
+   */
+  maxHeight?: number | string;
 }
 
 type Widths = Record<string, number>;
@@ -125,6 +131,29 @@ function useContainerWidth(ref: RefObject<HTMLElement>): number {
     return () => ro.disconnect();
   }, [ref]);
   return width;
+}
+
+/**
+ * True while the table is wider than its wrap (resized columns, min-widths
+ * past the container). Only then does the wrap scroll sideways; otherwise it
+ * clips, so it is no scroll container and the sticky header sticks to the
+ * screen's own scroller.
+ */
+function useOverflowsX(wrapRef: RefObject<HTMLElement>, tableRef: RefObject<HTMLElement>): boolean {
+  const [overflows, setOverflows] = useState(false);
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const table = tableRef.current;
+    if (!wrap || !table) return;
+    const next = table.offsetWidth > wrap.clientWidth + 1;
+    if (next !== overflows) setOverflows(next);
+  });
+  return overflows;
+}
+
+function wrapClass(scrollsX: boolean, maxHeight: number | string | undefined): string {
+  if (maxHeight !== undefined) return 'data-table-wrap dt-scroll';
+  return scrollsX ? 'data-table-wrap dt-scroll-x' : 'data-table-wrap';
 }
 
 /** Column widths keyed by column key, remembered per table id. */
@@ -249,11 +278,13 @@ function HeaderCell<T>({ column, width, sort, onSortChange, onResize, onCommit }
     >
       {sortable ? (
         <button type="button" className="dt-sort" onClick={() => onSortChange?.(nextSort(sort, column.key))}>
-          {column.header}
+          <span className="dt-label">{column.header}</span>
           <Arrow className={state === 'none' ? 'dt-sort-arrow dt-sort-idle' : 'dt-sort-arrow'} size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
       ) : (
-        <span className="dt-head">{column.header}</span>
+        <span className="dt-head">
+          <span className="dt-label">{column.header}</span>
+        </span>
       )}
       <ResizeHandle label={columnLabel(column)} explicit={width} min={minWidthOf(column)} onResize={onResize} onCommit={onCommit} />
     </th>
@@ -399,17 +430,22 @@ function Pager({ offset, limit, total, onChange }: NonNullable<DataTableProps<un
  * The Studio's shared table: semantic `<table>`, controlled sort (server-side,
  * rows are rendered in the order given), keyboard row navigation, resizable
  * columns remembered per `id`, responsive `hideBelow` columns, and a pager.
+ * The header is sticky against the screen's scroller; the wrap becomes a
+ * horizontal scroller (`.dt-scroll-x`, header no longer sticky) only while the
+ * table is wider than its container. Row action buttons go in an element with
+ * class `dt-actions` to get the compact in-row button size.
  */
 export function DataTable<T>(props: DataTableProps<T>) {
-  const { id, columns, rows, rowKey, sort, onSortChange, onRowOpen, selectedKey, page, density = 'compact', loading, empty } = props;
+  const { id, columns, rows, rowKey, sort, onSortChange, onRowOpen, selectedKey, page, density = 'compact', loading, empty, maxHeight } = props;
   const wrapRef = useRef<HTMLDivElement>(null);
   const containerWidth = useContainerWidth(wrapRef);
   const { widths, setWidth, persist } = useColumnWidths(id);
   const { tableRef, current, onKeyDown, open } = useRowNavigation(rows, rowKey, onRowOpen);
+  const scrollsX = useOverflowsX(wrapRef, tableRef);
   const visible = columns.filter((c) => c.hideBelow === undefined || containerWidth >= c.hideBelow);
   const widthOf = (c: Column<T>) => widths[c.key] ?? c.width;
   return (
-    <div className="data-table-wrap" ref={wrapRef}>
+    <div className={wrapClass(scrollsX, maxHeight)} style={maxHeight === undefined ? undefined : { maxHeight }} ref={wrapRef}>
       <table
         ref={tableRef}
         className={`data-table dt-${density}`}

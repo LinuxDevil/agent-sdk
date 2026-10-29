@@ -198,6 +198,11 @@
 .seg-btn:hover {
   color: var(--text);
 }
+/* Custom while its inputs are open and no absolute range is applied yet. */
+.seg-btn[aria-expanded='true']:not([aria-pressed='true']) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
 .seg-btn[aria-pressed='true'] {
   background: var(--surface);
   color: var(--text);

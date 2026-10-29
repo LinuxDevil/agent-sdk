@@ -209,6 +209,8 @@ test('monitoring: fleet and charts', async ({ page }) => {
 
 test('scores: an expanded eval', async ({ page }) => {
   await open(page, '/evals/scores?open=e2e-eval');
+  // The evals table must show its rows, not its first-load skeleton.
+  await expect(rows(page).filter({ hasText: 'e2e-eval' }).first()).toBeVisible();
   await expect(page.getByRole('region', { name: 'Eval e2e-eval' })).toBeVisible();
   await shoot(page, 'scores');
 });
