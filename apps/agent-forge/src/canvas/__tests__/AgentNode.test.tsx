@@ -46,6 +46,37 @@ describe('AgentNode card', () => {
     expect(card.querySelector('.node-row code')?.textContent).toBe('http');
   });
 
+  it('marks a running node and gives each kind its own icon tile tone', () => {
+    const llm = renderCard(nodeOf('llm'), { status: 'running' });
+    expect(llm.classList.contains('running')).toBe(true);
+    expect(llm.querySelector('.node-kind')?.classList.contains('kind-violet')).toBe(true);
+    expect(llm.querySelector('.node-kind svg')).not.toBeNull();
+    const tool = renderCard(nodeOf('tool'), { status: 'done' });
+    expect(tool.classList.contains('running')).toBe(false);
+    expect(tool.querySelector('.node-kind')?.classList.contains('kind-info')).toBe(true);
+  });
+
+  it('keeps running, selected, highlighted and breakpoint states together on one card', () => {
+    const Card = NODE_TYPES[flowNodeType('llm')];
+    const data: AgentNodeData = { graphNode: nodeOf('llm'), onRename: vi.fn(), status: 'running', hasBreakpoint: true, highlighted: true };
+    const props = { id: 'llm-0', type: flowNodeType('llm'), data, selected: true } as unknown as NodeProps;
+    const container = render(
+      <ReactFlowProvider>
+        <Card {...props} />
+      </ReactFlowProvider>
+    );
+    const card = container.querySelector('.rf-node') as HTMLElement;
+    for (const state of ['running', 'selected', 'highlighted', 'has-breakpoint']) expect(card.classList).toContain(state);
+  });
+
+  it('keeps a long name whole in its tooltip while the card truncates it', () => {
+    const long = 'x'.repeat(80);
+    const card = renderCard({ ...nodeOf('llm'), label: long });
+    const title = card.querySelector('.rf-node-title');
+    expect(title?.textContent).toBe(long);
+    expect(title?.getAttribute('title')).toContain(long);
+  });
+
   it('renders the LLM card markup', () => {
     const card = renderCard(nodeOf('llm'), { toolCount: 1, status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();

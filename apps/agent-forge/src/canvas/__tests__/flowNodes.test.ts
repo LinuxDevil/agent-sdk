@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { NodeChange } from '@xyflow/react';
 import { NODE_TYPES, flowNodeType, miniMapNodeClassName } from '../AgentNode';
-import { applyDimensionChanges } from '../../components/CanvasArea';
+import { applyDimensionChanges, toRfEdges } from '../../components/CanvasArea';
+import { specToGraph } from '../../graph/specToGraph';
 import type { AgentGraphNodeType } from '../../graph/types';
 
 const GRAPH_TYPES: AgentGraphNodeType[] = ['trigger', 'llm', 'tool', 'approval', 'output', 'router'];
@@ -36,5 +37,41 @@ describe('applyDimensionChanges', () => {
     const prev = { a: { width: 190, height: 80 } };
     expect(applyDimensionChanges(prev, [{ type: 'dimensions', id: 'a', dimensions: { width: 190, height: 80 } }])).toBe(prev);
     expect(applyDimensionChanges(prev, [{ type: 'remove', id: 'b' }])).toBe(prev);
+  });
+});
+
+describe('toRfEdges', () => {
+  const graph = specToGraph({ name: 'a', prompt: 'p', provider: { type: 'mock', model: 'mock-1' }, tools: ['http'], triggers: [{ type: 'input' }] });
+  const llm = graph.nodes.find((n) => n.type === 'llm')!;
+
+  it('draws smoothstep edges with a closed arrow, still while nothing runs', () => {
+    const edges = toRfEdges(graph);
+    expect(edges).toHaveLength(graph.edges.length);
+    for (const edge of edges) {
+      expect(edge.type).toBe('gapped');
+      expect(edge.selected).toBe(false);
+      expect(edge.deletable).toBe(false);
+      expect(edge.animated).toBe(false);
+      expect(edge.markerEnd).toMatchObject({ type: 'arrowclosed', color: 'var(--text-faint)' });
+    }
+  });
+
+  it("animates the edges leaving a running node in the accent colour", () => {
+    const edges = toRfEdges(graph, { [llm.id]: 'running' });
+    const fromLlm = edges.filter((e) => e.source === llm.id);
+    expect(fromLlm.length).toBeGreaterThan(0);
+    for (const edge of fromLlm) {
+      expect(edge.animated).toBe(true);
+      expect(edge.className).toBe('edge-running');
+      expect(edge.markerEnd).toMatchObject({ color: 'var(--accent)' });
+    }
+    for (const edge of edges.filter((e) => e.source !== llm.id)) expect(edge.animated).toBe(false);
+  });
+
+  it('marks only the selected edge as selected', () => {
+    const [first, ...rest] = graph.edges;
+    const edges = toRfEdges(graph, {}, first.id);
+    expect(edges.find((e) => e.id === first.id)?.selected).toBe(true);
+    for (const edge of rest) expect(edges.find((e) => e.id === edge.id)?.selected).toBe(false);
   });
 });

@@ -1,37 +1,39 @@
 import { memo, useState, type KeyboardEvent } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { Flag, GitBranch, ShieldCheck, Sparkles, Wrench, Zap, type LucideIcon } from 'lucide-react';
 import type { AgentGraphNode, AgentGraphNodeType } from '../graph/types';
 import { StatusPill } from '../ui/StatusPill';
 
 /**
- * Custom ReactFlow node renderer for every `AgentGraphNodeType`: a colored
- * type-swatch header with the node's name, a meta line (an LLM node's
- * `provider/model` chip and tool count, and the node's run status pill), a
+ * Custom ReactFlow node renderer for every `AgentGraphNodeType`: a 240px card
+ * whose header carries a kind icon tile, the node's name and its run status
+ * pill; a meta row (an LLM node's `provider/model` chip and tool count); a
  * body of key/value config rows read straight from the node's
- * `AgentGraphSpec` data (nothing hardcoded per-node), and
- * left/right ports drawn with ReactFlow's own `<Handle>` so pipeline
- * connections attach to a real, draggable anchor rather than a picture of
- * one.
+ * `AgentGraphSpec` data (nothing hardcoded per-node); and left/right ports
+ * drawn with ReactFlow's own `<Handle>` so pipeline connections attach to a
+ * real, draggable anchor rather than a picture of one.
  *
- * One component + a `type` field handles all five kinds rather than five
+ * One component + a `type` field handles all six kinds rather than six
  * near-duplicate components, since the only real differences are the
- * swatch color/icon, which ports are shown, and which data rows to render.
+ * kind tile's tone/icon, which ports are shown, and which data rows to render.
  */
 
-const NODE_META: Record<AgentGraphNodeType, { color: string; icon: string; hasIn: boolean; hasOut: boolean }> = {
-  trigger: { color: 'var(--info)', icon: '⚡', hasIn: false, hasOut: true },
-  llm: { color: 'var(--accent)', icon: '🧠', hasIn: true, hasOut: true },
-  tool: { color: 'var(--warning)', icon: '🔧', hasIn: true, hasOut: true },
-  approval: { color: 'var(--warning)', icon: '✓', hasIn: true, hasOut: true },
-  output: { color: 'var(--success)', icon: '→', hasIn: true, hasOut: false },
-  // Router shares tool's warning-orange swatch family (both are
-  // "control" nodes) but with its own icon so it reads
-  // distinctly on the canvas; `hasOut: true` matters here more than
+/** A kind tile's colour family: `kind-<tone>` in screens/agents/agents.css (also the MiniMap's node fill). */
+type KindTone = 'accent' | 'violet' | 'info' | 'warning' | 'success' | 'neutral';
+
+const NODE_META: Record<AgentGraphNodeType, { tone: KindTone; Icon: LucideIcon; hasIn: boolean; hasOut: boolean }> = {
+  trigger: { tone: 'accent', Icon: Zap, hasIn: false, hasOut: true },
+  llm: { tone: 'violet', Icon: Sparkles, hasIn: true, hasOut: true },
+  tool: { tone: 'info', Icon: Wrench, hasIn: true, hasOut: true },
+  // The approval gate is the canvas's "hook" kind: warning, like a pause.
+  approval: { tone: 'warning', Icon: ShieldCheck, hasIn: true, hasOut: true },
+  output: { tone: 'success', Icon: Flag, hasIn: true, hasOut: false },
+  // Router is neutral control flow; `hasOut: true` matters here more than
   // anywhere else - it's the one node type actually expected to carry
   // MULTIPLE outgoing edges (its branches), which ReactFlow already
   // supports from a single source `Handle` (see llm -> multiple tool nodes,
   // an existing pattern this reuses rather than needing per-branch ports).
-  router: { color: 'var(--danger)', icon: '⑂', hasIn: true, hasOut: true },
+  router: { tone: 'neutral', Icon: GitBranch, hasIn: true, hasOut: true },
 };
 
 type NodeRow = { k: string; v: string };
@@ -100,8 +102,14 @@ function useRenameDraft(graphNode: AgentGraphNode, onRename: (nodeId: string, la
 
 type RenameDraft = ReturnType<typeof useRenameDraft>;
 
-function nodeClassName(selected: boolean | undefined, highlighted?: boolean, hasBreakpoint?: boolean): string {
-  return `rf-node${selected ? ' selected' : ''}${highlighted ? ' highlighted' : ''}${hasBreakpoint ? ' has-breakpoint' : ''}`;
+function nodeClassName(selected: boolean | undefined, data: Pick<AgentNodeData, 'highlighted' | 'hasBreakpoint' | 'status'>): string {
+  const flags: [string, boolean | undefined][] = [
+    ['selected', selected],
+    ['highlighted', data.highlighted],
+    ['has-breakpoint', data.hasBreakpoint],
+    ['running', data.status === 'running'],
+  ];
+  return ['rf-node', ...flags.filter(([, on]) => on).map(([name]) => name)].join(' ');
 }
 
 // Pre·N / post·N badges (`.hook-badge`) - only
@@ -151,7 +159,7 @@ function NodeTitle({ label, rename }: { label: string; rename: RenameDraft }) {
     );
   }
   return (
-    <span className="rf-node-title" onDoubleClick={rename.start} title="Double-click to rename">
+    <span className="rf-node-title" onDoubleClick={rename.start} title={`${label} (double-click to rename)`}>
       {label}
     </span>
   );
@@ -163,55 +171,62 @@ function modelChipOf(graphNode: AgentGraphNode): string | undefined {
   return `${orUnset(graphNode.data.provider.type)}/${orUnset(graphNode.data.provider.model)}`;
 }
 
-function NodeMeta({ graphNode, toolCount = 0, status }: Pick<AgentNodeData, 'graphNode' | 'toolCount' | 'status'>) {
+/** The model chip and tool count; nothing at all for a node with neither. */
+function NodeMeta({ graphNode, toolCount = 0 }: Pick<AgentNodeData, 'graphNode' | 'toolCount'>) {
   const model = modelChipOf(graphNode);
+  if (!model && toolCount === 0) return null;
   return (
     <div className="rf-node-meta">
       {model && (
-        <code className="node-chip node-model" title="Provider/model">
+        <code className="node-chip node-model" title={`Provider/model: ${model}`}>
           {model}
         </code>
       )}
-      {toolCount > 0 && <span className="node-chip node-tools">{toolCount === 1 ? '1 tool' : `${toolCount} tools`}</span>}
-      <span className="rf-node-meta-spacer" />
-      <StatusPill status={status ?? 'idle'} />
+      {toolCount > 0 && (
+        <span className="node-chip node-tools">
+          <Wrench size={12} strokeWidth={1.75} aria-hidden="true" />
+          {toolCount === 1 ? '1 tool' : `${toolCount} tools`}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function NodeRows({ rows }: { rows: NodeRow[] }) {
+  // No empty body box under a node with nothing to show (llm, output, router).
+  if (rows.length === 0) return null;
+  return (
+    <div className="rf-node-body">
+      {rows.map((row) => (
+        <div className="node-row" key={row.k}>
+          <span>{row.k}</span>
+          <code title={row.v}>{row.v}</code>
+        </div>
+      ))}
     </div>
   );
 }
 
 function AgentNodeImpl({ data, selected }: NodeProps) {
-  const { graphNode, onRename, highlighted, hasBreakpoint, toolCount, status } = data as unknown as AgentNodeData;
-  const meta = NODE_META[graphNode.type];
+  const nodeData = data as unknown as AgentNodeData;
+  const { graphNode, onRename, toolCount, status } = nodeData;
+  const { tone, Icon, hasIn, hasOut } = NODE_META[graphNode.type];
   const rename = useRenameDraft(graphNode, onRename);
-  const rows = rowsFor(graphNode);
 
   return (
-    <div
-      className={nodeClassName(selected, highlighted, hasBreakpoint)}
-      data-node-type={graphNode.type}
-      data-node-id={graphNode.id}
-    >
-      {meta.hasIn && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
-      {meta.hasOut && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
+    <div className={nodeClassName(selected, nodeData)} data-node-type={graphNode.type} data-node-id={graphNode.id}>
+      {hasIn && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
+      {hasOut && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
       <HookBadges graphNode={graphNode} />
       <div className="rf-node-head">
-        <span className="node-swatch" style={{ background: meta.color, width: 16, height: 16, borderRadius: 5 }}>
-          {meta.icon}
+        <span className={`node-kind kind-${tone}`} aria-hidden="true">
+          <Icon size={14} strokeWidth={1.75} />
         </span>
         <NodeTitle label={graphNode.label} rename={rename} />
+        <StatusPill status={status ?? 'idle'} />
       </div>
-      <NodeMeta graphNode={graphNode} toolCount={toolCount} status={status} />
-      {/* No empty body box under a node with nothing to show (llm, output, router). */}
-      {rows.length > 0 && (
-        <div className="rf-node-body">
-          {rows.map((row) => (
-            <div className="node-row" key={row.k}>
-              <span>{row.k}</span>
-              <code>{row.v}</code>
-            </div>
-          ))}
-        </div>
-      )}
+      <NodeMeta graphNode={graphNode} toolCount={toolCount} />
+      <NodeRows rows={rowsFor(graphNode)} />
     </div>
   );
 }
@@ -235,7 +250,7 @@ export const NODE_TYPES: Record<string, typeof AgentNode> = Object.fromEntries(
   GRAPH_NODE_TYPES.map((type) => [flowNodeType(type), AgentNode])
 );
 
-/** The MiniMap draws each node in its type's swatch colour (see `.minimap-node-*` in screens/agents/agents.css). */
+/** The MiniMap draws each node in its kind's tile colour (see `.minimap-node-*` in screens/agents/agents.css). */
 export function miniMapNodeClassName(node: { data: Record<string, unknown> }): string {
   const graphNode = (node.data as Partial<AgentNodeData>).graphNode;
   return graphNode ? `minimap-node-${graphNode.type}` : '';

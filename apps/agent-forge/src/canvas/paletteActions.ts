@@ -2,7 +2,7 @@ import { HOOK_TEMPLATES, type HookTemplate } from '../hooks/hookTemplates';
 import type { AgentNodeHookPhase, GraphPosition } from '../graph/types';
 
 /** Approximate rendered size of an `.rf-node` (screens/agents/agents.css), used to centre a newly added node. */
-const NODE_SIZE = { width: 190, height: 80 };
+const NODE_SIZE = { width: 240, height: 80 };
 
 /**
  * Where a palette item added from the keyboard (or a click)

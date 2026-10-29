@@ -4,9 +4,12 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  MarkerType,
   MiniMap,
   ReactFlow,
+  SmoothStepEdge,
   useReactFlow,
+  type EdgeProps,
   type Connection,
   type Edge,
   type EdgeChange,
@@ -14,6 +17,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Copy, LayoutGrid, Maximize, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
 import { NODE_TYPES, flowNodeType, miniMapNodeClassName, type AgentNodeData } from '../canvas/AgentNode';
@@ -100,8 +104,52 @@ function toRfNodes(graph: AgentGraphSpec, decor: NodeDecor, measured: MeasuredSi
   }));
 }
 
-function toRfEdges(graph: AgentGraphSpec): Edge[] {
-  return graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }));
+/** How far short of the target port an edge stops, so its arrowhead never covers the port. */
+const ARROW_GAP = 5;
+
+/** A smoothstep edge that ends `ARROW_GAP` px before its (left-hand) target port. */
+function GappedSmoothStepEdge(props: EdgeProps) {
+  return <SmoothStepEdge {...props} targetX={props.targetX - ARROW_GAP} />;
+}
+
+const EDGE_TYPES = { gapped: GappedSmoothStepEdge };
+
+/** Every fit (on load, on resize, the toolbar): the whole graph, never zoomed in past 1:1. */
+const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
+
+/**
+ * React Flow's default floor (0.5) is too high for a 4-column graph in the
+ * builder's ~540px pane at 1280px wide: the fit stopped at 0.5 and cut the
+ * trigger off. A whole graph in view beats a zoom floor.
+ */
+const MIN_ZOOM = 0.2;
+
+/**
+ * Smoothstep edges ending in a closed arrow. An edge whose source node is
+ * running is animated in the accent colour (`.edge-running` in agents.css;
+ * reduced motion keeps the colour and drops the dash animation). The selected
+ * edge (`selectedEdgeId`) is drawn in the accent colour. Edges are selectable
+ * but not deletable on their own (as before): removing a node still drops its edges.
+ */
+export function toRfEdges(
+  graph: AgentGraphSpec,
+  statuses: Record<string, NodeRunStatus> = {},
+  selectedEdgeId?: string
+): Edge[] {
+  return graph.edges.map((e) => {
+    const running = statuses[e.source] === 'running';
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: 'gapped',
+      selected: e.id === selectedEdgeId,
+      deletable: false,
+      animated: running,
+      className: running ? 'edge-running' : undefined,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: running ? 'var(--accent)' : 'var(--text-faint)' },
+    };
+  });
 }
 
 /** Apply every ReactFlow position change that carries a position to the graph. */
@@ -155,7 +203,8 @@ function useGraphEditHandlers(
   setGraph: SetGraph,
   selectedNodeId: string | undefined,
   setSelectedNodeId: SetSelectedNodeId,
-  setMeasured: (updater: (prev: MeasuredSizes) => MeasuredSizes) => void
+  setMeasured: (updater: (prev: MeasuredSizes) => MeasuredSizes) => void,
+  setSelectedEdgeId: (id: string | undefined) => void
 ) {
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
@@ -173,11 +222,13 @@ function useGraphEditHandlers(
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      const select = [...changes].reverse().find((c) => c.type === 'select');
+      if (select && select.type === 'select') setSelectedEdgeId(select.selected ? select.id : undefined);
       const removed = changes.filter((c) => c.type === 'remove');
       if (removed.length === 0) return;
       setGraph((g) => removed.reduce((acc, c) => (c.type === 'remove' ? removeEdge(acc, c.id) : acc), g));
     },
-    [setGraph]
+    [setGraph, setSelectedEdgeId]
   );
 
   const onNodesDelete = useCallback(
@@ -281,7 +332,7 @@ function useFitViewOnResize() {
     let timer: ReturnType<typeof setTimeout> | undefined;
     function onResize() {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => void fitView({ padding: 0.2, duration: 150 }), 150);
+      timer = setTimeout(() => void fitView({ ...FIT_VIEW_OPTIONS, duration: 150 }), 150);
     }
     window.addEventListener('resize', onResize);
     return () => {
@@ -291,17 +342,39 @@ function useFitViewOnResize() {
   }, [fitView]);
 }
 
+/**
+ * Fit the whole graph when an agent is opened and when an empty canvas is
+ * filled (a template applied, or the first node dropped) - React Flow's own
+ * `fitView` prop only fits once, on mount. Waits until every node has been
+ * measured, so the fit uses real card sizes.
+ */
+function useFitViewOnLoad(agentId: string, graph: AgentGraphSpec, measured: MeasuredSizes) {
+  const { fitView } = useReactFlow();
+  const pending = useRef(true);
+  const loadKey = `${agentId}|${graph.nodes.length > 0 ? 'filled' : 'empty'}`;
+  useEffect(() => {
+    pending.current = true;
+  }, [loadKey]);
+  const allMeasured = graph.nodes.length > 0 && graph.nodes.every((n) => measured[n.id]);
+  useEffect(() => {
+    if (!pending.current || !allMeasured) return;
+    pending.current = false;
+    const frame = window.requestAnimationFrame(() => void fitView(FIT_VIEW_OPTIONS));
+    return () => window.cancelAnimationFrame(frame);
+  }, [loadKey, allMeasured, fitView]);
+}
+
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
 function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined) {
   const { fitView } = useReactFlow();
 
   function handleAutoLayout() {
     setGraph((g) => autoLayout(g));
-    window.requestAnimationFrame(() => fitView({ padding: 0.2, duration: 200 }));
+    window.requestAnimationFrame(() => fitView({ ...FIT_VIEW_OPTIONS, duration: 200 }));
   }
 
   function handleFitView() {
-    fitView({ padding: 0.2, duration: 200 });
+    fitView({ ...FIT_VIEW_OPTIONS, duration: 200 });
   }
 
   const handleDuplicate = useCallback(() => {
@@ -327,6 +400,34 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
   return { handleAutoLayout, handleFitView, handleDuplicate };
 }
 
+/** One icon button of the canvas toolbar: `label` is its accessible name, `tooltip` its title. */
+function ToolbarButton({
+  Icon,
+  label,
+  tooltip,
+  onClick,
+  disabled,
+}: {
+  Icon: LucideIcon;
+  label: string;
+  tooltip: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost btn-icon btn-sm"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={tooltip}
+    >
+      <Icon aria-hidden="true" />
+    </button>
+  );
+}
+
 function CanvasToolbar({
   canDuplicate,
   onAutoLayout,
@@ -339,22 +440,35 @@ function CanvasToolbar({
   onDuplicate: () => void;
 }) {
   return (
-    <div className="canvas-toolbar">
-      <button className="btn" onClick={onAutoLayout} title="Auto layout the current graph">
-        Auto layout
-      </button>
-      <button className="btn" onClick={onFitView} title="Fit view to graph">
-        Fit view
-      </button>
-      <button
-        className="btn"
+    <div className="canvas-toolbar" role="group" aria-label="Canvas tools">
+      <ToolbarButton Icon={LayoutGrid} label="Auto layout" tooltip="Auto layout the current graph" onClick={onAutoLayout} />
+      <ToolbarButton Icon={Maximize} label="Fit view" tooltip="Fit view to graph" onClick={onFitView} />
+      <ToolbarButton
+        Icon={Copy}
+        label="Duplicate"
+        tooltip="Duplicate selected node (Ctrl/Cmd+D)"
         onClick={onDuplicate}
         disabled={!canDuplicate}
-        title="Duplicate selected node (Ctrl/Cmd+D)"
-      >
-        Duplicate
-      </button>
+      />
     </div>
+  );
+}
+
+/** The MiniMap (bottom-right) and zoom/fit Controls (bottom-left), both themed in agents.css. */
+function CanvasNavigator() {
+  return (
+    <>
+      <MiniMap
+        position="bottom-right"
+        pannable
+        zoomable
+        style={{ width: 160, height: 110 }}
+        nodeClassName={miniMapNodeClassName}
+        nodeBorderRadius={6}
+        ariaLabel="Graph overview"
+      />
+      <Controls position="bottom-left" orientation="vertical" showInteractive={false} />
+    </>
   );
 }
 
@@ -365,9 +479,13 @@ function CanvasToolbar({
  * `graph` on every render rather than kept in separate ReactFlow-owned
  * state, so there is nowhere for the two to drift apart.
  */
-function CanvasInner() {
-  const { graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeId, debugState, spans, runStatus } = useAppState();
-  const { connectError, flashError } = useConnectError();
+/**
+ * The React Flow nodes and edges derived from `graph` and the run/debug/selection
+ * state, plus the measured-size and selected-edge state they depend on.
+ */
+function useCanvasElements() {
+  const { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeId, debugState, spans, runStatus } =
+    useAppState();
 
   const onRename = useCallback(
     (nodeId: string, label: string) => {
@@ -384,13 +502,23 @@ function CanvasInner() {
     () => toRfNodes(graph, { selectedNodeId, onRename, highlightedNodeId, breakpoints, statuses }, measured),
     [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey, statuses, measured]
   );
-  const edges = useMemo(() => toRfEdges(graph), [graph]);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>(undefined);
+  const edges = useMemo(() => toRfEdges(graph, statuses, selectedEdgeId), [graph, statuses, selectedEdgeId]);
 
-  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured);
+  return { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId };
+}
+
+function CanvasInner() {
+  const { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId } =
+    useCanvasElements();
+  const { connectError, flashError } = useConnectError();
+
+  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId);
   const { onConnect, isValidConnection } = useConnectionHandlers(graph, setGraph, flashError);
   const { onDragOver, onDrop } = useDropHandlers(graph, setGraph, flashError);
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
   useFitViewOnResize();
+  useFitViewOnLoad(agentId, graph, measured);
 
   return (
     <main className="canvas-wrap" aria-label="Agent graph" onDrop={onDrop} onDragOver={onDragOver}>
@@ -410,6 +538,7 @@ function CanvasInner() {
         nodes={nodes}
         edges={edges}
         nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
         onNodesChange={editHandlers.onNodesChange}
         onEdgesChange={editHandlers.onEdgesChange}
         onNodesDelete={editHandlers.onNodesDelete}
@@ -417,18 +546,13 @@ function CanvasInner() {
         isValidConnection={isValidConnection}
         deleteKeyCode={['Backspace', 'Delete']}
         fitView
+        fitViewOptions={FIT_VIEW_OPTIONS}
+        minZoom={MIN_ZOOM}
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
-        <MiniMap
-          position="top-right"
-          pannable
-          zoomable
-          nodeClassName={miniMapNodeClassName}
-          nodeBorderRadius={4}
-          ariaLabel="Graph overview"
-        />
-        <Controls position="bottom-right" showInteractive={false} />
+        <Background variant={BackgroundVariant.Dots} gap={20} size={2} color="var(--border-strong)" />
+        {/* Nothing to overview or zoom on an empty canvas; the template card has the room. */}
+        {graph.nodes.length > 0 && <CanvasNavigator />}
       </ReactFlow>
     </main>
   );

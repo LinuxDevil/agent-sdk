@@ -62,4 +62,15 @@ describe('EmptyCanvas', () => {
     expect(appState.setSelectedNodeId).toHaveBeenCalledWith(llm?.id);
     expect(appState.switchAgent).not.toHaveBeenCalled();
   });
+
+  it('has a primary action that starts the blank graph', () => {
+    const container = render(<EmptyCanvas />);
+    const primary = container.querySelector('.canvas-empty-action') as HTMLButtonElement;
+    expect(primary.classList.contains('btn-primary')).toBe(true);
+    expect(primary.textContent).toBe('Start with a blank graph');
+    act(() => primary.click());
+    const next = appState.setGraph.mock.calls[0][0](appState.graph) as AgentGraphSpec;
+    expect(next.nodes.some((n) => n.type === 'llm')).toBe(true);
+    expect(next.nodes.some((n) => n.type === 'tool')).toBe(false);
+  });
 });

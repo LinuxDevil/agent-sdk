@@ -1,7 +1,7 @@
 import dagre from 'dagre';
 import type { AgentGraphSpec } from '../graph/types';
 
-const NODE_WIDTH = 190;
+const NODE_WIDTH = 240;
 const NODE_HEIGHT = 96;
 
 /**

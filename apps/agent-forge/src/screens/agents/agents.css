@@ -208,30 +208,59 @@ button.breakpoint-toggle {
 
 
 /* ---------- Canvas (real ReactFlow / @xyflow/react) ---------- */
+/* React Flow's own chrome (controls, minimap, edges, handles) is themed through
+   its --xy-* variables, so it follows the colour scheme like everything else. */
 .canvas-wrap {
   position: relative;
   overflow: hidden;
   background: var(--bg);
 }
+.canvas-wrap .react-flow {
+  --xy-background-color: var(--bg);
+  --xy-edge-stroke: var(--border-strong);
+  --xy-edge-stroke-selected: var(--accent);
+  --xy-edge-stroke-width: 1.5;
+  --xy-connectionline-stroke: var(--accent);
+  --xy-connectionline-stroke-width: 1.5;
+  --xy-handle-background-color: var(--surface);
+  --xy-handle-border-color: var(--border-strong);
+  --xy-controls-button-background-color: var(--surface);
+  --xy-controls-button-background-color-hover: var(--surface-2);
+  --xy-controls-button-color: var(--text-muted);
+  --xy-controls-button-color-hover: var(--text);
+  --xy-controls-button-border-color: var(--border);
+  --xy-controls-box-shadow: var(--shadow-sm);
+  --xy-minimap-background-color: var(--surface);
+  --xy-minimap-mask-background-color: color-mix(in srgb, var(--bg) 70%, transparent);
+  --xy-minimap-mask-stroke-color: var(--border-strong);
+  --xy-minimap-node-background-color: var(--text-faint);
+  --xy-selection-background-color: color-mix(in srgb, var(--accent) 8%, transparent);
+  --xy-selection-border: 1px dashed var(--accent);
+  --xy-attribution-background-color: transparent;
+}
 .canvas-wrap .react-flow__background {
   background: var(--bg);
 }
+
+/* Auto layout / Fit view / Duplicate: one segmented card of icon buttons, top-left. */
 .canvas-toolbar {
   position: absolute;
-  left: 12px;
-  top: 12px;
+  left: var(--space-3);
+  top: var(--space-3);
   z-index: 5;
   display: flex;
-  gap: 6px;
+  gap: 2px;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 9px;
-  padding: 4px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  padding: 2px;
+  box-shadow: var(--shadow-sm);
 }
-.canvas-toolbar .btn {
-  padding: 5px 8px;
+.canvas-toolbar .btn-icon.btn-sm {
+  width: 30px;
+  min-height: 30px;
 }
+
 /* Empty-canvas onboarding (canvas/EmptyCanvas.tsx), centred over the pane. */
 .canvas-empty {
   position: absolute;
@@ -240,51 +269,93 @@ button.breakpoint-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: var(--space-4);
   pointer-events: none;
 }
-.canvas-empty .empty-state {
+.canvas-empty-card {
   pointer-events: auto;
-  max-width: 420px;
+  max-width: 480px;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 11px;
-  box-shadow: var(--shadow);
-  padding: 20px 16px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-6) var(--space-5) var(--space-5);
 }
-.canvas-empty .empty-state-action {
-  width: 100%;
+.canvas-empty-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.canvas-empty-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+}
+.canvas-empty-hint {
+  margin: 0;
+  max-width: 48ch;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.canvas-empty-action {
+  margin-top: var(--space-2);
 }
 .canvas-templates {
   list-style: none;
-  margin: 0;
+  width: 100%;
+  margin: var(--space-3) 0 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-2);
   text-align: left;
 }
 .canvas-template {
   width: 100%;
+  height: 100%;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: flex-start;
+  gap: var(--space-3);
   text-align: left;
-  padding: 8px 10px;
+  padding: var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
-.canvas-template:hover,
+.canvas-template:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
 .canvas-template:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
   border-color: var(--accent);
-  background: var(--accent-soft);
-  outline: none;
+}
+.canvas-template-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
 }
 .canvas-template-name {
   font-weight: 600;
@@ -296,181 +367,296 @@ button.breakpoint-toggle {
 .canvas-connect-error {
   position: absolute;
   left: 50%;
-  top: 12px;
+  top: var(--space-3);
   transform: translateX(-50%);
   z-index: 6;
   background: var(--danger-soft);
   color: var(--danger);
   border: 1px solid var(--danger);
-  border-radius: 8px;
+  border-radius: var(--radius);
   padding: 6px 12px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 600;
   box-shadow: var(--shadow);
 }
 
-/* ReactFlow's own MiniMap/Controls chrome, nudged to match the mockup
-   (minimap top-right, controls bottom-right) and re-themed with our tokens
-   rather than reimplementing either widget. */
-.react-flow__minimap {
-  background: var(--surface) !important;
+/* Controls: a vertical card bottom-left. MiniMap: bottom-right, a card in the same family. */
+.canvas-wrap .react-flow__controls {
   border: 1px solid var(--border);
-  border-radius: 9px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
 }
-/* minimap nodes in their type's swatch colour (AgentNode.tsx's
-   miniMapNodeClassName), and a mask that is visible on --surface in both
-   schemes - the default light-grey nodes and mask vanished on it. */
-.react-flow__minimap-mask {
-  fill: color-mix(in srgb, var(--text) 10%, transparent);
+.canvas-wrap .react-flow__controls-button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
 }
+.canvas-wrap .react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+.canvas-wrap .react-flow__controls-button svg {
+  fill: currentColor;
+  max-width: 12px;
+  max-height: 12px;
+}
+.canvas-wrap .react-flow__controls-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.canvas-wrap .react-flow__minimap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+/* minimap nodes in their kind's tile colour (AgentNode.tsx's miniMapNodeClassName). */
 .react-flow__minimap-node {
-  fill: var(--text-faint);
   stroke: none;
 }
 .react-flow__minimap-node.minimap-node-trigger {
-  fill: var(--info);
-}
-.react-flow__minimap-node.minimap-node-llm {
   fill: var(--accent);
 }
-.react-flow__minimap-node.minimap-node-tool,
+.react-flow__minimap-node.minimap-node-llm {
+  fill: var(--violet);
+}
+.react-flow__minimap-node.minimap-node-tool {
+  fill: var(--info);
+}
 .react-flow__minimap-node.minimap-node-approval {
   fill: var(--warning);
-}
-.react-flow__minimap-node.minimap-node-router {
-  fill: var(--danger);
 }
 .react-flow__minimap-node.minimap-node-output {
   fill: var(--success);
 }
-.react-flow__controls {
-  box-shadow: var(--shadow);
-  border-radius: 9px;
-  overflow: hidden;
-  border: 1px solid var(--border);
+.react-flow__minimap-node.minimap-node-router {
+  fill: var(--text-muted);
 }
-.react-flow__controls-button {
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-}
-.react-flow__controls-button:hover {
-  background: var(--surface-2);
-}
-.react-flow__controls-button svg {
-  fill: currentColor;
-}
-.react-flow__edge-path {
-  stroke: var(--text-faint);
-  stroke-width: 1.6;
-}
-.react-flow__edge.selected .react-flow__edge-path {
+
+/* Edges: smoothstep, 1.5px --border-strong with an arrow (CanvasArea.tsx's toRfEdges);
+   accent and a moving dash while the source node runs. */
+.canvas-wrap .react-flow__edge.edge-running .react-flow__edge-path,
+.canvas-wrap .react-flow__edge.selected .react-flow__edge-path,
+.canvas-wrap .react-flow__edge:focus-visible .react-flow__edge-path {
   stroke: var(--accent);
-  stroke-width: 2;
 }
 .react-flow__attribution {
   display: none;
 }
 
-/* Custom node chrome (AgentNode.tsx), matching .node in the mockup. */
+/* Custom node chrome (AgentNode.tsx): a fixed 240px card. */
 .rf-node {
-  width: 190px;
-  border-radius: 11px;
+  position: relative;
+  width: 240px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  border: 1.5px solid var(--border);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
   font-family: var(--font-ui);
+  color: var(--text);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
-.rf-node.selected {
+.react-flow__node:hover .rf-node {
+  border-color: var(--border-strong);
+}
+/*
+ * State rings compose rather than replace each other, so selected, highlighted,
+ * breakpoint and running all stay visible together:
+ *   selected     accent border + --ring (box-shadow, 0-3px out)
+ *   highlighted  a solid 3px accent ring in the same box-shadow slot (the drawer's pick wins)
+ *   breakpoint   a 2px danger outline 3px further out (its own property)
+ *   running      an accent border drawn by ::after, which pulses (its own layer)
+ */
+.canvas-wrap .rf-node.has-breakpoint {
+  box-shadow: var(--shadow-sm);
+  outline: 2px solid var(--danger);
+  outline-offset: 3px;
+}
+.canvas-wrap .rf-node.selected,
+.canvas-wrap .rf-node.selected.has-breakpoint {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow);
+  box-shadow: var(--ring), var(--shadow-sm);
+}
+.canvas-wrap .rf-node.highlighted,
+.canvas-wrap .rf-node.highlighted.selected,
+.canvas-wrap .rf-node.highlighted.has-breakpoint {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent), var(--shadow-sm);
+}
+.canvas-wrap .rf-node.running {
+  border-color: var(--accent);
+}
+.canvas-wrap .rf-node.running::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--accent);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: rf-node-running 1.2s var(--ease) infinite alternate;
+}
+@keyframes rf-node-running {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.3;
+  }
 }
 .rf-node-head {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 8px 10px;
-  font-weight: 600;
-  font-size: 12px;
-  border-radius: 11px 11px 0 0;
+  gap: var(--space-2);
+  padding: 10px var(--space-3);
+  min-width: 0;
 }
-.rf-node-head .node-swatch {
-  display: flex;
+.rf-node-head .status-pill {
+  flex: none;
+  margin-left: auto;
+}
+.node-kind {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 9px;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+}
+.node-kind.kind-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.node-kind.kind-violet {
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+.node-kind.kind-info {
+  background: var(--info-soft);
+  color: var(--info);
+}
+.node-kind.kind-warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.node-kind.kind-success {
+  background: var(--success-soft);
+  color: var(--success);
+}
+.node-kind.kind-neutral {
+  background: var(--surface-3);
+  color: var(--text-muted);
 }
 .rf-node-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.rf-node-title {
   font-size: 13px;
+  font-weight: 600;
 }
-/* Model chip, tool count and the node's run status (AgentNode.tsx's NodeMeta). */
+.rf-node-head .input {
+  flex: 1;
+  min-width: 0;
+}
+/* Model chip and tool count (AgentNode.tsx's NodeMeta). */
 .rf-node-meta {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--border);
   font-size: 11px;
   color: var(--text-muted);
-}
-.rf-node-meta-spacer {
-  flex: 1;
+  min-width: 0;
 }
 .rf-node .node-chip {
-  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  border-radius: 4px;
-  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
   background: var(--surface-2);
   color: var(--text);
+  font-size: 11px;
+  line-height: 16px;
 }
 .rf-node .node-model {
+  display: block;
   font-family: var(--font-mono);
 }
-.rf-node-meta .status-pill {
-  font-size: 10.5px;
+.rf-node .node-tools {
+  flex: none;
+  color: var(--text-muted);
 }
 .rf-node-body {
   border-top: 1px solid var(--border);
-  padding: 9px 10px;
+  padding: var(--space-2) var(--space-3);
   font-size: 11px;
   color: var(--text-muted);
 }
 .rf-node-body code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
-  background: var(--surface-2);
-  padding: 1px 4px;
-  border-radius: 4px;
   color: var(--text);
 }
 .rf-node .node-row {
   display: flex;
   justify-content: space-between;
-  gap: 6px;
+  gap: var(--space-2);
   margin-top: 3px;
 }
 .rf-node .node-row:first-child {
   margin-top: 0;
 }
-.rf-port.rf-port-in,
-.rf-port.rf-port-out {
-  width: 9px;
-  height: 9px;
+.rf-node .node-row > span {
+  flex: none;
+}
+/* Ports: 10px surface circles with a clearly visible ring (above the edges), accent on hover and while connecting. */
+.canvas-wrap .rf-port.rf-port-in,
+.canvas-wrap .rf-port.rf-port-out {
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  min-width: 0;
+  min-height: 0;
   border-radius: 50%;
   background: var(--surface);
   border: 2px solid var(--text-faint);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
 }
-.rf-port.rf-port-out {
+.canvas-wrap .rf-port:hover,
+.canvas-wrap .rf-port.connectingfrom,
+.canvas-wrap .rf-port.connectingto,
+.canvas-wrap .rf-port.valid {
   border-color: var(--accent);
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-wrap .rf-node.running::after,
+  .canvas-wrap .react-flow__edge.animated path {
+    animation: none;
+  }
+  .rf-node,
+  .canvas-template,
+  .canvas-wrap .rf-port.rf-port-in,
+  .canvas-wrap .rf-port.rf-port-out {
+    transition: none;
+  }
 }
 
 /* ---------- Inspector ---------- */
