@@ -8,7 +8,7 @@ import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
 import { addHookToNode, addNode } from '../canvas/graphMutations';
 import { pickHookTemplate, viewportCentrePosition } from '../canvas/paletteActions';
 import { NODE_KINDS, type KindTone } from '../canvas/nodeKinds';
-import { statusTone } from '../ui/StatusPill';
+import { StatusPill, statusTone } from '../ui/StatusPill';
 import { navigate } from '../router/router';
 import { errorMessage } from './errorMessage';
 import { tabIds, tabListKeyDown } from './tabs';
@@ -69,8 +69,16 @@ export function agentInitials(id: string): string {
   return letters.toUpperCase();
 }
 
-/** A row's run status as a small dot in its tone; the status word is its tooltip and screen-reader text. */
-function StatusDot({ status }: { status: string }) {
+/** The statuses a row spells out in a pill as well as colouring its dot, so they never rely on colour alone. */
+const WORDED_STATUSES = new Set(['unsaved', 'error']);
+
+/**
+ * A row's run status: a small dot in its tone, its word the tooltip and
+ * screen-reader text - or, for `unsaved` and `error`, the status pill
+ * (dot plus "Unsaved" / "Error"), which never shrinks; the name truncates instead.
+ */
+export function AgentStatusMark({ status }: { status: string }) {
+  if (WORDED_STATUSES.has(status)) return <StatusPill status={status} />;
   return (
     <span className={`agent-dot tone-${statusTone(status)}`} title={status}>
       <span className="visually-hidden">{status}</span>
@@ -78,7 +86,7 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
-/** The row body shared by saved and unsaved agents: initials tile, name over model, status dot. */
+/** The row body shared by saved and unsaved agents: initials tile, name over model, status mark. */
 function AgentRowBody({ name, meta, status }: { name: string; meta: string; status: string }) {
   return (
     <>
@@ -93,7 +101,7 @@ function AgentRowBody({ name, meta, status }: { name: string; meta: string; stat
           {meta}
         </span>
       </span>
-      <StatusDot status={status} />
+      <AgentStatusMark status={status} />
     </>
   );
 }

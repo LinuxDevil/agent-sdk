@@ -952,6 +952,33 @@ test('agents x: the Nodes palette in the left rail', async ({ page }) => {
   await shoot(page, 'x-agents-rail-nodes');
 });
 
+test('agents x-rail-status: the unsaved default agent, and an errored agent with an 80-character name', async ({ page }) => {
+  // No saved agents: the rail shows the unsaved default as its only row.
+  await page.route(/\/agents(\?|$)/, (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }) : route.continue(),
+  );
+  await open(page, '/agents');
+  await expect(page.locator('.agent-card.selected')).toBeVisible();
+  await shoot(page, 'x-agents-rail-unsaved');
+  await page.unroute(/\/agents(\?|$)/);
+
+  const sockets: WebSocketRoute[] = [];
+  await page.routeWebSocket(/\/stream/, (ws) => {
+    const server = ws.connectToServer();
+    server.onMessage((message) => ws.send(message));
+    sockets.push(ws);
+  });
+  const name = `errored-${Date.now()}-${'x'.repeat(80)}`.slice(0, 80);
+  await newAgent(page, name, 'support-bot');
+  const own = () => sockets.filter((s) => s.url().includes(`/agents/${name}/stream`));
+  await expect.poll(() => own().length).toBeGreaterThan(0);
+  // Let every socket's on-connect status land, so ours is the last word.
+  await page.waitForTimeout(500);
+  own().forEach((ws) => ws.send(JSON.stringify({ type: 'status', payload: { agentId: name, status: 'error' } })));
+  await expect(page.locator('.agent-card.selected .tone-error, .agent-card.selected .pill-error').first()).toBeVisible();
+  await shoot(page, 'x-agents-rail-error');
+});
+
 test('agents x: the builder toolbar at 860 and 375 wide', async ({ page }) => {
   await newAgent(page, `toolbar-${Date.now()}`, 'support-bot');
   for (const width of [860, 375]) {
