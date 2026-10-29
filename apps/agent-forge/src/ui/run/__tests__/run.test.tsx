@@ -283,8 +283,28 @@ describe('RunInspector', () => {
   });
 });
 
+describe('RunInspector missing values', () => {
+  it('shows a faint em dash for usage, cost, model and a score the step does not have', () => {
+    const row = obs({ obs_id: 'bare', kind: 'tool' });
+    const c = render(<RunInspector observation={row} scores={[score({ score_id: 's', obs_id: 'bare', value: null })]} />);
+    const dashes = [...c.querySelectorAll('.value-missing')].map((el) => el.textContent);
+    // four token counts, cost, model, and the null score value
+    expect(dashes).toEqual(['—', '—', '—', '—', '—', '—', '—']);
+    expect(c.querySelector('[data-section="usage"]')!.textContent).not.toContain('-');
+  });
+});
+
 describe('TraceViewer', () => {
   const inspected = (c: HTMLElement) => (c.querySelector('.run-inspector') as HTMLElement).dataset.obsId;
+
+  it('drops only the inspector Playground link with inspectorPlaygroundLink={false}', () => {
+    const rows = [obs({ obs_id: 'g', kind: 'generation' })];
+    const c = render(
+      <TraceViewer observations={rows} scores={[]} selectedObsId="g" onSelect={() => undefined} mode="tree" inspectorPlaygroundLink={false} />,
+    );
+    expect(c.querySelectorAll('.run-tree .run-playground-link')).toHaveLength(1);
+    expect(c.querySelector('.run-inspector .run-playground-link')).toBeNull();
+  });
 
   it('hides every Playground link with playgroundLinks={false}', () => {
     const rows = [obs({ obs_id: 'g', kind: 'generation' })];

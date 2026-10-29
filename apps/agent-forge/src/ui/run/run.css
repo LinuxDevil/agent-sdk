@@ -170,17 +170,19 @@
   background: var(--surface-2);
   color: var(--text-faint);
 }
+/* Kind colours match the canvas (canvas/nodeKinds.ts): tool = info, generation = violet; amber is for warning status only.
+   The agent root takes the accent, so it stays apart from the (blue) tool steps. */
 .run-kind-agent {
-  background: color-mix(in srgb, var(--chart-2) 16%, var(--surface));
-  color: var(--chart-2);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 .run-kind-generation {
   background: var(--violet-soft);
   color: var(--violet);
 }
 .run-kind-tool {
-  background: var(--warning-soft);
-  color: var(--warning);
+  background: var(--info-soft);
+  color: var(--info);
 }
 .run-kind-span {
   background: var(--surface-3);
@@ -386,13 +388,13 @@
   background: var(--accent);
 }
 .run-wf-bar-agent {
-  background: var(--chart-2);
+  background: var(--accent);
 }
 .run-wf-bar-generation {
   background: var(--violet);
 }
 .run-wf-bar-tool {
-  background: var(--warning);
+  background: var(--info);
 }
 .run-wf-bar-span {
   background: color-mix(in srgb, var(--text-faint) 55%, transparent);
