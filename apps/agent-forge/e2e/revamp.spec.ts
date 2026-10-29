@@ -182,9 +182,10 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
     await expectFacet(main, 'Status', 'ended');
     await expectCustomRange(main);
   },
-  '/monitoring': async (main) => {
-    await expect(main.getByRole('group', { name: 'Window' }).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true');
-    await expect(main.getByRole('combobox', { name: 'Agent' })).toHaveValue('orders-bot');
+  // The window and agent controls sit in the screen header, above <main>.
+  '/monitoring': async (_main, page) => {
+    await expect(page.getByRole('group', { name: 'Window' }).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveValue('orders-bot');
   },
   '/evals/scores': async (main) => {
     await expect(main.getByRole('group', { name: 'Time range' }).getByRole('button', { name: '7d' })).toHaveAttribute('aria-pressed', 'true');

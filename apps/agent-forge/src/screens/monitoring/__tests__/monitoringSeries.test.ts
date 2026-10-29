@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { ObserveRollupRow } from '../../../observe/types';
-import { perAgentSeries, runsSeries } from '../monitoringSeries';
+import { chartWindow, insightsSpan, perAgentSeries, runsSeries } from '../monitoringSeries';
 
 const T = Date.UTC(2026, 9, 25, 12);
 
@@ -34,6 +34,11 @@ describe('perAgentSeries', () => {
     });
   });
 
+  it('colours agents from the categorical chart palette', () => {
+    const rows = [row('a1', 'runs', 5), row('a2', 'runs', 2), row('a1', 'p95_latency_ms', 900), row('a2', 'p95_latency_ms', 400)];
+    expect(perAgentSeries(rows, 'p95_latency_ms', (id) => id).series.map((s) => s.color)).toEqual(['chart-1', 'chart-2']);
+  });
+
   it('caps at 5 agents, busiest first, and counts the rest as omitted', () => {
     const ids = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'];
     const rows = ids.flatMap((id, i) => [row(id, 'runs', i + 1), row(id, 'p95_latency_ms', 100)]);
@@ -49,5 +54,16 @@ describe('runsSeries', () => {
     const [ok, error] = runsSeries(rows);
     expect(ok!.points).toEqual([{ t: T, v: 6 }]);
     expect(error!.points).toEqual([{ t: T, v: 2 }]);
+  });
+});
+
+describe('insightsSpan', () => {
+  it('reaches back one window span before the window, ending with it', () => {
+    for (const win of ['1h', '24h', '7d', '30d'] as const) {
+      const w = chartWindow(win, T + 1234);
+      expect(insightsSpan(w)).toEqual({ since: w.from - (w.to - w.from), until: w.to });
+    }
+    const day = chartWindow('24h', T + 1234);
+    expect(day.from - insightsSpan(day).since).toBe(25 * 3_600_000);
   });
 });
