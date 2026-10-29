@@ -1,6 +1,9 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// ScreenHeader renders inline here (no shell host); its default status reads the app state.
+vi.mock('../../../state/AppState', () => ({ useAppState: () => ({ runStatus: null }) }));
+
 import { PromptsScreen } from '../PromptsScreen';
 import { parsePromptRoute, parseDiff, promptPath } from '../promptsUrl';
 import { render } from '../../../ui/__tests__/render';
@@ -107,11 +110,50 @@ describe('PromptsScreen', () => {
     expect(cells).toContain('7');
   });
 
+  it('the search box filters the loaded rows client-side and never touches the URL', async () => {
+    const container = await mountAt('#/prompts');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const search = container.querySelector('input[type="search"]') as HTMLInputElement;
+      expect(search.getAttribute('aria-label')).toBe('Search prompts');
+      const type = (value: string) => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        act(() => {
+          setter.call(search, value);
+          search.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        act(() => vi.advanceTimersByTime(300));
+      };
+      type('zzz');
+      expect(container.textContent).toContain('No matching prompts');
+      type('MIR');
+      expect(container.querySelector('tbody tr')?.textContent).toContain('mira');
+      expect(window.location.hash).toBe('#/prompts');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the version timeline answers j/k by moving focus between versions', async () => {
+    const container = await mountAt('#/prompts/mira@3');
+    const items = [...container.querySelectorAll<HTMLButtonElement>('.prompt-timeline-item')];
+    expect(items.map((b) => b.textContent?.slice(0, 2))).toEqual(['v3', 'v2', 'v1']);
+    items[0].focus();
+    act(() => items[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true })));
+    expect(document.activeElement).toBe(items[1]);
+    act(() => items[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'k', bubbles: true })));
+    expect(document.activeElement).toBe(items[0]);
+    act(() => items[1].click());
+    await flush();
+    expect(window.location.hash).toBe('#/prompts/mira@2');
+  });
+
   it('#/prompts/mira@2 selects version 2 on load, and a label ref selects its version', async () => {
     let container = await mountAt('#/prompts/mira@2');
     expect(container.querySelector('.prompt-version-title')?.textContent).toContain('Version 2');
+    expect(container.querySelector('section[aria-label="Selected version"] .prompt-version-title')).not.toBeNull();
     expect(container.querySelector('.prompt-text')?.textContent).toBe(V2.text);
-    expect(container.querySelector('tr[aria-current="true"]')?.textContent).toContain('v2');
+    expect(container.querySelector('.prompt-timeline [aria-current="true"]')?.textContent).toContain('v2');
 
     container = await mountAt('#/prompts/mira@staging');
     expect(container.querySelector('.prompt-version-title')?.textContent).toContain('Version 3');
@@ -131,18 +173,30 @@ describe('PromptsScreen', () => {
     expect(parsePlaygroundPrompt(query.get('prompt'))).toEqual({ name: 'mira', ref: '2' });
   });
 
-  it('renders a side-by-side diff of the two versions in ?diff=a,b, marking added and removed lines', async () => {
+  it('renders a unified (default) and a side-by-side diff of the two versions in ?diff=a,b, marking added and removed lines', async () => {
     const container = await mountAt('#/prompts/mira?diff=2,3');
-    const diff = container.querySelector('.prompt-diff')!;
-    expect(diff).not.toBeNull();
-    const removed = [...diff.querySelectorAll('.prompt-diff-removed')].map((c) => c.textContent);
-    const added = [...diff.querySelectorAll('.prompt-diff-added')].map((c) => c.textContent);
-    expect(removed).toEqual(['-You are Mira.', '-Be brief.']);
-    expect(added).toEqual(['+You are Mira, a support agent.']);
-    // Colour is not the only signal: each changed cell names its change for screen readers.
-    expect(diff.querySelector('.prompt-diff-removed')?.getAttribute('aria-label')).toBe('Removed line 1: You are Mira.');
-    expect(diff.querySelector('.prompt-diff-added')?.getAttribute('aria-label')).toBe('Added line 1: You are Mira, a support agent.');
-    expect(diff.textContent).toContain('Cite the order id.');
+    const expectMarked = (diff: Element) => {
+      const removed = [...diff.querySelectorAll('.prompt-diff-removed')].map((c) => c.textContent);
+      const added = [...diff.querySelectorAll('.prompt-diff-added')].map((c) => c.textContent);
+      expect(removed).toEqual(['\u2212You are Mira.', '\u2212Be brief.']);
+      expect(added).toEqual(['+You are Mira, a support agent.']);
+      // Colour is not the only signal: each changed cell names its change for screen readers.
+      expect(diff.querySelector('.prompt-diff-removed')?.getAttribute('aria-label')).toBe('Removed line 1: You are Mira.');
+      expect(diff.querySelector('.prompt-diff-added')?.getAttribute('aria-label')).toBe('Added line 1: You are Mira, a support agent.');
+      expect(diff.textContent).toContain('Cite the order id.');
+    };
+    const unified = container.querySelector('.prompt-diff')!;
+    expect(unified.classList.contains('prompt-diff-unified')).toBe(true);
+    expect(buttonNamed(container, 'Unified')?.getAttribute('aria-pressed')).toBe('true');
+    expectMarked(unified);
+
+    // The layout toggle is local view state: the URL keeps only ?diff=.
+    act(() => buttonNamed(container, 'Side by side')!.click());
+    const split = container.querySelector('.prompt-diff')!;
+    expect(split.classList.contains('prompt-diff-split')).toBe(true);
+    expect(buttonNamed(container, 'Side by side')?.getAttribute('aria-pressed')).toBe('true');
+    expect(window.location.hash).toBe('#/prompts/mira?diff=2,3');
+    expectMarked(split);
     // The compare pickers show A and B.
     expect((container.querySelector('select[aria-label="Compare version A"]') as HTMLSelectElement).value).toBe('2');
     expect((container.querySelector('select[aria-label="Compare version B"]') as HTMLSelectElement).value).toBe('3');

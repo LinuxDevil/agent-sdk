@@ -7,12 +7,15 @@
  * proxy's write allowlist. The daemon resets `created_at` on every publish, so
  * an edit restarts the TTL clock - the editor says so next to the TTL.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Check, KeyRound, Pencil, X } from 'lucide-react';
 import { observeClient } from '../../observe/observeClient';
 import type { ObserveHubEntry } from '../../observe/types';
+import { fmtDateTime } from '../../observe/format';
 import { JsonView } from '../../ui/JsonView';
+import { StatusPill } from '../../ui/StatusPill';
 import { useToast } from '../../ui/Toast';
-import { editableText, fmtSpan, parseEditedValue, parseValue } from './hubModel';
+import { editableText, fmtSpan, parseEditedValue, parseValue, ttlText } from './hubModel';
 
 function ValueView({ value }: { value: string | null }) {
   const parsed = parseValue(value);
@@ -83,7 +86,7 @@ function Editor({
       </label>
       <textarea
         id={`hub-edit-${entry.entry_id}`}
-        className="hub-editor-text"
+        className="textarea hub-editor-text"
         value={text}
         rows={Math.min(16, Math.max(4, text.split('\n').length + 1))}
         aria-invalid={invalid || undefined}
@@ -98,10 +101,12 @@ function Editor({
         {ttlNote}
       </p>
       <div className="hub-editor-actions">
-        <button type="submit" className="btn" disabled={saving}>
+        <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+          <Check aria-hidden="true" />
           Save
         </button>
-        <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} disabled={saving}>
+          <X aria-hidden="true" />
           Cancel
         </button>
       </div>
@@ -109,22 +114,61 @@ function Editor({
   );
 }
 
-/** The selected entry's value and, for a fleet entry with a known writer, the Edit affordance. */
-export function HubEntryDetail({ entry, writer, onSaved }: { entry: ObserveHubEntry; writer: string; onSaved: () => void }) {
+/** The entry's facts under its key: writer, last publish and TTL. */
+function EntryFacts({ entry, writer, now }: { entry: ObserveHubEntry; writer: string; now: number }) {
+  return (
+    <dl className="hub-facts">
+      <div>
+        <dt>Writer</dt>
+        <dd>{writer}</dd>
+      </div>
+      <div>
+        <dt>Updated</dt>
+        <dd>{fmtDateTime(entry.created_at)}</dd>
+      </div>
+      <div>
+        <dt>TTL</dt>
+        <dd>{ttlText(entry, now)}</dd>
+      </div>
+    </dl>
+  );
+}
+
+/** The selected entry's facts, its value and, for a fleet entry with a known writer, the Edit affordance. */
+export function HubEntryDetail({
+  entry,
+  writer,
+  now,
+  onSaved,
+}: {
+  entry: ObserveHubEntry;
+  writer: string;
+  now: number;
+  onSaved: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const editable = entry.scope === 'fleet' && entry.agent_id !== null;
+  const ref = useRef<HTMLElement>(null);
+  // Stacked under the cards (narrow widths), the opened entry may sit below the fold: bring it into view.
+  useEffect(() => {
+    if (window.matchMedia?.('(max-width: 1179px)').matches) ref.current?.scrollIntoView?.({ block: 'nearest' });
+  }, []);
   return (
-    <section className="hub-entry" aria-label={`Entry ${entry.key}`}>
+    <section ref={ref} className="card hub-entry" aria-label={`Entry ${entry.key}`}>
       <div className="hub-entry-head">
-        <h3 className="hub-section-title">
-          <code>{entry.key}</code>
+        <KeyRound size={16} strokeWidth={1.75} aria-hidden="true" />
+        <h3 className="hub-entry-key" title={entry.key}>
+          {entry.key}
         </h3>
+        <StatusPill status={entry.scope} />
         {editable && !editing && (
-          <button type="button" className="btn" onClick={() => setEditing(true)}>
+          <button type="button" className="btn btn-sm hub-entry-edit" onClick={() => setEditing(true)}>
+            <Pencil aria-hidden="true" />
             Edit
           </button>
         )}
       </div>
+      <EntryFacts entry={entry} writer={writer} now={now} />
       {editing && editable ? (
         <Editor entry={{ ...entry, agent_id: entry.agent_id! }} writer={writer} onClose={() => setEditing(false)} onSaved={onSaved} />
       ) : (

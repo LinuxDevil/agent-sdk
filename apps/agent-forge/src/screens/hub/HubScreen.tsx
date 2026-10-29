@@ -1,6 +1,7 @@
 /**
  * `#/hub` - the Context Hub's namespaces - and `#/hub/:namespace`, one
- * namespace's key/value entries (URL shapes in `hubModel.ts`).
+ * namespace's key/value entries as cards beside the open entry (URL shapes
+ * in `hubModel.ts`).
  *
  * The daemon has no namespace endpoint and reads hub entries only on behalf
  * of an agent (`GET /api/v1/hub?agent_id=`: every fleet entry plus that
@@ -11,49 +12,45 @@
  */
 import './hub.css';
 import { useMemo, useState } from 'react';
+import { Eye, FolderOpen, Info, Library, MousePointerClick } from 'lucide-react';
 import { matchRoute, navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useAgents, useDaemonDown, useDaemonHealth, useHubEntries } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import type { HubEntryFilter } from '../../observe/observeClient';
 import type { ObserveAgentRow, ObserveHubEntry } from '../../observe/types';
-import { fmtDateTime, fmtInt, fmtStarted } from '../../observe/format';
+import { fmtDateTime, fmtInt } from '../../observe/format';
+import { ScreenHeader } from '../../shell/ScreenHeader';
+import { Card } from '../../ui/Card';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
-import { StatusPill } from '../../ui/StatusPill';
+import { SkeletonRows } from '../../ui/Skeleton';
 import { Clip } from '../listFilters';
+import { HubEntryCards } from './HubEntryCards';
 import { HubEntryDetail } from './HubEntry';
-import {
-  HUB_LIMIT,
-  agentLabel,
-  groupNamespaces,
-  hubPath,
-  parseHubQuery,
-  sortAgents,
-  ttlText,
-  valuePreview,
-  type HubNamespaceRow,
-  type HubUrlState,
-} from './hubModel';
+import { HUB_LIMIT, agentLabel, groupNamespaces, hubPath, parseHubQuery, sortAgents, type HubNamespaceRow, type HubUrlState } from './hubModel';
 
 const NAMESPACE_COLUMNS: Column<HubNamespaceRow>[] = [
-  { key: 'namespace', header: 'Namespace', width: 240, render: (n) => <Clip text={n.namespace} /> },
+  {
+    key: 'namespace',
+    header: 'Namespace',
+    width: 260,
+    render: (n) => (
+      <span className="hub-ns-cell">
+        <span className="hub-ns-icon" aria-hidden="true">
+          <FolderOpen size={14} strokeWidth={1.75} />
+        </span>
+        <Clip text={n.namespace} className="list-clip hub-ns-name" />
+      </span>
+    ),
+  },
   { key: 'entries', header: 'Entries', align: 'right', width: 90, render: (n) => fmtInt(n.entries) },
   { key: 'fleet', header: 'Fleet', align: 'right', width: 80, render: (n) => fmtInt(n.fleet) },
   { key: 'private', header: 'Private', align: 'right', width: 80, render: (n) => fmtInt(n.private) },
   { key: 'updated', header: 'Last updated', width: 140, hideBelow: 640, render: (n) => fmtDateTime(n.updated) },
 ];
 
-function entryColumns(writerName: (id: string | null) => string, now: number): Column<ObserveHubEntry>[] {
-  return [
-    { key: 'key', header: 'Key', width: 180, render: (e) => <Clip text={e.key} /> },
-    { key: 'value', header: 'Value', width: 280, render: (e) => <Clip text={valuePreview(e.value)} className="list-clip hub-preview" /> },
-    { key: 'scope', header: 'Scope', width: 96, render: (e) => <StatusPill status={e.scope} /> },
-    { key: 'writer', header: 'Writer', width: 130, hideBelow: 720, render: (e) => <Clip text={writerName(e.agent_id)} /> },
-    { key: 'updated', header: 'Updated', width: 140, hideBelow: 900, render: (e) => fmtStarted(e.created_at, now) },
-    { key: 'ttl', header: 'TTL', width: 180, hideBelow: 1000, render: (e) => ttlText(e, now) },
-  ];
-}
+const plural = (n: number, one: string, many: string) => `${fmtInt(n)} ${n === 1 ? one : many}`;
 
 /** The viewer and scope pickers, plus what the viewer means for private entries. */
 function HubBar({
@@ -72,6 +69,7 @@ function HubBar({
   return (
     <div className="hub-bar">
       <label className="hub-field">
+        <Eye size={16} strokeWidth={1.75} aria-hidden="true" />
         <span>Viewing as</span>
         <select className="select" aria-label="Viewing as" value={viewer} onChange={(e) => onChange({ agent: e.target.value })}>
           {!known && <option value={viewer}>{viewer}</option>}
@@ -95,23 +93,53 @@ function HubBar({
           <option value="fleet">Fleet</option>
         </select>
       </label>
-      <p className="hub-note">
-        Private entries shown are {viewerName ? agentLabel(viewerName) : viewer}'s; other agents' private entries are never readable.
+      <p className="hub-note hub-bar-note">
+        <Info size={14} strokeWidth={1.75} aria-hidden="true" />
+        <span>
+          Private entries shown are {viewerName ? agentLabel(viewerName) : viewer}'s; other agents' private entries are never readable.
+        </span>
       </p>
     </div>
   );
 }
 
+/** The entry cards, or their loading / empty state. */
+function EntryList({
+  entries,
+  loading,
+  selectedId,
+  writerName,
+  now,
+  onOpen,
+}: {
+  entries: ObserveHubEntry[];
+  loading: boolean;
+  selectedId: string | undefined;
+  writerName: (id: string | null) => string;
+  now: number;
+  onOpen: (entry: ObserveHubEntry) => void;
+}) {
+  if (loading && entries.length === 0) return <SkeletonRows rows={4} />;
+  if (entries.length === 0)
+    return (
+      <Card as="div">
+        <EmptyState title="No entries in this namespace" hint="Expired entries are hidden; try the other scope or viewer." />
+      </Card>
+    );
+  return (
+    <>
+      <p className="hub-overline">{plural(entries.length, 'entry', 'entries')}</p>
+      <HubEntryCards entries={entries} selectedId={selectedId} writerName={writerName} now={now} onOpen={onOpen} />
+    </>
+  );
+}
+
 function NamespaceEntries({
-  namespace,
-  state,
   entries,
   loading,
   writerName,
   onSaved,
 }: {
-  namespace: string;
-  state: HubUrlState;
   entries: ObserveHubEntry[];
   loading: boolean;
   writerName: (id: string | null) => string;
@@ -120,47 +148,56 @@ function NamespaceEntries({
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const now = useMemo(() => Date.now(), [entries]);
   const selected = entries.find((e) => e.entry_id === selectedId);
+  const placeholder = entries.length > 0 && (
+    <Card as="div" className="hub-detail-empty">
+      <EmptyState icon={MousePointerClick} title="Select an entry" hint="Its full value opens here; fleet entries can be edited in place." />
+    </Card>
+  );
   return (
-    <>
-      <p className="hub-crumbs">
-        <a href={`#${hubPath(undefined, state)}`}>All namespaces</a>
-      </p>
-      <h3 className="hub-title">
-        <code>{namespace}</code>
-      </h3>
-      <DataTable
-        id="hub-entries"
-        columns={entryColumns(writerName, now)}
-        rows={entries}
-        rowKey={(e) => e.entry_id}
-        selectedKey={selectedId}
-        onRowOpen={(e) => setSelectedId(e.entry_id)}
-        loading={loading}
-        empty={<EmptyState title="No entries in this namespace" hint="Expired entries are hidden; try the other scope or viewer." />}
-      />
-      {selected && (
-        <HubEntryDetail key={selected.entry_id} entry={selected} writer={writerName(selected.agent_id)} onSaved={onSaved} />
+    <div className="hub-split">
+      <div className="hub-split-list">
+        <EntryList
+          entries={entries}
+          loading={loading}
+          selectedId={selectedId}
+          writerName={writerName}
+          now={now}
+          onOpen={(e) => setSelectedId(e.entry_id)}
+        />
+      </div>
+      {selected ? (
+        <HubEntryDetail key={selected.entry_id} entry={selected} writer={writerName(selected.agent_id)} now={now} onSaved={onSaved} />
+      ) : (
+        placeholder
       )}
-    </>
+    </div>
   );
 }
 
 function NamespaceList({ rows, state, loading }: { rows: ObserveHubEntry[]; state: HubUrlState; loading: boolean }) {
+  const namespaces = groupNamespaces(rows);
   return (
-    <DataTable
-      id="hub-namespaces"
-      columns={NAMESPACE_COLUMNS}
-      rows={groupNamespaces(rows)}
-      rowKey={(n) => n.namespace}
-      onRowOpen={(n) => navigate(hubPath(n.namespace, state))}
-      loading={loading}
-      empty={
-        <EmptyState
-          title="No hub entries"
-          hint="Agents publish shared context with hub().publish or the hub_publish tool (or POST /api/v1/hub); namespaces appear here."
-        />
-      }
-    />
+    <Card
+      title="Namespaces"
+      description={loading && rows.length === 0 ? undefined : `${plural(namespaces.length, 'namespace', 'namespaces')}, ${plural(rows.length, 'entry', 'entries')}`}
+      padding="none"
+    >
+      <DataTable
+        id="hub-namespaces"
+        columns={NAMESPACE_COLUMNS}
+        rows={namespaces}
+        rowKey={(n) => n.namespace}
+        onRowOpen={(n) => navigate(hubPath(n.namespace, state))}
+        loading={loading}
+        empty={
+          <EmptyState
+            icon={Library}
+            title="No hub entries"
+            hint="Agents publish shared context with hub().publish or the hub_publish tool (or POST /api/v1/hub); namespaces appear here."
+          />
+        }
+      />
+    </Card>
   );
 }
 
@@ -187,6 +224,7 @@ function HubContent({ namespace }: { namespace: string | undefined }) {
     if (agents.loading || agents.error) return <ObserveError error={agents.error} />;
     return (
       <EmptyState
+        icon={Library}
         title="No agents yet"
         hint="Agents publish shared context with hub().publish or the hub_publish tool (LOUSHO_OBSERVE set); once one reports to this daemon, its namespaces show up here."
       />
@@ -208,7 +246,7 @@ function HubContent({ namespace }: { namespace: string | undefined }) {
       <HubBar agents={sorted} viewer={viewer} state={state} onChange={update} />
       <ObserveError error={entries.error} />
       {rows.length >= HUB_LIMIT && (
-        <p className="hub-note" role="status">
+        <p className="hub-note hub-limit" role="status">
           The daemon returned its {fmtInt(HUB_LIMIT)}-entry limit; this list may be incomplete.
         </p>
       )}
@@ -217,8 +255,6 @@ function HubContent({ namespace }: { namespace: string | undefined }) {
       ) : (
         <NamespaceEntries
           key={JSON.stringify([viewer, namespace])}
-          namespace={namespace}
-          state={state}
           entries={rows}
           loading={entries.loading}
           writerName={writerName}
@@ -229,14 +265,30 @@ function HubContent({ namespace }: { namespace: string | undefined }) {
   );
 }
 
+/** The page header: the hub, or one namespace under a breadcrumb back to the list (keeping the viewer and scope). */
+function HubHeader({ namespace }: { namespace: string | undefined }) {
+  const route = useRoute();
+  if (namespace === undefined)
+    return <ScreenHeader title="Context Hub" status={null} description="Shared key/value context the fleet's agents publish for each other." />;
+  return (
+    <ScreenHeader
+      title={namespace}
+      status={null}
+      description="Entries in this namespace; open one to see its full value."
+      breadcrumbs={[{ label: 'Context Hub', href: `#${hubPath(undefined, parseHubQuery(route.query))}` }, { label: namespace }]}
+    />
+  );
+}
+
 /** `#/hub` and `#/hub/:namespace`, behind the daemon-down state. */
 export function HubScreen() {
   const { path } = useRoute();
   const health = useDaemonHealth();
-  if (health.down) return <ObserveDaemonDown />;
   const namespace = matchRoute(`#${path}`, ['/hub/:namespace'])?.params.namespace;
+  if (health.down) return <ObserveDaemonDown />;
   return (
     <section className="hub-screen" aria-label="Context Hub">
+      <HubHeader namespace={namespace} />
       <h2 className="visually-hidden">Context Hub</h2>
       <HubContent namespace={namespace} />
     </section>

@@ -2332,17 +2332,21 @@ not scored. When nothing is pending the screen says the queue is empty.
 ### Prompts
 
 `#/prompts` lists the registry, one row per prompt: latest version, labels,
-version count, runs that used it, and when it was updated. Open one
-(`#/prompts/<name>`, or `@<version>` / `@<label>` to select a version):
+version count, runs that used it, and when it was updated; the search box
+filters the list by name. Open one (`#/prompts/<name>`, or `@<version>` /
+`@<label>` to select a version):
 
-- The selected version's text, labels, **Runs using this version** (Traces
-  filtered by `prompt=<name>@<version>`) and **Open in Playground**.
-- **Move `<label>` here** for each of the prompt's labels that points
-  elsewhere: a label points at exactly one version, so this moves it (the
-  same as `lousho prompt label`, see [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#lousho-prompt)).
-- **Compare versions**: pick two versions for a side-by-side diff
-  (`?diff=a,b`).
-- The version history; open a row to select that version.
+- The header: the prompt's name with the selected version's labels,
+  **Runs using this version** (Traces filtered by
+  `prompt=<name>@<version>`) and **Open in Playground**.
+- The selected version's text, with line numbers, and **Move `<label>`
+  here** for each of the prompt's labels that points elsewhere: a label
+  points at exactly one version, so this moves it (the same as
+  `lousho prompt label`, see [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#lousho-prompt)).
+- **Compare versions**: pick two versions for a diff (`?diff=a,b`), shown
+  **Unified** or **Side by side**.
+- The version history, a timeline beside the text; pick a version to
+  select it (`j`/`k` move between versions).
 
 ### Context Hub
 
@@ -2350,8 +2354,10 @@ version count, runs that used it, and when it was updated. Open one
 namespaces. The daemon serves hub entries only on behalf of an agent, so
 pick who you are **Viewing as** (default the first agent by name) and,
 optionally, a scope (`private` or `fleet`). Open a namespace to see its
-keys, values (JSON as a tree), scope, writer and TTL; a fleet entry has an
-**Edit** button that republishes it (which restarts its TTL).
+entries as cards (key, scope, a value preview, writer, last update and
+TTL); open a card to see the full value (JSON as a tree) beside the list.
+A fleet entry has an **Edit** button that republishes it (which restarts
+its TTL).
 
 ### Settings
 

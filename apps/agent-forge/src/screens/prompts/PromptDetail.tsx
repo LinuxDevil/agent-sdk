@@ -1,7 +1,8 @@
 /**
- * `#/prompts/:name[@ref]` - one prompt: the selected version (its text,
- * labels, "Move <label> here", runs and Playground links), a side-by-side
- * diff between any two versions (`?diff=a,b`), and the version history.
+ * `#/prompts/:name[@ref]` - one prompt: the selected version (its text with
+ * line numbers, labels, "Move <label> here"), a unified or side-by-side diff
+ * between any two versions (`?diff=a,b`), and the version history timeline;
+ * the header carries the runs and Playground links.
  *
  * Reads `GET /api/v1/prompts/:name` (every version, text included, newest
  * first); a label move is `PUT /api/v1/prompts/:name/labels/:label` through
@@ -9,6 +10,7 @@
  * changing the diff replaces the history entry, so Back leaves the prompt.
  */
 import { useState } from 'react';
+import { ArrowLeft, FileQuestion, FlaskConical, GitCompareArrows, ListTree, MoveRight, X } from 'lucide-react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useDaemonDown, usePromptVersions } from '../../observe/useObserve';
@@ -16,26 +18,22 @@ import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { observeClient } from '../../observe/observeClient';
 import type { ObservePromptVersion } from '../../observe/types';
 import { fmtDateTime, fmtInt } from '../../observe/format';
-import { DataTable, type Column } from '../../ui/DataTable';
+import { ScreenHeader } from '../../shell/ScreenHeader';
+import { Card } from '../../ui/Card';
 import { EmptyState } from '../../ui/EmptyState';
+import { SkeletonRows } from '../../ui/Skeleton';
 import { useToast } from '../../ui/Toast';
 import { LabelChips } from './LabelChips';
-import { PromptDiff } from './PromptDiff';
+import { DiffLayoutToggle, PromptDiff, type DiffLayout } from './PromptDiff';
+import { VersionTimeline, variablesText } from './VersionTimeline';
 import { parseDiff, parsePromptRoute, promptPath, promptPlaygroundHref, promptRunsHref, resolveRef } from './promptsUrl';
 
-const BackLink = () => <a href="#/prompts">Back to prompts</a>;
-
-/** `variables` is stored verbatim; an array of names is the common shape. */
-const variablesText = (variables: unknown): string =>
-  Array.isArray(variables) && variables.length > 0 ? variables.map(String).join(', ') : '-';
-
-const COLUMNS: Column<ObservePromptVersion>[] = [
-  { key: 'version', header: 'Version', width: 80, render: (v) => `v${v.version}` },
-  { key: 'created', header: 'Created', width: 140, render: (v) => fmtDateTime(v.created_at) },
-  { key: 'labels', header: 'Labels', width: 200, render: (v) => <LabelChips labels={v.labels} /> },
-  { key: 'uses', header: 'Uses', align: 'right', width: 80, render: (v) => fmtInt(v.uses) },
-  { key: 'variables', header: 'Variables', width: 180, hideBelow: 720, render: (v) => variablesText(v.variables) },
-];
+const BackLink = () => (
+  <a className="btn prompt-link-btn" href="#/prompts">
+    <ArrowLeft aria-hidden="true" />
+    Back to prompts
+  </a>
+);
 
 /** Every label of the prompt (across versions), sorted. */
 const allLabels = (versions: readonly ObservePromptVersion[]): string[] => [...new Set(versions.flatMap((v) => v.labels))].sort();
@@ -74,7 +72,8 @@ function LabelMoves({
   return (
     <div className="prompt-moves">
       {movable.map((label) => (
-        <button key={label} type="button" className="btn" disabled={pending !== undefined} onClick={() => void move(label)}>
+        <button key={label} type="button" className="btn btn-sm" disabled={pending !== undefined} onClick={() => void move(label)}>
+          <MoveRight aria-hidden="true" />
           Move {label} here
         </button>
       ))}
@@ -82,19 +81,23 @@ function LabelMoves({
   );
 }
 
-/** The A/B pickers and, when `?diff=a,b` names two known versions, the diff itself. */
+/** The A/B pickers, the layout toggle and, when `?diff=a,b` names two known versions, the diff itself. */
 function Compare({
   name,
   refParam,
   selected,
   versions,
   diff,
+  layout,
+  onLayout,
 }: {
   name: string;
   refParam: string | undefined;
   selected: ObservePromptVersion;
   versions: readonly ObservePromptVersion[];
   diff: [number, number] | undefined;
+  layout: DiffLayout;
+  onLayout: (next: DiffLayout) => void;
 }) {
   const find = (n: number) => versions.find((v) => v.version === n);
   const a = diff && find(diff[0]);
@@ -106,7 +109,7 @@ function Compare({
   const setDiff = (next: [number, number] | undefined) => navigate(promptPath(name, refParam, next), { replace: true });
 
   const picker = (label: string, value: number, onChange: (n: number) => void) => (
-    <select aria-label={label} value={value} onChange={(e) => onChange(Number(e.target.value))}>
+    <select className="select prompt-picker" aria-label={label} value={value} onChange={(e) => onChange(Number(e.target.value))}>
       {versions.map((v) => (
         <option key={v.version} value={v.version}>
           v{v.version}
@@ -117,28 +120,51 @@ function Compare({
   );
 
   return (
-    <section className="prompt-compare" aria-label="Compare versions">
-      <h3 className="prompt-section-title">Compare versions</h3>
+    <Card
+      title="Compare versions"
+      description="Line diff between any two versions."
+      actions={a && b ? <DiffLayoutToggle value={layout} onChange={onLayout} /> : undefined}
+      className="prompt-compare"
+    >
       <div className="prompt-compare-bar">
         {picker('Compare version A', pickA, (n) => setDiff([n, pickB]))}
-        <span aria-hidden="true">vs</span>
+        <span className="prompt-compare-vs" aria-hidden="true">
+          vs
+        </span>
         {picker('Compare version B', pickB, (n) => setDiff([pickA, n]))}
         {a && b ? (
           <button type="button" className="btn btn-ghost" onClick={() => setDiff(undefined)}>
+            <X aria-hidden="true" />
             Hide diff
           </button>
         ) : (
           <button type="button" className="btn" onClick={() => setDiff([pickA, pickB])}>
+            <GitCompareArrows aria-hidden="true" />
             Compare
           </button>
         )}
       </div>
-      {a && b && <PromptDiff a={a} b={b} />}
-    </section>
+      {a && b && <PromptDiff a={a} b={b} layout={layout} />}
+    </Card>
   );
 }
 
-/** The selected version: title, labels, actions and the text. */
+/** The version's text, one line per row with a faint line number drawn by CSS (so copying takes the text only). */
+function PromptText({ text }: { text: string }) {
+  const lines = text.split('\n');
+  return (
+    <pre className="prompt-text" tabIndex={0} role="region" aria-label="Prompt text">
+      {lines.map((line, i) => (
+        <span key={i} className="prompt-line">
+          {line}
+          {i < lines.length - 1 ? '\n' : ''}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+/** The selected version: number, labels, meta, the label moves and the text. */
 function SelectedVersion({
   name,
   selected,
@@ -150,18 +176,95 @@ function SelectedVersion({
   versions: readonly ObservePromptVersion[];
   onMoved: () => void;
 }) {
+  const variables = variablesText(selected.variables);
   return (
-    <section className="prompt-version" aria-label="Selected version">
-      <div className="prompt-version-head">
-        <h3 className="prompt-version-title">Version {selected.version}</h3>
-        <LabelChips labels={selected.labels} />
-        <span className="prompt-meta">created {fmtDateTime(selected.created_at)}</span>
-        <a href={promptRunsHref(name, selected.version)}>Runs using this version ({fmtInt(selected.uses)})</a>
-        <a href={promptPlaygroundHref(name, selected.version)}>Open in Playground</a>
-      </div>
-      <LabelMoves name={name} selected={selected} versions={versions} onMoved={onMoved} />
-      <pre className="prompt-text">{selected.text ?? ''}</pre>
+    <section className="prompt-area-version" aria-label="Selected version">
+      <Card
+        as="div"
+        title={<span className="prompt-version-title">Version {selected.version}</span>}
+        actions={<LabelMoves name={name} selected={selected} versions={versions} onMoved={onMoved} />}
+        className="prompt-version"
+      >
+        <div className="prompt-version-head">
+          <LabelChips labels={selected.labels} />
+          <span className="prompt-meta">Created {fmtDateTime(selected.created_at)}</span>
+          {variables && (
+            <span className="prompt-meta">
+              Variables <code className="prompt-vars">{variables}</code>
+            </span>
+          )}
+          {selected.hash && (
+            <span className="prompt-meta">
+              Hash <code className="prompt-vars">{selected.hash.slice(0, 10)}</code>
+            </span>
+          )}
+        </div>
+        <PromptText text={selected.text ?? ''} />
+      </Card>
     </section>
+  );
+}
+
+/** The page header: breadcrumbs, the name, the selected version's labels, and its runs / Playground links. */
+function PromptHeader({ name, selected, latest }: { name: string; selected?: ObservePromptVersion; latest: boolean }) {
+  return (
+    <ScreenHeader
+      title={name}
+      breadcrumbs={[{ label: 'Prompts', href: '#/prompts' }, { label: name }]}
+      status={selected ? <LabelChips labels={latest ? [...new Set([...selected.labels, 'latest'])] : selected.labels} /> : null}
+      actions={
+        selected && (
+          <>
+            <a className="btn prompt-link-btn" href={promptRunsHref(name, selected.version)}>
+              <ListTree aria-hidden="true" />
+              Runs using this version ({fmtInt(selected.uses)})
+            </a>
+            <a className="btn btn-primary prompt-link-btn" href={promptPlaygroundHref(name, selected.version)}>
+              <FlaskConical aria-hidden="true" />
+              Open in Playground
+            </a>
+          </>
+        )
+      }
+    />
+  );
+}
+
+interface PromptBodyProps {
+  name: string;
+  refParam: string | undefined;
+  history: ReturnType<typeof usePromptVersions>;
+  selected: ObservePromptVersion | undefined;
+  diff: ReturnType<typeof parseDiff>;
+  layout: DiffLayout;
+  onLayout: (layout: DiffLayout) => void;
+  onMoved: () => void;
+}
+
+/** The detail body for each load state: skeleton, error, not found, or the version grid. */
+function PromptBody({ name, refParam, history, selected, diff, layout, onLayout, onMoved }: PromptBodyProps) {
+  const versions = history.data?.versions ?? [];
+  if (history.loading && !history.data)
+    return (
+      <Card>
+        <SkeletonRows rows={8} />
+      </Card>
+    );
+  if (history.error) return <ObserveError error={history.error} />;
+  if (!history.data) return <EmptyState icon={FileQuestion} title="Prompt not found" hint={`No prompt '${name}'.`} action={<BackLink />} />;
+  if (!selected)
+    return (
+      <EmptyState icon={FileQuestion} title="Version not found" hint={`'${name}' has no version or label '${refParam}'.`} action={<BackLink />} />
+    );
+  // Side by side needs the room: the Compare card then spans the history rail's column too.
+  const has = (n: number) => versions.some((v) => v.version === n);
+  const wide = layout === 'split' && diff !== undefined && has(diff[0]) && has(diff[1]);
+  return (
+    <div className={wide ? 'prompt-detail-grid prompt-detail-grid-wide' : 'prompt-detail-grid'}>
+      <SelectedVersion name={name} selected={selected} versions={versions} onMoved={onMoved} />
+      <VersionTimeline versions={versions} selected={selected} onOpen={(v) => navigate(promptPath(name, v.version, diff), { replace: true })} />
+      <Compare name={name} refParam={refParam} selected={selected} versions={versions} diff={diff} layout={layout} onLayout={onLayout} />
+    </div>
   );
 }
 
@@ -175,43 +278,23 @@ export function PromptDetail({ param }: { param: string }) {
   const versions = history.data?.versions ?? [];
   const selected = resolveRef(versions, ref);
   const diff = parseDiff(route.query);
+  const [layout, setLayout] = useState<DiffLayout>('unified');
   if (down) return <ObserveDaemonDown />;
-
-  let body;
-  if (history.loading && !history.data) body = <p className="prompt-note">Loading prompt...</p>;
-  else if (history.error) body = <ObserveError error={history.error} />;
-  else if (!history.data) body = <EmptyState title="Prompt not found" hint={`No prompt '${name}'.`} action={<BackLink />} />;
-  else if (!selected)
-    body = <EmptyState title="Version not found" hint={`'${name}' has no version or label '${ref}'.`} action={<BackLink />} />;
-  else
-    body = (
-      <>
-        <SelectedVersion name={name} selected={selected} versions={versions} onMoved={() => setRefreshKey((k) => k + 1)} />
-        <Compare name={name} refParam={ref} selected={selected} versions={versions} diff={diff} />
-        <section className="prompt-history" aria-label="Version history">
-          <h3 className="prompt-section-title">Version history</h3>
-          <DataTable
-            id="prompt-versions"
-            columns={COLUMNS}
-            rows={versions}
-            rowKey={(v) => String(v.version)}
-            selectedKey={String(selected.version)}
-            onRowOpen={(v) => navigate(promptPath(name, v.version, diff), { replace: true })}
-            empty={<EmptyState title="No versions" hint="This prompt has no published versions." />}
-          />
-        </section>
-      </>
-    );
 
   return (
     <section className="prompt-screen" aria-label="Prompt">
-      <nav className="prompt-nav" aria-label="Breadcrumb">
-        <BackLink />
-      </nav>
-      <h2 className="prompt-title">
-        Prompt <code>{name}</code>
-      </h2>
-      {body}
+      <PromptHeader name={name} selected={selected} latest={selected !== undefined && selected === versions[0]} />
+      <h2 className="visually-hidden">Prompt {name}</h2>
+      <PromptBody
+        name={name}
+        refParam={ref}
+        history={history}
+        selected={selected}
+        diff={diff}
+        layout={layout}
+        onLayout={setLayout}
+        onMoved={() => setRefreshKey((k) => k + 1)}
+      />
     </section>
   );
 }

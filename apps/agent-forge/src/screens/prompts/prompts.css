@@ -3,58 +3,134 @@
 .prompt-screen {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-4);
   min-width: 0;
-  padding: 12px 16px;
-}
-.prompt-title {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.prompt-title code {
-  font-family: var(--font-mono);
-  font-size: 13px;
-}
-.prompt-section-title {
-  margin: 0 0 8px;
-  font-size: 13px;
-  font-weight: 600;
+  padding: var(--space-5) var(--page-gutter);
 }
 .prompt-note,
 .prompt-meta {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-meta);
   color: var(--text-muted);
 }
+
+/* ---------- Registry ---------- */
+.prompts-card .card-actions {
+  flex: 0 1 280px;
+  min-width: 0;
+}
+.prompts-card .filter-bar {
+  flex: 1 1 auto;
+}
+.prompt-name-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.prompt-name-cell svg {
+  flex: none;
+  color: var(--text-faint);
+}
+.prompt-name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+.prompt-version-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  flex: none;
+}
+
+/* ---------- Label chips: production violet, latest neutral, others accent ---------- */
 .prompt-labels {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
+  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 .prompt-label {
-  padding: 0 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--text);
-  font-size: 12px;
-  line-height: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 8px 0 6px;
+  border-radius: var(--radius-full);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 18%, transparent);
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
 }
-.prompt-version,
-.prompt-compare {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.prompt-label svg {
+  flex: none;
+}
+.prompt-label-violet {
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+.prompt-label-accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.prompt-label-neutral {
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
+/* ---------- Detail: main column + history rail ---------- */
+/* one column: version, compare, history. Wide: the history rail spans both rows beside version + compare,
+   or, while a side-by-side diff is open, Compare spans both columns under the version and the rail. */
+.prompt-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'version' 'compare' 'history';
+  gap: var(--space-4);
+  align-items: start;
+}
+.prompt-area-version {
+  grid-area: version;
   min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
+}
+.prompt-detail-grid > .prompt-compare {
+  grid-area: compare;
+}
+.prompt-detail-grid > .prompt-history {
+  grid-area: history;
+}
+@media (min-width: 1180px) {
+  .prompt-detail-grid {
+    grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'version history'
+      'compare history';
+  }
+  .prompt-detail-grid-wide {
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      'version history'
+      'compare compare';
+  }
+}
+.prompt-version-title {
+  font-variant-numeric: tabular-nums;
 }
 .prompt-version-head,
 .prompt-compare-bar,
@@ -62,74 +138,283 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 12px;
-  font-size: 13px;
+  gap: var(--space-2) var(--space-3);
 }
-.prompt-version-head a {
-  color: var(--accent);
+.prompt-version-head {
+  margin-bottom: var(--space-3);
 }
-.prompt-version-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
+.prompt-vars {
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text);
 }
+.prompt-moves {
+  gap: var(--space-2);
+}
+
+/* the content viewer: mono, a faint line-number gutter drawn by a CSS counter */
 .prompt-text {
   margin: 0;
-  padding: 10px 12px;
+  padding: var(--space-3) 0;
   max-height: 480px;
   overflow: auto;
-  border-radius: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: var(--surface-2);
   color: var(--text);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 12.5px;
+  line-height: 1.65;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  counter-reset: prompt-line;
+}
+.prompt-text:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.prompt-line {
+  display: grid;
+  grid-template-columns: 4ch minmax(0, 1fr);
+  column-gap: var(--space-3);
+  padding-right: var(--space-4);
+  counter-increment: prompt-line;
+}
+.prompt-line::before {
+  content: counter(prompt-line);
+  color: var(--text-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+/* ---------- Compare ---------- */
+.prompt-picker {
+  width: auto;
+  min-width: 150px;
+  max-width: 100%;
+}
+.prompt-compare-vs {
+  color: var(--text-faint);
+  font-size: var(--fs-meta);
+}
+.prompt-compare-bar + .prompt-diff-wrap {
+  margin-top: var(--space-4);
 }
 .prompt-diff-wrap {
   min-width: 0;
   overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.prompt-diff-wrap > .prompt-note {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
 }
 .prompt-diff {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+.prompt-diff .prompt-diff-numcol {
+  width: 44px;
 }
 .prompt-diff th {
-  padding: 4px 8px;
+  height: 32px;
+  padding: 0 var(--space-3);
   border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
   color: var(--text-muted);
   font-family: var(--font-ui);
-  font-weight: 600;
+  font-size: var(--fs-meta);
+  font-weight: 500;
   text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.prompt-diff-unified th:nth-child(-n + 2) {
+  padding: 0 var(--space-2);
+  text-align: right;
 }
 .prompt-diff td {
-  padding: 1px 8px;
+  padding: 1px var(--space-3);
   vertical-align: top;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 .prompt-diff .prompt-diff-num {
-  width: 40px;
+  padding: 1px var(--space-2);
   color: var(--text-faint);
   text-align: right;
+  font-variant-numeric: tabular-nums;
   user-select: none;
+}
+.prompt-diff-split td.prompt-diff-num:nth-child(3) {
+  border-left: 1px solid var(--border);
+}
+.prompt-diff td.prompt-diff-line {
+  /* a wrapped line hangs under its text, not under the marker */
+  padding-left: calc(var(--space-3) + 2ch);
+  text-indent: -2ch;
 }
 .prompt-diff-mark {
   display: inline-block;
-  width: 1.5ch;
+  width: 2ch;
+  text-indent: 0;
+  color: var(--text-faint);
   user-select: none;
 }
-.prompt-diff-removed {
+.prompt-diff-removed,
+.prompt-diff-num-removed {
   background: var(--danger-soft);
-  color: var(--danger);
 }
-.prompt-diff-added {
+.prompt-diff-added,
+.prompt-diff-num-added {
   background: var(--success-soft);
+}
+.prompt-diff-removed .prompt-diff-mark {
+  color: var(--danger);
+  font-weight: 600;
+}
+.prompt-diff-added .prompt-diff-mark {
   color: var(--success);
+  font-weight: 600;
 }
 .prompt-diff-pad {
   background: var(--surface-2);
+}
+.prompt-diff tbody tr:first-child td {
+  padding-top: var(--space-2);
+}
+.prompt-diff tbody tr:last-child td {
+  padding-bottom: var(--space-2);
+}
+
+/* ---------- Version history timeline ---------- */
+.prompt-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.prompt-timeline-entry {
+  position: relative;
+  padding-left: 22px;
+}
+/* the rail: a hairline through every dot, stopping at the first and last */
+.prompt-timeline-entry::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-strong);
+}
+.prompt-timeline-entry:first-child::before {
+  top: 18px;
+}
+.prompt-timeline-entry:last-child::before {
+  bottom: calc(100% - 18px);
+}
+.prompt-timeline-entry:only-child::before {
+  display: none;
+}
+.prompt-timeline-dot {
+  position: absolute;
+  left: 1px;
+  top: 14px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  box-sizing: border-box;
+}
+.prompt-timeline-entry:has([aria-current='true']) .prompt-timeline-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.prompt-timeline-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.prompt-timeline-item:hover {
+  background: var(--surface-2);
+}
+.prompt-timeline-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.prompt-timeline-item[aria-current='true'] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.prompt-timeline-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.prompt-timeline-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  font-variant-numeric: tabular-nums;
+}
+.prompt-timeline-vars {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* chips on the selected row's accent tint: lift them onto the surface so they keep their edge */
+.prompt-timeline-item[aria-current='true'] .prompt-label {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent);
+}
+.prompt-timeline-item[aria-current='true'] .prompt-label-neutral,
+.prompt-timeline-item[aria-current='true'] .prompt-version-badge {
+  background: var(--surface);
+}
+.prompt-timeline-item[aria-current='true'] .prompt-timeline-meta,
+.prompt-timeline-item[aria-current='true'] .prompt-timeline-vars {
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .prompt-timeline-item {
+    transition: none;
+  }
+}
+
+/* the header's link buttons (Runs, Playground) read as buttons, not links */
+a.prompt-link-btn {
+  text-decoration: none;
 }
