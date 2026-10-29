@@ -66,6 +66,27 @@ describe('FilterBar search', () => {
     expect(input.value).toBe('zzz');
   });
 
+  it('keeps what the user typed when the parent echoes a trimmed value, but follows real external changes', () => {
+    vi.useFakeTimers();
+    const onChange = vi.fn();
+    const ui = (value: string) => <FilterBar facets={[]} search={{ value, onChange }} />;
+    render(ui(''));
+    const input = container.querySelector('input[type="search"]') as HTMLInputElement;
+    type(input, 'tool ');
+    act(() => void vi.advanceTimersByTime(250));
+    expect(onChange).toHaveBeenCalledWith('tool ');
+    rerender(ui('tool'));
+    expect(input.value).toBe('tool ');
+    type(input, 'tool timed out');
+    act(() => void vi.advanceTimersByTime(250));
+    rerender(ui('tool timed out'));
+    expect(input.value).toBe('tool timed out');
+    rerender(ui(''));
+    expect(input.value).toBe('');
+    rerender(ui('tool timed out'));
+    expect(input.value).toBe('tool timed out');
+  });
+
   it('calls the latest onChange when the callback identity changes mid-debounce', () => {
     vi.useFakeTimers();
     const first = vi.fn();

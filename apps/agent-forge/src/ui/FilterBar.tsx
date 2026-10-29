@@ -26,7 +26,13 @@ function SearchBox({ value, onChange, placeholder }: NonNullable<FilterBarProps[
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const latest = useRef(onChange);
   latest.current = onChange;
-  useEffect(() => setText(value), [value]);
+  const emitted = useRef(value);
+  // Resync only on a real external change: the parent echoing back what we emitted (possibly trimmed) must not clobber typing.
+  useEffect(() => {
+    if (value === emitted.current || value === emitted.current.trim()) return;
+    emitted.current = value;
+    setText(value);
+  }, [value]);
   useEffect(() => () => clearTimeout(timer.current), []);
   return (
     <input
@@ -39,7 +45,10 @@ function SearchBox({ value, onChange, placeholder }: NonNullable<FilterBarProps[
         const next = e.target.value;
         setText(next);
         clearTimeout(timer.current);
-        timer.current = setTimeout(() => latest.current(next), SEARCH_DEBOUNCE_MS);
+        timer.current = setTimeout(() => {
+          emitted.current = next;
+          latest.current(next);
+        }, SEARCH_DEBOUNCE_MS);
       }}
     />
   );

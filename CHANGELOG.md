@@ -58,6 +58,7 @@ opt-out.
 
 ### Fixed
 
+- Studio filter bar: the search box keeps what you type — a trailing space (`tool `) no longer gets reset when the URL echoes the trimmed query; clearing filters or navigating still updates it.
 - Insights runs/day averages over the days an agent was active in the window, so an agent first seen today with 12 runs reports 12/day instead of 12/7.
 - An open run's root start is kept when the reporter's buffer trims or a crash flush cuts to its newest 16 MB, so a run whose child spans overflow the buffer is still listed.
 - Studio Scores and `GET /api/v1/scores?aggregate=eval`: `human` and `online` scores now pass only on a value of exactly 1, so a thumbs-down or an online rule returning 0 (or 0.9) without a comment counts as a failure instead of a pass; `eval` and `judge` scores keep their rule (no failure comment, or a perfect 1), and the table and the eval detail agree.
