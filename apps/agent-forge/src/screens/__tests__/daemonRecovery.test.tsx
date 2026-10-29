@@ -1,6 +1,9 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Prompts/Hub render a ScreenHeader inline here (no shell host); its default status reads the app state.
+vi.mock('../../state/AppState', () => ({ useAppState: () => ({ runStatus: null }) }));
+
 import { HubScreen } from '../hub/HubScreen';
 import { PromptsScreen } from '../prompts/PromptsScreen';
 import { ThreadsScreen } from '../threads/ThreadsScreen';
