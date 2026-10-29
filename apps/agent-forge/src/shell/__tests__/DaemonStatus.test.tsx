@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // ScreenHeader renders inline here (no shell host); its live run status reads the app state.
 vi.mock('../../state/AppState', () => ({ useAppState: () => ({ runStatus: null }) }));
+
 import { DaemonStatus } from '../DaemonStatus';
 import { TracesScreen } from '../../screens/traces/TracesScreen';
 import { TraceScreen } from '../../screens/traces/TraceScreen';

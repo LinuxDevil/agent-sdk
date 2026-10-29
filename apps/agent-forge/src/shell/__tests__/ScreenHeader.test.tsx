@@ -91,9 +91,30 @@ describe('ScreenHeader', () => {
       </ScreenHeaderHost>,
     );
     const status = document.querySelector('.screen-header .page-header-status')!;
-    expect([...status.children].map((c) => c.textContent)).toEqual(['production', 'Run status: done']);
-    expect(status.lastElementChild?.getAttribute('role')).toBe('status');
+    expect([...status.children].map((c) => c.className)).toEqual(['chip', 'page-header-run']);
+    // A hairline divider (decorative) keeps the run pill from reading as one of the screen's chips.
+    const run = status.lastElementChild!;
+    expect([...run.children].map((c) => c.className.split(' ')[0])).toEqual(['page-header-status-sep', 'status-pill']);
+    expect(run.firstElementChild?.getAttribute('aria-hidden')).toBe('true');
+    const pill = run.lastElementChild!;
+    expect(pill.getAttribute('role')).toBe('status');
+    expect(pill.textContent).toBe('Run status: done');
+    expect(pill.getAttribute('title')).toBe('Last builder run: done');
     expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
+  });
+
+  it('with no screen chips: just the run pill, no divider, its own label as the tooltip', () => {
+    window.location.hash = '#/prompts';
+    appState.runStatus = { status: 'done' };
+    render(
+      <ScreenHeaderHost>
+        <main />
+      </ScreenHeaderHost>,
+    );
+    const status = document.querySelector('.screen-header .page-header-status')!;
+    expect(status.querySelector('.page-header-status-sep')).toBeNull();
+    expect(status.children).toHaveLength(1);
+    expect(status.querySelector('[role="status"]')?.getAttribute('title')).toBe('done');
   });
 
   it('renders inline outside a host', () => {

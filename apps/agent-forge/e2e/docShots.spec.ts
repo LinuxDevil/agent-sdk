@@ -739,6 +739,17 @@ test('x-live-status: a finished run on Prompts and Monitoring', async ({ page })
     await expect(page.getByRole('region', { name: 'Version history' })).toBeVisible();
     await shoot(page, `x-live-status-prompt-detail-${width}`);
   }
+  // A long prompt name with five labels (plus latest): at 860 and 375 the chips wrap under the title.
+  const LONG = 'customer-onboarding-concierge-escalation-policy-emea';
+  const longVersion = { ...supportVersions[0], name: LONG, prompt_id: `${LONG}-4`, labels: ['production', 'staging', 'canary', 'eu-west', 'experiment-b'] };
+  await page.route(`**/observe/api/v1/prompts/${LONG}`, (route) => json(route, { name: LONG, versions: [longVersion] }));
+  await page.evaluate((name) => (window.location.hash = `#/prompts/${name}`), LONG);
+  for (const [width, height] of [[1280, 800], [860, 800], [375, 812]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect(page.getByRole('banner').getByRole('status')).toContainText('done');
+    await expect(page.getByRole('banner').getByText('experiment-b')).toBeVisible();
+    await shoot(page, `x-live-status-long-prompt-${width}`);
+  }
 });
 
 // --- Kit states (x- shots: review-only, never used in the docs) -------------

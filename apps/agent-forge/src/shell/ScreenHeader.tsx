@@ -18,15 +18,21 @@ interface HeaderSlot {
 
 const HeaderSlotContext = createContext<HeaderSlot | null>(null);
 
-/** The live run StatusPill (the page's one run-status region); its own component, so only it reads the app state. */
-function LiveRunStatus() {
+/**
+ * The live run StatusPill (the page's one run-status region); its own component, so only it reads the app state.
+ * `labelled` (beside a screen's own chips) makes its tooltip say whose status it is.
+ */
+function LiveRunStatus({ labelled }: { labelled: boolean }) {
   const { runStatus } = useAppState();
-  return <StatusPill status={runStatus?.status ?? 'idle'} live />;
+  const status = runStatus?.status ?? 'idle';
+  return <StatusPill status={status} live title={labelled ? `Last builder run: ${status}` : undefined} />;
 }
 
 /**
  * The PageHeader with the shell's defaults: the active nav item's label, and the live run
- * status always, at the right end of the screen's own status chips.
+ * status always, at the right end of the screen's own status chips. With chips, a hairline
+ * divider sets the run pill apart; the two wrap as one (pageHeader.css hides the divider
+ * when the chips render nothing).
  */
 function DefaultedHeader({ title, status, ...rest }: ScreenHeaderProps) {
   const { path } = useRoute();
@@ -37,7 +43,10 @@ function DefaultedHeader({ title, status, ...rest }: ScreenHeaderProps) {
       status={
         <>
           {status}
-          <LiveRunStatus />
+          <span className="page-header-run">
+            {status != null && <span className="page-header-status-sep" aria-hidden="true" />}
+            <LiveRunStatus labelled={status != null} />
+          </span>
         </>
       }
       {...rest}
