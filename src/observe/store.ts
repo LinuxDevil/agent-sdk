@@ -1042,6 +1042,58 @@ export function traceDetail(db: SqlDatabase, traceId: string): TraceDetail | und
   return { trace_id: traceId, observations, scores };
 }
 
+/** The root observation's fields an online evaluator filters on and receives. */
+export type ObservationRootFields = Pick<ObservationRow, 'agent_id' | 'name' | 'status' | 'start' | 'end' | 'input' | 'output'>;
+
+/** A trace's root fields from one indexed row, or `undefined` when it has no root observation. */
+export function traceRootFields(db: SqlDatabase, traceId: string): ObservationRootFields | undefined {
+  const row = db
+    .prepare('SELECT agent_id, name, status, start, "end", input, output FROM observations WHERE trace_id = ? AND parent_obs_id IS NULL LIMIT 1')
+    .get(traceId);
+  if (row === undefined) return undefined;
+  return {
+    agent_id: (row.agent_id as string | null) ?? null,
+    name: (row.name as string | null) ?? null,
+    status: (row.status as string | null) ?? null,
+    start: Number(row.start),
+    end: row.end === null || row.end === undefined ? null : Number(row.end),
+    input: (row.input as string | null) ?? null,
+    output: (row.output as string | null) ?? null,
+  };
+}
+
+/** Every observations column but `attrs` and `updated_at`, for reads that rewrite `attrs`. */
+const OBSERVATION_COLUMNS_BUT_ATTRS =
+  'obs_id, trace_id, session_id, agent_id, parent_obs_id, kind, name, start, "end", status, input, output, model, ' +
+  'usage_input_tokens, usage_output_tokens, usage_cached_tokens, usage_reasoning_tokens, cost_usd, cost_partial, usage_estimated, truncated';
+
+/**
+ * A trace's first `limit` observations by start, without its scores. A row
+ * whose `attrs` text is longer than `attrsCap` characters comes back with
+ * `attrs: { truncated: true }` (the long text is never read out of sqlite).
+ */
+export function firstObservations(db: SqlDatabase, traceId: string, limit: number, attrsCap: number): ObservationRow[] {
+  return db
+    .prepare(
+      `SELECT ${OBSERVATION_COLUMNS_BUT_ATTRS}, CASE WHEN length(attrs) > ? THEN '{"truncated":true}' ELSE attrs END AS attrs ` +
+        'FROM observations WHERE trace_id = ? ORDER BY start ASC LIMIT ?'
+    )
+    .all(attrsCap, traceId, limit)
+    .map(observationRow);
+}
+
+/** The `attrs.error` of a trace's first `status = 'error'` row (by start) that sets one, else `undefined`. */
+export function firstObservationError(db: SqlDatabase, traceId: string): unknown {
+  const row = db
+    .prepare(
+      "SELECT attrs FROM observations WHERE trace_id = ? AND status = 'error' " +
+        "AND (CASE WHEN json_valid(attrs) THEN json_extract(attrs, '$.error') END) IS NOT NULL ORDER BY start ASC LIMIT 1"
+    )
+    .get(traceId);
+  // json_valid above: the text parses.
+  return typeof row?.attrs === 'string' ? (JSON.parse(row.attrs) as { error?: unknown }).error : undefined;
+}
+
 export interface ScoreRow {
   score_id: string;
   trace_id: string;

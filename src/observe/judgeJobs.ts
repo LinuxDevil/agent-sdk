@@ -26,6 +26,7 @@ const JUDGE_JOBS_DEFAULT = 500;
 export interface ClaimedJudgeJob {
   job_id: string;
   rule: EvaluatorRuleRow;
+  /** The root's fields and `error_message`; judge jobs carry no observations (`observations: []`). */
   trace: EvaluatorTrace;
 }
 

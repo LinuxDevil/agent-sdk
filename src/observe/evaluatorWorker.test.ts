@@ -16,7 +16,8 @@ import {
   type EvaluatorWorkerOptions,
 } from './evaluatorWorker';
 import { startObserveDaemon, type ObserveDaemon } from './daemon';
-import { ingestBatch, listScores, openDb, type ScoreRow } from './store';
+import { evaluatorTraceFrom } from './evaluatorTrace';
+import { ingestBatch, listScores, openDb, traceDetail, type ScoreRow } from './store';
 import type { IngestEvent } from './envelope';
 import { SandboxError } from '../sandbox';
 import type { SqlDatabase } from '../storage/sqlite/driver';
@@ -306,7 +307,8 @@ describe('judge jobs', () => {
     expect(rest).toEqual([]);
     expect(job.rule).toEqual(rule);
     expect(job.trace).toMatchObject({ trace_id: 't1', agent_id: 'support', status: 'ok', input: 'hi', output: 'hello', error_message: 'lookup failed' });
-    expect(job.trace.observations).toHaveLength(2);
+    // Judge jobs carry no observations: Studio's judge reads only the root fields.
+    expect(job.trace.observations).toEqual([]);
     expect(h.worker.stats()).toMatchObject({ judge_queued: 0, judge_leased: 1 });
     // Leased, so still deduped.
     await ingestAndWait(h, [rootEnd('t1')]);
@@ -444,6 +446,179 @@ describe('ingest with the evaluator worker', () => {
     expect(Date.now() - started).toBeLessThan(200);
     await daemon.evaluators.idle();
     expect(onlineScores(daemon.db, 't1')).toEqual([expect.objectContaining({ value: null, comment: 'driver' })]);
+  });
+});
+
+/** Observation rows `traceId` gets past its root: `count` children, one ms apart. */
+const children = (traceId: string, count: number, over: (i: number) => Record<string, unknown> = () => ({})): IngestEvent[] =>
+  Array.from(
+    { length: count },
+    (_, i) =>
+      ({
+        type: 'observation',
+        data: {
+          obs_id: `${traceId}-c${i}`,
+          trace_id: traceId,
+          parent_obs_id: `${traceId}-root`,
+          agent_id: 'support',
+          kind: 'span',
+          name: `step ${i}`,
+          start: T0 + 1 + i,
+          end: T0 + 2 + i,
+          status: 'ok',
+          attrs: { step: i, note: 'n'.repeat(200) },
+          ...over(i),
+        },
+      }) as IngestEvent
+  );
+
+/** `db`, recording every statement it prepares and the args each run passed. */
+function recordingDb(db: SqlDatabase): { db: SqlDatabase; calls: Array<{ sql: string; args: unknown[] }> } {
+  const calls: Array<{ sql: string; args: unknown[] }> = [];
+  const wrapped: SqlDatabase = {
+    exec: (sql) => db.exec(sql),
+    close: () => db.close(),
+    prepare(sql) {
+      const stmt = db.prepare(sql);
+      const record = (args: unknown[]): void => void calls.push({ sql, args });
+      return {
+        run: (...args) => (record(args), stmt.run(...args)),
+        get: (...args) => (record(args), stmt.get(...args)),
+        all: (...args) => (record(args), stmt.all(...args)),
+      };
+    },
+  };
+  return { db: wrapped, calls };
+}
+
+describe('evaluator worker load', () => {
+  it('1000 queued traces with a filtered-out rule never hold the event loop past 50 ms a turn', async () => {
+    const h = harness();
+    createEvaluatorRule(h.db, codeRule({ filter: { agent_id: 'billing' } }));
+    const ids: string[] = [];
+    for (let i = 0; i < 1000; i++) {
+      const id = `load-${i}`;
+      ids.push(id);
+      ingestBatch(h.db, [rootEnd(id), ...children(id, 12)]);
+    }
+    let longest = 0;
+    let last = performance.now();
+    let probing = true;
+    const probe = (): void => {
+      const at = performance.now();
+      longest = Math.max(longest, at - last);
+      last = at;
+      if (probing) setImmediate(probe);
+    };
+    setImmediate(probe);
+    h.worker.notifyRootsEnded(ids);
+    await h.worker.idle();
+    // One more turn so the probe measures the gap the drain's last turn left.
+    await new Promise((resolve) => setImmediate(resolve));
+    probing = false;
+    expect(h.worker.stats()).toMatchObject({ queued: 0, ran: 0 });
+    expect(h.runs).toEqual([]);
+    expect(longest).toBeLessThan(50);
+  });
+
+  it('a filtered-out trace loads only its root row: no observation rows, no scores', async () => {
+    const base = newDb();
+    const rec = recordingDb(base);
+    const worker = startEvaluatorWorker(rec.db, { isolateAvailable: () => true, warn: () => undefined });
+    workers.push(worker);
+    createEvaluatorRule(base, codeRule({ filter: { agent_id: 'billing' } }));
+    ingestBatch(base, [rootEnd('t1'), ...children('t1', 5)]);
+    rec.calls.length = 0;
+    worker.notifyRootsEnded(['t1']);
+    await worker.idle();
+    const observationReads = rec.calls.filter((c) => /FROM observations/.test(c.sql));
+    expect(observationReads).toHaveLength(1);
+    expect(observationReads[0].sql).toMatch(/parent_obs_id IS NULL/);
+    expect(observationReads[0].sql).toMatch(/LIMIT 1/);
+    expect(rec.calls.filter((c) => /FROM scores/.test(c.sql))).toEqual([]);
+  });
+
+  it('a code rule gets the first 200 observations, attrs past 8192 chars capped, and the error of a row past 200', async () => {
+    const base = newDb();
+    const rec = recordingDb(base);
+    const runs: Array<Record<string, unknown>> = [];
+    const worker = startEvaluatorWorker(rec.db, {
+      isolateAvailable: () => true,
+      warn: () => undefined,
+      sandbox: () => ({
+        driver: 'fake',
+        run: async (_code, callOpts) => {
+          runs.push(callOpts?.args?.[0] as Record<string, unknown>);
+          return 1;
+        },
+      }),
+    });
+    workers.push(worker);
+    const rule = createEvaluatorRule(base, codeRule());
+    if (rule === undefined) throw new Error('rule not created');
+    const rows = children('t1', 260, (i) => {
+      if (i === 3) return { attrs: { big: 'x'.repeat(9000) } };
+      if (i === 240) return { status: 'error', attrs: { error: null } };
+      if (i === 250) return { status: 'error', attrs: { error: { code: 'E_LATE' } } };
+      return {};
+    });
+    ingestBatch(base, [rootEnd('t1'), ...rows]);
+    rec.calls.length = 0;
+    worker.notifyRootsEnded(['t1']);
+    await worker.idle();
+    const dry = await worker.runOnce(rule, 't1');
+    expect(dry).toEqual({ value: 1, comment: null });
+
+    expect(runs).toHaveLength(2);
+    for (const trace of runs) {
+      const observations = trace.observations as Array<{ obs_id: string; attrs: unknown }>;
+      expect(observations).toHaveLength(200);
+      expect(observations[0].obs_id).toBe('t1-root');
+      expect(observations[4]).toMatchObject({ obs_id: 't1-c3', attrs: { truncated: true } });
+      expect(observations[5].attrs).toEqual({ step: 4, note: 'n'.repeat(200) });
+      expect(trace).toMatchObject({ trace_id: 't1', agent_id: 'support', status: 'ok', input: 'hi', output: 'hello' });
+      expect(trace.error_message).toBe('{"code":"E_LATE"}');
+    }
+    // The dedupe check reads at most one score; the trace's scores are never loaded.
+    const scoreReads = rec.calls.filter((c) => /FROM scores/.test(c.sql));
+    expect(scoreReads.map((c) => c.args.at(-1))).toEqual([1]);
+    expect(rec.calls.filter((c) => /FROM observations/.test(c.sql) && !/LIMIT/.test(c.sql))).toEqual([]);
+  });
+
+  it("evaluatorTraceFrom (Studio's judge dry run) builds the same trace from the full detail", async () => {
+    const h = harness();
+    const rule = createEvaluatorRule(h.db, codeRule({ enabled: false }));
+    if (rule === undefined) throw new Error('rule not created');
+    const rows = children('t1', 230, (i) => {
+      if (i === 3) return { attrs: { big: 'x'.repeat(9000) } };
+      if (i === 220) return { status: 'error', attrs: { error: 'late' } };
+      return {};
+    });
+    ingestBatch(h.db, [rootEnd('t1'), ...rows]);
+    await h.worker.runOnce(rule, 't1');
+    const detail = traceDetail(h.db, 't1');
+    expect(evaluatorTraceFrom('t1', detail?.observations ?? [])).toEqual(h.runs[0].trace);
+    expect(h.runs[0].trace).toMatchObject({ error_message: 'late' });
+  });
+
+  it('a judge job claims with the root fields and the error, but no observation rows', async () => {
+    const h = harness();
+    createEvaluatorRule(h.db, judgeRule());
+    await ingestAndWait(h, [rootEnd('t1'), ...children('t1', 210, (i) => (i === 205 ? { status: 'error', attrs: { error: 'late' } } : {}))]);
+    const [job] = h.worker.claimJudgeJobs(1, 60_000);
+    expect(job.trace).toEqual({
+      trace_id: 't1',
+      agent_id: 'support',
+      name: 'invoke_agent refund-bot',
+      status: 'ok',
+      start: T0,
+      end: T0 + 250,
+      duration_ms: 250,
+      input: 'hi',
+      output: 'hello',
+      error_message: 'late',
+      observations: [],
+    });
   });
 });
 

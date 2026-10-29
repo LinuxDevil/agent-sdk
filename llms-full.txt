@@ -14893,7 +14893,12 @@ object:
   "observations": [] }
 ```
 
-`observations` holds the trace's rows, oldest first, capped at 200. The
+`observations` holds the trace's rows, oldest first, capped at 200. A row
+whose `attrs` JSON is longer than 8192 characters carries
+`"attrs": { "truncated": true }` instead. `error_message` is the first error
+row's `attrs.error`, even when that row is past the first 200. Rules match on
+the root row alone, so a trace no rule's filter keeps loads no other rows, and
+the worker handles one trace per event-loop turn. The
 function returns a finite number (the score's `value`) or
 `{ "value": <number | null>, "comment"?: "<text>" }` (the comment is cut at
 1000 characters). Anything else scores `value: null` with comment
@@ -14950,7 +14955,7 @@ Agent Forge sends from `LOUSHO_OBSERVE_TOKEN` when it is set):
 
 | Route | Answer |
 | --- | --- |
-| `POST /api/v1/evaluators/judge-jobs/claim` `{ "max"?: 1..20 (5), "lease_ms"?: 1000..300000 (60000) }` | `200 { "jobs": [{ "job_id", "rule", "trace" }] }` (an empty array when none wait). Each job is leased for `lease_ms`. A lease that runs out puts the job back at the front of the queue. A job whose rule was deleted, disabled or is no longer `judge` is discarded at claim time. `trace` is the same object a code rule receives. |
+| `POST /api/v1/evaluators/judge-jobs/claim` `{ "max"?: 1..20 (5), "lease_ms"?: 1000..300000 (60000) }` | `200 { "jobs": [{ "job_id", "rule", "trace" }] }` (an empty array when none wait). Each job is leased for `lease_ms`. A lease that runs out puts the job back at the front of the queue. A job whose rule was deleted, disabled or is no longer `judge` is discarded at claim time. `trace` is the object a code rule receives, but with `"observations": []` (the judge reads only the root fields and `error_message`). |
 | `POST /api/v1/evaluators/judge-jobs/:job_id/result` `{ "value": <0..1 or null>, "comment"?: "<at most 1000 characters>" or null }` | `201 { "score_id" }`, and the job leaves the queue. The score is named after the rule as it was at claim time, so a rule renamed while its job is leased scores under its old name. An unknown job, or one whose lease ran out, is a `404`. A bad body is a `400`. |
 
 Agent Forge claims up to 5 jobs every 2 seconds, with a 60-second lease, and
