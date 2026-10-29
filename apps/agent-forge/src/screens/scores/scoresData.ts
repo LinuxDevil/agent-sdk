@@ -6,7 +6,9 @@
  * Score names are `<evalName>` (the eval-level row each case writes: 1 iff no
  * gate failed, else 0 with the failed gates as comment) and
  * `<evalName>/<checkName>` (one per check). A row passes like the daemon's
- * aggregate counts it: no failure comment, or a perfect 1.
+ * aggregate counts it: an `eval` or `judge` row (evals write a comment only
+ * on failure) with no failure comment or a perfect 1; any other source
+ * (human, online) only on a perfect 1.
  */
 import type { ObserveScoreRow } from '../../observe/types';
 import type { TimeSeries } from '../../ui/TimeSeriesChart';
@@ -40,9 +42,12 @@ export const formatText = (v: string): string | null => v || null;
 /** `?source=`: one of {@link SCORE_SOURCES}, anything else is "all". */
 export const parseSource = (s: string | null): string => ((SCORE_SOURCES as readonly string[]).includes(s ?? '') ? s! : '');
 
+/** Sources whose rows carry a comment only when they fail (eval assertions and their judge checks). */
+const COMMENT_ON_FAIL = new Set(['eval', 'judge']);
+
 /** Passed the way `?aggregate=eval` counts it. */
-function isPass(row: Pick<ObserveScoreRow, 'value' | 'comment'>): boolean {
-  return !row.comment || row.value === 1;
+function isPass(row: Pick<ObserveScoreRow, 'value' | 'comment' | 'source'>): boolean {
+  return row.value === 1 || (COMMENT_ON_FAIL.has(row.source) && !row.comment);
 }
 
 /** The trace screen deep link for a score (`?obs=` when it scores one step). */

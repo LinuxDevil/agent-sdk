@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ObserveScorePassRate, ObserveScoreRow } from '../../../observe/types';
 import { render } from '../../../ui/__tests__/render';
 import { ScoresScreen } from '../ScoresScreen';
-import { groupEvalScores, passRateSeries, traceHref, trendWindow } from '../scoresData';
+import { groupEvalScores, passRateSeries, scoreStats, traceHref, trendWindow } from '../scoresData';
 
 const NOW = Date.UTC(2026, 9, 25, 12, 30);
 const DAY = 86_400_000;
@@ -99,6 +99,21 @@ describe('scoresData', () => {
       ['tone', 2, 1],
     ]);
     expect(g.failures.map((r) => r.name)).toEqual(['support', 'support/refund']);
+  });
+
+  it('eval and judge pass without a failure comment; human and online pass only on a value of 1', () => {
+    const rows = (source: string) => [
+      score({ name: 'x', source, value: 1 }),
+      score({ name: 'x', source, value: 0 }),
+      score({ name: 'x', source, value: 0.9 }),
+      score({ name: 'x', source, value: null }),
+      score({ name: 'x', source, value: 0, comment: 'check failed' }),
+    ];
+    for (const source of ['human', 'online']) expect(scoreStats(rows(source)).passRate).toBeCloseTo(1 / 5);
+    // eval and judge write a comment only on failure: no comment passes, whatever the value.
+    for (const source of ['eval', 'judge']) expect(scoreStats(rows(source)).passRate).toBeCloseTo(4 / 5);
+    expect(groupEvalScores('x', rows('online')).failures.map((r) => r.value)).toEqual([0, 0.9, null, 0]);
+    expect(groupEvalScores('x', rows('judge')).failures.map((r) => r.comment)).toEqual(['check failed']);
   });
 
   it('pre-aggregates the trend to one mean point per bucket', () => {

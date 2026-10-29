@@ -116,7 +116,7 @@ describe('GET /api/v1/scores?aggregate=eval', () => {
     const database = db();
     try {
       ingestBatch(database, [
-        // refund: two passes (one skipped-style perfect score with a comment), one failure
+        // refund: three passes (a judge check with no failure comment, a skipped-style perfect score with a comment), one failure
         score({ score_id: 'a', name: 'refund/completed()', value: 1, ts: T0 }),
         score({ score_id: 'b', name: 'refund/tone', value: 0.9, source: 'judge', ts: T0 + 1000 }),
         score({ score_id: 'c', name: 'refund/tone', value: 0.2, source: 'judge', comment: 'soft check failed', ts: T0 + 2000 }),
@@ -135,6 +135,26 @@ describe('GET /api/v1/scores?aggregate=eval', () => {
       expect(refund?.avg_value).toBeCloseTo((1 + 0.9 + 0.2 + 1) / 4);
       // newest first
       expect(evals[0].name).toBe('greet');
+    } finally {
+      database.close();
+    }
+  });
+
+  it('eval and judge pass without a failure comment; human and online pass only on a value of 1', () => {
+    const database = db();
+    try {
+      const rows = (source: string) => [
+        score({ score_id: `${source}-1`, name: `${source}/x`, source, value: 1 }),
+        score({ score_id: `${source}-0`, name: `${source}/x`, source, value: 0 }),
+        score({ score_id: `${source}-0.9`, name: `${source}/x`, source, value: 0.9 }),
+        score({ score_id: `${source}-null`, name: `${source}/x`, source, value: null }),
+        score({ score_id: `${source}-failed`, name: `${source}/x`, source, value: 0, comment: 'check failed' }),
+      ];
+      ingestBatch(database, ['eval', 'judge', 'human', 'online'].flatMap(rows));
+      const { evals } = get(database, 'aggregate=eval').body as { evals: { name: string; passed: number }[] };
+      const passed = Object.fromEntries(evals.map((e) => [e.name, e.passed]));
+      // eval and judge write a comment only on failure: no comment passes, whatever the value.
+      expect(passed).toEqual({ eval: 4, judge: 4, human: 1, online: 1 });
     } finally {
       database.close();
     }
