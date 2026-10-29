@@ -1,0 +1,75 @@
+/* MetricCard: a KPI tile (overline label, 24px tabular value, delta, sparkline). Tokens only. */
+.metric-card {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  font-family: var(--font-ui);
+}
+.metric-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.metric-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.metric-value {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  font-size: var(--fs-metric);
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+}
+.metric-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+.metric-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+.metric-delta[data-tone="good"] {
+  color: var(--success);
+}
+.metric-delta[data-tone="bad"] {
+  color: var(--danger);
+}
+.metric-sparkline,
+.metric-spark-skeleton {
+  flex: none;
+  width: 96px;
+  height: 32px;
+}
+.metric-sparkline {
+  overflow: visible;
+}
+.metric-sparkline polyline {
+  fill: none;
+  stroke: var(--chart-1);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}

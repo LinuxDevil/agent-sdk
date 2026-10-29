@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DataTable, type Column, type TableSort } from '../DataTable';
+import { DataTable, ErrorCell, type Column, type TableSort } from '../DataTable';
 import { render, rerender } from './render';
 
 interface Row {
@@ -113,6 +113,36 @@ describe('DataTable rendering', () => {
     expect(bodyRows(c)).toHaveLength(3);
     rerender(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} loading empty="Nothing here" />);
     expect(c.textContent).not.toContain('Nothing here');
+  });
+
+  it('shows six skeleton rows (one cell per visible column) and one Loading status on a first load', () => {
+    setWidth(1200);
+    const c = render(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} loading empty="Nothing here" />);
+    const skeletonRows = c.querySelectorAll('tbody tr.skeleton-row');
+    expect(skeletonRows).toHaveLength(6);
+    expect(skeletonRows[0].querySelectorAll('td')).toHaveLength(3);
+    expect(skeletonRows[0].querySelectorAll('td')[1].classList.contains('dt-right')).toBe(true);
+    expect(c.querySelectorAll('tbody [role="status"]')).toHaveLength(1);
+    expect(c.querySelector('tbody [role="status"]')?.textContent).toBe('Loading');
+    expect(c.textContent).not.toContain('Loading…');
+    // Skeleton rows are not data rows: no row index, never focusable.
+    expect(c.querySelector('tbody tr[data-row-index]')).toBeNull();
+    setWidth(600);
+    expect(c.querySelectorAll('tbody tr.skeleton-row')[0].querySelectorAll('td')).toHaveLength(2);
+  });
+
+  it('keeps real rows (no skeleton) when loading with rows already shown', () => {
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} loading empty="x" />);
+    expect(c.querySelector('.skeleton-row')).toBeNull();
+  });
+
+  it('titles plain-text cells so truncated text keeps a tooltip', () => {
+    setWidth(1200);
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="x" />);
+    const [name, tokens, id] = bodyRows(c)[0].querySelectorAll('td');
+    expect(name.title).toBe('alpha');
+    expect(tokens.title).toBe('10 tok');
+    expect(id.title).toBe('a');
   });
 
   it('applies the density class (compact default, comfortable on request)', () => {
@@ -393,5 +423,83 @@ describe('DataTable paging', () => {
     rerender(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} page={page(1250)} empty="x" />);
     expect(c.querySelector('.dt-pager-range')?.textContent).toBe('1,234–1,234 of 1,234');
     expect(btn('Previous').disabled).toBe(false);
+  });
+});
+
+describe('ErrorCell', () => {
+  it('renders danger text with an aria-hidden 14px alert icon and a title tooltip', () => {
+    const c = render(<ErrorCell>upstream 529 overloaded</ErrorCell>);
+    const cell = c.querySelector('.dt-error') as HTMLElement;
+    expect(cell.textContent).toBe('upstream 529 overloaded');
+    expect(cell.title).toBe('upstream 529 overloaded');
+    const svg = cell.querySelector('svg') as SVGElement;
+    expect(svg.getAttribute('aria-hidden')).toBe('true');
+    expect(svg.getAttribute('width')).toBe('14');
+    expect(cell.querySelector('.dt-error-text')?.textContent).toBe('upstream 529 overloaded');
+  });
+
+  it('takes an explicit title for non-string content', () => {
+    const c = render(
+      <ErrorCell title="boom: stack">
+        <b>boom</b>
+      </ErrorCell>,
+    );
+    expect((c.querySelector('.dt-error') as HTMLElement).title).toBe('boom: stack');
+  });
+});
+
+describe('DataTable layout (review fixes)', () => {
+  const css = (f: string) => readFileSync(resolve(__dirname, '..', f), 'utf8');
+  const rule = (src: string, sel: string) => src.match(new RegExp(`(^|\\n)${sel.replace(/[.[\]()*]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[2] ?? '';
+
+  it('the wrap clips instead of scrolling, so the sticky header sticks to the screen', () => {
+    const table = css('dataTable.css');
+    expect(rule(table, '.data-table-wrap')).toMatch(/overflow-x:\s*clip/);
+    expect(rule(table, '.data-table-wrap')).toMatch(/min-height:\s*min-content/);
+    expect(rule(table, '.data-table-wrap.dt-scroll-x')).toMatch(/overflow-x:\s*auto/);
+    expect(rule(css('card.css'), '.card-pad-none > .card-body')).toMatch(/overflow:\s*clip/);
+  });
+
+  it('becomes a horizontal scroller (dt-scroll-x) only while the table is wider than the wrap', () => {
+    const offset = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+    const client = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="x" />);
+    const wrap = () => c.querySelector('.data-table-wrap') as HTMLElement;
+    expect(wrap().classList.contains('dt-scroll-x')).toBe(false);
+    offset.mockReturnValue(1200);
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="y" />);
+    expect(wrap().classList.contains('dt-scroll-x')).toBe(true);
+    offset.mockReturnValue(800);
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="z" />);
+    expect(wrap().classList.contains('dt-scroll-x')).toBe(false);
+    client.mockRestore();
+  });
+
+  it('maxHeight opts into a bounded scroller (both axes) whose header sticks inside it', () => {
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} maxHeight={480} empty="x" />);
+    const wrap = c.querySelector('.data-table-wrap') as HTMLElement;
+    expect(wrap.classList.contains('dt-scroll')).toBe(true);
+    expect(wrap.style.maxHeight).toBe('480px');
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} maxHeight="calc(100dvh - 200px)" empty="x" />);
+    expect(wrap.style.maxHeight).toBe('calc(100dvh - 200px)');
+    expect(rule(css('dataTable.css'), '.data-table-wrap.dt-scroll')).toMatch(/overflow:\s*auto/);
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="x" />);
+    expect(wrap.classList.contains('dt-scroll')).toBe(false);
+    expect(wrap.style.maxHeight).toBe('');
+  });
+
+  it('wraps header labels in .dt-label so they ellipsise inside the flex row', () => {
+    setWidth(1200);
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="x" />);
+    expect([...c.querySelectorAll('th .dt-label')].map((s) => s.textContent)).toEqual(['Name', 'Tokens', 'Id']);
+    expect(rule(css('dataTable.css'), '.dt-label')).toMatch(/text-overflow:\s*ellipsis/);
+  });
+
+  it('pager has no side padding outside an edge-to-edge card; compact buttons only in .dt-actions', () => {
+    const table = css('dataTable.css');
+    expect(rule(table, '.dt-pager')).toMatch(/padding:\s*var\(--space-2\)\s+0;/);
+    expect(rule(css('card.css'), '.card-pad-none .dt-pager')).toMatch(/padding-inline/);
+    expect(table).not.toMatch(/\.data-table td \.btn/);
+    expect(rule(table, '.dt-actions .btn')).toMatch(/min-height:\s*26px/);
   });
 });

@@ -1,0 +1,65 @@
+/* Card: surface, hairline border, radius-lg, shadow-sm; optional header row. Tokens only. */
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+.card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-4) var(--space-5) 0;
+}
+.card-heading {
+  min-width: 0;
+}
+.card-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text);
+}
+.card-description {
+  margin: 2px 0 0;
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.card-pad-md > .card-body {
+  padding: var(--space-4) var(--space-5);
+}
+/* edge to edge: a titled card still separates the header from the table with the table's own header. */
+.card-pad-none > .card-header {
+  padding-bottom: var(--space-3);
+}
+.card-pad-none > .card-body {
+  /* clip, not hidden: no scroll container, so a DataTable's sticky header still sticks. */
+  overflow: clip;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+.card-pad-none > .card-body:first-child {
+  border-radius: var(--radius-lg);
+}
+/* edge-to-edge tables: the pager keeps the card's inner gutter. */
+.card-pad-none .dt-pager {
+  padding-inline: var(--space-3);
+}
+/* a table that ends the card lets the card's own border close it. */
+.card-pad-none > .card-body > .data-table-wrap:last-child .data-table tbody tr:last-child > td {
+  border-bottom: 0;
+}

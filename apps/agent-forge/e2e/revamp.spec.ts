@@ -34,7 +34,8 @@ function counter() {
 }
 
 const primaryNav = (page: Page) => page.getByRole('navigation', { name: 'Primary' });
-const bodyRows = (page: Page) => page.getByRole('main').locator('table.data-table tbody tr');
+/** Data rows only: a first load shows skeleton rows (`.skeleton-row`) until the rows arrive. */
+const bodyRows = (page: Page) => page.getByRole('main').locator('table.data-table tbody tr:not(.skeleton-row)');
 
 async function openApp(page: Page, hash = '') {
   await page.goto(`${APP}${hash ? `#${hash}` : ''}`);
@@ -328,4 +329,39 @@ test('queue review at 1280px: a trace tree row name never wraps one letter per l
     const line = await name.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height);
     expect(box.height, `${await name.textContent()} wraps`).toBeLessThanOrEqual(line * 2 + 1);
   }
+});
+
+// The traces columns add up to ~1330px: at 1280 the table is wider than the screen, so its wrap scrolls
+// sideways (and the header cannot stick to the screen); at 1920 it fits (every column shown), the wrap only clips, and it sticks.
+test('traces at 1280px: a table wider than the screen scrolls sideways inside its wrap', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${APP}#/traces`);
+  await expect(bodyRows(page).first()).toBeVisible();
+  const wrap = page.getByRole('main').locator('.data-table-wrap');
+  await expect(wrap).toHaveClass(/dt-scroll-x/);
+  expect(await wrap.evaluate((w) => w.scrollWidth > w.clientWidth && getComputedStyle(w).overflowX === 'auto')).toBe(true);
+});
+
+test('traces at 1920px: the table header stays in view while the screen scrolls', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 800 });
+  await page.goto(`${APP}#/traces`);
+  await expect(bodyRows(page).nth(30)).toBeVisible();
+  await expect(page.getByRole('main').locator('.data-table-wrap')).not.toHaveClass(/dt-scroll-x/);
+  const header = page.getByRole('main').locator('table.data-table thead th').first();
+  const before = (await header.boundingBox())!;
+  // Scroll the screen's own scroller (the nearest scrollable ancestor of the table) by 600px.
+  const scrolled = await header.evaluate((th) => {
+    let el: HTMLElement | null = th.parentElement;
+    while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+    if (!el) return 0;
+    el.scrollTop += 600;
+    return el.scrollTop;
+  });
+  expect(scrolled, 'the screen scrolls').toBeGreaterThan(300);
+  await expect.poll(async () => (await header.boundingBox())!.y).toBeLessThan(before.y + 1);
+  const after = (await header.boundingBox())!;
+  expect(after.y, 'header still in the viewport').toBeGreaterThanOrEqual(0);
+  expect(after.y + after.height).toBeLessThanOrEqual(800);
+  // ...and it is the sticky header that kept it there, not a page that did not move.
+  await expect(bodyRows(page).first()).not.toBeInViewport();
 });

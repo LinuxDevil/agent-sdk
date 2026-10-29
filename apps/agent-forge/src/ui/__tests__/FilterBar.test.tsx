@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -178,6 +180,39 @@ describe('TimeRangePicker via FilterBar', () => {
       from: new Date('2026-01-02T10:00').getTime(),
       to: new Date('2026-01-02T11:00').getTime(),
     });
+  });
+});
+
+describe('FilterBar look', () => {
+  it('presets and Custom sit in one segmented control; the group keeps its name', () => {
+    render(<FilterBar facets={[]} range={{ value: { preset: '24h' }, onChange: vi.fn() }} />);
+    const group = container.querySelector('.time-range[role="group"]') as HTMLElement;
+    expect(group.getAttribute('aria-label')).toBe('Time range');
+    const seg = group.querySelector('.segmented') as HTMLElement;
+    expect([...seg.querySelectorAll('button.seg-btn')].map((b) => b.textContent)).toEqual(['15m', '1h', '24h', '7d', '30d', 'Custom']);
+  });
+
+  it('the search box carries a decorative search icon; facet buttons a chevron', () => {
+    const facet: FacetDef = { key: 's', label: 'Status', options: [], value: [], onChange: vi.fn() };
+    render(<FilterBar search={{ value: '', onChange: vi.fn(), placeholder: 'Search' }} facets={[facet]} />);
+    expect(container.querySelector('.filter-search-wrap svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(container.querySelector('input.filter-search')?.getAttribute('aria-label')).toBe('Search');
+    const btn = container.querySelector('button.facet-btn') as HTMLElement;
+    expect(btn.textContent).toBe('Status');
+    expect(btn.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+describe('TimeRangePicker Custom open state', () => {
+  it('Custom reads as open (aria-expanded) while its inputs show, and the CSS styles that state', () => {
+    render(<FilterBar facets={[]} range={{ value: { preset: '24h' }, onChange: vi.fn() }} />);
+    const custom = byText('.time-range button', 'Custom');
+    expect(custom.getAttribute('aria-expanded')).toBe('false');
+    click(custom);
+    expect(custom.getAttribute('aria-expanded')).toBe('true');
+    expect(byText('.time-range button', '24h').getAttribute('aria-pressed')).toBe('true');
+    const css = readFileSync(resolve(__dirname, '../filterBar.css'), 'utf8');
+    expect(css).toMatch(/\.seg-btn\[aria-expanded='true'\]:not\(\[aria-pressed='true'\]\)\s*\{[^}]*background:\s*var\(--accent-soft\)/);
   });
 });
 
