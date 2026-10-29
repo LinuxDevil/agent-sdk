@@ -87,3 +87,17 @@
   color: var(--text-faint);
 }
 
+/* Tabs row: full width under the title/actions; the header drops its bottom padding so
+   the tabs' 2px underline (the tab's own job) lands on the header's bottom hairline. */
+.page-header-with-tabs {
+  padding-top: var(--space-3);
+  padding-bottom: 0;
+}
+.page-header-tabs {
+  flex: 1 0 100%;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  /* overlap the header's 1px bottom border, so an underline covers it. */
+  margin-bottom: -1px;
+}

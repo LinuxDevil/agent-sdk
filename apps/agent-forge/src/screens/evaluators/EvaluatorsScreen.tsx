@@ -25,7 +25,7 @@ import { DataTable, type Column } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
 import { useToast } from '../../ui/Toast';
 import { Clip } from '../listFilters';
-import { EvalsTabs } from '../evals/EvalsTabs';
+import { EvalsHeader } from '../evals/EvalsTabs';
 import { useProviderKeys } from '../playground/ModelPicker';
 import { blankDraft } from './evaluatorDraft';
 import { EvaluatorDetail } from './EvaluatorDetail';
@@ -219,7 +219,7 @@ export function EvaluatorsScreen() {
   else body = <EvaluatorList />;
   return (
     <section className="datasets-screen" aria-label="Evaluators">
-      <EvalsTabs />
+      <EvalsHeader description="Rules that score live traces as they arrive" />
       {body}
     </section>
   );

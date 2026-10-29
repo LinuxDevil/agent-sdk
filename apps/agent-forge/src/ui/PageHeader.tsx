@@ -20,6 +20,11 @@ export interface PageHeaderProps {
   status?: ReactNode;
   /** Right side of the header (buttons); wraps under the title at narrow widths. */
   actions?: ReactNode;
+  /**
+   * A row of underline tabs under the title and actions (e.g. a section's sub-navigation),
+   * inside the header: the active tab's underline sits on the header's bottom hairline.
+   */
+  tabs?: ReactNode;
   className?: string;
 }
 
@@ -47,13 +52,14 @@ function Breadcrumbs({ crumbs }: { crumbs: PageHeaderCrumb[] }) {
 
 /**
  * The header row at the top of a page: optional breadcrumbs, the page title (`<h1>`)
- * with an optional status beside it, an optional description, and right-aligned
- * actions, over a bottom hairline. Purely presentational; in the Studio, screens
+ * with an optional status beside it, an optional description, right-aligned
+ * actions and an optional tabs row, over a bottom hairline. Purely presentational; in the Studio, screens
  * use the shell's `ScreenHeader`, which fills in the defaults and places it.
  */
-export function PageHeader({ title, description, breadcrumbs, status, actions, className }: PageHeaderProps) {
+export function PageHeader({ title, description, breadcrumbs, status, actions, tabs, className }: PageHeaderProps) {
+  const classes = ['page-header', tabs != null && 'page-header-with-tabs', className].filter(Boolean).join(' ');
   return (
-    <header className={`page-header${className ? ` ${className}` : ''}`}>
+    <header className={classes}>
       <div className="page-header-main">
         {breadcrumbs && breadcrumbs.length > 0 && <Breadcrumbs crumbs={breadcrumbs} />}
         <div className="page-header-title-row">
@@ -65,6 +71,7 @@ export function PageHeader({ title, description, breadcrumbs, status, actions, c
         {description != null && <p className="page-header-description">{description}</p>}
       </div>
       {actions != null && <div className="page-header-actions">{actions}</div>}
+      {tabs != null && <div className="page-header-tabs">{tabs}</div>}
     </header>
   );
 }

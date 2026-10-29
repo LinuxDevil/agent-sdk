@@ -18,18 +18,17 @@ interface HeaderSlot {
 
 const HeaderSlotContext = createContext<HeaderSlot | null>(null);
 
+/** The live run StatusPill; its own component, so a header that drops the status never reads the app state. */
+function LiveRunStatus() {
+  const { runStatus } = useAppState();
+  return <StatusPill status={runStatus?.status ?? 'idle'} live />;
+}
+
 /** The PageHeader with the shell's defaults: the active nav item's label, and the live run status. */
 function DefaultedHeader({ title, status, ...rest }: ScreenHeaderProps) {
   const { path } = useRoute();
-  const { runStatus } = useAppState();
   const label = NAV_ITEMS.find((item) => isActive(item, path))?.label ?? 'Agent Forge';
-  return (
-    <PageHeader
-      title={title ?? label}
-      status={status === undefined ? <StatusPill status={runStatus?.status ?? 'idle'} live /> : status}
-      {...rest}
-    />
-  );
+  return <PageHeader title={title ?? label} status={status === undefined ? <LiveRunStatus /> : status} {...rest} />;
 }
 
 /**

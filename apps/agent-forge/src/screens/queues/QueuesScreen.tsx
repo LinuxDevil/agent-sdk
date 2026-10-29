@@ -17,7 +17,7 @@ import { fmtDateTime, fmtInt } from '../../observe/format';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
 import { Clip } from '../listFilters';
-import { EvalsTabs } from '../evals/EvalsTabs';
+import { EvalsHeader } from '../evals/EvalsTabs';
 import { parseOffset } from '../datasets/datasetsUrl';
 import { NewQueueForm } from './NewQueueForm';
 import { QueueReview } from './QueueReview';
@@ -77,7 +77,7 @@ export function QueuesScreen() {
   else body = <QueueList />;
   return (
     <section className="datasets-screen" aria-label="Annotation queues">
-      <EvalsTabs />
+      <EvalsHeader description="Traces queued for human review against a rubric" />
       {body}
     </section>
   );
