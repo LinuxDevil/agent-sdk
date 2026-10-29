@@ -593,3 +593,86 @@ test("agents x: the routed settings screen shares the drawer's settings cards", 
   await expect(page.getByLabel('Deploy adapter')).toBeVisible();
   await shoot(page, 'x-agents-settings-screen');
 });
+
+// --- Evaluations states (x- shots: review-only, never used in the docs) -----
+
+const EVAL_RATES = [
+  { name: 'e2e-eval', count: 4, passed: 3, pass_rate: 0.75, avg_value: 0.75, last_ts: NOW - 2 * MINUTE },
+  { name: 'refund-policy', count: 48, passed: 46, pass_rate: 46 / 48, avg_value: 0.96, last_ts: NOW - 40 * MINUTE },
+  { name: 'tone-and-empathy', count: 120, passed: 81, pass_rate: 81 / 120, avg_value: 0.71, last_ts: NOW - 3 * HOUR },
+  { name: 'order-lookup-accuracy', count: 36, passed: 12, pass_rate: 12 / 36, avg_value: 0.41, last_ts: NOW - 26 * HOUR },
+];
+
+const DATASETS = [
+  { name: 'e2e-dataset', description: 'Support cases the agent must get right', example_count: 2 },
+  { name: 'refund-golden', description: 'Hand-picked refund conversations with the policy answer each one should cite, reviewed weekly by support leads', example_count: 148 },
+  { name: 'escalations', description: null, example_count: 31 },
+  { name: 'multilingual-smoke', description: 'Short greetings and order questions in eight languages', example_count: 1_204 },
+  { name: 'regressions-2026-10', description: 'Every trace a human marked wrong in October', example_count: 57 },
+].map((d, i) => ({ dataset_id: `ds-${i}`, created_at: NOW - (i + 1) * 30 * HOUR, ...d }));
+
+/** The Scores aggregate answers with `evals` (and nothing else changes). */
+async function evalRates(page: Page, evals: unknown[] | null) {
+  await page.route('**/observe/api/v1/scores?**', (route) => {
+    if (new URL(route.request().url()).searchParams.get('aggregate') !== 'eval') return route.fallback();
+    // null: never answered, so the screen stays in its first-load state.
+    return evals === null ? undefined : json(route, { evals });
+  });
+}
+
+async function datasetList(page: Page, list: unknown[]) {
+  await page.route('**/observe/api/v1/datasets?**', (route) =>
+    route.request().method() === 'GET' ? json(route, { datasets: list, total: list.length, limit: 50, offset: 0 }) : route.fallback(),
+  );
+}
+
+test('evals x: scores list, nothing expanded', async ({ page }) => {
+  await evalRates(page, EVAL_RATES);
+  await open(page, '/evals/scores');
+  await expect(page.getByRole('main').getByText('order-lookup-accuracy').first()).toBeVisible();
+  await shoot(page, 'x-evals-scores-list');
+});
+
+test('evals x: scores empty', async ({ page }) => {
+  await evalRates(page, []);
+  await open(page, '/evals/scores');
+  await expect(page.getByRole('main').locator('.empty-state')).toBeVisible();
+  await shoot(page, 'x-evals-scores-empty');
+});
+
+test('evals x: scores loading', async ({ page }) => {
+  await evalRates(page, null);
+  await open(page, '/evals/scores');
+  await expect(page.getByRole('main').locator('.skeleton').first()).toBeVisible();
+  await shoot(page, 'x-evals-scores-loading');
+});
+
+test('evals x: datasets grid', async ({ page }) => {
+  await datasetList(page, DATASETS);
+  await open(page, '/evals/datasets');
+  await expect(page.getByRole('main').getByText('multilingual-smoke').first()).toBeVisible();
+  await shoot(page, 'x-evals-datasets-grid');
+});
+
+test('evals x: datasets empty', async ({ page }) => {
+  await datasetList(page, []);
+  await open(page, '/evals/datasets');
+  await expect(page.getByRole('main').locator('.empty-state')).toBeVisible();
+  await shoot(page, 'x-evals-datasets-empty');
+});
+
+test('evals x: dataset detail with an example open', async ({ page }) => {
+  await open(page, '/evals/datasets/e2e-dataset');
+  await expect(rows(page)).toHaveCount(2);
+  await rows(page).first().click();
+  await expect(page.getByRole('main').getByRole('region', { name: 'Example e2e-example-1' })).toBeVisible();
+  await shoot(page, 'x-evals-dataset-example');
+});
+
+test('evals x: new dataset form open', async ({ page }) => {
+  await datasetList(page, DATASETS);
+  await open(page, '/evals/datasets');
+  await page.getByRole('button', { name: 'New dataset' }).click();
+  await expect(page.getByRole('form', { name: 'New dataset' })).toBeVisible();
+  await shoot(page, 'x-evals-datasets-new');
+});

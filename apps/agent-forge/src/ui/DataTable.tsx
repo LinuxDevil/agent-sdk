@@ -405,7 +405,11 @@ function EmptyBody<T>({ columns, loading, empty }: { columns: Column<T>[]; loadi
   );
 }
 
-function Pager({ offset, limit, total, onChange }: NonNullable<DataTableProps<unknown>['page']>) {
+/** Props for {@link TablePager}: the page start, page size, total rows and the page-change callback. */
+export type TablePagerProps = NonNullable<DataTableProps<unknown>['page']>;
+
+/** The table pager ("1–50 of 120", Previous, Next), also used under non-table lists such as card grids. */
+export function TablePager({ offset, limit, total, onChange }: TablePagerProps) {
   const fmt = (n: number) => n.toLocaleString('en-US');
   // An offset past the end (total shrank under us) still reads as a valid range.
   const start = Math.min(offset + 1, total);
@@ -491,7 +495,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
           )}
         </tbody>
       </table>
-      {page && <Pager {...page} />}
+      {page && <TablePager {...page} />}
     </div>
   );
 }

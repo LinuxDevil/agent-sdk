@@ -134,6 +134,8 @@ const SCANS = [
   ...ROUTES.map(({ pattern, example }) => ({ label: pattern, path: example })),
   ...['/traces?status=error', '/traces/e2e-trace?obs=e2e-obs', '/threads?status=active', '/prompts/e2e-prompt?diff=1,2'].map((path) => ({ label: path, path })),
 ];
+/** Detail screens whose PageHeader title is the item's name, not the nav label. */
+const ITEM_H1: Record<string, string> = { '/evals/datasets/:name': 'e2e-dataset' };
 for (const { label, path } of SCANS) {
   test(`${label} keeps the landmarks and passes axe`, async ({ page }) => {
     await page.goto(`/?token=e2e-studio-token#${path}`);
@@ -145,8 +147,9 @@ for (const { label, path } of SCANS) {
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
     const current = page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]');
     await expect(current).toHaveCount(1);
-    // Agents keeps its visually hidden "Agent Forge" h1; every other screen's h1 is its PageHeader title (the nav label).
-    const h1 = path.startsWith('/agents') ? 'Agent Forge' : await current.innerText();
+    // Agents keeps its visually hidden "Agent Forge" h1; every other screen's h1 is its PageHeader title (the nav
+    // label, or the item's name on an ITEM_H1 detail screen).
+    const h1 = path.startsWith('/agents') ? 'Agent Forge' : (ITEM_H1[label] ?? (await current.innerText()));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(h1);
     await expectNoSeriousAxeViolations(page, path);
   });

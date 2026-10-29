@@ -1,4 +1,8 @@
-/* Datasets (#/evals/datasets, #/evals/datasets/:name) and the trace header's "Add to dataset". Tokens only. */
+/*
+ * Datasets (#/evals/datasets, #/evals/datasets/:name) and the trace header's "Add to dataset". Tokens only.
+ * The `ds-*` rules are the Datasets screens'; the `datasets-*` ones are shared with the Evaluators and
+ * Annotation queue screens and the trace header's dialogs.
+ */
 .datasets-screen {
   display: flex;
   flex-direction: column;
@@ -97,4 +101,221 @@
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+/* ---------- Datasets screens (ds-*) ---------- */
+.ds-screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-4);
+  flex: none;
+  min-width: 0;
+  padding: var(--space-5) var(--page-gutter) var(--space-8);
+  color: var(--text);
+}
+.ds-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.ds-faint {
+  color: var(--text-faint);
+}
+
+/* New dataset: a card above the grid. */
+.ds-new {
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+.ds-new-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ds-new-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+.ds-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ds-field-label {
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  color: var(--text);
+}
+.ds-new-name {
+  flex: 1 1 200px;
+  max-width: 280px;
+}
+.ds-new-desc {
+  flex: 3 1 240px;
+}
+.ds-new-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* The grid: auto-fill cards; each card is one link. */
+.ds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ds-card {
+  display: flex;
+  min-width: 0;
+}
+.ds-card-link {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.ds-card-link:hover {
+  border-color: var(--border-strong);
+}
+.ds-card-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ds-card-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.ds-card-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ds-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.ds-card-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-height: calc(2 * 1.5em);
+  font-size: var(--fs-table);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.ds-card-desc-none {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.ds-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ds-card-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.ds-card-stat svg {
+  color: var(--text-faint);
+}
+.ds-card-skeleton {
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 132px;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* Dataset detail: the examples card, and the opened example beside it on wide screens. */
+.ds-detail {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: start;
+}
+@media (min-width: 1180px) {
+  .ds-detail-open {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+  }
+  .ds-detail-open > .ds-example {
+    position: sticky;
+    top: var(--space-4);
+    max-height: calc(100vh - 220px);
+    overflow: auto;
+  }
+}
+.ds-example {
+  min-width: 0;
+}
+.ds-example-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.ds-example-head .card-heading {
+  min-width: 0;
+}
+.ds-example-head .card-description {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ds-example-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-card-link {
+    transition: none;
+  }
 }

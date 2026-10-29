@@ -127,9 +127,9 @@ describe('datasetPath', () => {
 });
 
 describe('DatasetsScreen list', () => {
-  it('renders one row per dataset with its description, example count and the Evaluations tabs', async () => {
+  it('renders one card per dataset with its description, example count and the Evaluations tabs', async () => {
     const container = await mountAt('#/evals/datasets');
-    const row = container.querySelector('tbody tr')!;
+    const row = container.querySelector('.ds-grid .ds-card')!;
     expect(row.textContent).toContain('golden');
     expect(row.textContent).toContain('Hand-picked support cases');
     expect(row.textContent).toContain('120');
@@ -146,14 +146,21 @@ describe('DatasetsScreen list', () => {
     expect(container.textContent).toContain('No datasets yet');
   });
 
-  it('opens a dataset on row open', async () => {
+  it('opens a dataset from its card link', async () => {
     const container = await mountAt('#/evals/datasets');
-    act(() => (container.querySelector('tbody tr') as HTMLElement).click());
+    const link = container.querySelector('.ds-card a') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('#/evals/datasets/golden');
+    act(() => link.click());
+    // jsdom follows the fragment link on a later task.
+    await flush();
     expect(window.location.hash).toBe('#/evals/datasets/golden');
   });
 
   it('creates a dataset and shows a 409 inline as a taken name', async () => {
     const container = await mountAt('#/evals/datasets');
+    // The form opens from the header's primary "New dataset" button.
+    expect(container.querySelector('input[name="dataset-name"]')).toBeNull();
+    act(() => buttonNamed(container, 'New dataset')!.click());
     const name = container.querySelector('input[name="dataset-name"]') as HTMLInputElement;
     type(name, 'golden');
     await act(async () => buttonNamed(container, 'Create dataset')!.click());
@@ -165,7 +172,7 @@ describe('DatasetsScreen list', () => {
     await flush();
     const post = calls.filter((c) => c.method === 'POST').at(-1)!;
     expect(post.body).toEqual({ name: 'fresh' });
-    expect(container.querySelector('tbody')!.textContent).toContain('fresh');
+    expect(container.querySelector('.ds-grid')!.textContent).toContain('fresh');
   });
 
   it('shows the daemon-down state with the URL kept and recovers in place', async () => {
