@@ -2,7 +2,14 @@ import { test, expect, type Page, type Route, type WebSocketRoute } from '@playw
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { ObserveAgentRow, ObserveInsights, ObserveSessionRow } from '../src/observe/types';
+import type {
+  ObserveAgentRow,
+  ObserveHubEntry,
+  ObserveInsights,
+  ObservePromptRow,
+  ObservePromptVersion,
+  ObserveSessionRow,
+} from '../src/observe/types';
 import { stubObserve } from './observeStub';
 import { SEED_ERROR, SEED_NEWEST_FAILURE, seedObserve } from './fixtures/seedObserve';
 
@@ -133,6 +140,83 @@ const sessions: ObserveSessionRow[] = [
   };
 });
 
+/** A prompt with a real history for the x-prompt-* review shots (the stub's `e2e-prompt` has two one-line versions). */
+const SUPPORT_TEXT = [
+  'You are Mira, the support agent for {{shop}}.',
+  'Answer in two or three short sentences.',
+  'Always cite the order id when you talk about an order.',
+  'Never promise a refund; open a refund request instead.',
+  'If the customer is upset, apologise once and move on to the fix.',
+];
+const supportVersion = (version: number, labels: string[], lines: string[], hoursAgo: number, uses: number): ObservePromptVersion => ({
+  prompt_id: `support-system-${version}`,
+  name: 'support-system',
+  version,
+  labels,
+  variables: ['shop'],
+  hash: `9f${version}c4e1a${version}`,
+  text: lines.join('\n'),
+  created_at: NOW - hoursAgo * HOUR,
+  uses,
+});
+const V4_TEXT = [...SUPPORT_TEXT.slice(0, 3), 'Never promise a refund; open a refund request with the order id instead.', SUPPORT_TEXT[4], 'Sign off with the ticket number.'];
+const supportVersions: ObservePromptVersion[] = [
+  supportVersion(4, ['staging'], V4_TEXT, 2, 3),
+  supportVersion(3, ['production'], SUPPORT_TEXT, 26, 41),
+  supportVersion(2, [], SUPPORT_TEXT.slice(0, 4), 74, 18),
+  supportVersion(1, [], ['You are Mira, the support agent.', 'Answer briefly.'], 170, 6),
+];
+const promptRow = (v: ObservePromptVersion, patch: Partial<ObservePromptRow>): ObservePromptRow => ({ ...v, versions: v.version, ...patch });
+const docPrompts: ObservePromptRow[] = [
+  promptRow(supportVersions[0], { uses: 68 }),
+  promptRow(supportVersions[1], { name: 'refund-triage', prompt_id: 'rt-2', version: 2, versions: 2, created_at: NOW - 5 * HOUR, uses: 12 }),
+  promptRow(supportVersions[2], {
+    name: 'order-lookup-tool',
+    prompt_id: 'ol-7',
+    version: 7,
+    versions: 7,
+    labels: ['production', 'staging'],
+    created_at: NOW - 30 * HOUR,
+    uses: 203,
+  }),
+  promptRow(supportVersions[3], { name: 'billing-faq', prompt_id: 'bf-1', created_at: NOW - 96 * HOUR, uses: 0 }),
+];
+
+/** A few namespaces of Context Hub entries for the x-hub review shots, written by the FLEET agents. */
+function hub(
+  namespace: string,
+  key: string,
+  value: unknown,
+  scope: ObserveHubEntry['scope'],
+  agent: string,
+  minutesAgo: number,
+  ttl: number | null = null,
+): ObserveHubEntry {
+  const created_at = NOW - minutesAgo * MINUTE;
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return { entry_id: `doc-${namespace}-${key}`, namespace, agent_id: agent, key, value: text, scope, created_at, ttl, expires_at: ttl === null ? null : created_at + ttl };
+}
+const hubEntries: ObserveHubEntry[] = [
+  hub('orders', 'return-policy', { returns_days: 30, restocking_fee: 0, regions: ['EU', 'UK', 'US'] }, 'fleet', 'orders-bot', 12),
+  hub('orders', 'carrier-status', { dhl: 'degraded', ups: 'ok', note: 'DHL delays in the EU since this morning' }, 'fleet', 'orders-bot', 4, 6 * HOUR),
+  hub('orders', 'last-order-id', 'ord_54', 'private', 'billing-bot', 2, 24 * HOUR),
+  hub('orders', 'escalation-contact', { team: 'logistics', channel: '#ops-orders', on_call: 'Sam' }, 'fleet', 'triage-bot', 95),
+  hub('billing', 'refund-limits', { auto_approve_under: 25, currency: 'EUR' }, 'fleet', 'billing-bot', 40),
+  hub('billing', 'invoice-template', 'Invoice {{number}} for {{customer}}: {{total}}, due {{due}}.', 'fleet', 'billing-bot', 300),
+  hub('support-kb', 'greeting', 'Hi, I am Mira from the shop support team.', 'fleet', 'triage-bot', 600),
+  hub('support-kb', 'known-issues', ['login loop on Safari 17', 'duplicate charge on retry'], 'fleet', 'triage-bot', 25, 2 * HOUR),
+  hub('support-kb', 'tone', 'friendly, brief, no emoji', 'fleet', 'orders-bot', 1_400),
+  hub('triage', 'queue-depth', { open: 14, waiting_on_customer: 5 }, 'private', 'billing-bot', 1, 10 * MINUTE),
+];
+
+/** The hub query as the daemon answers it: fleet entries plus the viewer's own private ones, by namespace and scope. */
+function hubRows(q: URLSearchParams): ObserveHubEntry[] {
+  const viewer = q.get('agent_id');
+  const ns = q.get('namespace');
+  const scope = q.get('scope');
+  return hubEntries.filter((e) => (!ns || e.namespace === ns) && (!scope || e.scope === scope) && (e.scope === 'fleet' || e.agent_id === viewer));
+}
+
 const json = (route: Route, body: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
 
 /** The doc-only fixtures; registered after seedObserve, so they answer first. */
@@ -143,6 +227,9 @@ async function docFixtures(page: Page): Promise<void> {
     if (p === '/api/v1/agents') return json(route, { agents });
     if (p === '/api/v1/insights') return json(route, insights());
     if (p === '/api/v1/sessions') return json(route, { sessions, total: sessions.length, limit: 50, offset: 0 });
+    if (p === '/api/v1/prompts') return json(route, { prompts: docPrompts });
+    if (p === '/api/v1/prompts/support-system') return json(route, { name: 'support-system', versions: supportVersions });
+    if (p === '/api/v1/hub') return json(route, { entries: hubRows(new URL(route.request().url()).searchParams) });
     return route.fallback();
   });
 }
@@ -238,6 +325,40 @@ test('prompts: a prompt with labels and a diff', async ({ page }) => {
   await open(page, '/prompts/e2e-prompt?diff=1,2');
   await expect(page.getByRole('region', { name: 'Compare versions' })).toBeVisible();
   await shoot(page, 'prompts');
+});
+
+// Review-only shots of the Prompts and Context Hub screens (x- prefix: not in docs/agent-forge.md).
+test('x-prompts-list: the prompt registry', async ({ page }) => {
+  await open(page, '/prompts');
+  await expect(rows(page)).toHaveCount(docPrompts.length);
+  await shoot(page, 'x-prompts-list');
+});
+
+test('x-prompt-history: a prompt with its version history', async ({ page }) => {
+  await open(page, '/prompts/support-system');
+  await expect(page.getByRole('region', { name: 'Version history' })).toContainText('v1');
+  await shoot(page, 'x-prompt-history');
+});
+
+test('x-prompt-diff-split: a side-by-side diff', async ({ page }) => {
+  await open(page, '/prompts/support-system?diff=3,4');
+  const compare = page.getByRole('region', { name: 'Compare versions' });
+  await compare.getByRole('button', { name: 'Side by side' }).click();
+  await expect(compare.locator('.prompt-diff-split')).toBeVisible();
+  await shoot(page, 'x-prompt-diff-split');
+});
+
+test('x-hub: namespaces', async ({ page }) => {
+  await open(page, '/hub?agent=billing-bot');
+  await expect(page.getByRole('main').getByText('support-kb')).toBeVisible();
+  await shoot(page, 'x-hub');
+});
+
+test('x-hub-entry: one entry open', async ({ page }) => {
+  await open(page, '/hub/orders?agent=billing-bot');
+  await page.getByRole('main').getByRole('button', { name: /carrier-status/ }).click();
+  await expect(page.getByRole('region', { name: 'Entry carrier-status' })).toBeVisible();
+  await shoot(page, 'x-hub-entry');
 });
 
 test('playground: loaded from a trace generation', async ({ page }) => {

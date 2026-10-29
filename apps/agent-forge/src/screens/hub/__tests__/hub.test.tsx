@@ -1,6 +1,9 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// ScreenHeader renders inline here (no shell host); its default status reads the app state.
+vi.mock('../../../state/AppState', () => ({ useAppState: () => ({ runStatus: null }) }));
+
 import { HubScreen } from '../HubScreen';
 import { fmtSpan, groupNamespaces, parseEditedValue } from '../hubModel';
 import { render } from '../../../ui/__tests__/render';
@@ -102,12 +105,13 @@ async function mountAt(hash: string) {
   return container;
 }
 
-const rows = (c: HTMLElement) => [...c.querySelectorAll('tbody tr')] as HTMLTableRowElement[];
+/** Namespace rows (a table) or entry cards (buttons). */
+const rows = (c: HTMLElement) => [...c.querySelectorAll('tbody tr, .hub-card')] as HTMLElement[];
 const rowFor = (c: HTMLElement, text: string) => rows(c).find((r) => r.textContent?.includes(text))!;
 const buttonNamed = (c: HTMLElement, name: string) => [...c.querySelectorAll('button')].find((b) => b.textContent?.trim() === name);
 const lastHub = () => hubRequests[hubRequests.length - 1].searchParams;
 
-async function open(row: HTMLTableRowElement) {
+async function open(row: HTMLElement) {
   act(() => row.click());
   await flush();
 }
@@ -242,6 +246,18 @@ describe('HubScreen', () => {
     const plain = c.querySelector('.hub-value')!;
     expect(plain.querySelector('.json-node')).toBeNull();
     expect(plain.querySelector('pre')?.textContent).toBe('plain words here');
+  });
+
+  it('entry cards answer j/k, and the open card is aria-current', async () => {
+    const c = await mountAt('#/hub/docs');
+    const cards = [...c.querySelectorAll<HTMLButtonElement>('.hub-card')];
+    expect(cards).toHaveLength(2);
+    cards[0].focus();
+    act(() => cards[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true })));
+    expect(document.activeElement).toBe(cards[1]);
+    await open(cards[1]);
+    expect(c.querySelector('.hub-card[aria-current="true"]')).toBe(cards[1]);
+    expect(c.querySelector('section.hub-entry')?.getAttribute('aria-label')).toBe(`Entry ${cards[1].querySelector('.hub-card-key')?.textContent}`);
   });
 
   it('private entries have no Edit; fleet entries do', async () => {
