@@ -1,102 +1,239 @@
 /*
- * Monitoring screen (#/monitoring): fleet table over the window / agent
- * toolbar and the chart grid. Colours from src/theme.css tokens only.
+ * Monitoring screen (#/monitoring): metric cards, the fleet card and the chart
+ * grid under the ScreenHeader (window + agent controls in its actions).
+ * Colours from src/theme.css tokens only.
  */
 
 .mon-screen {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-4);
   min-height: 0;
-  padding: 16px;
+  padding: var(--space-5) var(--page-gutter, 24px) var(--space-8);
   font-family: var(--font-ui);
   color: var(--text);
 }
 
+/* ---------- Header controls ---------- */
+.mon-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.mon-windows .seg-btn {
+  min-width: 40px;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+}
+.mon-agent-filter {
+  display: inline-flex;
+  min-width: 0;
+}
+.mon-agent-filter .select {
+  /* fixed: a long agent name in the options must not widen the header */
+  width: 180px;
+  max-width: 100%;
+}
+
+/* ---------- Metric cards ---------- */
+.mon-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+/* The p95 card's tooltip wrapper is the grid item; the card fills it. */
+.mon-metric {
+  display: flex;
+  min-width: 0;
+}
+.mon-metric > .metric-card {
+  flex: 1;
+}
+/* Stack the sparkline under the figures so it spans the card. */
+.mon-metrics .metric-card {
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--space-3);
+}
+.mon-metrics .metric-sparkline,
+.mon-metrics .metric-spark-skeleton,
+.mon-metrics .metric-card:not(:has(.metric-sparkline, .metric-spark-skeleton))::after {
+  width: 100%;
+  height: 28px;
+  /* pinned to the card's foot, so the row's sparklines line up */
+  margin-top: auto;
+}
+/* An empty or loading card keeps a populated card's height: the meta line and sparkline row are reserved. */
+.mon-metrics .metric-card:not(:has(.metric-sparkline, .metric-spark-skeleton))::after {
+  content: '';
+  display: block;
+}
+/* The kit sizes this skeleton inline at 32px; max-height brings it to the 28px sparkline row
+   (and block keeps it off the text baseline), so a loading card is exactly a populated card's height. */
+.mon-metrics .metric-spark-skeleton {
+  display: block;
+  max-height: 28px;
+}
+.mon-metrics .metric-main {
+  /* overline 15.4 + gap 4 + value 32 + gap 4 + one 18px meta line */
+  min-height: 74px;
+}
+
+/* ---------- Fleet card ---------- */
 .mon-agent {
-  font-weight: 600;
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.mon-agent-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
 }
 .mon-meta {
-  font-weight: 400;
+  /* gives way first: the version shrinks (and clips) before the name does */
+  flex: 0 1000 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--text-faint);
 }
 .mon-dropped {
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--warning);
   background: var(--warning-soft);
   font-weight: 600;
 }
-.mon-link {
-  color: var(--text);
-  text-decoration: underline;
-}
-
-.mon-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-}
-.mon-windows {
+.mon-rate {
   display: inline-flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  font-variant-numeric: tabular-nums;
+}
+.mon-rate-bar {
+  flex: none;
+  width: 40px;
+  height: 4px;
   overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--surface-3);
 }
-.mon-window {
-  border-radius: 0;
-  font-family: var(--font-mono);
+.mon-rate-fill {
+  display: block;
+  width: var(--fill, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--text-faint);
 }
-.mon-window.active {
-  background: var(--accent-soft);
+.mon-rate[data-high='true'] .mon-rate-value {
+  color: var(--danger);
+}
+.mon-rate[data-high='true'] .mon-rate-fill {
+  background: var(--danger);
+}
+.mon-traces-link {
+  max-width: 100%;
+  border-color: transparent;
+  white-space: nowrap;
+  text-decoration: none;
+  color: var(--text-muted);
+}
+.mon-traces-link:hover {
   color: var(--text);
-  font-weight: 600;
 }
-.mon-agent-filter {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--text-muted);
+.mon-traces-link svg {
+  width: 14px;
+  height: 14px;
 }
 
-.mon-loading {
-  padding: 24px;
-  color: var(--text-muted);
-}
-
+/* ---------- Chart grid ---------- */
 .mon-charts {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
 }
 .mon-chart {
+  display: flex;
   min-width: 0;
-  padding: 10px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
 }
-.mon-chart-title {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+.mon-chart > .card {
+  flex: 1;
+}
+.mon-chart-wide {
+  grid-column: 1 / -1;
+}
+.mon-chart .card-body {
+  padding-top: var(--space-3);
+}
+.mon-chart-skeleton {
+  display: block;
 }
 .mon-chart-note {
-  margin: 6px 0 0;
-  font-size: 11px;
+  margin: var(--space-2) 0 0;
+  font-size: 12px;
   color: var(--text-faint);
+}
+
+@media (max-width: 1100px) {
+  .mon-charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mon-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Compact fleet columns (FleetTable's COMPACT_QUERY): the error figure without its bar. */
+@media (max-width: 600px) {
+  .mon-rate-bar {
+    display: none;
+  }
+}
+/* Compact health: the pill's dot alone; its label is visually hidden, not removed. */
+.mon-health-dot {
+  display: inline-flex;
+}
+.mon-health-dot .status-pill {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.mon-health-dot .status-pill-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 @media (max-width: 480px) {
   .mon-screen {
-    padding: 12px;
+    padding-top: var(--space-4);
   }
-  .mon-charts {
-    grid-template-columns: minmax(0, 1fr);
+  .mon-metrics {
+    gap: var(--space-3);
+  }
+  .mon-agent-filter .select {
+    max-width: 100%;
+  }
+  /* at phone width the name keeps the room; the version drops out */
+  .mon-meta {
+    display: none;
+  }
+  .mon-header .page-header-actions {
+    margin-left: 0;
   }
 }

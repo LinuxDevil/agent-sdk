@@ -44,9 +44,10 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 
 const FLEET = [
-  { id: 'orders-bot', name: 'Orders bot', project: 'shop', status: 'healthy', age: 4_000, runs: 21, errorRate: 0.19, p95: 1_320 },
-  { id: 'billing-bot', name: 'Billing bot', project: 'shop', status: 'healthy', age: 9_000, runs: 20, errorRate: 0.2, p95: 980 },
-  { id: 'triage-bot', name: 'Triage bot', project: 'support', status: 'stale', age: 41_000, runs: 19, errorRate: 0.21, p95: 2_600 },
+  { id: 'orders-bot', name: 'Orders bot', project: 'shop', status: 'healthy', age: 4_000, runs: 412, errorRate: 0.021, p95: 1_320, dropped: 0 },
+  { id: 'billing-bot', name: 'Billing bot', project: 'shop', status: 'healthy', age: 9_000, runs: 268, errorRate: 0.034, p95: 980, dropped: 0 },
+  { id: 'triage-bot', name: 'Triage bot', project: 'support', status: 'stale', age: 41_000, runs: 187, errorRate: 0.081, p95: 2_600, dropped: 3 },
+  { id: 'refunds-bot', name: 'Refunds bot', project: 'shop', status: 'down', age: 5 * HOUR, runs: 46, errorRate: 0.043, p95: 1_750, dropped: 12 },
 ] as const;
 
 const agents: ObserveAgentRow[] = FLEET.map((a) => ({
@@ -61,36 +62,61 @@ const agents: ObserveAgentRow[] = FLEET.map((a) => ({
   heartbeat_interval_ms: 15_000,
   hostname: 'seed-host',
   pid: 4242,
-  dropped: 0,
+  dropped: a.dropped,
   runs_today: a.runs,
   error_rate_today: a.errorRate,
 }));
+/**
+ * A registered agent with an 80-character name that has not run today (so it is in the
+ * fleet table, where the name truncates with a tooltip, but in no chart).
+ */
+agents.push({
+  ...agents[0]!,
+  agent_id: 'onboarding-concierge',
+  name: 'Customer onboarding concierge for enterprise accounts across EMEA and APAC (v2).',
+  status: 'stale',
+  last_heartbeat: NOW - 95_000,
+  heartbeat_age_ms: 95_000,
+  dropped: 0,
+  runs_today: 0,
+  error_rate_today: 0,
+});
 
-/** 18 hourly buckets per agent; a wave so the charts have shape. */
-function series(): ObserveInsights['series'] {
+/**
+ * Rollup rows per agent for every `granularity` bucket from `since` to now: gentle
+ * waves so the charts have shape, and an agent that is down stops reporting
+ * once its heartbeat stopped. The window before the shown one is in the rows
+ * too (Monitoring asks for it), so the metric cards get a change.
+ */
+function series(since: number, granularity: 'hour' | 'day'): ObserveInsights['series'] {
+  const step = granularity === 'day' ? 24 * HOUR : HOUR;
+  const scale = step / HOUR;
   const rows: ObserveInsights['series'] = [];
   FLEET.forEach((a, n) => {
-    for (let h = 17; h >= 0; h -= 1) {
-      const bucket = Math.floor((NOW - h * HOUR) / HOUR) * HOUR;
-      const runs = 2 + ((h + n * 3) % 4);
-      const errors = h % 5 === n ? 1 : 0;
+    for (let bucket = Math.floor(since / step) * step; bucket <= NOW - a.age; bucket += step) {
+      const i = bucket / step;
+      const runs = Math.round((a.runs / 24) * (1 + 0.35 * Math.sin(i / 3 + n * 1.7)) * scale);
+      // A smooth rate (not whole errors per bucket), so the error-rate chart reads as trends, not spikes.
+      const rate = a.errorRate * (1 + 0.5 * Math.sin(i / 2.5 + n * 2.1));
+      const errors = runs * rate;
       const values: Record<string, number> = {
         runs,
         errors,
-        cost_usd: runs * 0.0009,
+        cost_usd: runs * 0.0009 * (1 + n * 0.4),
         input_tokens: runs * 720,
         output_tokens: runs * 55,
-        p95_latency_ms: a.p95 * (0.7 + ((h + n) % 4) * 0.12),
-        error_rate: errors / runs,
+        p95_latency_ms: a.p95 * (0.85 + 0.2 * Math.sin(i / 2 + n)),
+        error_rate: runs ? rate : 0,
       };
       for (const [metric, value] of Object.entries(values))
-        rows.push({ bucket_start: bucket, granularity: 'hour', agent_id: a.id, metric, value });
+        rows.push({ bucket_start: bucket, granularity, agent_id: a.id, metric, value });
     }
   });
   return rows;
 }
 
-const insights = (): ObserveInsights => ({
+/** The insights answer for `url`: the fleet's `days=1` call, or a window's rollups (`since` + `granularity`). */
+const insights = (url: URL): ObserveInsights => ({
   window: { since: NOW - 24 * HOUR, until: NOW },
   agents: FLEET.map((a) => ({
     agent_id: a.id,
@@ -106,7 +132,10 @@ const insights = (): ObserveInsights => ({
     p50_latency_ms: a.p95 / 2,
     p95_latency_ms: a.p95,
   })),
-  series: series(),
+  series: series(
+    Number(url.searchParams.get('since') ?? NOW - 24 * HOUR),
+    url.searchParams.get('granularity') === 'day' ? 'day' : 'hour',
+  ),
 });
 
 const sessions: ObserveSessionRow[] = [
@@ -139,9 +168,10 @@ const json = (route: Route, body: unknown) => route.fulfill({ status: 200, conte
 async function docFixtures(page: Page): Promise<void> {
   await page.route('**/observe/api/v1/**', (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
-    const p = new URL(route.request().url()).pathname.replace(/^\/observe/, '');
+    const url = new URL(route.request().url());
+    const p = url.pathname.replace(/^\/observe/, '');
     if (p === '/api/v1/agents') return json(route, { agents });
-    if (p === '/api/v1/insights') return json(route, insights());
+    if (p === '/api/v1/insights') return json(route, insights(url));
     if (p === '/api/v1/sessions') return json(route, { sessions, total: sessions.length, limit: 50, offset: 0 });
     return route.fallback();
   });
@@ -203,9 +233,62 @@ test('threads: the session list', async ({ page }) => {
 test('monitoring: fleet and charts', async ({ page }) => {
   await open(page, '/monitoring');
   await expect(page.locator('.mon-chart').first()).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Fleet' }).locator('tbody tr')).toHaveCount(FLEET.length);
+  await expect(page.getByRole('region', { name: 'Fleet' }).locator('tbody tr')).toHaveCount(agents.length);
   await shoot(page, 'monitoring');
 });
+
+// Review shots of the Monitoring redesign (x- prefix: never docs images).
+const monitoringReady = async (page: Page) => {
+  await expect(page.locator('.mon-chart svg.tsc-svg').first()).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Fleet' }).locator('tbody tr:not(.skeleton-row)')).toHaveCount(agents.length);
+};
+
+for (const win of ['1h', '7d'] as const) {
+  test(`x-monitoring: the ${win} window`, async ({ page }) => {
+    await open(page, `/monitoring?window=${win}`);
+    await monitoringReady(page);
+    await shoot(page, `x-monitoring-${win}`);
+  });
+}
+
+test('x-monitoring: loading (the rollup query stalls)', async ({ page }) => {
+  await page.route('**/observe/api/v1/insights?*', (route) =>
+    new URL(route.request().url()).searchParams.has('granularity') ? new Promise<void>(() => undefined) : route.fallback(),
+  );
+  await open(page, '/monitoring');
+  await expect(page.locator('.mon-charts[aria-busy="true"]')).toBeVisible();
+  await shoot(page, 'x-monitoring-loading');
+});
+
+test('x-monitoring: no agents and an empty window', async ({ page }) => {
+  await page.route('**/observe/api/v1/agents*', (route) => json(route, { agents: [] }));
+  await page.route('**/observe/api/v1/insights?*', (route) =>
+    json(route, { window: { since: NOW - 24 * HOUR, until: NOW }, agents: [], series: [] }),
+  );
+  await open(page, '/monitoring');
+  await expect(page.locator('.mon-charts-empty')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Fleet' }).getByText('No agents registered yet')).toBeVisible();
+  await shoot(page, 'x-monitoring-empty');
+});
+
+test('x-monitoring: daemon down', async ({ page }) => {
+  await page.route('**/observe/**', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"down"}' }));
+  await open(page, '/monitoring');
+  await expect(page.getByRole('main').getByText('lousho observe start')).toBeVisible();
+  await shoot(page, 'x-monitoring-down');
+});
+
+for (const width of [860, 375]) {
+  test(`x-monitoring: ${width}px wide, the whole screen`, async ({ page }) => {
+    // The screen scrolls inside its own pane, so a tall viewport stands in for a full-page shot.
+    await page.setViewportSize({ width, height: width < 600 ? 2400 : 1700 });
+    await open(page, '/monitoring');
+    await monitoringReady(page);
+    await page.mouse.move(0, 0);
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: path.join(OUT, `studio-x-monitoring-${width}.png`) });
+  });
+}
 
 test('scores: an expanded eval', async ({ page }) => {
   await open(page, '/evals/scores?open=e2e-eval');

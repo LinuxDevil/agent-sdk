@@ -1,6 +1,8 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../../state/AppState', () => ({ useAppState: () => ({ runStatus: null }) }));
+
 import type { ObserveAgentRow, ObserveRollupRow } from '../../../observe/types';
 import { render } from '../../../ui/__tests__/render';
 import { MonitoringScreen, MONITORING_POLL_MS } from '../MonitoringScreen';
@@ -80,6 +82,8 @@ async function waitFor(check: () => boolean, turns = 50) {
 const fleetRow = (c: HTMLElement, name: string) =>
   [...c.querySelectorAll('.mon-fleet tbody tr')].find((tr) => tr.textContent!.includes(name)) as HTMLElement | undefined;
 const chart = (c: HTMLElement, title: string) => c.querySelector(`[data-chart="${title}"]`) as HTMLElement | null;
+/** The chart's plot is drawn (while loading, the card holds a skeleton instead). */
+const drawn = (c: HTMLElement, title: string) => chart(c, title)?.querySelector('svg.tsc-svg') != null;
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
@@ -104,17 +108,40 @@ describe('MonitoringScreen', () => {
     expect(support.textContent).toContain('5s ago');
     expect(support.textContent).toContain('12');
     expect(support.textContent).toContain('25.0%');
-    expect(support.querySelector('a[href="#/traces?agent=a1"]')).not.toBeNull();
+    expect(support.querySelector('a[href="#/traces?agent=a1"]')?.textContent).toBe('View traces for Support bot');
+    // A truncated name shows in full (with the id) as a tooltip.
+    expect(support.querySelector('.mon-agent-name')?.getAttribute('title')).toBe('Support bot — a1');
     const billing = fleetRow(c, 'Billing bot')!;
     expect(billing.querySelector('.status-pill.pill-ok')?.textContent).toBe('healthy');
     expect(billing.querySelector('[data-dropped]')?.textContent).toBe('—');
+  });
+
+  it('at phone widths the traces link is icon-only with the same accessible name', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(max-width: 600px)',
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    daemon();
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => fleetRow(c, 'Support bot') !== undefined);
+    const link = fleetRow(c, 'Support bot')!.querySelector('a.mon-traces-link')!;
+    expect(link.classList.contains('btn-icon')).toBe(true);
+    expect(link.textContent).toBe('View traces for Support bot');
+    expect(link.querySelector('.visually-hidden')?.textContent).toBe('View traces for Support bot');
+    // Runs and error rate stay.
+    expect(fleetRow(c, 'Support bot')!.textContent).toContain('25.0%');
+    // Health is the dot alone, with the status still in the cell (visually hidden) and as its tooltip.
+    const health = fleetRow(c, 'Support bot')!.querySelector('.mon-health-dot')!;
+    expect(health.getAttribute('title')).toBe('stale');
+    expect(health.querySelector('.status-pill.pill-warning .status-pill-label')?.textContent).toBe('stale');
   });
 
   it('renders a single-bucket series as a point', async () => {
     const w = chartWindow('24h', NOW);
     daemon([rollup(w.to - HOUR, 'a1', 'runs', 3), rollup(w.to - HOUR, 'a1', 'p95_latency_ms', 900)]);
     const c = render(<MonitoringScreen />);
-    await waitFor(() => chart(c, 'Runs') !== null);
+    await waitFor(() => drawn(c, 'Runs'));
     expect(chart(c, 'Runs')!.querySelector('circle.tsc-point[data-series="ok"]')).not.toBeNull();
     expect(chart(c, 'Latency p95')!.querySelector('circle.tsc-point[data-series="a1"]')).not.toBeNull();
   });
@@ -131,7 +158,7 @@ describe('MonitoringScreen', () => {
       rollup(t, 'a2', 'error_rate', 0.25),
     ]);
     const c = render(<MonitoringScreen />);
-    await waitFor(() => chart(c, 'Latency p95') !== null);
+    await waitFor(() => drawn(c, 'Latency p95'));
     for (const title of ['Latency p95', 'Error rate']) {
       const points = chart(c, title)!.querySelectorAll('circle.tsc-point');
       expect([...points].map((p) => p.getAttribute('data-series'))).toEqual(['a1', 'a2']);
@@ -146,9 +173,77 @@ describe('MonitoringScreen', () => {
     const ids = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7'];
     daemon(ids.flatMap((id, i) => [rollup(w.from, id, 'runs', i + 1), rollup(w.from, id, 'p95_latency_ms', 100)]));
     const c = render(<MonitoringScreen />);
-    await waitFor(() => chart(c, 'Latency p95') !== null);
+    await waitFor(() => drawn(c, 'Latency p95'));
     expect(chart(c, 'Latency p95')!.querySelectorAll('circle.tsc-point')).toHaveLength(5);
     expect(chart(c, 'Latency p95')!.querySelector('.mon-chart-note')?.textContent).toContain('2 more agents not shown');
+  });
+
+  it('metric cards show the window figures with the change against the previous window', async () => {
+    const w = chartWindow('24h', NOW);
+    const span = w.to - w.from;
+    daemon([
+      rollup(w.from, 'a1', 'runs', 10),
+      rollup(w.from, 'a1', 'errors', 1),
+      rollup(w.from, 'a1', 'cost_usd', 0.5),
+      rollup(w.from, 'a1', 'p95_latency_ms', 800),
+      rollup(w.from + HOUR, 'a1', 'runs', 20),
+      rollup(w.from + HOUR, 'a1', 'errors', 2),
+      rollup(w.from + HOUR, 'a1', 'cost_usd', 0.5),
+      rollup(w.from + HOUR, 'a1', 'p95_latency_ms', 1100),
+      // The previous window: 15 runs, 3 errors, $2, p95 2s.
+      rollup(w.from - span, 'a1', 'runs', 15),
+      rollup(w.from - span, 'a1', 'errors', 3),
+      rollup(w.from - span, 'a1', 'cost_usd', 2),
+      rollup(w.from - span, 'a1', 'p95_latency_ms', 2000),
+    ]);
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => drawn(c, 'Runs'));
+    const card = (label: string) =>
+      [...c.querySelectorAll('.metric-card')].find((el) => el.querySelector('.metric-label')?.textContent === label)!;
+    expect(card('Runs').querySelector('.metric-value')?.textContent).toBe('30');
+    expect(card('Runs').querySelector('.metric-delta')?.textContent).toContain('up 100% vs previous 24h');
+    expect(card('Error rate').querySelector('.metric-value')?.textContent).toBe('10.0%');
+    expect(card('Error rate').querySelector('.metric-delta')?.textContent).toContain('down 10 pp vs previous 24h');
+    expect(card('Error rate').querySelector('.metric-delta')?.getAttribute('data-tone')).toBe('good');
+    expect(card('p95 latency').querySelector('.metric-value')?.textContent).toBe('1.0s');
+    // With a delta on the line, the weighting moves to the card's tooltip (and stays spoken).
+    const spoken = [...card('p95 latency').querySelectorAll('.metric-meta .visually-hidden')].map((e) => e.textContent).join(' ');
+    expect(spoken).toContain('runs-weighted');
+    expect(card('p95 latency').closest('[title]')?.getAttribute('title')).toContain('Runs-weighted');
+    expect(card('Cost').querySelector('.metric-value')?.textContent).toBe('$1.00');
+    expect(card('Cost').querySelector('.metric-delta')?.getAttribute('data-tone')).toBe('good');
+    expect(card('Runs').querySelector('svg.metric-sparkline')).not.toBeNull();
+    // The charts draw the current window only: the previous window's bucket is outside it.
+    expect(chart(c, 'Runs')!.querySelectorAll('polyline.tsc-line[data-series="ok"]')).toHaveLength(1);
+  });
+
+  it('shows no delta without a previous window', async () => {
+    const w = chartWindow('24h', NOW);
+    daemon([rollup(w.from, 'a1', 'runs', 10)]);
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => drawn(c, 'Runs'));
+    expect(c.querySelector('.metric-delta')).toBeNull();
+    expect(c.textContent).toContain('runs-weighted');
+  });
+
+  it('shows card skeletons while the charts load, and an empty state for an empty window', async () => {
+    const { fetchFn } = daemon();
+    let release: () => void = () => undefined;
+    const stalled = new Promise<void>((r) => (release = r));
+    const passthrough = fetchFn.getMockImplementation()!;
+    fetchFn.mockImplementation(async (input) => {
+      if (String(input).includes('granularity=')) await stalled;
+      return passthrough(input);
+    });
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => fleetRow(c, 'Support bot') !== undefined);
+    expect(c.querySelector('.mon-charts[aria-busy="true"] [role="status"]')?.textContent).toBe('Loading charts');
+    expect(c.querySelectorAll('.mon-chart .skeleton').length).toBe(5);
+    expect(c.querySelectorAll('.metric-card[aria-busy="true"]').length).toBe(4);
+    expect(c.querySelector('.mon-metrics')?.textContent).not.toContain('runs-weighted');
+    release();
+    await waitFor(() => c.querySelector('.mon-charts-empty') !== null);
+    expect(c.querySelector('.mon-charts-empty')?.textContent).toContain('No runs in this window');
   });
 
   it('offers an agent= id the fleet does not list in the agent select', async () => {
@@ -166,7 +261,7 @@ describe('MonitoringScreen', () => {
     const w = chartWindow('24h', NOW);
     daemon([rollup(w.from, 'a1', 'runs', 1)]);
     const c = render(<MonitoringScreen />);
-    await waitFor(() => chart(c, 'Runs') !== null);
+    await waitFor(() => drawn(c, 'Runs'));
     const plot = chart(c, 'Runs')!.querySelector('rect.tsc-plot')!;
     // jsdom lays the 600 px chart out at x = 0; the plot starts after the 48 px y-axis gutter.
     act(() => plot.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 50 })));
@@ -180,6 +275,11 @@ describe('MonitoringScreen', () => {
     await waitFor(() => calls('/api/v1/insights').some((u) => u.includes('granularity=day')));
     const chartCall = calls('/api/v1/insights').find((u) => u.includes('granularity=day'))!;
     expect(chartCall).toContain('agent_id=a1');
+    // One query reaches back a second window span, for the metric cards' change.
+    const week = chartWindow('7d', NOW);
+    const q = new URL(chartCall, 'http://x').searchParams;
+    expect(Number(q.get('since'))).toBe(week.from - (week.to - week.from));
+    expect(Number(q.get('until'))).toBe(week.to);
     const pressed = () => c.querySelector('.mon-windows [aria-pressed="true"]')?.textContent;
     expect(pressed()).toBe('7d');
 

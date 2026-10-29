@@ -83,6 +83,11 @@ function formatTime(t: number, multiDay: boolean): string {
   return multiDay ? `${MONTHS[d.getMonth()]} ${d.getDate()}` : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+/** The summary label's ends: the date alone for day buckets, date and time for shorter ones (a 24h span starts and ends at the same HH:MM). */
+function formatStamp(t: number, multiDay: boolean): string {
+  return multiDay ? formatTime(t, true) : `${formatTime(t, true)} ${formatTime(t, false)}`;
+}
+
 function bucketCount(from: number, to: number, bucketMs: number): number {
   if (!(bucketMs > 0) || !(to > from)) return 1;
   return Math.max(1, Math.ceil((to - from) / bucketMs));
@@ -134,11 +139,16 @@ function yTicks(values: Buckets[]): number[] {
   return ticks;
 }
 
-/** Boundary indices 0..n to label: every `step`th, at most MAX_X_LABELS of them. */
-function xTickIndices(n: number): number[] {
+/** Boundary indices 0..n to label: every `step`th, at most MAX_X_LABELS of them, dropping any whose label repeats an earlier one. */
+function xTickIndices(n: number, labelAt: (k: number) => string): number[] {
   const step = Math.ceil((n + 1) / MAX_X_LABELS);
   const out: number[] = [];
-  for (let k = 0; k <= n; k += step) out.push(k);
+  const seen = new Set<string>();
+  for (let k = 0; k <= n; k += step) {
+    const label = labelAt(k);
+    if (!seen.has(label)) out.push(k);
+    seen.add(label);
+  }
   return out;
 }
 
@@ -429,7 +439,8 @@ function useBucketHover(n: number, L: Layout, onPick: (k: number) => void) {
  *   over a gradient area fill (`area`, default on), and a run of one bucket is a single point.
  * - Y ticks are nice 1/2/5 x 10^n steps from 0 (or the minimum, if negative) to at least
  *   the maximum of the visible series; empty or all-zero data reads 0..1. X labels sit on
- *   bucket boundaries (at most 8), HH:MM for sub-day windows and "MMM D" for longer ones, local time.
+ *   bucket boundaries (at most 8, never the same label twice), HH:MM for sub-day buckets and "MMM D"
+ *   for day buckets, local time.
  * - Hover or Left/Right (the plot is focusable) shows a crosshair and a polite status
  *   tooltip with every visible series' value ("—" when absent); click or Enter calls
  *   `onBucketClick(start, start + bucketMs)`. Escape or leaving clears it.
@@ -456,14 +467,16 @@ export function TimeSeriesChart({
   const values = visible.map((s) => bucketize(s.points, from, bucketMs, n));
   const ticks = yTicks(values);
   const L = layout(n, width, height, ticks);
-  const multiDay = to - from >= DAY;
+  // Day (or longer) buckets read as dates; hour buckets as HH:MM, even across midnight.
+  const multiDay = bucketMs >= DAY;
+  const xs = xTickIndices(n, (k) => formatTime(from + k * bucketMs, multiDay));
   const pick = (k: number) => onBucketClick?.(from + k * bucketMs, from + (k + 1) * bucketMs);
   const h = useBucketHover(n, L, pick);
   const gradientId = (s: TimeSeries) => `${idBase}-area-${series.indexOf(s)}`;
   const hoverX = h.hover === null ? 0 : cx(L, h.hover);
   const label =
     `Time series chart: ${series.map((s) => s.label).join(', ') || 'no series'}; ` +
-    `${n} buckets from ${formatTime(from, multiDay)} to ${formatTime(from + n * bucketMs, multiDay)}`;
+    `${n} buckets from ${formatStamp(from, multiDay)} to ${formatStamp(from + n * bucketMs, multiDay)}`;
 
   return (
     <div className="tsc" ref={wrapRef}>
@@ -479,7 +492,7 @@ export function TimeSeriesChart({
         onKeyDown={h.onKeyDown}
         onBlur={h.onPointerLeave}
       >
-        <Axes L={L} ticks={ticks} xs={xTickIndices(n)} from={from} bucketMs={bucketMs} multiDay={multiDay} yFormat={yFormat} />
+        <Axes L={L} ticks={ticks} xs={xs} from={from} bucketMs={bucketMs} multiDay={multiDay} yFormat={yFormat} />
         <Plot series={visible} values={values} L={L} area={area} idOf={gradientId} />
         {h.hover !== null && <Crosshair k={h.hover} L={L} series={visible} values={values} />}
         <rect

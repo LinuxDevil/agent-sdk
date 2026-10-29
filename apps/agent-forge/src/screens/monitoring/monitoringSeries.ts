@@ -20,7 +20,7 @@ const WINDOW_MS: Record<MonitoringWindow, number> = { '1h': HOUR, '24h': DAY, '7
 
 /** Per-agent series beyond this many are left off the chart (with a note). */
 const MAX_AGENT_SERIES = 5;
-const AGENT_COLORS: SeriesColor[] = ['accent', 'info', 'warning', 'success', 'danger'];
+const AGENT_COLORS: SeriesColor[] = ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5'];
 
 /** `?window=`: one of {@link WINDOWS}; anything else is the default. */
 export function parseWindow(s: string | null): MonitoringWindow {
@@ -52,6 +52,14 @@ export function chartWindow(window: MonitoringWindow, now: number): ChartWindow 
   return { from, to, bucketMs, granularity };
 }
 
+/**
+ * The rollup query behind the charts and metric cards: the window plus the one
+ * before it (same length), so the cards can show a change without a second request.
+ */
+export function insightsSpan(w: ChartWindow): { since: number; until: number } {
+  return { since: w.from - (w.to - w.from), until: w.to };
+}
+
 /** Sum `metric` across agents into one point per bucket. */
 function summed(rows: ObserveRollupRow[], metric: string): TimeSeriesPoint[] {
   const byBucket = new Map<number, number>();
@@ -73,13 +81,13 @@ export function runsSeries(rows: ObserveRollupRow[]): TimeSeries[] {
 
 export function tokenSeries(rows: ObserveRollupRow[]): TimeSeries[] {
   return [
-    { id: 'input', label: 'Input', color: 'accent', points: summed(rows, 'input_tokens') },
-    { id: 'output', label: 'Output', color: 'info', points: summed(rows, 'output_tokens') },
+    { id: 'input', label: 'Input', color: 'chart-1', points: summed(rows, 'input_tokens') },
+    { id: 'output', label: 'Output', color: 'chart-2', points: summed(rows, 'output_tokens') },
   ];
 }
 
 export function costSeries(rows: ObserveRollupRow[]): TimeSeries[] {
-  return [{ id: 'cost', label: 'Cost', color: 'accent', points: summed(rows, 'cost_usd') }];
+  return [{ id: 'cost', label: 'Cost', color: 'chart-1', points: summed(rows, 'cost_usd') }];
 }
 
 export interface PerAgentSeries {

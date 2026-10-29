@@ -4,19 +4,25 @@ import { AgentSelect, ObserveDaemonDown, ObserveError } from '../../observe/chro
 import { useAgents, useDaemonDown, useDaemonHealth, useInsights } from '../../observe/useObserve';
 import { navigate } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
-import { EmptyState } from '../../ui/EmptyState';
+import { ScreenHeader } from '../../shell/ScreenHeader';
+import { Card } from '../../ui/Card';
 import { agentLabel, FleetTable } from './FleetTable';
-import { MonitoringCharts } from './MonitoringCharts';
+import { MetricRow } from './MetricRow';
+import { MonitoringCharts, MonitoringChartsEmpty, MonitoringChartsLoading } from './MonitoringCharts';
+import { splitWindow } from './monitoringMetrics';
 import {
   bucketTracesPath,
   chartWindow,
   formatWindow,
+  insightsSpan,
   parseWindow,
   WINDOWS,
   type MonitoringWindow,
 } from './monitoringSeries';
 // The shared daemon-down / error presentation is styled there.
 import '../../observe/observe.css';
+// The `.segmented` / `.seg-btn` control the window picker shares with TimeRangePicker.
+import '../../ui/filterBar.css';
 import './monitoring.css';
 
 /** Fleet + charts refresh: Monitoring is the "is my fleet up" screen, so it polls by itself. */
@@ -37,12 +43,12 @@ const formatAgent = (v: string): string | null => v || null;
 
 function WindowPicker({ value, onChange }: { value: MonitoringWindow; onChange: (w: MonitoringWindow) => void }) {
   return (
-    <div className="mon-windows" role="group" aria-label="Window">
+    <div className="segmented mon-windows" role="group" aria-label="Window">
       {WINDOWS.map((w) => (
         <button
           key={w}
           type="button"
-          className={`btn btn-ghost mon-window${w === value ? ' active' : ''}`}
+          className="seg-btn"
           aria-pressed={w === value}
           onClick={() => onChange(w)}
         >
@@ -53,7 +59,11 @@ function WindowPicker({ value, onChange }: { value: MonitoringWindow; onChange: 
   );
 }
 
-/** Fleet registry, last-24h per-agent figures and the window's rollup series, all refreshed every 15 s (and when the daemon comes back). */
+/**
+ * Fleet registry, last-24h per-agent figures and the window's rollup series
+ * (reaching back one more window, for the metric deltas), all refreshed every
+ * 15 s (and when the daemon comes back).
+ */
 function useMonitoringData(win: MonitoringWindow, agentId: string) {
   const tick = usePoll(MONITORING_POLL_MS);
   const health = useDaemonHealth();
@@ -64,7 +74,7 @@ function useMonitoringData(win: MonitoringWindow, agentId: string) {
   const agents = useAgents(undefined, refreshKey);
   const fleetInsights = useInsights({ days: 1 }, refreshKey);
   const insights = useInsights(
-    { since: chart.from, until: chart.to, agent_id: agentId || undefined, granularity: chart.granularity },
+    { ...insightsSpan(chart), agent_id: agentId || undefined, granularity: chart.granularity },
     refreshKey,
   );
   const queries = [agents, fleetInsights, insights];
@@ -88,46 +98,60 @@ export function MonitoringScreen() {
   const names = useMemo(() => new Map((agents.data ?? []).map((a) => [a.agent_id, agentLabel(a)])), [agents.data]);
   const labelOf = (id: string) => names.get(id) ?? id.slice(0, 8);
   const rows = insights.data?.series ?? [];
+  // Charts draw the window only; the earlier rows are the metric cards' comparison.
+  const windowRows = splitWindow(rows, chart.from).current;
+  const chartsLoading = insights.data === undefined && insights.loading;
   // An `agent=` id the fleet doesn't list still filters, so the select offers it too.
   const agentOptions = useMemo(() => {
     const fleet = agents.data ?? [];
     return agentId && !fleet.some((a) => a.agent_id === agentId) ? [...fleet, { agent_id: agentId, name: null }] : fleet;
   }, [agents.data, agentId]);
 
+  const header = (
+    <ScreenHeader
+      title="Monitoring"
+      className="mon-header"
+      status={null}
+      description="Fleet health, throughput, latency and cost over time."
+      actions={
+        <div className="mon-controls">
+          <WindowPicker value={win} onChange={setWin} />
+          <label className="mon-agent-filter">
+            <span className="visually-hidden">Agent</span>
+            <AgentSelect agents={agentOptions} value={agentId} onChange={setAgentId} />
+          </label>
+        </div>
+      }
+    />
+  );
   if (down)
     return (
       <div className="mon-screen">
+        {header}
         <ObserveDaemonDown />
       </div>
     );
   return (
     <div className="mon-screen">
-      <h2 className="visually-hidden">Monitoring</h2>
+      {header}
       <ObserveError error={error} />
+      <MetricRow rows={rows} from={chart.from} win={win} loading={chartsLoading} />
       <section className="mon-fleet" aria-label="Fleet">
-        <FleetTable
-          agents={agents.data ?? []}
-          insights={fleetInsights.data?.agents}
-          loading={agents.loading && agents.data === undefined}
-        />
+        <Card as="div" title="Agents" description="Registered agents: today's runs and error rate, last-24h p95." padding="none">
+          <FleetTable
+            agents={agents.data ?? []}
+            insights={fleetInsights.data?.agents}
+            loading={agents.loading && agents.data === undefined}
+          />
+        </Card>
       </section>
-      <div className="mon-toolbar">
-        <WindowPicker value={win} onChange={setWin} />
-        <label className="mon-agent-filter">
-          Agent
-          <AgentSelect agents={agentOptions} value={agentId} onChange={setAgentId} />
-        </label>
-      </div>
-      {insights.data === undefined && insights.loading ? (
-        <div className="mon-loading">Loading charts...</div>
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title="No runs in this window"
-          hint="Charts fill in as agents report runs; try a longer window or another agent."
-        />
+      {chartsLoading ? (
+        <MonitoringChartsLoading />
+      ) : windowRows.length === 0 ? (
+        <MonitoringChartsEmpty />
       ) : (
         <MonitoringCharts
-          rows={rows}
+          rows={windowRows}
           window={chart}
           agentLabel={labelOf}
           onBucketClick={(from, to) => navigate(bucketTracesPath(from, to, agentId))}
