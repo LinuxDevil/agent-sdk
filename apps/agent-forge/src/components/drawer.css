@@ -231,8 +231,7 @@
 }
 
 /* ---------- Chat ----------
-   Ported from .design-ref/agent-forge-mockup.html's `.chat-*` classes -
-   user/agent bubbles, avatars, timestamps, a typing indicator, and inline
+   The `.chat-*` classes - user/agent bubbles, avatars, timestamps, a typing indicator, and inline
    tool-call/approval cards under an agent bubble. See ChatPanel.tsx. */
 .chat-panel {
   display: flex;

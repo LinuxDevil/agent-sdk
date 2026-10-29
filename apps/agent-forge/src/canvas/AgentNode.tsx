@@ -4,8 +4,7 @@ import type { AgentGraphNode, AgentGraphNodeType } from '../graph/types';
 import { StatusPill } from '../ui/StatusPill';
 
 /**
- * Custom ReactFlow node renderer for every `AgentGraphNodeType`, styled to
- * match `.design-ref/agent-forge-mockup.html`'s `.node` chrome: a colored
+ * Custom ReactFlow node renderer for every `AgentGraphNodeType`: a colored
  * type-swatch header with the node's name, a meta line (an LLM node's
  * `provider/model` chip and tool count, and the node's run status pill), a
  * body of key/value config rows read straight from the node's
@@ -26,8 +25,7 @@ const NODE_META: Record<AgentGraphNodeType, { color: string; icon: string; hasIn
   approval: { color: 'var(--warning)', icon: '✓', hasIn: true, hasOut: true },
   output: { color: 'var(--success)', icon: '→', hasIn: true, hasOut: false },
   // Router shares tool's warning-orange swatch family (both are
-  // "control" nodes in the mockup's visual language, see
-  // .design-ref/agent-forge-mockup.html) but with its own icon so it reads
+  // "control" nodes) but with its own icon so it reads
   // distinctly on the canvas; `hasOut: true` matters here more than
   // anywhere else - it's the one node type actually expected to carry
   // MULTIPLE outgoing edges (its branches), which ReactFlow already
@@ -106,8 +104,7 @@ function nodeClassName(selected: boolean | undefined, highlighted?: boolean, has
   return `rf-node${selected ? ' selected' : ''}${highlighted ? ' highlighted' : ''}${hasBreakpoint ? ' has-breakpoint' : ''}`;
 }
 
-// Pre·N / post·N badges, matching the mockup's `.hook-badge`
-// (search `.design-ref/agent-forge-mockup.html` for `hook-badge`) - only
+// Pre·N / post·N badges (`.hook-badge`) - only
 // ENABLED hooks count, since a disabled hook has no runtime effect (see
 // graphToSpec.ts's serialization, which drops disabled hooks entirely).
 function HookBadge({ phase, count }: { phase: 'pre' | 'post'; count: number }) {

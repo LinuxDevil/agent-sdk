@@ -144,8 +144,7 @@ function useHookSelection(hooks: AgentNodeHookInstance[]) {
  * `AgentNodeHookInstance`), lets you toggle each on/off, add one from a
  * starter template (the redact-pii/rate-limit/audit-log/
  * inject-context), and edit its code body in a real CodeMirror editor
- * (replacing the mockup's static `.hook-code` preview - see
- * `.design-ref/agent-forge-mockup.html`). Only rendered for `llm`/`tool`
+ * (not a static preview). Only rendered for `llm`/`tool`
  * nodes, the two node types a `toolCall`/`generate` hook can meaningfully
  * attach to.
  *
