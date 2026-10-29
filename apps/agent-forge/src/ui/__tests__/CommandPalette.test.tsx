@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from './render';
@@ -13,6 +15,7 @@ vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 
 import { CommandPalette, buildCommands } from '../CommandPalette';
 import { SHORTCUTS, matchShortcut } from '../../shell/shortcuts';
+import { NAV_ITEMS } from '../../shell/NavRail';
 import { applyStoredTheme } from '../../shell/theme';
 import { ToastProvider } from '../Toast';
 
@@ -245,6 +248,74 @@ describe('CommandPalette modal keys', () => {
     } finally {
       window.removeEventListener('keydown', behind);
     }
+  });
+});
+
+describe('CommandPalette groups and look', () => {
+  const groups = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="listbox"] [role="group"]')].map((g) => ({
+      name: document.getElementById(g.getAttribute('aria-labelledby')!)?.textContent,
+      options: [...g.querySelectorAll('[role="option"]')].map((o) => o.textContent),
+    }));
+
+  it('groups commands under section labels, in the order the keyboard walks them', () => {
+    mount();
+    key('k', { ctrlKey: true });
+    const all = options();
+    expect(groups().map((g) => g.name)).toEqual(['Navigation', 'Agents', 'Actions']);
+    expect(groups().flatMap((g) => g.options)).toEqual(all);
+    expect(groups()[1]!.options).toEqual(['Open agent Support Bot', 'Open agent researcher']);
+    expect(groups()[2]!.options).toEqual(['Toggle theme']);
+    // Every option carries a decorative icon; the label is its whole text.
+    for (const o of document.querySelectorAll('[role="option"]')) {
+      expect(o.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    }
+    // ArrowUp from the first option wraps to the last group's last option.
+    key('ArrowUp', {}, input());
+    const active = document.getElementById(input().getAttribute('aria-activedescendant')!);
+    expect(active?.textContent).toBe('Toggle theme');
+    expect(active?.closest('[role="group"]')).toBe(document.querySelectorAll('[role="group"]')[2]);
+  });
+
+  it('"Go to" commands use the same icon as their nav rail item', () => {
+    for (const item of NAV_ITEMS) {
+      const cmd = buildCommands(`Go to ${item.label}`, [], () => {}).find((c) => c.id === `go:${item.id}`);
+      expect(cmd?.icon, item.id).toBe(item.icon);
+    }
+  });
+
+  it('puts a pasted trace id in its own leading group', () => {
+    mount();
+    key('k', { ctrlKey: true });
+    type('4bf92f3577b34da6');
+    expect(groups()).toEqual([{ name: 'Trace', options: ['Open trace 4bf92f3577b34da6'] }]);
+  });
+
+  it('shows a search icon, an Esc hint and a footer of key hints', () => {
+    mount();
+    key('k', { ctrlKey: true });
+    const palette = dialog('Command palette')!;
+    expect(palette.querySelector('.cmdk-search svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(palette.querySelector('.cmdk-search kbd')?.textContent).toBe('Esc');
+    const footer = palette.querySelector('.cmdk-footer')!;
+    expect(footer.textContent).toMatch(/navigate/);
+    expect(footer.textContent).toMatch(/open/);
+    expect(footer.textContent).toMatch(/close/);
+    expect(footer.querySelectorAll('kbd').length).toBeGreaterThanOrEqual(3);
+    // The input has no outline of its own; the search row shows focus instead.
+    const css = readFileSync(resolve(__dirname, '../commandPalette.css'), 'utf8');
+    expect(css).toMatch(/\.cmdk-search:focus-within\s*\{[^}]*var\(--accent\)/);
+    expect(css).not.toMatch(/var\(--bg\) 60%/);
+    // Still the one focusable control: Tab stays on the input.
+    expect(palette.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])')).toHaveLength(0);
+  });
+});
+
+describe('buildCommands groups', () => {
+  it('labels navigation, agent, action and trace commands with their group', () => {
+    const groupsOf = (q: string) => buildCommands(q, [{ id: 'a', name: 'Alpha' }], () => {}).map((c) => c.group);
+    expect(new Set(groupsOf(''))).toEqual(new Set(['Navigation', 'Agents', 'Actions']));
+    expect(groupsOf('abcdef12')[0]).toBe('Trace');
   });
 });
 

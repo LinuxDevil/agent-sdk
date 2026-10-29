@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -48,6 +50,55 @@ describe('MessageView', () => {
     expect(chips[0].textContent).toContain('get_weather');
     expect(list[3].textContent).toContain('call_1');
     expect(c.querySelector('.mv-label')?.textContent).toBe('Input');
+  });
+
+  it('gives each role its avatar icon and bubble style; tool content is a mono block', () => {
+    const c = render(<MessageView value={JSON.stringify(CHAT)} label="Input" />);
+    const list = bubbles(c);
+    const avatar = (b: HTMLElement) => {
+      const tile = b.querySelector('.mv-avatar')!;
+      expect(tile.getAttribute('aria-hidden')).toBe('true');
+      return tile.querySelector('svg')!.getAttribute('class');
+    };
+    expect(avatar(list[0])).toContain('lucide-settings-2');
+    expect(avatar(list[1])).toContain('lucide-user');
+    expect(avatar(list[2])).toContain('lucide-bot');
+    expect(avatar(list[3])).toContain('lucide-wrench');
+    expect(list[3].querySelector('.mv-content')?.classList.contains('mv-mono')).toBe(true);
+    expect(list[1].querySelector('.mv-content')?.classList.contains('mv-mono')).toBe(false);
+    // Tool-call chips lead with a wrench too; the chip text is unchanged.
+    expect(list[2].querySelector('.mv-chip svg')?.getAttribute('class')).toContain('lucide-wrench');
+    const unknown = render(<MessageView value={JSON.stringify([{ role: 'developer', content: 'x' }])} />);
+    expect(unknown.querySelector('.mv-avatar svg')?.getAttribute('class')).toContain('lucide-message-square');
+  });
+
+  it('uses the mono block only for string tool content; object content is a JsonView without it', () => {
+    const c = render(
+      <MessageView
+        value={JSON.stringify([
+          { role: 'tool', tool_call_id: 't1', content: { temp: 4 } },
+          { role: 'tool', tool_call_id: 't2', content: 'plain result' },
+        ])}
+      />,
+    );
+    const [obj, text] = bubbles(c);
+    expect(obj.querySelector('.json-view')).not.toBeNull();
+    expect(obj.querySelector('.mv-mono')).toBeNull();
+    expect(text.querySelector('.mv-content')?.classList.contains('mv-mono')).toBe(true);
+  });
+
+  it('styles bubbles per role from theme tokens: user surface-2, assistant bordered surface, system dashed', () => {
+    const css = readFileSync(resolve(__dirname, '../messageView.css'), 'utf8');
+    /** The declarations of the first rule whose selector list ends with `sel`. */
+    const rule = (sel: string) => {
+      const at = css.indexOf(`${sel} {`);
+      return at < 0 ? '' : css.slice(at, css.indexOf('}', at));
+    };
+    expect(rule(".mv-bubble[data-role='user']")).toContain('var(--surface-2)');
+    expect(rule(".mv-bubble[data-role='assistant']")).toContain('var(--surface)');
+    expect(rule(".mv-bubble[data-role='system']")).toContain('dashed');
+    expect(rule('.mv-mono')).toContain('var(--font-mono)');
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
   });
 
   it('accepts an object with a messages array', () => {
@@ -184,6 +235,20 @@ describe('JsonView', () => {
     expect(c.querySelectorAll('.json-num')).toHaveLength(100);
     click(button(c, 'Show 150 more'));
     expect(c.querySelectorAll('.json-num')).toHaveLength(250);
+  });
+
+  it('is a mono code block on surface-3 with token colours and chevron toggles', () => {
+    const c = render(<JsonView value={{ a: { b: 'x' } }} defaultExpandDepth={1} />);
+    expect(c.querySelector('.json-view')).not.toBeNull();
+    const toggles = [...c.querySelectorAll<HTMLButtonElement>('.json-toggle')];
+    expect(toggles[0]!.querySelector('svg')?.getAttribute('class')).toContain('lucide-chevron-down');
+    expect(toggles[1]!.querySelector('svg')?.getAttribute('class')).toContain('lucide-chevron-right');
+    expect(toggles.every((t) => !/[▸▾]/.test(t.textContent ?? ''))).toBe(true);
+    const css = readFileSync(resolve(__dirname, '../jsonView.css'), 'utf8');
+    expect(css).toContain('var(--surface-3)');
+    expect(css).toContain('var(--font-mono)');
+    expect(css).toMatch(/font-size:\s*12px/);
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
   });
 
   it('honours an explicit defaultExpandDepth', () => {

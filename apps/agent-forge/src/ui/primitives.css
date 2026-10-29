@@ -96,18 +96,11 @@
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--info);
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   font-family: var(--font-ui);
   font-size: 13px;
   pointer-events: auto;
-}
-.toast-success {
-  border-left-color: var(--success);
-}
-.toast-error {
-  border-left-color: var(--danger);
 }
 .toast-message {
   flex: 1;

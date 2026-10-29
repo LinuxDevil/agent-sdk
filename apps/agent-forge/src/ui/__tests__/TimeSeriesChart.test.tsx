@@ -4,7 +4,7 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TimeSeriesChart, type TimeSeries } from '../TimeSeriesChart';
-import { render } from './render';
+import { render, rerender } from './render';
 
 const MIN = 60_000;
 /** 10:00 local time on an arbitrary day, so HH:MM labels are predictable. */
@@ -240,6 +240,103 @@ describe('TimeSeriesChart', () => {
     act(() => fire(900));
     expect(svgOf(c).getAttribute('width')).toBe('900');
     expect(svgOf(c).getAttribute('height')).toBe('120');
+  });
+
+  it('legend chips toggle a series (aria-pressed); the last visible series cannot be hidden', () => {
+    const c = render(<TimeSeriesChart series={SERIES} from={FROM} to={TO} bucketMs={BUCKET} yFormat={fmt} />);
+    const chip = (name: string) =>
+      [...c.querySelectorAll<HTMLButtonElement>('.tsc-legend button')].find((b) => b.textContent === name)!;
+    expect(chip('Requests').getAttribute('aria-pressed')).toBe('true');
+    expect(chip('Errors').getAttribute('aria-pressed')).toBe('true');
+
+    act(() => chip('Errors').click());
+    expect(chip('Errors').getAttribute('aria-pressed')).toBe('false');
+    expect(c.querySelector('[data-series="err"]')).toBeNull();
+    expect(c.querySelector('polyline[data-series="ok"]')).not.toBeNull();
+    // The hidden series leaves the tooltip too.
+    stubRect(c);
+    pointer(plotOf(c), 'pointermove', centreX(1));
+    expect(statusOf(c).textContent).toContain('Requests');
+    expect(statusOf(c).textContent).not.toContain('Errors');
+
+    // The only visible series stays on: its chip is pressed and disabled.
+    expect(chip('Requests').disabled).toBe(true);
+    act(() => chip('Requests').click());
+    expect(c.querySelector('polyline[data-series="ok"]')).not.toBeNull();
+
+    act(() => chip('Errors').click());
+    expect(chip('Errors').getAttribute('aria-pressed')).toBe('true');
+    expect(chip('Requests').disabled).toBe(false);
+    expect(c.querySelector('circle[data-series="err"]')).not.toBeNull();
+  });
+
+  it('legend chips follow the plot when the series prop drops every visible series', () => {
+    const three: TimeSeries[] = [
+      { id: 'a', label: 'A', color: 'chart-1', points: [{ t: FROM, v: 1 }, { t: FROM + BUCKET, v: 2 }] },
+      { id: 'b', label: 'B', color: 'chart-2', points: [{ t: FROM, v: 3 }, { t: FROM + BUCKET, v: 4 }] },
+      { id: 'c', label: 'C', color: 'chart-3', points: [{ t: FROM, v: 5 }, { t: FROM + BUCKET, v: 6 }] },
+    ];
+    const chart = (s: TimeSeries[]) => <TimeSeriesChart series={s} from={FROM} to={TO} bucketMs={BUCKET} yFormat={fmt} />;
+    const c = render(chart(three));
+    const chip = (name: string) =>
+      [...c.querySelectorAll<HTMLButtonElement>('.tsc-legend button')].find((b) => b.textContent === name)!;
+    act(() => chip('B').click());
+    act(() => chip('C').click());
+    expect(c.querySelectorAll('polyline.tsc-line')).toHaveLength(1);
+    // A goes away: B and C are both drawn again, so both chips must read as on.
+    rerender(chart(three.slice(1)));
+    expect(c.querySelectorAll('polyline.tsc-line')).toHaveLength(2);
+    expect(chip('B').getAttribute('aria-pressed')).toBe('true');
+    expect(chip('C').getAttribute('aria-pressed')).toBe('true');
+    expect(chip('B').disabled).toBe(false);
+    // And one of them can be hidden again.
+    act(() => chip('B').click());
+    expect(chip('B').getAttribute('aria-pressed')).toBe('false');
+    expect(c.querySelector('[data-series="b"]')).toBeNull();
+    expect(chip('C').disabled).toBe(true);
+  });
+
+  it('legend prop: forced on for one series, off for many', () => {
+    const one = render(
+      <TimeSeriesChart series={SERIES.slice(0, 1)} from={FROM} to={TO} bucketMs={BUCKET} yFormat={fmt} legend />,
+    );
+    expect(one.querySelector('.tsc-legend button')?.textContent).toBe('Requests');
+    const many = render(<TimeSeriesChart series={SERIES} from={FROM} to={TO} bucketMs={BUCKET} yFormat={fmt} legend={false} />);
+    expect(many.querySelector('.tsc-legend')).toBeNull();
+  });
+
+  it('fills a token gradient area under each line by default, none with area={false}', () => {
+    const c = render(<TimeSeriesChart series={SERIES} from={FROM} to={TO} bucketMs={BUCKET} yFormat={fmt} />);
+    const area = c.querySelector('path.tsc-area[data-series="ok"]')!;
+    expect(area).not.toBeNull();
+    const id = /^url\(#(.+)\)$/.exec(area.getAttribute('fill')!)![1]!;
+    const stops = [...c.querySelectorAll<SVGStopElement>(`linearGradient[id="${id}"] stop`)];
+    expect(stops).toHaveLength(2);
+    expect(stops.map((s) => s.style.stopColor)).toEqual(['var(--accent)', 'var(--accent)']);
+    expect(stops.map((s) => Number(s.style.stopOpacity))).toEqual([0.18, 0]);
+    // A single isolated bucket is a point, with no area.
+    expect(c.querySelector('path.tsc-area[data-series="err"]')).toBeNull();
+
+    const flat = render(<TimeSeriesChart series={SERIES} from={FROM} to={TO} bucketMs={BUCKET} yFormat={fmt} area={false} />);
+    expect(flat.querySelector('path.tsc-area')).toBeNull();
+    expect(flat.querySelector('polyline[data-series="ok"]')).not.toBeNull();
+  });
+
+  it('draws the chart-1..chart-6 palette colours from their tokens', () => {
+    const c = render(
+      <TimeSeriesChart
+        series={[
+          { ...SERIES[0]!, color: 'chart-2' },
+          { ...SERIES[1]!, color: 'chart-6' },
+        ]}
+        from={FROM}
+        to={TO}
+        bucketMs={BUCKET}
+        yFormat={fmt}
+      />,
+    );
+    expect(c.querySelector('polyline[data-series="ok"]')!.getAttribute('stroke')).toBe('var(--chart-2)');
+    expect(c.querySelector('circle[data-series="err"]')!.getAttribute('fill')).toBe('var(--chart-6)');
   });
 
   it('styles axis and grid with theme tokens only', () => {

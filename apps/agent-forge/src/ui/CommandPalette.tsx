@@ -1,5 +1,15 @@
 import './commandPalette.css';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
+import {
+  ArrowDown,
+  ArrowUp,
+  Bot,
+  CornerDownLeft,
+  Search,
+  SunMoon,
+  TextSearch,
+  type LucideIcon,
+} from 'lucide-react';
 import { navigate } from '../router/router';
 import { NAV_ITEMS } from '../shell/NavRail';
 import { SHORTCUTS, matchShortcut } from '../shell/shortcuts';
@@ -11,6 +21,10 @@ interface Command {
   id: string;
   label: string;
   run: () => void;
+  /** Section label the palette groups it under; consecutive commands with the same group share one section. */
+  group?: string;
+  /** Leading 16px icon (decorative). */
+  icon?: LucideIcon;
 }
 
 /** A saved agent as the palette lists it: `id` routes and switches, `name` is shown. */
@@ -23,9 +37,16 @@ const TRACE_ID = /^[0-9a-fA-F-]{8,}$/;
 
 function baseCommands(agents: AgentRef[], openAgent: (id: string) => void): Command[] {
   return [
-    ...NAV_ITEMS.map((item) => ({ id: `go:${item.id}`, label: `Go to ${item.label}`, run: () => navigate(item.href) })),
-    ...agents.map((a) => ({ id: `agent:${a.id}`, label: `Open agent ${a.name}`, run: () => openAgent(a.id) })),
-    { id: 'theme', label: 'Toggle theme', run: toggleTheme },
+    ...NAV_ITEMS.map((item) => ({
+      id: `go:${item.id}`,
+      label: `Go to ${item.label}`,
+      run: () => navigate(item.href),
+      group: 'Navigation',
+      // The nav rail's own icon, so a destination looks the same in both places.
+      icon: item.icon,
+    })),
+    ...agents.map((a) => ({ id: `agent:${a.id}`, label: `Open agent ${a.name}`, run: () => openAgent(a.id), group: 'Agents', icon: Bot })),
+    { id: 'theme', label: 'Toggle theme', run: toggleTheme, group: 'Actions', icon: SunMoon },
   ];
 }
 
@@ -39,7 +60,7 @@ export function buildCommands(query: string, agents: AgentRef[], openAgent: (id:
   const needle = q.toLowerCase();
   const matches = baseCommands(agents, openAgent).filter((c) => c.label.toLowerCase().includes(needle));
   if (!TRACE_ID.test(q)) return matches;
-  const trace: Command = { id: 'trace', label: `Open trace ${q}`, run: () => navigate(`/traces/${q}`) };
+  const trace: Command = { id: 'trace', label: `Open trace ${q}`, run: () => navigate(`/traces/${q}`), group: 'Trace', icon: TextSearch };
   return [trace, ...matches];
 }
 
@@ -81,6 +102,91 @@ function Dialog({
   );
 }
 
+/** A run of consecutive commands sharing a group; `start` is the first one's index in the flat list. */
+interface CommandSection {
+  group?: string;
+  start: number;
+  items: Command[];
+}
+
+/** Consecutive commands with the same `group` form one section, so keyboard order and visual order match. */
+function sections(commands: Command[]): CommandSection[] {
+  const out: CommandSection[] = [];
+  commands.forEach((cmd, i) => {
+    const last = out[out.length - 1];
+    if (last && last.group === cmd.group) last.items.push(cmd);
+    else out.push({ group: cmd.group, start: i, items: [cmd] });
+  });
+  return out;
+}
+
+/** A labelled `role="group"` of options (the APG grouped-listbox pattern); ungrouped commands render bare. */
+function Section({ section, listId, children }: { section: CommandSection; listId: string; children: ReactNode }) {
+  if (!section.group) return <>{children}</>;
+  const labelId = `${listId}-group-${section.start}`;
+  return (
+    <li role="presentation" className="cmdk-section">
+      <ul role="group" aria-labelledby={labelId} className="cmdk-group">
+        <li role="presentation" id={labelId} className="cmdk-group-label">
+          {section.group}
+        </li>
+        {children}
+      </ul>
+    </li>
+  );
+}
+
+function Option({ cmd, id, selected, onHover, onPick }: {
+  cmd: Command;
+  id: string;
+  selected: boolean;
+  onHover: () => void;
+  onPick: () => void;
+}) {
+  const Icon = cmd.icon;
+  return (
+    <li
+      id={id}
+      role="option"
+      aria-selected={selected}
+      className="cmdk-option"
+      onMouseDown={(e) => e.preventDefault()}
+      onMouseEnter={onHover}
+      onClick={onPick}
+    >
+      {Icon && <Icon className="cmdk-option-icon" size={16} strokeWidth={1.75} aria-hidden="true" />}
+      <span className="cmdk-option-label">{cmd.label}</span>
+    </li>
+  );
+}
+
+/** The key hints under the list; decorative, since the combobox and listbox carry the semantics. */
+function PaletteFooter() {
+  return (
+    <div className="cmdk-footer" aria-hidden="true">
+      <span className="cmdk-hint">
+        <kbd>
+          <ArrowUp size={12} strokeWidth={2} />
+        </kbd>
+        <kbd>
+          <ArrowDown size={12} strokeWidth={2} />
+        </kbd>
+        navigate
+      </span>
+      <span className="cmdk-hint">
+        <kbd>
+          <CornerDownLeft size={12} strokeWidth={2} />
+        </kbd>
+        open
+      </span>
+      <span className="cmdk-hint">
+        <kbd>esc</kbd>
+        close
+      </span>
+    </div>
+  );
+}
+
 function Palette({
   agents,
   openAgent,
@@ -96,8 +202,13 @@ function Palette({
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
   const current = Math.min(active, commands.length - 1);
+  const optionId = (i: number) => `${listId}-opt-${i}`;
 
   useEffect(() => input.current?.focus(), []);
+  // Keep the active option in view as the arrows walk a list taller than the dialog.
+  useEffect(() => {
+    if (current >= 0) document.getElementById(`${listId}-opt-${current}`)?.scrollIntoView?.({ block: 'nearest' });
+  }, [current, listId]);
 
   const run = (cmd: Command | undefined) => {
     if (!cmd) return;
@@ -117,47 +228,54 @@ function Palette({
       run(commands[current]);
     }
   };
-  const optionId = (i: number) => `${listId}-opt-${i}`;
 
   return (
     <Dialog label="Command palette" className="cmdk-palette" onClose={onClose}>
-      <input
-        ref={input}
-        className="cmdk-input"
-        role="combobox"
-        aria-label="Command"
-        aria-expanded={commands.length > 0}
-        aria-controls={listId}
-        aria-autocomplete="list"
-        aria-activedescendant={commands.length ? optionId(current) : undefined}
-        placeholder="Type a command or paste a trace id"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setActive(0);
-        }}
-        onKeyDown={onKeyDown}
-      />
+      <div className="cmdk-search">
+        <Search className="cmdk-search-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
+        <input
+          ref={input}
+          className="cmdk-input"
+          role="combobox"
+          aria-label="Command"
+          aria-expanded={commands.length > 0}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          aria-activedescendant={commands.length ? optionId(current) : undefined}
+          placeholder="Type a command or paste a trace id"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActive(0);
+          }}
+          onKeyDown={onKeyDown}
+        />
+        <kbd aria-hidden="true">Esc</kbd>
+      </div>
       {commands.length ? (
         <ul id={listId} role="listbox" aria-label="Commands" className="cmdk-list">
-          {commands.map((cmd, i) => (
-            <li
-              key={cmd.id}
-              id={optionId(i)}
-              role="option"
-              aria-selected={i === current}
-              className="cmdk-option"
-              onMouseDown={(e) => e.preventDefault()}
-              onMouseEnter={() => setActive(i)}
-              onClick={() => run(cmd)}
-            >
-              {cmd.label}
-            </li>
+          {sections(commands).map((section) => (
+            <Section key={section.start} section={section} listId={listId}>
+              {section.items.map((cmd, j) => {
+                const i = section.start + j;
+                return (
+                  <Option
+                    key={cmd.id}
+                    cmd={cmd}
+                    id={optionId(i)}
+                    selected={i === current}
+                    onHover={() => setActive(i)}
+                    onPick={() => run(cmd)}
+                  />
+                );
+              })}
+            </Section>
           ))}
         </ul>
       ) : (
         <p className="cmdk-empty">No matching commands</p>
       )}
+      <PaletteFooter />
     </Dialog>
   );
 }
@@ -169,7 +287,7 @@ function ShortcutSheet({ onClose }: { onClose: () => void }) {
     <Dialog label="Keyboard shortcuts" className="cmdk-sheet" onClose={onClose}>
       <div className="cmdk-sheet-head">
         <h2 className="cmdk-sheet-title">Keyboard shortcuts</h2>
-        <button ref={close} type="button" className="btn btn-ghost" onClick={onClose}>
+        <button ref={close} type="button" className="btn btn-sm btn-ghost" onClick={onClose}>
           Close
         </button>
       </div>
