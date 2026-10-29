@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadsScreen } from '../ThreadsScreen';
 import { formatThreadsQuery, parseThreadsQuery } from '../threadsUrl';
 import { render } from '../../../ui/__tests__/render';
-import type { ObserveSessionRow, ObserveTraceRow } from '../../../observe/types';
+import type { ObserveObservationRow, ObserveSessionRow, ObserveTraceDetail, ObserveTraceRow } from '../../../observe/types';
 
 const NOW = new Date(2026, 9, 25, 15, 30, 0).getTime();
 
@@ -56,6 +56,22 @@ const TURN_2: ObserveTraceRow = {
   error_message: 'Tool refund_lookup timed out',
 };
 
+/** A root observation for a turn's trace detail (the full I/O the 200-char previews cut). */
+function rootRow(traceId: string, over: Partial<ObserveObservationRow> = {}): ObserveObservationRow {
+  return {
+    obs_id: `${traceId}-root`, trace_id: traceId, session_id: SESSION.session_id, agent_id: 'agent-1', parent_obs_id: null,
+    kind: 'agent', name: 'answer', start: NOW - 120_000, end: NOW - 118_000, status: 'ok', input: null, output: null,
+    model: null, usage_input_tokens: null, usage_output_tokens: null, usage_cached_tokens: null, usage_reasoning_tokens: null,
+    cost_usd: null, cost_partial: null, usage_estimated: null, truncated: false, attrs: null, ...over,
+  };
+}
+
+const LONG_ASK = `Where is my order? ${'Details: order 42, placed last week. '.repeat(8)}`;
+const FULL_INPUT = JSON.stringify([{ role: 'system', content: 'You are a support bot.' }, { role: 'user', content: LONG_ASK }]);
+
+/** Trace details by id; a missing id is the daemon's 404, a `500` value a failed fetch. */
+let details: Record<string, ObserveTraceDetail | 500> = {};
+
 let fetchFn: ReturnType<typeof vi.fn<[RequestInfo | URL], Promise<Response>>>;
 
 /** Daemon stub: healthy, one agent, one session with two turns; any other session id is a 404. */
@@ -66,6 +82,12 @@ function stubDaemon() {
     if (url.pathname.endsWith('/health')) return json({ service: 'lousho-observe', ok: true });
     if (url.pathname.includes('/api/v1/agents')) return json({ agents: [{ agent_id: 'agent-1', name: 'support-bot', project: 'shop' }] });
     if (url.pathname.endsWith(`/api/v1/sessions/${SESSION.session_id}`)) return json({ session: SESSION, traces: [TURN_1, TURN_2] });
+    const detail = /\/api\/v1\/traces\/([^/]+)$/.exec(url.pathname);
+    if (detail) {
+      const d = details[decodeURIComponent(detail[1])];
+      if (d === 500) return json({ error: 'boom' }, 500);
+      return d ? json(d) : json({ error: 'No trace', code: 'LOUSHO_REQUEST_INVALID' }, 404);
+    }
     if (url.pathname.includes('/api/v1/sessions/')) return json({ error: 'No session', code: 'LOUSHO_REQUEST_INVALID' }, 404);
     return json({ sessions: [SESSION], total: 1, limit: 50, offset: 0 });
   });
@@ -96,6 +118,7 @@ async function mountAt(hash: string) {
 }
 
 beforeEach(() => {
+  details = {};
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   stubDaemon();
@@ -200,5 +223,74 @@ describe('ThreadsScreen thread', () => {
     const back = container.querySelector('.empty-state a');
     expect(back?.textContent).toBe('Back to threads');
     expect(container.querySelector('.thread-turn')).toBeNull();
+  });
+});
+
+/** The trace-detail requests the screen sent, by trace id. */
+const detailRequests = () =>
+  fetchFn.mock.calls
+    .map(([input]) => new URL(String(input), 'http://x').pathname)
+    .flatMap((p) => /\/api\/v1\/traces\/([^/]+)$/.exec(p)?.[1] ?? []);
+
+describe('ThreadsScreen thread full turns', () => {
+  it("renders each turn's full root input/output from its trace detail as message bubbles", async () => {
+    details = {
+      'trace-1': { trace_id: 'trace-1', observations: [rootRow('trace-1', { input: FULL_INPUT, output: 'It ships tomorrow, by noon.' })], scores: [] },
+      'trace-2': { trace_id: 'trace-2', observations: [rootRow('trace-2', { input: 'Can I get a refund? (full)', status: 'error' })], scores: [] },
+    };
+    const container = await mountAt(`#/threads/${SESSION.session_id}`);
+    const turns = [...container.querySelectorAll('.thread-turn')];
+    expect(detailRequests().sort()).toEqual(['trace-1', 'trace-2']);
+    const bubbles = [...turns[0].querySelectorAll('.mv-bubble')].map((b) => b.getAttribute('data-role'));
+    expect(bubbles).toEqual(['system', 'user']);
+    expect(turns[0].textContent).toContain(LONG_ASK.trim());
+    expect(turns[0].textContent).toContain('It ships tomorrow, by noon.');
+    expect(turns[0].querySelector('.thread-turn-note')).toBeNull();
+    // An error turn keeps the error in place of the output, with the full input.
+    expect(turns[1].textContent).toContain('Can I get a refund? (full)');
+    expect(turns[1].querySelector('.thread-error')?.textContent).toContain('Tool refund_lookup timed out');
+  });
+
+  it("labels a root the recorder truncated", async () => {
+    details = { 'trace-1': { trace_id: 'trace-1', observations: [rootRow('trace-1', { input: 'cut off', output: 'x', truncated: true })], scores: [] } };
+    const container = await mountAt(`#/threads/${SESSION.session_id}`);
+    const turn = container.querySelectorAll('.thread-turn')[0];
+    expect(turn.textContent).toContain('cut off');
+    expect(turn.querySelector('.thread-turn-note')?.textContent).toMatch(/truncated when recorded/i);
+  });
+
+  it('falls back to the labelled preview when the detail fetch fails or the trace is gone', async () => {
+    details = { 'trace-1': 500 };
+    const container = await mountAt(`#/threads/${SESSION.session_id}`);
+    const turns = [...container.querySelectorAll('.thread-turn')];
+    for (const turn of turns) expect(turn.querySelector('.thread-turn-note')?.textContent).toContain('Preview (truncated)');
+    expect(turns[0].textContent).toContain('Where is my order?');
+    expect(turns[0].textContent).toContain('It ships tomorrow.');
+  });
+
+  it('fetches a turn only once it nears the viewport', async () => {
+    const observers: { cb: IntersectionObserverCallback; els: Element[]; options?: IntersectionObserverInit }[] = [];
+    class FakeIO {
+      private entry: (typeof observers)[number];
+      constructor(cb: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        this.entry = { cb, els: [], options };
+        observers.push(this.entry);
+      }
+      observe(el: Element) { this.entry.els.push(el); }
+      disconnect() { this.entry.els = []; }
+      unobserve() {}
+      takeRecords() { return []; }
+    }
+    vi.stubGlobal('IntersectionObserver', FakeIO);
+    details = { 'trace-1': { trace_id: 'trace-1', observations: [rootRow('trace-1', { input: FULL_INPUT, output: 'ok' })], scores: [] } };
+    const container = await mountAt(`#/threads/${SESSION.session_id}`);
+    expect(detailRequests()).toEqual([]);
+    expect(container.querySelectorAll('.thread-turn')[0].querySelector('.thread-turn-note')?.textContent).toContain('Preview (truncated)');
+    expect(observers[0].options?.rootMargin).toBeTruthy();
+    const first = observers.find((o) => o.els[0] === container.querySelectorAll('.thread-turn')[0])!;
+    act(() => first.cb([{ isIntersecting: true, target: first.els[0] } as IntersectionObserverEntry], first as never));
+    await flush();
+    expect(detailRequests()).toEqual(['trace-1']);
+    expect(container.querySelectorAll('.thread-turn')[0].querySelectorAll('.mv-bubble')).toHaveLength(2);
   });
 });
