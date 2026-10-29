@@ -1,5 +1,56 @@
 import { describe, it, expect, vi } from 'vitest';
-import { withSpan, Span, TraceExporter } from './tracing';
+import { withSpan, recordSpanError, Span, TraceExporter } from './tracing';
+
+describe('recordSpanError redaction', () => {
+  const token = 'ghp_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4';
+  const fresh = (): Span => ({ id: 's', name: 'x', attributes: {}, startTime: 0 });
+
+  it('scrubs attrs.error and status.message by default, keeping error.type', () => {
+    const span = fresh();
+    recordSpanError(span, new TypeError(`denied for ${token}`));
+    expect(span.attributes.error).toBe('denied for [redacted]');
+    expect(span.status).toEqual({ code: 'error', message: 'denied for [redacted]' });
+    expect(span.attributes['error.type']).toBe('TypeError');
+  });
+
+  it('keeps the text with an identity redactor and applies a custom one', () => {
+    const kept = fresh();
+    recordSpanError(kept, new Error(`x ${token}`), (text) => text);
+    expect(kept.status?.message).toBe(`x ${token}`);
+    const custom = fresh();
+    recordSpanError(custom, new Error('Paris'), (text) => text.toUpperCase());
+    expect(custom.attributes.error).toBe('PARIS');
+    expect(custom.status?.message).toBe('PARIS');
+  });
+
+  it('scrubs a thrown string and leaves a non-string error value as it was', () => {
+    const text = fresh();
+    recordSpanError(text, `bad ${token}`);
+    expect(text.attributes.error).toBe('bad [redacted]');
+    const obj = fresh();
+    const value = { code: 7 };
+    recordSpanError(obj, value);
+    expect(obj.attributes.error).toBe(value);
+  });
+
+  it('a throwing redactor never replaces the run error', () => {
+    const span = fresh();
+    recordSpanError(span, new Error('real failure'), () => {
+      throw new Error('redactor bug');
+    });
+    expect(span.attributes.error).toBe('[redacted]');
+    expect(span.status).toEqual({ code: 'error', message: '[redacted]' });
+  });
+
+  it('withSpan passes its redactor to the failure it records', async () => {
+    const ends: Span[] = [];
+    const exporter: TraceExporter = { onSpanStart: () => undefined, onSpanEnd: (span) => ends.push({ ...span }) };
+    await expect(
+      withSpan(exporter, 's', {}, async () => { throw new Error(`oops ${token}`); }, undefined, undefined, (text) => text.replace(token, '<t>'))
+    ).rejects.toThrow('oops');
+    expect(ends[0].status?.message).toBe('oops <t>');
+  });
+});
 
 function createSpyExporter() {
   const starts: Span[] = [];

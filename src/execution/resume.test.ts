@@ -1290,6 +1290,35 @@ describe('Execution - resumeAfterApproval', () => {
   });
 });
 
+describe('Execution - resumeAfterApproval: error text on the resumed run span', () => {
+  const secret = 'abcdefghij0123456789ABCD';
+  const failedRunSpan = async (executeOptions: ResumeExecuteOptions) => {
+    const toolRegistry = new ToolRegistry();
+    toolRegistry.register('chargeCard', {
+      displayName: 'Charge Card',
+      tool: { description: 'Charge a card', parameters: {}, execute: async () => ({ charged: true }) } as Tool,
+      needsApproval: true,
+    });
+    const agent = AgentBuilder.create().setName('Test Agent').addTool('chargeCard', { tool: 'chargeCard', options: {} }).build();
+    const provider = createMockProvider({ name: 'mock', responses: ['Charging now', 'All done'] });
+    const approvalStore = createInMemoryApprovalStore();
+    const paused = await AgentExecutor.execute({ agent, input: 'Please call chargeCard now', provider, toolRegistry, approvalStore });
+    const failing = { ...provider, generate: async () => { throw new Error('boom Bearer ' + secret); } } as unknown as LLMProvider;
+    const ended: Span[] = [];
+    const exporter = { onSpanStart: () => {}, onSpanEnd: (span: Span) => void ended.push({ ...span }) };
+    await resumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, failing, { exporter, ...executeOptions }).catch(() => undefined);
+    return ended.find((span) => span.name.startsWith('invoke_agent'))!;
+  };
+
+  it('scrubs by default, applies a custom redactor, keeps the text under redactContent: false', async () => {
+    expect(JSON.stringify((await failedRunSpan({})).status)).not.toContain(secret);
+    expect((await failedRunSpan({ redactContent: (t) => t.replace(secret, '<custom>') })).status?.message).toContain('<custom>');
+    const kept = await failedRunSpan({ redactContent: false });
+    expect(kept.status?.message).toContain(secret);
+    expect(kept.attributes.error).toContain(secret);
+  });
+});
+
 describe('Execution - resumeAfterApproval: the span of the approved call (#281)', () => {
   const approvedRun = async (executeOptions: ResumeExecuteOptions) => {
     const toolRegistry = new ToolRegistry();

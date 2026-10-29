@@ -54,7 +54,7 @@ import { readonlyPrincipal } from './runPrincipal';
 import type { OAuthTokenStore } from '../oauth/types';
 import { isSignInRequired, settleSignInRequired, signInOwner, signInRequest, SignInPendingError, type SignInRequired } from '../oauth/signIn';
 import { newId } from '../utils/id';
-import { agentRunSpanInit, recordToolOutcome, resolveCaptureContent, toolSpanInit, SUBAGENT_SPAN, type SubagentSpanInfo } from './genAiSpans';
+import { agentRunSpanInit, contentRedactor, recordToolOutcome, resolveCaptureContent, toolSpanInit, SUBAGENT_SPAN, type SubagentSpanInfo } from './genAiSpans';
 import { sandboxErrorKind } from '../sandbox/errors';
 import { withSpan, type Span } from './tracing';
 
@@ -242,7 +242,7 @@ function continueDecided(resume: DecidedResume): Promise<ExecutionResult> {
     );
   const init = runSpan();
   const resumed: ResumedRun = { ctx, claimed, pending, drift, staleCheckpoint, checkpointStore, runSpan, lease };
-  return withSpan(executeOptions.exporter, init.name, init.attributes, (span) => continueInRunSpan(resumed, span), executeOptions.parentSpanId, init.kind);
+  return withSpan(executeOptions.exporter, init.name, init.attributes, (span) => continueInRunSpan(resumed, span), executeOptions.parentSpanId, init.kind, contentRedactor(executeOptions));
 }
 
 /**
@@ -1124,7 +1124,8 @@ async function runApprovedInSpan(ctx: ResumeContext, pending: PendingApproval, s
       }
     },
     ctx.runSpanId,
-    init.kind
+    init.kind,
+    contentRedactor({ redactContent })
   );
   if ('signIn' in outcome) throw outcome.signIn;
   return outcome.message;

@@ -5144,7 +5144,7 @@ interface ReceiptEntry {
 }
 
 // @public
-export function recordSpanError(span: Span, error: unknown): void;
+export function recordSpanError(span: Span, error: unknown, redact?: (text: string) => string): void;
 
 // @public
 export interface RecoverOptions<TResult = unknown> {
@@ -7398,7 +7398,7 @@ export interface WithRetryOptions {
 }
 
 // @public
-export function withSpan<T>(exporter: TraceExporter | undefined, name: string, attributes: Record<string, unknown>, fn: (span: Span) => Promise<T>, parentId?: string, kind?: SpanKind): Promise<T>;
+export function withSpan<T>(exporter: TraceExporter | undefined, name: string, attributes: Record<string, unknown>, fn: (span: Span) => Promise<T>, parentId?: string, kind?: SpanKind, redact?: (text: string) => string): Promise<T>;
 
 // @public
 export function withSubagentOptions<T extends Subagents>(subagents: T, options: SubagentOptions): T;

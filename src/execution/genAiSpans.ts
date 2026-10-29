@@ -26,7 +26,7 @@ import type { Span, SpanKind } from './tracing';
 import { estimateCost } from '../models';
 import { normalizeUsage } from '../models/usage';
 import type { Usage } from '../models/usage';
-import { REDACTED, scrubSecrets } from './scrubSecrets';
+import { safeRedactor, scrubSecrets } from './scrubSecrets';
 
 /** Name, kind and starting attributes for a span about to be opened. */
 interface SpanInit {
@@ -64,19 +64,8 @@ type Redact = (text: string) => string;
 
 const keepText: Redact = (text) => text;
 
-/** A custom redactor that throws redacts that text whole: telemetry never fails a run. */
-function safeRedactor(redact: Redact): Redact {
-  return (text) => {
-    try {
-      return redact(text);
-    } catch {
-      return REDACTED;
-    }
-  };
-}
-
 /** The text mapping `redactContent` asks for on captured `gen_ai.*` content. */
-function contentRedactor(content: ContentOptions): Redact {
+export function contentRedactor(content: ContentOptions): Redact {
   const { redactContent } = content;
   if (redactContent === false) return keepText;
   return typeof redactContent === 'function' ? safeRedactor(redactContent) : scrubSecrets;
@@ -345,7 +334,7 @@ export function recordToolOutcome(
     ...defined({
       ...(!keepLegacyContent(content) ? {} : { [LegacyAttr.ARGS]: outcome.args, [LegacyAttr.RESULT]: outcome.result }),
       // The message, as on every other span's `error`; absent when the tool succeeded.
-      [LegacyAttr.ERROR]: outcome.error,
+      [LegacyAttr.ERROR]: outcome.error === undefined ? undefined : redact(outcome.error),
       // The sandbox boundary's failure kind ('timeout' | 'oom' | 'driver'), absent for the tool's own errors.
       [SandboxAttr.ERROR]: outcome.sandboxError,
       [LegacyAttr.LATENCY_MS]: outcome.latencyMs,
@@ -356,6 +345,6 @@ export function recordToolOutcome(
     }),
   };
   if (outcome.error) {
-    span.status = { code: 'error', message: outcome.error };
+    span.status = { code: 'error', message: redact(outcome.error) };
   }
 }

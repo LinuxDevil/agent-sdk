@@ -345,6 +345,84 @@ describe('OpenTelemetry GenAI semantic conventions', () => {
     expect(JSON.parse(spans[0].attributes['gen_ai.input.messages'] as string)[0].parts[0].content).toBe('[redacted]');
   });
 
+  describe('tool error text', () => {
+    const secret = 'abcdefghij0123456789ABCD';
+    const token = 'Bearer ' + secret;
+    const failing = defineTool({
+      name: 'get_weather',
+      description: 'Get the weather for a city',
+      input: z.object({ city: z.string() }),
+      execute: async () => {
+        throw new Error(`upstream rejected ${token}`);
+      },
+    });
+
+    async function failedToolSpan(redactContent?: boolean | ((text: string) => string)) {
+      const { agent } = setup();
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register(failing);
+      const { exporter, spans } = memoryExporter();
+      await AgentExecutor.execute({
+        agent,
+        input: 'Weather?',
+        provider: modelWithOneToolCall(),
+        toolRegistry,
+        exporter,
+        ...(redactContent === undefined ? {} : { redactContent }),
+      });
+      return spans.find((s) => s.name.startsWith('execute_tool'))!;
+    }
+
+    it('scrubs the error message on a failed tool span by default', async () => {
+      const tool = await failedToolSpan();
+      expect(tool.attributes.error).toContain('Bearer [redacted]');
+      expect(JSON.stringify([tool.attributes, tool.status])).not.toContain(secret);
+      expect(tool.status?.message).toContain('Bearer [redacted]');
+    });
+
+    it('keeps the error message under redactContent: false', async () => {
+      const tool = await failedToolSpan(false);
+      expect(tool.attributes.error).toContain(token);
+      expect(tool.status?.message).toContain(token);
+    });
+
+    it('applies a custom redactor to the error message', async () => {
+      const tool = await failedToolSpan((text) => text.replace('upstream', 'remote'));
+      expect(tool.status?.message).toContain('remote rejected');
+    });
+
+    it.each([
+      [false, true],
+      [undefined, false],
+    ])('redactContent %s keeps (%s) the provider error text on the run span', async (redactContent, keeps) => {
+      const { agent, toolRegistry } = setup();
+      const { exporter, spans } = memoryExporter();
+      const provider = mockModel([]);
+      provider.generate = async () => {
+        throw new Error(`provider said ${token}`);
+      };
+      await AgentExecutor.execute({ agent, input: 'hi', provider, toolRegistry, exporter, ...(redactContent === undefined ? {} : { redactContent }) }).catch(() => undefined);
+      const run = spans.find((s) => s.name.startsWith('invoke_agent'))!;
+      const chat = spans.find((s) => s.name.startsWith('chat'))!;
+      for (const span of [run, chat]) {
+        expect(JSON.stringify([span.attributes.error, span.status]).includes(secret)).toBe(keeps);
+      }
+    });
+
+    it('scrubs the error recorded on the run span when the run itself fails', async () => {
+      const { agent, toolRegistry } = setup();
+      const { exporter, spans } = memoryExporter();
+      const provider = mockModel([]);
+      provider.generate = async () => {
+        throw new Error(`provider said ${token}`);
+      };
+      await AgentExecutor.execute({ agent, input: 'hi', provider, toolRegistry, exporter }).catch(() => undefined);
+      const text = JSON.stringify(spans.map((s) => [s.attributes.error, s.status]));
+      expect(text).toContain('provider said');
+      expect(text).not.toContain(secret);
+    });
+  });
+
   it('does not scrub captured content when redactContent is false', async () => {
     const key = 'sk-or-v1-0123456789abcdef0123456789abcdef';
     const { agent, toolRegistry } = setup();

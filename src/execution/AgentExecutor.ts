@@ -29,6 +29,7 @@ import { TraceExporter, withSpan } from './tracing';
 import { withObserveExporter } from '../observe/reporter';
 import {
   agentRunSpanInit,
+  contentRedactor,
   recordToolOutcome,
   resolveCaptureContent,
   toolSpanInit,
@@ -870,7 +871,8 @@ export class AgentExecutor {
         init.attributes,
         async (agentSpan) => this.runWithEnd(observed, agentSpan.id),
         observed.parentSpanId,
-        init.kind
+        init.kind,
+        contentRedactor(observed)
       );
     });
   }
@@ -1840,7 +1842,8 @@ export class AgentExecutor {
         return executed;
       },
       agentSpanId,
-      init.kind
+      init.kind,
+      contentRedactor({ redactContent })
     );
   }
 
