@@ -925,6 +925,21 @@ test('agents x: the builder toolbar at 860 and 375 wide', async ({ page }) => {
   await shoot(page, 'x-agents-toolbar-375-menu');
 });
 
+test('agents x: the builder toolbar with a pending approval at 1280, 1024 and 375 wide', async ({ page }) => {
+  test.setTimeout(60_000);
+  await newAgent(page, `pending-${Date.now()}`, 'support-bot');
+  await page.locator('[data-node-type="tool"]').click();
+  await page.locator('#node-tool-name').fill('demo-approval');
+  await page.locator('.chat-input').fill('Please call demo-approval to look something up for me.');
+  await page.locator('.btn-send').click();
+  await expect(page.locator('.chat-approval-card')).toBeVisible({ timeout: 15_000 });
+  for (const width of [1280, 1024, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(page.locator('.topbar-builder')).toBeVisible();
+    await shoot(page, `x-agents-toolbar-pending-${width}`);
+  }
+});
+
 test("agents x: the routed settings screen shares the drawer's settings cards", async ({ page }) => {
   await open(page, '/settings');
   await expect(page.getByLabel('Deploy adapter')).toBeVisible();

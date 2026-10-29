@@ -132,6 +132,22 @@ function ModelBadge() {
   );
 }
 
+/**
+ * The wide bar's centre: the model badge, or - while a run waits on a tool
+ * approval - the approval in its place, with the MOCK badge (same source)
+ * kept beside it on a mock agent.
+ */
+function CenterSlot({ runStatus }: { runStatus: RunStatusPayload }) {
+  const provider = useModelProvider();
+  if (!pendingApprovalOf(runStatus)) return <ModelBadge />;
+  return (
+    <>
+      {isMockProvider(provider) && <span className="mock-badge">MOCK</span>}
+      <ApprovalNotice runStatus={runStatus} />
+    </>
+  );
+}
+
 function DebugToggle() {
   const { debugMode, setDebugMode, setDrawerTab } = useAppState();
   return (
@@ -381,9 +397,8 @@ function WideTopbar() {
         <ErrorNotice message={runErrorOf(runStatus)} />
         <ErrorNotice message={actionError} />
       </div>
-      {/* While a run waits on a tool approval, the approval takes the model badge's place. */}
       <div className="topbar-center">
-        {pendingApprovalOf(runStatus) ? <ApprovalNotice runStatus={runStatus} /> : <ModelBadge />}
+        <CenterSlot runStatus={runStatus} />
       </div>
       <div className="topbar-spacer" />
       <div className="topbar-actions">

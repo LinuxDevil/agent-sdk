@@ -59,9 +59,10 @@ interface DecisionButtonProps {
 
 function DecisionButton({ className, Icon, idleLabel, busyLabel, busy, disabled, onClick }: DecisionButtonProps) {
   return (
-    <button type="button" className={className} onClick={onClick} disabled={disabled}>
+    <button type="button" className={className} title={idleLabel} onClick={onClick} disabled={disabled}>
       <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
-      {busy ? busyLabel : idleLabel}
+      {/* The toolbar's inline card keeps only the icon on a short bar (layout.css); the label stays the name. */}
+      <span className="approval-btn-label">{busy ? busyLabel : idleLabel}</span>
     </button>
   );
 }

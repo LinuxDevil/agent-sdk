@@ -38,6 +38,16 @@ describe('RunStatus', () => {
     expect(link(container)?.textContent).toBe('Open trace');
   });
 
+  it('carries an ExternalLink icon, a collapsible label and the name "Open trace" with a tooltip', () => {
+    appState.runStatus = status('paused', { traceId: 'trace-7' });
+    const container = render(<RunStatus />);
+    const a = link(container);
+    expect(a?.getAttribute('aria-label')).toBe('Open trace');
+    expect(a?.getAttribute('title')).toBe("Open this run's trace");
+    expect(a?.querySelector('svg.lucide-external-link')?.getAttribute('aria-hidden')).toBe('true');
+    expect(a?.querySelector('.run-trace-label')?.textContent).toBe('Open trace');
+  });
+
   it('falls back to the live root span while the status has no trace id yet', () => {
     appState.runStatus = status('running');
     appState.spans = [

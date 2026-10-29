@@ -104,7 +104,10 @@
 }
 .topbar-center {
   display: flex;
+  align-items: center;
   justify-content: center;
+  /* the MOCK badge beside an inline approval (Topbar.tsx's CenterSlot) */
+  gap: var(--space-2);
   /* gives way well before the name and status do */
   flex: 0 8 auto;
   min-width: 0;
@@ -145,16 +148,43 @@
 /* As the bar narrows, Import/Export, then Debug and Stop, keep only their icons
    (the label stays in the DOM as the accessible name). Run and Save keep theirs.
    Idle, the labels hold down to a 960px bar (content box; 1280 with the docked nav); once a
-   run adds "Open trace" (or an approval), Import/Export go icon-only below 1180px. */
+   run adds "Open trace" (or an approval), Import/Export go icon-only below 1180px.
+   "Open trace" (RunStatus.tsx) never leaves the wide bar: when it runs short the link
+   keeps only its ExternalLink icon, its name stays "Open trace" and `title` is its tooltip.
+   While an approval sits in the centre of a shorter bar, Debug, Stop and the trace link
+   keep only their icons and the spacer gives back its gap; shorter still (a 1024px
+   window), the status pill keeps its dot, the breadcrumb drops its "Agents" root and
+   Approve/Reject keep their icons (each label stays the name), so the name, status,
+   trace link, MOCK badge and decision all fit. */
 .btn-collapse .btn-label {
   white-space: nowrap;
 }
-@container builder-toolbar (max-width: 960px) {
-  .topbar-builder:not(.topbar-narrow) .collapse-1 {
+@container builder-toolbar (max-width: 1180px) {
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .topbar-spacer {
+    display: none;
+  }
+  .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1,
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .collapse-2 {
     width: 32px;
     padding: 0;
     justify-content: center;
   }
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .run-trace-link {
+    width: 24px;
+    height: 24px;
+    justify-content: center;
+  }
+  .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1 .btn-label,
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) :is(.collapse-2 .btn-label, .run-trace-label) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+@container builder-toolbar (max-width: 960px) {
   .topbar-builder:not(.topbar-narrow) .collapse-1 .btn-label {
     position: absolute;
     width: 1px;
@@ -163,52 +193,35 @@
     clip: rect(0, 0, 0, 0);
     white-space: nowrap;
   }
-}
-@container builder-toolbar (max-width: 1180px) {
-  .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1 {
+  .topbar-builder:not(.topbar-narrow) .collapse-1 {
     width: 32px;
     padding: 0;
     justify-content: center;
-  }
-  .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1 .btn-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
   }
 }
 @container builder-toolbar (max-width: 920px) {
-  .topbar-builder:not(.topbar-narrow) .collapse-2 {
-    width: 32px;
-    padding: 0;
-    justify-content: center;
-  }
-  .topbar-builder:not(.topbar-narrow) .collapse-2 .btn-label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-  }
   .topbar-builder:not(.topbar-narrow) .run-trace-link {
-    display: none;
+    width: 24px;
+    height: 24px;
+    justify-content: center;
   }
-}
-/* While an approval sits in the centre of a shorter bar, Debug and Stop keep only
-   their icons and the trace link steps aside, so the name, status and decision fit. */
-@container builder-toolbar (max-width: 1180px) {
-  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .run-trace-link {
-    display: none;
-  }
-  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .collapse-2 {
+  .topbar-builder:not(.topbar-narrow) .collapse-2,
+  .topbar-builder:not(.topbar-narrow) .approval-card-inline .approval-actions .btn {
     width: 32px;
     padding: 0;
     justify-content: center;
   }
-  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .collapse-2 .btn-label {
+  .topbar-builder:not(.topbar-narrow) .approval-card-inline .approval-actions .btn {
+    width: 28px;
+  }
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) :is(.crumb-root, .crumb-sep) {
+    display: none;
+  }
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .crumbs {
+    min-width: 72px;
+  }
+  .topbar-builder:not(.topbar-narrow) :is(.collapse-2 .btn-label, .run-trace-label),
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) :is(.status-pill-label, .approval-btn-label) {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -305,9 +318,15 @@
   white-space: nowrap;
 }
 
-/* The last builder run's trace (RunStatus.tsx), next to its status pill. */
+/* The last builder run's trace (RunStatus.tsx), next to its status pill: an
+   ExternalLink icon and "Open trace", icon-only when the bar runs short. */
 .run-trace-link {
   flex: none;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
   font-size: 12px;
   font-weight: 500;
   color: var(--accent);
@@ -320,7 +339,6 @@
 .run-trace-link:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 3px;
 }
 
 .shell-scrim {
