@@ -43,4 +43,28 @@ describe('PageHeader', () => {
     expect(el.querySelector('nav a')).toBeNull();
     expect(el.querySelector('nav [aria-current="page"]')?.textContent).toBe('Prompts');
   });
+
+  it('renders tabs as a last row inside the header, after the actions', () => {
+    const el = render(
+      <PageHeader
+        title="Evaluations"
+        actions={<button type="button">New</button>}
+        tabs={
+          <nav aria-label="Sections">
+            <a href="#/a" aria-current="page">A</a>
+          </nav>
+        }
+      />,
+    );
+    const header = el.querySelector('header')!;
+    expect(header.className).toBe('page-header page-header-with-tabs');
+    expect(header.lastElementChild?.className).toBe('page-header-tabs');
+    expect(header.querySelector('.page-header-tabs nav[aria-label="Sections"] [aria-current="page"]')?.textContent).toBe('A');
+  });
+
+  it('has no tabs row without tabs', () => {
+    const el = render(<PageHeader title="x" />);
+    expect(el.querySelector('.page-header-tabs')).toBeNull();
+    expect(el.querySelector('header')?.className).toBe('page-header');
+  });
 });

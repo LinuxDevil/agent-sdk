@@ -127,9 +127,9 @@ describe('datasetPath', () => {
 });
 
 describe('DatasetsScreen list', () => {
-  it('renders one row per dataset with its description, example count and the Evaluations tabs', async () => {
+  it('renders one card per dataset with its description, example count and the Evaluations tabs', async () => {
     const container = await mountAt('#/evals/datasets');
-    const row = container.querySelector('tbody tr')!;
+    const row = container.querySelector('.ds-grid .ds-card')!;
     expect(row.textContent).toContain('golden');
     expect(row.textContent).toContain('Hand-picked support cases');
     expect(row.textContent).toContain('120');
@@ -146,14 +146,50 @@ describe('DatasetsScreen list', () => {
     expect(container.textContent).toContain('No datasets yet');
   });
 
-  it('opens a dataset on row open', async () => {
+  it('names a card link by the dataset name and describes it with the rest', async () => {
     const container = await mountAt('#/evals/datasets');
-    act(() => (container.querySelector('tbody tr') as HTMLElement).click());
+    const link = container.querySelector('.ds-card a')!;
+    const text = (ids: string | null) => (ids ?? '').split(' ').map((id) => document.getElementById(id)?.textContent).join(' ');
+    expect(text(link.getAttribute('aria-labelledby'))).toBe('golden');
+    const described = text(link.getAttribute('aria-describedby'));
+    expect(described).toContain('Hand-picked support cases');
+    expect(described).toContain('120 examples');
+  });
+
+  it('keeps one New dataset button while the form is open over the empty state', async () => {
+    datasets = [];
+    const container = await mountAt('#/evals/datasets');
+    const buttons = () => [...container.querySelectorAll('button')].filter((b) => b.textContent?.trim() === 'New dataset');
+    expect(buttons()).toHaveLength(2);
+    act(() => buttons()[0]!.click());
+    expect(buttons()).toHaveLength(1);
+    expect(buttons()[0]!.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('steps back from a stale offset past the end, page by page, to the last real page', async () => {
+    // No datasets at all: ?offset=100 is past the end, then so is 50; the first page shows the empty state.
+    datasets = [];
+    const container = await mountAt('#/evals/datasets?offset=100');
+    await flush();
+    expect(window.location.hash).toBe('#/evals/datasets');
+    expect(container.textContent).toContain('No datasets yet');
+  });
+
+  it('opens a dataset from its card link', async () => {
+    const container = await mountAt('#/evals/datasets');
+    const link = container.querySelector('.ds-card a') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('#/evals/datasets/golden');
+    act(() => link.click());
+    // jsdom follows the fragment link on a later task.
+    await flush();
     expect(window.location.hash).toBe('#/evals/datasets/golden');
   });
 
   it('creates a dataset and shows a 409 inline as a taken name', async () => {
     const container = await mountAt('#/evals/datasets');
+    // The form opens from the header's primary "New dataset" button.
+    expect(container.querySelector('input[name="dataset-name"]')).toBeNull();
+    act(() => buttonNamed(container, 'New dataset')!.click());
     const name = container.querySelector('input[name="dataset-name"]') as HTMLInputElement;
     type(name, 'golden');
     await act(async () => buttonNamed(container, 'Create dataset')!.click());
@@ -165,7 +201,7 @@ describe('DatasetsScreen list', () => {
     await flush();
     const post = calls.filter((c) => c.method === 'POST').at(-1)!;
     expect(post.body).toEqual({ name: 'fresh' });
-    expect(container.querySelector('tbody')!.textContent).toContain('fresh');
+    expect(container.querySelector('.ds-grid')!.textContent).toContain('fresh');
   });
 
   it('shows the daemon-down state with the URL kept and recovers in place', async () => {

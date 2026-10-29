@@ -1,33 +1,35 @@
 /**
  * `#/evals/datasets` - the dataset list (`GET /api/v1/datasets`, paged
- * server-side, `?offset=` in the URL) with a "New dataset" form - and
- * `#/evals/datasets/:name`, one dataset's examples (see `DatasetDetail.tsx`).
- * Both sit under the Evaluations tabs and behind the daemon-down state, which
- * keeps the URL and swaps the screen back in by itself once the daemon is back.
+ * server-side, `?offset=` in the URL) as a card grid, with a "New dataset" form
+ * opened from the header - and `#/evals/datasets/:name`, one dataset's examples
+ * (see `DatasetDetail.tsx`). Both sit under the Evaluations header tabs and
+ * behind the daemon-down state, which keeps the URL and swaps the screen back
+ * in by itself once the daemon is back.
  */
 import './datasets.css';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
+import { CalendarDays, Database, Plus, Rows3, X } from 'lucide-react';
 import { matchRoute, navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useDaemonDown, useDaemonHealth, useDatasets } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { ObserveApiError, observeClient } from '../../observe/observeClient';
 import type { ObserveDataset } from '../../observe/types';
-import { fmtDateTime, fmtInt } from '../../observe/format';
-import { DataTable, type Column } from '../../ui/DataTable';
+import { fmtInt } from '../../observe/format';
+import { Card } from '../../ui/Card';
+import { TablePager } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
+import { Skeleton } from '../../ui/Skeleton';
 import { useToast } from '../../ui/Toast';
-import { Clip } from '../listFilters';
-import { EvalsTabs } from '../evals/EvalsTabs';
+import { EvalsHeader } from '../evals/EvalsTabs';
 import { DatasetDetail } from './DatasetDetail';
 import { DATASETS_PAGE_SIZE, datasetPath, datasetsPath, parseOffset } from './datasetsUrl';
 
-const COLUMNS: Column<ObserveDataset>[] = [
-  { key: 'name', header: 'Name', width: 220, render: (d) => <Clip text={d.name} /> },
-  { key: 'description', header: 'Description', width: 320, render: (d) => <Clip text={d.description} /> },
-  { key: 'examples', header: 'Examples', align: 'right', width: 100, render: (d) => fmtInt(d.example_count) },
-  { key: 'created', header: 'Created', width: 150, hideBelow: 720, render: (d) => fmtDateTime(d.created_at) },
-];
+const DESCRIPTION = 'Example sets for offline evals';
+const FORM_ID = 'new-dataset-form';
+
+/** A created date as "Oct 20, 2026". */
+const fmtDate = (ms: number) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
 /** The create failure shown inline: a 409 is a taken name, anything else its message. */
 const createError = (error: unknown): string =>
@@ -35,8 +37,8 @@ const createError = (error: unknown): string =>
     ? 'Could not create: a dataset with that name exists.'
     : `Could not create the dataset: ${(error as Error).message}`;
 
-/** "New dataset": a name and an optional description; success refreshes the list. */
-function NewDatasetForm({ onCreated }: { onCreated: () => void }) {
+/** "New dataset": a name and an optional description; success refreshes the list and closes the form. */
+function NewDatasetForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -53,37 +55,53 @@ function NewDatasetForm({ onCreated }: { onCreated: () => void }) {
       const text = description.trim();
       await observeClient.createDataset(text ? { name: target, description: text } : { name: target });
       toast.show({ tone: 'success', message: `Created dataset ${target}.` });
-      setName('');
-      setDescription('');
       onCreated();
     } catch (failure) {
       setError(createError(failure));
-    } finally {
       setSaving(false);
     }
   };
 
   return (
-    <form className="datasets-new" aria-label="New dataset" onSubmit={(e) => void submit(e)}>
-      <h3 className="datasets-section-title">New dataset</h3>
-      <div className="datasets-new-fields">
-        <label className="datasets-field">
-          <span>Name</span>
+    <form id={FORM_ID} className="card ds-new" aria-label="New dataset" onSubmit={(e) => void submit(e)}>
+      <div className="ds-new-head">
+        <h3 className="card-title">New dataset</h3>
+        <button type="button" className="btn btn-ghost btn-icon btn-sm" aria-label="Close new dataset" onClick={onCancel}>
+          <X aria-hidden="true" />
+        </button>
+      </div>
+      <div className="ds-new-fields">
+        <label className="ds-field ds-new-name">
+          <span className="ds-field-label">Name</span>
           <input
+            className="input"
             name="dataset-name"
             type="text"
             value={name}
             placeholder="e.g. support-golden"
+            autoFocus
             onChange={(e) => setName(e.target.value)}
           />
         </label>
-        <label className="datasets-field datasets-field-wide">
-          <span>Description (optional)</span>
-          <input name="dataset-description" type="text" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label className="ds-field ds-new-desc">
+          <span className="ds-field-label">Description (optional)</span>
+          <input
+            className="input"
+            name="dataset-description"
+            type="text"
+            value={description}
+            placeholder="What these examples cover"
+            onChange={(e) => setDescription(e.target.value)}
+          />
         </label>
-        <button type="submit" className="btn" disabled={saving || !name.trim()}>
-          Create dataset
-        </button>
+        <div className="ds-new-actions">
+          <button type="button" className="btn btn-ghost" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={saving || !name.trim()}>
+            Create dataset
+          </button>
+        </div>
       </div>
       {error && (
         <p className="datasets-form-error" role="alert">
@@ -94,53 +112,182 @@ function NewDatasetForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function DatasetList() {
-  const route = useRoute();
-  const offset = parseOffset(route.query);
-  const [refreshKey, setRefreshKey] = useState(0);
-  const list = useDatasets({ limit: DATASETS_PAGE_SIZE, offset }, refreshKey);
-  if (useDaemonDown(false, [list])) return <ObserveDaemonDown />;
+/** One dataset as a card; the whole card is the link to its examples. */
+function DatasetCard({ dataset: d }: { dataset: ObserveDataset }) {
+  const id = useId();
+  // Named by the dataset's name alone; the description, count and date describe it.
+  return (
+    <li className="ds-card">
+      <a className="ds-card-link" href={`#${datasetPath(d.name)}`} aria-labelledby={`${id}-name`} aria-describedby={`${id}-desc ${id}-meta`}>
+        <span className="ds-card-top">
+          <span className="ds-card-icon" aria-hidden="true">
+            <Database size={16} strokeWidth={1.75} />
+          </span>
+          <span className="ds-card-name" id={`${id}-name`} title={d.name}>
+            {d.name}
+          </span>
+        </span>
+        <span
+          className={d.description ? 'ds-card-desc' : 'ds-card-desc ds-card-desc-none'}
+          id={`${id}-desc`}
+          title={d.description ?? undefined}
+        >
+          {d.description || 'No description'}
+        </span>
+        <span className="ds-card-meta" id={`${id}-meta`}>
+          <span className="ds-card-stat">
+            <Rows3 size={14} strokeWidth={1.75} aria-hidden="true" />
+            {fmtInt(d.example_count)} {d.example_count === 1 ? 'example' : 'examples'}
+          </span>
+          <span className="ds-card-stat">
+            <CalendarDays size={14} strokeWidth={1.75} aria-hidden="true" />
+            Created {fmtDate(d.created_at)}
+          </span>
+        </span>
+      </a>
+    </li>
+  );
+}
+
+/** The grid's first-load placeholder: six skeleton cards and one status line. */
+function GridSkeleton() {
+  return (
+    <div className="ds-grid-loading">
+      <span role="status" className="visually-hidden">
+        Loading datasets
+      </span>
+      <ul className="ds-grid" aria-hidden="true">
+        {Array.from({ length: 6 }, (_, i) => (
+          <li key={i} className="ds-card ds-card-skeleton">
+            <Skeleton width={28} height={28} radius="var(--radius)" />
+            <Skeleton width="55%" height={12} />
+            <Skeleton width="85%" height={10} />
+            <Skeleton width="40%" height={10} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function NewDatasetButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="btn btn-primary" aria-expanded={open} aria-controls={open ? FORM_ID : undefined} onClick={onClick}>
+      <Plus aria-hidden="true" />
+      New dataset
+    </button>
+  );
+}
+
+/** The loaded grid (or its empty state) and, past one page, the pager. */
+interface DatasetGridProps {
+  datasets: ObserveDataset[];
+  total: number;
+  offset: number;
+  /** The New dataset form is open: the empty state drops its own New dataset button. */
+  creating: boolean;
+  onNew: () => void;
+}
+
+const EMPTY_HINT = 'Create one with New dataset, or use Add to dataset on a trace to copy its input and output in as an example.';
+
+function DatasetGrid({ datasets, total, offset, creating, onNew }: DatasetGridProps) {
+  if (datasets.length === 0 && offset === 0)
+    return (
+      <Card as="div">
+        {creating ? (
+          <EmptyState icon={Database} title="No datasets yet" hint={EMPTY_HINT} />
+        ) : (
+          <EmptyState icon={Database} title="No datasets yet" hint={EMPTY_HINT} action={<NewDatasetButton open={false} onClick={onNew} />} />
+        )}
+      </Card>
+    );
   return (
     <>
-      <h2 className="visually-hidden">Datasets</h2>
-      <NewDatasetForm onCreated={() => setRefreshKey((k) => k + 1)} />
-      <ObserveError error={list.error} />
-      <DataTable
-        id="datasets"
-        columns={COLUMNS}
-        rows={list.data?.datasets ?? []}
-        rowKey={(d) => d.name}
-        onRowOpen={(d) => navigate(datasetPath(d.name))}
-        page={{
-          offset,
-          limit: DATASETS_PAGE_SIZE,
-          total: list.data?.total ?? 0,
-          onChange: (next) => navigate(datasetsPath(next), { replace: true }),
-        }}
-        loading={list.loading && !list.data}
-        empty={
-          <EmptyState
-            title="No datasets yet"
-            hint="Create one above, or use Add to dataset on a trace to copy its input and output in as an example."
-          />
-        }
-      />
+      {datasets.length === 0 ? (
+        <p className="datasets-note">No datasets on this page.</p>
+      ) : (
+        <ul className="ds-grid" aria-label="Datasets">
+          {datasets.map((d) => (
+            <DatasetCard key={d.name} dataset={d} />
+          ))}
+        </ul>
+      )}
+      {(offset > 0 || total > DATASETS_PAGE_SIZE) && (
+        <TablePager
+          offset={offset}
+          limit={DATASETS_PAGE_SIZE}
+          total={total}
+          onChange={(next) => navigate(datasetsPath(next), { replace: true })}
+        />
+      )}
     </>
   );
 }
 
-/** `#/evals/datasets` and `#/evals/datasets/:name`, under the Evaluations tabs and behind the daemon-down state. */
+function DatasetList() {
+  const route = useRoute();
+  const offset = parseOffset(route.query);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [creating, setCreating] = useState(false);
+  const list = useDatasets({ limit: DATASETS_PAGE_SIZE, offset }, refreshKey);
+  const down = useDaemonDown(false, [list]);
+  const data = list.data;
+  // A stale ?offset= past the end (datasets deleted elsewhere) steps back a page.
+  useEffect(() => {
+    if (data && data.datasets.length === 0 && offset > 0 && offset >= data.total) {
+      navigate(datasetsPath(Math.max(0, offset - DATASETS_PAGE_SIZE)), { replace: true });
+    }
+  }, [data, offset]);
+  const header = (
+    <EvalsHeader description={DESCRIPTION} actions={down ? undefined : <NewDatasetButton open={creating} onClick={() => setCreating((v) => !v)} />} />
+  );
+  if (down)
+    return (
+      <>
+        {header}
+        <ObserveDaemonDown />
+      </>
+    );
+  return (
+    <>
+      {header}
+      <h2 className="visually-hidden">Datasets</h2>
+      {creating && (
+        <NewDatasetForm
+          onCancel={() => setCreating(false)}
+          onCreated={() => {
+            setCreating(false);
+            setRefreshKey((k) => k + 1);
+          }}
+        />
+      )}
+      <ObserveError error={list.error} />
+      {list.loading && !list.data && <GridSkeleton />}
+      {list.data && (
+        <DatasetGrid datasets={list.data.datasets} total={list.data.total} offset={offset} creating={creating} onNew={() => setCreating(true)} />
+      )}
+    </>
+  );
+}
+
+/** `#/evals/datasets` and `#/evals/datasets/:name`, under the Evaluations header and behind the daemon-down state. */
 export function DatasetsScreen() {
   const { path } = useRoute();
   const health = useDaemonHealth();
   const detail = matchRoute(`#${path}`, ['/evals/datasets/:name']);
   let body;
-  if (health.down) body = <ObserveDaemonDown />;
+  if (health.down)
+    body = (
+      <>
+        <EvalsHeader description={DESCRIPTION} />
+        <ObserveDaemonDown />
+      </>
+    );
   else if (detail) body = <DatasetDetail key={detail.params.name} name={detail.params.name} />;
   else body = <DatasetList />;
   return (
-    <section className="datasets-screen" aria-label="Datasets">
-      <EvalsTabs />
+    <section className="ds-screen" aria-label="Datasets">
       {body}
     </section>
   );

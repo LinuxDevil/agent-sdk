@@ -1,23 +1,77 @@
-/* Evaluations sub-navigation (#/evals/*). Tokens only. */
+/* Evaluations sub-navigation (#/evals/*): underline tabs in the PageHeader's tabs row. Tokens only. */
+/* Tabs wrap rather than scroll, so every tab stays visible at phone widths. */
 .evals-tabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
+  column-gap: var(--space-5);
+  min-width: 0;
+}
+@media (max-width: 480px) {
+  .evals-tabs {
+    column-gap: var(--space-4);
+  }
 }
 /* Two classes: outranks a screen's own `a` colour. */
 .evals-tabs .evals-tab {
-  padding: 6px 10px;
-  border-bottom: 2px solid transparent;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  /* the 2px underline is drawn inset, so it sits on the header's hairline. */
+  box-shadow: inset 0 -2px 0 transparent;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: var(--fs-table);
+  font-weight: 500;
   text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
 .evals-tabs .evals-tab:hover {
   color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--border-strong);
 }
 .evals-tabs .evals-tab[aria-current='page'] {
-  border-bottom-color: var(--accent);
   color: var(--text);
-  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.evals-tabs .evals-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+/* A trace link as a small mono chip (score rows, dataset examples). */
+.evals-trace-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.evals-trace-link svg {
+  color: var(--text-faint);
+}
+.evals-trace-link:hover {
+  border-color: var(--border-strong);
+}
+.evals-trace-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evals-trace-link,
+  .evals-tabs .evals-tab {
+    transition: none;
+  }
 }

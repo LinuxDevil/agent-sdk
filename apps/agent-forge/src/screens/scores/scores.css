@@ -1,94 +1,226 @@
 /*
- * Scores screen (#/evals/scores): filters over the per-eval table, then the
- * expanded eval's trend, checks and latest failures. Colours from
- * src/theme.css tokens only.
+ * Scores screen (#/evals/scores): filters, metric cards, the per-eval table
+ * card, then the expanded eval's card (trend, checks, latest failures).
+ * Colours from src/theme.css tokens only.
  */
 
 .scores-screen {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  min-height: 0;
-  padding: 16px;
+  /* a grid, not a flex column: no child (the table card) is ever shrunk to fit. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-4);
+  flex: none;
+  padding: var(--space-5) var(--page-gutter) var(--space-8);
   font-family: var(--font-ui);
   color: var(--text);
 }
 
-.scores-toggle {
-  font-weight: 600;
-  text-align: left;
+.scores-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--space-3);
 }
+
+/* The eval name: a quiet disclosure button, chevron turns when open. */
+.scores-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 100%;
+  min-height: 26px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.scores-toggle:hover {
+  background: var(--surface-3);
+}
+.scores-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.scores-toggle-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+.scores-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.scores-toggle[aria-expanded='true'] .scores-chevron {
+  transform: rotate(90deg);
+  color: var(--accent);
+}
+
+/* Pass rate: a two-tone bar (passed / failed) and the figure. */
+.score-rate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.score-rate-bar {
+  flex: 0 1 72px;
+  min-width: 32px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--danger) 28%, var(--surface-3));
+}
+.score-rate-bar[data-empty='true'] {
+  background: var(--surface-3);
+}
+.score-rate-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--success);
+}
+.score-rate-value {
+  flex: none;
+  min-width: 48px;
+  text-align: right;
+}
+
 .scores-name {
   font-family: var(--font-mono);
+  font-size: 12.5px;
 }
 .scores-muted {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-meta);
   color: var(--text-muted);
-}
-.scores-link {
-  font-family: var(--font-mono);
-  color: var(--text);
-  text-decoration: underline;
 }
 
-.scores-detail {
+/* ---------- Expanded eval ---------- */
+.scores-detail-title {
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+  overflow-wrap: anywhere;
+}
+.scores-detail-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  gap: var(--space-5);
 }
-.scores-detail-title {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 14px;
+.scores-detail-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.scores-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: var(--space-5);
+  align-items: start;
+}
+.scores-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
 }
 .scores-subtitle {
-  margin: 0 0 6px;
-  font-size: 12px;
+  margin: 0;
+  font-size: var(--fs-overline);
   font-weight: 600;
-  color: var(--text-muted);
+  line-height: 1.4;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
-  letter-spacing: 0.4px;
+  color: var(--text-faint);
+}
+/* A table inside the card: its own hairline box. */
+.scores-panel {
+  overflow: clip;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.scores-panel .data-table tbody tr:last-child > td {
+  border-bottom: 0;
+}
+
+.scores-none {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+.scores-none svg {
+  color: var(--success);
 }
 
 .scores-failures {
   display: flex;
   flex-direction: column;
-  gap: 4px;
   margin: 0;
   padding: 0;
   list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
 }
 .scores-failure {
   display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 12px;
-  padding: 6px 8px;
-  border-left: 3px solid var(--danger);
-  background: var(--surface-2);
-  border-radius: 4px;
-  font-size: 12px;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--fs-meta);
 }
-.scores-when {
-  color: var(--text-faint);
+.scores-failure + .scores-failure {
+  border-top: 1px solid var(--border);
+}
+.scores-failure-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+.scores-failure-head .scores-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
 }
 .scores-value {
-  color: var(--danger);
-  font-weight: 600;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+.scores-when {
+  flex: none;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
 }
 .scores-comment {
-  flex-basis: 100%;
+  margin: 0;
   color: var(--text-muted);
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 480px) {
-  .scores-screen {
-    padding: 12px;
+@media (prefers-reduced-motion: reduce) {
+  .scores-chevron {
+    transition: none;
   }
 }
