@@ -55,3 +55,17 @@ describe('sticky side panels', () => {
     expect(rulesFor(sheet('screens/hub/hub.css'), '.hub-split > .hub-entry')).toMatch(/overflow:\s*auto/);
   });
 });
+
+describe('U01 tokens', () => {
+  const theme = sheet('theme.css');
+  it.each(['success', 'warning', 'danger', 'info'])('--%s-border is the status colour at 40%%', (s) => {
+    expect(theme).toMatch(new RegExp(`--${s}-border:\\s*color-mix\\(in srgb, var\\(--${s}\\) 40%, transparent\\);`));
+  });
+  it('adds --fs-display 22px and --dock-width 490px', () => {
+    expect(theme).toMatch(/--fs-display:\s*22px;/);
+    expect(theme).toMatch(/--dock-width:\s*490px;/);
+  });
+  it('--nav-bg is a light-dark pair', () => {
+    expect(theme).toMatch(/--nav-bg:\s*light-dark\(#efeff2,\s*#060608\);/);
+  });
+});

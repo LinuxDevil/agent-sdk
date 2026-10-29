@@ -72,6 +72,20 @@ const PAIRS: [text: string, background: string][] = [
   ['violet', 'surface-3'],
   ['accent', 'surface-3'],
   ['text-faint', 'surface-3'],
+  // The nav rail and the shell frame sit on --nav-bg (U02): nav labels, section overlines, the active icon.
+  ['text', 'nav-bg'],
+  ['text-muted', 'nav-bg'],
+  ['text-faint', 'nav-bg'],
+  ['accent', 'nav-bg'],
+  // Tinted toasts (U12) draw the message in --text and the close button in --text-muted on each -soft tint.
+  ['text', 'success-soft'],
+  ['text', 'danger-soft'],
+  ['text', 'warning-soft'],
+  ['text', 'info-soft'],
+  ['text-muted', 'success-soft'],
+  ['text-muted', 'danger-soft'],
+  ['text-muted', 'warning-soft'],
+  ['text-muted', 'info-soft'],
 ];
 
 describe('theme contrast', () => {
