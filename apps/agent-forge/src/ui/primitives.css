@@ -25,6 +25,11 @@
   background: var(--surface-2);
   color: var(--text-muted);
 }
+/* A static informational state (e.g. a key read from the environment): the running colours, no pulse. */
+.status-pill.pill-info {
+  background: var(--info-soft);
+  color: var(--info);
+}
 /* LLM / agent-flavoured statuses. */
 .status-pill.pill-violet {
   background: var(--violet-soft);

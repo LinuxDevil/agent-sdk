@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { matchRoute, navigate } from '../router/router';
 import { useRoute } from '../router/useRoute';
-import { ScreenHeaderHost } from '../shell/ScreenHeader';
+import { ScreenHeader, ScreenHeaderHost } from '../shell/ScreenHeader';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { TracesScreen } from './traces/TracesScreen';
 import { ThreadsScreen } from './threads/ThreadsScreen';
@@ -74,6 +74,8 @@ const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   hub: HubScreen,
 };
 
+const SETTINGS_DESCRIPTION = 'Appearance, provider keys, profiles and the collector for this Studio.';
+
 /** Renders the screen the hash route names; leaving Agents with unsaved changes asks first. */
 export function Screens() {
   const screen = useLeaveAgentsGuard(useScreen());
@@ -85,8 +87,9 @@ export function Screens() {
   else
     content = (
       <div className="screen-settings">
+        <ScreenHeader title="Settings" description={SETTINGS_DESCRIPTION} status={null} />
         <h2 className="visually-hidden">Settings</h2>
-        <SettingsPanel />
+        <SettingsPanel variant="screen" />
       </div>
     );
   return <ScreenFrame>{content}</ScreenFrame>;

@@ -54,6 +54,13 @@
 .dt-comfortable td {
   height: 40px;
 }
+/* A density picked in Settings (`<html data-density>`, shell/theme.ts) overrides each table's own. */
+html[data-density='compact'] .data-table td {
+  height: 32px;
+}
+html[data-density='comfortable'] .data-table td {
+  height: 40px;
+}
 /* the first column names the row. */
 .data-table td:first-child {
   font-weight: 500;
