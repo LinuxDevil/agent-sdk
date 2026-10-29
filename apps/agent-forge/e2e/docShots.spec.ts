@@ -201,6 +201,13 @@ test('datasets: one dataset with its examples', async ({ page }) => {
   await shoot(page, 'datasets');
 });
 
+test('evaluators: the rule list', async ({ page }) => {
+  await open(page, '/evals/evaluators');
+  await expect(rows(page)).toHaveCount(2);
+  await expect(page.getByRole('switch', { name: 'answered enabled' })).toBeChecked();
+  await shoot(page, 'evaluators');
+});
+
 test('annotation queue: reviewing an item', async ({ page }) => {
   await open(page, '/evals/queues/e2e-queue');
   await expect(page.locator('[data-review-trace="e2e-trace"]')).toBeVisible();

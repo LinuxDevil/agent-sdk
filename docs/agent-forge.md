@@ -169,7 +169,7 @@ unknown hash goes to `#/agents` (the `?token=` stays).
 | `#/monitoring` | Monitoring | `window` (`1h`, `24h`, `7d`, `30d`; default `24h`), `agent` |
 | `#/evals/scores` | Scores | `eval` (comma list), `agent`, `source` (`eval`, `judge`, `human`, `online`), `range` (default `30d`), `open` (the expanded eval) |
 | `#/evals/datasets`, `#/evals/datasets/<name>` | Datasets, one dataset | `offset` |
-| `#/evals/evaluators` | Evaluators | |
+| `#/evals/evaluators`, `#/evals/evaluators/<rule id>` | Evaluators, one rule's edit view | `kind` (`code`, `judge`), `enabled` (`true`, `false`), `offset`; on a rule, `trace` (prefills Test on trace) |
 | `#/evals/queues`, `#/evals/queues/<queue id>` | Annotation queues, one queue's review | `offset` (the list) |
 | `#/prompts` | Prompt registry | |
 | `#/prompts/<name>`, `#/prompts/<name>@<version or label>` | One prompt (latest version by default) | `diff=<a>,<b>` |
@@ -347,8 +347,9 @@ agent).
 
 ### Evaluations
 
-**Evaluations** in the nav opens `#/evals/scores`. Tabs at the top reach
-the four screens.
+**Evaluations** in the nav opens `#/evals/scores`. A sub-navigation at the
+top of every Evaluations screen (**Scores**, **Datasets**, **Evaluators**,
+**Annotation queues**) moves between them.
 
 #### Scores
 
@@ -377,26 +378,44 @@ with `defineEval({ dataset: 'name' })` (see
 
 #### Evaluators
 
-<!-- F21: verify against EvaluatorsScreen -->
+![The Evaluators list: rules with their switch and last-run counts](./images/studio-evaluators.png)
 
 `#/evals/evaluators` manages [online evaluator
 rules](./observability.md#online-evaluator-rules): rules that score new
-traces as they arrive, each with a filter (agent, status, name contains), a
-sample rate and an on/off switch. Their scores show on Scores with source
-`online`.
+traces as they finish. Their scores carry the rule's name and show on Scores
+with source `online`.
 
-- A **code** rule is a function of the trace. The observe daemon runs it in
-  its isolate sandbox, so code rules run whether or not the Studio is open
-  (see [Online evaluators](./observability.md#online-evaluators)).
-- A **judge** rule is a model and a rubric. The daemon has no provider keys,
-  so the Studio runs judges with its own keys (a key saved in Settings wins
-  over the environment variable), and only while `lousho studio` is running;
-  until then the jobs wait in the daemon (see
+The list shows each rule's name, kind (`code` or `judge`), filter (or "All
+traces"), sample rate, an **Enabled** switch (flips the rule on or off at
+once), and its **Last run** and **Runs (24h)**, counted from the newest 1000
+online scores (a `+` after the count means that read was full, so the count
+is a floor). Filter by **Kind** and **State** (`?kind=`, `?enabled=`), 50
+rules a page.
+
+**New evaluator** opens the form; open a rule (`#/evals/evaluators/<rule
+id>`) to edit it in the same form, where **Save changes** sends only the
+fields you changed and **Delete** removes the rule after a confirm (its past
+scores stay). The form has a name, a sample rate (0-1), an enabled box, the
+filter (agent, status `ok` or `error`, name contains), and the kind:
+
+- A **code** rule is a function `(trace) => number | { value, comment }`,
+  prefilled with a working sample. The observe daemon runs it in its isolate
+  sandbox, so code rules run whether or not the Studio is open (see
+  [Online evaluators](./observability.md#online-evaluators)).
+- A **judge** rule is a provider, a model and a rubric. The daemon has no
+  provider keys, so the Studio runs judges, with a key stored in Settings or
+  the provider's environment variable where the Studio runs (the stored key
+  wins); the provider list offers the providers that have either, plus
+  `ollama` and `mock`. With no key at all the judge option is disabled, with
+  a link to Settings. Judges run only while `lousho studio` is running; until
+  then their jobs wait in the daemon (see
   [Judge rules](./observability.md#judge-rules-through-agent-forge)). Set
   `LOUSHO_STUDIO_JUDGE=0` on the Studio server to turn its judge loop off.
-- **Test on a trace** dry-runs a rule on one trace id and shows the value and
-  comment without writing a score: a judge rule runs in the Studio, a code
-  rule in the daemon.
+
+**Test on trace** on a rule's page dry-runs it on one trace id (`?trace=`
+prefills it) and shows the value and comment; no score is written. The
+Studio runs a judge rule itself and forwards a code rule to the daemon. An
+unknown trace shows "Trace not found".
 
 #### Annotation queues
 
