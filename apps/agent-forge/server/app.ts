@@ -103,6 +103,46 @@ export interface CreateAppOptions {
 /** Path prefixes of the API (everything except `/health` and the static client). */
 const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe', '/playground'];
 
+/** The only methods served without the token, and only off the API (`/health`, the static client). */
+const PUBLIC_METHODS = new Set(['GET', 'HEAD']);
+
+/**
+ * `pathname` as the token gate compares it: percent-decoded to a fixed point,
+ * runs of `/` or `\` collapsed to one `/`, lower-cased - a superset of every
+ * spelling Express could route to an API handler (`/PLAYGROUND/run`,
+ * `//playground/run`, `/%70layground/run`, `/observe%2Fapi/...`).
+ * `undefined` when it doesn't decode cleanly (the gate then treats it as API).
+ */
+function gatePath(pathname: string): string | undefined {
+  let current = pathname;
+  for (let round = 0; round < 4; round++) {
+    let decoded: string;
+    try {
+      decoded = decodeURIComponent(current);
+    } catch {
+      return undefined;
+    }
+    if (decoded === current) return current.replace(/[\\/]+/g, '/').toLowerCase();
+    current = decoded;
+  }
+  return undefined;
+}
+
+function isApiPath(pathname: string): boolean {
+  const normalised = gatePath(pathname);
+  if (normalised === undefined) return true;
+  return API_PREFIXES.some((prefix) => normalised === prefix || normalised.startsWith(`${prefix}/`));
+}
+
+/**
+ * Deny by default: every request needs the token except a GET/HEAD off the
+ * API (`/health`, static files, the SPA fallback). `req.path` is the pathname
+ * Express routes on (an absolute-form request line's included).
+ */
+function needsToken(req: Request): boolean {
+  return !PUBLIC_METHODS.has(req.method) || isApiPath(req.path);
+}
+
 function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
   return (req: Request, res: Response, next: NextFunction) => {
     fn(req, res).catch(next);
@@ -623,14 +663,19 @@ export function createApp({
   judge,
 }: CreateAppOptions): Express {
   const app = express();
+  // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`
+  // used to reach its handler past a case-sensitive gate. Set before the first
+  // `app.use` (the router reads it when it is created).
+  app.set('case sensitive routing', true);
   // No CORS middleware - the client is same-origin (served by
   // this server, or proxied by Vite in dev). Every request must name a
-  // loopback Host and carry no foreign Origin; API routes also need the token.
+  // loopback Host and carry no foreign Origin; everything except a GET/HEAD of
+  // `/health` or the static client also needs the token (see needsToken()).
   app.use((req, res, next) => {
     const decision = access
-      ? (API_PREFIXES.some((prefix) => req.path === prefix || req.path.startsWith(`${prefix}/`))
-          ? checkApiAccess(req, access)
-          : checkHostAndOrigin(req, access))
+      ? needsToken(req)
+        ? checkApiAccess(req, access)
+        : checkHostAndOrigin(req, access)
       : checkHostAndOrigin(req, { token: '' });
     if (!decision.ok) {
       res.status(decision.status).json({ error: decision.error });

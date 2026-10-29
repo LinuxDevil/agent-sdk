@@ -66,6 +66,10 @@ opt-out.
 
 - [Agent Forge](docs/agent-forge.md) documents the left navigation, every screen, the deep-link routes and the keyboard shortcuts, with screenshots in `docs/images`; [Observability](docs/observability.md), [CLI](docs/cli.md) and [Evals](docs/evals.md) link to the screens. The screenshots come from an opt-in Playwright spec: `LOUSHO_DOC_SHOTS=1 npx playwright test -c apps/agent-forge/playwright.config.ts docShots`. See [Keyboard](docs/agent-forge.md#keyboard) and [Routes and deep links](docs/agent-forge.md#routes-and-deep-links).
 
+### Security
+
+- Agent Forge's studio server requires its per-launch token on every API route regardless of path case or encoding: `/PLAYGROUND/run`, `/Observe/api/v1/scores`, `//settings/...` or `/%70layground/run` no longer skip the check. Routing is case-sensitive, and every request except a `GET`/`HEAD` of `/health` or the built client needs the token.
+
 ## [1.0.0-alpha.29] - 2026-10-21
 
 ### Changed
