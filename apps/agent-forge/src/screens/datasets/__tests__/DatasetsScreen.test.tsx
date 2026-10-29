@@ -146,6 +146,35 @@ describe('DatasetsScreen list', () => {
     expect(container.textContent).toContain('No datasets yet');
   });
 
+  it('names a card link by the dataset name and describes it with the rest', async () => {
+    const container = await mountAt('#/evals/datasets');
+    const link = container.querySelector('.ds-card a')!;
+    const text = (ids: string | null) => (ids ?? '').split(' ').map((id) => document.getElementById(id)?.textContent).join(' ');
+    expect(text(link.getAttribute('aria-labelledby'))).toBe('golden');
+    const described = text(link.getAttribute('aria-describedby'));
+    expect(described).toContain('Hand-picked support cases');
+    expect(described).toContain('120 examples');
+  });
+
+  it('keeps one New dataset button while the form is open over the empty state', async () => {
+    datasets = [];
+    const container = await mountAt('#/evals/datasets');
+    const buttons = () => [...container.querySelectorAll('button')].filter((b) => b.textContent?.trim() === 'New dataset');
+    expect(buttons()).toHaveLength(2);
+    act(() => buttons()[0]!.click());
+    expect(buttons()).toHaveLength(1);
+    expect(buttons()[0]!.getAttribute('aria-expanded')).toBe('true');
+  });
+
+  it('steps back from a stale offset past the end, page by page, to the last real page', async () => {
+    // No datasets at all: ?offset=100 is past the end, then so is 50; the first page shows the empty state.
+    datasets = [];
+    const container = await mountAt('#/evals/datasets?offset=100');
+    await flush();
+    expect(window.location.hash).toBe('#/evals/datasets');
+    expect(container.textContent).toContain('No datasets yet');
+  });
+
   it('opens a dataset from its card link', async () => {
     const container = await mountAt('#/evals/datasets');
     const link = container.querySelector('.ds-card a') as HTMLAnchorElement;

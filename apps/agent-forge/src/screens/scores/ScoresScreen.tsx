@@ -101,10 +101,11 @@ function evalColumns(open: string, toggle: (name: string) => void): Column<Obser
       header: <span title={AGGREGATE_NOTE}>Score pass rate</span>,
       label: 'Score pass rate',
       align: 'right',
-      width: 200,
+      width: 170,
       render: (r) => <PassRateBar rate={r.pass_rate} />,
     },
-    { key: 'count', header: 'Scores', align: 'right', width: 110, render: (r) => fmtInt(r.count) },
+    // Phone widths keep the name and pass rate; the counts come back from 420px.
+    { key: 'count', header: 'Scores', align: 'right', width: 100, hideBelow: 420, render: (r) => fmtInt(r.count) },
     {
       key: 'mean',
       header: <span title={AGGREGATE_NOTE}>Mean score</span>,
@@ -140,7 +141,7 @@ function ScoresMetrics({ rows, loading, known }: { rows: ObserveScorePassRate[];
       <MetricCard
         label="Score pass rate"
         value={show(fmtPercent(s.passRate))}
-        hint={known ? `across ${fmtInt(s.scores)} scores` : 'across every score'}
+        hint={known && s.scores > 0 ? `across ${fmtInt(s.scores)} scores` : undefined}
         loading={loading}
       />
       <MetricCard label="Avg score" value={show(s.mean === null ? NONE : s.mean.toFixed(2))} hint="count-weighted mean" loading={loading} />

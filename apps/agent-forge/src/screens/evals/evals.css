@@ -1,10 +1,15 @@
 /* Evaluations sub-navigation (#/evals/*): underline tabs in the PageHeader's tabs row. Tokens only. */
+/* Tabs wrap rather than scroll, so every tab stays visible at phone widths. */
 .evals-tabs {
   display: flex;
-  gap: var(--space-5);
+  flex-wrap: wrap;
+  column-gap: var(--space-5);
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+}
+@media (max-width: 480px) {
+  .evals-tabs {
+    column-gap: var(--space-4);
+  }
 }
 /* Two classes: outranks a screen's own `a` colour. */
 .evals-tabs .evals-tab {

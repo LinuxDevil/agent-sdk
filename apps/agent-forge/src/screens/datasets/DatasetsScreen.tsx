@@ -7,7 +7,7 @@
  * in by itself once the daemon is back.
  */
 import './datasets.css';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { CalendarDays, Database, Plus, Rows3, X } from 'lucide-react';
 import { matchRoute, navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
@@ -114,21 +114,27 @@ function NewDatasetForm({ onCreated, onCancel }: { onCreated: () => void; onCanc
 
 /** One dataset as a card; the whole card is the link to its examples. */
 function DatasetCard({ dataset: d }: { dataset: ObserveDataset }) {
+  const id = useId();
+  // Named by the dataset's name alone; the description, count and date describe it.
   return (
     <li className="ds-card">
-      <a className="ds-card-link" href={`#${datasetPath(d.name)}`}>
+      <a className="ds-card-link" href={`#${datasetPath(d.name)}`} aria-labelledby={`${id}-name`} aria-describedby={`${id}-desc ${id}-meta`}>
         <span className="ds-card-top">
           <span className="ds-card-icon" aria-hidden="true">
             <Database size={16} strokeWidth={1.75} />
           </span>
-          <span className="ds-card-name" title={d.name}>
+          <span className="ds-card-name" id={`${id}-name`} title={d.name}>
             {d.name}
           </span>
         </span>
-        <span className={d.description ? 'ds-card-desc' : 'ds-card-desc ds-card-desc-none'} title={d.description ?? undefined}>
+        <span
+          className={d.description ? 'ds-card-desc' : 'ds-card-desc ds-card-desc-none'}
+          id={`${id}-desc`}
+          title={d.description ?? undefined}
+        >
           {d.description || 'No description'}
         </span>
-        <span className="ds-card-meta">
+        <span className="ds-card-meta" id={`${id}-meta`}>
           <span className="ds-card-stat">
             <Rows3 size={14} strokeWidth={1.75} aria-hidden="true" />
             {fmtInt(d.example_count)} {d.example_count === 1 ? 'example' : 'examples'}
@@ -174,25 +180,39 @@ function NewDatasetButton({ open, onClick }: { open: boolean; onClick: () => voi
 }
 
 /** The loaded grid (or its empty state) and, past one page, the pager. */
-function DatasetGrid({ datasets, total, offset, onNew }: { datasets: ObserveDataset[]; total: number; offset: number; onNew: () => void }) {
+interface DatasetGridProps {
+  datasets: ObserveDataset[];
+  total: number;
+  offset: number;
+  /** The New dataset form is open: the empty state drops its own New dataset button. */
+  creating: boolean;
+  onNew: () => void;
+}
+
+const EMPTY_HINT = 'Create one with New dataset, or use Add to dataset on a trace to copy its input and output in as an example.';
+
+function DatasetGrid({ datasets, total, offset, creating, onNew }: DatasetGridProps) {
   if (datasets.length === 0 && offset === 0)
     return (
       <Card as="div">
-        <EmptyState
-          icon={Database}
-          title="No datasets yet"
-          hint="Create one here, or use Add to dataset on a trace to copy its input and output in as an example."
-          action={<NewDatasetButton open={false} onClick={onNew} />}
-        />
+        {creating ? (
+          <EmptyState icon={Database} title="No datasets yet" hint={EMPTY_HINT} />
+        ) : (
+          <EmptyState icon={Database} title="No datasets yet" hint={EMPTY_HINT} action={<NewDatasetButton open={false} onClick={onNew} />} />
+        )}
       </Card>
     );
   return (
     <>
-      <ul className="ds-grid" aria-label="Datasets">
-        {datasets.map((d) => (
-          <DatasetCard key={d.name} dataset={d} />
-        ))}
-      </ul>
+      {datasets.length === 0 ? (
+        <p className="datasets-note">No datasets on this page.</p>
+      ) : (
+        <ul className="ds-grid" aria-label="Datasets">
+          {datasets.map((d) => (
+            <DatasetCard key={d.name} dataset={d} />
+          ))}
+        </ul>
+      )}
       {(offset > 0 || total > DATASETS_PAGE_SIZE) && (
         <TablePager
           offset={offset}
@@ -212,6 +232,13 @@ function DatasetList() {
   const [creating, setCreating] = useState(false);
   const list = useDatasets({ limit: DATASETS_PAGE_SIZE, offset }, refreshKey);
   const down = useDaemonDown(false, [list]);
+  const data = list.data;
+  // A stale ?offset= past the end (datasets deleted elsewhere) steps back a page.
+  useEffect(() => {
+    if (data && data.datasets.length === 0 && offset > 0 && offset >= data.total) {
+      navigate(datasetsPath(Math.max(0, offset - DATASETS_PAGE_SIZE)), { replace: true });
+    }
+  }, [data, offset]);
   const header = (
     <EvalsHeader description={DESCRIPTION} actions={down ? undefined : <NewDatasetButton open={creating} onClick={() => setCreating((v) => !v)} />} />
   );
@@ -238,7 +265,7 @@ function DatasetList() {
       <ObserveError error={list.error} />
       {list.loading && !list.data && <GridSkeleton />}
       {list.data && (
-        <DatasetGrid datasets={list.data.datasets} total={list.data.total} offset={offset} onNew={() => setCreating(true)} />
+        <DatasetGrid datasets={list.data.datasets} total={list.data.total} offset={offset} creating={creating} onNew={() => setCreating(true)} />
       )}
     </>
   );

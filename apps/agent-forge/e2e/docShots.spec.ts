@@ -676,3 +676,11 @@ test('evals x: new dataset form open', async ({ page }) => {
   await expect(page.getByRole('form', { name: 'New dataset' })).toBeVisible();
   await shoot(page, 'x-evals-datasets-new');
 });
+
+test('evals x: scores at 375 wide (header tabs all visible)', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await evalRates(page, EVAL_RATES);
+  await open(page, '/evals/scores');
+  await expect(page.getByRole('navigation', { name: 'Evaluations' }).getByRole('link', { name: 'Annotation queues' })).toBeInViewport();
+  await shoot(page, 'x-evals-scores-375');
+});
