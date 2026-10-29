@@ -144,6 +144,24 @@ describe('TraceScreen', () => {
     expect(header.querySelector('button[aria-label="Copy link"]')).not.toBeNull();
   });
 
+  it('header duration for an interrupted root with no end stops at the latest child end', async () => {
+    daemon({
+      trace: {
+        trace_id: 't1',
+        observations: [
+          obs({ obs_id: 'root', name: 'crashed run', start: T0, end: null, status: 'interrupted' }),
+          obs({ obs_id: 'c1', parent_obs_id: 'root', start: T0 + 100, end: T0 + 4000 }),
+        ],
+        scores: [],
+      },
+    });
+    const c = mount();
+    await waitFor(() => c.querySelector('.trace-header') !== null);
+    const header = c.querySelector('.trace-header') as HTMLElement;
+    expect(header.textContent).toContain('4.0s');
+    expect(header.textContent).toContain('interrupted');
+  });
+
   it('selects the ?obs= node on load and writes ?obs= with replace on selection', async () => {
     window.history.replaceState(null, '', '/#/traces/t1?obs=tool1');
     daemon({ trace: TRACE });

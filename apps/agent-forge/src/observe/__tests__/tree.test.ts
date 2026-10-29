@@ -92,6 +92,12 @@ describe('traceBounds', () => {
     expect(bounds).toEqual({ minStart: 100, maxEnd: 1000 });
   });
 
+  it('does not count an open interrupted or error row to now', () => {
+    expect(
+      traceBounds([row({ start: 100, end: 400 }), row({ start: 200, end: null, status: 'interrupted' }), row({ start: 300, end: null, status: 'error' })], 1000),
+    ).toEqual({ minStart: 100, maxEnd: 400 });
+  });
+
   it('is degenerate-safe on empty input', () => {
     expect(traceBounds([])).toEqual({ minStart: 0, maxEnd: 1 });
   });

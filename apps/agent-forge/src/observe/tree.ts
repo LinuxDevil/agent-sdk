@@ -75,14 +75,27 @@ export function flattenObservationTree(roots: ObservationNode[]): ObservationNod
   return flat;
 }
 
-/** `[start, end]` bounds over every observation (an unfinished row counts to `now`). */
+/** The latest `end` among a node and its descendants, or `undefined` when none has ended. */
+export function latestKnownEnd(node: ObservationNode, seen = new Set<string>()): number | undefined {
+  if (seen.has(node.row.obs_id)) return undefined;
+  seen.add(node.row.obs_id);
+  let latest = node.row.end ?? undefined;
+  for (const child of node.children) {
+    const end = latestKnownEnd(child, seen);
+    if (end !== undefined && (latest === undefined || end > latest)) latest = end;
+  }
+  return latest;
+}
+
+/** `[start, end]` bounds over every observation (a running row counts to `now`; an open interrupted/error row stops at its start). */
 export function traceBounds(rows: ObserveObservationRow[], now = Date.now()): { minStart: number; maxEnd: number } {
   if (rows.length === 0) return { minStart: 0, maxEnd: 1 };
   let minStart = Infinity;
   let maxEnd = -Infinity;
   for (const row of rows) {
     minStart = Math.min(minStart, row.start);
-    maxEnd = Math.max(maxEnd, row.end ?? now);
+    const open = row.status === 'interrupted' || row.status === 'error' ? row.start : now;
+    maxEnd = Math.max(maxEnd, row.end ?? open);
   }
   return { minStart, maxEnd: Math.max(maxEnd, minStart + 1) };
 }
