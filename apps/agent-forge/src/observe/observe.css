@@ -12,6 +12,11 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
 }
+/* Straight under the screen header (a list screen returning the card in place of its content), add the
+   screens' own top padding, so the card sits 60px under the header on every screen. */
+.screen-main > .observe-empty {
+  margin-top: calc(var(--space-5) + var(--space-10));
+}
 .observe-empty .empty-state {
   padding: var(--space-8) var(--space-6);
 }

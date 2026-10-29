@@ -14,11 +14,14 @@ import '../../ui/card.css';
 /** Rows fetched for one eval; a full page means older rows were left out. */
 export const EVAL_ROW_LIMIT = 1000;
 
-const fmtMean = (v: number | null) => (v === null ? <span className="value-missing">—</span> : v.toFixed(2));
+/** A value the row does not have: a faint em dash. */
+const MISSING = <span className="value-missing">—</span>;
+
+const fmtMean = (v: number | null) => (v === null ? MISSING : v.toFixed(2));
 
 /**
  * A pass rate as a two-tone bar (passed in success, failed in the danger tint)
- * plus its tabular figure; no rate shows '-'.
+ * plus its tabular figure; no rate shows an empty bar and a faint em dash.
  */
 export function PassRateBar({ rate }: { rate: number | null }) {
   const width = rate === null ? 0 : Math.max(0, Math.min(1, rate)) * 100;
@@ -27,7 +30,7 @@ export function PassRateBar({ rate }: { rate: number | null }) {
       <span className="score-rate-bar" data-empty={rate === null ? 'true' : undefined} aria-hidden="true">
         <span className="score-rate-fill" style={{ width: `${width}%` }} />
       </span>
-      <span className="score-rate-value">{fmtPercent(rate)}</span>
+      <span className="score-rate-value">{rate === null ? MISSING : fmtPercent(rate)}</span>
     </span>
   );
 }
@@ -61,10 +64,16 @@ function Failures({ evalName, rows }: { evalName: string; rows: ObserveScoreRow[
       {rows.map((row) => (
         <li key={row.score_id} className="scores-failure">
           <div className="scores-failure-head">
-            <span className="status-pill pill-error scores-value" title="Failed score value">
-              <span className="dot" aria-hidden="true" />
-              {row.value === null ? '-' : row.value}
-            </span>
+            {row.value === null ? (
+              <span className="value-missing scores-value" title="No score value">
+                —
+              </span>
+            ) : (
+              <span className="status-pill pill-error scores-value" title="Failed score value">
+                <span className="dot" aria-hidden="true" />
+                {row.value}
+              </span>
+            )}
             <span className="scores-name">{row.name === evalName ? 'eval' : row.name.slice(evalName.length + 1)}</span>
             <span className="scores-when">{fmtDateTime(row.created_at)}</span>
             <TraceLink row={row} />

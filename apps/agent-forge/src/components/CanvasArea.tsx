@@ -127,7 +127,6 @@ const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
  * centred. The user can still zoom out to MIN_ZOOM, or press Fit view.
  */
 const AUTO_FIT_MIN_ZOOM = 0.75;
-const AUTO_FIT_OPTIONS = { ...FIT_VIEW_OPTIONS, minZoom: AUTO_FIT_MIN_ZOOM };
 /** The inset (screen px) of a pinned graph's left/top edge. */
 const AUTO_FIT_INSET = 40;
 
@@ -379,25 +378,26 @@ function useFitViewOnResize() {
 }
 
 /**
- * Fit the whole graph when an agent is opened and when an empty canvas is
- * filled (a template applied, or the first node dropped) - React Flow's own
- * `fitView` prop only fits once, on mount. Waits until every node has been
- * measured, so the fit uses real card sizes.
+ * The one owner of the first fit: when an agent is opened and when an empty
+ * canvas is filled (a template applied, or the first node dropped). Waits
+ * until every node has been measured, so the fit uses real card sizes, and
+ * returns `true` until that fit has landed - the canvas keeps its viewport
+ * hidden meanwhile, so the graph never shows unfitted and then jumps.
  */
-function useFitViewOnLoad(agentId: string, graph: AgentGraphSpec, measured: MeasuredSizes) {
+function useFitViewOnLoad(agentId: string, graph: AgentGraphSpec, measured: MeasuredSizes): boolean {
   const fitLegibly = useLegibleFit();
-  const pending = useRef(true);
   const loadKey = `${agentId}|${graph.nodes.length > 0 ? 'filled' : 'empty'}`;
-  useEffect(() => {
-    pending.current = true;
-  }, [loadKey]);
+  const [fittedKey, setFittedKey] = useState<string | null>(null);
   const allMeasured = graph.nodes.length > 0 && graph.nodes.every((n) => measured[n.id]);
   useEffect(() => {
-    if (!pending.current || !allMeasured) return;
-    pending.current = false;
-    const frame = window.requestAnimationFrame(() => fitLegibly());
+    if (fittedKey === loadKey || !allMeasured) return;
+    const frame = window.requestAnimationFrame(() => {
+      fitLegibly();
+      setFittedKey(loadKey);
+    });
     return () => window.cancelAnimationFrame(frame);
-  }, [loadKey, allMeasured, fitLegibly]);
+  }, [loadKey, fittedKey, allMeasured, fitLegibly]);
+  return graph.nodes.length > 0 && fittedKey !== loadKey;
 }
 
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
@@ -555,10 +555,10 @@ function CanvasInner() {
   const { onDragOver, onDrop } = useDropHandlers(graph, setGraph, flashError);
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
   useFitViewOnResize();
-  useFitViewOnLoad(agentId, graph, measured);
+  const fitting = useFitViewOnLoad(agentId, graph, measured);
 
   return (
-    <main className="canvas-wrap" aria-label="Agent graph" onDrop={onDrop} onDragOver={onDragOver}>
+    <main className="canvas-wrap" aria-label="Agent graph" data-fitting={fitting || undefined} onDrop={onDrop} onDragOver={onDragOver}>
       <CanvasToolbar
         canDuplicate={!!selectedNodeId}
         onAutoLayout={handleAutoLayout}
@@ -582,8 +582,6 @@ function CanvasInner() {
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         deleteKeyCode={['Backspace', 'Delete']}
-        fitView
-        fitViewOptions={AUTO_FIT_OPTIONS}
         minZoom={MIN_ZOOM}
         proOptions={{ hideAttribution: true }}
       >

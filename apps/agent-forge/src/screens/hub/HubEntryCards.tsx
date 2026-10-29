@@ -51,7 +51,7 @@ function EntryCard({
           {preview}
         </span>
         <span className="hub-card-meta" id={`${id}-meta`}>
-          <span className="hub-card-writer">{writer}</span>
+          <span className={entry.agent_id === null ? 'hub-card-writer value-missing' : 'hub-card-writer'}>{writer}</span>
           <span aria-hidden="true">·</span>
           <span>Updated {fmtStarted(entry.created_at, now)}</span>
           <span aria-hidden="true">·</span>

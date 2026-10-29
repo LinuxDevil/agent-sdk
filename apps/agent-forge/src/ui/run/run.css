@@ -171,10 +171,12 @@
   color: var(--text-faint);
 }
 /* Kind colours match the canvas (canvas/nodeKinds.ts): tool = info, generation = violet; amber is for warning status only.
-   The agent root takes the accent, so it stays apart from the (blue) tool steps. */
+   The agent kind is outlined (an accent hairline round its soft tile, a hollow waterfall bar), so it differs from the
+   (lavender) generation by shape, not only by hue. */
 .run-kind-agent {
   background: var(--accent-soft);
   color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 .run-kind-generation {
   background: var(--violet-soft);
@@ -195,6 +197,7 @@
 .run-row-error .run-kind {
   background: var(--danger-soft);
   color: var(--danger);
+  box-shadow: none;
 }
 
 /* ---------- tree ---------- */
@@ -379,6 +382,7 @@
   background-size: var(--wf-step, 20%) 100%;
 }
 .run-wf-bar {
+  box-sizing: border-box;
   position: absolute;
   top: 50%;
   height: 10px;
@@ -388,7 +392,8 @@
   background: var(--accent);
 }
 .run-wf-bar-agent {
-  background: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
 }
 .run-wf-bar-generation {
   background: var(--violet);
@@ -402,11 +407,20 @@
 .run-wf-bar-event {
   background: var(--chart-4);
 }
+/* Running: the bar keeps its kind colour and is open-ended - square right end fading out over its last 16px - so it
+   reads as unfinished without motion; the shimmer runs on top only when motion is allowed. */
 .run-wf-bar.running {
-  background-color: var(--info);
-  background-image: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 45%, transparent), transparent);
-  background-size: 200% 100%;
-  animation: run-wf-running 1.4s linear infinite;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  -webkit-mask-image: linear-gradient(90deg, currentColor calc(100% - 16px), transparent);
+  mask-image: linear-gradient(90deg, currentColor calc(100% - 16px), transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .run-wf-bar.running {
+    background-image: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 45%, transparent), transparent);
+    background-size: 200% 100%;
+    animation: run-wf-running 1.4s linear infinite;
+  }
 }
 @keyframes run-wf-running {
   from {
@@ -417,6 +431,7 @@
   }
 }
 .run-wf-bar.error {
+  border-color: var(--danger);
   background-color: var(--danger);
   background-image: repeating-linear-gradient(
     -45deg,
@@ -605,9 +620,5 @@
   .run-mode-toggle button,
   .run-tree-row .run-playground-link {
     transition: none;
-  }
-  .run-wf-bar.running {
-    animation: none;
-    background-image: none;
   }
 }

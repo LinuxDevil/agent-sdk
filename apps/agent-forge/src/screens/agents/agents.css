@@ -411,6 +411,10 @@ button.breakpoint-toggle {
   --xy-selection-border: 1px dashed var(--accent);
   --xy-attribution-background-color: transparent;
 }
+/* Until the first fit of a loaded graph lands (CanvasArea.tsx's useFitViewOnLoad), the nodes stay laid out but unseen. */
+.canvas-wrap[data-fitting] .react-flow__viewport {
+  visibility: hidden;
+}
 .canvas-wrap .react-flow__background {
   background: var(--bg);
 }

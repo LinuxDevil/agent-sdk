@@ -1411,3 +1411,24 @@ test('x-shell: the error boundary after a render crash, at 1280 and 375 wide', a
   await page.setViewportSize({ width: 375, height: 800 });
   await shoot(page, 'x-error-boundary-375');
 });
+
+test('x-traces: a running trace in the waterfall (motion and reduced motion)', async ({ page }) => {
+  // The root, the last plan step, its sub-agent, one tool call and the final generation still open (end: null).
+  const detail = longTraceDetail();
+  const openIds = new Set([`${LONG_TRACE}-span-2`, `${LONG_TRACE}-sub-2`, `${LONG_TRACE}-sub-2-gen-1-tool`, `${LONG_TRACE}-final`]);
+  // Shifted so the run started ~11s ago (the fixture's is 20 minutes back): the open bars run to "now" at a readable scale.
+  const shift = 20 * MINUTE - 11_000;
+  const observations = detail.observations.map((o) => {
+    const moved = { ...o, start: Number(o.start) + shift, end: o.end === null ? null : Number(o.end) + shift };
+    return o.parent_obs_id === null || openIds.has(String(o.obs_id)) ? { ...moved, end: null, status: 'ok', attrs: null } : moved;
+  });
+  await page.route(`**/observe/api/v1/traces/${LONG_TRACE}`, (route) => json(route, { ...detail, observations }));
+  await open(page, `/traces/${LONG_TRACE}`);
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: 'Waterfall' }).click();
+  await expect(main.locator('.run-wf-bar.running').first()).toBeVisible();
+  await main.locator('.run-wf-bar.running').last().scrollIntoViewIfNeeded();
+  await shoot(page, 'x-trace-running-waterfall');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await shoot(page, 'x-trace-running-waterfall-reduced');
+});
