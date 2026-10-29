@@ -83,7 +83,9 @@ function Sparkline({ values }: { values: number[] }) {
 
 /** One KPI tile: overline label, a 24px tabular value, optional delta, hint and sparkline. */
 export function MetricCard({ label, value, delta, sparkline, hint, loading }: MetricCardProps) {
-  const showDelta = delta !== undefined && !loading;
+  // A NaN/Infinity change (0/0 against an empty window) shows no delta; non-finite points are dropped.
+  const showDelta = delta !== undefined && Number.isFinite(delta.value) && !loading;
+  const points = sparkline?.filter(Number.isFinite);
   return (
     <div className="metric-card" aria-busy={loading ? true : undefined}>
       <div className="metric-main">
@@ -105,7 +107,7 @@ export function MetricCard({ label, value, delta, sparkline, hint, loading }: Me
           </span>
         )}
       </div>
-      {sparkline && sparkline.length >= 2 && !loading && <Sparkline values={sparkline} />}
+      {points && points.length >= 2 && !loading && <Sparkline values={points} />}
       {sparkline && loading && <Skeleton className="metric-spark-skeleton" width={SPARK_W} height={SPARK_H} />}
     </div>
   );

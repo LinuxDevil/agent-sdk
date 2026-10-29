@@ -447,3 +447,59 @@ describe('ErrorCell', () => {
     expect((c.querySelector('.dt-error') as HTMLElement).title).toBe('boom: stack');
   });
 });
+
+describe('DataTable layout (review fixes)', () => {
+  const css = (f: string) => readFileSync(resolve(__dirname, '..', f), 'utf8');
+  const rule = (src: string, sel: string) => src.match(new RegExp(`(^|\\n)${sel.replace(/[.[\]()*]/g, '\\$&')}\\s*\\{([^}]*)\\}`))?.[2] ?? '';
+
+  it('the wrap clips instead of scrolling, so the sticky header sticks to the screen', () => {
+    const table = css('dataTable.css');
+    expect(rule(table, '.data-table-wrap')).toMatch(/overflow-x:\s*clip/);
+    expect(rule(table, '.data-table-wrap')).toMatch(/min-height:\s*min-content/);
+    expect(rule(table, '.data-table-wrap.dt-scroll-x')).toMatch(/overflow-x:\s*auto/);
+    expect(rule(css('card.css'), '.card-pad-none > .card-body')).toMatch(/overflow:\s*clip/);
+  });
+
+  it('becomes a horizontal scroller (dt-scroll-x) only while the table is wider than the wrap', () => {
+    const offset = vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+    const client = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="x" />);
+    const wrap = () => c.querySelector('.data-table-wrap') as HTMLElement;
+    expect(wrap().classList.contains('dt-scroll-x')).toBe(false);
+    offset.mockReturnValue(1200);
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="y" />);
+    expect(wrap().classList.contains('dt-scroll-x')).toBe(true);
+    offset.mockReturnValue(800);
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="z" />);
+    expect(wrap().classList.contains('dt-scroll-x')).toBe(false);
+    client.mockRestore();
+  });
+
+  it('maxHeight opts into a bounded scroller (both axes) whose header sticks inside it', () => {
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} maxHeight={480} empty="x" />);
+    const wrap = c.querySelector('.data-table-wrap') as HTMLElement;
+    expect(wrap.classList.contains('dt-scroll')).toBe(true);
+    expect(wrap.style.maxHeight).toBe('480px');
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} maxHeight="calc(100dvh - 200px)" empty="x" />);
+    expect(wrap.style.maxHeight).toBe('calc(100dvh - 200px)');
+    expect(rule(css('dataTable.css'), '.data-table-wrap.dt-scroll')).toMatch(/overflow:\s*auto/);
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="x" />);
+    expect(wrap.classList.contains('dt-scroll')).toBe(false);
+    expect(wrap.style.maxHeight).toBe('');
+  });
+
+  it('wraps header labels in .dt-label so they ellipsise inside the flex row', () => {
+    setWidth(1200);
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="x" />);
+    expect([...c.querySelectorAll('th .dt-label')].map((s) => s.textContent)).toEqual(['Name', 'Tokens', 'Id']);
+    expect(rule(css('dataTable.css'), '.dt-label')).toMatch(/text-overflow:\s*ellipsis/);
+  });
+
+  it('pager has no side padding outside an edge-to-edge card; compact buttons only in .dt-actions', () => {
+    const table = css('dataTable.css');
+    expect(rule(table, '.dt-pager')).toMatch(/padding:\s*var\(--space-2\)\s+0;/);
+    expect(rule(css('card.css'), '.card-pad-none .dt-pager')).toMatch(/padding-inline/);
+    expect(table).not.toMatch(/\.data-table td \.btn/);
+    expect(rule(table, '.dt-actions .btn')).toMatch(/min-height:\s*26px/);
+  });
+});

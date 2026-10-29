@@ -55,6 +55,17 @@ describe('MetricCard', () => {
     expect(points).toHaveLength(4);
   });
 
+  it('non-finite input: a NaN/Infinity delta shows no delta, non-finite sparkline points are dropped', () => {
+    const c = render(<MetricCard label="Runs" value={10} delta={{ value: NaN }} sparkline={[1, NaN, 3, Infinity, 2]} />);
+    expect(delta(c)).toBeNull();
+    const points = c.querySelector('svg.metric-sparkline polyline')?.getAttribute('points')?.split(' ');
+    expect(points).toHaveLength(3);
+    expect(points?.join(' ')).not.toMatch(/NaN|Infinity/);
+    const inf = render(<MetricCard label="Runs" value={10} delta={{ value: Infinity }} sparkline={[NaN, 4]} />);
+    expect(delta(inf)).toBeNull();
+    expect(inf.querySelector('svg.metric-sparkline')).toBeNull();
+  });
+
   it('skips a sparkline with fewer than two points', () => {
     const c = render(<MetricCard label="Runs" value={10} sparkline={[3]} />);
     expect(c.querySelector('svg.metric-sparkline')).toBeNull();

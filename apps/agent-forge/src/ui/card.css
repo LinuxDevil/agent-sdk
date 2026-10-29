@@ -48,11 +48,16 @@
   padding-bottom: var(--space-3);
 }
 .card-pad-none > .card-body {
-  overflow: hidden;
+  /* clip, not hidden: no scroll container, so a DataTable's sticky header still sticks. */
+  overflow: clip;
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 .card-pad-none > .card-body:first-child {
   border-radius: var(--radius-lg);
+}
+/* edge-to-edge tables: the pager keeps the card's inner gutter. */
+.card-pad-none .dt-pager {
+  padding-inline: var(--space-3);
 }
 /* a table that ends the card lets the card's own border close it. */
 .card-pad-none > .card-body > .data-table-wrap:last-child .data-table tbody tr:last-child > td {
