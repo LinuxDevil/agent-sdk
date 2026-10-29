@@ -19,9 +19,9 @@ import { fmtInt } from '../../observe/format';
 import { Card } from '../../ui/Card';
 import { TablePager } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
-import { Skeleton } from '../../ui/Skeleton';
 import { useToast } from '../../ui/Toast';
 import { EvalsHeader } from '../evals/EvalsTabs';
+import { GridSkeleton } from '../evals/GridSkeleton';
 import { DatasetDetail } from './DatasetDetail';
 import { DATASETS_PAGE_SIZE, datasetPath, datasetsPath, parseOffset } from './datasetsUrl';
 
@@ -149,27 +149,6 @@ function DatasetCard({ dataset: d }: { dataset: ObserveDataset }) {
   );
 }
 
-/** The grid's first-load placeholder: six skeleton cards and one status line. */
-function GridSkeleton() {
-  return (
-    <div className="ds-grid-loading">
-      <span role="status" className="visually-hidden">
-        Loading datasets
-      </span>
-      <ul className="ds-grid" aria-hidden="true">
-        {Array.from({ length: 6 }, (_, i) => (
-          <li key={i} className="ds-card ds-card-skeleton">
-            <Skeleton width={28} height={28} radius="var(--radius)" />
-            <Skeleton width="55%" height={12} />
-            <Skeleton width="85%" height={10} />
-            <Skeleton width="40%" height={10} />
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 function NewDatasetButton({ open, onClick }: { open: boolean; onClick: () => void }) {
   return (
     <button type="button" className="btn btn-primary" aria-expanded={open} aria-controls={open ? FORM_ID : undefined} onClick={onClick}>
@@ -263,7 +242,7 @@ function DatasetList() {
         />
       )}
       <ObserveError error={list.error} />
-      {list.loading && !list.data && <GridSkeleton />}
+      {list.loading && !list.data && <GridSkeleton label="Loading datasets" />}
       {list.data && (
         <DatasetGrid datasets={list.data.datasets} total={list.data.total} offset={offset} creating={creating} onNew={() => setCreating(true)} />
       )}

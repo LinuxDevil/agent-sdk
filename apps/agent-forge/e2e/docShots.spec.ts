@@ -393,7 +393,7 @@ test('datasets: one dataset with its examples', async ({ page }) => {
 
 test('evaluators: the rule list', async ({ page }) => {
   await open(page, '/evals/evaluators');
-  await expect(rows(page)).toHaveCount(2);
+  await expect(page.getByRole('main').locator('.ev-card')).toHaveCount(2);
   await expect(page.getByRole('switch', { name: 'answered enabled' })).toBeChecked();
   await shoot(page, 'evaluators');
 });
@@ -1213,4 +1213,141 @@ test('x-threads: detail at 375 wide', async ({ page }) => {
   await expect(turnsOf(page)).toHaveCount(THREAD_TURNS.length);
   await shoot(page, 'x-thread-narrow');
   await page.screenshot({ path: path.join(OUT, 'studio-x-thread-narrow-full.png'), fullPage: true });
+});
+
+// --- Evaluators and annotation queues (x- shots, P7) -------------------------
+
+const RULES = [
+  { rule_id: 'e2e-evaluator', name: 'answered', enabled: true, filter: { agent_id: 'e2e-agent', status: 'ok' }, sample_rate: 1, kind: 'code', config: { source: '(trace) => (trace.output ? 1 : 0)' } },
+  { rule_id: 'e2e-judge', name: 'polite', enabled: false, filter: {}, sample_rate: 0.5, kind: 'judge', config: { model: 'openai/gpt-4o-mini', rubric: 'Is the reply polite? Score 1 when it is courteous and calm, 0 otherwise.' } },
+  { rule_id: 'x-refund', name: 'refund-policy-cited', enabled: true, filter: { name_contains: 'refund' }, sample_rate: 0.25, kind: 'judge', config: { model: 'anthropic/claude-haiku', rubric: 'Does the reply cite the refund policy?' } },
+  { rule_id: 'x-tools', name: 'tool-calls-under-budget-for-every-order-lookup-in-the-support-fleet', enabled: true, filter: { status: 'error' }, sample_rate: 0.1, kind: 'code', config: { source: '(trace) => trace.observations.length < 12 ? 1 : 0' } },
+].map((r) => ({ created_at: NOW - 30 * HOUR, updated_at: NOW - 30 * HOUR, ...r }));
+
+const QUEUES = [
+  { queue_id: 'e2e-queue', name: 'support-review', rubric: [{ name: 'helpfulness', min: 0, max: 5 }, { name: 'tone', min: 1, max: 3 }], counts: { pending: 1, done: 2, skipped: 0 } },
+  { queue_id: 'x-refunds', name: 'refund-escalations', rubric: [{ name: 'correct', min: 0, max: 1 }, { name: 'policy cited', min: 0, max: 1 }, { name: 'empathy', min: 1, max: 5 }], counts: { pending: 14, done: 41, skipped: 3 } },
+  { queue_id: 'x-new', name: 'multilingual-greetings-weekly-spot-check', rubric: [{ name: 'fluency' }], counts: { pending: 25, done: 0, skipped: 0 } },
+  { queue_id: 'x-done', name: 'october-regressions', rubric: [{ name: 'fixed', min: 0, max: 1 }], counts: { pending: 0, done: 57, skipped: 4 } },
+].map((q, i) => ({ created_at: NOW - (i + 1) * 26 * HOUR, ...q }));
+
+async function evaluatorList(page: Page, list: unknown[]) {
+  await page.route('**/observe/api/v1/evaluators?**', (route) =>
+    route.request().method() === 'GET' ? json(route, { evaluators: list, total: list.length, limit: 50, offset: 0 }) : route.fallback(),
+  );
+}
+
+async function queueList(page: Page, list: unknown[]) {
+  await page.route('**/observe/api/v1/queues?**', (route) =>
+    route.request().method() === 'GET' ? json(route, { queues: list, total: list.length, limit: 50, offset: 0 }) : route.fallback(),
+  );
+}
+
+const main = (page: Page) => page.getByRole('main');
+
+test('evals x: evaluators grid', async ({ page }) => {
+  await evaluatorList(page, RULES);
+  await open(page, '/evals/evaluators');
+  await expect(main(page).getByRole('switch', { name: 'polite enabled' })).toBeVisible();
+  await shoot(page, 'x-evals-evaluators-grid');
+});
+
+test('evals x: evaluators empty', async ({ page }) => {
+  await evaluatorList(page, []);
+  await open(page, '/evals/evaluators');
+  await expect(main(page).locator('.empty-state')).toBeVisible();
+  await shoot(page, 'x-evals-evaluators-empty');
+});
+
+test('evals x: new evaluator form (code rule)', async ({ page }) => {
+  await open(page, '/evals/evaluators');
+  await page.getByRole('button', { name: 'New evaluator' }).first().click();
+  await expect(page.getByRole('form', { name: 'New evaluator' })).toBeVisible();
+  await shoot(page, 'x-evals-evaluator-new-code');
+});
+
+test('evals x: new evaluator form (LLM judge)', async ({ page }) => {
+  // A stored provider key enables the judge option (no real key is sent anywhere: the route answers in the browser).
+  await page.route('**/settings/providers', (route) =>
+    route.request().method() === 'GET'
+      ? json(route, [
+          { provider: 'openai', hasKey: true, masked: '<your-key>', envKey: false },
+          { provider: 'anthropic', hasKey: false, masked: null, envKey: false },
+        ])
+      : route.fallback(),
+  );
+  await open(page, '/evals/evaluators');
+  await page.getByRole('button', { name: 'New evaluator' }).first().click();
+  const form = page.getByRole('form', { name: 'New evaluator' });
+  await form.getByRole('radio', { name: 'LLM judge' }).check();
+  await form.locator('[name="evaluator-name"]').fill('helpful');
+  await form.locator('[name="evaluator-model"]').fill('gpt-4o-mini');
+  await form.locator('[name="evaluator-rubric"]').fill('Score 1 when the reply answers the customer question with the order status, 0 otherwise.');
+  await shoot(page, 'x-evals-evaluator-new-judge');
+});
+
+test('evals x: evaluator edit view (code rule)', async ({ page }) => {
+  await open(page, '/evals/evaluators/e2e-evaluator');
+  await expect(page.getByRole('form', { name: 'Edit evaluator' })).toBeVisible();
+  await shoot(page, 'x-evals-evaluator-edit-code');
+});
+
+test('evals x: evaluator edit view (LLM judge)', async ({ page }) => {
+  await page.route('**/observe/api/v1/evaluators/e2e-judge', (route) =>
+    route.request().method() === 'GET' ? json(route, { evaluator: RULES[1] }) : route.fallback(),
+  );
+  await open(page, '/evals/evaluators/e2e-judge');
+  await expect(page.locator('[name="evaluator-rubric"]')).toBeVisible();
+  await shoot(page, 'x-evals-evaluator-edit-judge');
+});
+
+test('evals x: queues list', async ({ page }) => {
+  await queueList(page, QUEUES);
+  await open(page, '/evals/queues');
+  await expect(main(page).getByText('refund-escalations').first()).toBeVisible();
+  await shoot(page, 'x-evals-queues-list');
+});
+
+test('evals x: queues empty', async ({ page }) => {
+  await queueList(page, []);
+  await open(page, '/evals/queues');
+  await expect(main(page).locator('.empty-state')).toBeVisible();
+  await shoot(page, 'x-evals-queues-empty');
+});
+
+test('evals x: new queue form with rubric rows', async ({ page }) => {
+  await queueList(page, QUEUES);
+  await open(page, '/evals/queues');
+  const toggle = page.getByRole('button', { name: 'New queue' });
+  if (await toggle.count()) await toggle.first().click();
+  const form = page.getByRole('form', { name: 'New annotation queue' });
+  await form.locator('[name="queue-name"]').fill('billing-review');
+  await form.locator('[name="rubric-name-0"]').fill('correct');
+  await form.locator('[name="rubric-min-0"]').fill('0');
+  await form.locator('[name="rubric-max-0"]').fill('1');
+  await form.getByRole('button', { name: /Add rubric (row|entry)/ }).click();
+  await form.locator('[name="rubric-name-1"]').fill('empathy');
+  await form.locator('[name="rubric-description-1"]').fill('Did the reply acknowledge the problem?');
+  await form.locator('[name="rubric-min-1"]').fill('1');
+  await form.locator('[name="rubric-max-1"]').fill('5');
+  await shoot(page, 'x-evals-queues-new');
+});
+
+test('evals x: queue review at 375 wide', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await open(page, '/evals/queues/e2e-queue');
+  await expect(page.locator('[data-review-trace="e2e-trace"]')).toBeVisible();
+  await shoot(page, 'x-evals-queue-review-375');
+  await page.getByRole('form', { name: 'Scores' }).getByRole('button', { name: 'Skip' }).scrollIntoViewIfNeeded();
+  await shoot(page, 'x-evals-queue-review-375-rubric');
+});
+
+test('evals x: queue review, queue is empty', async ({ page }) => {
+  await page.route('**/observe/api/v1/queues/e2e-queue/next', (route) => route.fulfill({ status: 204 }));
+  await page.route('**/observe/api/v1/queues/e2e-queue', (route) =>
+    json(route, { queue: { ...QUEUES[0], counts: { pending: 0, done: 2, skipped: 1 } } }),
+  );
+  await open(page, '/evals/queues/e2e-queue');
+  await expect(main(page).getByText('Queue is empty')).toBeVisible();
+  await shoot(page, 'x-evals-queue-empty');
 });

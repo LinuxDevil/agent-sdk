@@ -7,16 +7,21 @@
  * the daemon), showing the value and comment; no score is written.
  * `?trace=` prefills the trace id.
  */
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ReactNode } from 'react';
+import { FlaskConical, Trash2 } from 'lucide-react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { ObserveApiError, observeClient } from '../../observe/observeClient';
 import type { NewEvaluator, ObserveEvaluator, ObserveEvaluatorTestResult } from '../../observe/types';
 import { useAgents, useDaemonDown, useEvaluator } from '../../observe/useObserve';
+import { Card } from '../../ui/Card';
 import { EmptyState } from '../../ui/EmptyState';
+import { SkeletonRows } from '../../ui/Skeleton';
 import { useToast } from '../../ui/Toast';
+import { EvalsHeader } from '../evals/EvalsTabs';
 import { useProviderKeys } from '../playground/ModelPicker';
+import { KIND_LABEL } from './EvaluatorCard';
 import { draftFrom, evaluatorPatch } from './evaluatorDraft';
 import { EvaluatorForm } from './EvaluatorForm';
 import { evaluatorsPath, parseListState } from './evaluatorsUrl';
@@ -47,15 +52,25 @@ function TestOnTrace({ rule, prefill }: { rule: ObserveEvaluator; prefill: strin
   };
 
   return (
-    <form className="datasets-new" aria-label="Test on trace" onSubmit={(e) => void run(e)}>
-      <h3 className="datasets-section-title">Test on trace</h3>
-      <p className="datasets-note">Runs this rule once on one trace. No score is written.</p>
-      <div className="datasets-new-fields">
-        <label className="datasets-field datasets-field-wide">
-          <span>Trace id</span>
-          <input name="test-trace-id" type="text" value={traceId} onChange={(e) => setTraceId(e.target.value)} />
+    <form className="card ev-test" aria-label="Test on trace" onSubmit={(e) => void run(e)}>
+      <div className="ev-test-head">
+        <h3 className="card-title">Test on trace</h3>
+        <p className="card-description">Runs this rule once on one trace. No score is written.</p>
+      </div>
+      <div className="ev-test-fields">
+        <label className="ds-field ev-grow">
+          <span className="ds-field-label">Trace id</span>
+          <input
+            className="input ev-mono-input"
+            name="test-trace-id"
+            type="text"
+            value={traceId}
+            placeholder="Paste a trace id"
+            onChange={(e) => setTraceId(e.target.value)}
+          />
         </label>
         <button type="submit" className="btn" disabled={running || traceId.trim() === ''}>
+          <FlaskConical aria-hidden="true" />
           Test
         </button>
       </div>
@@ -65,7 +80,7 @@ function TestOnTrace({ rule, prefill }: { rule: ObserveEvaluator; prefill: strin
         </p>
       )}
       {result && (
-        <dl className="evaluators-result" aria-label="Test result">
+        <dl className="ev-result" aria-label="Test result">
           <dt>Value</dt>
           <dd>{result.value === null ? 'null' : String(result.value)}</dd>
           <dt>Comment</dt>
@@ -106,7 +121,7 @@ function EditRule({ rule, back, onSaved }: { rule: ObserveEvaluator; back: strin
   };
 
   return (
-    <>
+    <div className="ev-detail">
       <EvaluatorForm
         // A save re-reads the rule: a new `updated_at` restarts the form from it.
         key={rule.updated_at}
@@ -117,15 +132,23 @@ function EditRule({ rule, back, onSaved }: { rule: ObserveEvaluator; back: strin
         submitLabel="Save changes"
         onSubmit={save}
         actions={
-          <button type="button" className="btn btn-ghost" onClick={() => void remove()}>
+          <button type="button" className="btn btn-ghost btn-danger-text" onClick={() => void remove()}>
+            <Trash2 aria-hidden="true" />
             Delete
           </button>
         }
       />
       <TestOnTrace rule={rule} prefill={query.get('trace') ?? ''} />
-    </>
+    </div>
   );
 }
+
+/** The edit view while the rule loads: a card of skeleton lines. */
+const LoadingRule = () => (
+  <Card title="General">
+    <SkeletonRows rows={4} />
+  </Card>
+);
 
 /** `#/evals/evaluators/:id`; an unknown rule shows an empty state with the way back. */
 export function EvaluatorDetail({ ruleId }: { ruleId: string }) {
@@ -133,19 +156,35 @@ export function EvaluatorDetail({ ruleId }: { ruleId: string }) {
   const [refreshKey, setRefreshKey] = useState(0);
   const rule = useEvaluator(ruleId, refreshKey);
   const back = evaluatorsPath(parseListState(query));
-  const backLink = <a href={`#${back}`}>All evaluators</a>;
-  if (useDaemonDown(false, [rule])) return <ObserveDaemonDown />;
-  let body;
-  if (rule.loading && !rule.data) body = <p className="datasets-note">Loading evaluator...</p>;
+  const down = useDaemonDown(false, [rule]);
+  const name = rule.data?.name ?? ruleId;
+  let body: ReactNode;
+  if (down) body = <ObserveDaemonDown />;
+  else if (rule.loading && !rule.data) body = <LoadingRule />;
   else if (rule.error) body = <ObserveError error={rule.error} />;
-  else if (!rule.data) body = <EmptyState title="Evaluator not found" hint={`No evaluator '${ruleId}'.`} action={backLink} />;
+  else if (!rule.data)
+    body = (
+      <Card as="div">
+        <EmptyState
+          title="Evaluator not found"
+          hint={`No evaluator '${ruleId}'.`}
+          action={
+            <a className="btn" href={`#${back}`}>
+              All evaluators
+            </a>
+          }
+        />
+      </Card>
+    );
   else body = <EditRule rule={rule.data} back={back} onSaved={() => setRefreshKey((k) => k + 1)} />;
   return (
     <>
-      <nav className="datasets-nav" aria-label="Breadcrumb">
-        {backLink}
-      </nav>
-      <h2 className="datasets-title">Evaluator {rule.data ? <code>{rule.data.name}</code> : null}</h2>
+      <EvalsHeader
+        title={name}
+        description={rule.data ? `${KIND_LABEL[rule.data.kind]} evaluator, scoring live traces as they arrive` : undefined}
+        breadcrumbs={[{ label: 'Evaluations', href: '#/evals/scores' }, { label: 'Evaluators', href: `#${back}` }, { label: name }]}
+      />
+      <h2 className="visually-hidden">Evaluator {rule.data?.name}</h2>
       {body}
     </>
   );
