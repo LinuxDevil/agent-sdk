@@ -87,7 +87,7 @@ export function Screens() {
   else
     content = (
       <div className="screen-settings">
-        <ScreenHeader title="Settings" description={SETTINGS_DESCRIPTION} status={null} />
+        <ScreenHeader title="Settings" description={SETTINGS_DESCRIPTION} />
         <h2 className="visually-hidden">Settings</h2>
         <SettingsPanel variant="screen" />
       </div>

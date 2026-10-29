@@ -150,7 +150,8 @@ The left navigation lists every screen, grouped:
 | | **Settings** | Appearance, provider keys, settings profiles, deploy, collector and shortcuts. |
 
 Off the Agents screen a page header names the screen and keeps the live run
-status pill (Settings leaves it out). Under Settings, a small card shows the collector status (see
+status pill at the end of its title row, after any chips the screen adds (a
+prompt's labels, say). Under Settings, a small card shows the collector status (see
 [The collector](#the-collector-observe-daemon)). The button beside the
 **Agent Forge** name at the top of the nav (**Collapse navigation**)
 shrinks it to a rail of icons; hover an icon for its name. The choice is

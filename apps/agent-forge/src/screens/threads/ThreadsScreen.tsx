@@ -174,7 +174,6 @@ function ThreadsListScreen() {
     <>
       <ScreenHeader
         title="Threads"
-        status={null}
         description="Conversations grouped by session"
         actions={
           <button type="button" className="btn btn-icon" aria-label="Refresh" title="Refresh" disabled={health.down} onClick={bump}>

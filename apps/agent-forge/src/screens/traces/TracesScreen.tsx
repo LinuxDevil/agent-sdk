@@ -279,7 +279,6 @@ export function TracesScreen() {
     <>
       <ScreenHeader
         title="Traces"
-        status={null}
         description="Every run reported to the collector"
         actions={<ListActions live={live} disabled={health.down} onRefresh={bump} onLive={() => setLive((on) => !on)} />}
       />
