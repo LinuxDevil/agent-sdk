@@ -1952,8 +1952,8 @@ agent rail (your saved agents plus a node/hook palette), the canvas, the
 Inspector (right), and a bottom drawer with Chat, Logs, Trace, Output,
 History and Settings tabs. An agent opens with nothing selected and the
 whole graph fitted in view; the Inspector stays folded away until you
-select a node, or press **Show inspector** (the panel icon at the canvas's
-top-right), which is remembered. The other screens are one click away in the
+select a node, or press the **Inspector** button at the canvas's
+top-right (its accessible name is "Show inspector"), which is remembered. The other screens are one click away in the
 navigation; see [Navigation](#navigation).
 
 Below 860px wide the navigation becomes a drawer opened from the
@@ -2204,7 +2204,7 @@ and cost (narrow windows hide the less important columns). Filter with the
 search box (name, input or output), the **Agent**, **Status**, **Model** and
 **Project** facets, and a time range (15m, 1h, 24h, 7d, 30d or Custom;
 default the last 24 h). Click **Duration**, **Tokens** or **Cost** to sort
-by it. 50 rows a page. The page header's **Refresh** re-fetches the list
+by it. 50 rows a page. The page header's refresh icon (**Refresh**) re-fetches the list
 now, and **Live** (a toggle) refreshes it every 5 seconds until you switch
 it off or the daemon goes down. A `prompt` filter (set by the Prompts screen's
 "Runs using this version" link) shows as a removable chip.
