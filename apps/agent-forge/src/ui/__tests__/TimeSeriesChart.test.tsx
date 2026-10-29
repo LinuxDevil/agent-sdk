@@ -81,6 +81,16 @@ describe('TimeSeriesChart', () => {
     for (const t of ticks) expect((Number(t.getAttribute('data-t')) - FROM) % day).toBe(0);
   });
 
+  it('labels hour buckets HH:MM even when the window spans more than a day, and never repeats a label', () => {
+    const hour = 60 * MIN;
+    // 25 hour buckets (a 24h window aligned to whole hours): boundary 0 and 24 are both 10:00.
+    const c = render(<TimeSeriesChart series={[]} from={FROM} to={FROM + 25 * hour} bucketMs={hour} yFormat={fmt} />);
+    const labels = [...c.querySelectorAll('.tsc-xtick')].map((t) => t.textContent);
+    expect(labels.length).toBeGreaterThan(1);
+    for (const l of labels) expect(l).toMatch(/^\d\d:\d\d$/);
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
   it('renders at least three nice y ticks inside the domain, formatted with yFormat', () => {
     const c = render(<TimeSeriesChart series={SERIES} from={FROM} to={TO} bucketMs={BUCKET} yFormat={fmt} />);
     const ticks = [...c.querySelectorAll('.tsc-ytick')];
