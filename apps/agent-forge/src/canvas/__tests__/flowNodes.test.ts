@@ -48,9 +48,11 @@ describe('toRfEdges', () => {
     const edges = toRfEdges(graph);
     expect(edges).toHaveLength(graph.edges.length);
     for (const edge of edges) {
-      expect(edge.type).toBe('smoothstep');
+      expect(edge.type).toBe('gapped');
+      expect(edge.selected).toBe(false);
+      expect(edge.deletable).toBe(false);
       expect(edge.animated).toBe(false);
-      expect(edge.markerEnd).toMatchObject({ type: 'arrowclosed', color: 'var(--border-strong)' });
+      expect(edge.markerEnd).toMatchObject({ type: 'arrowclosed', color: 'var(--text-faint)' });
     }
   });
 
@@ -64,5 +66,12 @@ describe('toRfEdges', () => {
       expect(edge.markerEnd).toMatchObject({ color: 'var(--accent)' });
     }
     for (const edge of edges.filter((e) => e.source !== llm.id)) expect(edge.animated).toBe(false);
+  });
+
+  it('marks only the selected edge as selected', () => {
+    const [first, ...rest] = graph.edges;
+    const edges = toRfEdges(graph, {}, first.id);
+    expect(edges.find((e) => e.id === first.id)?.selected).toBe(true);
+    for (const edge of rest) expect(edges.find((e) => e.id === edge.id)?.selected).toBe(false);
   });
 });

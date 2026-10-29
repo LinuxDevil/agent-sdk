@@ -56,6 +56,19 @@ describe('AgentNode card', () => {
     expect(tool.querySelector('.node-kind')?.classList.contains('kind-info')).toBe(true);
   });
 
+  it('keeps running, selected, highlighted and breakpoint states together on one card', () => {
+    const Card = NODE_TYPES[flowNodeType('llm')];
+    const data: AgentNodeData = { graphNode: nodeOf('llm'), onRename: vi.fn(), status: 'running', hasBreakpoint: true, highlighted: true };
+    const props = { id: 'llm-0', type: flowNodeType('llm'), data, selected: true } as unknown as NodeProps;
+    const container = render(
+      <ReactFlowProvider>
+        <Card {...props} />
+      </ReactFlowProvider>
+    );
+    const card = container.querySelector('.rf-node') as HTMLElement;
+    for (const state of ['running', 'selected', 'highlighted', 'has-breakpoint']) expect(card.classList).toContain(state);
+  });
+
   it('keeps a long name whole in its tooltip while the card truncates it', () => {
     const long = 'x'.repeat(80);
     const card = renderCard({ ...nodeOf('llm'), label: long });

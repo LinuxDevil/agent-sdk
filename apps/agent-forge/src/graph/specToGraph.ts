@@ -21,7 +21,7 @@ function isSerializedHookArray(value: unknown): value is SerializedHook[] {
   );
 }
 
-const COLUMN_WIDTH = 320;
+const COLUMN_WIDTH = 288;
 const ROW_HEIGHT = 140;
 
 /**

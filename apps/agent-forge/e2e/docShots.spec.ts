@@ -306,6 +306,18 @@ test('agents x: the empty canvas with its templates', async ({ page }) => {
 
 test('agents x: a graph with a node selected', async ({ page }) => {
   await newAgent(page, `selected-${Date.now()}`, 'support-bot');
+  // The whole graph is in view on load, trigger included.
+  const triggerInPane = () =>
+    page.locator('[data-node-type="trigger"]').evaluate((el) => {
+      const node = el.getBoundingClientRect();
+      const pane = el.closest('.react-flow')!.getBoundingClientRect();
+      return node.left >= pane.left && node.right <= pane.right && node.top >= pane.top && node.bottom <= pane.bottom;
+    });
+  await expect.poll(triggerInPane).toBe(true);
+  // An edge can be selected (drawn in accent); selecting a node then moves the selection.
+  const edge = page.locator('.react-flow__edge').nth(1);
+  await edge.locator('.react-flow__edge-interaction').click({ force: true });
+  await expect(edge).toHaveClass(/selected/);
   await page.locator('[data-node-type="tool"]').click();
   await expect(page.locator('.react-flow__node.selected [data-node-type="tool"]')).toBeVisible();
   await shoot(page, 'x-agents-selected');
@@ -313,8 +325,14 @@ test('agents x: a graph with a node selected', async ({ page }) => {
 
 test('agents x: a run in progress', async ({ page }) => {
   const sockets: WebSocketRoute[] = [];
+  const heardFromServer = new Set<WebSocketRoute>();
   await page.routeWebSocket(/\/stream/, (ws) => {
-    ws.connectToServer();
+    const server = ws.connectToServer();
+    // Forward the server's frames as usual, noting each socket's on-connect status.
+    server.onMessage((message) => {
+      ws.send(message);
+      if (typeof message === 'string' && message.includes('"type":"status"')) heardFromServer.add(ws);
+    });
     sockets.push(ws);
   });
   const name = `running-${Date.now()}`;
@@ -323,8 +341,8 @@ test('agents x: a run in progress', async ({ page }) => {
   // The builder and the rail each hold a socket for the open agent; both get the run.
   const own = () => sockets.filter((s) => s.url().includes(`/agents/${name}/stream`));
   await expect.poll(() => own().length).toBeGreaterThan(1);
-  // Let the server's own on-connect status land first, so ours is the last word.
-  await page.waitForTimeout(500);
+  // The server's own on-connect status must land first, so ours is the last word.
+  await expect.poll(() => own().every((ws) => heardFromServer.has(ws))).toBe(true);
   const start = Date.now() - 1_200;
   const send = (message: unknown) => own().forEach((ws) => ws.send(JSON.stringify(message)));
   send({ type: 'status', payload: { agentId: name, status: 'running' } });
@@ -337,5 +355,20 @@ test('agents x: a run in progress', async ({ page }) => {
     payload: { id: 'x-chat', name: 'chat mock-1', startTime: start, kind: 'client', attributes: { 'gen_ai.operation.name': 'chat' } },
   });
   await expect(page.locator('[data-node-type="llm"] .status-pill')).toHaveText('running');
+
+  // A breakpoint on the running LLM node, which is also selected: every state ring stays visible.
+  send({ type: 'debug', payload: { agentId: name, paused: false, messages: [], stepCount: 0, breakpoints: ['llm:before'] } });
+  const llm = page.locator('[data-node-type="llm"]');
+  await llm.click();
+  await expect(llm).toHaveClass(/running/);
+  await expect(llm).toHaveClass(/has-breakpoint/);
+  await expect(llm).toHaveClass(/selected/);
+  const rings = await llm.evaluate((el) => {
+    const s = getComputedStyle(el);
+    return { outline: s.outlineStyle, shadow: s.boxShadow, pulse: getComputedStyle(el, '::after').animationName };
+  });
+  expect(rings.outline).toBe('solid'); // breakpoint
+  expect(rings.shadow).toMatch(/0px 0px 0px 3px/); // selected --ring
+  expect(rings.pulse).toBe('rf-node-running'); // running, on its own layer
   await shoot(page, 'x-agents-running');
 });

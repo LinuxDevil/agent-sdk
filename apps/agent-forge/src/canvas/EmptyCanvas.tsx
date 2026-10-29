@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
-import { LayoutTemplate, MessagesSquare, Sparkles, type LucideIcon } from 'lucide-react';
+import { LayoutTemplate, Plus, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { AGENT_TEMPLATES, graphFromTemplate, type TemplateId } from './templates';
 
-/** Each template card's icon and kind tone (the tone of the node it opens on: `kind-<tone>` in agents.css). */
-const TEMPLATE_ICONS: Record<TemplateId, { Icon: LucideIcon; tone: 'violet' | 'info' }> = {
+/**
+ * Each template card's kind icon: the kind its pipeline starts with, in that
+ * kind's canvas tone (AgentNode.tsx's NODE_META, `kind-<tone>` in agents.css).
+ */
+const TEMPLATE_ICONS: Record<TemplateId, { Icon: LucideIcon; tone: 'violet' | 'accent' }> = {
   blank: { Icon: Sparkles, tone: 'violet' },
-  'support-bot': { Icon: MessagesSquare, tone: 'info' },
+  'support-bot': { Icon: Zap, tone: 'accent' },
 };
 
 /** True between a drag's start and its end (or drop) anywhere in the window. */
@@ -59,6 +62,10 @@ export function EmptyCanvas() {
         <p className="canvas-empty-hint">
           This agent&apos;s canvas is empty. Pick a template, or drag a node in from the Nodes palette.
         </p>
+        <button type="button" className="btn btn-primary canvas-empty-action" onClick={() => choose('blank')}>
+          <Plus aria-hidden="true" />
+          Start with a blank graph
+        </button>
         <ul className="canvas-templates" aria-label="Templates">
           {AGENT_TEMPLATES.map((template) => {
             const { Icon, tone } = TEMPLATE_ICONS[template.id];

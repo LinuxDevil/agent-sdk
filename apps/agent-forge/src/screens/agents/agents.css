@@ -310,6 +310,9 @@ button.breakpoint-toggle {
   color: var(--text-muted);
   font-size: 13px;
 }
+.canvas-empty-action {
+  margin-top: var(--space-2);
+}
 .canvas-templates {
   list-style: none;
   width: 100%;
@@ -458,38 +461,49 @@ button.breakpoint-toggle {
 .react-flow__node:hover .rf-node {
   border-color: var(--border-strong);
 }
-.canvas-wrap .rf-node.selected {
+/*
+ * State rings compose rather than replace each other, so selected, highlighted,
+ * breakpoint and running all stay visible together:
+ *   selected     accent border + --ring (box-shadow, 0-3px out)
+ *   highlighted  a solid 3px accent ring in the same box-shadow slot (the drawer's pick wins)
+ *   breakpoint   a 2px danger outline 3px further out (its own property)
+ *   running      an accent border drawn by ::after, which pulses (its own layer)
+ */
+.canvas-wrap .rf-node.has-breakpoint {
+  box-shadow: var(--shadow-sm);
+  outline: 2px solid var(--danger);
+  outline-offset: 3px;
+}
+.canvas-wrap .rf-node.selected,
+.canvas-wrap .rf-node.selected.has-breakpoint {
   border-color: var(--accent);
   box-shadow: var(--ring), var(--shadow-sm);
 }
-/* Running: the accent border breathes a soft accent glow; static under reduced motion. */
+.canvas-wrap .rf-node.highlighted,
+.canvas-wrap .rf-node.highlighted.selected,
+.canvas-wrap .rf-node.highlighted.has-breakpoint {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent), var(--shadow-sm);
+}
 .canvas-wrap .rf-node.running {
   border-color: var(--accent);
-  animation: rf-node-running 1.4s var(--ease) infinite alternate;
+}
+.canvas-wrap .rf-node.running::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--accent);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: rf-node-running 1.2s var(--ease) infinite alternate;
 }
 @keyframes rf-node-running {
   from {
-    box-shadow:
-      0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent),
-      var(--shadow-sm);
+    opacity: 1;
   }
   to {
-    box-shadow:
-      0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent),
-      var(--shadow-sm);
+    opacity: 0.3;
   }
-}
-/* The drawer's highlighted span and a breakpoint stay visible over selected/running. */
-.canvas-wrap .rf-node.highlighted {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent), var(--shadow-sm);
-  animation: none;
-}
-.canvas-wrap .rf-node.has-breakpoint {
-  box-shadow: 0 0 0 2px var(--danger), var(--shadow-sm);
-}
-.canvas-wrap .rf-node.has-breakpoint.selected {
-  box-shadow: 0 0 0 2px var(--danger), var(--ring), var(--shadow-sm);
 }
 .rf-node-head {
   display: flex;
@@ -609,14 +623,17 @@ button.breakpoint-toggle {
 .rf-node .node-row > span {
   flex: none;
 }
-/* Ports: 10px surface circles, accent on hover and while a connection is drawn. */
+/* Ports: 10px surface circles with a clearly visible ring (above the edges), accent on hover and while connecting. */
 .canvas-wrap .rf-port.rf-port-in,
 .canvas-wrap .rf-port.rf-port-out {
+  z-index: 1;
   width: 10px;
   height: 10px;
+  min-width: 0;
+  min-height: 0;
   border-radius: 50%;
   background: var(--surface);
-  border: 1.5px solid var(--border-strong);
+  border: 2px solid var(--text-faint);
   transition:
     border-color var(--dur-fast) var(--ease),
     background-color var(--dur-fast) var(--ease);
@@ -630,12 +647,9 @@ button.breakpoint-toggle {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-wrap .rf-node.running,
+  .canvas-wrap .rf-node.running::after,
   .canvas-wrap .react-flow__edge.animated path {
     animation: none;
-  }
-  .canvas-wrap .rf-node.running:not(.selected, .highlighted, .has-breakpoint) {
-    box-shadow: 0 0 0 1px var(--accent), var(--shadow-sm);
   }
   .rf-node,
   .canvas-template,
