@@ -31,7 +31,7 @@ import { runToolCall, type ToolCallContext, type ToolCallOutcome } from './toolC
 import { Limiter, type ToolConcurrency } from './toolBatch';
 import { runEventsOf } from './agentRun';
 import { withSpan, type TraceExporter } from './tracing';
-import { recordToolOutcome, resolveCaptureContent, toolSpanInit } from './genAiSpans';
+import { contentRedactor, recordToolOutcome, resolveCaptureContent, toolSpanInit } from './genAiSpans';
 import { SdkAttr } from './semconv';
 import { jsonSchemaOf } from './toolSearch';
 import { TOOL_SEARCH_TOOL, type ToolDeferral } from './toolDeferral';
@@ -347,7 +347,8 @@ export function nestedToolCaller(setup: NestedCallSetup): NestedToolCaller {
           return settled;
         },
         setup.parentSpanId,
-        init.kind
+        init.kind,
+        contentRedactor({ redactContent: tracing.redactContent })
       );
       sink?.toolSettled(outcome, parent);
       return outcome.error === undefined ? { json: toJson(outcome.result) } : { error: outcome.error };

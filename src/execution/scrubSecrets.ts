@@ -24,10 +24,18 @@ const SECRET_PATTERNS: RegExp[] = [
   /\bgithub_pat_[A-Za-z0-9_]{16,}/g,
   // AWS access key ids.
   /\bAKIA[0-9A-Z]{16}\b/g,
+  // Stripe secret / restricted keys.
+  /\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}/g,
+  // Slack bot / app / user / refresh / legacy tokens.
+  /\bxox[abprs]-[A-Za-z0-9-]{10,}/g,
+  // Google API keys.
+  /\bAIza[0-9A-Za-z_-]{35}/g,
+  // JWTs: base64url header and payload (both `eyJ`, a `{"` object) and a signature.
+  /\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
 ];
 
 /** `Bearer <token>`: the word is kept, the token is redacted. */
-const BEARER = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{16,}/g;
+const BEARER = /\b(Bearer\s+)[A-Za-z0-9._~+/=-]{16,}/gi;
 
 /** Replaces API-key shapes in `text` with `[redacted]`. */
 export function scrubSecrets(text: string): string {

@@ -16,7 +16,7 @@ import { withSpan, type Span } from './tracing';
 import { withProviderEvents } from '../providers/providerEvents';
 import type { CallUsage } from '../models/usage';
 import { measureUsage } from './runUsage';
-import { llmSpanInit, recordLlmResult, resolveCaptureContent } from './genAiSpans';
+import { contentRedactor, llmSpanInit, recordLlmResult, resolveCaptureContent } from './genAiSpans';
 import { SdkAttr } from './semconv';
 import { GenerateHookContext } from './hooks';
 import { APICallError } from 'ai';
@@ -125,7 +125,8 @@ export function sideGenerator(
         return generated;
       },
       agentSpanId,
-      init.kind
+      init.kind,
+      contentRedactor({ redactContent })
     );
   };
 }
@@ -335,7 +336,8 @@ export function generateInSpan(
       return { generated, measured };
     },
     agentSpanId,
-    init.kind
+    init.kind,
+    contentRedactor({ redactContent })
   );
 }
 

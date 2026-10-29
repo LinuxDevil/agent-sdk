@@ -29,6 +29,7 @@ import { evaluateSafeExpression, ExpressionError } from './safeExpression';
 import { isCreateAgentResult } from './validators';
 import { Span, TraceExporter, recordSpanError, withSpan } from '../execution/tracing';
 import {
+  contentRedactor,
   defined,
   llmSpanInit,
   recordLlmResult,
@@ -622,11 +623,12 @@ export class FlowExecutor {
       }),
       async (flowSpan) => {
         const result = await this.runFlow(flow, { ...context, parentSpanId: flowSpan.id }, onEvent, run);
-        this.recordOutcome(flowSpan, result.error);
+        this.recordOutcome(flowSpan, result.error, context);
         return result;
       },
       context.parentSpanId,
-      'internal'
+      'internal',
+      contentRedactor(context)
     );
   }
 
@@ -649,10 +651,10 @@ export class FlowExecutor {
   }
 
   /** Records a flow/node outcome (and the error, when it failed) on its span. */
-  private static recordOutcome(span: Span, error?: unknown): void {
+  private static recordOutcome(span: Span, error: unknown, context: FlowExecutionContext): void {
     span.attributes = { ...span.attributes, [FlowAttr.OUTCOME]: error ? 'error' : 'success' };
     if (error) {
-      recordSpanError(span, error);
+      recordSpanError(span, error, contentRedactor(context));
     }
   }
 
@@ -847,15 +849,16 @@ export class FlowExecutor {
       async (nodeSpan) => {
         try {
           const result = await this.runNode(node, stepId, { ...context, parentSpanId: nodeSpan.id }, events, onEvent);
-          this.recordOutcome(nodeSpan);
+          this.recordOutcome(nodeSpan, undefined, context);
           return result;
         } catch (error) {
-          this.recordOutcome(nodeSpan, error instanceof FlowApprovalPause ? undefined : error);
+          this.recordOutcome(nodeSpan, error instanceof FlowApprovalPause ? undefined : error, context);
           throw error;
         }
       },
       context.parentSpanId,
-      'internal'
+      'internal',
+      contentRedactor(context)
     );
   }
 
@@ -1291,7 +1294,8 @@ export class FlowExecutor {
         return generated;
       },
       context.parentSpanId,
-      init.kind
+      init.kind,
+      contentRedactor(context)
     );
 
     // Emit LLM response event
@@ -1398,7 +1402,8 @@ export class FlowExecutor {
         }
       },
       context.parentSpanId,
-      init.kind
+      init.kind,
+      contentRedactor(context)
     );
   }
 

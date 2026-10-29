@@ -263,7 +263,13 @@ with `[redacted]`:
 | `lsv2_…` (LangSmith) | `lsv2_pt_0123…` |
 | `ghp_…`, `gho_…`, `ghu_…`, `ghs_…`, `ghr_…`, `github_pat_…` (GitHub) | `ghp_0123…` |
 | `AKIA` + 16 uppercase letters or digits (AWS access key id) | `AKIA…EXAMPLE` |
-| `Bearer <token>` (the word stays: `Bearer [redacted]`) | `Bearer eyJhbGci…` |
+| `Bearer <token>` in any case (the word stays as written: `Bearer [redacted]`) | `Bearer <token>` |
+| `sk_live_…`, `rk_live_…`, `sk_test_…`, `rk_test_…` (Stripe) | `<stripe-key>` |
+| `xoxb-…`, `xoxa-…`, `xoxp-…`, `xoxr-…`, `xoxs-…` (Slack) | `<slack-token>` |
+| `AIza` + 35 characters (Google API key) | `<google-api-key>` |
+| `eyJ….eyJ….<signature>` (a JWT) | `<jwt>` |
+
+The same scrubbing (or your function) runs on the error text recorded on a span, `error` and the error status message, so a token in a thrown error's message is redacted too; `error.type` (the class name) is kept. `redactContent: false` records error text as is.
 
 Each shape needs a long token (16+ characters) after its prefix, so words like
 `sk-learn` or `task-` are left alone. The scrubber catches common key formats,

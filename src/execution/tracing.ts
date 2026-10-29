@@ -10,6 +10,7 @@
  */
 
 import { newId } from '../utils/id';
+import { scrubSecrets } from './scrubSecrets';
 import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from './semconv';
 
 /** OpenTelemetry span kind, for the kinds this SDK emits. */
@@ -41,14 +42,17 @@ export interface Span {
 /**
  * Records a failure on `span`: `error.type` (a low-cardinality class, the
  * error's name), the legacy `error` message attribute, and an error status.
+ * The message text goes through `redact` (default: the built-in secret
+ * scrubber) like captured content; `error.type` is never redacted.
  */
-export function recordSpanError(span: Span, error: unknown): void {
+export function recordSpanError(span: Span, error: unknown, redact: (text: string) => string = scrubSecrets): void {
+  const message = error instanceof Error ? error.message : error;
   span.attributes = {
     ...span.attributes,
-    [LegacyAttr.ERROR]: error instanceof Error ? error.message : error,
+    [LegacyAttr.ERROR]: typeof message === 'string' ? redact(message) : message,
     [ErrorAttr.TYPE]: error instanceof Error ? error.name : ErrorAttr.OTHER,
   };
-  span.status = { code: 'error', message: error instanceof Error ? error.message : String(error) };
+  span.status = { code: 'error', message: redact(error instanceof Error ? error.message : String(error)) };
 }
 
 /** Cost and estimation of the finished child spans of one open span. */
@@ -192,6 +196,8 @@ export interface TraceExporter {
  * - `fn` receives the span so callers can read its generated `id` (e.g.
  *   to pass as the `parentId` of a further-nested withSpan() call).
  * - `kind` is the OpenTelemetry span kind (default `internal`).
+ * - `redact` maps the recorded error text (default: the built-in secret
+ *   scrubber); a run passes its `redactContent` choice.
  * - Before `onSpanEnd`, a span whose child spans carried `lousho.cost_usd`
  *   gets the sum as its own (cumulative) `lousho.cost_usd`, absent when a
  *   child with token usage had no known price, and `lousho.usage.estimated`
@@ -204,7 +210,8 @@ export async function withSpan<T>(
   attributes: Record<string, unknown>,
   fn: (span: Span) => Promise<T>,
   parentId?: string,
-  kind?: SpanKind
+  kind?: SpanKind,
+  redact?: (text: string) => string
 ): Promise<T> {
   const span: Span = {
     id: newId(),
@@ -222,7 +229,7 @@ export async function withSpan<T>(
   try {
     return await fn(span);
   } catch (error) {
-    recordSpanError(span, error);
+    recordSpanError(span, error, redact);
     throw error;
   } finally {
     span.endTime = Date.now();
