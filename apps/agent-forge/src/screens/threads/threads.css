@@ -60,6 +60,12 @@
   margin-left: auto;
   color: var(--accent);
 }
+.thread-turn-note {
+  margin: 0;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+}
 .thread-error {
   margin: 0;
   padding: 8px 10px;
