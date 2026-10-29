@@ -91,6 +91,8 @@ describe('StatusPill', () => {
     expect(pill().getAttribute('aria-live')).toBe('polite');
     expect(pill().querySelector('.visually-hidden')?.textContent).toBe('Run status: ');
     expect(pill().textContent).toBe('Run status: running');
+    // a short toolbar may show only the dot: the label is its tooltip
+    expect(pill().getAttribute('title')).toBe('running');
   });
 
   it('is plain text when not live', () => {
@@ -98,6 +100,7 @@ describe('StatusPill', () => {
     expect(pill().getAttribute('role')).toBeNull();
     expect(pill().getAttribute('aria-live')).toBeNull();
     expect(pill().querySelector('.visually-hidden')).toBeNull();
+    expect(pill().getAttribute('title')).toBeNull();
   });
 });
 

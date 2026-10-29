@@ -46,7 +46,8 @@ export function statusTone(status: string | null | undefined): StatusTone {
  * The one status pill used across the Studio. Unknown statuses render their own
  * text in a neutral pill; a missing status reads "none". A `live` pill is a polite
  * `role="status"` region (the top bar's run status), so screen readers hear the
- * run start, pause and finish.
+ * run start, pause and finish; its `title` repeats the label for when a short
+ * toolbar shows only the dot (layout.css).
  */
 export function StatusPill({ status, live = false }: { status: string | null | undefined; live?: boolean }) {
   const label = status == null ? 'none' : (LABELS.get(status) ?? status);
@@ -55,6 +56,7 @@ export function StatusPill({ status, live = false }: { status: string | null | u
       className={`status-pill pill-${statusTone(status)}`}
       role={live ? 'status' : undefined}
       aria-live={live ? 'polite' : undefined}
+      title={live ? label : undefined}
     >
       <span className="dot" aria-hidden="true" />
       {live && <span className="visually-hidden">Run status: </span>}

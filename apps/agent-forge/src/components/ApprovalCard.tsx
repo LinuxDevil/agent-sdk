@@ -54,20 +54,23 @@ interface DecisionButtonProps {
   busyLabel: string;
   busy: boolean;
   disabled: boolean;
+  /** The toolbar's inline card: its buttons may go icon-only, so they carry their label as a tooltip. */
+  tooltip: boolean;
   onClick: () => void;
 }
 
-function DecisionButton({ className, Icon, idleLabel, busyLabel, busy, disabled, onClick }: DecisionButtonProps) {
+function DecisionButton({ className, Icon, idleLabel, busyLabel, busy, disabled, tooltip, onClick }: DecisionButtonProps) {
+  const label = busy ? busyLabel : idleLabel;
   return (
-    <button type="button" className={className} title={idleLabel} onClick={onClick} disabled={disabled}>
+    <button type="button" className={className} title={tooltip ? label : undefined} onClick={onClick} disabled={disabled}>
       <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
       {/* The toolbar's inline card keeps only the icon on a short bar (layout.css); the label stays the name. */}
-      <span className="approval-btn-label">{busy ? busyLabel : idleLabel}</span>
+      <span className="approval-btn-label">{label}</span>
     </button>
   );
 }
 
-function DecisionButtons({ size }: { size: string }) {
+function DecisionButtons({ size, tooltip = false }: { size: string; tooltip?: boolean }) {
   const { error, pending, decide } = useApprovalDecision();
   return (
     <div className="approval-actions">
@@ -78,6 +81,7 @@ function DecisionButtons({ size }: { size: string }) {
         busyLabel="Approving..."
         busy={pending === 'approve'}
         disabled={!!pending}
+        tooltip={tooltip}
         onClick={() => void decide('approve')}
       />
       <DecisionButton
@@ -87,6 +91,7 @@ function DecisionButtons({ size }: { size: string }) {
         busyLabel="Rejecting..."
         busy={pending === 'reject'}
         disabled={!!pending}
+        tooltip={tooltip}
         onClick={() => void decide('reject')}
       />
       {error && <span className="run-error">{error}</span>}
@@ -106,7 +111,7 @@ export function ApprovalCard({ toolName, args, className, variant = 'card' }: Ap
           <b className="approval-tool">{toolName}</b>
           <span className="visually-hidden">?</span>
         </span>
-        <DecisionButtons size=" btn-sm" />
+        <DecisionButtons size=" btn-sm" tooltip />
       </div>
     );
   }

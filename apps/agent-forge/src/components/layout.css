@@ -152,10 +152,11 @@
    "Open trace" (RunStatus.tsx) never leaves the wide bar: when it runs short the link
    keeps only its ExternalLink icon, its name stays "Open trace" and `title` is its tooltip.
    While an approval sits in the centre of a shorter bar, Debug, Stop and the trace link
-   keep only their icons and the spacer gives back its gap; shorter still (a 1024px
-   window), the status pill keeps its dot, the breadcrumb drops its "Agents" root and
-   Approve/Reject keep their icons (each label stays the name), so the name, status,
-   trace link, MOCK badge and decision all fit. */
+   keep only their icons, the status pill keeps its dot (its label stays the status text
+   and its tooltip), the breadcrumb drops its "Agents" root and the spacer gives back its
+   gap, so the agent's name keeps its room; shorter still (a 1024px window), Approve/Reject
+   keep their icons (each label stays the name), so the name, status, trace link, MOCK
+   badge and decision all fit. */
 .btn-collapse .btn-label {
   white-space: nowrap;
 }
@@ -173,9 +174,17 @@
     width: 24px;
     height: 24px;
     justify-content: center;
+    /* the left group clips its overflow: keep the focus ring inside the link */
+    outline-offset: -2px;
+  }
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .run-trace-link:hover {
+    background: var(--surface-2);
+  }
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) :is(.crumb-root, .crumb-sep) {
+    display: none;
   }
   .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1 .btn-label,
-  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) :is(.collapse-2 .btn-label, .run-trace-label) {
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) :is(.collapse-2 .btn-label, .run-trace-label, .status-pill-label) {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -204,24 +213,26 @@
     width: 24px;
     height: 24px;
     justify-content: center;
+    outline-offset: -2px;
   }
-  .topbar-builder:not(.topbar-narrow) .collapse-2,
-  .topbar-builder:not(.topbar-narrow) .approval-card-inline .approval-actions .btn {
+  .topbar-builder:not(.topbar-narrow) .run-trace-link:hover {
+    background: var(--surface-2);
+  }
+  .topbar-builder:not(.topbar-narrow) .collapse-2 {
     width: 32px;
     padding: 0;
     justify-content: center;
   }
   .topbar-builder:not(.topbar-narrow) .approval-card-inline .approval-actions .btn {
     width: 28px;
-  }
-  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) :is(.crumb-root, .crumb-sep) {
-    display: none;
+    padding: 0;
+    justify-content: center;
   }
   .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .crumbs {
     min-width: 72px;
   }
   .topbar-builder:not(.topbar-narrow) :is(.collapse-2 .btn-label, .run-trace-label),
-  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) :is(.status-pill-label, .approval-btn-label) {
+  .topbar-builder:not(.topbar-narrow):has(.approval-card-inline) .approval-btn-label {
     position: absolute;
     width: 1px;
     height: 1px;

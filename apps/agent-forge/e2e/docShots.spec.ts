@@ -937,6 +937,15 @@ test('agents x: the builder toolbar with a pending approval at 1280, 1024 and 37
     await page.setViewportSize({ width, height: 800 });
     await expect(page.locator('.topbar-builder')).toBeVisible();
     await shoot(page, `x-agents-toolbar-pending-${width}`);
+    if (width === 1024) {
+      // the icon-only link's focus ring, reached by keyboard, inside the left group's clip
+      const trace = page.locator('.topbar-builder').getByRole('link', { name: 'Open trace', exact: true });
+      await trace.focus();
+      await page.keyboard.press('Shift+Tab');
+      await page.keyboard.press('Tab');
+      await expect(trace).toBeFocused();
+      await shoot(page, 'x-agents-toolbar-pending-1024-focus');
+    }
   }
 });
 
