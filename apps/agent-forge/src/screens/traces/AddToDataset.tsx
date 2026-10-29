@@ -10,6 +10,7 @@
  */
 import '../datasets/datasets.css';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { DatabaseZap } from 'lucide-react';
 import { navigate } from '../../router/router';
 import { useDatasets } from '../../observe/useObserve';
 import { ObserveApiError, observeClient } from '../../observe/observeClient';
@@ -101,5 +102,5 @@ function AddDialog({ traceId, onClose }: { traceId: string; onClose: () => void 
 
 /** The trace header's "Add to dataset" button and its dialog. */
 export function AddToDataset({ traceId }: { traceId: string }) {
-  return <HeaderPopover label="Add to dataset">{(close) => <AddDialog traceId={traceId} onClose={close} />}</HeaderPopover>;
+  return <HeaderPopover label="Add to dataset" icon={DatabaseZap}>{(close) => <AddDialog traceId={traceId} onClose={close} />}</HeaderPopover>;
 }

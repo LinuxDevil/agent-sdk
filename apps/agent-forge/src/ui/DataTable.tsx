@@ -405,11 +405,15 @@ function EmptyBody<T>({ columns, loading, empty }: { columns: Column<T>[]; loadi
   );
 }
 
-/** Props for {@link TablePager}: the page start, page size, total rows and the page-change callback. */
-export type TablePagerProps = NonNullable<DataTableProps<unknown>['page']>;
+/**
+ * Props for {@link TablePager}: the page start, page size, total rows and the
+ * page-change callback; `pending` marks a first load with no rows yet (no range
+ * text, which would read "0 of 0", and both buttons disabled).
+ */
+export type TablePagerProps = NonNullable<DataTableProps<unknown>['page']> & { pending?: boolean };
 
 /** The table pager ("1–50 of 120", Previous, Next), also used under non-table lists such as card grids. */
-export function TablePager({ offset, limit, total, onChange }: TablePagerProps) {
+export function TablePager({ offset, limit, total, onChange, pending = false }: TablePagerProps) {
   const fmt = (n: number) => n.toLocaleString('en-US');
   // An offset past the end (total shrank under us) still reads as a valid range.
   const start = Math.min(offset + 1, total);
@@ -417,12 +421,12 @@ export function TablePager({ offset, limit, total, onChange }: TablePagerProps) 
   const range = total === 0 ? '0 of 0' : `${fmt(start)}–${fmt(end)} of ${fmt(total)}`;
   return (
     <div className="dt-pager">
-      <span className="dt-pager-range">{range}</span>
-      <button type="button" className="btn btn-sm" disabled={offset <= 0} onClick={() => onChange(Math.max(0, offset - limit))}>
+      {!pending && <span className="dt-pager-range">{range}</span>}
+      <button type="button" className="btn btn-sm" disabled={pending || offset <= 0} onClick={() => onChange(Math.max(0, offset - limit))}>
         <ChevronLeft aria-hidden="true" />
         Previous
       </button>
-      <button type="button" className="btn btn-sm" disabled={offset + limit >= total} onClick={() => onChange(offset + limit)}>
+      <button type="button" className="btn btn-sm" disabled={pending || offset + limit >= total} onClick={() => onChange(offset + limit)}>
         Next
         <ChevronRight aria-hidden="true" />
       </button>
@@ -495,7 +499,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
           )}
         </tbody>
       </table>
-      {page && <TablePager {...page} />}
+      {page && <TablePager {...page} pending={Boolean(loading) && rows.length === 0} />}
     </div>
   );
 }

@@ -6,6 +6,7 @@
  * view. With no queues yet the dialog links to the queue list to create one.
  */
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { ListPlus } from 'lucide-react';
 import { navigate } from '../../router/router';
 import { useQueues } from '../../observe/useObserve';
 import { observeClient } from '../../observe/observeClient';
@@ -81,5 +82,5 @@ function QueueDialog({ traceId, onClose }: { traceId: string; onClose: () => voi
 
 /** The trace header's "Add to queue" button and its dialog. */
 export function AddToQueue({ traceId }: { traceId: string }) {
-  return <HeaderPopover label="Add to queue">{(close) => <QueueDialog traceId={traceId} onClose={close} />}</HeaderPopover>;
+  return <HeaderPopover label="Add to queue" icon={ListPlus}>{(close) => <QueueDialog traceId={traceId} onClose={close} />}</HeaderPopover>;
 }

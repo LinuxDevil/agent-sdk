@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { ArrowLeft, FileQuestion } from 'lucide-react';
 
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { nestObservations } from '../../observe/tree';
@@ -6,7 +7,9 @@ import type { ObserveObservationRow } from '../../observe/types';
 import { useAgents, useDaemonDown, useDaemonHealth, useTraceDetail } from '../../observe/useObserve';
 import { navigate } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
+import { ScreenHeader } from '../../shell/ScreenHeader';
 import { EmptyState } from '../../ui/EmptyState';
+import { Skeleton, SkeletonRows } from '../../ui/Skeleton';
 import { tracesListPath } from './tracesUrl';
 import { TraceViewer, type TraceViewMode } from '../../ui/run/TraceViewer';
 import { isRunning } from '../../ui/run/rows';
@@ -15,6 +18,8 @@ import { TraceFeedback } from './TraceFeedback';
 import { TraceHeader } from './TraceHeader';
 // The shared daemon-down / error presentation is styled there.
 import '../../observe/observe.css';
+// The header card is the kit's .card.
+import '../../ui/card.css';
 import './trace.css';
 
 const DEFAULT_POLL_MS = 5000;
@@ -29,6 +34,7 @@ function rootOf(rows: ObserveObservationRow[]): ObserveObservationRow | undefine
 function MissingTrace({ traceId }: { traceId: string }) {
   return (
     <EmptyState
+      icon={FileQuestion}
       title="Trace not found"
       hint={`No trace '${traceId}'. Eval traces can be missing if the run's reporter never flushed.`}
       action={
@@ -37,6 +43,32 @@ function MissingTrace({ traceId }: { traceId: string }) {
         </button>
       }
     />
+  );
+}
+
+/** The first load: the header card and the two panes as skeletons, announced once as "Loading trace". */
+function TraceLoading() {
+  return (
+    <div className="trace-loading" role="status">
+      <span className="visually-hidden">Loading trace...</span>
+      <div className="card trace-card trace-header-skeleton" aria-hidden="true">
+        <Skeleton width={120} height={12} />
+        <Skeleton width={260} height={20} />
+        <div className="trace-skeleton-chips">
+          {[88, 96, 80, 132, 150].map((w) => (
+            <Skeleton key={w} width={w} height={24} radius="var(--radius-full)" />
+          ))}
+        </div>
+      </div>
+      <div className="run-viewer" aria-hidden="true">
+        <div className="run-viewer-steps trace-skeleton-pane">
+          <SkeletonRows rows={8} />
+        </div>
+        <div className="run-viewer-inspector trace-skeleton-pane">
+          <SkeletonRows rows={5} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -56,8 +88,10 @@ function useTrace(traceId: string, pollMs: number) {
 }
 
 /**
- * `#/traces/:traceId` - one trace: a header (root name, status, agent, model,
- * timing, tokens, cost, session, copy link) over the unified trace viewer.
+ * `#/traces/:traceId` - one trace: the page header (Traces, the trace id, a
+ * link back to the list with its last filters), then a header card (root
+ * name, status, actions, agent, model, timing, tokens, cost, session) over
+ * the unified trace viewer.
  * `?obs=<id>` is the selected step, read on load and written with replace on
  * every selection; the inspector's Feedback section takes thumbs up/down
  * scores. A dead daemon shows the shared daemon-down state without touching
@@ -77,12 +111,14 @@ export function TraceScreen({ traceId, pollMs = DEFAULT_POLL_MS }: { traceId: st
   let body: React.ReactNode;
   if (down) body = <ObserveDaemonDown />;
   else if (detail.error) body = <ObserveError error={detail.error} />;
-  else if (detail.data === undefined && detail.loading) body = <div className="trace-loading">Loading trace...</div>;
+  else if (detail.data === undefined && detail.loading) body = <TraceLoading />;
   else if (detail.data === undefined) body = <MissingTrace traceId={traceId} />;
   else
     body = (
       <>
-        {root && <TraceHeader root={root} observations={detail.data.observations} agentName={agentName} now={now} />}
+        {root && (
+          <TraceHeader root={root} observations={detail.data.observations} agentName={agentName} now={now} selectedObsId={obsId} />
+        )}
         <TraceViewer
           observations={detail.data.observations}
           scores={detail.data.scores}
@@ -97,6 +133,21 @@ export function TraceScreen({ traceId, pollMs = DEFAULT_POLL_MS }: { traceId: st
     );
   return (
     <div className="trace-screen" data-trace-id={traceId}>
+      <ScreenHeader
+        title="Traces"
+        status={null}
+        description={
+          <>
+            Trace <code className="trace-id">{traceId}</code>
+          </>
+        }
+        actions={
+          <a className="btn btn-ghost trace-back" href={`#${tracesListPath()}`}>
+            <ArrowLeft aria-hidden="true" />
+            All traces
+          </a>
+        }
+      />
       {body}
     </div>
   );

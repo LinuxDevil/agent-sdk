@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { ThumbsDown, ThumbsUp, type LucideIcon } from 'lucide-react';
 
 import { observeClient } from '../../observe/observeClient';
 import type { ObserveObservationRow } from '../../observe/types';
@@ -7,9 +8,9 @@ import { useToast } from '../../ui/Toast';
 /** The score name human thumbs up/down feedback is stored under. */
 const FEEDBACK_SCORE_NAME = 'feedback';
 
-const CHOICES: { value: 1 | 0; label: string; glyph: string }[] = [
-  { value: 1, label: 'Thumbs up', glyph: '\u{1F44D}' },
-  { value: 0, label: 'Thumbs down', glyph: '\u{1F44E}' },
+const CHOICES: { value: 1 | 0; label: string; icon: LucideIcon }[] = [
+  { value: 1, label: 'Thumbs up', icon: ThumbsUp },
+  { value: 0, label: 'Thumbs down', icon: ThumbsDown },
 ];
 
 /**
@@ -59,12 +60,12 @@ export function TraceFeedback({ observation, onSaved }: { observation: ObserveOb
           <button
             key={choice.value}
             type="button"
-            className="btn btn-ghost trace-feedback-choice"
+            className="btn btn-icon trace-feedback-choice"
             aria-label={choice.label}
             aria-pressed={value === choice.value}
             onClick={() => setValue(value === choice.value ? undefined : choice.value)}
           >
-            <span aria-hidden="true">{choice.glyph}</span>
+            <choice.icon aria-hidden="true" />
           </button>
         ))}
       </div>

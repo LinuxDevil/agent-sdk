@@ -1,8 +1,11 @@
+import type { ReactNode } from 'react';
+import { Bot, CalendarClock, Coins, Cpu, FlaskConical, Link2, MessagesSquare, Timer, Wallet, type LucideIcon } from 'lucide-react';
+
 import { fmtCost, fmtDateTime, fmtDuration, fmtInt } from '../../observe/format';
 import type { ObserveObservationRow } from '../../observe/types';
 import { StatusPill } from '../../ui/StatusPill';
 import { useToast } from '../../ui/Toast';
-import { displayName, displayStatus, elapsedMs } from '../../ui/run/rows';
+import { displayName, displayStatus, elapsedMs, playgroundHref } from '../../ui/run/rows';
 import { AddToDataset } from './AddToDataset';
 import { AddToQueue } from './AddToQueue';
 
@@ -31,10 +34,23 @@ function traceModel(root: ObserveObservationRow, rows: ObserveObservationRow[]):
   return root.model ?? rows.find((row) => row.kind === 'generation' && row.model)?.model ?? null;
 }
 
-function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+/** The generation "Open in Playground" loads: the selected step when it is one, else the earliest generation. */
+function playgroundTarget(rows: ObserveObservationRow[], selectedObsId: string | null | undefined): ObserveObservationRow | undefined {
+  const selected = rows.find((row) => row.obs_id === selectedObsId);
+  if (selected?.kind === 'generation') return selected;
+  let first: ObserveObservationRow | undefined;
+  for (const row of rows) if (row.kind === 'generation' && (first === undefined || row.start < first.start)) first = row;
+  return first;
+}
+
+/** One metric chip: the icon stands for the label (read out, and shown as the chip's tooltip), then the value. */
+function Fact({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
-    <div className="trace-fact">
-      <dt>{label}</dt>
+    <div className="trace-fact" title={label}>
+      <dt>
+        <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+        <span className="visually-hidden">{label}</span>
+      </dt>
       <dd>{children}</dd>
     </div>
   );
@@ -51,55 +67,76 @@ function CopyLinkButton() {
     );
   };
   return (
-    <button type="button" className="btn btn-ghost trace-copy-link" aria-label="Copy link" title="Copy link" onClick={copy}>
-      Copy link
+    <button type="button" className="btn btn-ghost btn-icon trace-copy-link" aria-label="Copy link" title="Copy link" onClick={copy}>
+      <Link2 aria-hidden="true" />
     </button>
   );
 }
 
-/**
- * The trace screen's header, from the root observation: name, status, agent
- * (to the agent-filtered trace list), model, start, duration (counting to
- * `now` while running), total tokens and cost, session (to its thread), a
- * copy-link button that copies the current URL, `?obs=` included, and
- * "Add to dataset" (copies the trace's input/output into a dataset) and
- * "Add to queue" (queues the trace for review in an annotation queue).
- */
-export function TraceHeader({
-  root,
-  observations,
-  agentName,
-  now,
-}: {
+interface TraceHeaderProps {
   root: ObserveObservationRow;
   observations: ObserveObservationRow[];
   agentName: string | undefined;
   now: number;
-}) {
+  /** The selected step: "Open in Playground" loads it when it is a generation. */
+  selectedObsId?: string | null;
+}
+
+/**
+ * The trace screen's header card, from the root observation: the name and status, the actions - copy link (the
+ * current URL, `?obs=` included), "Add to dataset", "Add to queue" and, when
+ * the trace has a generation, "Open in Playground" - then metric chips:
+ * duration (counting to `now` while running), tokens, cost, model, start,
+ * agent (to the agent-filtered trace list) and session (to its thread).
+ */
+export function TraceHeader({ root, observations, agentName, now, selectedObsId }: TraceHeaderProps) {
   const { tokens, cost } = traceTotals(observations);
   const model = traceModel(root, observations);
+  const playground = playgroundTarget(observations, selectedObsId);
+  const status = displayStatus(root);
   return (
-    <header className="trace-header">
+    <header className="card trace-header trace-card">
       <div className="trace-title">
-        <h2>{displayName(root)}</h2>
-        <StatusPill status={displayStatus(root)} live={displayStatus(root) === 'running'} />
-        <CopyLinkButton />
-        <AddToDataset traceId={root.trace_id} />
-        <AddToQueue traceId={root.trace_id} />
+        <div className="trace-title-name">
+          <h2 title={displayName(root)}>{displayName(root)}</h2>
+          <StatusPill status={status} live={status === 'running'} />
+        </div>
+        <div className="trace-actions">
+          <CopyLinkButton />
+          <AddToDataset traceId={root.trace_id} />
+          <AddToQueue traceId={root.trace_id} />
+          {playground && (
+            <a className="btn trace-playground" href={playgroundHref(playground.trace_id, playground.obs_id)}>
+              <FlaskConical aria-hidden="true" />
+              Open in Playground
+            </a>
+          )}
+        </div>
       </div>
       <dl className="trace-facts">
+        <Fact icon={Timer} label="Duration">
+          {fmtDuration(elapsedMs(root, now, latestEnd(observations)))}
+        </Fact>
+        <Fact icon={Coins} label="Tokens">
+          {fmtInt(tokens)}
+          <span className="trace-fact-unit"> tokens</span>
+        </Fact>
+        <Fact icon={Wallet} label="Cost">
+          {fmtCost(cost)}
+        </Fact>
+        <Fact icon={Cpu} label="Model">
+          {model ? <code>{model}</code> : '-'}
+        </Fact>
+        <Fact icon={CalendarClock} label="Start">
+          {fmtDateTime(root.start)}
+        </Fact>
         {root.agent_id && (
-          <Fact label="Agent">
+          <Fact icon={Bot} label="Agent">
             <a href={`#/traces?agent=${encodeURIComponent(root.agent_id)}`}>{agentName ?? root.agent_id}</a>
           </Fact>
         )}
-        <Fact label="Model">{model ? <code>{model}</code> : '-'}</Fact>
-        <Fact label="Start">{fmtDateTime(root.start)}</Fact>
-        <Fact label="Duration">{fmtDuration(elapsedMs(root, now, latestEnd(observations)))}</Fact>
-        <Fact label="Tokens">{fmtInt(tokens)}</Fact>
-        <Fact label="Cost">{fmtCost(cost)}</Fact>
         {root.session_id && (
-          <Fact label="Session">
+          <Fact icon={MessagesSquare} label="Session">
             <a href={`#/threads/${encodeURIComponent(root.session_id)}`}>{root.session_id}</a>
           </Fact>
         )}

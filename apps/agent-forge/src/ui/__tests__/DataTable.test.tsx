@@ -424,6 +424,22 @@ describe('DataTable paging', () => {
     expect(c.querySelector('.dt-pager-range')?.textContent).toBe('1,234–1,234 of 1,234');
     expect(btn('Previous').disabled).toBe(false);
   });
+
+  it('a first load (loading, no rows yet) shows no "0 of 0" range and disables both buttons', () => {
+    const onChange = vi.fn();
+    const page = { offset: 50, limit: 50, total: 0, onChange };
+    const c = render(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} page={page} loading empty="x" />);
+    const btn = (name: string) =>
+      [...c.querySelectorAll('button')].find((b) => b.textContent === name) as HTMLButtonElement;
+    expect(c.querySelector('.dt-pager-range')).toBeNull();
+    expect(btn('Previous').disabled).toBe(true);
+    expect(btn('Next').disabled).toBe(true);
+
+    // rows already shown: a re-fetch keeps the range and the buttons
+    rerender(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} page={{ ...page, total: 1234 }} loading empty="x" />);
+    expect(c.querySelector('.dt-pager-range')?.textContent).toBe('51–100 of 1,234');
+    expect(btn('Previous').disabled).toBe(false);
+  });
 });
 
 describe('ErrorCell', () => {
