@@ -403,3 +403,123 @@ test('x-kit: filter bar with a facet and the custom range open', async ({ page }
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(OUT, 'studio-x-kit-filters.png') });
 });
+
+// --- Overlay/message/chart kit states (x- shots, D3b) -------------------------
+
+const CHAT_TRACE = 'doc-chat-trace';
+const CHAT_GEN = `${CHAT_TRACE}-gen`;
+
+/** A trace whose generation carries a full system/user/assistant(tool call)/tool transcript plus attributes. */
+function chatTraceDetail() {
+  const start = NOW - 10 * MINUTE;
+  const base = {
+    trace_id: CHAT_TRACE,
+    session_id: 'seed-session-0',
+    agent_id: 'orders-bot',
+    status: 'ok',
+    model: null,
+    usage_input_tokens: null,
+    usage_output_tokens: null,
+    usage_cached_tokens: null,
+    usage_reasoning_tokens: null,
+    cost_usd: null,
+    cost_partial: null,
+    usage_estimated: null,
+    truncated: false,
+    attrs: null,
+  };
+  const chat = [
+    { role: 'system', content: 'You are the orders assistant. Answer briefly and cite the order status.' },
+    { role: 'user', content: [{ type: 'text', text: 'Where is order ord_54? It was due yesterday.' }] },
+    {
+      role: 'assistant',
+      content: 'Let me look that up.',
+      tool_calls: [{ id: 'call_7f2', type: 'function', function: { name: 'lookup_order', arguments: '{"id":"ord_54","include":["shipping","events"]}' } }],
+    },
+    { role: 'tool', tool_call_id: 'call_7f2', content: '{"status":"in_transit","carrier":"PostNord","eta":"tomorrow"}' },
+    { role: 'assistant', content: 'Order ord_54 is in transit with PostNord and should arrive tomorrow.' },
+  ];
+  return {
+    trace_id: CHAT_TRACE,
+    scores: [],
+    observations: [
+      { ...base, obs_id: `${CHAT_TRACE}-root`, parent_obs_id: null, kind: 'agent', name: 'orders-bot turn', start, end: start + 2_400, input: 'Where is order ord_54?', output: 'Order ord_54 is in transit.' },
+      {
+        ...base,
+        obs_id: CHAT_GEN,
+        parent_obs_id: `${CHAT_TRACE}-root`,
+        kind: 'generation',
+        name: 'llm',
+        start: start + 20,
+        end: start + 2_300,
+        model: 'gpt-4o-mini',
+        usage_input_tokens: 412,
+        usage_output_tokens: 38,
+        cost_usd: 0.00009,
+        input: JSON.stringify(chat),
+        output: JSON.stringify({ role: 'assistant', content: 'Order ord_54 is in transit with PostNord and should arrive tomorrow.' }),
+        attrs: { 'gen_ai.system': 'openai', temperature: 0.2, max_tokens: 512, stream: false, tools: ['lookup_order', 'refund'], retry: null },
+      },
+    ],
+  };
+}
+
+test('x-kit: trace step with a chat transcript and attributes', async ({ page }) => {
+  await page.route(`**/observe/api/v1/traces/${CHAT_TRACE}`, (route) => json(route, chatTraceDetail()));
+  await open(page, `/traces/${CHAT_TRACE}?obs=${CHAT_GEN}`);
+  const main = page.getByRole('main');
+  await expect(main.locator('.mv-bubble').first()).toBeVisible();
+  await shoot(page, 'x-kit-trace-messages');
+  // Scroll the inspector so the tool / assistant bubbles and the attributes tree are in view.
+  await main.locator('.json-key', { hasText: 'temperature' }).first().scrollIntoViewIfNeeded();
+  await shoot(page, 'x-kit-trace-attributes');
+});
+
+test('x-kit: chart tooltip, crosshair and legend with a series toggled off', async ({ page }) => {
+  await open(page, '/monitoring');
+  const runs = page.locator('[data-chart="Runs"]');
+  await expect(runs.locator('svg.tsc-svg')).toBeVisible();
+  // Legend chips are buttons once they toggle (D3b); before that they are plain list items.
+  const billing = page.locator('[data-chart="Latency p95"] .tsc-legend button', { hasText: 'Billing bot' });
+  if (await billing.count()) await billing.click();
+  await runs.scrollIntoViewIfNeeded();
+  const box = (await runs.locator('.tsc-plot').boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.62, box.y + box.height / 2);
+  await expect(runs.locator('.tsc-crosshair')).toHaveCount(1); // a zero-width line never counts as visible
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: path.join(OUT, 'studio-x-kit-chart-hover.png') });
+});
+
+test('x-kit: toasts (info and error)', async ({ page }) => {
+  await page.route('**/observe/api/v1/evaluators/**', (route) =>
+    route.request().method() === 'PUT' || route.request().method() === 'PATCH'
+      ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ error: 'collector is read-only' }) })
+      : route.fallback(),
+  );
+  await open(page, '/evals/evaluators/e2e-evaluator');
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: 'Save changes' }).click();
+  await expect(page.locator('.toast').first()).toBeVisible();
+  await page.evaluate(() => {
+    window.location.hash = '#/evals/evaluators';
+  });
+  const toggle = main.getByRole('switch', { name: 'answered enabled' });
+  await expect(toggle).toBeVisible();
+  await toggle.click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Could not disable' })).toBeVisible();
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: path.join(OUT, 'studio-x-kit-toasts.png') });
+});
+
+test('x-kit: command palette sections, scrolled to the last group', async ({ page }) => {
+  await open(page, '/traces');
+  await expect(rows(page).first()).toBeVisible();
+  await page.keyboard.press('Control+K');
+  const input = page.getByRole('combobox', { name: 'Command' });
+  await expect(input).toBeFocused();
+  // ArrowUp from the first option wraps to the last one (Toggle theme), scrolling the list to the end.
+  await page.keyboard.press('ArrowUp');
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: path.join(OUT, 'studio-x-kit-palette-sections.png') });
+});

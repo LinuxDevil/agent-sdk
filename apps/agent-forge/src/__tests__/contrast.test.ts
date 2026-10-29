@@ -66,6 +66,12 @@ const PAIRS: [text: string, background: string][] = [
   ['accent', 'accent-soft'],
   // MetricCard: a good delta draws --success on the card's --surface (a bad one --danger, listed above).
   ['success', 'surface'],
+  // JsonView on its --surface-3 code block: strings info, numbers violet, booleans accent, null/summaries text-faint
+  // (keys text-muted, listed above). MessageView's assistant avatar draws violet on violet-soft (listed above).
+  ['info', 'surface-3'],
+  ['violet', 'surface-3'],
+  ['accent', 'surface-3'],
+  ['text-faint', 'surface-3'],
 ];
 
 describe('theme contrast', () => {

@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
+import './jsonView.css';
 
 /**
  * Props for {@link JsonView}. `defaultExpandDepth` is how many levels open on
@@ -85,7 +87,7 @@ function Branch({ name, container, depth, defaultExpandDepth }: Omit<NodeProps, 
         aria-label={`Toggle ${name ?? 'root'}`}
         onClick={() => setExpanded((e) => !e)}
       >
-        {expanded ? '▾' : '▸'}
+        {expanded ? <ChevronDown size={12} strokeWidth={2} aria-hidden="true" /> : <ChevronRight size={12} strokeWidth={2} aria-hidden="true" />}
       </button>
       {name !== undefined && <span className="json-key">{name}: </span>}
       <span className="json-null">{container.summary(container.entries.length)}</span>
@@ -95,7 +97,7 @@ function Branch({ name, container, depth, defaultExpandDepth }: Omit<NodeProps, 
             <JsonNode key={k} value={v} name={k} depth={depth + 1} defaultExpandDepth={defaultExpandDepth} />
           ))}
           {hidden > 0 && (
-            <button type="button" className="json-toggle" onClick={() => setShown(container.entries.length)}>
+            <button type="button" className="json-toggle json-more" onClick={() => setShown(container.entries.length)}>
               Show {hidden} more
             </button>
           )}
@@ -119,10 +121,16 @@ function JsonNode({ value, name, depth, defaultExpandDepth }: NodeProps) {
 }
 
 /**
- * Hand-rolled, collapsible JSON tree - no dependency needed for this.
+ * Hand-rolled, collapsible JSON tree - no dependency needed for this. Drawn as a
+ * mono 12px code block on `--surface-3`, with keys, strings, numbers, booleans and
+ * nulls in theme token colours.
  * Containers deeper than `defaultExpandDepth` (default 4) start collapsed, so a
  * giant `ExecutionResult` or deeply nested payload is not dumped fully expanded.
  */
 export function JsonView({ value, name, defaultExpandDepth = 4 }: JsonViewProps) {
-  return <JsonNode value={value} name={name} depth={0} defaultExpandDepth={defaultExpandDepth} />;
+  return (
+    <div className="json-view">
+      <JsonNode value={value} name={name} depth={0} defaultExpandDepth={defaultExpandDepth} />
+    </div>
+  );
 }

@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { X } from 'lucide-react';
+import { CircleAlert, CircleCheck, Info, X, type LucideIcon } from 'lucide-react';
 import './primitives.css';
+import './toast.css';
 
 /** What {@link useToast}'s `show` takes: a message, a tone (default `info`) and an optional action button. */
 export interface ToastOptions {
@@ -23,15 +24,23 @@ const AUTO_DISMISS_MS = 5000;
 
 const ToastContext = createContext<ToastApi | null>(null);
 
+const TONE_ICON: Record<NonNullable<ToastOptions['tone']>, LucideIcon> = {
+  info: Info,
+  success: CircleCheck,
+  error: CircleAlert,
+};
+
 function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: string) => void }) {
   const { id, message, tone = 'info', action } = toast;
+  const Icon = TONE_ICON[tone];
   return (
     <div className={`toast toast-${tone}`} role={tone === 'error' ? 'alert' : undefined}>
+      <Icon className="toast-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
       <span className="toast-message">{message}</span>
       {action && (
         <button
           type="button"
-          className="btn btn-ghost toast-action"
+          className="btn btn-sm btn-ghost toast-action"
           onClick={() => {
             action.onClick();
             onDismiss(id);

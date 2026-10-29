@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Bot, Check, Copy, MessageSquare, Settings2, User, Wrench, type LucideIcon } from 'lucide-react';
 
 import { JsonView } from './JsonView';
 import './messageView.css';
@@ -39,6 +40,9 @@ const CHUNK = 8 * 1024;
 const ARGS_PREVIEW = 60;
 const MODE_LABEL: Record<Mode, string> = { rendered: 'Rendered', raw: 'Raw', json: 'JSON' };
 const COPY_LABEL: Record<CopyState, string> = { idle: 'Copy', copied: 'Copied', failed: 'Copy failed' };
+
+/** The avatar icon per chat role; any other role (developer, function, ...) gets a plain message icon. */
+const ROLE_ICON: Record<string, LucideIcon | undefined> = { user: User, assistant: Bot, tool: Wrench, system: Settings2 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -92,6 +96,7 @@ function Chip({ name, detail }: { name: string; detail?: string }) {
   const preview = detail && detail.length > ARGS_PREVIEW ? `${detail.slice(0, ARGS_PREVIEW)}…` : detail;
   return (
     <span className="mv-chip" title={detail}>
+      <Wrench className="mv-chip-icon" size={12} strokeWidth={1.75} aria-hidden="true" />
       <span className="mv-chip-name">{name}</span>
       {preview && <span className="mv-chip-args">{preview}</span>}
     </span>
@@ -112,23 +117,44 @@ function Content({ content }: { content: unknown }) {
   return <JsonView value={content} />;
 }
 
+function Avatar({ role }: { role: string }) {
+  const Icon = ROLE_ICON[role] ?? MessageSquare;
+  return (
+    <span className="mv-avatar" aria-hidden="true">
+      <Icon size={14} strokeWidth={1.75} />
+    </span>
+  );
+}
+
+/**
+ * One chat message: a role avatar beside the role label, its content and any
+ * tool-call chips. Tool results read as a mono block.
+ */
 function Bubble({ message }: { message: ChatMessage }) {
   const calls = (Array.isArray(message.tool_calls) ? message.tool_calls : []) as (ToolCall | null)[];
   const callId = toText(message.tool_call_id);
+  const hasContent = message.content != null && message.content !== '';
   return (
     <div className="mv-bubble" data-role={message.role}>
-      <div className="mv-bubble-head">
-        <span className="mv-role">{message.role}</span>
-        {callId && <span className="mv-call-id">{callId}</span>}
-      </div>
-      <Content content={message.content} />
-      {calls.length > 0 && (
-        <div className="mv-chips">
-          {calls.map((call, i) => (
-            <Chip key={i} name={toText(call?.function?.name) ?? 'tool'} detail={toText(call?.function?.arguments)} />
-          ))}
+      <Avatar role={message.role} />
+      <div className="mv-bubble-main">
+        <div className="mv-bubble-head">
+          <span className="mv-role">{message.role}</span>
+          {callId && <span className="mv-call-id">{callId}</span>}
         </div>
-      )}
+        {hasContent && (
+          <div className={`mv-content${message.role === 'tool' ? ' mv-mono' : ''}`}>
+            <Content content={message.content} />
+          </div>
+        )}
+        {calls.length > 0 && (
+          <div className="mv-chips">
+            {calls.map((call, i) => (
+              <Chip key={i} name={toText(call?.function?.name) ?? 'tool'} detail={toText(call?.function?.arguments)} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -164,8 +190,10 @@ function CopyButton({ text }: { text: string }) {
       settle('failed');
     }
   };
+  const Icon = state === 'copied' ? Check : Copy;
   return (
-    <button type="button" className="mv-btn" onClick={() => void copy()}>
+    <button type="button" className="mv-btn mv-copy" onClick={() => void copy()}>
+      <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
       {COPY_LABEL[state]}
     </button>
   );
@@ -200,7 +228,9 @@ function Header({ label, children }: { label?: string; children?: ReactNode }) {
 
 /**
  * One payload block (an observation's input or output): chat bubbles for an
- * OpenAI-style message array (role-labelled, tool calls as chips), a JSON tree
+ * OpenAI-style message array (role avatar and label; user on --surface-2, assistant
+ * on a bordered --surface, tool results as a mono block, system dashed; tool calls
+ * as chips), a JSON tree
  * for other JSON, plain text otherwise. A Raw toggle shows the exact string,
  * a JSON toggle (when it parses) the parsed tree, and a copy button copies the string.
  */

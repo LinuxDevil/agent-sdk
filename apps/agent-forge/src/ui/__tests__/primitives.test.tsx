@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { act } from 'react';
 import { Search } from 'lucide-react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -200,6 +202,29 @@ describe('Toast', () => {
     act(() => undo.click());
     expect(onClick).toHaveBeenCalledOnce();
     expect(toasts()).toHaveLength(0);
+  });
+
+  it('leads each toast with a decorative status icon in its tone, not a coloured left border', () => {
+    vi.useFakeTimers();
+    renderToasts();
+    act(() => {
+      api.show({ message: 'fyi' });
+      api.show({ message: 'done', tone: 'success' });
+      api.show({ message: 'broke', tone: 'error' });
+    });
+    const iconOf = (text: string) => {
+      const toast = toasts().find((t) => t.textContent?.includes(text))!;
+      const icon = toast.querySelector('.toast-icon')!;
+      expect(icon.getAttribute('aria-hidden')).toBe('true');
+      expect(toast.firstElementChild).toBe(icon);
+      return icon.getAttribute('class');
+    };
+    expect(iconOf('fyi')).toContain('lucide-info');
+    expect(iconOf('done')).toContain('lucide-circle-check');
+    expect(iconOf('broke')).toContain('lucide-circle-alert');
+    const css = readFileSync(resolve(__dirname, '../toast.css'), 'utf8');
+    expect(css).not.toMatch(/border-left/);
+    expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i);
   });
 
   it('throws a clear error when useToast is used outside a ToastProvider', () => {

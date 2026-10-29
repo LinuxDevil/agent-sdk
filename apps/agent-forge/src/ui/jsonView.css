@@ -1,0 +1,80 @@
+/*
+ * JsonView: a mono 12px code block on --surface-3. Scoped under .json-view so it wins over the older
+ * global .json-* rules in components/drawer.css. Every colour is a token (contrast pairs on --surface-3
+ * are listed in contrast.test.ts).
+ */
+.json-view {
+  min-width: 0;
+  padding: var(--space-2) 10px;
+  background: var(--surface-3);
+  color: var(--text);
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  overflow-x: auto;
+}
+.json-view .json-node {
+  position: relative;
+  display: block;
+  padding-left: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.json-view .json-key {
+  color: var(--text-muted);
+}
+.json-view .json-str {
+  color: var(--info);
+}
+.json-view .json-num {
+  color: var(--violet);
+}
+.json-view .json-bool {
+  color: var(--accent);
+}
+.json-view .json-null {
+  color: var(--text-faint);
+}
+.json-view .json-toggle {
+  position: absolute;
+  top: 1px;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.json-view .json-toggle:hover {
+  color: var(--text);
+}
+.json-view .json-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+.json-view .json-more {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 2px 0 0 16px;
+  padding: 0 4px;
+  color: var(--accent);
+  font: inherit;
+}
+.json-view .json-more:hover {
+  text-decoration: underline;
+  color: var(--accent);
+}
+/* The guide line runs under the parent's chevron (its node is padded 16px for the toggle). */
+.json-view .json-children {
+  margin-left: -8px;
+  padding-left: 4px;
+  border-left: 1px dashed var(--border-strong);
+}

@@ -1,0 +1,39 @@
+/* Toast look on top of the base .toast rules in primitives.css: a leading status icon in the tone colour. Tokens only. */
+.toast {
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  line-height: 20px;
+}
+.toast-icon {
+  flex: none;
+  /* centred on the first 20px text line */
+  margin-top: 2px;
+}
+.toast-info .toast-icon {
+  color: var(--info);
+}
+.toast-success .toast-icon {
+  color: var(--success);
+}
+.toast-error .toast-icon {
+  color: var(--danger);
+}
+.toast-action {
+  margin: -4px 0;
+}
+.toast-close {
+  margin: -2px -2px -2px 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: toast-in var(--dur) var(--ease);
+  }
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
