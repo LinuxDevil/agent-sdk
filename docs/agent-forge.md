@@ -361,6 +361,12 @@ rows). Filter by eval, agent, source (`eval`, `judge`, `human`,
 `online`) and time range (default 30 days). Click an eval to expand it: the
 run count and run pass rate, a pass-rate trend, the pass rate of each check
 (worst first) and the latest failures, each linking to its trace (and step).
+A score counts as a pass when its value is exactly 1. `eval` and `judge`
+scores (an eval's assertions and its `llmJudge` / `t.judge()` checks, which
+write a comment only when they fail) also pass when they have no failure
+comment. `human` and `online` scores are decided by value alone, so a 0 (a
+thumbs-down, a rule that returned 0), a 0.9 or an empty value is a failure.
+The table and the expanded detail use the same rule.
 Where eval scores come from: [Evals](./evals.md#lousho-eval).
 
 #### Datasets

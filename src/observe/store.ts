@@ -1125,7 +1125,7 @@ export interface ScorePassRate {
   name: string;
   /** Score rows in the group. */
   count: number;
-  /** Rows that passed: an assertion row passes when it carries no failure comment (or a perfect 1, e.g. a skipped gate). */
+  /** Rows that passed: a perfect 1 always passes; a `source='eval'` or `'judge'` assertion row also passes when it carries no failure comment. */
   passed: number;
   /** `passed / count`. */
   pass_rate: number;
@@ -1138,9 +1138,12 @@ export interface ScorePassRate {
 /**
  * Pass-rate per eval name, for the eval-history view: score rows group by
  * their `<evalName>` prefix and each group reports its count, pass count and
- * rate, mean value and last-seen time. A row counts as passed when it has no
- * failure comment (assertions always write a message when they fail) or its
- * value is exactly 1 (a perfect score, which covers skipped gates).
+ * rate, mean value and last-seen time. A row counts as passed when its value
+ * is exactly 1 (a perfect score, which covers skipped gates) or, for
+ * `source='eval'` and `'judge'` (eval assertions and their llmJudge / t.judge()
+ * checks), when it has no failure comment (assertions always write a message
+ * when they fail). Human and online scores are decided by value alone, so a
+ * 0, 0.9 or NULL without a comment is a failure.
  */
 export function scorePassRates(
   db: SqlDatabase,
@@ -1152,7 +1155,7 @@ export function scorePassRates(
       `SELECT
          CASE WHEN instr(name, '/') > 0 THEN substr(name, 1, instr(name, '/') - 1) ELSE name END AS eval_name,
          COUNT(*) AS n,
-         SUM(CASE WHEN comment IS NULL OR comment = '' OR value = 1 THEN 1 ELSE 0 END) AS passed,
+         SUM(CASE WHEN value = 1 OR (source IN ('eval', 'judge') AND (comment IS NULL OR comment = '')) THEN 1 ELSE 0 END) AS passed,
          AVG(value) AS avg_value,
          MAX(created_at) AS last_ts
        FROM scores WHERE ${where}
