@@ -6,7 +6,7 @@
  */
 
 /** What a matched secret is replaced with. */
-export const REDACTED = '[redacted]';
+const REDACTED = '[redacted]';
 
 /**
  * OpenAI / OpenRouter (`sk-or-v1-`) / Anthropic (`sk-ant-`) style keys. A key
