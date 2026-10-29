@@ -77,6 +77,9 @@ test('at 1280px the three-column layout has no drawer toggles', async ({ page })
   await open(page, 1280, 800);
   expect(await horizontalOverflow(page)).toBe(0);
   await expect(page.getByRole('navigation', { name: 'Agents and node palette' })).toBeVisible();
+  // The docked Inspector starts collapsed (nothing selected) and opens from its canvas-edge toggle.
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
+  await page.getByRole('button', { name: 'Show inspector' }).click();
   await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'More actions' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Save' })).toBeVisible();
@@ -99,3 +102,92 @@ test('#/playground at 375px stacks into one column with nothing scrolling sidewa
     expect(box && box.x >= 0 && box.x + box.width <= 375, `${name} is on-screen`).toBe(true);
   }
 });
+
+/** Creates a saved support-bot agent (trigger -> llm -> tool -> output) and waits for its first fit. */
+async function createSupportBot(page: Page, name: string) {
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
+  await page.locator('#new-agent-name').fill(name);
+  await page.locator('#new-agent-template').selectOption('support-bot');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.crumbs b')).toHaveText(name);
+  await expect(page.locator('[data-node-type="output"]')).toBeVisible();
+  await expect(page.locator('.canvas-wrap[data-fitting]')).toHaveCount(0);
+}
+
+/** Every node card inside the canvas pane, and each title's on-screen size (computed font-size x viewport zoom). */
+async function canvasFit(page: Page) {
+  return page.evaluate(() => {
+    const pane = document.querySelector('.react-flow')!.getBoundingClientRect();
+    const viewport = document.querySelector<HTMLElement>('.react-flow__viewport')!;
+    const zoom = new DOMMatrix(getComputedStyle(viewport).transform).a;
+    const cards = [...document.querySelectorAll<HTMLElement>('.rf-node')];
+    return {
+      count: cards.length,
+      outside: cards
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.left < pane.left || r.right > pane.right || r.top < pane.top || r.bottom > pane.bottom;
+        })
+        .map((el) => el.dataset.nodeType),
+      titlePx: Math.min(...cards.map((el) => parseFloat(getComputedStyle(el.querySelector('.rf-node-title')!).fontSize) * zoom)),
+    };
+  });
+}
+
+test('at 1280x800 the default graph opens whole and legible, and selecting a node keeps it in view', async ({ page }) => {
+  await open(page, 1280, 800);
+  await createSupportBot(page, `fit-${Date.now()}`);
+  // Measurement guard: all four nodes inside the pane, titles at >= 10px on screen.
+  await expect.poll(async () => (await canvasFit(page)).outside).toEqual([]);
+  const fit = await canvasFit(page);
+  expect(fit.count).toBe(4);
+  expect(fit.titlePx).toBeGreaterThanOrEqual(10);
+
+  // Selecting the right-most node opens the Inspector, and the canvas pans so the node stays visible.
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
+  await page.locator('[data-node-type="output"]').click();
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
+  const outputInPane = () =>
+    page.locator('[data-node-type="output"]').evaluate((el) => {
+      const node = el.getBoundingClientRect();
+      const pane = el.closest('.react-flow')!.getBoundingClientRect();
+      return node.left >= pane.left && node.right <= pane.right;
+    });
+  await expect.poll(outputInPane).toBe(true);
+
+  // Clicking the empty pane deselects: the Inspector folds away again.
+  await page.locator('.react-flow__pane').click({ position: { x: 300, y: 60 } });
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
+});
+
+test('an explicit Show inspector is remembered across reloads; Hide folds it back', async ({ page }) => {
+  await open(page, 1280, 800);
+  await page.getByRole('button', { name: 'Show inspector' }).click();
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
+  await page.getByRole('button', { name: 'Hide inspector' }).click();
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Show inspector' })).toBeVisible();
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
+});
+
+for (const [width, height] of [
+  [1440, 900],
+  [1920, 1080],
+  [860, 800],
+] as const) {
+  test(`at ${width}x${height} the default graph opens whole and legible`, async ({ page }) => {
+    // Created at 1280 (below 860 the rail is a drawer), then reopened at the target size.
+    await open(page, 1280, 800);
+    const name = `fit-${width}-${Date.now()}`;
+    await createSupportBot(page, name);
+    await page.setViewportSize({ width, height });
+    await page.reload();
+    await expect(page.locator('.crumbs b')).toHaveText(name);
+    await expect(page.locator('.canvas-wrap[data-fitting]')).toHaveCount(0);
+    await expect.poll(async () => (await canvasFit(page)).outside).toEqual([]);
+    expect((await canvasFit(page)).titlePx).toBeGreaterThanOrEqual(10);
+  });
+}

@@ -22,6 +22,19 @@
 .inspector {
   border-left: 1px solid var(--border);
 }
+/*
+ * Nothing selected (or the viewer pressed Hide inspector): the docked
+ * Inspector column folds away and the canvas takes its width
+ * (useInspectorCollapsed.ts). Wide layout only - below 860px it is a drawer.
+ */
+@media (min-width: 861px) {
+  .shell.inspector-collapsed {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .shell.inspector-collapsed .inspector {
+    display: none;
+  }
+}
 
 /* ---------- Left rail (LeftRail.tsx) ---------- */
 /* The Agents/Nodes tablist, drawn as a segmented control. */
@@ -437,6 +450,15 @@ button.breakpoint-toggle {
   width: 30px;
   min-height: 30px;
 }
+/* The docked Inspector's Show/Hide toggle (CanvasArea.tsx), level with the toolbar on the right. */
+.canvas-inspector-toggle.btn-icon.btn-sm {
+  position: absolute;
+  right: var(--space-3);
+  top: var(--space-3);
+  z-index: 5;
+  width: 36px;
+  min-height: 36px;
+}
 
 /* Empty-canvas onboarding (canvas/EmptyCanvas.tsx), centred over the pane. */
 .canvas-empty {
@@ -621,10 +643,14 @@ button.breakpoint-toggle {
   display: none;
 }
 
-/* Custom node chrome (AgentNode.tsx): a fixed 240px card. */
+/*
+ * Custom node chrome (AgentNode.tsx): a fixed 208px card - compact so the
+ * default four-stage graph fits a 1280px-wide builder at a legible zoom
+ * (keep in step with canvas/layout.ts, paletteActions.ts and specToGraph.ts).
+ */
 .rf-node {
   position: relative;
-  width: 240px;
+  width: 208px;
   border-radius: var(--radius-lg);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -803,6 +829,9 @@ button.breakpoint-toggle {
 /* Ports: 10px surface circles with a clearly visible ring (above the edges), accent on hover and while connecting. */
 .canvas-wrap .rf-port.rf-port-in,
 .canvas-wrap .rf-port.rf-port-out {
+  /* Level with the header row (1px border + 44px head), not the card's middle:
+     cards differ in height, and centred ports made a straight pipeline jog. */
+  top: 23px;
   z-index: 1;
   width: 10px;
   height: 10px;
@@ -1108,6 +1137,9 @@ button.breakpoint-toggle {
 }
 
 @media (max-width: 860px) {
+  .canvas-inspector-toggle.btn-icon.btn-sm {
+    display: none;
+  }
   .shell {
     grid-template-columns: minmax(0, 1fr);
     overflow: hidden;

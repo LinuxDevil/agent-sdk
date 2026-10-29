@@ -610,11 +610,32 @@ test('agents x: a graph with a node selected', async ({ page }) => {
   await expect.poll(triggerInPane).toBe(true);
   // An edge can be selected (drawn in accent); selecting a node then moves the selection.
   const edge = page.locator('.react-flow__edge').nth(1);
-  await edge.locator('.react-flow__edge-interaction').click({ force: true });
+  // Ports sit level with each card's header, so a pipeline edge is a flat line whose box has no height
+  // (Playwright calls it off-screen): click the middle of its path instead.
+  const mid = await edge.locator('.react-flow__edge-interaction').evaluate((el) => {
+    const path = el as SVGPathElement;
+    const point = path.getPointAtLength(path.getTotalLength() / 2);
+    const m = path.getScreenCTM()!;
+    return { x: point.x * m.a + point.y * m.c + m.e, y: point.x * m.b + point.y * m.d + m.f };
+  });
+  await page.mouse.click(mid.x, mid.y);
   await expect(edge).toHaveClass(/selected/);
   await page.locator('[data-node-type="tool"]').click();
   await expect(page.locator('.react-flow__node.selected [data-node-type="tool"]')).toBeVisible();
   await shoot(page, 'x-agents-selected');
+});
+
+test('agents x: the default graph on load at 1280, 1440, 1920 and 860 wide', async ({ page }) => {
+  const name = `fit-${Date.now()}`;
+  await newAgent(page, name, 'support-bot');
+  for (const [width, height] of [[1280, 800], [1440, 900], [1920, 1080], [860, 800]] as const) {
+    // Reopened at each size, so every shot is the on-load fit (nothing selected, Inspector collapsed).
+    await page.setViewportSize({ width, height });
+    await page.reload();
+    await expect(page.locator('.crumbs b')).toHaveText(name);
+    await expect(page.locator('.canvas-wrap[data-fitting]')).toHaveCount(0);
+    await shoot(page, `x-agents-fit-${width}`);
+  }
 });
 
 test('agents x: a run in progress', async ({ page }) => {
@@ -659,10 +680,11 @@ test('agents x: a run in progress', async ({ page }) => {
   await expect(llm).toHaveClass(/selected/);
   const rings = await llm.evaluate((el) => {
     const s = getComputedStyle(el);
-    return { outline: s.outlineStyle, shadow: s.boxShadow, pulse: getComputedStyle(el, '::after').animationName };
+    return { outline: s.outlineStyle, pulse: getComputedStyle(el, '::after').animationName };
   });
   expect(rings.outline).toBe('solid'); // breakpoint
-  expect(rings.shadow).toMatch(/0px 0px 0px 3px/); // selected --ring
+  // Nothing is selected on load, so the click above just selected it: let the ring's transition land.
+  await expect.poll(() => llm.evaluate((el) => getComputedStyle(el).boxShadow)).toMatch(/0px 0px 0px 3px/); // selected --ring
   expect(rings.pulse).toBe('rf-node-running'); // running, on its own layer
   await shoot(page, 'x-agents-running');
 });

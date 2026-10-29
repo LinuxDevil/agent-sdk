@@ -1,7 +1,8 @@
 import dagre from 'dagre';
 import type { AgentGraphSpec } from '../graph/types';
 
-const NODE_WIDTH = 240;
+/** `.rf-node`'s width (agents.css). */
+const NODE_WIDTH = 208;
 const NODE_HEIGHT = 96;
 
 /**
@@ -16,7 +17,8 @@ export function autoLayout(graph: AgentGraphSpec): AgentGraphSpec {
   if (graph.nodes.length === 0) return graph;
 
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 90 });
+  // ranksep 40: the same 248px column pitch specToGraph.ts lays a fresh graph out on.
+  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 40 });
   g.setDefaultEdgeLabel(() => ({}));
 
   for (const node of graph.nodes) {

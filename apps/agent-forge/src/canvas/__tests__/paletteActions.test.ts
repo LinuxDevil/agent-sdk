@@ -4,16 +4,16 @@ import { nextTabId, tabIds } from '../../components/tabs';
 
 describe('viewportCentrePosition', () => {
   it('centres a node under the middle of an unpanned, unzoomed pane', () => {
-    expect(viewportCentrePosition([0, 0, 1], 800, 600)).toEqual({ x: 280, y: 260 });
+    expect(viewportCentrePosition([0, 0, 1], 800, 600)).toEqual({ x: 296, y: 260 });
   });
 
   it('accounts for pan and zoom', () => {
     // Panned 100px right/50px down at 2x: the pane centre (400, 300) is flow (150, 125).
-    expect(viewportCentrePosition([100, 50, 2], 800, 600)).toEqual({ x: 150 - 120, y: 125 - 40 });
+    expect(viewportCentrePosition([100, 50, 2], 800, 600)).toEqual({ x: 150 - 104, y: 125 - 40 });
   });
 
   it('survives a zero zoom before the pane has measured', () => {
-    expect(viewportCentrePosition([0, 0, 0], 0, 0)).toEqual({ x: -120, y: -40 });
+    expect(viewportCentrePosition([0, 0, 0], 0, 0)).toEqual({ x: -104, y: -40 });
   });
 });
 

@@ -25,10 +25,6 @@ function deriveSpec(graph: AgentGraphSpec, fallback: AgentSpec): AgentSpec {
   }
 }
 
-function firstLlmNodeId(graph: AgentGraphSpec): string | undefined {
-  return graph.nodes.find((n) => n.type === 'llm')?.id;
-}
-
 interface AutosaveDeps {
   store: AgentStore;
   agentId: string;
@@ -74,18 +70,23 @@ interface DocumentSetters {
   setDirty: (dirty: boolean) => void;
 }
 
-/** Opens `nextSpec` / `nextGraph` as agent `id`; `select` selects its llm node, `clean` clears the dirty flag. */
+/**
+ * Opens `nextSpec` / `nextGraph` as agent `id` with nothing selected - so the
+ * Inspector stays collapsed and the canvas gets the width to show the whole
+ * graph legibly (AgentsScreen.tsx); `keepSelection` leaves the selection as
+ * it is (a rename), `clean` clears the dirty flag.
+ */
 function showAgent(
   doc: DocumentSetters,
   id: string,
   nextSpec: AgentSpec,
   nextGraph: AgentGraphSpec,
-  { select = true, clean = true }: { select?: boolean; clean?: boolean } = {}
+  { keepSelection = false, clean = true }: { keepSelection?: boolean; clean?: boolean } = {}
 ): void {
   doc.setAgentId(id);
   doc.setGraphState(nextGraph);
   doc.lastValidSpec.current = nextSpec;
-  if (select) doc.setSelectedNodeId(firstLlmNodeId(nextGraph));
+  if (!keepSelection) doc.setSelectedNodeId(undefined);
   if (clean) doc.setDirty(false);
 }
 
@@ -136,7 +137,7 @@ async function renameSavedAgent({ store, agents, agentId, refreshAgents, doc }: 
   const renamed: AgentSpec = { ...current, name: toId };
   await store.save(toId, renamed);
   await store.remove(fromId);
-  if (fromId === agentId) showAgent(doc, toId, renamed, specToGraph(renamed), { select: false });
+  if (fromId === agentId) showAgent(doc, toId, renamed, specToGraph(renamed), { keepSelection: true });
   await refreshAgents();
 }
 
