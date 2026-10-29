@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
+import { TonePill, stepTone } from './TonePill';
 import type { TrajectoryStep } from '@lousho/build-ai-agent';
 import { useAppState } from '../../state/AppState';
 import { runtimeClient } from '../../runtime/runtimeClient';
@@ -8,21 +9,6 @@ import type { ForkRunRequest, RunComparisonPayload, RunHistoryStep } from '../..
 
 type ForkPatch = NonNullable<ForkRunRequest['patch']>;
 
-/** A checkpoint status's pill tone: finished green, in-progress blue, failed red, anything else neutral. */
-function stepTone(status: string): string {
-  if (status === 'finished') return 'ok';
-  if (status === 'in-progress') return 'running';
-  return status === 'failed' || status === 'error' ? 'error' : 'neutral';
-}
-
-function StepStatus({ status }: { status: string }) {
-  return (
-    <span className={`status-pill pill-${stepTone(status)}`}>
-      <span className="dot" aria-hidden="true" />
-      {status}
-    </span>
-  );
-}
 
 const NUMERIC_COLUMNS = new Set(['Step', 'Tokens', 'Cost']);
 
@@ -44,7 +30,7 @@ export function HistoryList({ steps, onReplay }: { steps: RunHistoryStep[]; onRe
           <tr key={s.step}>
             <td className="num">{s.step}</td>
             <td>
-              <StepStatus status={s.status} />
+              <TonePill tone={stepTone(s.status)} label={s.status} />
             </td>
             <td className="mono">{s.finishReason ?? '-'}</td>
             <td className="mono">{s.toolCalls.map((call) => call.name).join(', ') || '-'}</td>

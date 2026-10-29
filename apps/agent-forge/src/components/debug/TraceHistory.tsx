@@ -1,4 +1,6 @@
 import type { TraceSummaryPayload } from '../../../shared/wireTypes';
+import { statusTone } from '../../ui/StatusPill';
+import { TonePill } from './TonePill';
 
 /** The list entry that stands for the run in progress. */
 export const LIVE_ENTRY = 'live';
@@ -55,9 +57,8 @@ export function TraceHistory({
         >
           <span className="trace-item-head">
             <span className="trace-item-time">{new Date(trace.startTime).toLocaleString()}</span>
-            <span className={`trace-item-status status-pill pill-${trace.status === 'error' ? 'error' : 'ok'}`}>
-              <span className="dot" aria-hidden="true" />
-              {trace.status}
+            <span className="trace-item-status">
+              <TonePill tone={statusTone(trace.status)} label={trace.status} />
             </span>
           </span>
           <span className="trace-item-meta">

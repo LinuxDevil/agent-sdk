@@ -17,12 +17,9 @@ import { useAppState } from '../state/AppState';
 import { downloadSpec, importSpecFile } from '../persistence/importExport';
 import { ApprovalCard } from './ApprovalCard';
 import { errorMessage } from './errorMessage';
-import { StatusPill } from '../ui/StatusPill';
 import { RunStatus, lastRunTraceId } from './RunStatus';
 import { ToolbarMoreMenu, type ToolbarMenuItem } from './ToolbarMoreMenu';
 import { navigate } from '../router/router';
-import { useRoute } from '../router/useRoute';
-import { NAV_ITEMS, isActive } from '../shell/NavRail';
 
 /** A toolbar button's 16px leading icon. */
 function ToolIcon({ Icon }: { Icon: LucideIcon }) {
@@ -107,13 +104,23 @@ function llmProviderOf(graph: Graph | undefined): string | undefined {
  * gets a visible MOCK badge, so canned replies are never mistaken for a real
  * model. The settings profile is named in its tooltip.
  */
-function ModelBadge() {
-  const { graph, activeProfile, runStatus } = useAppState();
+/** `provider/model` the agent runs on: the in-flight run's, else the LLM node's; undefined without an LLM node. */
+function useModelProvider(): string | undefined {
+  const { graph, runStatus } = useAppState();
   const live = runStatus?.status === 'running' || runStatus?.status === 'paused';
-  const provider = (live && runStatus?.provider) || llmProviderOf(graph);
+  return (live && runStatus?.provider) || llmProviderOf(graph);
+}
+
+function isMockProvider(provider: string | undefined): boolean {
+  return provider?.split('/')[0] === 'mock';
+}
+
+function ModelBadge() {
+  const { activeProfile } = useAppState();
+  const provider = useModelProvider();
   if (!provider) return null;
   const [type, ...model] = provider.split('/');
-  const isMock = type === 'mock';
+  const isMock = isMockProvider(provider);
   const title = [profileTitle(activeProfile) ?? `Settings profile: ${profileName(activeProfile)}`, `Provider: ${provider}`].join(' - ');
   return (
     <div className={`env-select${isMock ? ' env-select-mock' : ''}`} title={title}>
@@ -309,7 +316,8 @@ function useNarrowMenuItems(openImport: () => void, exportSpec: () => void): Too
  * badge move into the "More actions" menu.
  */
 function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
-  const { spec, runStatus } = useAppState();
+  const { runStatus } = useAppState();
+  const provider = useModelProvider();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
   const items = useNarrowMenuItems(openImport, exportSpec);
@@ -322,17 +330,19 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
       </PanelToggle>
       <div className="topbar-left">
         <Breadcrumb showRoot={false} />
-        {/* The model badge moved into the menu; keep the MOCK badge in sight. */}
-        {spec.provider.type === 'mock' && <span className="mock-badge">MOCK</span>}
+        {/* The model badge moved into the menu; keep the MOCK badge (same source) in sight. */}
+        {isMockProvider(provider) && <span className="mock-badge">MOCK</span>}
         <RunStatus showTraceLink={false} />
       </div>
       <RunNotices runStatus={runStatus} actionError={actionError} />
       <RunOrStop isRunning={runStatus?.status === 'running'} onRun={() => void handleRun()} onStop={() => void handleStop()} />
       <ToolButton Icon={Save} label="Save" className="btn btn-primary btn-collapse" onClick={() => void handleSave()} />
       <ToolbarMoreMenu items={items}>
-        <div className="overflow-menu-env" role="none">
-          <ModelBadge />
-        </div>
+        {provider && (
+          <div className="overflow-menu-env" role="none">
+            <ModelBadge />
+          </div>
+        )}
       </ToolbarMoreMenu>
       {fileInput}
       <PanelToggle panel="inspector" label="Inspector" open={openPanel === 'inspector'} onToggle={toggle}>
@@ -343,28 +353,10 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
 }
 
 /**
- * Off the Agents screen there is nothing to run, import or save: the bar
- * names the screen and keeps the live run status, nothing else.
+ * The Build toolbar (Run/Stop/Import/Export/Save/Debug, model badge). Only the
+ * Agents screen renders it; every other screen has the shell's ScreenHeader.
  */
-function ScreenTopbar({ path }: { path: string }) {
-  const { runStatus } = useAppState();
-  const screen = NAV_ITEMS.find((item) => isActive(item, path));
-  return (
-    <header className="topbar">
-      <div className="crumbs">
-        <b>{screen?.label}</b>
-      </div>
-      <div className="topbar-spacer" />
-      <StatusPill status={runStatus?.status ?? 'idle'} live />
-    </header>
-  );
-}
-
-/** The Build toolbar (Run/Stop/Import/Export/Save/Debug, provider pill) renders only on `#/agents`. */
 export function Topbar({ narrow = false, openPanel, onTogglePanel }: TopbarProps = {}) {
-  const { path } = useRoute();
-  const nav = NAV_ITEMS.find((item) => isActive(item, path));
-  if (nav && nav.id !== 'agents') return <ScreenTopbar path={path} />;
   return narrow ? <NarrowTopbar openPanel={openPanel} onTogglePanel={onTogglePanel} /> : <WideTopbar />;
 }
 

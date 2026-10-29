@@ -96,11 +96,14 @@ function DecisionButtons({ size }: { size: string }) {
 export function ApprovalCard({ toolName, args, className, variant = 'card' }: ApprovalCardProps) {
   const classes = `approval-card approval-card-${variant}${className ? ` ${className}` : ''}`;
   if (variant === 'inline') {
+    // The tool name is the one fact this prompt must show: it is the only text, and the tooltip repeats it with the args.
     return (
-      <div className={classes} title={JSON.stringify(args)}>
+      <div className={classes} title={`Approve ${toolName}? ${JSON.stringify(args)}`}>
         <ShieldAlert className="approval-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
         <span className="approval-text">
-          Approve <b>{toolName}</b>?
+          <span className="visually-hidden">Approve </span>
+          <b className="approval-tool">{toolName}</b>
+          <span className="visually-hidden">?</span>
         </span>
         <DecisionButtons size=" btn-sm" />
       </div>

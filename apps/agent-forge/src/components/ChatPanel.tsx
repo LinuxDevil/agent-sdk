@@ -31,9 +31,32 @@ function Avatar({ Icon }: { Icon: LucideIcon }) {
   );
 }
 
-function avatarIconFor(message: ChatMessage): LucideIcon {
-  if (message.source === 'run') return Play;
-  return message.role === 'user' ? User : Sparkles;
+type BubbleKind = 'user' | 'agent' | 'tool';
+
+/** Each bubble kind's avatar icon and the sender a screen reader hears (the avatar itself is decorative). */
+const BUBBLE_KINDS: Record<BubbleKind, { Icon: LucideIcon; speaker: string }> = {
+  user: { Icon: User, speaker: 'You' },
+  agent: { Icon: Sparkles, speaker: 'Agent' },
+  tool: { Icon: Wrench, speaker: 'Tool' },
+};
+
+function bubbleKindOf(message: ChatMessage): BubbleKind {
+  if (message.role === 'user') return 'user';
+  return message.role === 'tool' ? 'tool' : 'agent';
+}
+
+/** The sender, read before each bubble in the `role="log"` thread. */
+function Speaker({ name }: { name: string }) {
+  return <span className="visually-hidden">{name}: </span>;
+}
+
+/**
+ * The messages the thread draws: no system turns, and no tool results whose
+ * call is drawn already (the result shows under that call's tool block).
+ */
+function renderableMessages(messages: ChatMessage[]): ChatMessage[] {
+  const shownCalls = new Set(messages.flatMap((m) => (m.toolCalls ?? []).map((tc) => tc.id)));
+  return messages.filter((m) => m.role !== 'system' && !(m.role === 'tool' && m.toolCallId && shownCalls.has(m.toolCallId)));
 }
 
 /** Tool-result messages, indexed by the toolCallId they answer, for pairing under an assistant bubble's tool-call cards. */
@@ -64,19 +87,36 @@ function ToolCallCard({ toolCall, result }: { toolCall: NonNullable<ChatMessage[
   );
 }
 
+/** A message's text: a mono tool block (Wrench header) for a tool result, else a plain bubble. */
+function MessageContent({ kind, message }: { kind: BubbleKind; message: ChatMessage }) {
+  if (kind !== 'tool') return <div className="chat-bubble">{message.content}</div>;
+  return (
+    <div className="chat-bubble chat-bubble-tool">
+      <div className="chat-tool-call">
+        <div className="chat-tool-head">
+          <Wrench size={14} strokeWidth={1.75} aria-hidden="true" />
+          <span className="chat-tool-name">{message.toolName ?? message.name ?? 'tool result'}</span>
+        </div>
+        <div className="chat-tool-result">= {message.content}</div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * The user turn a top-bar Run added is shown as "Run input" in
  * a neutral bubble, not as a message the user typed.
  */
 function Bubble({ message, toolResults }: { message: ChatMessage; toolResults: Map<string, ChatMessage> }) {
-  const role = message.role === 'user' ? 'user' : 'agent';
+  const kind = bubbleKindOf(message);
   const fromRun = message.source === 'run';
+  const { Icon, speaker } = BUBBLE_KINDS[kind];
   return (
-    <div className={`chat-msg ${role}${fromRun ? ' run-input' : ''}`}>
-      <Avatar Icon={avatarIconFor(message)} />
+    <div className={`chat-msg ${kind}${fromRun ? ' run-input' : ''}`}>
+      <Avatar Icon={fromRun ? Play : Icon} />
       <div className="chat-msg-body">
-        {fromRun && <div className="chat-run-label">Run input</div>}
-        {message.content && <div className="chat-bubble">{message.content}</div>}
+        {fromRun ? <div className="chat-run-label">Run input</div> : <Speaker name={speaker} />}
+        {message.content && <MessageContent kind={kind} message={message} />}
         {message.toolCalls?.map((tc) => (
           <div className="chat-bubble chat-bubble-tool" key={tc.id}>
             <ToolCallCard toolCall={tc} result={toolResults.get(tc.id)} />
@@ -157,7 +197,8 @@ function TypingBubble() {
     <div className="chat-msg agent">
       <Avatar Icon={Sparkles} />
       <div className="chat-bubble">
-        <div className="chat-typing">
+        <span className="visually-hidden">Agent is typing</span>
+        <div className="chat-typing" aria-hidden="true">
           <span />
           <span />
           <span />
@@ -172,6 +213,7 @@ function ApprovalBubble({ pendingApproval }: { pendingApproval: PendingApproval 
     <div className="chat-msg agent chat-msg-approval">
       <Avatar Icon={Sparkles} />
       <div className="chat-msg-body">
+        <Speaker name="Agent" />
         <ApprovalCard
           className="chat-approval-card"
           toolName={pendingApproval.toolName}
@@ -196,7 +238,7 @@ function EmptyChatNotice({ count, isRunning }: { count: number; isRunning: boole
 
 function MessageList({ messages, isRunning, pendingApproval }: MessageListProps) {
   const listRef = useRef<HTMLDivElement>(null);
-  const renderable = messages.filter((m) => m.role !== 'system');
+  const renderable = renderableMessages(messages);
   const toolResults = toolResultsByCallId(messages);
 
   useEffect(() => {

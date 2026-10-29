@@ -59,10 +59,12 @@ describe('ApprovalCard', () => {
     expect(appState.approveAgent).toHaveBeenCalledWith(true);
   });
 
-  it('the inline variant keeps the arguments in its tooltip', () => {
+  it('the inline variant shows the tool name and keeps it, with the arguments, in its tooltip', () => {
     const container = render(<ApprovalCard variant="inline" toolName="http" args={{ url: 'x' }} />);
     const card = container.querySelector('.approval-card-inline')!;
-    expect(card.getAttribute('title')).toBe('{"url":"x"}');
+    expect(card.getAttribute('title')).toBe('Approve http? {"url":"x"}');
+    expect(card.querySelector('.approval-tool')?.textContent).toBe('http');
+    expect(card.querySelector('.approval-text')?.textContent).toBe('Approve http?');
     expect(card.querySelector('.approval-args')).toBeNull();
   });
 });
@@ -95,6 +97,10 @@ describe('BottomDrawer tabs', () => {
     const container = render(<BottomDrawer />);
     const tabs = [...container.querySelectorAll('[role="tab"]')];
     expect(tabs.map(nameOf)).toEqual(['Chat', 'Logs', 'Trace', 'Output', 'History', 'Settings']);
+    // The label is its own span (icon-only tabs at phone widths) and the tooltip.
+    expect(tabs.map((t) => [t.querySelector('.drawer-tab-label')?.textContent, t.getAttribute('title')])).toEqual(
+      ['Chat', 'Logs', 'Trace', 'Output', 'History', 'Settings'].map((l) => [l, l]),
+    );
     // System messages are not counted; an empty count is not drawn.
     expect(tabs.map((t) => t.querySelector('.count')?.textContent ?? '')).toEqual(['2', '3', '', '', '', '']);
     expect(tabs.every((t) => t.querySelector('svg[aria-hidden="true"]'))).toBe(true);

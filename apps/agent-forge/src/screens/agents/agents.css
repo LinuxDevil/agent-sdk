@@ -69,7 +69,7 @@
 .rail-section-title {
   margin: var(--space-4) var(--space-1) 6px;
 }
-.rail-section-title:first-child,
+.rail-body > .rail-section-title:first-child,
 .palette-group:first-child .rail-section-title {
   margin-top: var(--space-1);
 }
@@ -864,7 +864,7 @@ button.breakpoint-toggle {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
   text-align: center;
 }
 .inspector-empty-icon {
@@ -876,6 +876,11 @@ button.breakpoint-toggle {
   border-radius: var(--radius-lg);
   background: var(--surface-2);
   color: var(--text-muted);
+}
+.inspector-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
 }
 .inspector-empty .hint {
   max-width: 28ch;

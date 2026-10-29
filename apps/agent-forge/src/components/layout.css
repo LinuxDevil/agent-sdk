@@ -12,10 +12,6 @@
   /* the toolbar and drawer never widen the screen past its column */
   grid-template-columns: minmax(0, 1fr);
 }
-/* Every screen but Agents: top bar over the screen, no run drawer. */
-.app-screen {
-  grid-template-rows: 48px minmax(0, 1fr);
-}
 .screen-main {
   min-width: 0;
   min-height: 0;
@@ -71,7 +67,8 @@
    right: [Debug] [Stop][Run] | [Import][Export] [Save]. */
 .topbar-builder {
   gap: var(--space-3);
-  padding: 0 var(--space-4);
+  /* the shell's page gutter (24px docked, 16px narrow; the narrow bar tightens it below) */
+  padding: 0 var(--page-gutter, var(--space-4));
   min-width: 0;
   /* its buttons collapse to icons by the bar's own width (the @container rules below) */
   container-type: inline-size;
@@ -116,6 +113,16 @@
 .topbar-center .env-select {
   max-width: 240px;
 }
+/* The model badge keeps its full chip (up to 240px); the agent's name, which has a tooltip, truncates first. */
+.topbar-center:has(.env-select) {
+  flex-shrink: 0;
+}
+/* An approval in the centre never squeezes below its tool name's first 10ch and its buttons;
+   the left group (whose name keeps 110px) gives way instead. */
+.topbar-center:has(.approval-card-inline) {
+  flex-shrink: 1;
+  min-width: min-content;
+}
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -136,17 +143,34 @@
   color: var(--accent);
 }
 /* As the bar narrows, Import/Export, then Debug and Stop, keep only their icons
-   (the label stays in the DOM as the accessible name). Run and Save keep theirs. */
+   (the label stays in the DOM as the accessible name). Run and Save keep theirs.
+   Idle, the labels hold down to a 960px bar (content box; 1280 with the docked nav); once a
+   run adds "Open trace" (or an approval), Import/Export go icon-only below 1180px. */
 .btn-collapse .btn-label {
   white-space: nowrap;
 }
-@container builder-toolbar (max-width: 1180px) {
+@container builder-toolbar (max-width: 960px) {
   .topbar-builder:not(.topbar-narrow) .collapse-1 {
     width: 32px;
     padding: 0;
     justify-content: center;
   }
   .topbar-builder:not(.topbar-narrow) .collapse-1 .btn-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+@container builder-toolbar (max-width: 1180px) {
+  .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1 {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+  .topbar-builder:not(.topbar-narrow):is(:has(.run-trace-link), :has(.approval-card-inline)) .collapse-1 .btn-label {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -254,7 +278,9 @@
   color: var(--warning);
 }
 .approval-card-inline .approval-text {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+  min-width: 10ch;
+  max-width: 28ch;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

@@ -3,6 +3,7 @@ import { useAppState } from '../../state/AppState';
 import { filterLogs } from '../../state/logReducer';
 import type { LogEntry, LogLevel, LogPhase } from '../../../shared/wireTypes';
 import type { StatusTone } from '../../ui/StatusPill';
+import { TonePill } from './TonePill';
 import type { AgentGraphSpec } from '../../graph/types';
 import { VirtualList } from './VirtualList';
 import { findLlmNodeId, findToolNodeId } from './nodeLookup';
@@ -75,13 +76,24 @@ function FilterToggles<T extends string>({
 function LogFilterBar({ filters }: { filters: LogFilters }) {
   return (
     <div className="logs-filter-bar">
-      <FilterToggles options={LEVELS} active={filters.levels} onToggle={filters.toggleLevel} titlePrefix="Filter by level" />
-      <FilterToggles
-        options={PHASES}
-        active={filters.phases}
-        onToggle={filters.togglePhase}
-        titlePrefix="Filter by phase/node"
-      />
+      {/* Two labelled groups, so the level "tool" and the phase "tool" are told apart. */}
+      <div className="logs-filter-group" role="group" aria-label="Level">
+        <span className="overline" aria-hidden="true">
+          Level
+        </span>
+        <FilterToggles options={LEVELS} active={filters.levels} onToggle={filters.toggleLevel} titlePrefix="Filter by level" />
+      </div>
+      <div className="logs-filter-group" role="group" aria-label="Phase">
+        <span className="overline" aria-hidden="true">
+          Phase
+        </span>
+        <FilterToggles
+          options={PHASES}
+          active={filters.phases}
+          onToggle={filters.togglePhase}
+          titlePrefix="Filter by phase/node"
+        />
+      </div>
       <input
         type="search"
         className="input logs-search"
@@ -94,17 +106,24 @@ function LogFilterBar({ filters }: { filters: LogFilters }) {
   );
 }
 
+/** `[phase] message`, then the entry's detail as JSON when it has one. */
+export function logTitle(entry: LogEntry): string {
+  const line = `[${entry.phase}] ${entry.message}`;
+  return entry.detail === undefined ? line : `${line}\n${JSON.stringify(entry.detail)}`;
+}
+
 function LogRow({ entry, highlighted, onSelect }: { entry: LogEntry; highlighted: boolean; onSelect: () => void }) {
   return (
     <div
       className={`log-line${highlighted ? ' highlighted' : ''}`}
       style={{ height: ROW_HEIGHT }}
       onClick={onSelect}
-      title={entry.detail ? JSON.stringify(entry.detail) : undefined}
+      // The message truncates in its row: the tooltip carries it in full, plus any detail.
+      title={logTitle(entry)}
     >
       <span className="log-time">{formatTime(entry.timestamp)}</span>
       <span className={`log-level lvl-${entry.level}`}>
-        <span className={`status-pill pill-${LEVEL_TONES[entry.level]}`}>{entry.level}</span>
+        <TonePill tone={LEVEL_TONES[entry.level]} label={entry.level} />
       </span>
       <span className="log-msg">
         <b>[{entry.phase}]</b> {entry.message}

@@ -467,13 +467,13 @@ function EmptyInspector() {
       <div className="inspector-head">
         <div className="inspector-head-text">
           <div className="k overline">Inspector</div>
-          <div className="v">No node selected</div>
         </div>
       </div>
       <div className="inspector-body inspector-empty">
         <span className="inspector-empty-icon" aria-hidden="true">
           <MousePointerClick size={20} strokeWidth={1.75} />
         </span>
+        <div className="inspector-empty-title">No node selected</div>
         <div className="hint">Select a node on the canvas to view and edit its configuration.</div>
       </div>
     </aside>

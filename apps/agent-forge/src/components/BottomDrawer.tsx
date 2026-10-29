@@ -94,10 +94,11 @@ export function BottomDrawer() {
               aria-controls={panel}
               tabIndex={selected ? 0 : -1}
               className={`drawer-tab${selected ? ' active' : ''}`}
+              title={tab.label}
               onClick={() => setDrawerTab(tab.id)}
             >
               <tab.Icon size={14} strokeWidth={1.75} aria-hidden="true" />
-              {tab.label}
+              <span className="drawer-tab-label">{tab.label}</span>
               <TabCount count={counts[tab.id]} />
             </button>
           );

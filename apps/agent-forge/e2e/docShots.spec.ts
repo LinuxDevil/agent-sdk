@@ -531,7 +531,7 @@ test('x-kit: command palette sections, scrolled to the last group', async ({ pag
  * toolbar at 375 and 860 wide. A taller drawer gives the panels room.
  */
 async function tallDrawer(page: Page) {
-  await page.addInitScript(() => window.localStorage.setItem('forge.drawer.height', '340'));
+  await page.addInitScript(() => window.localStorage.setItem('forge.drawer.height', '400'));
 }
 
 test('agents x: the drawer on every tab after an approved chat', async ({ page }) => {
@@ -550,6 +550,9 @@ test('agents x: the drawer on every tab after an approved chat', async ({ page }
   await approval.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(approval).toHaveCount(0, { timeout: 15_000 });
   await expect(chatInput).toBeEnabled();
+  // From the top: the user's message, the tool call's mono block (with its result) and the reply.
+  await expect(page.locator('.chat-msg.agent').last()).toBeVisible();
+  await page.locator('.chat-messages').evaluate((el) => el.scrollTo({ top: 0 }));
   await shoot(page, 'x-agents-drawer-chat');
 
   for (const tab of ['Logs', 'Trace', 'Output', 'History', 'Settings'] as const) {
@@ -583,4 +586,10 @@ test('agents x: the builder toolbar at 860 and 375 wide', async ({ page }) => {
   await page.getByRole('button', { name: 'More actions' }).click();
   await expect(page.getByRole('menu', { name: 'More actions' })).toBeVisible();
   await shoot(page, 'x-agents-toolbar-375-menu');
+});
+
+test("agents x: the routed settings screen shares the drawer's settings cards", async ({ page }) => {
+  await open(page, '/settings');
+  await expect(page.getByLabel('Deploy adapter')).toBeVisible();
+  await shoot(page, 'x-agents-settings-screen');
 });

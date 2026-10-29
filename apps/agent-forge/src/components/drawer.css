@@ -148,6 +148,17 @@
   min-height: 28px;
   font-size: 12px;
 }
+.logs-filter-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--border);
+}
+.logs-filter-group .overline {
+  margin-right: 2px;
+}
 .logs-filter-toggle {
   min-height: 24px;
   padding: 0 10px;
@@ -511,7 +522,7 @@
   gap: var(--space-2);
 }
 .settings-key-status {
-  font-family: var(--font-mono);
+  color: var(--text-muted);
 }
 .settings-actions {
   display: flex;
@@ -574,6 +585,27 @@
     overflow-x: auto;
     padding: 0 var(--space-2);
   }
+}
+/* Phone widths: the tabs keep their icon and count; the label stays as the accessible name (and tooltip). */
+@media (max-width: 520px) {
+  .drawer-tabs {
+    gap: 0;
+    justify-content: space-between;
+  }
+  .drawer-tab {
+    padding: 0 var(--space-2);
+    gap: var(--space-1);
+  }
+  .drawer-tab-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+@media (max-width: 860px) {
   .drawer-body {
     overflow-x: auto;
   }
@@ -659,6 +691,10 @@
 .chat-msg.user .chat-avatar {
   background: var(--surface-3);
   color: var(--text-muted);
+}
+.chat-msg.tool .chat-avatar {
+  background: var(--info-soft);
+  color: var(--info);
 }
 .chat-bubble {
   background: var(--surface);
