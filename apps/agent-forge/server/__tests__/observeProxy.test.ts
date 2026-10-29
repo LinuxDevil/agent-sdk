@@ -7,15 +7,17 @@
  * example writes, annotation queue writes, evaluator rule writes); every
  * other non-GET stays 405.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as http from 'node:http';
+import * as net from 'node:net';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { once } from 'node:events';
 import request from 'supertest';
 import { createApp } from '../app';
-import { OBSERVE_WRITE_ALLOWLIST } from '../observeProxy';
+import { OBSERVE_WRITE_ALLOWLIST, observeUpstreamUrl } from '../observeProxy';
+import { STUDIO_TOKEN_HEADER } from '../auth';
 import { RunManager } from '../runRegistry';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
@@ -29,6 +31,7 @@ describe('observe proxy', () => {
   let lastDelete: { url: string | undefined; contentType: string | null; body: string } | undefined;
   let lastHeaders: http.IncomingHttpHeaders | undefined;
   const prevEnv = process.env.LOUSHO_OBSERVE_URL;
+  const prevToken = process.env.LOUSHO_OBSERVE_TOKEN;
 
   beforeEach(async () => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-observe-proxy-test-'));
@@ -80,6 +83,8 @@ describe('observe proxy', () => {
   afterEach(async () => {
     if (prevEnv === undefined) delete process.env.LOUSHO_OBSERVE_URL;
     else process.env.LOUSHO_OBSERVE_URL = prevEnv;
+    if (prevToken === undefined) delete process.env.LOUSHO_OBSERVE_TOKEN;
+    else process.env.LOUSHO_OBSERVE_TOKEN = prevToken;
     daemon?.close();
     fs.rmSync(baseDir, { recursive: true, force: true });
   });
@@ -254,8 +259,26 @@ describe('observe proxy', () => {
     expect(res.status).toBe(405);
   });
 
+  it('forwards POST /api/v1/prompts (the playground "Save as new prompt version") with its JSON body', async () => {
+    const version = { name: 'support-greeter', text: 'Hi {user}', variables: ['user'] };
+    const res = await request(app).post('/observe/api/v1/prompts').send(version);
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ echoed: '/api/v1/prompts', method: 'POST', contentType: 'application/json', body: version });
+  });
+
   it.each([
-    ['post', '/observe/api/v1/prompts'],
+    ['post', '/observe/api/v1/prompts/'],
+    ['post', '/observe/api/v1/prompts/mira'],
+    ['post', '/observe/api/v1/prompts/x'],
+    ['post', '/observe/API/v1/prompts'],
+    ['post', '/observe/api/v1/Prompts'],
+    ['post', '/observe/api/v1/scores/'],
+    ['put', '/observe/api/v1/prompts'],
+    ['delete', '/observe/api/v1/prompts'],
+    ['patch', '/observe/api/v1/prompts'],
+    ['patch', '/observe/api/v1/scores'],
+    ['options', '/observe/api/v1/scores'],
+    ['head', '/observe/api/v1/scores'],
     ['put', '/observe/api/v1/prompts/mira'],
     ['put', '/observe/api/v1/prompts/mira/labels/prod/extra'],
     ['delete', '/observe/api/v1/prompts/mira/labels/prod'],
@@ -264,7 +287,8 @@ describe('observe proxy', () => {
     ['put', '/observe/api/v1/hub'],
     ['post', '/observe/v1/traces'],
   ] as const)('keeps %s %s at 405', async (method, url) => {
-    const res = await request(app)[method](url).send({ version: 1 });
+    const pending = request(app)[method](url);
+    const res = method === 'head' ? await pending : await pending.send({ version: 1 });
     expect(res.status).toBe(405);
   });
 
@@ -287,10 +311,257 @@ describe('observe proxy', () => {
     expect(res.status).toBe(413);
   });
 
-  it('exports one write allowlist of method + path pairs: feedback scores, the label move, hub publishes, dataset, queue and evaluator writes', () => {
+  it('exports one write allowlist of method + path pairs: feedback scores, the label move, a new prompt version, hub publishes, dataset, queue and evaluator writes', () => {
     expect(OBSERVE_WRITE_ALLOWLIST.map((entry) => entry.method)).toEqual([
-      'POST', 'PUT', 'POST', 'POST', 'POST', 'DELETE', 'POST', 'POST', 'POST', 'POST', 'PUT', 'DELETE',
+      'POST', 'POST', 'PUT', 'POST', 'POST', 'POST', 'DELETE', 'POST', 'POST', 'POST', 'POST', 'PUT', 'DELETE',
     ]);
     expect(OBSERVE_WRITE_ALLOWLIST.every((entry) => entry.path instanceof RegExp)).toBe(true);
   });
+});
+
+/**
+ * The proxy behind the real token gate, over real sockets: the upstream is
+ * built from the routed path and query only (never the request line's
+ * authority), always lands on the observe target's origin, carries
+ * `LOUSHO_OBSERVE_TOKEN` as the daemon bearer when set, and never forwards
+ * the client's own credentials.
+ */
+describe('observe proxy (upstream origin and credentials)', () => {
+  const TOKEN = 'proxy-studio-token-0123456789';
+  let baseDir: string;
+  let studio: http.Server;
+  let studioPort: number;
+  let daemon: http.Server;
+  let daemonUrl: string;
+  let evil: http.Server;
+  let evilPort: number;
+  let daemonSeen: { method: string | undefined; url: string | undefined; headers: http.IncomingHttpHeaders; body: string }[];
+  let evilSeen: string[];
+  const prevEnv = process.env.LOUSHO_OBSERVE_URL;
+  const prevToken = process.env.LOUSHO_OBSERVE_TOKEN;
+
+  async function listen(server: http.Server): Promise<number> {
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    return (server.address() as net.AddressInfo).port;
+  }
+
+  beforeEach(async () => {
+    baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-observe-proxy-origin-'));
+    const agentStore = createFsAgentStore(baseDir);
+    const runManager = new RunManager({
+      baseDir,
+      checkpointStore: new FileCheckpointStore(baseDir),
+      approvalStore: new FileApprovalStore(baseDir),
+      loadSpec: (id) => agentStore.load(id),
+      saveSpec: (id, spec) => agentStore.save(id, spec),
+    });
+    daemonSeen = [];
+    evilSeen = [];
+    daemon = http.createServer((req, res) => {
+      let body = '';
+      req.on('data', (chunk: Buffer) => (body += chunk.toString()));
+      req.on('end', () => {
+        daemonSeen.push({ method: req.method, url: req.url, headers: req.headers, body });
+        res.writeHead(req.method === 'POST' ? 201 : 200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ daemon: true, url: req.url }));
+      });
+    });
+    evil = http.createServer((req, res) => {
+      evilSeen.push(req.url ?? '');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ evil: true }));
+    });
+    daemonUrl = `http://127.0.0.1:${await listen(daemon)}`;
+    evilPort = await listen(evil);
+    process.env.LOUSHO_OBSERVE_URL = daemonUrl;
+    delete process.env.LOUSHO_OBSERVE_TOKEN;
+    studio = http.createServer(createApp({ agentStore, runManager, baseDir, access: { token: TOKEN } }));
+    studioPort = await listen(studio);
+  });
+
+  afterEach(async () => {
+    if (prevEnv === undefined) delete process.env.LOUSHO_OBSERVE_URL;
+    else process.env.LOUSHO_OBSERVE_URL = prevEnv;
+    if (prevToken === undefined) delete process.env.LOUSHO_OBSERVE_TOKEN;
+    else process.env.LOUSHO_OBSERVE_TOKEN = prevToken;
+    for (const server of [studio, daemon, evil]) {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+    fs.rmSync(baseDir, { recursive: true, force: true });
+  });
+
+  /** One raw HTTP/1.1 request (any request-target form) with the studio token and a loopback Host; the status and body. */
+  function raw(method: string, target: string, headers: Record<string, string> = {}, body = ''): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const socket = net.connect(studioPort, '127.0.0.1');
+      let data = '';
+      socket.setEncoding('utf8');
+      socket.on('data', (chunk) => (data += chunk));
+      socket.on('end', () => {
+        const status = Number(/^HTTP\/1\.1 (\d{3})/.exec(data)?.[1]);
+        resolve({ status, body: data.slice(data.indexOf('\r\n\r\n') + 4) });
+      });
+      socket.on('error', reject);
+      const lines = [
+        `${method} ${target} HTTP/1.1`,
+        `Host: 127.0.0.1:${studioPort}`,
+        `${STUDIO_TOKEN_HEADER}: ${TOKEN}`,
+        'Connection: close',
+        ...Object.entries(headers).map(([k, v]) => `${k}: ${v}`),
+      ];
+      socket.write(`${lines.join('\r\n')}\r\n\r\n${body}`);
+    });
+  }
+
+  it.each([
+    () => `http://a@127.0.0.1:${evilPort}/observe/api/v1/traces?limit=1`,
+    () => `http://127.0.0.1:${evilPort}/observe/api/v1/traces?limit=1`,
+    () => `http://evil.example/observe/api/v1/traces?limit=1`,
+    () => `http://a@evil.example/observe/api/v1/traces?limit=1`,
+    () => `http://user:pw@127.0.0.1:${evilPort}/observe/api/v1/traces?limit=1`,
+  ])('an absolute-form request line only ever reaches the observe target (#%#)', async (target) => {
+    const res = await raw('GET', target());
+    expect(evilSeen).toEqual([]);
+    expect(res.status).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ daemon: true, url: '/api/v1/traces?limit=1' });
+    expect(daemonSeen.map((seen) => seen.url)).toEqual(['/api/v1/traces?limit=1']);
+  });
+
+  it('fetches only URLs on the observe target origin for an absolute-form line with userinfo', async () => {
+    const realFetch = globalThis.fetch;
+    const fetched: string[] = [];
+    const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      fetched.push(String(input));
+      return realFetch(input, init);
+    });
+    try {
+      await raw('GET', 'http://a@evil.example/observe/api/v1/traces');
+      await raw('GET', `http://a@127.0.0.1:${evilPort}/observe/api/v1/traces`);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(fetched.map((url) => new URL(url).origin)).toEqual([daemonUrl, daemonUrl]);
+    expect(fetched.map((url) => new URL(url).username)).toEqual(['', '']);
+  });
+
+  it.each([
+    () => `/observe//127.0.0.1:${evilPort}/api/v1/traces`,
+    () => `/observe/%2F%2F127.0.0.1:${evilPort}/api/v1/traces`,
+    () => `/observe/@127.0.0.1:${evilPort}/api/v1/traces`,
+    () => `/observe/api/v1/traces?next=http://127.0.0.1:${evilPort}/x&a=@127.0.0.1:${evilPort}`,
+    () => `/observe?@127.0.0.1:${evilPort}/`,
+  ])('a path or query naming another host stays on the observe target (#%#)', async (target) => {
+    await raw('GET', target());
+    expect(evilSeen).toEqual([]);
+    expect(daemonSeen).toHaveLength(1);
+  });
+
+  it.each([
+    ['DELETE', '/observe/api/v1/datasets/x/examples/a\\..\\..\\..\\..\\..\\..\\api\\v1\\prompts\\mira'],
+    ['PUT', '/observe/api/v1/evaluators/a\\..\\..\\..\\..\\api\\v1\\prompts\\mira'],
+    ['PUT', '/observe/api/v1/evaluators/a\\..\\..\\..\\..\\v1\\traces'],
+    ['POST', '/observe/api/v1/datasets/a\\..\\..\\..\\v1/examples'],
+    ['PUT', '/observe/api/v1/evaluators/a\\b'],
+    ['PUT', '/observe/api/v1/prompts/mi\\ra/labels/prod'],
+  ])('a literal backslash in an allowlisted write segment is refused before any fetch: %s %s', async (method, target) => {
+    const res = await raw(method, target, { 'Content-Type': 'application/json', 'Content-Length': '2' }, '{}');
+    expect(res.status).toBe(405);
+    expect(daemonSeen).toEqual([]);
+  });
+
+  it('a backslash dot-segment write against a base-path target with the daemon token set never reaches the daemon', async () => {
+    process.env.LOUSHO_OBSERVE_URL = `${daemonUrl}/base`;
+    process.env.LOUSHO_OBSERVE_TOKEN = 'daemon-token-abc';
+    const res = await raw('DELETE', '/observe/api/v1/datasets/x/examples/a\\..\\..\\..\\..\\..\\..\\api\\v1\\prompts\\mira');
+    expect(res.status).toBe(405);
+    expect(daemonSeen).toEqual([]);
+  });
+
+  it.each([
+    '/observe/api/v1/traces/a\\..\\..\\prompts',
+    '/observe/\\\\127.0.0.1:1/api/v1/traces',
+    '/observe/api/v1/..',
+    '/observe/api/v1/%2e%2e/x',
+    '/observe/api/./v1/traces',
+  ])('a read whose path URL normalisation would rewrite answers 400 without a fetch: %s', async (target) => {
+    const res = await raw('GET', target);
+    expect(res.status).toBe(400);
+    expect(daemonSeen).toEqual([]);
+  });
+
+  it('the query is taken from before a fragment, never from inside it', async () => {
+    await raw('GET', `/observe/api/v1/traces#?@127.0.0.1:${evilPort}`);
+    expect(evilSeen).toEqual([]);
+    expect(daemonSeen.map((seen) => seen.url)).not.toContain(`/api/v1/traces?@127.0.0.1:${evilPort}`);
+    for (const seen of daemonSeen) expect(seen.url).not.toContain('?');
+  });
+
+  it('sends no bearer to the daemon when LOUSHO_OBSERVE_TOKEN is unset, and never the client credentials', async () => {
+    await raw('GET', '/observe/api/v1/traces', { Authorization: `Bearer ${TOKEN}`, Cookie: `lousho_studio_token=${TOKEN}` });
+    expect(daemonSeen).toHaveLength(1);
+    const { headers } = daemonSeen[0];
+    expect(headers.authorization).toBeUndefined();
+    expect(headers.cookie).toBeUndefined();
+    expect(headers[STUDIO_TOKEN_HEADER]).toBeUndefined();
+    expect(JSON.stringify(headers)).not.toContain(TOKEN);
+  });
+
+  it('forwards LOUSHO_OBSERVE_TOKEN as the daemon bearer on reads and writes, never the Studio token', async () => {
+    process.env.LOUSHO_OBSERVE_TOKEN = 'daemon-token-abc';
+    await raw('GET', '/observe/api/v1/traces', { Authorization: `Bearer ${TOKEN}` });
+    const score = { trace_id: 't1', name: 'feedback', value: 1 };
+    const write = await request(studio)
+      .post('/observe/api/v1/scores')
+      .set(STUDIO_TOKEN_HEADER, TOKEN)
+      .set('Host', `127.0.0.1:${studioPort}`)
+      .send(score);
+    expect(write.status).toBe(201);
+    expect(daemonSeen.map((seen) => seen.headers.authorization)).toEqual(['Bearer daemon-token-abc', 'Bearer daemon-token-abc']);
+    for (const seen of daemonSeen) {
+      expect(seen.headers[STUDIO_TOKEN_HEADER]).toBeUndefined();
+      expect(JSON.stringify(seen.headers)).not.toContain(TOKEN);
+    }
+  });
+
+  it('the playground "Save as new prompt version" POST reaches the daemon with its JSON body (token-gated server)', async () => {
+    // SavePrompt.tsx -> observeClient.createPrompt({ name, text, variables }).
+    const version = { name: 'support-greeter', text: 'You greet {user}.', variables: ['user'] };
+    const unauthenticated = await request(studio).post('/observe/api/v1/prompts').set('Host', `127.0.0.1:${studioPort}`).send(version);
+    expect(unauthenticated.status).toBe(401);
+    expect(daemonSeen).toEqual([]);
+    const res = await request(studio)
+      .post('/observe/api/v1/prompts')
+      .set(STUDIO_TOKEN_HEADER, TOKEN)
+      .set('Host', `127.0.0.1:${studioPort}`)
+      .send(version);
+    expect(res.status).toBe(201);
+    expect(daemonSeen).toHaveLength(1);
+    expect(daemonSeen[0]).toMatchObject({ method: 'POST', url: '/api/v1/prompts' });
+    expect(daemonSeen[0].headers['content-type']).toBe('application/json');
+    expect(JSON.parse(daemonSeen[0].body)).toEqual(version);
+  });
+});
+
+describe('observeUpstreamUrl', () => {
+  const prevEnv = process.env.LOUSHO_OBSERVE_URL;
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.LOUSHO_OBSERVE_URL;
+    else process.env.LOUSHO_OBSERVE_URL = prevEnv;
+  });
+
+  it('appends the routed path and query to the target, keeping its base path', () => {
+    process.env.LOUSHO_OBSERVE_URL = 'https://collector.test/base/';
+    expect(observeUpstreamUrl('/api/v1/traces', '?limit=1')?.href).toBe('https://collector.test/base/api/v1/traces?limit=1');
+    expect(observeUpstreamUrl('//evil.example/x', '')?.href).toBe('https://collector.test/base//evil.example/x');
+  });
+
+  it.each(['@evil.example/api', ':1@evil.example/api', '.evil.example/api', '/../../x', '/api/%2e%2e/%2e%2e/x', '/api\\..\\x','/api/./x', '/api/..'])(
+    'refuses a path that would leave the target origin or that URL parsing would rewrite: %s',
+    (routed) => {
+      process.env.LOUSHO_OBSERVE_URL = 'http://127.0.0.1:7777/base';
+      expect(observeUpstreamUrl(routed, '')).toBeUndefined();
+    },
+  );
 });

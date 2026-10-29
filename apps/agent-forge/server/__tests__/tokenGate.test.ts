@@ -20,6 +20,12 @@ import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
  * now deny-by-default: anything but a GET/HEAD of a non-API path (the static
  * client, `/health`) needs the token, whatever case, encoding or slashes the
  * path uses - and routing is case-sensitive, so a case-changed path 404s.
+ * The one exception is below the `/observe` mount: `app.use('/observe', ...)`
+ * matches the mount case-sensitively, but the observe proxy forwards the
+ * sub-path as sent, so `GET /observe/API/v1/scores` (with the token) reaches
+ * the daemon as `/API/v1/scores` (its routes are case-sensitive, so it 404s
+ * there), while a write's case-changed sub-path is off OBSERVE_WRITE_ALLOWLIST
+ * and answers 405 (observeProxy.test.ts).
  */
 describe('studio token gate (path variants)', () => {
   const TOKEN = 'gate-token-0123456789';
@@ -153,6 +159,7 @@ describe('studio token gate (path variants)', () => {
     expect(await rawStatus('GET', `http://127.0.0.1:${port}/`)).toBe(200);
   });
 
+  // Studio handlers only: a case-changed sub-path under the `/observe` mount is forwarded as sent (see the header).
   it('a case-changed API path WITH the token is not routed to the handler (case-sensitive routing)', async () => {
     const run = await request(app).post('/PLAYGROUND/run').set(STUDIO_TOKEN_HEADER, TOKEN).send({});
     expect(run.status).toBe(404);

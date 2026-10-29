@@ -28,7 +28,7 @@ import type { Express, Request, Response } from 'express';
 import type { AgentSpec } from '@lousho/build-ai-agent';
 import { evaluatorTraceFrom, type EvaluatorTrace, type ObservationRow } from '@lousho/build-ai-agent/traces';
 import { buildAgentFromSpec } from './buildAgent';
-import { observeTarget } from './observeProxy';
+import { daemonHeaders, observeTarget } from './observeProxy';
 import { providerOf } from './playground';
 import type { SecretsStore } from './secretsStore';
 
@@ -213,12 +213,6 @@ async function runJudge(judge: JudgeFn, rule: JudgeRule, trace: EvaluatorTrace, 
   } finally {
     clearTimeout(timer);
   }
-}
-
-/** Headers for a server-side daemon call: JSON, plus the bearer `LOUSHO_OBSERVE_TOKEN` names. */
-function daemonHeaders(): Record<string, string> {
-  const token = process.env.LOUSHO_OBSERVE_TOKEN;
-  return { accept: 'application/json', 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) };
 }
 
 /** POST/GET the daemon at `path`; the response, or `undefined` when it is unreachable. */

@@ -71,6 +71,7 @@ opt-out.
 ### Security
 
 - Agent Forge's studio server requires its per-launch token on every API route regardless of path case or encoding: `/PLAYGROUND/run`, `/Observe/api/v1/scores`, `//settings/...` or `/%70layground/run` no longer skip the check. Routing is case-sensitive, and every request except a `GET`/`HEAD` of `/health` or the built client needs the token.
+- Agent Forge's `/observe/**` proxy only ever forwards to the `LOUSHO_OBSERVE_URL` daemon: the upstream URL is built from the request's path and query alone, so an absolute-form request line (`GET http://a@evil.example/observe/...`) can no longer point it at another host, and a path that URL parsing would rewrite (`..`, `%2e`, a literal `\`) is refused with 400 instead of reaching a write route the allowlist does not name. The proxy sends `LOUSHO_OBSERVE_TOKEN` as the bearer to a daemon that requires one, and the Playground's "Save as new prompt version" (`POST /api/v1/prompts`) is forwarded instead of answering 405.
 
 ## [1.0.0-alpha.29] - 2026-10-21
 
