@@ -63,6 +63,7 @@ opt-out.
 - The run inspector shows `error`, not `running`, for a failed step that has no end time.
 - The observe daemon refuses cross-site browser writes and DNS rebinding on `/api/*`: a loopback-bound daemon answers only loopback `Host` names (403), writes carrying a non-loopback `Origin` (including `null`) or `Sec-Fetch-Site: cross-site` get 403, and a write with a body must be `Content-Type: application/json` (415) — `curl -d` needs `-H "Content-Type: application/json"`. The SDK reporter, CLI and Studio already comply. See [Observability](docs/observability.md).
 - Observe retention (`lousho observe start --retention-days`, `lousho observe prune`) also deletes old traces the sweep marked `interrupted` (a crashed run whose end never arrived); their age counts from when they were interrupted.
+- The observe daemon's online evaluator worker no longer blocks the daemon: it yields between traces, checks each rule's filter against the root row before loading anything else, hands code rules at most 200 observations (attrs over 8192 characters become `{ truncated: true }`) and no scores, and judge jobs claimed by Agent Forge carry the root fields only (`observations: []`).
 
 ### Documentation
 
