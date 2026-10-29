@@ -410,6 +410,61 @@ describe('retention: pruneBefore', () => {
   });
 });
 
+describe('retention: interrupted traces', () => {
+  const DAY = 86_400_000;
+  const OLD = T0 - 10 * DAY;
+  const SWEPT = OLD + 400_000; // when the sweep interrupts a1's open runs
+  const count = (database: SqlDatabase, sql: string): number =>
+    Number(database.prepare(`SELECT COUNT(*) AS n FROM ${sql}`).get()?.n ?? 0);
+  const open = { end: undefined, status: undefined };
+
+  /** a1 opens runs and then goes quiet; a2 keeps heartbeating, so only a1's runs are interrupted by the real sweep. */
+  function seed(database: SqlDatabase): void {
+    ingestBatch(
+      database,
+      [
+        heartbeat('a1', OLD),
+        obs({ obs_id: 'int-root', trace_id: 't-int', session_id: 's-int', start: OLD, ...open }),
+        obs({ obs_id: 'int-child', trace_id: 't-int', session_id: 's-int', parent_obs_id: 'int-root', start: OLD + 5, ...open }),
+        // interrupted run beside a child that ended after the cutoff
+        obs({ obs_id: 'late-root', trace_id: 't-late', session_id: 's-late', start: OLD, ...open }),
+        obs({ obs_id: 'late-child', trace_id: 't-late', session_id: 's-late', parent_obs_id: 'late-root', start: OLD + 5, end: T0 + 5000 }),
+      ],
+      OLD
+    );
+    ingestBatch(
+      database,
+      [heartbeat('a2', SWEPT), obs({ obs_id: 'live-root', trace_id: 't-live', session_id: 's-live', agent_id: 'a2', start: OLD, ...open })],
+      SWEPT
+    );
+    sweepAgents(database, SWEPT);
+  }
+
+  it('prunes an interrupted trace (end NULL) whose interrupt predates the cutoff, and its interrupted session', () => {
+    const database = db();
+    seed(database);
+    expect(database.prepare("SELECT status FROM observations WHERE obs_id = 'int-root'").get()?.status).toBe('interrupted');
+    expect(database.prepare("SELECT status FROM sessions WHERE session_id = 's-int'").get()?.status).toBe('interrupted');
+
+    expect(pruneBefore(database, T0).observations).toBe(2);
+
+    expect(count(database, "observations WHERE trace_id = 't-int'")).toBe(0);
+    expect(count(database, "sessions WHERE session_id = 's-int'")).toBe(0);
+    // an open run (status NULL) of a live agent is kept
+    expect(count(database, "observations WHERE trace_id = 't-live'")).toBe(1);
+    // an interrupted run beside a child that ended after the cutoff is kept whole
+    expect(count(database, "observations WHERE trace_id = 't-late'")).toBe(2);
+  });
+
+  it('keeps an interrupted trace whose interrupt is not older than the cutoff', () => {
+    const database = db();
+    seed(database);
+    // OLD < cutoff <= SWEPT: the runs started before the cutoff but were interrupted at SWEPT
+    expect(pruneBefore(database, SWEPT)).toEqual({ observations: 0, scores: 0, sessions: 0 });
+    expect(count(database, "observations WHERE trace_id = 't-int'")).toBe(2);
+  });
+});
+
 describe('retention: the sweep prune pass', () => {
   const DAY = 86_400_000;
   const traceCount = (database: SqlDatabase, traceId: string): number =>

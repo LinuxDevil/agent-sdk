@@ -602,18 +602,22 @@ export function rebuildRollups(db: SqlDatabase): { buckets: number } {
 
 /**
  * The traces retention may drop: every observation finished (`end IS NOT
- * NULL`) and the last one ended before the cutoff. A trace with anything
- * still open is kept whole - pruning runs while agents report, and half a
- * live run must never vanish. Pre-narrowed by `start < cutoff` (a trace that
- * ended before the cutoff started before it) so `observations_start` limits
- * the GROUP BY to old traces. Materialised once per prune into a TEMP table.
+ * NULL`) or a dead run (`interrupted`, see {@link DEAD_RUN}), and the last
+ * one finished before the cutoff. A dead run counts from its `updated_at`
+ * (when the sweep interrupted it), since it has no `end`. A trace with
+ * anything genuinely open is kept whole - pruning runs while agents report,
+ * and half a live run must never vanish. Pre-narrowed by `start < cutoff`
+ * (a trace that finished before the cutoff started before it) so
+ * `observations_start` limits the GROUP BY to old traces. Materialised once
+ * per prune into a TEMP table.
  */
 const PRUNABLE_TRACES = `
   INSERT INTO temp.prune_traces (trace_id)
-  SELECT trace_id FROM observations
-  WHERE trace_id IN (SELECT trace_id FROM observations WHERE start < ?)
-  GROUP BY trace_id
-  HAVING SUM("end" IS NULL) = 0 AND MAX("end") < ?
+  SELECT o.trace_id FROM observations o
+  WHERE o.trace_id IN (SELECT trace_id FROM observations WHERE start < ?)
+  GROUP BY o.trace_id
+  HAVING SUM(o."end" IS NULL AND NOT ${DEAD_RUN}) = 0
+     AND MAX(COALESCE(o."end", CASE WHEN ${DEAD_RUN} THEN o.updated_at END)) < ?
 `;
 
 /** Rows {@link pruneBefore} deleted, per table (`prompt_uses` link rows go with their observations, uncounted). */
