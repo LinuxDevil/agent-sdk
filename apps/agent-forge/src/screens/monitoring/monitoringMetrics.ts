@@ -4,8 +4,10 @@
  * against the previous window of the same length.
  *
  * The screen fetches one rollup query reaching back two window spans and
- * splits it at the window start ({@link splitWindow}); the charts and values
- * use the current half, the deltas compare against the earlier one.
+ * splits it ({@link splitWindow}): the charts, values and sparklines use the
+ * whole window, bucket in progress included; the deltas compare like with
+ * like - the window's complete buckets against as many complete buckets just
+ * before it.
  */
 import type { ObserveRollupRow } from '../../observe/types';
 
@@ -32,9 +34,39 @@ export interface MetricSummary {
   cost: MetricFigure;
 }
 
-/** Rows in buckets starting at or after `from` are the current window; earlier ones the previous window. */
-export function splitWindow(rows: ObserveRollupRow[], from: number): { current: ObserveRollupRow[]; previous: ObserveRollupRow[] } {
-  return { current: rows.filter((r) => r.bucket_start >= from), previous: rows.filter((r) => r.bucket_start < from) };
+/** The bucket grid a window's rows are split on (a `ChartWindow` is one). */
+export interface BucketWindow {
+  /** Start of the window's first bucket. */
+  from: number;
+  /** End of the bucket holding `now`, the one still in progress. */
+  to: number;
+  bucketMs: number;
+}
+
+/** What the deltas compare: two runs of the same number of complete buckets. */
+export interface WindowComparison {
+  /** The window's complete buckets: `[from, to - bucketMs)`. */
+  current: ObserveRollupRow[];
+  /** As many buckets immediately before `from`. */
+  previous: ObserveRollupRow[];
+}
+
+/**
+ * `window` is every row from `from` on (the charts, values and sparklines);
+ * `compare` leaves the in-progress bucket out so both sides span the same
+ * number of complete buckets, and is `null` while the window has none.
+ */
+export function splitWindow(
+  rows: ObserveRollupRow[],
+  w: BucketWindow,
+): { window: ObserveRollupRow[]; compare: WindowComparison | null } {
+  const completeEnd = w.to - w.bucketMs;
+  const prevStart = w.from - (completeEnd - w.from);
+  const within = (start: number, end: number) => rows.filter((r) => r.bucket_start >= start && r.bucket_start < end);
+  return {
+    window: rows.filter((r) => r.bucket_start >= w.from),
+    compare: completeEnd > w.from ? { current: within(w.from, completeEnd), previous: within(prevStart, w.from) } : null,
+  };
 }
 
 const sum = (rows: ObserveRollupRow[], metric: string) =>
@@ -80,25 +112,39 @@ function perBucket(rows: ObserveRollupRow[]): WindowTotals[] {
 
 const present = (values: (number | null)[]): number[] => values.filter((v): v is number => v !== null);
 
-/**
- * The four Monitoring metric cards. Runs, p95 and cost deltas are relative %
- * changes; the error-rate delta is in percentage points. A previous window
- * with no runs (or no p95 / cost) gives no delta.
- */
-export function metricSummary(current: ObserveRollupRow[], previous: ObserveRollupRow[]): MetricSummary {
-  const now = windowTotals(current);
-  const before = windowTotals(previous);
-  const buckets = perBucket(current);
+/** The four deltas of `compare` (all undefined without one). */
+function deltas(compare: WindowComparison | null) {
+  if (compare === null) return { runs: undefined, errorRate: undefined, p95: undefined, cost: undefined };
+  const now = windowTotals(compare.current);
+  const before = windowTotals(compare.previous);
   const rate = errorRate(now);
   const prevRate = errorRate(before);
   return {
-    runs: { value: now.runs, delta: relative(now.runs, before.runs), sparkline: buckets.map((b) => b.runs) },
+    runs: relative(now.runs, before.runs),
+    errorRate: rate === null || prevRate === null ? undefined : (rate - prevRate) * 100,
+    p95: relative(now.p95, before.p95),
+    cost: relative(now.cost, before.cost),
+  };
+}
+
+/**
+ * The four Monitoring metric cards: values and sparklines over `window`,
+ * deltas over `compare` (see {@link splitWindow}). Runs, p95 and cost deltas
+ * are relative % changes; the error-rate delta is in percentage points. No
+ * comparison, or a previous side with no runs (or no p95 / cost), gives no delta.
+ */
+export function metricSummary(window: ObserveRollupRow[], compare: WindowComparison | null): MetricSummary {
+  const now = windowTotals(window);
+  const buckets = perBucket(window);
+  const d = deltas(compare);
+  return {
+    runs: { value: now.runs, delta: d.runs, sparkline: buckets.map((b) => b.runs) },
     errorRate: {
-      value: rate,
-      delta: rate === null || prevRate === null ? undefined : (rate - prevRate) * 100,
+      value: errorRate(now),
+      delta: d.errorRate,
       sparkline: present(buckets.map((b) => (b.runs > 0 ? (b.errors * 100) / b.runs : null))),
     },
-    p95: { value: now.p95, delta: relative(now.p95, before.p95), sparkline: present(buckets.map((b) => b.p95)) },
-    cost: { value: now.cost, delta: relative(now.cost, before.cost), sparkline: buckets.map((b) => b.cost) },
+    p95: { value: now.p95, delta: d.p95, sparkline: present(buckets.map((b) => b.p95)) },
+    cost: { value: now.cost, delta: d.cost, sparkline: buckets.map((b) => b.cost) },
   };
 }

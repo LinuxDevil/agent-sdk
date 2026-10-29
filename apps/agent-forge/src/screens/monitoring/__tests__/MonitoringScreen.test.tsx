@@ -180,7 +180,6 @@ describe('MonitoringScreen', () => {
 
   it('metric cards show the window figures with the change against the previous window', async () => {
     const w = chartWindow('24h', NOW);
-    const span = w.to - w.from;
     daemon([
       rollup(w.from, 'a1', 'runs', 10),
       rollup(w.from, 'a1', 'errors', 1),
@@ -190,11 +189,11 @@ describe('MonitoringScreen', () => {
       rollup(w.from + HOUR, 'a1', 'errors', 2),
       rollup(w.from + HOUR, 'a1', 'cost_usd', 0.5),
       rollup(w.from + HOUR, 'a1', 'p95_latency_ms', 1100),
-      // The previous window: 15 runs, 3 errors, $2, p95 2s.
-      rollup(w.from - span, 'a1', 'runs', 15),
-      rollup(w.from - span, 'a1', 'errors', 3),
-      rollup(w.from - span, 'a1', 'cost_usd', 2),
-      rollup(w.from - span, 'a1', 'p95_latency_ms', 2000),
+      // The previous window (the 24 complete buckets before `from`): 15 runs, 3 errors, $2, p95 2s.
+      rollup(w.from - HOUR, 'a1', 'runs', 15),
+      rollup(w.from - HOUR, 'a1', 'errors', 3),
+      rollup(w.from - HOUR, 'a1', 'cost_usd', 2),
+      rollup(w.from - HOUR, 'a1', 'p95_latency_ms', 2000),
     ]);
     const c = render(<MonitoringScreen />);
     await waitFor(() => drawn(c, 'Runs'));
@@ -215,6 +214,46 @@ describe('MonitoringScreen', () => {
     expect(card('Runs').querySelector('svg.metric-sparkline')).not.toBeNull();
     // The charts draw the current window only: the previous window's bucket is outside it.
     expect(chart(c, 'Runs')!.querySelectorAll('polyline.tsc-line[data-series="ok"]')).toHaveLength(1);
+  });
+
+  it('leaves the bucket in progress out of the deltas, but not out of the values', async () => {
+    const w = chartWindow('24h', NOW);
+    const inProgress = w.to - HOUR;
+    daemon([
+      // 10 runs in each side's first complete bucket, plus 5 so far in the bucket holding `now`.
+      rollup(w.from, 'a1', 'runs', 10),
+      rollup(inProgress, 'a1', 'runs', 5),
+      rollup(w.from - HOUR, 'a1', 'runs', 10),
+    ]);
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => drawn(c, 'Runs'));
+    const runs = [...c.querySelectorAll('.metric-card')].find((el) => el.querySelector('.metric-label')?.textContent === 'Runs')!;
+    expect(runs.querySelector('.metric-value')?.textContent).toBe('15');
+    expect(runs.querySelector('.metric-delta')?.textContent).toContain('no change vs previous 24h');
+  });
+
+  it('a window switch shows the cards and charts loading, not the old rows on the new buckets', async () => {
+    const day = chartWindow('24h', NOW);
+    const { fetchFn } = daemon([rollup(day.from, 'a1', 'runs', 10), rollup(day.from - HOUR, 'a1', 'runs', 5)]);
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => drawn(c, 'Runs'));
+    let release: () => void = () => undefined;
+    const stalled = new Promise<void>((r) => (release = r));
+    const passthrough = fetchFn.getMockImplementation()!;
+    fetchFn.mockImplementation(async (input) => {
+      if (String(input).includes('granularity=day')) await stalled;
+      return passthrough(input);
+    });
+    const button = (label: string) =>
+      [...c.querySelectorAll('.mon-windows button')].find((b) => b.textContent === label) as HTMLButtonElement;
+    act(() => button('7d').click());
+    await waitFor(() => c.querySelector('.mon-windows [aria-pressed="true"]')?.textContent === '7d');
+    expect(c.querySelectorAll('.metric-card[aria-busy="true"]').length).toBe(4);
+    expect(c.querySelector('.metric-delta')).toBeNull();
+    expect(drawn(c, 'Runs')).toBe(false);
+    release();
+    await waitFor(() => drawn(c, 'Runs'));
+    expect(c.querySelectorAll('.metric-card[aria-busy="true"]').length).toBe(0);
   });
 
   it('shows no delta without a previous window', async () => {

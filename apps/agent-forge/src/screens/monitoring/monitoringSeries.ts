@@ -54,7 +54,9 @@ export function chartWindow(window: MonitoringWindow, now: number): ChartWindow 
 
 /**
  * The rollup query behind the charts and metric cards: the window plus the one
- * before it (same length), so the cards can show a change without a second request.
+ * before it (same length), so the cards can show a change without a second
+ * request. The deltas need one bucket less than that (they leave the bucket in
+ * progress out of both sides; see `splitWindow`).
  */
 export function insightsSpan(w: ChartWindow): { since: number; until: number } {
   return { since: w.from - (w.to - w.from), until: w.to };

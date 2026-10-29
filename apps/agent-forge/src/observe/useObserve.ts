@@ -126,6 +126,24 @@ export function useInsights(filter: InsightsFilter, refreshKey?: unknown): Obser
 }
 
 /**
+ * {@link useInsights} whose `data` is only ever the answer fetched for the
+ * current `tag`: after the tag changes (e.g. a new window or granularity) it
+ * stays undefined (loading) until that tag's answer lands, so nothing draws
+ * stale rows against the new buckets. Polls under the same tag keep the last answer.
+ */
+export function useTaggedInsights(
+  tag: string,
+  filter: InsightsFilter,
+  refreshKey?: unknown
+): ObserveQuery<ObserveInsights> {
+  const query = useObserveQuery(
+    async () => ({ tag, insights: await observeClient.insights(filter) }),
+    [tag, JSON.stringify(filter), refreshKey]
+  );
+  return { ...query, data: query.data?.tag === tag ? query.data.insights : undefined };
+}
+
+/**
  * One eval's score rows (`eval=<name>` plus `filter`); no request while
  * `evalName` is empty. `data` is only ever rows of the current `evalName`:
  * after a switch it stays undefined (loading) until the new eval's rows land.
