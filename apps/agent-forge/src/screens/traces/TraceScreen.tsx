@@ -18,8 +18,9 @@ import { TraceFeedback } from './TraceFeedback';
 import { TraceHeader } from './TraceHeader';
 // The shared daemon-down / error presentation is styled there.
 import '../../observe/observe.css';
-// The header card is the kit's .card.
+// The loading header card is the kit's .card / HeaderCard look.
 import '../../ui/card.css';
+import '../../ui/headerCard.css';
 import './trace.css';
 
 const DEFAULT_POLL_MS = 5000;
@@ -51,7 +52,7 @@ function TraceLoading() {
   return (
     <div className="trace-loading" role="status">
       <span className="visually-hidden">Loading trace...</span>
-      <div className="card trace-card trace-header-skeleton" aria-hidden="true">
+      <div className="card header-card trace-header-skeleton" aria-hidden="true">
         <Skeleton width={120} height={12} />
         <Skeleton width={260} height={20} />
         <div className="trace-skeleton-chips">

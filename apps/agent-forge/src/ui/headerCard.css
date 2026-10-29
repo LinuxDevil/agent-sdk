@@ -1,0 +1,119 @@
+/*
+ * HeaderCard (the trace and thread screens' header): the kit's .card with a
+ * title row over a row of metric chips (Fact). Tokens only.
+ */
+.header-card {
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+.header-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.header-card-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.header-card-name h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+}
+.header-card-name .status-pill {
+  flex: none;
+}
+.header-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.header-card-actions a.btn {
+  text-decoration: none;
+}
+
+/* ---------- metric chips ---------- */
+.header-card-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+}
+.fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 26px;
+  padding: 0 9px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  font-size: var(--fs-meta);
+}
+.fact dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  color: var(--text-muted);
+}
+.fact dt svg {
+  color: var(--text-faint);
+}
+.fact-unit {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+.fact dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.fact a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.fact a:hover {
+  text-decoration: underline;
+}
+.fact code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-overline);
+}
+
+@media (max-width: 600px) {
+  .header-card {
+    padding: var(--space-3) var(--space-4);
+  }
+  .header-card-actions .btn {
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+  }
+  .header-card-actions .btn-icon {
+    width: 28px;
+    padding: 0;
+  }
+}

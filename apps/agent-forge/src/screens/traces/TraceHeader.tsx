@@ -1,10 +1,9 @@
-import type { ReactNode } from 'react';
-import { Bot, CalendarClock, Coins, Cpu, FlaskConical, Link2, MessagesSquare, Timer, Wallet, type LucideIcon } from 'lucide-react';
+import { Bot, CalendarClock, Coins, Cpu, FlaskConical, MessagesSquare, Timer, Wallet } from 'lucide-react';
 
 import { fmtCost, fmtDateTime, fmtDuration, fmtInt } from '../../observe/format';
 import type { ObserveObservationRow } from '../../observe/types';
 import { StatusPill } from '../../ui/StatusPill';
-import { useToast } from '../../ui/Toast';
+import { CopyLinkButton, Fact, FactUnit, HeaderCard } from '../../ui/HeaderCard';
 import { displayName, displayStatus, elapsedMs, playgroundHref } from '../../ui/run/rows';
 import { AddToDataset } from './AddToDataset';
 import { AddToQueue } from './AddToQueue';
@@ -43,36 +42,6 @@ function playgroundTarget(rows: ObserveObservationRow[], selectedObsId: string |
   return first;
 }
 
-/** One metric chip: the icon stands for the label (read out, and shown as the chip's tooltip), then the value. */
-function Fact({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
-  return (
-    <div className="trace-fact" title={label}>
-      <dt>
-        <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
-        <span className="visually-hidden">{label}</span>
-      </dt>
-      <dd>{children}</dd>
-    </div>
-  );
-}
-
-function CopyLinkButton() {
-  const toast = useToast();
-  const copy = () => {
-    const href = window.location.href;
-    const write = navigator.clipboard?.writeText(href) ?? Promise.reject(new Error('Clipboard unavailable'));
-    write.then(
-      () => toast.show({ message: 'Link copied', tone: 'success' }),
-      () => toast.show({ message: 'Could not copy the link', tone: 'error' }),
-    );
-  };
-  return (
-    <button type="button" className="btn btn-ghost btn-icon trace-copy-link" aria-label="Copy link" title="Copy link" onClick={copy}>
-      <Link2 aria-hidden="true" />
-    </button>
-  );
-}
-
 interface TraceHeaderProps {
   root: ObserveObservationRow;
   observations: ObserveObservationRow[];
@@ -95,52 +64,53 @@ export function TraceHeader({ root, observations, agentName, now, selectedObsId 
   const playground = playgroundTarget(observations, selectedObsId);
   const status = displayStatus(root);
   return (
-    <header className="card trace-header trace-card">
-      <div className="trace-title">
-        <div className="trace-title-name">
-          <h2 title={displayName(root)}>{displayName(root)}</h2>
-          <StatusPill status={status} live={status === 'running'} />
-        </div>
-        <div className="trace-actions">
+    <HeaderCard
+      className="trace-header"
+      title={displayName(root)}
+      status={<StatusPill status={status} live={status === 'running'} />}
+      actions={
+        <>
           <CopyLinkButton />
           <AddToDataset traceId={root.trace_id} />
           <AddToQueue traceId={root.trace_id} />
           {playground && (
-            <a className="btn trace-playground" href={playgroundHref(playground.trace_id, playground.obs_id)}>
+            <a className="btn" href={playgroundHref(playground.trace_id, playground.obs_id)}>
               <FlaskConical aria-hidden="true" />
               Open in Playground
             </a>
           )}
-        </div>
-      </div>
-      <dl className="trace-facts">
-        <Fact icon={Timer} label="Duration">
-          {fmtDuration(elapsedMs(root, now, latestEnd(observations)))}
-        </Fact>
-        <Fact icon={Coins} label="Tokens">
-          {fmtInt(tokens)}
-          <span className="trace-fact-unit"> tokens</span>
-        </Fact>
-        <Fact icon={Wallet} label="Cost">
-          {fmtCost(cost)}
-        </Fact>
-        <Fact icon={Cpu} label="Model">
-          {model ? <code>{model}</code> : '-'}
-        </Fact>
-        <Fact icon={CalendarClock} label="Start">
-          {fmtDateTime(root.start)}
-        </Fact>
-        {root.agent_id && (
-          <Fact icon={Bot} label="Agent">
-            <a href={`#/traces?agent=${encodeURIComponent(root.agent_id)}`}>{agentName ?? root.agent_id}</a>
+        </>
+      }
+      facts={
+        <>
+          <Fact icon={Timer} label="Duration">
+            {fmtDuration(elapsedMs(root, now, latestEnd(observations)))}
           </Fact>
-        )}
-        {root.session_id && (
-          <Fact icon={MessagesSquare} label="Session">
-            <a href={`#/threads/${encodeURIComponent(root.session_id)}`}>{root.session_id}</a>
+          <Fact icon={Coins} label="Tokens">
+            {fmtInt(tokens)}
+            <FactUnit>tokens</FactUnit>
           </Fact>
-        )}
-      </dl>
-    </header>
+          <Fact icon={Wallet} label="Cost">
+            {fmtCost(cost)}
+          </Fact>
+          <Fact icon={Cpu} label="Model">
+            {model ? <code>{model}</code> : '-'}
+          </Fact>
+          <Fact icon={CalendarClock} label="Start">
+            {fmtDateTime(root.start)}
+          </Fact>
+          {root.agent_id && (
+            <Fact icon={Bot} label="Agent">
+              <a href={`#/traces?agent=${encodeURIComponent(root.agent_id)}`}>{agentName ?? root.agent_id}</a>
+            </Fact>
+          )}
+          {root.session_id && (
+            <Fact icon={MessagesSquare} label="Session">
+              <a href={`#/threads/${encodeURIComponent(root.session_id)}`}>{root.session_id}</a>
+            </Fact>
+          )}
+        </>
+      }
+    />
   );
 }
