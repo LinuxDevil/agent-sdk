@@ -13,6 +13,9 @@ const TONES = new Map<string, StatusTone>(Object.entries({
   error: 'error',
   running: 'running',
   interrupted: 'warning',
+  // session (a thread): open, or closed by the idle sweep
+  active: 'ok',
+  ended: 'neutral',
   // agent
   healthy: 'ok',
   stale: 'warning',
@@ -32,7 +35,7 @@ const LABELS = new Map([['paused', 'awaiting approval']]);
 
 /**
  * The tone for a status from the Studio vocabulary (run `ok|error|running|interrupted`,
- * agent `healthy|stale|down|stopped`, score `pass|fail`, builder `idle|done|paused`).
+ * session `active|ended`, agent `healthy|stale|down|stopped`, score `pass|fail`, builder `idle|done|paused`).
  * Anything else, including a missing status, is `neutral`.
  */
 export function statusTone(status: string | null | undefined): StatusTone {

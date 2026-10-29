@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThreadsScreen } from '../ThreadsScreen';
 import { formatThreadsQuery, parseThreadsQuery } from '../threadsUrl';
 import { render } from '../../../ui/__tests__/render';
+import { ToastProvider } from '../../../ui/Toast';
 import type { ObserveObservationRow, ObserveSessionRow, ObserveTraceDetail, ObserveTraceRow } from '../../../observe/types';
 
 const NOW = new Date(2026, 9, 25, 15, 30, 0).getTime();
@@ -112,7 +113,11 @@ async function flush() {
 
 async function mountAt(hash: string) {
   window.history.replaceState(null, '', `/${hash}`);
-  const container = render(<ThreadsScreen />);
+  const container = render(
+    <ToastProvider>
+      <ThreadsScreen />
+    </ToastProvider>,
+  );
   await flush();
   return container;
 }
@@ -208,12 +213,16 @@ describe('ThreadsScreen thread', () => {
     expect(links).toEqual(['#/traces/trace-1', '#/traces/trace-2']);
   });
 
-  it('list -> thread -> trace: Back to threads keeps the list query', async () => {
+  it('list -> thread -> trace: All threads keeps the list query', async () => {
     await mountAt('#/threads?status=active');
     window.history.replaceState(null, '', `/#/threads/${SESSION.session_id}`);
-    const container = render(<ThreadsScreen />);
+    const container = render(
+    <ToastProvider>
+      <ThreadsScreen />
+    </ToastProvider>,
+  );
     await flush();
-    const back = [...container.querySelectorAll('a')].find((a) => a.textContent?.includes('Back to threads'));
+    const back = [...container.querySelectorAll('a')].find((a) => a.textContent?.includes('All threads'));
     expect(back?.getAttribute('href')).toBe('#/threads?status=active');
   });
 
@@ -292,5 +301,86 @@ describe('ThreadsScreen thread full turns', () => {
     await flush();
     expect(detailRequests()).toEqual(['trace-1']);
     expect(container.querySelectorAll('.thread-turn')[0].querySelectorAll('.mv-bubble')).toHaveLength(2);
+  });
+});
+
+describe('ThreadsScreen thread layout', () => {
+  it('shows the thread header card with its totals and numbers each turn on the timeline', async () => {
+    const container = await mountAt(`#/threads/${SESSION.session_id}`);
+    const header = container.querySelector('.thread-header')!;
+    expect(header.querySelector('h2')?.textContent).toBe('support-bot');
+    expect(header.querySelector('.status-pill')?.textContent).toContain('active');
+    expect(header.textContent).toContain('2 turns');
+    expect(header.textContent).toContain('250 tokens');
+    expect(header.textContent).toContain('$0.0040');
+    const dots = [...container.querySelectorAll('.thread-turn-dot')].map((d) => d.textContent);
+    expect(dots).toEqual(['1', '2']);
+    expect(container.querySelectorAll('.thread-turn')[1].getAttribute('data-status')).toBe('error');
+  });
+
+  it('clamps an overflowing message behind Show more / Show less, with the full text still in the DOM', async () => {
+    // jsdom has no layout: every .mv-body reports content taller than its clamped box.
+    const scroll = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('mv-body') ? 900 : 0;
+    });
+    const client = vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.classList.contains('mv-body') ? 260 : 0;
+    });
+    try {
+      details = { 'trace-1': { trace_id: 'trace-1', observations: [rootRow('trace-1', { input: 'ask', output: `${'line\n'.repeat(40)}the end` })], scores: [] } };
+      const container = await mountAt(`#/threads/${SESSION.session_id}`);
+      const turn = container.querySelectorAll('.thread-turn')[0];
+      const toggle = turn.querySelector<HTMLButtonElement>('button[aria-label="Show more of the output"]')!;
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      expect(toggle.closest('.thread-clamp')?.getAttribute('data-expanded')).toBe('false');
+      expect(turn.textContent).toContain('the end');
+      act(() => toggle.click());
+      const less = turn.querySelector<HTMLButtonElement>('button[aria-label="Show less of the output"]')!;
+      expect(less.getAttribute('aria-expanded')).toBe('true');
+      expect(less.textContent).toBe('Show less');
+      expect(less.closest('.thread-clamp')?.getAttribute('data-expanded')).toBe('true');
+    } finally {
+      scroll.mockRestore();
+      client.mockRestore();
+    }
+  });
+
+  it('shows no toggle when a message fits', async () => {
+    const container = await mountAt(`#/threads/${SESSION.session_id}`);
+    expect(container.querySelector('.thread-clamp-toggle')).toBeNull();
+  });
+
+  it('shows skeletons, not text, while the thread loads', async () => {
+    fetchFn.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = new URL(String(input), 'http://x');
+      if (url.pathname.endsWith('/health')) return new Response(JSON.stringify({ service: 'lousho-observe', ok: true }));
+      return new Promise<Response>(() => undefined);
+    });
+    const container = await mountAt(`#/threads/${SESSION.session_id}`);
+    const loading = container.querySelector('.thread-loading')!;
+    expect(loading.getAttribute('role')).toBe('status');
+    expect(loading.querySelectorAll('.skeleton').length).toBeGreaterThan(3);
+    expect(container.textContent).not.toContain('Loading thread...'.replace('...', '…'));
+  });
+});
+
+describe('ThreadsScreen list layout', () => {
+  it('renders the thread cell (last input over the session id) and last activity as relative time', async () => {
+    const container = await mountAt('#/threads');
+    const row = container.querySelector('tbody tr')!;
+    expect(row.querySelector('.threads-name-title')?.textContent).toBe('Can I get a refund?');
+    expect(row.querySelector('.threads-name-id')?.textContent).toBe(SESSION.session_id);
+    const activity = [...row.querySelectorAll('.threads-num')].find((c) => c.textContent?.endsWith('ago'));
+    expect(activity?.textContent).toBe('20s ago');
+    expect(activity?.getAttribute('title')).toMatch(/^Started .* · last activity /);
+  });
+
+  it('Refresh re-fetches the list', async () => {
+    const container = await mountAt('#/threads');
+    const before = listRequests().length;
+    const refresh = container.querySelector<HTMLButtonElement>('button[aria-label="Refresh"]')!;
+    act(() => refresh.click());
+    await flush();
+    expect(listRequests().length).toBe(before + 1);
   });
 });
