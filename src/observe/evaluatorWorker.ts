@@ -6,7 +6,11 @@
  *
  * - Ingest only hands over trace ids ({@link EvaluatorWorker.notifyRootsEnded}):
  *   synchronous, O(batch), never throws. Rule matching, trace loading and the
- *   sandbox runs happen later, off the request, one trace at a time.
+ *   sandbox runs happen later, off the request, one trace per event-loop turn
+ *   (the drain yields with `setImmediate` between traces).
+ * - Rules match against the trace's root row alone; only a surviving `code`
+ *   rule loads observation rows (the first 200, long attrs capped; never the
+ *   trace's scores). Judge jobs carry the root fields and no observations.
  * - The pending queue is in memory and bounded (`maxQueue`, default 1000);
  *   past it a trace drops and counts in `stats().dropped`. Pending traces are
  *   lost on a daemon restart.
@@ -29,9 +33,16 @@ import type { SqlDatabase } from '../storage/sqlite/driver';
 import { moduleDir } from '../utils/moduleDir';
 import type { IngestEvent } from './envelope';
 import { getEvaluatorRule, listEvaluatorRules, type EvaluatorRuleFilter, type EvaluatorRuleRow } from './evaluators';
-import { evaluatorTraceFrom, type EvaluatorTrace } from './evaluatorTrace';
+import { EVALUATOR_ATTRS_CAP, EVALUATOR_MAX_OBSERVATIONS, errorMessageText, evaluatorTraceOf, type EvaluatorTrace } from './evaluatorTrace';
 import { createJudgeJobs, type ClaimedJudgeJob, type JudgeJobStats, type JudgeScore } from './judgeJobs';
-import { ingestBatch, listScores, traceDetail } from './store';
+import {
+  firstObservationError,
+  firstObservations,
+  ingestBatch,
+  listScores,
+  traceRootFields,
+  type ObservationRootFields,
+} from './store';
 
 /** What one evaluator run produced: the score's value and comment. */
 export interface EvaluatorResult {
@@ -133,19 +144,28 @@ function probeIsolate(): boolean {
 let isolateProbe: boolean | undefined;
 const defaultIsolateAvailable = (): boolean => (isolateProbe ??= probeIsolate());
 
-/** The trace as an evaluator sees it, or `undefined` when it does not exist or has no root observation. */
-function evaluatorTrace(db: SqlDatabase, traceId: string): EvaluatorTrace | undefined {
-  const detail = traceDetail(db, traceId);
-  return detail === undefined ? undefined : evaluatorTraceFrom(traceId, detail.observations);
+/** The trace a code rule receives from its root's fields: the first 200 rows (attrs capped) and the error, no scores. */
+function codeTrace(db: SqlDatabase, traceId: string, root: ObservationRootFields): EvaluatorTrace {
+  const observations = firstObservations(db, traceId, EVALUATOR_MAX_OBSERVATIONS, EVALUATOR_ATTRS_CAP);
+  return evaluatorTraceOf(traceId, root, errorMessageText(firstObservationError(db, traceId)), observations);
+}
+
+/** The trace a judge job carries: the root's fields and the error, no observations. */
+function judgeTrace(db: SqlDatabase, traceId: string): EvaluatorTrace | undefined {
+  const root = traceRootFields(db, traceId);
+  return root === undefined ? undefined : evaluatorTraceOf(traceId, root, errorMessageText(firstObservationError(db, traceId)), []);
 }
 
 /** Whether every key the filter sets matches the trace's root. */
-function matchesFilter(filter: EvaluatorRuleFilter, trace: EvaluatorTrace): boolean {
-  if (filter.agent_id !== undefined && trace.agent_id !== filter.agent_id) return false;
-  if (filter.status !== undefined && trace.status !== filter.status) return false;
-  if (filter.name_contains !== undefined && !(trace.name ?? '').includes(filter.name_contains)) return false;
+function matchesFilter(filter: EvaluatorRuleFilter, root: ObservationRootFields): boolean {
+  if (filter.agent_id !== undefined && root.agent_id !== filter.agent_id) return false;
+  if (filter.status !== undefined && root.status !== filter.status) return false;
+  if (filter.name_contains !== undefined && !(root.name ?? '').includes(filter.name_contains)) return false;
   return true;
 }
+
+/** One event-loop turn: the drain awaits this between traces. */
+const nextTurn = (): Promise<void> => new Promise<void>((resolve) => setImmediate(resolve));
 
 /** An evaluator's return value as a score: a finite number, or `{ value: number | null, comment? }`. */
 export function toEvaluatorResult(raw: unknown): EvaluatorResult {
@@ -227,7 +247,7 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
 
   const judgeJobs = createJudgeJobs({
     getRule: (ruleId) => getEvaluatorRule(db, ruleId),
-    loadTrace: (traceId) => evaluatorTrace(db, traceId),
+    loadTrace: (traceId) => judgeTrace(db, traceId),
     writeScore,
     now: opts.now,
     maxJobs: opts.maxJudgeJobs,
@@ -240,32 +260,47 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
     warn(ISOLATE_WARNING);
   };
 
-  const evaluateRule = async (rule: EvaluatorRuleRow, trace: EvaluatorTrace): Promise<void> => {
-    if (!matchesFilter(rule.filter, trace) || !(random() < rule.sample_rate)) return;
-    if (alreadyScored(rule, trace.trace_id) || judgeJobs.has(rule.rule_id, trace.trace_id)) return;
+  /** Whether `rule` scores this trace now: filter and sample pass, not scored yet, no judge job for it. */
+  const wants = (rule: EvaluatorRuleRow, traceId: string, root: ObservationRootFields): boolean =>
+    matchesFilter(rule.filter, root) &&
+    random() < rule.sample_rate &&
+    !alreadyScored(rule, traceId) &&
+    !judgeJobs.has(rule.rule_id, traceId);
+
+  /** `trace()` builds the code rule's trace on first use, so judge-only and filtered-out traces load no rows. */
+  const evaluateRule = async (
+    rule: EvaluatorRuleRow,
+    traceId: string,
+    root: ObservationRootFields,
+    trace: () => EvaluatorTrace
+  ): Promise<void> => {
+    if (!wants(rule, traceId, root)) return;
     // The daemon cannot run a judge: Agent Forge claims the job (judgeJobs.ts).
-    if (rule.kind === 'judge') return void judgeJobs.enqueue(rule.rule_id, trace.trace_id);
+    if (rule.kind === 'judge') return void judgeJobs.enqueue(rule.rule_id, traceId);
     if (!isolateAvailable()) return skipCode();
-    const result = await runCode(rule, trace);
+    const result = await runCode(rule, trace());
     if (stopped) return;
-    writeScore({ rule_name: rule.name, trace_id: trace.trace_id, agent_id: trace.agent_id, ...result });
+    writeScore({ rule_name: rule.name, trace_id: traceId, agent_id: root.agent_id, ...result });
     counts.ran++;
   };
 
   const evaluateTrace = async (traceId: string): Promise<void> => {
     const rules = listEvaluatorRules(db, { limit: RULES_PAGE, offset: 0, enabled: true }).evaluators;
     if (rules.length === 0) return;
-    const trace = evaluatorTrace(db, traceId);
-    if (trace === undefined) return;
+    const root = traceRootFields(db, traceId);
+    if (root === undefined) return;
+    let built: EvaluatorTrace | undefined;
+    const trace = (): EvaluatorTrace => (built ??= codeTrace(db, traceId, root));
     for (const rule of rules) {
       if (stopped) return;
-      await evaluateRule(rule, trace);
+      await evaluateRule(rule, traceId, root, trace);
     }
   };
 
   const drain = async (): Promise<void> => {
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    while (!stopped && pending.length > 0) {
+    for (;;) {
+      await nextTurn();
+      if (stopped || pending.length === 0) return;
       const traceId = pending.shift() as string;
       try {
         await evaluateTrace(traceId);
@@ -294,11 +329,11 @@ export function startEvaluatorWorker(db: SqlDatabase, opts: EvaluatorWorkerOptio
     },
     runOnce(rule, traceId) {
       const run = dryRuns.then(async (): Promise<EvaluatorResult | undefined> => {
-        const trace = evaluatorTrace(db, traceId);
-        if (trace === undefined) return undefined;
+        const root = traceRootFields(db, traceId);
+        if (root === undefined) return undefined;
         if (rule.kind !== 'code') return { value: null, comment: 'unsupported_kind' };
         if (!isolateAvailable()) return { value: null, comment: 'isolate_unavailable' };
-        return runCode(rule, trace);
+        return runCode(rule, codeTrace(db, traceId, root));
       });
       dryRuns = run.catch(() => undefined);
       return run;
