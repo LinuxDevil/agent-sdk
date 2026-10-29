@@ -24,6 +24,7 @@ import { SDKError } from '../execution/errors';
 import { isLoopbackHost } from '../server/hostCheck';
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import { OBSERVE_DEFAULT_PORT, OBSERVE_SERVICE } from './envelope';
+import { guardApiRequest } from './requestGuard';
 import { BodyTooLargeError, matchRoute, sendJson, type RouteContext } from './routes/index';
 import { createAlerter, resolveAlertConfig, type AlertConfig } from './alerts';
 import { startStatusSweep, type StatusSweep } from './sweep';
@@ -171,6 +172,27 @@ function isApiPath(pathname: string): boolean {
   return pathname.startsWith('/api/');
 }
 
+/**
+ * Why an /api/* request is refused before routing: 401 without a valid bearer
+ * token when one is required (checked first), else {@link guardApiRequest}'s
+ * 403/415 for browser-forged requests; `undefined` to route it.
+ */
+function apiRefusal(
+  req: http.IncomingMessage,
+  db: SqlDatabase,
+  requireToken: boolean,
+  host: string
+): { status: number; error: string; code: string } | undefined {
+  if (requireToken && !verifyToken(db, bearerOf(req))) {
+    return {
+      status: 401,
+      error: 'This observe daemon requires a bearer token; create one with `lousho observe token create --project <name>`.',
+      code: 'LOUSHO_REMOTE_UNAUTHORIZED',
+    };
+  }
+  return guardApiRequest(req.method ?? 'GET', req.headers, host);
+}
+
 /** Start the daemon. Rejects with the listen error (`EADDRINUSE` keeps `code` for the CLI's health probe). */
 export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Promise<ObserveDaemon> {
   const dbPath = options.dbPath ?? defaultDbPath();
@@ -185,12 +207,8 @@ export async function startObserveDaemon(options: ObserveDaemonOptions = {}): Pr
 
   const onRequest = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     const { pathname, searchParams } = new URL(req.url ?? '/', 'http://localhost');
-    if (requireToken && isApiPath(pathname) && !verifyToken(db, bearerOf(req))) {
-      return sendJson(res, 401, {
-        error: 'This observe daemon requires a bearer token; create one with `lousho observe token create --project <name>`.',
-        code: 'LOUSHO_REMOTE_UNAUTHORIZED',
-      });
-    }
+    const refused = isApiPath(pathname) ? apiRefusal(req, db, requireToken, host) : undefined;
+    if (refused) return sendJson(res, refused.status, { error: refused.error, code: refused.code });
     const match = matchRoute(req.method ?? 'GET', pathname);
     if (!match) return sendJson(res, 404, { error: 'not found', code: 'LOUSHO_REQUEST_INVALID' });
     let bodyRead: Promise<string> | undefined;
