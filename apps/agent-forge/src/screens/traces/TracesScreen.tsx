@@ -106,6 +106,12 @@ function traceFacets(
   ];
 }
 
+const orUndefined = (v: string | undefined): string | undefined => v || undefined;
+const rowsOf = (data: { traces: ObserveTraceRow[] } | undefined): ObserveTraceRow[] => data?.traces ?? [];
+const totalOf = (data: { total: number } | undefined): number => data?.total ?? 0;
+const agentsOf = (data: ObserveAgentRow[] | undefined): ObserveAgentRow[] => data ?? [];
+const tableSort = (sort: TracesUrlState['sort']): TracesUrlState['sort'] => (sort && sort.key !== 'start' ? sort : undefined);
+
 function TracesList() {
   const route = useRoute();
   const queryString = route.query.toString();
@@ -122,13 +128,13 @@ function TracesList() {
   // Every filter edit restarts at the first page; replace keeps Back off the filter edits.
   const update = (patch: Partial<TracesUrlState>) =>
     navigate(`/traces${formatTracesQuery({ ...state, offset: 0, ...patch })}`, { replace: true });
-  const setText = (key: 'agent' | 'status' | 'model' | 'project' | 'q' | 'prompt') => (v: string | undefined) => update({ [key]: v || undefined });
+  const setText = (key: 'agent' | 'status' | 'model' | 'project' | 'q' | 'prompt') => (v: string | undefined) => update({ [key]: orUndefined(v) });
 
   const range = useRangeFilter(state.window, '24h', (window) => update({ window }));
   const onSort = (next: TableSort | undefined) => update({ sort: toSort(next) });
 
-  const rows = traces.data?.traces ?? [];
-  const facets = traceFacets(state, rows, agents.data ?? [], setText);
+  const rows = rowsOf(traces.data);
+  const facets = traceFacets(state, rows, agentsOf(agents.data), setText);
   if (down) return <ObserveDaemonDown />;
 
   return (
@@ -146,10 +152,10 @@ function TracesList() {
         columns={columns(now)}
         rows={rows}
         rowKey={(t) => t.trace_id}
-        sort={state.sort && state.sort.key !== 'start' ? state.sort : undefined}
+        sort={tableSort(state.sort)}
         onSortChange={onSort}
         onRowOpen={(t) => navigate(`/traces/${encodeURIComponent(t.trace_id)}`)}
-        page={{ offset: state.offset, limit: PAGE_SIZE, total: traces.data?.total ?? 0, onChange: (offset) => update({ offset }) }}
+        page={{ offset: state.offset, limit: PAGE_SIZE, total: totalOf(traces.data), onChange: (offset) => update({ offset }) }}
         loading={traces.loading}
         empty={
           <EmptyState
