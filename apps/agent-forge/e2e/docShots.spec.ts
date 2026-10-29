@@ -713,6 +713,34 @@ test('agents x: a run in progress', async ({ page }) => {
   await shoot(page, 'x-agents-running');
 });
 
+/*
+ * Review-only shots of the live run status off Agents: a mock run finishes on
+ * Agents, then Prompts, Monitoring and a prompt (its label chips first; 1280,
+ * 860 and 375 wide) show its status pill at the end of the header's title row.
+ */
+test('x-live-status: a finished run on Prompts and Monitoring', async ({ page }) => {
+  await newAgent(page, `live-${Date.now()}`);
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('.topbar [role="status"]')).toContainText('done', { timeout: 15_000 });
+  const nav = page.getByRole('navigation', { name: 'Primary' });
+  await nav.getByRole('link', { name: 'Prompts' }).click();
+  await expect(rows(page)).toHaveCount(docPrompts.length);
+  await shoot(page, 'x-live-status-prompts');
+  await nav.getByRole('link', { name: 'Monitoring' }).click();
+  await monitoringReady(page);
+  await shoot(page, 'x-live-status-monitoring');
+  // A prompt's label chips come first, the run status last.
+  await nav.getByRole('link', { name: 'Prompts' }).click();
+  await rows(page).filter({ hasText: 'support-system' }).click();
+  await expect(page.getByRole('region', { name: 'Version history' })).toContainText('v1');
+  await shoot(page, 'x-live-status-prompt-detail');
+  for (const [width, height] of [[860, 800], [375, 812]] as const) {
+    await page.setViewportSize({ width, height });
+    await expect(page.getByRole('region', { name: 'Version history' })).toBeVisible();
+    await shoot(page, `x-live-status-prompt-detail-${width}`);
+  }
+});
+
 // --- Kit states (x- shots: review-only, never used in the docs) -------------
 
 test('x-kit: traces empty state', async ({ page }) => {

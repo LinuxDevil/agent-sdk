@@ -269,11 +269,10 @@ function HubContent({ namespace }: { namespace: string | undefined }) {
 function HubHeader({ namespace }: { namespace: string | undefined }) {
   const route = useRoute();
   if (namespace === undefined)
-    return <ScreenHeader title="Context Hub" status={null} description="Shared key/value context the fleet's agents publish for each other." />;
+    return <ScreenHeader title="Context Hub" description="Shared key/value context the fleet's agents publish for each other." />;
   return (
     <ScreenHeader
       title={namespace}
-      status={null}
       description="Entries in this namespace; open one to see its full value."
       breadcrumbs={[{ label: 'Context Hub', href: `#${hubPath(undefined, parseHubQuery(route.query))}` }, { label: namespace }]}
     />

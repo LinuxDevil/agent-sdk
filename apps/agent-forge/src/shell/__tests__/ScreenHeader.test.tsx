@@ -63,7 +63,9 @@ describe('ScreenHeader', () => {
     const header = el.querySelector('.screen-header header')!;
     expect(header.querySelector('.page-header-description')?.textContent).toBe('Examples to evaluate');
     expect(header.querySelector('nav[aria-label="Breadcrumb"] [aria-current="page"]')?.textContent).toBe('Datasets');
-    expect(header.querySelector('.page-header-status')).toBeNull();
+    // `status={null}` adds no chips; the live run status stays, the one run-status region on the page.
+    expect(header.querySelector('.page-header-status')?.textContent).toBe('Run status: running');
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(el.querySelector('main header')).toBeNull();
 
     // The screen's state still drives the portalled actions.
@@ -76,6 +78,22 @@ describe('ScreenHeader', () => {
 
     act(() => (document.getElementById('toggle') as HTMLButtonElement).click());
     expect(h1s()).toEqual(['Datasets']);
+  });
+
+  it("puts a screen's chips first and the live run status at the right end", () => {
+    window.location.hash = '#/prompts';
+    appState.runStatus = { status: 'done' };
+    render(
+      <ScreenHeaderHost>
+        <main>
+          <ScreenHeader title="support-system" status={<span className="chip">production</span>} />
+        </main>
+      </ScreenHeaderHost>,
+    );
+    const status = document.querySelector('.screen-header .page-header-status')!;
+    expect([...status.children].map((c) => c.textContent)).toEqual(['production', 'Run status: done']);
+    expect(status.lastElementChild?.getAttribute('role')).toBe('status');
+    expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
 
   it('renders inline outside a host', () => {

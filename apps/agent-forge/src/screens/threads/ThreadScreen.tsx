@@ -238,7 +238,6 @@ export function ThreadScreen({ sessionId }: { sessionId: string }) {
     <section className="thread-screen" aria-label="Thread" data-session-id={sessionId}>
       <ScreenHeader
         title="Threads"
-        status={null}
         description={
           <>
             Thread <code className="thread-id">{sessionId}</code>

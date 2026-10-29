@@ -1,6 +1,9 @@
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// ScreenHeader renders inline here (no shell host); its live run status reads the app state.
+vi.mock('../../../state/AppState', () => ({ useAppState: () => ({ runStatus: null }) }));
+
 import { ThreadsScreen } from '../ThreadsScreen';
 import { formatThreadsQuery, parseThreadsQuery } from '../threadsUrl';
 import { render } from '../../../ui/__tests__/render';

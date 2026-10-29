@@ -1,4 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from '@playwright/test';
+import { stubObserve } from './observeStub';
 
 /**
  * Status, copy and naming match the docs - a finished run says
@@ -39,6 +40,23 @@ test('a new agent is named what you typed; a finished run says done and labels i
   await expect(runBubble).toBeVisible();
   await expect(runBubble).toContainText('Run input');
   await expect(page.locator('.chat-msg.user:not(.run-input)')).toHaveCount(0);
+});
+
+test('the live run status follows you off Agents: Prompts shows it in its header', async ({ page }) => {
+  // A reachable (stubbed) daemon, so Prompts renders its own header rather than the daemon-down default.
+  await stubObserve(page);
+  await page.goto(`/?token=${TOKEN}`);
+  await createAgent(page, `ux-live-${Date.now()}`);
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('.topbar [role="status"]')).toContainText('done', { timeout: 15_000 });
+
+  await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Prompts' }).click();
+  await expect(page.getByRole('banner').getByRole('heading', { level: 1 })).toHaveText('Prompts');
+  await expect(page.getByRole('region', { name: 'Prompts' })).toBeVisible();
+  // Exactly one run-status region on the page, in the header, saying how the run ended.
+  const runStatus = page.getByRole('status').filter({ hasText: 'Run status:' });
+  await expect(runStatus).toHaveCount(1);
+  await expect(page.getByRole('banner').getByRole('status')).toHaveText('Run status: done');
 });
 
 test("the drawer's Trace tab shows a finished run in the shared trace viewer", async ({ page }) => {

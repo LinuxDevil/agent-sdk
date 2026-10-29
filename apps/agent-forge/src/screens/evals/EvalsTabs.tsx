@@ -37,8 +37,8 @@ export function EvalsTabs() {
 
 /**
  * The header of an Evaluations screen: title "Evaluations" (a detail view passes
- * its own title and breadcrumbs), no run status, and the {@link EvalsTabs} row.
+ * its own title and breadcrumbs), the live run status, and the {@link EvalsTabs} row.
  */
 export function EvalsHeader(props: Omit<ScreenHeaderProps, 'tabs' | 'status'>) {
-  return <ScreenHeader title="Evaluations" {...props} status={null} tabs={<EvalsTabs />} />;
+  return <ScreenHeader title="Evaluations" {...props} tabs={<EvalsTabs />} />;
 }

@@ -18,17 +18,31 @@ interface HeaderSlot {
 
 const HeaderSlotContext = createContext<HeaderSlot | null>(null);
 
-/** The live run StatusPill; its own component, so a header that drops the status never reads the app state. */
+/** The live run StatusPill (the page's one run-status region); its own component, so only it reads the app state. */
 function LiveRunStatus() {
   const { runStatus } = useAppState();
   return <StatusPill status={runStatus?.status ?? 'idle'} live />;
 }
 
-/** The PageHeader with the shell's defaults: the active nav item's label, and the live run status. */
+/**
+ * The PageHeader with the shell's defaults: the active nav item's label, and the live run
+ * status always, at the right end of the screen's own status chips.
+ */
 function DefaultedHeader({ title, status, ...rest }: ScreenHeaderProps) {
   const { path } = useRoute();
   const label = NAV_ITEMS.find((item) => isActive(item, path))?.label ?? 'Agent Forge';
-  return <PageHeader title={title ?? label} status={status === undefined ? <LiveRunStatus /> : status} {...rest} />;
+  return (
+    <PageHeader
+      title={title ?? label}
+      status={
+        <>
+          {status}
+          <LiveRunStatus />
+        </>
+      }
+      {...rest}
+    />
+  );
 }
 
 /**
@@ -36,7 +50,8 @@ function DefaultedHeader({ title, status, ...rest }: ScreenHeaderProps) {
  * (the nav label + live run status); a screen that renders its own
  * `<ScreenHeader title=… description=… actions={…} breadcrumbs={…} />` anywhere in
  * its tree replaces the default while mounted. `title` defaults to the active nav
- * item's label and `status` to the live run StatusPill (`status={null}` drops it).
+ * item's label. The live run StatusPill is always in the title row; `status` adds the
+ * screen's own chips (a prompt chip, label chips) before it and never replaces it.
  * The props render through a portal, so the screen's own context and state apply.
  */
 export function ScreenHeader(props: ScreenHeaderProps) {

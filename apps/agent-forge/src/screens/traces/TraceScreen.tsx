@@ -138,7 +138,6 @@ export function TraceScreen({ traceId, pollMs = DEFAULT_POLL_MS }: { traceId: st
     <div className="trace-screen" data-trace-id={traceId}>
       <ScreenHeader
         title="Traces"
-        status={null}
         description={
           <>
             Trace <code className="trace-id">{traceId}</code>
