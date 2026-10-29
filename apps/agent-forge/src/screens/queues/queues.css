@@ -229,6 +229,9 @@
 .qu-review > .qu-rubric-card {
   position: sticky;
   top: var(--space-4);
+  /* never taller than the viewport below its sticky top, so Save scores stays reachable */
+  max-height: calc(100dvh - var(--space-4) - var(--space-4));
+  overflow: auto;
 }
 @media (max-width: 1100px) {
   .qu-review {
@@ -236,6 +239,8 @@
   }
   .qu-review > .qu-rubric-card {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
 }
 .qu-item {

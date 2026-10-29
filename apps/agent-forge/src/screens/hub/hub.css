@@ -113,6 +113,11 @@
     position: sticky;
     top: var(--space-4);
   }
+  /* never taller than the viewport below its sticky top, so the entry's edit buttons stay reachable */
+  .hub-split > .hub-entry {
+    max-height: calc(100dvh - var(--space-4) - var(--space-4));
+    overflow: auto;
+  }
 }
 @media (max-width: 1179px) {
   .hub-detail-empty {
