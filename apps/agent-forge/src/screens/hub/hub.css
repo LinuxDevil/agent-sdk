@@ -113,9 +113,10 @@
     position: sticky;
     top: var(--space-4);
   }
-  /* never taller than the viewport below its sticky top, so the entry's edit buttons stay reachable */
+  /* never taller than the scroll container (.screen-main) below its sticky top; a long entry scrolls inside,
+     so its editor's Save / Cancel stay reachable */
   .hub-split > .hub-entry {
-    max-height: calc(100dvh - var(--space-4) - var(--space-4));
+    max-height: calc(100cqh - 2 * var(--space-4));
     overflow: auto;
   }
 }

@@ -25,16 +25,33 @@ describe('the nav drawer scrim', () => {
 });
 
 describe('sticky side panels', () => {
-  // Each panel sticks at `top: var(--space-4)`; capped below the viewport so its footer buttons stay reachable.
-  const cap = /max-height:\s*calc\(100dvh - var\(--space-4\) - var\(--space-4\)\)/;
+  // `.screen-main` is the scroll container under the screen header; the panels measure their cap against it.
+  it('.screen-main is a size container', () => {
+    expect(rulesFor(sheet('components/layout.css'), '.screen-main')).toMatch(/container-type:\s*size/);
+  });
+
+  // Each panel sticks at `top: var(--space-4)`; capped to the scroll container's height less that top and a bottom gap.
+  const cap = /max-height:\s*calc\(100cqh - 2 \* var\(--space-4\)\)/;
   it.each([
     ['screens/queues/queues.css', '.qu-review > .qu-rubric-card'],
     ['screens/hub/hub.css', '.hub-split > .hub-entry'],
-  ])('%s: %s scrolls inside the viewport', (file, selector) => {
+  ])('%s: %s fits the scroll container', (file, selector) => {
     const rules = rulesFor(sheet(file), selector);
     expect(rules).toMatch(/position:\s*sticky/);
     expect(rules).toMatch(/top:\s*var\(--space-4\)/);
     expect(rules).toMatch(cap);
-    expect(rules).toMatch(/overflow:\s*auto/);
+    expect(rules).not.toMatch(/100dvh/);
+  });
+
+  it('the rubric card scrolls its fields, so Skip / Submit & next stay pinned at its foot', () => {
+    const css = sheet('screens/queues/queues.css');
+    expect(rulesFor(css, '.qu-review > .qu-rubric-card')).toMatch(/overflow:\s*hidden/);
+    const body = rulesFor(css, '.qu-review > .qu-rubric-card > .qu-rubric-body');
+    expect(body).toMatch(/overflow:\s*auto/);
+    expect(body).toMatch(/min-height:\s*0/);
+  });
+
+  it('the hub entry scrolls inside itself', () => {
+    expect(rulesFor(sheet('screens/hub/hub.css'), '.hub-split > .hub-entry')).toMatch(/overflow:\s*auto/);
   });
 });

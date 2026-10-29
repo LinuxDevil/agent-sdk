@@ -256,6 +256,40 @@ const onlineScores: ObserveScoreRow[] = [
   { ...score, score_id: 'e2e-online-2', name: 'answered', source: 'online', value: 0, comment: null, obs_id: null, created_at: T0 - HOUR },
 ];
 
+/**
+ * The overflowing queue review: `e2e-queue` with 6 described rubric rows and its
+ * trace's root input a 40-message transcript, so the score card is taller than the
+ * screen. Call after `stubObserve` (a later `page.route` wins).
+ */
+export async function stubLongQueueReview(page: Page): Promise<void> {
+  const rubric = Array.from({ length: 6 }, (_, i) => ({
+    name: `criterion-${i + 1}`,
+    description: 'Did the reply get this part right, fully and politely, with the facts checked?',
+    min: 0,
+    max: 5,
+  }));
+  const messages = Array.from({ length: 40 }, (_, i) => ({
+    role: i % 2 ? 'assistant' : 'user',
+    content: `Message ${i + 1}: where is order ord_${i}? It was due last week and the tracking page has not moved since.`,
+  }));
+  const [root, ...rest] = traceDetail.observations;
+  const longTrace = { ...traceDetail, observations: [{ ...root, input: JSON.stringify(messages) }, ...rest] };
+  await page.route('**/observe/api/v1/queues/e2e-queue', (route) => json(route, { queue: { ...queue, rubric } }));
+  await page.route('**/observe/api/v1/traces/e2e-trace', (route) => json(route, longTrace));
+}
+
+/**
+ * The `e2e-namespace` hub with a `big-entry` whose value is 80 pretty-printed JSON
+ * fields (its value view and editor both at their caps). Call after `stubObserve`.
+ */
+export async function stubBigHubEntry(page: Page): Promise<void> {
+  const value = JSON.stringify(Object.fromEntries(Array.from({ length: 80 }, (_, i) => [`field_${i}`, `value number ${i}`])), null, 2);
+  const entries = [hubEntries[0], hubEntry('big-entry', value, 'fleet', null)];
+  await page.route(/\/observe\/api\/v1\/hub(\?|$)/, (route) =>
+    route.request().method() === 'GET' ? json(route, { entries }) : route.fallback(),
+  );
+}
+
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 

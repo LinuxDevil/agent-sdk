@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from '@playwright/test';
-import { stubObserve } from './observeStub';
+import { stubBigHubEntry, stubLongQueueReview, stubObserve } from './observeStub';
 
 /**
  * Status, copy and naming match the docs - a finished run says
@@ -231,4 +231,58 @@ test('the docked nav collapses to an icon rail that survives a reload, every lin
   await page.setViewportSize({ width: 1280, height: 800 });
   await nav.getByRole('button', { name: 'Expand navigation' }).click();
   await expect(nav.getByRole('button', { name: 'Collapse navigation' })).toHaveAttribute('aria-expanded', 'true');
+});
+
+/** Scroll the screen's scroll container (`.screen-main`) to its end, as a reviewer reading down the page would. */
+async function scrollScreenToEnd(page: Page) {
+  await page.locator('.screen-main').evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+}
+
+/** Whether `inner`'s box lies inside `.screen-main`'s visible box (and so inside the viewport). */
+async function insideScreen(page: Page, selector: string) {
+  const main = (await page.locator('.screen-main').boundingBox())!;
+  const box = (await page.locator(selector).first().boundingBox())!;
+  return box.y >= main.y - 0.5 && box.y + box.height <= main.y + main.height + 0.5 && main.y + main.height <= page.viewportSize()!.height;
+}
+
+test.describe('sticky side panels at 1280x800', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('queue review: with 6 rubric rows and a long trace, "Submit & next" stays on screen', async ({ page }) => {
+    await stubObserve(page);
+    await stubLongQueueReview(page);
+    await page.goto(`/?token=${TOKEN}#/evals/queues/e2e-queue`);
+    const card = page.getByRole('form', { name: 'Scores' });
+    await expect(card.locator('.qu-score')).toHaveCount(6);
+    await expect(page.locator('.qu-messages')).toBeVisible();
+    // The case under test: the card is taller than the room it has, so it scrolls inside.
+    await scrollScreenToEnd(page);
+    await expect.poll(() => card.locator('.qu-rubric-body').evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+    await expect.poll(() => insideScreen(page, '.qu-review > .qu-rubric-card')).toBe(true);
+    await expect.poll(() => insideScreen(page, '.qu-submit')).toBe(true);
+    await expect.poll(() => insideScreen(page, '.qu-skip')).toBe(true);
+    await expect(card.getByRole('button', { name: /Submit & next/ })).toBeInViewport();
+  });
+
+  test('hub: a long entry being edited stays inside the screen, its Save button reachable (1280x640)', async ({ page }) => {
+    // At 800 tall an entry (its value capped at 480px, its editor at 16 rows) just fits; 640 makes it overflow.
+    await page.setViewportSize({ width: 1280, height: 640 });
+    await stubObserve(page);
+    await stubBigHubEntry(page);
+    await page.goto(`/?token=${TOKEN}#/hub/e2e-namespace?agent=e2e-agent`);
+    await page.getByRole('main').getByRole('button', { name: /big-entry/ }).click();
+    const entry = page.getByRole('region', { name: 'Entry big-entry' });
+    await entry.getByRole('button', { name: 'Edit' }).click();
+    const save = entry.getByRole('button', { name: 'Save' });
+    await expect(save).toBeAttached();
+    // The case under test: the entry's content is taller than the room below its sticky top.
+    const room = await page.locator('.screen-main').evaluate((el) => el.clientHeight - 32);
+    expect(await entry.evaluate((el) => el.scrollHeight)).toBeGreaterThan(room);
+    await scrollScreenToEnd(page);
+    await expect.poll(() => insideScreen(page, '.hub-split > .hub-entry')).toBe(true);
+    // Save is reached by scrolling the entry itself; the entry stays put.
+    await save.scrollIntoViewIfNeeded();
+    await expect(save).toBeInViewport();
+    await expect.poll(() => insideScreen(page, '.hub-split > .hub-entry')).toBe(true);
+  });
 });
