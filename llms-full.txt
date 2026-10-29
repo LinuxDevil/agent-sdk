@@ -2163,18 +2163,23 @@ Trace screen.
 `#/playground` (Build > Playground) tries messages against a model
 without editing an agent:
 
-- **Messages**: system, user and assistant rows. Every `{name}` placeholder
-  in any row gets a **Variables** input, in the order the names first appear.
+- **Messages**: system, user and assistant message cards. Every `{name}`
+  placeholder in any message gets a **Variables** input in the left
+  settings card, in the order the names first appear.
 - **Model**: a provider (the ones with a key under Settings > Provider keys,
   plus `ollama` and `mock`; `mock` when nothing is configured) and a model
   name, sent as `provider/model`.
 - **Tools**: pick a saved agent to borrow its tools, then switch each one on
   or off.
-- **Run** streams the reply as it arrives; **Stop** aborts it. When the run
-  finishes, **Open trace** goes to its trace.
-- **Save as new prompt version** pushes the system message (and its
-  variables) to the prompt registry, under the loaded prompt's name or one
-  you type. It is disabled while there is no system message.
+- **Run** (or Ctrl/Cmd+Enter in the messages) streams the reply as it
+  arrives; **Stop** aborts it. Tool calls show as cards that open to their
+  arguments. When the run finishes, the output shows its tokens in and out,
+  latency and cost (when the model's price is known), and **Open trace**
+  goes to its trace.
+- **Save prompt** (in the page header) opens a card whose **Save as new
+  prompt version** pushes the system message (and its variables) to the
+  prompt registry, under the loaded prompt's name or one you type. It is
+  disabled while there is no system message.
 
 Two links pre-fill it. **Open in Playground** on a model call (generation)
 in a trace opens `#/playground?trace=<traceId>&fromObs=<obsId>`, which loads

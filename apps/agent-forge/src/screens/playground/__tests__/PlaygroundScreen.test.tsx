@@ -217,6 +217,7 @@ describe('PlaygroundScreen', () => {
     stream.end();
     await waitFor(() => c.querySelector('.pg-output [role="alert"]') !== null);
     expect(c.querySelector('.pg-output [role="alert"]')!.textContent).toContain('No key');
+    expect(c.querySelector('.pg-output')!.textContent).not.toContain('Latency');
   });
 
   it('Ctrl+Enter in a message runs it, and shows the shortcut beside Run', async () => {
@@ -233,6 +234,11 @@ describe('PlaygroundScreen', () => {
     typeInto(user, 'hi');
     act(() => {
       user.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(ran).toBe(0);
+    act(() => {
+      user.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, repeat: true, bubbles: true }));
+      user.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, isComposing: true, bubbles: true }));
     });
     expect(ran).toBe(0);
     act(() => {
@@ -276,9 +282,11 @@ describe('PlaygroundScreen', () => {
     act(() => trigger.click());
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
     expect(dialog.hidden).toBe(false);
-    expect(dialog.contains(document.activeElement)).toBe(true);
+    expect(document.activeElement).toBe(dialog.querySelector('input'));
+    // Escape closes it even once focus has left the card.
+    act(() => (document.activeElement as HTMLElement).blur());
     act(() => {
-      dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(dialog.hidden).toBe(true);
     expect(document.activeElement).toBe(trigger);

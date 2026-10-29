@@ -208,6 +208,10 @@
   font-size: 12.5px;
 }
 
+/* a legend is not a flex item, so the gap does not reach it. */
+.pg-tools > legend {
+  margin-bottom: var(--space-3);
+}
 .pg-tools {
   display: flex;
   flex-direction: column;

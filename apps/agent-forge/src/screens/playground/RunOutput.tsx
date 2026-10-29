@@ -49,7 +49,7 @@ function metricsOf(run: RunState): Metric[] {
   const list: (Metric | false)[] = [
     !!usage && { icon: ArrowUpFromLine, label: 'Tokens in', value: approx + fmtInt(usage.inputTokens) },
     !!usage && { icon: ArrowDownToLine, label: 'Tokens out', value: approx + fmtInt(usage.outputTokens) },
-    durationMs !== undefined && { icon: Timer, label: 'Latency', value: fmtDuration(durationMs) },
+    durationMs !== undefined && run.status !== 'error' && { icon: Timer, label: 'Latency', value: fmtDuration(durationMs) },
     usage?.costUsd !== undefined && { icon: Coins, label: 'Cost', value: fmtCost(usage.costUsd) },
   ];
   return list.filter((m): m is Metric => m !== false);

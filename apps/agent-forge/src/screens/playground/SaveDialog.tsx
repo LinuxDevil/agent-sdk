@@ -21,8 +21,8 @@ interface SaveDialogProps {
   children: ReactNode;
 }
 
-/** Closes on a pointer press outside both the card and its trigger. */
-function useOutsidePress(open: boolean, card: RefObject<HTMLElement | null>, props: Pick<SaveDialogProps, 'onClose' | 'triggerRef'>) {
+/** While open: a pointer press outside both the card and its trigger closes it; Escape anywhere closes it and refocuses the trigger. */
+function useDismiss(open: boolean, card: RefObject<HTMLElement | null>, props: Pick<SaveDialogProps, 'onClose' | 'triggerRef'>) {
   const { onClose, triggerRef } = props;
   useEffect(() => {
     if (!open) return undefined;
@@ -31,22 +31,33 @@ function useOutsidePress(open: boolean, card: RefObject<HTMLElement | null>, pro
       if (card.current?.contains(target) || triggerRef.current?.contains(target)) return;
       onClose(false);
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      onClose(true);
+    };
     document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
   }, [open, card, onClose, triggerRef]);
 }
 
 /**
  * The "Save as prompt version" popover card under the page header's Save
  * prompt button. It stays mounted while closed (`hidden`), so a typed name
- * survives closing it; opening focuses its first field, Escape or a press
- * outside closes it.
+ * survives closing it; opening focuses its name field, Escape (wherever focus
+ * is) or a press outside closes it.
  */
 export function SaveDialog({ id, open, onClose, triggerRef, children }: SaveDialogProps) {
   const card = useRef<HTMLDivElement>(null);
-  useOutsidePress(open, card, { onClose, triggerRef });
+  useDismiss(open, card, { onClose, triggerRef });
   useEffect(() => {
-    if (open) card.current?.querySelector<HTMLElement>('input, button:not(:disabled)')?.focus();
+    if (!open) return;
+    const el = card.current;
+    (el?.querySelector<HTMLElement>('input') ?? el?.querySelector<HTMLElement>('button:not(:disabled)'))?.focus();
   }, [open]);
   return (
     <div
@@ -56,11 +67,6 @@ export function SaveDialog({ id, open, onClose, triggerRef, children }: SaveDial
       role="dialog"
       aria-labelledby={`${id}-title`}
       hidden={!open}
-      onKeyDown={(e) => {
-        if (e.key !== 'Escape') return;
-        e.stopPropagation();
-        onClose(true);
-      }}
     >
       <div className="pg-card-head">
         <div className="pg-save-heading">

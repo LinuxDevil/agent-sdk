@@ -21,7 +21,7 @@ export function RunBar({ canRun, running, onRun, onStop }: RunBarProps) {
       </span>
       <div className="pg-runbar-actions">
         <button type="button" className="btn btn-sm" disabled={!running} onClick={onStop}>
-          <Square aria-hidden="true" />
+          <Square aria-hidden="true" fill="currentColor" />
           Stop
         </button>
         <button type="button" className="btn btn-primary" disabled={!canRun} aria-keyshortcuts="Control+Enter Meta+Enter" onClick={onRun}>

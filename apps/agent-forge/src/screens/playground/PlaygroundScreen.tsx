@@ -69,7 +69,7 @@ export function PlaygroundScreen() {
   };
   // Ctrl/Cmd+Enter anywhere in the composer runs it, like the Run button.
   const onComposerKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey) || e.repeat || e.nativeEvent.isComposing) return;
     e.preventDefault();
     runNow();
   };
