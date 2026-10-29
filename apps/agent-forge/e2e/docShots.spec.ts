@@ -1083,3 +1083,134 @@ test("x-traces: the Agents drawer's Trace tab (narrow host)", async ({ page }) =
   await expect(page.locator('.run-inspector')).toBeVisible();
   await shoot(page, 'x-drawer-trace');
 });
+
+// --- Threads list + thread detail review states (x- shots, P4) --------------
+
+const LONG_THREAD = 'doc-long-thread';
+
+/** A long assistant reply: `lines` numbered steps, well past the 12-line clamp. */
+const longReply = (topic: string, lines: number) =>
+  [`Here is what I found (${topic}):`, '', ...Array.from({ length: lines }, (_, i) => `${i + 1}. Order ord_${50 + i}: looked up, carrier status read and the ${topic} rules applied.`), '', 'Anything else I can help with?'].join('\n');
+
+/** Three turns: two long replies (one stays collapsed, one is expanded in the shot) and a failed one. */
+const THREAD_TURNS = [
+  { ask: 'Where are my last three orders?', reply: longReply('delivery', 16), error: null },
+  { ask: 'And which of them can still be refunded? Please list every item, the refund window and what I need to send back.', reply: longReply('refunds', 18), error: null },
+  { ask: 'Refund the damaged blender from ord_52.', reply: null, error: 'Tool issue_refund failed: order service 503 (retry after 30s)' },
+] as const;
+
+function longThread() {
+  const start = NOW - 50 * MINUTE;
+  const session: ObserveSessionRow = {
+    session_id: LONG_THREAD,
+    agent_id: 'orders-bot',
+    agent_name: 'Orders bot',
+    status: 'interrupted',
+    started_at: start,
+    ended_at: start + 14 * MINUTE,
+    traces: THREAD_TURNS.length,
+    input_tokens: 5_840,
+    output_tokens: 1_312,
+    cost_usd: 0.0061,
+    last_input_preview: THREAD_TURNS[2].ask,
+  };
+  const traces = THREAD_TURNS.map((turn, i) => {
+    const t0 = start + i * 6 * MINUTE;
+    return {
+      trace_id: `${LONG_THREAD}-turn-${i}`,
+      name: 'orders-bot turn',
+      agent_id: 'orders-bot',
+      agent_name: 'Orders bot',
+      session_id: LONG_THREAD,
+      start: t0,
+      end: t0 + 2_400 + i * 1_700,
+      status: turn.error ? 'error' : 'ok',
+      observations: 6,
+      generations: 2,
+      tools: 2,
+      errors: turn.error ? 1 : 0,
+      input_tokens: 1_600 + i * 420,
+      output_tokens: turn.error ? 40 : 520 + i * 90,
+      cost_usd: 0.0018 + i * 0.0003,
+      model: 'gpt-4o-mini',
+      error_message: turn.error,
+      input_preview: turn.ask.slice(0, 200),
+      output_preview: turn.reply?.slice(0, 200) ?? null,
+    };
+  });
+  return { session, traces };
+}
+
+function longThreadDetail(i: number) {
+  const { traces } = longThread();
+  const t = traces[i];
+  const turn = THREAD_TURNS[i];
+  const input = JSON.stringify([
+    { role: 'system', content: 'You are the orders bot. Look orders up before answering.' },
+    { role: 'user', content: turn.ask },
+  ]);
+  const root = {
+    obs_id: `${t.trace_id}-root`, trace_id: t.trace_id, session_id: LONG_THREAD, agent_id: 'orders-bot', parent_obs_id: null,
+    kind: 'agent', name: t.name, start: t.start, end: t.end, status: t.status, input, output: turn.reply,
+    model: null, usage_input_tokens: null, usage_output_tokens: null, usage_cached_tokens: null, usage_reasoning_tokens: null,
+    cost_usd: null, cost_partial: null, usage_estimated: null, truncated: false, attrs: turn.error ? { error: turn.error } : null,
+  };
+  return { trace_id: t.trace_id, scores: [], observations: [root] };
+}
+
+async function longThreadRoutes(page: Page) {
+  await page.route(`**/observe/api/v1/sessions/${LONG_THREAD}`, (route) => json(route, longThread()));
+  await page.route(`**/observe/api/v1/traces/${LONG_THREAD}-turn-*`, (route) => {
+    const i = Number(/-turn-(\d+)$/.exec(new URL(route.request().url()).pathname)?.[1]);
+    return json(route, longThreadDetail(i));
+  });
+}
+
+const turnsOf = (page: Page) => page.getByRole('main').locator('.thread-turn');
+
+test('x-threads: list loading', async ({ page }) => {
+  // Never answered: the table stays in its first-load state.
+  await page.route('**/observe/api/v1/sessions?**', () => undefined);
+  await open(page, '/threads');
+  await expect(page.getByRole('main').locator('table.data-table[aria-busy="true"]')).toBeVisible();
+  await shoot(page, 'x-threads-loading');
+});
+
+test('x-threads: list empty', async ({ page }) => {
+  await page.route('**/observe/api/v1/sessions?**', (route) => json(route, { sessions: [], total: 0, limit: 50, offset: 0 }));
+  await open(page, '/threads');
+  await expect(page.getByRole('main').locator('.empty-state')).toBeVisible();
+  await shoot(page, 'x-threads-empty');
+});
+
+test('x-threads: detail loading', async ({ page }) => {
+  await page.route(`**/observe/api/v1/sessions/${LONG_THREAD}`, () => undefined);
+  await open(page, `/threads/${LONG_THREAD}`);
+  await page.waitForTimeout(400);
+  await shoot(page, 'x-thread-loading');
+});
+
+test('x-threads: detail with long turns (collapsed, expanded, errored)', async ({ page }) => {
+  await longThreadRoutes(page);
+  await open(page, `/threads/${LONG_THREAD}`);
+  await expect(turnsOf(page)).toHaveCount(THREAD_TURNS.length);
+  await expect(turnsOf(page).first()).toContainText('Anything else I can help with?');
+  await shoot(page, 'x-thread-long');
+  const second = turnsOf(page).nth(1);
+  const more = second.getByRole('button', { name: 'Show more' });
+  if ((await more.count()) > 0) await more.last().click();
+  await second.scrollIntoViewIfNeeded();
+  await shoot(page, 'x-thread-expanded');
+  await turnsOf(page).nth(2).scrollIntoViewIfNeeded();
+  await shoot(page, 'x-thread-error');
+  await page.screenshot({ path: path.join(OUT, 'studio-x-thread-long-full.png'), fullPage: true });
+});
+
+test('x-threads: detail at 375 wide', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await longThreadRoutes(page);
+  await open(page, `/threads/${LONG_THREAD}`);
+  await expect(turnsOf(page)).toHaveCount(THREAD_TURNS.length);
+  await shoot(page, 'x-thread-narrow');
+  await page.screenshot({ path: path.join(OUT, 'studio-x-thread-narrow-full.png'), fullPage: true });
+});

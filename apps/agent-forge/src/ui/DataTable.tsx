@@ -408,12 +408,15 @@ function EmptyBody<T>({ columns, loading, empty }: { columns: Column<T>[]; loadi
 /**
  * Props for {@link TablePager}: the page start, page size, total rows and the
  * page-change callback; `pending` marks a first load with no rows yet (no range
- * text, which would read "0 of 0", and both buttons disabled).
+ * text, which would read "0 of 0", and both buttons disabled). With nothing to
+ * page (`total` 0 on the first page, not pending) the pager renders nothing.
  */
 export type TablePagerProps = NonNullable<DataTableProps<unknown>['page']> & { pending?: boolean };
 
-/** The table pager ("1–50 of 120", Previous, Next), also used under non-table lists such as card grids. */
+/** The table pager ("1–50 of 120", Previous, Next), also used under non-table lists such as card grids; hidden when there is nothing to page. */
 export function TablePager({ offset, limit, total, onChange, pending = false }: TablePagerProps) {
+  // Nothing to page: no "0 of 0" under an empty state (an offset past an emptied list keeps Previous).
+  if (total === 0 && offset === 0 && !pending) return null;
   const fmt = (n: number) => n.toLocaleString('en-US');
   // An offset past the end (total shrank under us) still reads as a valid range.
   const start = Math.min(offset + 1, total);

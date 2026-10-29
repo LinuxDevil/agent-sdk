@@ -30,6 +30,9 @@ describe('statusTone', () => {
     ['error', 'error'],
     ['running', 'running'],
     ['interrupted', 'warning'],
+    // session
+    ['active', 'ok'],
+    ['ended', 'neutral'],
     // agent
     ['healthy', 'ok'],
     ['stale', 'warning'],
