@@ -232,7 +232,7 @@ function HubContent({ namespace }: { namespace: string | undefined }) {
   }
 
   const names = new Map(sorted.map((a) => [a.agent_id, agentLabel(a)]));
-  const writerName = (id: string | null) => (id === null ? '-' : (names.get(id) ?? id));
+  const writerName = (id: string | null) => (id === null ? '—' : (names.get(id) ?? id));
   // Changing the viewer to the default drops `agent`; any filter edit replaces the history entry.
   const update = (patch: HubUrlState) => {
     const next = { ...state, ...patch };

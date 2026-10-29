@@ -14,7 +14,7 @@ import '../../ui/card.css';
 /** Rows fetched for one eval; a full page means older rows were left out. */
 export const EVAL_ROW_LIMIT = 1000;
 
-const fmtMean = (v: number | null) => (v === null ? '-' : v.toFixed(2));
+const fmtMean = (v: number | null) => (v === null ? <span className="value-missing">—</span> : v.toFixed(2));
 
 /**
  * A pass rate as a two-tone bar (passed in success, failed in the danger tint)
@@ -80,9 +80,10 @@ function Failures({ evalName, rows }: { evalName: string; rows: ObserveScoreRow[
 function DetailLoading({ evalName }: { evalName: string }) {
   return (
     <div className="scores-detail-loading">
-      <p className="scores-muted" role="status">
+      {/* Announced, not shown: the skeletons are the visible loading state. */}
+      <span className="visually-hidden" role="status">
         Loading {evalName}...
-      </p>
+      </span>
       <Skeleton width="100%" height={160} radius="var(--radius)" />
       <div className="scores-detail-grid">
         <Skeleton width="100%" height={96} radius="var(--radius)" />

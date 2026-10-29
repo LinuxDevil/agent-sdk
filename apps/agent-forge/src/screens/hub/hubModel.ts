@@ -127,5 +127,5 @@ export function fmtSpan(ms: number): string {
 /** The TTL cell: `never`, or the lifetime and the time left. */
 export function ttlText(entry: ObserveHubEntry, now: number): string {
   if (entry.ttl === null || entry.expires_at === null) return 'never';
-  return `${fmtSpan(entry.ttl)} - expires in ${fmtSpan(entry.expires_at - now)}`;
+  return `${fmtSpan(entry.ttl)} · expires in ${fmtSpan(entry.expires_at - now)}`;
 }

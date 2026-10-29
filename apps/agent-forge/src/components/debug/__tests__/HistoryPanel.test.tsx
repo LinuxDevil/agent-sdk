@@ -57,7 +57,7 @@ describe('HistoryList', () => {
     );
     expect(rows).toEqual([
       ['1', 'in-progress', 'tool_calls', 'get_weather', '42', '$0.0002'],
-      ['2', 'finished', 'stop', '-', '30', '-'],
+      ['2', 'finished', 'stop', '—', '30', '—'],
     ]);
   });
 
@@ -83,7 +83,7 @@ describe('TrajectoryCompare', () => {
     expect(rows[0].textContent).toContain('{"tempF":68}');
     expect(rows[0].textContent).toContain('{"tempC":20}');
     expect(rows[1].classList.contains('diverged')).toBe(false);
-    expect(rows[2].querySelector('.traj-missing')?.textContent).toBe('-'); // the original has no third turn
+    expect(rows[2].querySelector('.traj-missing')?.textContent).toBe('—'); // the original has no third turn
 
     expect(container.querySelector('.traj-drift')?.textContent).toBe('steps: 2 -> 3');
   });

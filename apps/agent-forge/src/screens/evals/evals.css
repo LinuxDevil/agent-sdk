@@ -88,10 +88,6 @@
 .ds-screen a.btn {
   text-decoration: none;
 }
-.ds-faint {
-  color: var(--text-faint);
-}
-
 .ds-field {
   display: flex;
   flex-direction: column;
