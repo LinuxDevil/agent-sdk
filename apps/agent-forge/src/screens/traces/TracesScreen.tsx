@@ -83,17 +83,18 @@ function TraceError({ message }: { message: string | null }) {
 /**
  * The list's columns, sized so the table fits a 1280 px window with the nav
  * expanded (and the header stays sticky): the agent and trace id ride under
- * the name; the agent column and the output preview appear on wider screens,
- * and a phone keeps status, name and duration (the status pill flags errors).
+ * the name, the error takes the flexible width; the agent column and the
+ * output preview appear on wider screens, and a phone keeps status and name
+ * (the status pill flags errors).
  */
 function columns(now: number): Column<ObserveTraceRow>[] {
   return [
     { key: 'status', header: 'Status', width: 82, render: (t) => <StatusPill status={t.status} /> },
-    { key: 'name', header: 'Name', width: 186, render: (t) => <NameCell trace={t} /> },
+    { key: 'name', header: 'Name', width: 176, render: (t) => <NameCell trace={t} /> },
     { key: 'agent', header: 'Agent', width: 130, hideBelow: 1360, render: (t) => <Clip text={t.agent_name ?? t.agent_id} /> },
-    { key: 'input', header: 'Input', minWidth: 120, hideBelow: 900, render: (t) => <Clip text={t.input_preview} /> },
+    { key: 'input', header: 'Input', width: 124, hideBelow: 900, render: (t) => <Clip text={t.input_preview} /> },
     { key: 'output', header: 'Output', minWidth: 120, hideBelow: 1500, render: (t) => <Clip text={t.output_preview} /> },
-    { key: 'error', header: 'Error', width: 150, hideBelow: 560, render: (t) => <TraceError message={t.error_message} /> },
+    { key: 'error', header: 'Error', minWidth: 120, hideBelow: 560, render: (t) => <TraceError message={t.error_message} /> },
     { key: 'model', header: 'Model', width: 116, hideBelow: 760, render: (t) => <ModelChip model={t.model} /> },
     { key: 'started', header: 'Started', width: 80, hideBelow: 640, render: (t) => <span className="traces-num">{fmtStarted(t.start, now)}</span> },
     { key: 'duration', header: 'Duration', align: 'right', sortable: true, width: 90, hideBelow: 420, render: (t) => fmtDuration(t.end - t.start) },
@@ -278,6 +279,7 @@ export function TracesScreen() {
     <>
       <ScreenHeader
         title="Traces"
+        status={null}
         description="Every run reported to the collector"
         actions={<ListActions live={live} disabled={health.down} onRefresh={bump} onLive={() => setLive((on) => !on)} />}
       />

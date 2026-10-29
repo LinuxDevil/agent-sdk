@@ -171,24 +171,24 @@
   color: var(--text-faint);
 }
 .run-kind-agent {
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: color-mix(in srgb, var(--chart-2) 16%, var(--surface));
+  color: var(--chart-2);
 }
 .run-kind-generation {
   background: var(--violet-soft);
   color: var(--violet);
 }
 .run-kind-tool {
-  background: var(--info-soft);
-  color: var(--info);
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 .run-kind-span {
   background: var(--surface-3);
   color: var(--text-muted);
 }
 .run-kind-event {
-  background: var(--warning-soft);
-  color: var(--warning);
+  background: color-mix(in srgb, var(--chart-4) 16%, var(--surface));
+  color: var(--chart-4);
 }
 .run-row-error .run-kind {
   background: var(--danger-soft);
@@ -197,7 +197,15 @@
 
 /* ---------- tree ---------- */
 .run-tree {
+  container-type: inline-size;
   padding: var(--space-1) 0;
+}
+/* a narrow pane (the 375 px screen, a slim drawer): name, status and duration only, on one line. */
+@container (max-width: 420px) {
+  .run-tree .run-model-chip,
+  .run-tree .run-tokens {
+    display: none;
+  }
 }
 .run-tree-row {
   padding: 0;
@@ -260,8 +268,10 @@
   line-height: 20px;
   font-variant-numeric: tabular-nums;
 }
-/* the tree's per-generation Playground link: a quiet icon, full strength on hover, focus or selection. */
-.run-tree-row .run-playground-link {
+/* the tree's per-generation Playground link: a quiet icon, full strength on hover, focus or selection.
+   Other rows hold an empty slot of the same size, so the durations share one right edge. */
+.run-tree-row .run-playground-link,
+.run-row-slot {
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -277,7 +287,11 @@
     opacity var(--dur-fast) var(--ease),
     background-color var(--dur-fast) var(--ease);
 }
-.run-row-virtual .run-playground-link {
+.run-row-slot {
+  opacity: 0;
+}
+.run-row-virtual .run-playground-link,
+.run-row-virtual .run-row-slot {
   align-self: center;
   margin-top: 0;
 }
@@ -371,17 +385,20 @@
   border-radius: 4px;
   background: var(--accent);
 }
+.run-wf-bar-agent {
+  background: var(--chart-2);
+}
 .run-wf-bar-generation {
   background: var(--violet);
 }
 .run-wf-bar-tool {
-  background: var(--info);
+  background: var(--warning);
 }
 .run-wf-bar-span {
   background: color-mix(in srgb, var(--text-faint) 55%, transparent);
 }
 .run-wf-bar-event {
-  background: var(--warning);
+  background: var(--chart-4);
 }
 .run-wf-bar.running {
   background-color: var(--info);

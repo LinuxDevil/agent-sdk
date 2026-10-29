@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
+import { ArrowLeft, FileQuestion } from 'lucide-react';
 
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { nestObservations } from '../../observe/tree';
@@ -6,7 +7,7 @@ import type { ObserveObservationRow } from '../../observe/types';
 import { useAgents, useDaemonDown, useDaemonHealth, useTraceDetail } from '../../observe/useObserve';
 import { navigate } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
-import { FileQuestion } from 'lucide-react';
+import { ScreenHeader } from '../../shell/ScreenHeader';
 import { EmptyState } from '../../ui/EmptyState';
 import { Skeleton, SkeletonRows } from '../../ui/Skeleton';
 import { tracesListPath } from './tracesUrl';
@@ -87,8 +88,10 @@ function useTrace(traceId: string, pollMs: number) {
 }
 
 /**
- * `#/traces/:traceId` - one trace: a header (root name, status, agent, model,
- * timing, tokens, cost, session, copy link) over the unified trace viewer.
+ * `#/traces/:traceId` - one trace: the page header (Traces, the trace id, a
+ * link back to the list with its last filters), then a header card (root
+ * name, status, actions, agent, model, timing, tokens, cost, session) over
+ * the unified trace viewer.
  * `?obs=<id>` is the selected step, read on load and written with replace on
  * every selection; the inspector's Feedback section takes thumbs up/down
  * scores. A dead daemon shows the shared daemon-down state without touching
@@ -130,6 +133,21 @@ export function TraceScreen({ traceId, pollMs = DEFAULT_POLL_MS }: { traceId: st
     );
   return (
     <div className="trace-screen" data-trace-id={traceId}>
+      <ScreenHeader
+        title="Traces"
+        status={null}
+        description={
+          <>
+            Trace <code className="trace-id">{traceId}</code>
+          </>
+        }
+        actions={
+          <a className="btn btn-ghost trace-back" href={`#${tracesListPath()}`}>
+            <ArrowLeft aria-hidden="true" />
+            All traces
+          </a>
+        }
+      />
       {body}
     </div>
   );

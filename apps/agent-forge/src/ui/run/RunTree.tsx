@@ -100,12 +100,16 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
         {tokens !== null && <span className="run-tokens">{fmtInt(tokens)} tok</span>}
         <Duration node={node} now={now} />
       </button>
-      {playgroundLinks && row.kind === 'generation' && (
-        <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)} title={`Open ${name} in Playground`}>
-          <FlaskConical size={14} strokeWidth={1.75} aria-hidden="true" />
-          <span className="visually-hidden">Open in Playground</span>
-        </a>
-      )}
+      {playgroundLinks &&
+        (row.kind === 'generation' ? (
+          <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)} title={`Open ${name} in Playground`}>
+            <FlaskConical size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span className="visually-hidden">Open in Playground</span>
+          </a>
+        ) : (
+          // Every row reserves the link's slot, so the durations line up in one column.
+          <span className="run-row-slot" aria-hidden="true" />
+        ))}
     </div>
   );
 }
@@ -114,7 +118,9 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
  * The trace as an indented tree (with indent guides), one row per observation
  * in depth-first order: kind icon tile, full name (wraps; virtualised rows keep a `title`
  * tooltip), status when not ok, model chip, total tokens and duration.
- * Generation rows carry an "Open in Playground" icon link. Above 500 observations
+ * Generation rows carry an "Open in Playground" icon link (other rows keep
+ * its slot empty, so durations align); in a pane under 420 px the model chip
+ * and token count drop out, so each row stays on one line. Above 500 observations
  * the rows render through `VirtualList` at a fixed height.
  */
 export function RunTree({ observations, selectedObsId, onSelect, now, playgroundLinks = true }: RunTreeProps) {

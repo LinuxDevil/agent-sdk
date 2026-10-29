@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Bot, CalendarClock, ChevronRight, Coins, Cpu, FlaskConical, Link2, MessagesSquare, Timer, Wallet, type LucideIcon } from 'lucide-react';
+import { Bot, CalendarClock, Coins, Cpu, FlaskConical, Link2, MessagesSquare, Timer, Wallet, type LucideIcon } from 'lucide-react';
 
 import { fmtCost, fmtDateTime, fmtDuration, fmtInt } from '../../observe/format';
 import type { ObserveObservationRow } from '../../observe/types';
@@ -8,7 +8,6 @@ import { useToast } from '../../ui/Toast';
 import { displayName, displayStatus, elapsedMs, playgroundHref } from '../../ui/run/rows';
 import { AddToDataset } from './AddToDataset';
 import { AddToQueue } from './AddToQueue';
-import { tracesListPath } from './tracesUrl';
 
 /** The latest `end` over every observation, or `undefined` when none has ended. */
 function latestEnd(rows: ObserveObservationRow[]): number | undefined {
@@ -44,13 +43,13 @@ function playgroundTarget(rows: ObserveObservationRow[], selectedObsId: string |
   return first;
 }
 
-/** One metric chip: icon and muted label, then the value. */
+/** One metric chip: the icon stands for the label (read out, and shown as the chip's tooltip), then the value. */
 function Fact({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
-    <div className="trace-fact">
+    <div className="trace-fact" title={label}>
       <dt>
         <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
-        {label}
+        <span className="visually-hidden">{label}</span>
       </dt>
       <dd>{children}</dd>
     </div>
@@ -74,25 +73,6 @@ function CopyLinkButton() {
   );
 }
 
-/** Traces (back to the list with its last filters) › this trace's id. */
-function TraceCrumbs({ traceId }: { traceId: string }) {
-  return (
-    <nav className="trace-crumbs" aria-label="Breadcrumb">
-      <ol>
-        <li>
-          <a href={`#${tracesListPath()}`}>Traces</a>
-        </li>
-        <li>
-          <ChevronRight size={14} strokeWidth={1.75} aria-hidden="true" />
-          <span aria-current="page" title={traceId}>
-            {traceId}
-          </span>
-        </li>
-      </ol>
-    </nav>
-  );
-}
-
 interface TraceHeaderProps {
   root: ObserveObservationRow;
   observations: ObserveObservationRow[];
@@ -103,8 +83,7 @@ interface TraceHeaderProps {
 }
 
 /**
- * The trace screen's header card, from the root observation: a breadcrumb
- * (Traces › trace id), the name and status, the actions - copy link (the
+ * The trace screen's header card, from the root observation: the name and status, the actions - copy link (the
  * current URL, `?obs=` included), "Add to dataset", "Add to queue" and, when
  * the trace has a generation, "Open in Playground" - then metric chips:
  * duration (counting to `now` while running), tokens, cost, model, start,
@@ -117,7 +96,6 @@ export function TraceHeader({ root, observations, agentName, now, selectedObsId 
   const status = displayStatus(root);
   return (
     <header className="card trace-header trace-card">
-      <TraceCrumbs traceId={root.trace_id} />
       <div className="trace-title">
         <div className="trace-title-name">
           <h2 title={displayName(root)}>{displayName(root)}</h2>
@@ -141,6 +119,7 @@ export function TraceHeader({ root, observations, agentName, now, selectedObsId 
         </Fact>
         <Fact icon={Coins} label="Tokens">
           {fmtInt(tokens)}
+          <span className="trace-fact-unit"> tokens</span>
         </Fact>
         <Fact icon={Wallet} label="Cost">
           {fmtCost(cost)}

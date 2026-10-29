@@ -5,6 +5,18 @@ import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
 import type { ObserveObservationRow, ObserveScoreRow, ObserveTraceDetail } from '../../../observe/types';
 import { TraceScreen } from '../TraceScreen';
+import type { ScreenHeaderProps } from '../../../shell/ScreenHeader';
+
+// The shell's header needs the app state; here it renders its props in place.
+vi.mock('../../../shell/ScreenHeader', () => ({
+  ScreenHeader: ({ title, description, actions }: ScreenHeaderProps) => (
+    <header className="test-screen-header">
+      <h1>{title}</h1>
+      <p>{description}</p>
+      {actions}
+    </header>
+  ),
+}));
 
 const T0 = 1_700_000_000_000;
 
@@ -258,5 +270,17 @@ describe('TraceScreen', () => {
     await waitFor(() => inspectedId(c) === 'gen1');
     expect(c.textContent).not.toContain('lousho observe start');
     expect(window.location.hash).toBe('#/traces/t1?obs=gen1');
+  });
+
+  it('sets the page header: Traces, the trace id, and a link back to the list', async () => {
+    daemon({ trace: TRACE });
+    const c = mount();
+    await waitFor(() => c.querySelector('.trace-header') !== null);
+    const header = c.querySelector('.test-screen-header') as HTMLElement;
+    expect(header.querySelector('h1')?.textContent).toBe('Traces');
+    expect(header.querySelector('.trace-id')?.textContent).toBe('t1');
+    const back = header.querySelector('a') as HTMLAnchorElement;
+    expect(back.textContent).toBe('All traces');
+    expect(back.getAttribute('href')).toMatch(/^#\/traces/);
   });
 });

@@ -30,46 +30,12 @@
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
 }
-.trace-crumbs ol {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--fs-meta);
-  color: var(--text-muted);
-}
-.trace-crumbs li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.trace-crumbs svg {
-  flex: none;
-  color: var(--text-faint);
-}
-.trace-crumbs a {
-  color: var(--text-muted);
+.trace-back {
   text-decoration: none;
-  border-radius: var(--radius-sm);
 }
-.trace-crumbs a:hover {
-  color: var(--text);
-}
-.trace-crumbs a:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.trace-crumbs [aria-current] {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.page-header-description .trace-id {
   font-family: var(--font-mono);
-  font-size: var(--fs-overline);
-  color: var(--text-faint);
+  font-size: var(--fs-meta);
 }
 .trace-title {
   display: flex;
@@ -138,6 +104,10 @@
 }
 .trace-fact dt svg {
   color: var(--text-faint);
+}
+.trace-fact-unit {
+  font-weight: 400;
+  color: var(--text-muted);
 }
 .trace-fact dd {
   min-width: 0;
