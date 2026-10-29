@@ -59,6 +59,8 @@
 .topbar-narrow {
   gap: 6px;
   padding: 0 8px;
+  /* never widen the page: the crumbs ellipsize instead */
+  min-width: 0;
 }
 .topbar-narrow .crumbs {
   flex: 1;

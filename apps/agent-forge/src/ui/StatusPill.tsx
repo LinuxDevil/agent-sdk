@@ -3,9 +3,9 @@ import './primitives.css';
 /**
  * The closed set of colours a status pill can take. Each one is a
  * `pill-<tone>` class in primitives.css: `ok` success, `error` danger,
- * `warning` warning, `running` info, `neutral` muted.
+ * `warning` warning, `running` info, `neutral` muted, `violet` the LLM/agent accent.
  */
-export type StatusTone = 'ok' | 'error' | 'warning' | 'running' | 'neutral';
+export type StatusTone = 'ok' | 'error' | 'warning' | 'running' | 'neutral' | 'violet';
 
 const TONES = new Map<string, StatusTone>(Object.entries({
   // run
@@ -55,7 +55,7 @@ export function StatusPill({ status, live = false }: { status: string | null | u
     >
       <span className="dot" aria-hidden="true" />
       {live && <span className="visually-hidden">Run status: </span>}
-      {label}
+      <span className="status-pill-label">{label}</span>
     </span>
   );
 }

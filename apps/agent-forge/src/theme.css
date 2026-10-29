@@ -1,41 +1,135 @@
 /*
- * Design tokens ported from .design-ref/agent-forge-mockup.html.
- * Keep these in lockstep with the mockup's :root / dark-mode custom
- * properties - this file is the single source of truth for color/typography
- * tokens consumed by every component's CSS module.
- */
-/*
- * Each color token is a light-dark(<light>, <dark>) pair, resolved by
+ * Studio design tokens. The source of truth is the Studio redesign Design
+ * Brief (audit/forge-redesign/PLAN.md, copied into the D1 PR description);
+ * this file implements it, and every component stylesheet reads these
+ * custom properties instead of raw colours.
+ *
+ * Each colour token is a light-dark(<light>, <dark>) pair, resolved by
  * `color-scheme`: the OS preference by default, or forced via
- * `data-theme='light' | 'dark'` on <html>.
+ * `data-theme='light' | 'dark'` on <html>. Shadows are built from
+ * light-dark() layer colours; the one value light-dark() cannot carry (the
+ * select chevron image) is swapped in by the two dark blocks below.
+ *
+ * Every text/background pair a component draws meets WCAG AA (4.5:1) in
+ * both schemes - enforced by src/__tests__/contrast.test.ts.
  */
 :root {
   color-scheme: light dark;
-  --bg: light-dark(#f4f5f8, #0b0d12);
-  --surface: light-dark(#ffffff, #12151c);
-  --surface-2: light-dark(#eceef3, #171b24);
-  --border: light-dark(#d7dbe4, #262b39);
-  --text: light-dark(#171a21, #e7e9f2);
-  /* every text token meets WCAG AA (4.5:1) on the surfaces it is
-     drawn on, in both schemes - enforced by src/__tests__/contrast.test.ts. */
-  --text-muted: light-dark(#4f5466, #9096ac);
-  --text-faint: light-dark(#5e6376, #8a90a6);
-  --accent: light-dark(#4c4ee8, #7678f0);
-  --accent-soft: light-dark(#e7e7fc, #23234a);
-  /* Filled accent buttons (Save, primary actions): --on-accent text on --accent-solid is >= 4.5:1 in both schemes.
-     The dark --accent is too light for white text (3.67:1), so the fill is a deeper shade of it. */
-  --accent-solid: light-dark(#4c4ee8, #5d5fe8);
+
+  /* ---------- Neutrals (zinc) ---------- */
+  /* app canvas behind panels */
+  --bg: light-dark(#f6f6f7, #0a0a0c);
+  /* cards, panels, tables */
+  --surface: light-dark(#ffffff, #111114);
+  /* inputs' hover, table header, row hover */
+  --surface-2: light-dark(#f2f2f4, #18181c);
+  /* pressed / selected neutral, code blocks */
+  --surface-3: light-dark(#e9e9ec, #202026);
+  --border: light-dark(#e4e4e8, #26262c);
+  /* input borders, focused cards, secondary buttons */
+  --border-strong: light-dark(#d2d2d8, #34343c);
+  --text: light-dark(#18181b, #f4f4f5);
+  --text-muted: light-dark(#52525b, #a1a1aa);
+  --text-faint: light-dark(#5f5f68, #8a8a94);
+
+  /* ---------- Accent (indigo) ---------- */
+  --accent: light-dark(#4f46e5, #8b8cf8);
+  --accent-soft: light-dark(#eef0ff, #1e1d3f);
+  /* Filled accent buttons: --on-accent on --accent-solid (and its hover) is >= 4.5:1 in both schemes.
+     The dark --accent is too light for white text, so the fill is a deeper shade of it. */
+  --accent-solid: light-dark(#4f46e5, #5b54e8);
+  --accent-solid-hover: light-dark(#4338ca, #4f48dc);
   --on-accent: light-dark(#ffffff, #ffffff);
-  --success: light-dark(#137333, #34d399);
-  --success-soft: light-dark(#dcf3e4, #113325);
-  --warning: light-dark(#8a5a12, #fbbf24);
-  --warning-soft: light-dark(#fbedd3, #3a2c0d);
-  --danger: light-dark(#b42318, #f87171);
-  --danger-soft: light-dark(#fbe2df, #3a1615);
+
+  /* ---------- Status (only for status) ---------- */
+  /* light --success is one step darker than the brief's #15803d so it reads 4.5:1 on --success-soft */
+  --success: light-dark(#157e3c, #4ade80);
+  --success-soft: light-dark(#e3f6e9, #0f2a1b);
+  --warning: light-dark(#a15c07, #fbbf24);
+  --warning-soft: light-dark(#fdf1d8, #2f2408);
+  --danger: light-dark(#c0262d, #f87171);
+  --danger-soft: light-dark(#fde8e8, #3a1517);
   --info: light-dark(#0369a1, #38bdf8);
-  --shadow: 0 1px 2px rgba(20, 22, 30, 0.06), 0 8px 24px -12px rgba(20, 22, 30, 0.18);
-  --font-ui: 'IBM Plex Sans', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --info-soft: light-dark(#e3f2fb, #0b2635);
+  /* LLM / agent accent */
+  --violet: light-dark(#6d28d9, #a78bfa);
+  --violet-soft: light-dark(#f1eafe, #241a3d);
+
+  /* ---------- Chart series ---------- */
+  --chart-1: light-dark(#4f46e5, #8b8cf8);
+  --chart-2: light-dark(#0891b2, #22d3ee);
+  --chart-3: light-dark(#d97706, #fbbf24);
+  --chart-4: light-dark(#db2777, #f472b6);
+  --chart-5: light-dark(#059669, #34d399);
+  --chart-6: light-dark(#7c3aed, #c4b5fd);
+
+  /* ---------- Radius ---------- */
+  /* small buttons, kbd, inner pills */
+  --radius-sm: 6px;
+  /* buttons, inputs, menus */
+  --radius: 8px;
+  /* cards, panels, dialogs, canvas nodes */
+  --radius-lg: 12px;
+  /* pills, avatars */
+  --radius-full: 999px;
+
+  /* ---------- Space ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  /* page gutter: 24px, 16px at narrow widths (below) */
+  --gutter: var(--space-6);
+
+  /* ---------- Elevation ----------
+     A shadow is not a colour, so it cannot be one light-dark() pair; instead every layer's colour is,
+     and a layer that only one scheme draws is transparent in the other. */
+  /* hairline lift for cards */
+  --shadow-sm: 0 1px 2px light-dark(rgb(0 0 0 / 0.04), rgb(0 0 0 / 0.5));
+  /* menus, popovers, toasts */
+  --shadow:
+    0 4px 12px -2px light-dark(rgb(16 16 24 / 0.08), transparent),
+    0 2px 4px -2px light-dark(rgb(16 16 24 / 0.06), transparent),
+    0 8px 24px -6px light-dark(transparent, rgb(0 0 0 / 0.6)),
+    0 0 0 1px light-dark(transparent, rgb(255 255 255 / 0.04));
+  /* dialogs, command palette */
+  --shadow-lg:
+    0 24px 48px -12px light-dark(rgb(16 16 24 / 0.18), transparent),
+    0 24px 64px -12px light-dark(transparent, rgb(0 0 0 / 0.75));
+  /* the subtle top highlight on filled (primary) buttons */
+  --highlight-inset: inset 0 1px 0 light-dark(rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.12));
+  /* focus ring for inputs (paired with border-color: var(--accent)) */
+  --ring: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+  /* light-dark() cannot hold an image, so the select chevron (stroke = --text-muted) has a light and a
+     dark data URI; the dark blocks below swap it in. */
+  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2352525b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  --select-chevron-dark: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+
+  /* ---------- Motion (disabled under prefers-reduced-motion) ---------- */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+
+  /* ---------- Type ---------- */
+  --font-ui: 'Inter Variable', 'Inter', 'Geist', ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Geist Mono', ui-monospace, 'Cascadia Code', 'SF Mono', Menlo, monospace;
+  /* label / overline (11px 600 uppercase, tracking 0.04em, --text-faint) */
+  --fs-overline: 11px;
+  /* small / meta */
+  --fs-meta: 12px;
+  /* table cells */
+  --fs-table: 13px;
+  /* body, card titles */
+  --fs-body: 13.5px;
+  --lh-body: 1.5;
+  /* page title (600, tracking -0.01em) */
+  --fs-title: 18px;
+  /* metric value (600, tabular) */
+  --fs-metric: 24px;
 }
 
 :root[data-theme='light'] {
@@ -44,12 +138,18 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -14px rgba(0, 0, 0, 0.6);
+  --select-chevron: var(--select-chevron-dark);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -14px rgba(0, 0, 0, 0.6);
+    --select-chevron: var(--select-chevron-dark);
+  }
+}
+
+@media (max-width: 860px) {
+  :root {
+    --gutter: var(--space-4);
   }
 }
 
@@ -68,23 +168,38 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
-  font-size: 13.5px;
-  line-height: 1.45;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
 }
 
-button {
+button,
+input,
+select,
+textarea {
   font-family: inherit;
+  font-feature-settings: inherit;
 }
 
+/* Thin scrollbars: transparent track, --border-strong thumb. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
 ::-webkit-scrollbar {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 20px;
+  background: var(--border-strong);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
-::-webkit-scrollbar-track {
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
   background: transparent;
 }

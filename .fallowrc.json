@@ -38,6 +38,7 @@
     }
   ],
   "ignoreDependencies": [
+    "@fontsource-variable/inter",
     "@ai-sdk/anthropic",
     "@ai-sdk/google",
     "@ai-sdk/openai",

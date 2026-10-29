@@ -54,6 +54,16 @@ const PAIRS: [text: string, background: string][] = [
   // Prompt version links (runs, Playground) draw --accent on the version card's --surface. The diff's removed/added
   // lines reuse danger/danger-soft and success/success-soft, and its line numbers text-faint/surface (all listed above).
   ['accent', 'surface'],
+  // Running status pills draw info on its own tint; violet (LLM/agent) pills likewise.
+  ['info', 'info-soft'],
+  ['violet', 'violet-soft'],
+  // Pressed / selected neutrals and code blocks sit on --surface-3.
+  ['text-muted', 'surface-3'],
+  ['text', 'surface-3'],
+  // A hovered or pressed primary button keeps white text on its deeper fill.
+  ['on-accent', 'accent-solid-hover'],
+  // A switched-on chip (Requires approval) draws --accent on the accent tint.
+  ['accent', 'accent-soft'],
 ];
 
 describe('theme contrast', () => {
