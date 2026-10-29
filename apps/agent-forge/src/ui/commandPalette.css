@@ -7,72 +7,181 @@
   justify-content: center;
   align-items: flex-start;
   padding: 12vh 16px 16px;
-  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  /* A 40% scrim: ink over the light canvas, the canvas colour (deeper) over the dark one. */
+  background: light-dark(
+    color-mix(in srgb, var(--text) 40%, transparent),
+    color-mix(in srgb, var(--bg) 60%, transparent)
+  );
+  backdrop-filter: blur(4px);
 }
 
 .cmdk-dialog {
-  width: min(560px, 100%);
-  max-height: 70vh;
+  width: min(640px, 100%);
+  max-height: min(70vh, 560px);
   display: flex;
   flex-direction: column;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
   font-family: var(--font-ui);
   overflow: hidden;
 }
 
-.cmdk-input {
-  width: 100%;
-  padding: 12px 14px;
-  border: 0;
+/* ---------- Search row ---------- */
+.cmdk-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  height: 48px;
+  padding: 0 14px 0 16px;
   border-bottom: 1px solid var(--border);
+}
+.cmdk-search-icon {
+  flex: none;
+  color: var(--text-faint);
+}
+.cmdk-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
   background: transparent;
   color: var(--text);
   font: inherit;
   font-size: 14px;
 }
+.cmdk-input::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
+}
+/* The input is the dialog's only control and always focused: the caret marks it, a ring would never go away. */
+.cmdk-input:focus,
 .cmdk-input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: none;
+}
+.cmdk-search kbd {
+  flex: none;
 }
 
+/* ---------- Results ---------- */
 .cmdk-list {
+  flex: 1 1 auto;
+  min-height: 0;
   list-style: none;
   margin: 0;
   padding: 6px;
   overflow-y: auto;
 }
-
+.cmdk-section + .cmdk-section {
+  margin-top: 4px;
+}
+.cmdk-group {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.cmdk-group-label {
+  padding: 8px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
 .cmdk-option {
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: var(--radius);
+  font-size: 13.5px;
+  color: var(--text);
   cursor: pointer;
+}
+.cmdk-option-icon {
+  flex: none;
+  color: var(--text-muted);
+}
+.cmdk-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .cmdk-option[aria-selected='true'] {
   background: var(--accent-soft);
   color: var(--text);
 }
+.cmdk-option[aria-selected='true'] .cmdk-option-icon {
+  color: var(--accent);
+}
+/* The active row's "open" hint; generated content with empty alt text, so it never joins the option's name. */
+.cmdk-option[aria-selected='true']::after {
+  content: '\21B5' / '';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
 
 .cmdk-empty {
   margin: 0;
-  padding: 14px;
+  padding: 28px 16px;
   font-size: 13px;
+  text-align: center;
   color: var(--text-muted);
 }
 
+/* ---------- Footer hints ---------- */
+.cmdk-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.cmdk-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.cmdk-hint kbd {
+  background: var(--surface);
+}
+.cmdk-hint kbd + kbd {
+  margin-left: -1px;
+}
+
+/* ---------- Shortcut sheet ---------- */
 .cmdk-sheet {
-  padding: 12px 16px 16px;
+  width: min(480px, 100%);
+  padding: 4px 16px 12px;
 }
 .cmdk-sheet-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 8px;
+  height: 48px;
 }
 .cmdk-sheet-title {
   margin: 0;
@@ -85,8 +194,9 @@
 }
 .cmdk-shortcut {
   display: flex;
+  align-items: center;
   gap: 12px;
-  padding: 6px 0;
+  min-height: 36px;
   font-size: 13px;
   border-top: 1px solid var(--border);
 }
@@ -97,12 +207,15 @@
   margin: 0;
   color: var(--text-muted);
 }
-.cmdk-shortcut kbd {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 1px 6px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface-2);
-  color: var(--text);
+
+@media (prefers-reduced-motion: no-preference) {
+  .cmdk-dialog {
+    animation: cmdk-in var(--dur) var(--ease);
+  }
+}
+@keyframes cmdk-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.99);
+  }
 }
