@@ -417,7 +417,15 @@ describe('DataTable paging', () => {
     rerender(
       <DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} page={{ offset: 0, limit: 50, total: 0, onChange }} empty="x" />,
     );
+    // nothing to page: no pager at all (no "0 of 0", no disabled buttons)
+    expect(c.querySelector('.dt-pager')).toBeNull();
+
+    // an offset past an emptied list keeps the pager, so Previous leads back
+    rerender(
+      <DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} page={{ offset: 50, limit: 50, total: 0, onChange }} empty="x" />,
+    );
     expect(c.querySelector('.dt-pager-range')?.textContent).toBe('0 of 0');
+    expect(btn('Previous').disabled).toBe(false);
 
     // total shrank below the offset: the range start is clamped
     rerender(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} page={page(1250)} empty="x" />);

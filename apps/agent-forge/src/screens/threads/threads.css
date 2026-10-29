@@ -66,11 +66,17 @@
   color: var(--text-muted);
 }
 
-/* the turns: a vertical timeline of numbered dots joined by a hairline */
+/*
+ * the turns: a vertical timeline of numbered dots joined by a hairline. A dot
+ * is 24px tall, 8px down its turn; the line runs from 2px under it to 2px
+ * above the next turn's dot (that turn's gap + 8px below this turn's end).
+ */
 .thread-turns {
+  /* the turn gap; the connector below spans it, dot to dot */
+  --turn-gap: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--turn-gap);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -85,8 +91,8 @@
 .thread-turn:not(:last-child)::before {
   content: '';
   position: absolute;
-  top: 34px;
-  bottom: calc(-1 * var(--space-4) + 4px);
+  top: calc(8px + 24px + 2px);
+  bottom: calc(-1 * (var(--turn-gap) + 8px) + 2px);
   left: 11.5px;
   width: 1px;
   background: var(--border-strong);
@@ -239,7 +245,7 @@
     padding: var(--space-4) var(--page-gutter);
   }
   .thread-turns {
-    gap: var(--space-3);
+    --turn-gap: var(--space-3);
   }
   .thread-turn {
     grid-template-columns: minmax(0, 1fr);

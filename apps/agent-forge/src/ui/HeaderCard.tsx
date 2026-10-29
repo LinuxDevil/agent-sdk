@@ -8,7 +8,7 @@ import './headerCard.css';
 /** One metric chip: the icon stands for the label (read out, and shown as the chip's tooltip), then the value. */
 export function Fact({ icon: Icon, label, children }: { icon: LucideIcon; label: string; children: ReactNode }) {
   return (
-    <div className="fact" title={label}>
+    <div className="header-card-fact" title={label}>
       <dt>
         <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
         <span className="visually-hidden">{label}</span>
@@ -19,7 +19,7 @@ export function Fact({ icon: Icon, label, children }: { icon: LucideIcon; label:
 }
 
 /** A muted unit after a fact's value (`1,204 tokens`). */
-export const FactUnit = ({ children }: { children: ReactNode }) => <span className="fact-unit"> {children}</span>;
+export const FactUnit = ({ children }: { children: ReactNode }) => <span className="header-card-fact-unit"> {children}</span>;
 
 /** An icon button that copies the current URL (query included) and toasts the outcome. */
 export function CopyLinkButton() {

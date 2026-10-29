@@ -135,7 +135,6 @@ function ThreadsList({ refreshKey }: { refreshKey: number }) {
 
   return (
     <section className="threads-screen" aria-label="Threads">
-      <h2 className="visually-hidden">Threads</h2>
       <FilterBar facets={facets} range={range} />
       <ObserveError error={sessions.error} />
       <Card as="div" padding="none" className="threads-card">

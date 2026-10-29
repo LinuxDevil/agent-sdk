@@ -217,10 +217,10 @@ describe('ThreadsScreen thread', () => {
     await mountAt('#/threads?status=active');
     window.history.replaceState(null, '', `/#/threads/${SESSION.session_id}`);
     const container = render(
-    <ToastProvider>
-      <ThreadsScreen />
-    </ToastProvider>,
-  );
+      <ToastProvider>
+        <ThreadsScreen />
+      </ToastProvider>,
+    );
     await flush();
     const back = [...container.querySelectorAll('a')].find((a) => a.textContent?.includes('All threads'));
     expect(back?.getAttribute('href')).toBe('#/threads?status=active');
@@ -360,7 +360,11 @@ describe('ThreadsScreen thread layout', () => {
     const loading = container.querySelector('.thread-loading')!;
     expect(loading.getAttribute('role')).toBe('status');
     expect(loading.querySelectorAll('.skeleton').length).toBeGreaterThan(3);
-    expect(container.textContent).not.toContain('Loading thread...'.replace('...', '…'));
+    // three skeleton turn cards; the only "Loading thread..." text is the visually-hidden status
+    expect(loading.querySelectorAll('.thread-turn-card')).toHaveLength(3);
+    const visibleText = [...loading.querySelectorAll('p')].map((p) => p.textContent).join('');
+    expect(visibleText).toBe('');
+    expect(loading.querySelector('.visually-hidden')?.textContent).toBe('Loading thread...');
   });
 });
 
