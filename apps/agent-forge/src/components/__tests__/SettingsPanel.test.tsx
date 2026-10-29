@@ -69,19 +69,23 @@ describe('SettingsPanel', () => {
     expect(host.querySelector('.settings-panel-screen')).not.toBeNull();
   });
 
-  it('shows Set (with the masked value), From environment or Not set per key, never pre-filling the input', async () => {
+  it('shows Set (with the masked value) or From environment (a static info pill), never pre-filling the input', async () => {
     keys.list = [
       { provider: 'openai', hasKey: true, masked: '••••3f2a', envKey: true },
       { provider: 'anthropic', hasKey: false, masked: null, envKey: true },
     ];
-    let host = await mount();
+    const host = await mount();
     expect(keyPill(host, 'OpenAI API key')).toBe('Set');
     expect(host.querySelector('.settings-key-masked')?.textContent).toBe('••••3f2a');
     expect(keyPill(host, 'Anthropic API key')).toBe('From environment');
+    const envPill = host.querySelector('input[aria-label="Anthropic API key"]')?.closest('.settings-key')?.querySelector('.status-pill');
+    expect(envPill?.classList.contains('pill-info')).toBe(true);
     expect((host.querySelector('input[aria-label="OpenAI API key"]') as HTMLInputElement).value).toBe('');
+  });
 
+  it('shows Not set when there is neither a stored key nor the env var', async () => {
     keys.list = [{ provider: 'openai', hasKey: false, masked: null, envKey: false }];
-    host = await mount();
+    const host = await mount();
     expect(keyPill(host, 'OpenAI API key')).toBe('Not set');
     expect(keyPill(host, 'Anthropic API key')).toBe('Not set');
   });
@@ -108,6 +112,13 @@ describe('SettingsPanel', () => {
     expect(document.documentElement.getAttribute('data-density')).toBe('comfortable');
     expect(window.localStorage.getItem('forge.density')).toBe('comfortable');
     expect(comfy.getAttribute('aria-pressed')).toBe('true');
+    expect(host.textContent).not.toContain("until you pick one");
+
+    act(() => button(host, 'Reset to screen defaults').click());
+    expect(document.documentElement.hasAttribute('data-density')).toBe(false);
+    expect(window.localStorage.getItem('forge.density')).toBeNull();
+    expect(group.querySelector('[aria-pressed="true"]')).toBeNull();
+    expect(host.textContent).toContain("Tables use each screen's default until you pick one.");
   });
 
   it('the collector card says how to start a daemon that is down, and lists every shortcut', async () => {

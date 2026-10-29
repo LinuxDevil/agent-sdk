@@ -892,6 +892,27 @@ test("agents x: the routed settings screen shares the drawer's settings cards", 
   await shoot(page, 'x-settings-screen-375-full');
 });
 
+test('settings x: a stored key, an env key, a picked density and a focused theme segment', async ({ page }) => {
+  // Answered in the browser: no real key is stored or sent anywhere.
+  await page.route('**/settings/providers', (route) =>
+    route.request().method() === 'GET'
+      ? json(route, [
+          { provider: 'openai', hasKey: true, masked: '<your-key>', envKey: false },
+          { provider: 'anthropic', hasKey: false, masked: null, envKey: true },
+        ])
+      : route.fallback(),
+  );
+  await open(page, '/settings');
+  await expect(page.getByText('From environment')).toBeVisible();
+  await page.getByRole('group', { name: 'Table density' }).getByRole('button', { name: 'Comfortable' }).click();
+  await expect(page.getByRole('button', { name: 'Reset to screen defaults' })).toBeVisible();
+  // Programmatic focus after the click still counts as keyboard focus once Tab moves it.
+  await page.getByRole('group', { name: 'Theme' }).getByRole('button', { name: 'Light' }).focus();
+  await page.keyboard.press('Tab');
+  await expect(page.getByRole('group', { name: 'Theme' }).getByRole('button', { name: 'Dark' })).toBeFocused();
+  await shoot(page, 'x-settings-screen-states');
+});
+
 // --- Evaluations states (x- shots: review-only, never used in the docs) -----
 
 const EVAL_RATES = [

@@ -68,10 +68,21 @@ function DensityControl({ value, onChange }: { value: Density | null; onChange: 
   );
 }
 
+function DensityResetHint({ onReset }: { onReset: () => void }) {
+  return (
+    <>
+      Row height for every table.{' '}
+      <button type="button" className="setting-link" onClick={onReset}>
+        Reset to screen defaults
+      </button>
+    </>
+  );
+}
+
 /** Theme (Light / Dark / System) and table density, both remembered in this browser. */
 export function AppearanceSection() {
   const [density, setDensityState] = useState<Density | null>(getDensity);
-  const pick = (next: Density) => {
+  const pick = (next: Density | null) => {
     setDensity(next);
     setDensityState(next);
   };
@@ -82,7 +93,7 @@ export function AppearanceSection() {
       </SettingRow>
       <SettingRow
         label="Table density"
-        hint={density ? 'Row height for every table.' : "Tables use each screen's default until you pick one."}
+        hint={density ? <DensityResetHint onReset={() => pick(null)} /> : "Tables use each screen's default until you pick one."}
       >
         <DensityControl value={density} onChange={pick} />
       </SettingRow>

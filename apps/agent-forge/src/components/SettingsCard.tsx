@@ -48,7 +48,7 @@ export function SettingRow({ label, hint, children }: { label: string; hint?: Re
 }
 
 /** A sentence-case status pill in one of the kit's tones (the `.status-pill` look from ui/primitives.css). */
-export function TonePill({ tone, label, title }: { tone: 'ok' | 'error' | 'running' | 'neutral'; label: string; title?: string }) {
+export function TonePill({ tone, label, title }: { tone: 'ok' | 'error' | 'info' | 'neutral'; label: string; title?: string }) {
   return (
     <span className={`status-pill pill-${tone}`} title={title}>
       <span className="dot" aria-hidden="true" />

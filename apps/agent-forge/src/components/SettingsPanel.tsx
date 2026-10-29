@@ -153,7 +153,7 @@ function KeyStatus({ status, envVar }: { status: ProviderKeyStatus | undefined; 
       </span>
     );
   if (status?.envKey)
-    return <TonePill tone="running" label="From environment" title={`Runs use ${envVar} from the server's environment`} />;
+    return <TonePill tone="info" label="From environment" title={`Runs use ${envVar} from the server's environment`} />;
   return <TonePill tone="neutral" label="Not set" />;
 }
 
