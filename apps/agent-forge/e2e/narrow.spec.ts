@@ -86,11 +86,16 @@ test('#/playground at 375px stacks into one column with nothing scrolling sidewa
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/?token=e2e-studio-token#/playground');
   const main = page.getByRole('main');
-  await expect(main.getByRole('heading', { name: 'Playground' })).toBeVisible();
+  // The title is the shell's page header (above <main>); the screen no longer repeats it.
+  await expect(page.getByRole('heading', { name: 'Playground', level: 1 })).toBeVisible();
   expect(await horizontalOverflow(page)).toBe(0);
   expect(await main.evaluate((el) => el.scrollWidth - el.clientWidth)).toBe(0);
-  for (const name of ['Run', 'Add message', 'Save as new prompt version']) {
-    const box = await main.getByRole('button', { name, exact: true }).boundingBox();
+  // "Save as new prompt version" lives in the card the header's Save prompt button opens.
+  await page.getByRole('button', { name: 'Save prompt', exact: true }).click();
+  await expect(main.getByRole('dialog', { name: 'Save as prompt version' })).toBeVisible();
+  expect(await horizontalOverflow(page)).toBe(0);
+  for (const name of ['Run', 'Add message', 'Save prompt', 'Save as new prompt version']) {
+    const box = await page.getByRole('button', { name, exact: true }).boundingBox();
     expect(box && box.x >= 0 && box.x + box.width <= 375, `${name} is on-screen`).toBe(true);
   }
 });

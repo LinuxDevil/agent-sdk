@@ -1,226 +1,561 @@
 /*
- * Playground screen (#/playground): message editor and variables on the
- * left, model/tools/actions and the streamed output on the right; one column
- * at <=860px. Colours from src/theme.css tokens only.
+ * Playground screen (#/playground): a config sidebar card (model, variables,
+ * tools), the composer card (message cards + run bar) and the output card.
+ * Three columns at >= 1100px; the output stacks under the composer below
+ * that; one column at <= 860px. Cards reuse ui/card.css's `.card` surface.
+ * Colours from src/theme.css tokens only.
  */
 
 .pg-screen {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: var(--space-4);
   min-width: 0;
+  padding: var(--space-5) var(--page-gutter) var(--space-8);
   font-family: var(--font-ui);
   color: var(--text);
 }
 
-.pg-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.pg-head h2 {
-  margin: 0;
-  font-size: 18px;
-}
 .pg-prompt-chip {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  background: var(--accent-soft);
-  color: var(--text);
-  overflow-wrap: anywhere;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pg-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
   margin: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--warning);
-  border-radius: 8px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: var(--radius);
   background: var(--warning-soft);
   color: var(--text);
+  font-size: var(--fs-meta);
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
+.pg-notice svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning);
+}
 
+/* ---------- Layout ---------- */
 .pg-layout {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 12px;
+  grid-template-columns: 264px minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-areas: 'config composer output';
+  gap: var(--space-4);
   align-items: start;
 }
-.pg-editor,
-.pg-side {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-width: 0;
+.pg-config {
+  grid-area: config;
+  position: sticky;
+  top: var(--space-4);
+}
+.pg-composer {
+  grid-area: composer;
+}
+.pg-output {
+  grid-area: output;
+}
+@media (max-width: 1099px) {
+  .pg-layout {
+    grid-template-columns: 248px minmax(0, 1fr);
+    grid-template-areas:
+      'config composer'
+      'config output';
+  }
+}
+@media (max-width: 860px) {
+  .pg-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'config' 'composer' 'output';
+  }
+  /* the config sections sit side by side while they fit; hairlines between them, clipped at the card edge. */
+  .pg-config {
+    position: static;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    overflow: clip;
+    border-radius: var(--radius-lg);
+  }
+  .pg-config-section,
+  .pg-config-section + .pg-config-section {
+    margin: -1px 0 0 -1px;
+    border-top: 1px solid var(--border);
+    border-left: 1px solid var(--border);
+  }
 }
 
-.pg-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* ---------- Card chrome shared by the three regions ---------- */
+.pg-card {
   min-width: 0;
-  padding: 12px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
 }
-.pg-panel-title {
+.pg-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+.pg-card-title {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-weight: 600;
+  line-height: 1.4;
 }
-.pg-panel > .btn {
-  align-self: flex-start;
+.pg-card-meta {
+  margin-left: auto;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+.pg-card-description {
+  margin: 2px 0 0;
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.pg-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
 }
 
+/* ---------- Fields ---------- */
+.pg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.pg-field input,
+.pg-field select {
+  width: 100%;
+  box-sizing: border-box;
+}
+.pg-field-label {
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.pg-var-label {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+.pg-hint {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.pg-hint code,
+.pg-card-description code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+/* ---------- Config sidebar ---------- */
+.pg-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-4);
+}
+.pg-config-section + .pg-config-section {
+  border-top: 1px solid var(--border);
+}
+.pg-section-title {
+  margin: 0;
+  padding: 0;
+}
+.pg-model {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pg-select-icon {
+  position: relative;
+  display: block;
+}
+.pg-select-icon > svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--accent);
+  pointer-events: none;
+}
+.pg-select-icon > .select {
+  padding-left: 34px;
+}
+.pg-model-name {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.pg-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pg-tool-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pg-tool-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.pg-tool-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+/* a checkbox drawn as the kit's switch (ui/base.css `.switch`), keeping checkbox semantics. */
+.pg-switch {
+  appearance: none;
+  margin: 0;
+  width: 32px;
+  height: 18px;
+  flex: none;
+  position: relative;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color var(--dur) var(--ease);
+}
+.pg-switch::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--dur) var(--ease);
+}
+.pg-switch:checked {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
+.pg-switch:checked::after {
+  transform: translateX(14px);
+}
+.pg-switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Composer ---------- */
+.pg-messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
 .pg-message-list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .pg-message {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding-left: 8px;
-  border-left: 3px solid var(--border);
+  min-width: 0;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.pg-message:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--ring);
 }
 .pg-message-system {
-  border-left-color: var(--accent);
+  background: var(--surface-2);
 }
 .pg-message-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: var(--space-1) var(--space-1) 0 var(--space-2);
 }
-
-.pg-screen select,
-.pg-screen input[type='text'],
-.pg-content {
-  font: inherit;
-  font-size: 13px;
+.pg-role-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+.pg-message[data-role='user'] .pg-role-avatar {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.pg-message[data-role='assistant'] .pg-role-avatar {
+  background: var(--violet-soft);
+  color: var(--violet);
+}
+.pg-role {
+  appearance: none;
+  height: 24px;
+  padding: 0 24px 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent var(--select-chevron) no-repeat right 4px center / 14px 14px;
   color: var(--text);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
-  max-width: 100%;
-  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  text-transform: capitalize;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
 }
-.pg-content {
-  width: 100%;
-  resize: vertical;
-  font-family: var(--font-mono);
+.pg-role:hover {
+  background-color: var(--surface-3);
 }
-.pg-screen select:focus-visible,
-.pg-screen input:focus-visible,
-.pg-content:focus-visible {
+.pg-role:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
-
-.pg-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.pg-field input,
-.pg-field select {
-  width: 100%;
-}
-.pg-field-label {
+.pg-message-count {
+  margin-left: auto;
   font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-faint);
+}
+.pg-content-label {
+  display: block;
+}
+.pg-content {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 4.5em;
+  max-height: 360px;
+  field-sizing: content;
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: transparent;
+  color: var(--text);
   font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  resize: vertical;
   overflow-wrap: anywhere;
 }
-.pg-model {
-  display: grid;
-  /* the provider select's longest option ("custom (provider/model)") needs the wider column */
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
-  gap: 8px;
+.pg-content::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
 }
-
-.pg-tools {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  min-width: 0;
+/* the card's focus-within ring is the indicator; forced colors still get an outline. */
+.pg-content:focus {
+  outline: 2px solid transparent;
 }
-.pg-check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-}
-
-.pg-actions {
-  display: flex;
-  gap: 8px;
-}
-.pg-save {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-}
-.pg-save .btn {
+.pg-add {
   align-self: flex-start;
-}
-.pg-hint {
-  margin: 0;
-  font-size: 12px;
   color: var(--text-muted);
 }
 
-.pg-output-head {
+.pg-runbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
+.pg-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+.pg-shortcut > span {
+  margin-left: 2px;
+}
+.pg-runbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+/* ---------- Output ---------- */
 .pg-trace-link {
   margin-left: auto;
-  color: var(--accent);
-  font-size: 12.5px;
+  text-decoration: none;
 }
+.pg-output-body {
+  gap: var(--space-3);
+}
+.pg-output .empty-state {
+  padding-block: var(--space-8);
+}
+
 .pg-error {
-  padding: 8px 12px;
-  border: 1px solid var(--danger);
-  border-radius: 6px;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: var(--radius);
   background: var(--danger-soft);
   color: var(--text);
+}
+.pg-error-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--danger);
+}
+.pg-error-body {
+  min-width: 0;
+}
+.pg-error-title {
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+.pg-error-message {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
 .pg-tool-calls {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 .pg-tool-call {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.pg-tool-call > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border-radius: var(--radius);
+  cursor: pointer;
+  list-style: none;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.pg-tool-call > summary::-webkit-details-marker {
+  display: none;
+}
+.pg-tool-call > summary:hover {
+  background: var(--surface-2);
+}
+.pg-tool-call > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.pg-tool-chevron {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.pg-tool-call[open] > summary .pg-tool-chevron {
+  transform: rotate(90deg);
+}
+.pg-tool-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+.pg-tool-call-name {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.pg-tool-args {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 20px;
-  background: var(--surface-2);
+  color: var(--text-faint);
+}
+.pg-tool-body {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.pg-stream-card {
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
 }
 .pg-stream {
   margin: 0;
@@ -228,15 +563,103 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  font-family: var(--font-ui);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+}
+/* the typing caret: a pseudo-element, so it is not part of the reply's text. */
+.pg-stream::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: pg-caret 1s steps(2, start) infinite;
+}
+@keyframes pg-caret {
+  to {
+    visibility: hidden;
+  }
+}
+
+.pg-metrics {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.pg-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+.pg-metric-label {
+  color: var(--text-muted);
+}
+.pg-metric-value {
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* ---------- Save prompt popover ---------- */
+.pg-save-trigger[aria-expanded='true'] {
+  background: var(--surface-3);
+}
+.pg-save-dialog {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--page-gutter);
+  z-index: 30;
+  width: min(380px, calc(100% - 2 * var(--page-gutter)));
+  box-shadow: var(--shadow-lg);
+  border-color: var(--border-strong);
+}
+.pg-save-dialog[hidden] {
+  display: none;
+}
+.pg-save-dialog > .pg-card-head {
+  align-items: flex-start;
+  flex-wrap: nowrap;
+}
+.pg-save-heading {
+  flex: 1;
+  min-width: 0;
+}
+.pg-save {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.pg-save .btn {
+  align-self: flex-end;
+}
+.pg-save-name {
   font-family: var(--font-mono);
   font-size: 12.5px;
 }
 
-@media (max-width: 860px) {
-  .pg-screen {
-    padding: 12px;
+@media (prefers-reduced-motion: reduce) {
+  .pg-switch,
+  .pg-switch::after,
+  .pg-message,
+  .pg-role,
+  .pg-tool-call > summary,
+  .pg-tool-chevron {
+    transition: none;
   }
-  .pg-layout {
-    grid-template-columns: minmax(0, 1fr);
+  .pg-stream::after {
+    animation: none;
   }
 }

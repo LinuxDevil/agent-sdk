@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Wrench } from 'lucide-react';
 
 import type { AgentStoreEntry } from '../../persistence/AgentStore';
 import { runtimeClient } from '../../runtime/runtimeClient';
@@ -36,10 +37,10 @@ export function ToolToggles({ tools, onChange }: { tools: string[]; onChange: (t
 
   return (
     <fieldset className="pg-tools">
-      <legend className="pg-field-label">Tools</legend>
+      <legend className="pg-section-title overline">Tools</legend>
       <label className="pg-field">
         <span className="visually-hidden">Tools from agent</span>
-        <select value={agentId} onChange={(e) => pick(e.target.value)}>
+        <select className="select" value={agentId} onChange={(e) => pick(e.target.value)}>
           <option value="">No tools</option>
           {agents.map((a) => (
             <option key={a.id} value={a.id}>
@@ -48,13 +49,28 @@ export function ToolToggles({ tools, onChange }: { tools: string[]; onChange: (t
           ))}
         </select>
       </label>
+      {!agentId && <p className="pg-hint">Borrow the tools of a saved agent, then switch each one on or off.</p>}
       {agentId && available.length === 0 && <p className="pg-hint">This agent has no tools.</p>}
-      {available.map((name) => (
-        <label key={name} className="pg-check">
-          <input type="checkbox" checked={tools.includes(name)} onChange={(e) => toggle(name, e.target.checked)} />
-          {name}
-        </label>
-      ))}
+      {available.length > 0 && (
+        <ul className="pg-tool-list">
+          {available.map((name) => (
+            <li key={name}>
+              <label className="pg-tool-row">
+                <Wrench aria-hidden="true" size={14} strokeWidth={1.75} />
+                <span className="pg-tool-name" title={name}>
+                  {name}
+                </span>
+                <input
+                  type="checkbox"
+                  className="pg-switch"
+                  checked={tools.includes(name)}
+                  onChange={(e) => toggle(name, e.target.checked)}
+                />
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
     </fieldset>
   );
 }

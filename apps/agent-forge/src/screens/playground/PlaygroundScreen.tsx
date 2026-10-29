@@ -1,9 +1,13 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
+import { BookmarkPlus, FileText, Info } from 'lucide-react';
 
 import { useRoute } from '../../router/useRoute';
+import { ScreenHeader } from '../../shell/ScreenHeader';
 import { MessageEditor } from './MessageEditor';
 import { ModelPicker, effectiveProvider, useProviderKeys, type ModelChoice } from './ModelPicker';
+import { RunBar } from './RunBar';
 import { RunOutput } from './RunOutput';
+import { SaveDialog, useSaveDialog } from './SaveDialog';
 import { SavePrompt } from './SavePrompt';
 import { ToolToggles } from './ToolToggles';
 import { VariableInputs } from './VariableInputs';
@@ -59,47 +63,82 @@ export function PlaygroundScreen() {
   const body = buildRunBody({ messages, values, model, tools, promptRef: prompt?.promptRef });
   const systemText = messages.find((m) => m.role === 'system')?.content ?? '';
   const running = run.status === 'running';
+  const canRun = !!body && !running;
+  const runNow = () => {
+    if (body && !running) start(body);
+  };
+  // Ctrl/Cmd+Enter anywhere in the composer runs it, like the Run button.
+  const onComposerKey = (e: KeyboardEvent) => {
+    if (e.key !== 'Enter' || !(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    runNow();
+  };
+  const save = useSaveDialog();
 
   return (
     <div className="pg-screen">
-      <header className="pg-head">
-        <h2>Playground</h2>
-        {prompt && <span className="pg-prompt-chip">{prompt.promptRef}</span>}
-      </header>
+      <ScreenHeader
+        description="Try messages against a model without editing an agent."
+        status={
+          prompt ? (
+            <span className="chip pg-prompt-chip" title={prompt.promptRef}>
+              <FileText aria-hidden="true" />
+              {prompt.promptRef}
+            </span>
+          ) : null
+        }
+        actions={
+          <button
+            ref={save.triggerRef}
+            type="button"
+            className="btn pg-save-trigger"
+            aria-haspopup="dialog"
+            aria-expanded={save.open}
+            aria-controls="pg-save-dialog"
+            onClick={save.toggle}
+          >
+            <BookmarkPlus aria-hidden="true" />
+            Save prompt
+          </button>
+        }
+      />
+      <SaveDialog id="pg-save-dialog" open={save.open} onClose={save.close} triggerRef={save.triggerRef}>
+        <SavePrompt promptName={prompt?.name} systemText={systemText} />
+      </SaveDialog>
       {notice && (
         <p className="pg-notice" role="status">
-          {notice}
+          <Info aria-hidden="true" size={16} strokeWidth={1.75} />
+          <span>{notice}</span>
         </p>
       )}
       <div className="pg-layout">
-        <div className="pg-editor">
-          <MessageEditor messages={messages} onChange={setMessages} />
-          <VariableInputs names={names} values={values} onChange={setValues} />
-        </div>
-        <div className="pg-side">
-          <section className="pg-panel pg-settings" aria-labelledby="pg-settings-title">
-            <h3 id="pg-settings-title" className="pg-panel-title">
+        <aside className="card pg-card pg-config" aria-label="Run settings">
+          <section className="pg-config-section" aria-labelledby="pg-settings-title">
+            <h2 id="pg-settings-title" className="pg-section-title overline">
               Model
-            </h3>
+            </h2>
             <ModelPicker choice={choice} keys={keys} onChange={setChoice} />
-            <ToolToggles tools={tools} onChange={setTools} />
-            <div className="pg-actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!body || running}
-                onClick={() => body && start(body)}
-              >
-                Run
-              </button>
-              <button type="button" className="btn" disabled={!running} onClick={stop}>
-                Stop
-              </button>
-            </div>
-            <SavePrompt promptName={prompt?.name} systemText={systemText} />
           </section>
-          <RunOutput run={run} />
-        </div>
+          <VariableInputs names={names} values={values} onChange={setValues} />
+          <div className="pg-config-section">
+            <ToolToggles tools={tools} onChange={setTools} />
+          </div>
+        </aside>
+        <section className="card pg-card pg-composer" aria-labelledby="pg-messages-title" onKeyDown={onComposerKey}>
+          <div className="pg-card-head">
+            <h2 id="pg-messages-title" className="pg-card-title">
+              Messages
+            </h2>
+            <span className="pg-card-meta tabular-nums">
+              {messages.length} {messages.length === 1 ? 'message' : 'messages'}
+            </span>
+          </div>
+          <div className="pg-card-body">
+            <MessageEditor messages={messages} onChange={setMessages} />
+          </div>
+          <RunBar canRun={canRun} running={running} onRun={runNow} onStop={stop} />
+        </section>
+        <RunOutput run={run} />
       </div>
     </div>
   );

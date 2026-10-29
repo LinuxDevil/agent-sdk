@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { BookmarkPlus } from 'lucide-react';
 
 import { ObserveDaemonDownError, observeClient } from '../../observe/observeClient';
 import { useToast } from '../../ui/Toast';
@@ -55,12 +56,19 @@ export function SavePrompt({ promptName, systemText }: SavePromptProps) {
     <div className="pg-save">
       <label className="pg-field">
         <span className="pg-field-label">Prompt name</span>
-        <input type="text" value={name} placeholder="e.g. support-greeter" onChange={(e) => setName(e.target.value)} />
+        <input
+          type="text"
+          className="input pg-save-name"
+          value={name}
+          placeholder="e.g. support-greeter"
+          onChange={(e) => setName(e.target.value)}
+        />
       </label>
-      <button type="button" className="btn" disabled={!hasSystem || !name.trim() || saving} onClick={save}>
+      {!hasSystem && <p className="pg-hint">Add a system message to save it as a prompt version.</p>}
+      <button type="button" className="btn btn-primary" disabled={!hasSystem || !name.trim() || saving} onClick={save}>
+        <BookmarkPlus aria-hidden="true" />
         Save as new prompt version
       </button>
-      {!hasSystem && <p className="pg-hint">Add a system message to save it as a prompt version.</p>}
     </div>
   );
 }

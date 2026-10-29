@@ -11,6 +11,9 @@ export interface RunToolCall {
   args: Record<string, unknown>;
 }
 
+/** The token usage a `done` event reports. */
+export type RunUsage = NonNullable<Extract<PlaygroundEvent, { type: 'done' }>['usage']>;
+
 /** Everything the output panel shows. */
 export interface RunState {
   status: RunStatus;
@@ -19,13 +22,21 @@ export interface RunState {
   finishReason?: string;
   traceId?: string;
   error?: string;
+  usage?: RunUsage;
+  /** `Date.now()` when the run started; set by `useRun`. */
+  startedAt?: number;
+  /** Start to the terminal event, when `startedAt` is known. */
+  durationMs?: number;
 }
 
 export const IDLE_RUN: RunState = { status: 'idle', text: '', toolCalls: [] };
 export const STARTED_RUN: RunState = { status: 'running', text: '', toolCalls: [] };
 
-/** `state` after `event`; events after the terminal one are ignored. */
-export function applyRunEvent(state: RunState, event: PlaygroundEvent): RunState {
+/** `{ durationMs }` from `startedAt` to `now`, or nothing when the start is unknown. */
+const timed = (state: RunState, now: number) => (state.startedAt === undefined ? {} : { durationMs: now - state.startedAt });
+
+/** `state` after `event` (arriving at `now`); events after the terminal one are ignored. */
+export function applyRunEvent(state: RunState, event: PlaygroundEvent, now = Date.now()): RunState {
   if (state.status !== 'running') return state;
   switch (event.type) {
     case 'delta':
@@ -39,9 +50,16 @@ export function applyRunEvent(state: RunState, event: PlaygroundEvent): RunState
         text: event.text || state.text,
         finishReason: event.finishReason,
         ...(event.traceId ? { traceId: event.traceId } : {}),
+        ...(event.usage ? { usage: event.usage } : {}),
+        ...timed(state, now),
       };
     case 'error':
-      return { ...state, status: 'error', error: event.code ? `${event.message} (${event.code})` : event.message };
+      return {
+        ...state,
+        status: 'error',
+        error: event.code ? `${event.message} (${event.code})` : event.message,
+        ...timed(state, now),
+      };
     default:
       return state;
   }
