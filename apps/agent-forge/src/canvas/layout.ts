@@ -17,8 +17,8 @@ export function autoLayout(graph: AgentGraphSpec): AgentGraphSpec {
   if (graph.nodes.length === 0) return graph;
 
   const g = new dagre.graphlib.Graph();
-  // ranksep 40: the same 248px column pitch specToGraph.ts lays a fresh graph out on.
-  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 40 });
+  // ranksep 48: the same 256px column pitch specToGraph.ts lays a fresh graph out on.
+  g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 48 });
   g.setDefaultEdgeLabel(() => ({}));
 
   for (const node of graph.nodes) {

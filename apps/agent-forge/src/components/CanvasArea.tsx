@@ -344,6 +344,15 @@ function useDropHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: 
 }
 
 /**
+ * A viewport animation's duration, or none under `prefers-reduced-motion:
+ * reduce` - every pan/fit animation on the canvas goes through this.
+ */
+function motionDuration(ms: number): { duration: number } | undefined {
+  const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return reduce ? undefined : { duration: ms };
+}
+
+/**
  * An automatic fit: the whole graph when it fits at AUTO_FIT_MIN_ZOOM or more
  * (never past 1:1), else that zoom with the graph's top-left corner in view.
  */
@@ -359,7 +368,7 @@ function useLegibleFit() {
       const fit = getViewportForBounds(bounds, width, height, AUTO_FIT_MIN_ZOOM, 1, AUTO_FIT_PADDING);
       const x = bounds.width * fit.zoom > width ? AUTO_FIT_INSET - bounds.x * fit.zoom : fit.x;
       const y = bounds.height * fit.zoom > height ? AUTO_FIT_INSET - bounds.y * fit.zoom : fit.y;
-      void setViewport({ x, y, zoom: fit.zoom }, duration ? { duration } : undefined);
+      void setViewport({ x, y, zoom: fit.zoom }, duration ? motionDuration(duration) : undefined);
     },
     [getNodes, setViewport, store]
   );
@@ -435,13 +444,16 @@ export function panIntoView(node: ScreenBox, paneWidth: number, paneHeight: numb
 /**
  * Selecting a node opens the Inspector, which narrows the pane from the right
  * (AgentsScreen.tsx): pan, at the same zoom, just enough to keep the selected
- * node in view - on selection and whenever the pane is resized under it.
+ * node in view - on selection and when the pane's width changes under it (the
+ * Inspector opening or closing), not on height changes (dragging the bottom
+ * drawer's splitter must not snap the view back).
  */
 function useKeepSelectionInView(selectedNodeId: string | undefined) {
   const { getInternalNode, getViewport, setViewport } = useReactFlow();
+  const store = useStoreApi();
   const paneWidth = useStore((s) => s.width);
-  const paneHeight = useStore((s) => s.height);
   useEffect(() => {
+    const paneHeight = store.getState().height;
     const node = selectedNodeId ? getInternalNode(selectedNodeId) : undefined;
     if (!node?.measured.width || !node.measured.height || !paneWidth || !paneHeight) return;
     const { x, y, zoom } = getViewport();
@@ -452,8 +464,8 @@ function useKeepSelectionInView(selectedNodeId: string | undefined) {
       height: node.measured.height * zoom,
     };
     const { dx, dy } = panIntoView(box, paneWidth, paneHeight);
-    if (dx !== 0 || dy !== 0) void setViewport({ x: x + dx, y: y + dy, zoom }, { duration: 150 });
-  }, [selectedNodeId, paneWidth, paneHeight, getInternalNode, getViewport, setViewport]);
+    if (dx !== 0 || dy !== 0) void setViewport({ x: x + dx, y: y + dy, zoom }, motionDuration(150));
+  }, [selectedNodeId, paneWidth, store, getInternalNode, getViewport, setViewport]);
 }
 
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
@@ -467,7 +479,7 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
   }
 
   function handleFitView() {
-    fitView({ ...FIT_VIEW_OPTIONS, duration: 200 });
+    fitView({ ...FIT_VIEW_OPTIONS, ...motionDuration(200) });
   }
 
   const handleDuplicate = useCallback(() => {
@@ -565,7 +577,7 @@ function InspectorToggle({ inspectorCollapsed = false, onToggleInspector }: Insp
   return (
     <button
       type="button"
-      className="btn btn-secondary btn-icon btn-sm canvas-inspector-toggle"
+      className={`btn btn-secondary btn-sm canvas-inspector-toggle${inspectorCollapsed ? '' : ' btn-icon'}`}
       onClick={onToggleInspector}
       aria-label={label}
       aria-expanded={!inspectorCollapsed}
@@ -573,6 +585,8 @@ function InspectorToggle({ inspectorCollapsed = false, onToggleInspector }: Insp
       title={label}
     >
       <Icon aria-hidden="true" />
+      {/* Collapsed, the word makes the way back obvious; the accessible name stays "Show inspector". */}
+      {inspectorCollapsed && <span aria-hidden="true">Inspector</span>}
     </button>
   );
 }

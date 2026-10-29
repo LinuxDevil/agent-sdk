@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { readStored, writeStored } from '../../components/storedValue';
 
 /** localStorage key for the viewer's explicit Show/Hide inspector choice: "1" hidden, "0" shown. */
@@ -16,20 +16,28 @@ function collapsedWithNothingSelected(): boolean {
  * unless the viewer pressed Show inspector, which is remembered. Selecting a
  * node always opens it, as before; deselecting returns to the remembered
  * choice. `toggle` is the explicit Show/Hide, and the only thing stored.
+ *
+ * Derived during render (no effect), so the Inspector opens in the same paint
+ * as the selection that opens it.
  */
 export function useInspectorCollapsed(selectedNodeId: string | undefined): { collapsed: boolean; toggle: () => void } {
-  const [collapsed, setCollapsed] = useState(() => !selectedNodeId && collapsedWithNothingSelected());
-
-  useEffect(() => {
-    setCollapsed(!selectedNodeId && collapsedWithNothingSelected());
-  }, [selectedNodeId]);
+  const [whenEmpty, setWhenEmpty] = useState(collapsedWithNothingSelected);
+  // Hide pressed over the current selection: hidden until the selection changes.
+  const [hiddenOverSelection, setHiddenOverSelection] = useState(false);
+  const [seenSelection, setSeenSelection] = useState(selectedNodeId);
+  if (seenSelection !== selectedNodeId) {
+    // React's "adjust state when a prop changes" pattern: re-renders before paint, no effect.
+    setSeenSelection(selectedNodeId);
+    setHiddenOverSelection(false);
+  }
+  const collapsed = selectedNodeId ? hiddenOverSelection && seenSelection === selectedNodeId : whenEmpty;
 
   const toggle = useCallback(() => {
-    setCollapsed((was) => {
-      writeStored(INSPECTOR_COLLAPSED_KEY, was ? '0' : '1');
-      return !was;
-    });
-  }, []);
+    const next = !collapsed;
+    writeStored(INSPECTOR_COLLAPSED_KEY, next ? '1' : '0');
+    setWhenEmpty(next);
+    setHiddenOverSelection(next);
+  }, [collapsed]);
 
   return { collapsed, toggle };
 }

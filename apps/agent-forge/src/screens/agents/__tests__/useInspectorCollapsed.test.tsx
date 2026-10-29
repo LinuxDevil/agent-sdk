@@ -70,3 +70,32 @@ describe('useInspectorCollapsed', () => {
     expect(latest.collapsed).toBe(false);
   });
 });
+
+describe('useInspectorCollapsed after a Hide', () => {
+  beforeEach(() => {
+    installMemoryStorage();
+  });
+
+  it('reopens when the same node is selected again after the selection moved on', () => {
+    render('llm-1');
+    act(() => latest.toggle());
+    expect(latest.collapsed).toBe(true);
+    render(undefined);
+    render('llm-1');
+    expect(latest.collapsed).toBe(false);
+  });
+
+  it('opens on the very render that selects a node (no effect step)', () => {
+    const seen: boolean[] = [];
+    function Recorder({ selected }: { selected?: string }) {
+      seen.push(useInspectorCollapsed(selected).collapsed);
+      return null;
+    }
+    const r = createRoot(document.createElement('div'));
+    act(() => r.render(createElement(Recorder, {})));
+    seen.length = 0;
+    act(() => r.render(createElement(Recorder, { selected: 'llm-1' })));
+    expect(seen.every((c) => c === false)).toBe(true);
+    act(() => r.unmount());
+  });
+});

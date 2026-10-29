@@ -22,12 +22,12 @@ function isSerializedHookArray(value: unknown): value is SerializedHook[] {
 }
 
 /**
- * One pipeline stage per column: a 208px card (`.rf-node`) plus a 40px gap
+ * One pipeline stage per column: a 208px card (`.rf-node`) plus a 48px gap
  * for the edge. Compact so the default trigger -> llm -> tool -> output graph
  * fits a 1280px-wide builder whole at a legible zoom (CanvasArea.tsx's
  * auto-fit). Specs store no positions, so every opened agent is laid out here.
  */
-const COLUMN_WIDTH = 248;
+const COLUMN_WIDTH = 256;
 const ROW_HEIGHT = 140;
 
 /**

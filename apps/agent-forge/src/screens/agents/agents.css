@@ -450,14 +450,23 @@ button.breakpoint-toggle {
   width: 30px;
   min-height: 30px;
 }
-/* The docked Inspector's Show/Hide toggle (CanvasArea.tsx), level with the toolbar on the right. */
-.canvas-inspector-toggle.btn-icon.btn-sm {
+/*
+ * The docked Inspector's Show/Hide toggle (CanvasArea.tsx), level with the
+ * toolbar on the right: icon + "Inspector" while collapsed, icon-only when open.
+ */
+.canvas-inspector-toggle.btn-sm {
   position: absolute;
   right: var(--space-3);
   top: var(--space-3);
   z-index: 5;
-  width: 36px;
   min-height: 36px;
+  padding: 0 var(--space-3) 0 10px;
+  gap: 6px;
+  font-size: 13px;
+}
+.canvas-inspector-toggle.btn-icon.btn-sm {
+  width: 36px;
+  padding: 0;
 }
 
 /* Empty-canvas onboarding (canvas/EmptyCanvas.tsx), centred over the pane. */
@@ -1137,7 +1146,7 @@ button.breakpoint-toggle {
 }
 
 @media (max-width: 860px) {
-  .canvas-inspector-toggle.btn-icon.btn-sm {
+  .canvas-inspector-toggle.btn-sm {
     display: none;
   }
   .shell {
