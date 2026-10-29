@@ -1,7 +1,16 @@
 /*
- * Shared primitives used by more than one screen (buttons, status pills, form
- * fields, chips, switches). Moved out of layout.css unchanged; imported before
+ * Shared primitives used by more than one screen: buttons, status pills, form
+ * fields, chips, switches, kbd and a few type utilities. Built only from the
+ * tokens in theme.css (the Studio redesign Design Brief); imported before
  * layout.css so the chrome, Agents and drawer rules keep their cascade position.
+ *
+ * Classes later screens can use:
+ *   .btn (secondary) .btn-secondary .btn-primary .btn-ghost .btn-danger
+ *   .btn-success .btn-danger-text, sizes .btn-sm, icon-only .btn-icon
+ *   (icon-only buttons always carry aria-label);
+ *   .status-pill + .pill-ok|error|warning|running|neutral|violet (ui/primitives.css);
+ *   .field / .input / .select / .textarea; .chip (.on); .switch (.on); .toggle-row;
+ *   <kbd>; .overline; .tabular-nums.
  */
 
 /* read by screen readers, not drawn (the page h1, status prefixes). */
@@ -17,84 +26,223 @@
   border: 0;
 }
 
+/* ---------- Type utilities ---------- */
+.overline {
+  font-size: var(--fs-overline);
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
 .dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
   background: var(--success);
   box-shadow: 0 0 0 3px var(--success-soft);
+  flex: none;
 }
 
-.btn {
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
-  border-radius: 7px;
-  padding: 6px 12px;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
+/* ---------- Buttons ---------- */
+/* The base .btn is the secondary button: surface fill, strong hairline, a hairline lift. */
+.btn,
+.btn-secondary {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  transition: filter 0.12s, transform 0.04s;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.25;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
-.btn:hover {
-  filter: brightness(1.05);
+.btn:hover:not(:disabled) {
+  background: var(--surface-2);
 }
-.btn:active {
-  transform: translateY(1px);
+.btn:active:not(:disabled) {
+  background: var(--surface-3);
 }
 .btn:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
+.btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+  flex: none;
+}
+.btn-sm {
+  min-height: 28px;
+  padding: 0 10px;
+  gap: 4px;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+}
+.btn-icon {
+  justify-content: center;
+  width: 32px;
+  padding: 0;
+}
+.btn-icon.btn-sm {
+  width: 28px;
+}
+
 .btn-primary {
   background: var(--accent-solid);
   border-color: var(--accent-solid);
   color: var(--on-accent);
+  box-shadow: var(--highlight-inset), var(--shadow-sm);
 }
-.btn-success {
-  background: var(--success-soft);
-  border-color: var(--success);
-  color: var(--success);
+.btn-primary:hover:not(:disabled),
+.btn-primary:active:not(:disabled) {
+  background: var(--accent-solid-hover);
+  border-color: var(--accent-solid-hover);
 }
-.btn-danger {
-  background: var(--danger-soft);
-  border-color: var(--danger);
-  color: var(--danger);
+.btn-primary:active:not(:disabled) {
+  box-shadow: none;
 }
+
+/* Ghost: no fill and no lift, only the quiet --border hairline; icon-only ghosts drop the hairline too. */
 .btn-ghost {
   background: transparent;
+  border-color: var(--border);
+  box-shadow: none;
 }
+.btn-ghost.btn-icon {
+  border-color: transparent;
+  color: var(--text-muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.btn-ghost:active:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+/* Stop, Reject: danger text on the neutral button, the danger tint on hover. */
+.btn-danger {
+  color: var(--danger);
+}
+.btn-danger:hover:not(:disabled),
+.btn-danger:active:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+}
+/* a ghost button whose action is destructive (Delete agent). */
+.btn-danger-text {
+  color: var(--danger);
+}
+.btn-danger-text:hover:not(:disabled),
+.btn-danger-text:active:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* Run, Approve, Continue, Deploy. */
+.btn-success {
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  color: var(--success);
+  box-shadow: none;
+}
+.btn-success:hover:not(:disabled),
+.btn-success:active:not(:disabled) {
+  /* toward --surface: lighter in light mode, darker in dark - the text only gains contrast. */
+  background: color-mix(in srgb, var(--success-soft) 60%, var(--surface));
+  border-color: var(--success);
+}
+
+.btn:disabled,
 .btn[disabled] {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
 }
 
+/* ---------- Status pill (tones in ui/primitives.css) ---------- */
 .status-pill {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-  padding: 2px 6px;
-  border-radius: 20px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 14%, transparent);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   flex: none;
 }
+/* sentence case: the label keeps its text ("awaiting approval"), only its first letter is drawn upper case. */
+.status-pill-label::first-letter {
+  text-transform: uppercase;
+}
 .status-pill .dot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   box-shadow: none;
   /* match each status pill's own text color (set by the .pill-<tone>
      classes in ui/primitives.css) instead of always rendering the base
      `.dot` rule's green - a status pill's dot should reflect that status. */
   background: currentColor;
 }
-.btn-danger-text {
-  color: var(--danger);
+.status-pill svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.75;
+  flex: none;
+}
+.status-pill.pill-running .dot {
+  animation: status-pulse 1.4s var(--ease) infinite;
+}
+@keyframes status-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
 }
 
 .node-swatch {
@@ -104,20 +252,21 @@
   flex: none;
 }
 
+/* ---------- Form fields ---------- */
 .field {
-  margin-bottom: 13px;
+  margin-bottom: 14px;
 }
 .field label {
   display: block;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
 }
 .field .hint {
-  font-size: 10.5px;
+  font-size: 12px;
   color: var(--text-faint);
-  margin-top: 4px;
+  margin-top: 5px;
 }
 .field .hint.field-error {
   color: var(--danger);
@@ -126,79 +275,159 @@
 .select,
 .textarea {
   width: 100%;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  min-height: 32px;
+  padding: 0 10px;
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   color: var(--text);
-  border-radius: 7px;
-  padding: 7px 9px;
-  font-size: 12px;
+  font-size: 13px;
   font-family: var(--font-ui);
+  line-height: 1.4;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.input:hover:not(:disabled):not(:focus),
+.select:hover:not(:disabled):not(:focus),
+.textarea:hover:not(:disabled):not(:focus) {
+  border-color: color-mix(in srgb, var(--border-strong) 55%, var(--text-faint));
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-faint);
+  opacity: 1;
+}
+.select {
+  appearance: none;
+  padding-right: 30px;
+  background-image: var(--select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 16px 16px;
+  cursor: pointer;
 }
 .textarea {
-  font-family: var(--font-mono);
-  font-size: 11.5px;
   min-height: 64px;
+  padding: 7px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
   resize: vertical;
 }
+/* the accent border + ring; the transparent outline keeps a focus indicator in forced-colors mode. */
 .input:focus,
 .select:focus,
 .textarea:focus {
-  outline: 2px solid var(--accent);
+  outline: 2px solid transparent;
   outline-offset: -1px;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.input:disabled,
+.select:disabled,
+.textarea:disabled {
+  background-color: var(--surface-2);
+  color: var(--text-muted);
+  cursor: not-allowed;
 }
 .row2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
+
+/* ---------- Chip ---------- */
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 10px;
   border: 1px solid var(--border);
+  border-radius: var(--radius-full);
   background: var(--surface-2);
-  border-radius: 20px;
-  padding: 4px 9px 4px 8px;
-  font-size: 11px;
+  color: var(--text);
+  font-size: 12px;
   font-family: var(--font-mono);
+  line-height: 1.2;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.chip svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.75;
+  flex: none;
 }
 .chip.on {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   color: var(--accent);
   background: var(--accent-soft);
 }
 
+/* ---------- Switch ---------- */
 .switch {
-  width: 30px;
-  height: 17px;
-  border-radius: 20px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  width: 32px;
+  height: 18px;
+  border-radius: var(--radius-full);
+  background: var(--border-strong);
+  border: 1px solid transparent;
   position: relative;
   cursor: pointer;
   flex: none;
+  transition:
+    background-color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 .switch.on {
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
 }
 .switch::after {
   content: '';
   position: absolute;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   background: #fff;
-  top: 1.5px;
-  left: 2px;
-  transition: left 0.12s;
+  box-shadow: var(--shadow-sm);
+  top: 1px;
+  left: 1px;
+  transition: transform var(--dur) var(--ease);
 }
 .switch.on::after {
-  left: 15px;
+  transform: translateX(14px);
+}
+.switch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .toggle-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
   padding: 2px 0;
+  font-size: 13px;
+}
+
+/* Every transition and animation above is off for reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .btn-secondary,
+  .input,
+  .select,
+  .textarea,
+  .chip,
+  .switch,
+  .switch::after {
+    transition: none;
+  }
+  .status-pill.pill-running .dot {
+    animation: none;
+  }
 }

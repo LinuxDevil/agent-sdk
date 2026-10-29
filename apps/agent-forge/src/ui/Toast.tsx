@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 import './primitives.css';
 
 /** What {@link useToast}'s `show` takes: a message, a tone (default `info`) and an optional action button. */
@@ -40,7 +41,7 @@ function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: str
         </button>
       )}
       <button type="button" className="toast-close" aria-label="Dismiss notification" onClick={() => onDismiss(id)}>
-        &times;
+        <X size={16} strokeWidth={1.75} aria-hidden="true" />
       </button>
     </div>
   );

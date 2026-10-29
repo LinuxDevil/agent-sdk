@@ -13,14 +13,31 @@ import { SEED_ERROR, SEED_NEWEST_FAILURE, seedObserve } from './fixtures/seedObs
  *   LOUSHO_DOC_SHOTS=1 npx playwright test -c apps/agent-forge/playwright.config.ts docShots
  *
  * writes `docs/images/studio-<screen>.png` at the repo root (1280x800, light).
+ * Two optional overrides, for before/after reviews of a restyle:
+ *
+ *   LOUSHO_DOC_SHOTS_OUT=<dir>          write the PNGs there instead (absolute,
+ *                                       or relative to the process cwd)
+ *   LOUSHO_DOC_SHOTS_SCHEME=light|dark  the colour scheme to shoot (default light)
+ *
  * The small fixtures below fill the screens the seed leaves thin: a fleet with
  * mixed health, a day of chart buckets for it, and a few threads.
  */
 test.skip(!process.env.LOUSHO_DOC_SHOTS, 'set LOUSHO_DOC_SHOTS=1 to regenerate the docs screenshots');
-test.use({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' });
+
+/** `LOUSHO_DOC_SHOTS_SCHEME`, failing fast on anything but light or dark. */
+function shotScheme(): 'light' | 'dark' {
+  const raw = process.env.LOUSHO_DOC_SHOTS_SCHEME ?? 'light';
+  if (raw === 'light' || raw === 'dark') return raw;
+  throw new Error(`LOUSHO_DOC_SHOTS_SCHEME must be "light" or "dark", got "${raw}"`);
+}
+
+// Validated only when the shots run, so a stray value never breaks collection of a normal e2e run.
+test.use({ viewport: { width: 1280, height: 800 }, colorScheme: process.env.LOUSHO_DOC_SHOTS ? shotScheme() : 'light' });
 
 const APP = '/?token=e2e-studio-token';
-const OUT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../docs/images');
+const OUT = process.env.LOUSHO_DOC_SHOTS_OUT
+  ? path.resolve(process.cwd(), process.env.LOUSHO_DOC_SHOTS_OUT)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../docs/images');
 
 const NOW = Date.now();
 const MINUTE = 60_000;

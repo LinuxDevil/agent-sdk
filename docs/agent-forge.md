@@ -826,3 +826,12 @@ LOUSHO_DOC_SHOTS=1 npx playwright test -c apps/agent-forge/playwright.config.ts 
 It writes `docs/images/studio-<screen>.png` (1280x800, light theme) from the
 same fake daemon. The images are not part of the npm package.
 
+Two optional variables help review a restyle before and after:
+`LOUSHO_DOC_SHOTS_OUT=<dir>` writes the PNGs to another directory (absolute,
+or relative to where you run the command), and `LOUSHO_DOC_SHOTS_SCHEME=dark`
+shoots the dark theme (`light` is the default; any other value fails the run).
+
+```bash
+LOUSHO_DOC_SHOTS=1 LOUSHO_DOC_SHOTS_OUT=/tmp/shots-dark LOUSHO_DOC_SHOTS_SCHEME=dark npx playwright test -c apps/agent-forge/playwright.config.ts docShots
+```
+

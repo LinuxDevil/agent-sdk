@@ -2,9 +2,8 @@
  * Chat with a running agent - the Chat tab's real content, replacing
  * BottomDrawer's former placeholder. Renders `AppState.chat` (the server's
  * real `Message[]` history, reconciled and streamed over the existing
- * `WS /agents/:id/stream` channel - see runRegistry.ts/chatReconcile.ts),
- * ported from `.design-ref/agent-forge-mockup.html`'s bubble/avatar/
- * timestamp layout.
+ * `WS /agents/:id/stream` channel - see runRegistry.ts/chatReconcile.ts)
+ * as bubbles with avatars and timestamps.
  *
  * Streaming granularity: MESSAGE-level, not token-level. The
  * server's `AgentExecutor.execute({ onAgentEvent })` streams each model

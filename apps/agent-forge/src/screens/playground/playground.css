@@ -146,7 +146,8 @@
 }
 .pg-model {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  /* the provider select's longest option ("custom (provider/model)") needs the wider column */
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
   gap: 8px;
 }
 

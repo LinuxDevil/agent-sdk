@@ -18,12 +18,17 @@
   color: var(--warning);
 }
 .status-pill.pill-running {
-  background: var(--surface-2);
+  background: var(--info-soft);
   color: var(--info);
 }
 .status-pill.pill-neutral {
   background: var(--surface-2);
   color: var(--text-muted);
+}
+/* LLM / agent-flavoured statuses. */
+.status-pill.pill-violet {
+  background: var(--violet-soft);
+  color: var(--violet);
 }
 
 /* ---------- EmptyState ---------- */
@@ -105,12 +110,15 @@
 }
 .toast-close {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
-  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  /* 16px icon + 4px each side: a 24x24 hit target */
+  padding: 4px;
   color: var(--text-muted);
-  font: inherit;
-  font-size: 16px;
   line-height: 1;
   cursor: pointer;
 }
