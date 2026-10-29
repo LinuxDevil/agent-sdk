@@ -31,6 +31,8 @@
   --text: light-dark(#18181b, #f4f4f5);
   --text-muted: light-dark(#52525b, #a1a1aa);
   --text-faint: light-dark(#5f5f68, #8a8a94);
+  /* the nav rail and the frame behind the floating content card (U02): one step darker than --bg */
+  --nav-bg: light-dark(#efeff2, #060608);
 
   /* ---------- Accent (indigo) ---------- */
   --accent: light-dark(#4f46e5, #8b8cf8);
@@ -54,6 +56,11 @@
   /* LLM / agent accent */
   --violet: light-dark(#6d28d9, #a78bfa);
   --violet-soft: light-dark(#f1eafe, #241a3d);
+  /* Tinted-surface borders: the status colour at 40% over transparent (notices, toasts, change chips, tool rows). */
+  --success-border: color-mix(in srgb, var(--success) 40%, transparent);
+  --warning-border: color-mix(in srgb, var(--warning) 40%, transparent);
+  --danger-border: color-mix(in srgb, var(--danger) 40%, transparent);
+  --info-border: color-mix(in srgb, var(--info) 40%, transparent);
 
   /* ---------- Chart series ---------- */
   --chart-1: light-dark(#4f46e5, #8b8cf8);
@@ -84,6 +91,10 @@
   --space-10: 40px;
   /* page gutter: 24px, 16px at narrow widths (below) */
   --gutter: var(--space-6);
+
+  /* ---------- Layout ---------- */
+  /* the docked right panel's default width (U03 overrides it inline with the stored width) */
+  --dock-width: 490px;
 
   /* ---------- Elevation ----------
      A shadow is not a colour, so it cannot be one light-dark() pair; instead every layer's colour is,
@@ -130,6 +141,8 @@
   --lh-body: 1.5;
   /* page title (600, tracking -0.01em) */
   --fs-title: 18px;
+  /* agent detail H1 (600, tracking -0.015em) */
+  --fs-display: 22px;
   /* metric value (600, tabular) */
   --fs-metric: 24px;
 }
