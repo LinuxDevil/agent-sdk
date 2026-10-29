@@ -183,7 +183,7 @@ export function NewQueueForm({ onCreated, onCancel }: { onCreated: () => void; o
         </ol>
         <button type="button" className="btn btn-ghost btn-sm qu-rubric-add" onClick={rubric.add}>
           <Plus aria-hidden="true" />
-          Add rubric entry
+          Add rubric row
         </button>
       </fieldset>
       {error && (

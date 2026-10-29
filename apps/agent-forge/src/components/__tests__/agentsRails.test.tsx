@@ -22,7 +22,7 @@ vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 // The drawer's panels are covered elsewhere; here only its tab strip matters.
 vi.mock('../ChatPanel', () => ({ ChatPanel: () => null }));
 
-import { agentInitials } from '../LeftRail';
+import { AgentStatusMark, agentInitials } from '../LeftRail';
 import { ApprovalCard } from '../ApprovalCard';
 import { ChatComposer } from '../ChatComposer';
 import { BottomDrawer } from '../BottomDrawer';
@@ -44,6 +44,30 @@ describe('agentInitials', () => {
     expect(agentInitials('weather')).toBe('WE');
     expect(agentInitials('x')).toBe('X');
     expect(agentInitials('---')).toBe('?');
+  });
+});
+
+describe('AgentStatusMark', () => {
+  it('unsaved and error rows show a text pill as well as the dot, so status is not colour alone', () => {
+    for (const [status, tone, text] of [['unsaved', 'warning', 'unsaved'], ['error', 'error', 'error']] as const) {
+      const container = render(<AgentStatusMark status={status} />);
+      const pill = container.querySelector(`.status-pill.pill-${tone}`);
+      expect(pill, status).not.toBeNull();
+      expect(pill!.querySelector('.dot')).not.toBeNull();
+      // shown as "Unsaved" / "Error" (the pill capitalises its first letter)
+      expect(pill!.querySelector('.status-pill-label')?.textContent).toBe(text);
+      expect(container.querySelector('.agent-dot')).toBeNull();
+    }
+  });
+
+  it('every other status stays a bare dot, its word the tooltip and screen-reader text', () => {
+    for (const status of ['idle', 'running', 'done', 'paused']) {
+      const container = render(<AgentStatusMark status={status} />);
+      const dot = container.querySelector('.agent-dot');
+      expect(dot?.getAttribute('title'), status).toBe(status);
+      expect(dot?.querySelector('.visually-hidden')?.textContent).toBe(status);
+      expect(container.querySelector('.status-pill')).toBeNull();
+    }
   });
 });
 

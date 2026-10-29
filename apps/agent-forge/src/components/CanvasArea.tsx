@@ -41,6 +41,7 @@ import { nodeRunStatuses, type NodeRunStatus } from '../canvas/nodeStatus';
 import { isEdgeTypeAllowed } from '../graph/connectionRules';
 import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { pickHookTemplate } from '../canvas/paletteActions';
+import { useAgentEdgeSelection, useFitOnLoad } from '../canvas/canvasResets';
 import type { AgentGraphNode, AgentGraphNodeType, AgentGraphSpec, AgentNodeHookPhase } from '../graph/types';
 
 type SetGraph = ReturnType<typeof useAppState>['setGraph'];
@@ -395,27 +396,11 @@ function useFitViewOnResize() {
   }, [fitLegibly]);
 }
 
-/**
- * The one owner of the first fit: when an agent is opened and when an empty
- * canvas is filled (a template applied, or the first node dropped). Waits
- * until every node has been measured, so the fit uses real card sizes, and
- * returns `true` until that fit has landed - the canvas keeps its viewport
- * hidden meanwhile, so the graph never shows unfitted and then jumps.
- */
+/** The first fit when an agent opens or an empty canvas is filled (canvas/canvasResets.ts), with legible sizing. */
 function useFitViewOnLoad(agentId: string, graph: AgentGraphSpec, measured: MeasuredSizes): boolean {
   const fitLegibly = useLegibleFit();
-  const loadKey = `${agentId}|${graph.nodes.length > 0 ? 'filled' : 'empty'}`;
-  const [fittedKey, setFittedKey] = useState<string | null>(null);
   const allMeasured = graph.nodes.length > 0 && graph.nodes.every((n) => measured[n.id]);
-  useEffect(() => {
-    if (fittedKey === loadKey || !allMeasured) return;
-    const frame = window.requestAnimationFrame(() => {
-      fitLegibly();
-      setFittedKey(loadKey);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [loadKey, fittedKey, allMeasured, fitLegibly]);
-  return graph.nodes.length > 0 && fittedKey !== loadKey;
+  return useFitOnLoad(agentId, graph.nodes.length, allMeasured, fitLegibly);
 }
 
 /** A screen-space box: left/top edge and size. */
@@ -639,7 +624,7 @@ function useCanvasElements() {
     () => toRfNodes(graph, { selectedNodeId, onRename, highlightedNodeId, breakpoints, statuses }, measured),
     [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey, statuses, measured]
   );
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | undefined>(undefined);
+  const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
   const edges = useMemo(() => toRfEdges(graph, statuses, selectedEdgeId), [graph, statuses, selectedEdgeId]);
 
   return { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId };

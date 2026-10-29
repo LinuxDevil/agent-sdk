@@ -18,6 +18,10 @@
   display: flex;
   flex-direction: column;
   overflow: auto;
+  /* Sticky side panels (queue rubric card, hub entry) cap themselves at 100cqh, this scroll container's
+     visible height under the screen header. Its size comes from the .app grid row, never its content,
+     so size containment changes nothing here; no fixed-position UI renders inside it. */
+  container-type: size;
 }
 .screen-main > .observe,
 .screen-main > .screen-settings {

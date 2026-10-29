@@ -226,9 +226,17 @@
   align-items: start;
   min-width: 0;
 }
+/* Never taller than the scroll container (.screen-main) below its sticky top: the rubric fields
+   scroll inside the card, and Skip / Submit & next stay pinned at its foot. */
 .qu-review > .qu-rubric-card {
   position: sticky;
   top: var(--space-4);
+  max-height: calc(100cqh - 2 * var(--space-4));
+  overflow: hidden;
+}
+.qu-review > .qu-rubric-card > .qu-rubric-body {
+  min-height: 0;
+  overflow: auto;
 }
 @media (max-width: 1100px) {
   .qu-review {
@@ -236,6 +244,11 @@
   }
   .qu-review > .qu-rubric-card {
     position: static;
+    max-height: none;
+    overflow: visible;
+  }
+  .qu-review > .qu-rubric-card > .qu-rubric-body {
+    overflow: visible;
   }
 }
 .qu-item {

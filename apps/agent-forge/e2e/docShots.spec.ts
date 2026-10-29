@@ -10,7 +10,7 @@ import type {
   ObservePromptVersion,
   ObserveSessionRow,
 } from '../src/observe/types';
-import { stubObserve } from './observeStub';
+import { stubBigHubEntry, stubLongQueueReview, stubObserve } from './observeStub';
 import { SEED_ERROR, SEED_NEWEST_FAILURE, seedObserve } from './fixtures/seedObserve';
 
 /**
@@ -435,6 +435,30 @@ test('prompts: a prompt with labels and a diff', async ({ page }) => {
 });
 
 // Review-only shots of the Prompts and Context Hub screens (x- prefix: not in docs/agent-forge.md).
+// The sticky side panels when their content is taller than the screen: each fits under the header, scrolling inside.
+test('x-sticky-queue: a 6-row rubric card beside a long trace, scrolled down', async ({ page }) => {
+  await stubLongQueueReview(page);
+  await open(page, '/evals/queues/e2e-queue');
+  await expect(page.getByRole('form', { name: 'Scores' }).locator('.qu-score')).toHaveCount(6);
+  await expect(page.locator('.qu-messages')).toBeVisible();
+  await page.locator('.screen-main').evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await expect(page.locator('.qu-submit')).toBeInViewport();
+  await shoot(page, 'x-sticky-queue');
+});
+
+test('x-sticky-hub: a long entry being edited, at 1280x640', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 640 });
+  await stubBigHubEntry(page);
+  await open(page, '/hub/e2e-namespace?agent=e2e-agent');
+  await page.getByRole('main').getByRole('button', { name: /big-entry/ }).click();
+  const entry = page.getByRole('region', { name: 'Entry big-entry' });
+  await entry.getByRole('button', { name: 'Edit' }).click();
+  await page.locator('.screen-main').evaluate((el) => el.scrollTo({ top: el.scrollHeight }));
+  await entry.getByRole('button', { name: 'Save' }).scrollIntoViewIfNeeded();
+  await expect(entry.getByRole('button', { name: 'Save' })).toBeInViewport();
+  await shoot(page, 'x-sticky-hub');
+});
+
 test('x-prompts-list: the prompt registry', async ({ page }) => {
   await open(page, '/prompts');
   await expect(rows(page)).toHaveCount(docPrompts.length);
@@ -950,6 +974,38 @@ test('agents x: the Nodes palette in the left rail', async ({ page }) => {
   await page.getByRole('tab', { name: 'Nodes', exact: true }).click();
   await expect(page.getByRole('button', { name: 'LLM step' })).toBeVisible();
   await shoot(page, 'x-agents-rail-nodes');
+});
+
+test('agents x-rail-status: the unsaved default agent, and an errored agent with an 80-character name', async ({ page }) => {
+  // No saved agents: the rail shows the unsaved default as its only row.
+  await page.route(/\/agents(\?|$)/, (route) =>
+    route.request().method() === 'GET' ? route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }) : route.continue(),
+  );
+  await open(page, '/agents');
+  await expect(page.locator('.agent-card.selected')).toBeVisible();
+  await shoot(page, 'x-agents-rail-unsaved');
+  await page.unroute(/\/agents(\?|$)/);
+
+  const sockets: WebSocketRoute[] = [];
+  const heardFromServer = new Set<WebSocketRoute>();
+  await page.routeWebSocket(/\/stream/, (ws) => {
+    const server = ws.connectToServer();
+    // Forward the server's frames as usual, noting each socket's on-connect status.
+    server.onMessage((message) => {
+      ws.send(message);
+      if (typeof message === 'string' && message.includes('"type":"status"')) heardFromServer.add(ws);
+    });
+    sockets.push(ws);
+  });
+  const name = `errored-${Date.now()}-${'x'.repeat(80)}`.slice(0, 80);
+  await newAgent(page, name, 'support-bot');
+  const own = () => sockets.filter((s) => s.url().includes(`/agents/${name}/stream`));
+  await expect.poll(() => own().length).toBeGreaterThan(0);
+  // The server's own on-connect status must land first, so ours is the last word.
+  await expect.poll(() => own().every((ws) => heardFromServer.has(ws))).toBe(true);
+  own().forEach((ws) => ws.send(JSON.stringify({ type: 'status', payload: { agentId: name, status: 'error' } })));
+  await expect(page.locator('.agent-card.selected .tone-error, .agent-card.selected .pill-error').first()).toBeVisible();
+  await shoot(page, 'x-agents-rail-error');
 });
 
 test('agents x: the builder toolbar at 860 and 375 wide', async ({ page }) => {

@@ -284,7 +284,7 @@
   position: absolute;
   inset: 0;
   z-index: 35;
-  background: rgba(10, 12, 18, 0.35);
+  background: var(--scrim);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -246,7 +246,7 @@ export function ThreadScreen({ sessionId }: { sessionId: string }) {
         actions={
           <a className="btn btn-ghost thread-back" href={`#${threadsListPath()}`}>
             <ArrowLeft aria-hidden="true" />
-            All threads
+            Back to threads
           </a>
         }
       />

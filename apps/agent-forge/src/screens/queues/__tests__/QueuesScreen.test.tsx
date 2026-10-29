@@ -209,7 +209,7 @@ describe('QueuesScreen list', () => {
     type(form.querySelector('input[name="queue-name"]') as HTMLInputElement, 'support-review');
     type(form.querySelector('input[name="rubric-name-0"]') as HTMLInputElement, 'accuracy');
     expect(buttonNamed(container, 'Remove rubric row 1')!.disabled).toBe(true);
-    await act(async () => buttonNamed(container, 'Add rubric entry')!.click());
+    await act(async () => buttonNamed(container, 'Add rubric row')!.click());
     type(form.querySelector('input[name="rubric-name-1"]') as HTMLInputElement, 'tone');
     type(form.querySelector('input[name="rubric-description-1"]') as HTMLInputElement, 'Polite?');
     type(form.querySelector('input[name="rubric-min-1"]') as HTMLInputElement, '1');

@@ -216,7 +216,7 @@ describe('ThreadsScreen thread', () => {
     expect(links).toEqual(['#/traces/trace-1', '#/traces/trace-2']);
   });
 
-  it('list -> thread -> trace: All threads keeps the list query', async () => {
+  it('list -> thread -> trace: Back to threads keeps the list query', async () => {
     await mountAt('#/threads?status=active');
     window.history.replaceState(null, '', `/#/threads/${SESSION.session_id}`);
     const container = render(
@@ -225,7 +225,9 @@ describe('ThreadsScreen thread', () => {
       </ToastProvider>,
     );
     await flush();
-    const back = [...container.querySelectorAll('a')].find((a) => a.textContent?.includes('All threads'));
+    // The header's way back is named "Back to threads", like the empty state's.
+    const back = container.querySelector('.thread-back');
+    expect(back?.textContent).toBe('Back to threads');
     expect(back?.getAttribute('href')).toBe('#/threads?status=active');
   });
 
