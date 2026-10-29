@@ -10,7 +10,7 @@
  * on failure) with no failure comment or a perfect 1; any other source
  * (human, online) only on a perfect 1.
  */
-import type { ObserveScoreRow } from '../../observe/types';
+import type { ObserveScorePassRate, ObserveScoreRow } from '../../observe/types';
 import type { TimeSeries } from '../../ui/TimeSeriesChart';
 import { formatTimeRange, parseTimeRange, toWindow, type TimeRange } from '../../ui/TimeRangePicker';
 
@@ -137,4 +137,31 @@ export function passRateSeries(evalRows: readonly ObserveScoreRow[], w: TrendWin
   }
   const points = [...buckets.entries()].sort(([a], [b]) => a - b).map(([t, b]) => ({ t, v: b.sum / b.n }));
   return { id: 'pass-rate', label: 'Pass rate', color: 'success', points };
+}
+
+/** The Scores metric cards' figures, folded from the per-eval aggregate rows already on screen. */
+export interface RatesSummary {
+  /** Evals with at least one score in the window. */
+  evals: number;
+  /** Score rows across those evals. */
+  scores: number;
+  /** passed / scores over every eval; null with no scores. */
+  passRate: number | null;
+  /** The evals' mean values weighted by their score counts; null when no eval has a mean. */
+  mean: number | null;
+}
+
+export function summarizeRates(rows: readonly ObserveScorePassRate[]): RatesSummary {
+  let scores = 0;
+  let passed = 0;
+  let weighted = 0;
+  let weight = 0;
+  for (const r of rows) {
+    scores += r.count;
+    passed += r.passed;
+    if (r.avg_value === null) continue;
+    weighted += r.avg_value * r.count;
+    weight += r.count;
+  }
+  return { evals: rows.length, scores, passRate: scores ? passed / scores : null, mean: weight ? weighted / weight : null };
 }

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ObserveScorePassRate, ObserveScoreRow } from '../../../observe/types';
 import { render } from '../../../ui/__tests__/render';
 import { ScoresScreen } from '../ScoresScreen';
-import { groupEvalScores, passRateSeries, scoreStats, traceHref, trendWindow } from '../scoresData';
+import { groupEvalScores, passRateSeries, scoreStats, summarizeRates, traceHref, trendWindow } from '../scoresData';
 
 const NOW = Date.UTC(2026, 9, 25, 12, 30);
 const DAY = 86_400_000;
@@ -126,6 +126,12 @@ describe('scoresData', () => {
     expect(s.points).toEqual([{ t: t - (t % DAY), v: 0.5 }]);
   });
 
+  it('summarizes the per-eval aggregate for the metric cards (count-weighted mean)', () => {
+    expect(summarizeRates(RATES)).toEqual({ evals: 2, scores: 8, passRate: 6 / 8, mean: (0.67 * 6 + 1 * 2) / 8 });
+    expect(summarizeRates([{ ...RATES[0]!, avg_value: null }])).toMatchObject({ evals: 1, mean: null });
+    expect(summarizeRates([])).toEqual({ evals: 0, scores: 0, passRate: null, mean: null });
+  });
+
   it('links a score to its trace, and to the step when it has one', () => {
     expect(traceHref({ trace_id: 'tr 1', obs_id: null })).toBe('#/traces/tr%201');
     expect(traceHref({ trace_id: 'tr', obs_id: 'o1' })).toBe('#/traces/tr?obs=o1');
@@ -147,6 +153,9 @@ describe('ScoresScreen', () => {
     const passHeader = [...c.querySelectorAll('thead th span[title]')].find((el) => el.textContent === 'Score pass rate')!;
     expect(passHeader.getAttribute('title')).toContain('every score of the eval');
     expect(calls('aggregate=eval')[0]).toContain(`since=${NOW - 30 * DAY}`);
+    // The metric cards fold the same aggregate rows: 2 evals, 6 of 8 scores passed.
+    const metrics = [...c.querySelectorAll('.scores-metrics .metric-value')].map((el) => el.textContent);
+    expect(metrics).toEqual(['2', '75.0%', '0.75']);
     // Nothing is expanded, so no per-eval rows are fetched.
     expect(calls('/api/v1/scores').filter((u) => !u.includes('aggregate'))).toEqual([]);
   });
