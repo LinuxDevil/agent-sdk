@@ -135,7 +135,7 @@ const SCANS = [
   ...['/traces?status=error', '/traces/e2e-trace?obs=e2e-obs', '/threads?status=active', '/prompts/e2e-prompt?diff=1,2'].map((path) => ({ label: path, path })),
 ];
 /** Detail screens whose PageHeader title is the item's name, not the nav label. */
-const ITEM_H1: Record<string, string> = { '/evals/datasets/:name': 'e2e-dataset' };
+const ITEM_H1: Record<string, string> = { '/evals/datasets/:name': 'e2e-dataset', '/prompts/e2e-prompt?diff=1,2': 'e2e-prompt' };
 for (const { label, path } of SCANS) {
   test(`${label} keeps the landmarks and passes axe`, async ({ page }) => {
     await page.goto(`/?token=e2e-studio-token#${path}`);
