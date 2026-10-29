@@ -144,9 +144,13 @@ The left navigation lists every screen, grouped:
 | Assets | **Context Hub** | Shared key-values agents publish to the daemon. |
 | | **Settings** | Provider keys, settings profiles and deploy. |
 
-Off the Agents screen the top bar names the screen and keeps the live run
-status pill, nothing else. The last nav item is the collector status (see
-[The collector](#the-collector-observe-daemon)).
+Off the Agents screen a page header names the screen and keeps the live run
+status pill. Under Settings, a small card shows the collector status (see
+[The collector](#the-collector-observe-daemon)). The button beside the
+**Agent Forge** name at the top of the nav (**Collapse navigation**)
+shrinks it to a rail of icons; hover an icon for its name. The choice is
+remembered across reloads. Below 860px wide the nav is always the full
+drawer.
 
 ### Routes and deep links
 
@@ -226,7 +230,7 @@ token on every read and write (as run reporting and the judge evaluators do),
 so the screens also work against a daemon started with `--require-token`.
 Without it, such a daemon answers `401` to every `/api/` read and the screens
 show that error instead of data (`/health` still answers, so the collector
-item says running). The browser's own credentials (the Studio token, cookies,
+card says running). The browser's own credentials (the Studio token, cookies,
 `Authorization`) are never passed on. The proxy only forwards reads plus the
 writes the screens make (feedback scores, new prompt versions from the
 Playground, prompt label moves, hub entry edits, dataset and example writes,
@@ -234,9 +238,9 @@ annotation queue writes, evaluator rule writes); every other write, ingest
 above all, is refused with `405`. It always calls the daemon at
 `LOUSHO_OBSERVE_URL`, whatever host the request line names.
 
-The last nav item says whether the daemon answers: **Collector: checking…**
-until the first probe, **Collector: running at `<url>`**, or **Collector:
-not reachable**. The probe keeps polling. While the daemon is down, each
+The collector card at the bottom of the nav says whether the daemon answers:
+**Checking collector…** until the first probe, then **Collector running**
+or **Collector unreachable**, with the daemon URL underneath. The probe keeps polling. While the daemon is down, each
 daemon screen shows the command to start it instead of an error, keeps its
 URL, and swaps the data back in by itself once the daemon answers. The
 Agents screen and Playground runs do not need the daemon.

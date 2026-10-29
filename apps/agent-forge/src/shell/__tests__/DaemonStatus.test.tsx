@@ -65,27 +65,39 @@ afterEach(() => {
 });
 
 describe('DaemonStatus', () => {
+  const card = () => container.querySelector('[role="status"]') as HTMLElement;
+  const label = () => card().querySelector('.nav-daemon-label')?.textContent;
+  const url = () => card().querySelector('.nav-daemon-url')?.textContent;
+
   it('reads "checking" until the first health probe settles', async () => {
     vi.stubGlobal('fetch', vi.fn(() => new Promise<Response>(() => {})));
     await render(<DaemonStatus />);
-    expect(container.textContent).toBe('Collector: checking…');
+    expect(container.textContent).toBe('Checking collector…');
+    expect(card().getAttribute('data-state')).toBe('checking');
+    expect(card().getAttribute('title')).toBe('Checking collector…');
   });
 
-  it('reads "not reachable" while the daemon is down', async () => {
+  it('reads "unreachable" while the daemon is down', async () => {
     stubProxy();
     await render(<DaemonStatus />);
     await flush();
-    expect(container.textContent).toBe('Collector: not reachable');
+    expect(container.textContent).toBe('Collector unreachable');
+    expect(card().getAttribute('data-state')).toBe('down');
+    expect(card().getAttribute('title')).toBe('Collector unreachable');
   });
 
   it('names the proxy target once the daemon answers, without a reload', async () => {
     const { daemon } = stubProxy();
     await render(<DaemonStatus />);
     await flush();
-    expect(container.textContent).toBe('Collector: not reachable');
+    expect(label()).toBe('Collector unreachable');
     daemon.up = true;
     await poll();
-    expect(container.textContent).toBe(`Collector: running at ${TARGET}`);
+    expect(label()).toBe('Collector running');
+    expect(card().getAttribute('data-state')).toBe('up');
+    expect(url()).toBe(TARGET);
+    expect(card().getAttribute('title')).toBe(`Collector running at ${TARGET}`);
+    expect(card().querySelector('.nav-daemon-url')?.getAttribute('title')).toBe(TARGET);
   });
 
   it('stays "not reachable" while a re-probe is in flight (no flicker)', async () => {
@@ -99,7 +111,7 @@ describe('DaemonStatus', () => {
     await act(async () => {
       vi.advanceTimersByTime(5000);
     });
-    expect(container.textContent).toBe('Collector: not reachable');
+    expect(label()).toBe('Collector unreachable');
     await act(async () => release());
     expect(daemon.up).toBe(false);
   });

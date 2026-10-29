@@ -2,8 +2,12 @@
 .app-shell {
   height: 100%;
   display: grid;
-  grid-template-columns: 208px minmax(0, 1fr);
+  grid-template-columns: 232px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+  transition: grid-template-columns var(--dur) var(--ease);
+}
+.app-shell[data-nav='collapsed'] {
+  grid-template-columns: 56px minmax(0, 1fr);
 }
 .app-shell-main {
   min-width: 0;
@@ -16,71 +20,213 @@
   min-height: 0;
   height: auto;
 }
+/* The ScreenHeader row sizes itself (PageHeader is 56px+, taller with crumbs/description). */
+.app-shell-main > .app-screen {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.screen-header-target {
+  display: contents;
+}
 
 .nav-rail {
   background: var(--surface);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 12px 8px;
-  gap: 4px;
+  padding: var(--space-3) var(--space-2);
+  gap: var(--space-1);
+  overflow-x: hidden;
   overflow-y: auto;
   min-height: 0;
+  min-width: 0;
 }
 .nav-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-1) var(--space-3) 6px;
+  min-height: 28px;
+}
+.nav-wordmark {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
   font-weight: 600;
   font-size: 14px;
-  padding: 4px 10px 12px;
+  line-height: 1.2;
   color: var(--text);
+  white-space: nowrap;
+}
+.nav-version {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 400 11px/1.3 var(--font-mono);
+  color: var(--text-faint);
+}
+.nav-collapse {
+  flex: none;
+  margin-left: auto;
+}
+.logo-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-solid);
+  color: var(--on-accent);
 }
 .nav-rail ul {
   list-style: none;
   margin: 0;
   padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .nav-group {
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
 }
 .nav-heading {
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-faint);
   padding: 6px 10px 4px;
+}
+.nav-divider {
+  height: 1px;
+  margin: var(--space-1) var(--space-2) 6px;
+  background: var(--border);
 }
 .nav-footer {
   margin-top: auto;
   border-top: 1px solid var(--border);
-  padding-top: 8px;
-}
-.nav-daemon {
-  margin: 0;
-  padding: 4px 10px;
-  font-size: 11px;
-  color: var(--text-faint);
-  overflow-wrap: anywhere;
+  padding-top: var(--space-2);
 }
 .nav-item {
-  display: block;
-  padding: 7px 10px;
-  border-radius: 6px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: var(--radius);
   font-size: 13px;
+  font-weight: 500;
   color: var(--text-muted);
   text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.nav-icon {
+  flex: none;
+}
+.nav-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .nav-item:hover {
   background: var(--surface-2);
   color: var(--text);
 }
 .nav-item.active {
-  background: var(--accent-soft);
+  background: light-dark(var(--surface-3), var(--surface-2));
+  color: var(--text);
+}
+.nav-item.active .nav-icon {
   color: var(--accent);
-  font-weight: 600;
+}
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
 }
 .nav-item:focus-visible,
 .nav-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Collector status card, pinned under Settings. */
+.nav-daemon {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2) 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  min-width: 0;
+}
+.nav-daemon-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: var(--radius-full);
+  background: var(--text-faint);
+}
+.nav-daemon[data-state='up'] .nav-daemon-dot {
+  background: var(--success);
+}
+.nav-daemon[data-state='down'] .nav-daemon-dot {
+  background: var(--danger);
+}
+.nav-daemon-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.nav-daemon-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+}
+.nav-daemon-url {
+  font: 400 11px var(--font-mono);
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Collapsed icon rail (docked only): icons centred, text kept for assistive tech. */
+.nav-rail[data-collapsed] .nav-brand {
+  flex-direction: column;
+  padding: 0 0 var(--space-3);
+}
+.nav-rail[data-collapsed] .nav-collapse {
+  margin-left: 0;
+}
+.nav-rail[data-collapsed] .nav-item {
+  justify-content: center;
+  padding: 0;
+}
+.nav-rail[data-collapsed] .nav-label {
+  display: none;
+}
+.nav-rail[data-collapsed] .nav-daemon {
+  justify-content: center;
+  padding: var(--space-2) 0;
+}
+.nav-rail[data-collapsed] .nav-daemon-dot {
+  margin-top: 0;
+}
+.nav-rail[data-collapsed] .nav-daemon-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 
 .app-shell-bar {
@@ -121,16 +267,25 @@
   box-shadow: var(--shadow);
   transform: translateX(-100%);
   visibility: hidden;
-  transition: transform 0.18s ease, visibility 0s linear 0.18s;
+  transition: transform var(--dur) var(--ease), visibility 0s linear var(--dur);
 }
 .app-shell-narrow .nav-rail[data-drawer='open'] {
   transform: none;
   visibility: visible;
-  transition: transform 0.18s ease;
+  transition: transform var(--dur) var(--ease);
 }
 .app-shell-scrim {
   position: absolute;
   inset: 0;
   z-index: 35;
   background: rgba(10, 12, 18, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell,
+  .nav-item,
+  .app-shell-narrow .nav-rail,
+  .app-shell-narrow .nav-rail[data-drawer='open'] {
+    transition: none;
+  }
 }

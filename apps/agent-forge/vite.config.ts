@@ -1,9 +1,14 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'node:fs';
+
+/** The lousho SDK version (root package.json), shown as the nav's version tag (src/shell/version.d.ts). */
+const LOUSHO_VERSION = (JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }).version;
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
+  define: { __LOUSHO_VERSION__: JSON.stringify(LOUSHO_VERSION) },
   server: {
     // `lousho studio --dev` prints http://localhost:5173/?token=...
     // and tells the API server to accept this origin, so the port is fixed.

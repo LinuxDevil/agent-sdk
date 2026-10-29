@@ -1,9 +1,12 @@
 import './shell.css';
+import { Menu } from 'lucide-react';
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import { NARROW_QUERY, useMediaQuery } from '../components/useMediaQuery';
 import { useAppState } from '../state/AppState';
 import { CommandPalette } from '../ui/CommandPalette';
+import { LogoMark } from './NavBrand';
 import { NavRail } from './NavRail';
+import { useNavCollapsed } from './navCollapsed';
 
 /** Lets the Studio side panels (rail/inspector drawers) yield when the nav drawer opens - one drawer at a time. */
 const ShellContext = createContext({ navOpen: false });
@@ -20,10 +23,14 @@ function ConnectionBanner() {
   );
 }
 
-/** Left navigation around every screen; below 860px the nav is a slide-over drawer (scrim / Escape close it). */
+/**
+ * Left navigation around every screen. Docked, it collapses to a 56px icon rail
+ * (remembered in localStorage); below 860px it is a slide-over drawer (scrim / Escape close it).
+ */
 export function AppShell({ children }: { children: ReactNode }) {
   const narrow = useMediaQuery(NARROW_QUERY);
   const [open, setOpen] = useState(false);
+  const [collapsed, toggleCollapsed] = useNavCollapsed();
 
   useEffect(() => {
     if (!narrow) setOpen(false);
@@ -39,7 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const navOpen = narrow && open;
   return (
     <ShellContext.Provider value={{ navOpen }}>
-      <div className={`app-shell${narrow ? ' app-shell-narrow' : ''}`}>
+      <div className={`app-shell${narrow ? ' app-shell-narrow' : ''}`} data-nav={!narrow && collapsed ? 'collapsed' : undefined}>
         {narrow && (
           <div className="app-shell-bar">
             <button
@@ -50,14 +57,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-controls="primary-nav"
               onClick={() => setOpen((o) => !o)}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
+              <Menu size={16} strokeWidth={1.75} aria-hidden="true" />
             </button>
+            <LogoMark />
             <span className="nav-bar-title">Agent Forge</span>
           </div>
         )}
-        <NavRail drawer={narrow ? (navOpen ? 'open' : 'closed') : undefined} onNavigate={() => setOpen(false)} />
+        <NavRail
+          drawer={narrow ? (navOpen ? 'open' : 'closed') : undefined}
+          collapsed={collapsed}
+          onToggleCollapsed={toggleCollapsed}
+          onNavigate={() => setOpen(false)}
+        />
         {navOpen && <div className="app-shell-scrim" aria-hidden="true" onClick={() => setOpen(false)} />}
         <div className="app-shell-main">
           <ConnectionBanner />

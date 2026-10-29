@@ -2,15 +2,25 @@ import { useEffect, useState } from 'react';
 import { observeClient } from '../observe/observeClient';
 import { useDaemonHealth } from '../observe/useObserve';
 
+type CollectorState = 'up' | 'down' | 'checking';
+
+const LABELS: Record<CollectorState, string> = {
+  up: 'Collector running',
+  down: 'Collector unreachable',
+  checking: 'Checking collector…',
+};
+
 /**
- * The nav rail's collector line: whether the observe daemon behind the
+ * The nav rail's collector card: whether the observe daemon behind the
  * `/observe` proxy answers, and where. "checking" only until the first
  * health probe settles; the probe keeps polling, so it flips by itself when
- * `lousho observe start` runs or the daemon dies.
+ * `lousho observe start` runs or the daemon dies. On the collapsed rail only
+ * the dot shows; the text stays as accessible text and the card's tooltip.
  */
 export function DaemonStatus() {
   const health = useDaemonHealth();
   const up = health.data !== undefined;
+  const state: CollectorState = up ? 'up' : health.down ? 'down' : 'checking';
   const [target, setTarget] = useState<string | undefined>();
 
   // Re-read on every up-transition: the proxy target can change across a daemon restart.
@@ -25,12 +35,18 @@ export function DaemonStatus() {
     };
   }, [up]);
 
-  let text = 'Collector: checking…';
-  if (up) text = target === undefined ? 'Collector: running' : `Collector: running at ${target}`;
-  else if (health.down) text = 'Collector: not reachable';
+  const label = LABELS[state];
   return (
-    <p className="nav-daemon" role="status" data-state={up ? 'up' : health.down ? 'down' : 'checking'}>
-      {text}
-    </p>
+    <div className="nav-daemon" role="status" data-state={state} title={target ? `${label} at ${target}` : label}>
+      <span className="nav-daemon-dot" aria-hidden="true" />
+      <span className="nav-daemon-text">
+        <span className="nav-daemon-label">{label}</span>
+        {target && (
+          <span className="nav-daemon-url" title={target}>
+            {target}
+          </span>
+        )}
+      </span>
+    </div>
   );
 }
