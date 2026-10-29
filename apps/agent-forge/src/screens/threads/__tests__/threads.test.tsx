@@ -227,7 +227,7 @@ describe('ThreadsScreen thread', () => {
     await flush();
     // The header's way back is named "Back to threads", like the empty state's.
     const back = container.querySelector('.thread-back');
-    expect(back?.getAttribute('aria-label') ?? back?.textContent?.trim()).toBe('Back to threads');
+    expect(back?.textContent).toBe('Back to threads');
     expect(back?.getAttribute('href')).toBe('#/threads?status=active');
   });
 
