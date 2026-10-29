@@ -176,23 +176,41 @@ afterEach(() => {
 });
 
 describe('EvaluatorsScreen list', () => {
-  it('renders one row per rule with its kind, filter, sample rate, switch and last-run counts', async () => {
+  it('renders one card per rule with its kind, target filter, sample rate, switch and last-run counts', async () => {
     const container = await mountAt('#/evals/evaluators');
-    const rows = [...container.querySelectorAll('tbody tr')];
-    expect(rows).toHaveLength(2);
-    const cells = (row: Element) => [...row.querySelectorAll('td')].map((td) => td.textContent);
-    const [first, second] = rows.map(cells);
-    expect(first.slice(0, 4)).toEqual(['answered', 'code', 'agent=support-bot, status=ok', '0.5']);
-    expect(first[6]).toBe('2');
-    expect(first[5]).not.toBe('-');
-    expect(second.slice(0, 4)).toEqual(['polite', 'judge', 'All traces', '1']);
-    expect(second[6]).toBe('0');
+    const cards = [...container.querySelectorAll('.ds-grid .ev-card')];
+    expect(cards).toHaveLength(2);
+    const text = (card: Element, selector: string) => card.querySelector(selector)?.textContent;
+    const facts = (card: Element) => [
+      text(card, '.ev-card-name'),
+      text(card, '.ev-card-kind'),
+      text(card, '.ev-card-target dd'),
+      text(card, '.ev-card-sample dd'),
+    ];
+    const [first, second] = cards;
+    expect(facts(first)).toEqual(['answered', 'Code', 'agent=support-bot, status=ok', '0.5']);
+    expect(text(first, '.ev-runs-count')).toBe('2');
+    expect(text(first, '.ev-card-last')).toMatch(/^Last run /);
+    expect(first.querySelector('.ev-icon-code')).not.toBeNull();
+    expect(facts(second)).toEqual(['polite', 'LLM judge', 'All traces', '1']);
+    expect(text(second, '.ev-runs-count')).toBe('0');
+    expect(text(second, '.ev-card-last')).toMatch(/^Last run /);
+    expect(second.querySelector('.ev-icon-judge')).not.toBeNull();
     const switches = [...container.querySelectorAll('input[role="switch"]')] as HTMLInputElement[];
     expect(switches.map((s) => [s.getAttribute('aria-label'), s.checked])).toEqual([
       ['answered enabled', true],
       ['polite enabled', false],
     ]);
+    // The switch is never inside the card's link.
+    expect(switches.every((s) => s.closest('a') === null)).toBe(true);
     expect(container.querySelector('nav[aria-label="Evaluations"] [aria-current="page"]')?.textContent).toBe('Evaluators');
+  });
+
+  it('shows the empty state with New evaluator when there are no rules', async () => {
+    rules = [];
+    const container = await mountAt('#/evals/evaluators');
+    expect(container.querySelector('.empty-state')?.textContent).toContain('No evaluators yet');
+    expect(buttonNamed(container.querySelector('.empty-state') as HTMLElement, 'New evaluator')).toBeDefined();
   });
 
   it('reads the last-run counts in one online-score request, not one per rule', async () => {
@@ -215,10 +233,10 @@ describe('EvaluatorsScreen list', () => {
     expect(window.location.hash).toBe('#/evals/evaluators?enabled=false');
   });
 
-  it('opens the edit view on row open, carrying the list filters', async () => {
+  it('links each card to the edit view, carrying the list filters', async () => {
     const container = await mountAt('#/evals/evaluators?kind=code');
-    act(() => (container.querySelector('tbody tr') as HTMLElement).click());
-    expect(window.location.hash).toBe('#/evals/evaluators/r1?kind=code');
+    const link = container.querySelector('.ev-card-name') as HTMLAnchorElement;
+    expect(link.getAttribute('href')).toBe('#/evals/evaluators/r1?kind=code');
   });
 
   it('toggles a rule with PUT {enabled}, optimistically', async () => {
@@ -266,7 +284,7 @@ describe('New evaluator', () => {
       }),
     ]);
     expect(container.querySelector('form[aria-label="New evaluator"]')).toBeNull();
-    expect(container.querySelectorAll('tbody tr')).toHaveLength(3);
+    expect(container.querySelectorAll('.ds-grid .ev-card')).toHaveLength(3);
   });
 
   it('creates a judge rule with provider/model and rubric when Studio has a provider key', async () => {

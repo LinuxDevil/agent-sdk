@@ -69,9 +69,155 @@
   outline-offset: 2px;
 }
 
+/* ---------- The Evaluations page and card grid (ds-*), shared by Datasets, Evaluators and Annotation queues ---------- */
+.ds-screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: var(--space-4);
+  flex: none;
+  min-width: 0;
+  padding: var(--space-5) var(--page-gutter) var(--space-8);
+  color: var(--text);
+}
+.ds-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+/* A link drawn as a button (Back to queues, All evaluators) never shows the link underline. */
+.ds-screen a.btn {
+  text-decoration: none;
+}
+.ds-faint {
+  color: var(--text-faint);
+}
+
+.ds-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ds-field-label {
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  color: var(--text);
+}
+/* The grid: auto-fill cards; a card is one link (.ds-card-link), or a surface (.ds-card-surface) holding a link and its own controls. */
+.ds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ds-card {
+  display: flex;
+  min-width: 0;
+}
+.ds-card-link,
+.ds-card-surface {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease);
+}
+.ds-card-link:hover,
+.ds-card-surface:hover {
+  border-color: var(--border-strong);
+}
+.ds-card-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ds-card-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.ds-card-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ds-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.ds-card-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  min-height: calc(2 * 1.5em);
+  font-size: var(--fs-table);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.ds-card-desc-none {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.ds-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.ds-card-stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.ds-card-stat svg {
+  color: var(--text-faint);
+}
+.ds-card-skeleton {
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 132px;
+  padding: var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .evals-trace-link,
-  .evals-tabs .evals-tab {
+  .evals-tabs .evals-tab,
+  .ds-card-link,
+  .ds-card-surface {
     transition: none;
   }
 }
