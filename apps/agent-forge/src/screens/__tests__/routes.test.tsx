@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const appState = vi.hoisted(() => ({
   spec: { name: 'demo', provider: { type: 'mock', model: 'echo' } },
+  graph: { nodes: [{ id: 'llm', type: 'llm', label: 'LLM', data: { provider: { type: 'mock', model: 'echo' } } }], edges: [] },
   agentId: 'demo',
   dirty: false,
   runStatus: undefined,
@@ -133,6 +134,23 @@ describe('Topbar', () => {
     render(<Topbar />);
     expect(buttonNames()).toEqual(expect.arrayContaining(['Run', 'Stop', 'Import', 'Export', 'Save', 'Debug']));
     expect(container.querySelector('.env-select')).not.toBeNull();
+  });
+
+  it("centres the LLM node's provider · model as the model badge, hidden when the graph has none", () => {
+    window.history.replaceState(null, '', '/?token=secret#/agents');
+    render(<Topbar />);
+    expect(container.querySelector('.env-select')?.textContent).toBe('mock · echoMOCK');
+    expect(container.querySelector('.crumbs')?.textContent).toBe('Agentsdemo');
+    act(() => root?.unmount());
+    const { graph } = appState;
+    appState.graph = { nodes: [], edges: [] };
+    try {
+      render(<Topbar />);
+      expect(container.querySelector('.env-select')).toBeNull();
+      expect(buttonNames()).toEqual(expect.arrayContaining(['Run', 'Save']));
+    } finally {
+      appState.graph = graph;
+    }
   });
 
   it('has no Build controls or model badge on #/traces', () => {

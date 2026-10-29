@@ -9,12 +9,20 @@
  * message-thread bubble), which is left to the caller via `className`.
  */
 import { useState } from 'react';
+import { Check, ShieldAlert, X, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
+import { JsonView } from '../ui/JsonView';
 
 export interface ApprovalCardProps {
   toolName: string;
   args: Record<string, unknown>;
   className?: string;
+  /**
+   * `card` (default): the Chat thread's warning card - icon, tool name, the
+   * call's arguments as a JSON tree, then the decision buttons. `inline`: the
+   * toolbar's one-line version, the arguments in its tooltip.
+   */
+  variant?: 'card' | 'inline';
 }
 
 type Decision = 'approve' | 'reject';
@@ -41,6 +49,7 @@ function useApprovalDecision() {
 
 interface DecisionButtonProps {
   className: string;
+  Icon: LucideIcon;
   idleLabel: string;
   busyLabel: string;
   busy: boolean;
@@ -48,24 +57,22 @@ interface DecisionButtonProps {
   onClick: () => void;
 }
 
-function DecisionButton({ className, idleLabel, busyLabel, busy, disabled, onClick }: DecisionButtonProps) {
+function DecisionButton({ className, Icon, idleLabel, busyLabel, busy, disabled, onClick }: DecisionButtonProps) {
   return (
-    <button className={className} onClick={onClick} disabled={disabled}>
+    <button type="button" className={className} onClick={onClick} disabled={disabled}>
+      <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
       {busy ? busyLabel : idleLabel}
     </button>
   );
 }
 
-export function ApprovalCard({ toolName, args, className }: ApprovalCardProps) {
+function DecisionButtons({ size }: { size: string }) {
   const { error, pending, decide } = useApprovalDecision();
-
   return (
-    <div className={`approval-card${className ? ` ${className}` : ''}`} title={JSON.stringify(args)}>
-      <span>
-        Approve <b>{toolName}</b>?
-      </span>
+    <div className="approval-actions">
       <DecisionButton
-        className="btn btn-success"
+        className={`btn btn-success${size}`}
+        Icon={Check}
         idleLabel="Approve"
         busyLabel="Approving..."
         busy={pending === 'approve'}
@@ -73,7 +80,8 @@ export function ApprovalCard({ toolName, args, className }: ApprovalCardProps) {
         onClick={() => void decide('approve')}
       />
       <DecisionButton
-        className="btn btn-danger"
+        className={`btn btn-danger${size}`}
+        Icon={X}
         idleLabel="Reject"
         busyLabel="Rejecting..."
         busy={pending === 'reject'}
@@ -81,6 +89,40 @@ export function ApprovalCard({ toolName, args, className }: ApprovalCardProps) {
         onClick={() => void decide('reject')}
       />
       {error && <span className="run-error">{error}</span>}
+    </div>
+  );
+}
+
+export function ApprovalCard({ toolName, args, className, variant = 'card' }: ApprovalCardProps) {
+  const classes = `approval-card approval-card-${variant}${className ? ` ${className}` : ''}`;
+  if (variant === 'inline') {
+    return (
+      <div className={classes} title={JSON.stringify(args)}>
+        <ShieldAlert className="approval-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
+        <span className="approval-text">
+          Approve <b>{toolName}</b>?
+        </span>
+        <DecisionButtons size=" btn-sm" />
+      </div>
+    );
+  }
+  return (
+    <div className={classes}>
+      <div className="approval-head">
+        <span className="approval-icon-tile" aria-hidden="true">
+          <ShieldAlert size={16} strokeWidth={1.75} />
+        </span>
+        <span className="approval-text">
+          <span className="approval-title">Approval required</span>
+          <span className="approval-sub">
+            Approve <b className="approval-tool">{toolName}</b>?
+          </span>
+        </span>
+      </div>
+      <div className="approval-args">
+        <JsonView value={args} />
+      </div>
+      <DecisionButtons size="" />
     </div>
   );
 }

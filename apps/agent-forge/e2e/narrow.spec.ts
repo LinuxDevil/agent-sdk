@@ -4,8 +4,8 @@ import { test, expect, type Page } from '@playwright/test';
  * Below 860px the studio used to hide the rail and Inspector
  * outright and push Save, the zoom controls and Send off-screen (826px of
  * page at a 375px viewport). Now the rail and Inspector are slide-over
- * drawers toggled from the top bar and Debug/Import/Export/Save live in a
- * "More" menu.
+ * drawers toggled from the top bar, Run and Save stay in the bar, and
+ * Debug/Import/Export live in a "More" menu.
  */
 async function open(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height });
@@ -21,7 +21,7 @@ test('at 375px nothing scrolls sideways and every control is reachable', async (
   await open(page, 375, 812);
   expect(await horizontalOverflow(page)).toBe(0);
 
-  for (const name of ['Run', 'More actions', 'Agents and nodes', 'Inspector', 'Send']) {
+  for (const name of ['Run', 'Save', 'More actions', 'Agents and nodes', 'Inspector', 'Send']) {
     const button = page.getByRole('button', { name, exact: true });
     await expect(button).toBeVisible();
     const box = await button.boundingBox();
@@ -38,7 +38,7 @@ test('the rail and the Inspector open as drawers and close with Escape or the sc
   await railToggle.click();
   await expect(railToggle).toHaveAttribute('aria-expanded', 'true');
   await expect(rail).toBeVisible();
-  await expect(rail.getByRole('button', { name: '+ New agent' })).toBeVisible();
+  await expect(rail.getByRole('button', { name: 'New agent', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(rail).toBeHidden();
 
@@ -58,15 +58,16 @@ test('the rail and the Inspector open as drawers and close with Escape or the sc
   expect(await horizontalOverflow(page)).toBe(0);
 });
 
-test('Debug, Import, Export and Save live in the More menu', async ({ page }) => {
+test('Debug, Import and Export live in the More menu; Save stays in the bar', async ({ page }) => {
   await open(page, 375, 812);
   await page.getByRole('button', { name: 'More actions' }).click();
   const menu = page.getByRole('menu', { name: 'More actions' });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole('menuitemcheckbox', { name: 'Debug' })).toBeFocused();
-  for (const name of ['Import', 'Export', 'Save']) {
+  for (const name of ['Import', 'Export']) {
     await expect(menu.getByRole('menuitem', { name })).toBeVisible();
   }
+  await expect(page.locator('.topbar').getByRole('button', { name: 'Save', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   await expect(page.getByRole('button', { name: 'More actions' })).toBeFocused();

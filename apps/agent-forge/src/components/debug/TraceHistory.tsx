@@ -54,8 +54,11 @@ export function TraceHistory({
           title={trace.traceId}
         >
           <span className="trace-item-head">
-            <span>{new Date(trace.startTime).toLocaleString()}</span>
-            <span className="trace-item-status">{trace.status}</span>
+            <span className="trace-item-time">{new Date(trace.startTime).toLocaleString()}</span>
+            <span className={`trace-item-status status-pill pill-${trace.status === 'error' ? 'error' : 'ok'}`}>
+              <span className="dot" aria-hidden="true" />
+              {trace.status}
+            </span>
           </span>
           <span className="trace-item-meta">
             {formatDuration(trace.durationMs)} · {trace.modelCalls} model · {trace.inputTokens}/{trace.outputTokens} tokens ·{' '}

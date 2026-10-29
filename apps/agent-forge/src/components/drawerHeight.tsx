@@ -1,4 +1,5 @@
 import { useCallback, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { GripHorizontal } from 'lucide-react';
 import { readStored, writeStored } from './storedValue';
 
 /** localStorage key of the run drawer's height, in px. */
@@ -78,6 +79,8 @@ export function DrawerResizeHandle({ height, onResize }: { height: number; onRes
       tabIndex={0}
       onKeyDown={onKeyDown}
       onPointerDown={onPointerDown}
-    />
+    >
+      <GripHorizontal className="drawer-grip" size={16} strokeWidth={1.75} aria-hidden="true" />
+    </div>
   );
 }

@@ -1,25 +1,50 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
+import {
+  Bug,
+  ChevronRight,
+  Download,
+  ExternalLink,
+  Eye,
+  PanelLeft,
+  Play,
+  Save,
+  SlidersHorizontal,
+  Square,
+  Upload,
+  type LucideIcon,
+} from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { downloadSpec, importSpecFile } from '../persistence/importExport';
 import { ApprovalCard } from './ApprovalCard';
 import { errorMessage } from './errorMessage';
 import { StatusPill } from '../ui/StatusPill';
 import { RunStatus, lastRunTraceId } from './RunStatus';
+import { ToolbarMoreMenu, type ToolbarMenuItem } from './ToolbarMoreMenu';
 import { navigate } from '../router/router';
 import { useRoute } from '../router/useRoute';
 import { NAV_ITEMS, isActive } from '../shell/NavRail';
 
-function BrandMark() {
+/** A toolbar button's 16px leading icon. */
+function ToolIcon({ Icon }: { Icon: LucideIcon }) {
+  return <Icon size={16} strokeWidth={1.75} aria-hidden="true" />;
+}
+
+/**
+ * A toolbar button: leading icon plus a text label. The label stays in the
+ * DOM (it is the accessible name) and is only visually collapsed when the
+ * bar runs out of room (`.btn-label` in layout.css / topbarNarrow.css).
+ */
+function ToolButton({
+  Icon,
+  label,
+  className = 'btn',
+  ...rest
+}: { Icon: LucideIcon; label: string; className?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
-    <div className="brand">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
-        <rect x="14" y="3" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
-        <rect x="14" y="14" width="7" height="7" rx="2" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M6.5 10v4a2 2 0 0 0 2 2H14" stroke="currentColor" strokeWidth="1.8" />
-      </svg>
-      Agent Forge
-    </div>
+    <button type="button" className={className} title={label} {...rest}>
+      <ToolIcon Icon={Icon} />
+      <span className="btn-label">{label}</span>
+    </button>
   );
 }
 
@@ -36,7 +61,9 @@ function runErrorOf(runStatus: RunStatusPayload) {
 
 function ApprovalNotice({ runStatus }: { runStatus: RunStatusPayload }) {
   const pendingApproval = pendingApprovalOf(runStatus);
-  return pendingApproval ? <ApprovalCard toolName={pendingApproval.toolName} args={pendingApproval.args} /> : null;
+  return pendingApproval ? (
+    <ApprovalCard variant="inline" toolName={pendingApproval.toolName} args={pendingApproval.args} />
+  ) : null;
 }
 
 function ErrorNotice({ message }: { message: string | undefined }) {
@@ -65,21 +92,34 @@ function profileName(profile: ActiveProfile) {
   return profile?.name ?? 'local';
 }
 
+type Graph = ReturnType<typeof useAppState>['graph'];
+
+/** The agent's LLM node's `provider/model`, or undefined when the graph has no LLM node. */
+function llmProviderOf(graph: Graph | undefined): string | undefined {
+  const llm = graph?.nodes.find((node) => node.type === 'llm');
+  return llm?.type === 'llm' ? `${llm.data.provider.type}/${llm.data.provider.model}` : undefined;
+}
+
 /**
- * The env pill names the provider the agent actually runs on -
- * the one the in-flight run reported, else the agent's own spec - not the
- * settings profile's (cosmetic) provider type. A mock agent gets a visible
- * MOCK badge, so canned replies are never mistaken for a real model.
+ * The toolbar's centre model badge: the provider the agent actually runs on -
+ * the one the in-flight run reported, else the agent's LLM node's - as a mono
+ * `provider · model` chip, hidden when the graph has no LLM node. A mock agent
+ * gets a visible MOCK badge, so canned replies are never mistaken for a real
+ * model. The settings profile is named in its tooltip.
  */
-function EnvSelect() {
-  const { spec, activeProfile, runStatus } = useAppState();
+function ModelBadge() {
+  const { graph, activeProfile, runStatus } = useAppState();
   const live = runStatus?.status === 'running' || runStatus?.status === 'paused';
-  const provider = (live && runStatus?.provider) || `${spec.provider.type}/${spec.provider.model}`;
-  const isMock = provider.split('/')[0] === 'mock';
-  const title = [profileTitle(activeProfile), `Provider: ${provider}`].filter(Boolean).join(' - ');
+  const provider = (live && runStatus?.provider) || llmProviderOf(graph);
+  if (!provider) return null;
+  const [type, ...model] = provider.split('/');
+  const isMock = type === 'mock';
+  const title = [profileTitle(activeProfile) ?? `Settings profile: ${profileName(activeProfile)}`, `Provider: ${provider}`].join(' - ');
   return (
     <div className={`env-select${isMock ? ' env-select-mock' : ''}`} title={title}>
-      <span className="dot" /> {profileName(activeProfile)} &middot; {provider}
+      <span className="env-select-text">
+        {type} &middot; {model.join('/')}
+      </span>
       {isMock && <span className="mock-badge">MOCK</span>}
     </div>
   );
@@ -89,7 +129,8 @@ function DebugToggle() {
   const { debugMode, setDebugMode, setDrawerTab } = useAppState();
   return (
     <button
-      className={`btn${debugMode ? ' btn-primary' : ' btn-ghost'}`}
+      type="button"
+      className={`btn btn-ghost btn-toggle collapse-2${debugMode ? ' on' : ''}`}
       aria-pressed={debugMode}
       onClick={() => {
         setDebugMode(!debugMode);
@@ -97,7 +138,8 @@ function DebugToggle() {
       }}
       title="Toggle step-through debug mode (set breakpoints in the Inspector)"
     >
-      Debug
+      <ToolIcon Icon={Bug} />
+      <span className="btn-label">Debug</span>
     </button>
   );
 }
@@ -151,12 +193,12 @@ function PanelToggle({
   label: string;
   open: boolean;
   onToggle: (panel: SidePanel) => void;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <button
       type="button"
-      className={`btn btn-ghost panel-toggle${open ? ' active' : ''}`}
+      className={`btn btn-ghost btn-icon panel-toggle${open ? ' active' : ''}`}
       aria-label={label}
       aria-expanded={open}
       aria-controls={panel === 'rail' ? 'studio-rail' : 'studio-inspector'}
@@ -165,85 +207,6 @@ function PanelToggle({
     >
       {children}
     </button>
-  );
-}
-
-interface OverflowItem {
-  label: string;
-  onSelect: () => void;
-  checked?: boolean;
-}
-
-/**
- * The narrow layout's "More" menu - Debug, Import, Export and
- * Save, plus the provider pill, which no longer fit next to Run at 375px.
- */
-function OverflowMenu({ items, children }: { items: OverflowItem[]; children?: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    wrapRef.current?.querySelector<HTMLElement>('[role="menuitem"], [role="menuitemcheckbox"]')?.focus();
-    const onPointerDown = (e: PointerEvent) => {
-      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [open]);
-
-  function onMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === 'Escape') {
-      e.stopPropagation();
-      setOpen(false);
-      buttonRef.current?.focus();
-      return;
-    }
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const entries = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
-    const i = entries.indexOf(document.activeElement as HTMLElement);
-    const next = e.key === 'ArrowDown' ? (i + 1) % entries.length : (i - 1 + entries.length) % entries.length;
-    entries[next]?.focus();
-  }
-
-  return (
-    <div className="overflow-menu" ref={wrapRef}>
-      <button
-        ref={buttonRef}
-        type="button"
-        className="btn btn-ghost panel-toggle"
-        aria-label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        title="More actions"
-        onClick={() => setOpen((o) => !o)}
-      >
-        &#8943;
-      </button>
-      {open && (
-        <div className="overflow-menu-list" role="menu" aria-label="More actions" onKeyDown={onMenuKeyDown}>
-          {children}
-          {items.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
-              aria-checked={item.checked}
-              className="overflow-menu-item"
-              onClick={() => {
-                setOpen(false);
-                item.onSelect();
-              }}
-            >
-              {item.label}
-              {item.checked && <span aria-hidden="true"> &#10003;</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -288,64 +251,92 @@ interface TopbarProps {
   onTogglePanel?: (panel: SidePanel) => void;
 }
 
-function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
-  const { spec, dirty, runStatus, spans, debugMode, setDebugMode, setDrawerTab } = useAppState();
-  const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
-  const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
-  const toggle = onTogglePanel ?? (() => undefined);
+/** "Agents / <name>" with the unsaved-changes dot; the name truncates, its full text in the tooltip. */
+function Breadcrumb({ showRoot = true }: { showRoot?: boolean }) {
+  const { spec, dirty } = useAppState();
+  return (
+    <div className="crumbs">
+      {showRoot && (
+        <>
+          <span className="crumb-root">Agents</span>
+          <ChevronRight className="crumb-sep" size={14} strokeWidth={1.75} aria-hidden="true" />
+        </>
+      )}
+      <b title={spec.name}>{spec.name}</b>
+      {dirty && <span className="dirty-dot" title="Unsaved changes" />}
+    </div>
+  );
+}
 
-  const isRunning = runStatus?.status === 'running';
+/** Run, or Stop while a run is in flight (the narrow bar shows one at a time). */
+function RunOrStop({ isRunning, onRun, onStop }: { isRunning: boolean; onRun: () => void; onStop: () => void }) {
+  return isRunning ? (
+    <ToolButton Icon={Square} label="Stop" className="btn btn-danger btn-collapse" onClick={onStop} />
+  ) : (
+    <ToolButton Icon={Play} label="Run" className="btn btn-success btn-collapse" onClick={onRun} />
+  );
+}
+
+/** The narrow "More" menu: Debug, Import, Export, Observe surface and (once known) Open trace. */
+function useNarrowMenuItems(openImport: () => void, exportSpec: () => void): ToolbarMenuItem[] {
+  const { runStatus, spans, debugMode, setDebugMode, setDrawerTab } = useAppState();
   const traceId = lastRunTraceId(runStatus, spans);
-
-  const items: OverflowItem[] = [
+  return [
     {
       label: 'Debug',
+      Icon: Bug,
       checked: debugMode,
       onSelect: () => {
         setDebugMode(!debugMode);
         if (!debugMode) setDrawerTab('trace');
       },
     },
-    { label: 'Import', onSelect: openImport },
-    { label: 'Export', onSelect: exportSpec },
-    { label: 'Save', onSelect: () => void handleSave() },
+    { label: 'Import', Icon: Upload, onSelect: openImport },
+    { label: 'Export', Icon: Download, onSelect: exportSpec },
     // The old Build/Observe switch's menu entry, kept for muscle memory: Observe is now Traces.
     // Last: the menu focuses its first item on open (e2e expects Debug).
-    { label: 'Observe surface', onSelect: () => navigate('/traces') },
+    { label: 'Observe surface', Icon: Eye, onSelect: () => navigate('/traces') },
     // The wide bar's "Open trace" link, which has no room next to Run at 375px.
-    ...(traceId ? [{ label: 'Open trace', onSelect: () => navigate(`/traces/${encodeURIComponent(traceId)}`) }] : []),
+    ...(traceId
+      ? [{ label: 'Open trace', Icon: ExternalLink, onSelect: () => navigate(`/traces/${encodeURIComponent(traceId)}`) }]
+      : []),
   ];
+}
+
+/**
+ * At 860px and below: the side-panel toggles, the agent name, the run status,
+ * Run (or Stop) and Save stay in the bar; Debug, Import, Export and the model
+ * badge move into the "More actions" menu.
+ */
+function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
+  const { spec, runStatus } = useAppState();
+  const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
+  const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
+  const items = useNarrowMenuItems(openImport, exportSpec);
+  const toggle = onTogglePanel ?? (() => undefined);
 
   return (
-    <header className="topbar topbar-narrow">
+    <header className="topbar topbar-builder topbar-narrow">
       <PanelToggle panel="rail" label="Agents and nodes" open={openPanel === 'rail'} onToggle={toggle}>
-        &#9776;
+        <ToolIcon Icon={PanelLeft} />
       </PanelToggle>
-      <div className="crumbs">
-        <b>{spec.name}</b>
-        {dirty && <span className="dirty-dot" title="Unsaved changes" />}
-        {/* The provider pill moved into the menu; keep the MOCK badge in sight. */}
+      <div className="topbar-left">
+        <Breadcrumb showRoot={false} />
+        {/* The model badge moved into the menu; keep the MOCK badge in sight. */}
         {spec.provider.type === 'mock' && <span className="mock-badge">MOCK</span>}
+        <RunStatus showTraceLink={false} />
       </div>
       <RunNotices runStatus={runStatus} actionError={actionError} />
-      <RunStatus showTraceLink={false} />
-      {isRunning ? (
-        <button className="btn btn-danger" onClick={() => void handleStop()}>
-          Stop
-        </button>
-      ) : (
-        <button className="btn btn-success" onClick={() => void handleRun()}>
-          Run
-        </button>
-      )}
-      <OverflowMenu items={items}>
+      <RunOrStop isRunning={runStatus?.status === 'running'} onRun={() => void handleRun()} onStop={() => void handleStop()} />
+      <ToolButton Icon={Save} label="Save" className="btn btn-primary btn-collapse" onClick={() => void handleSave()} />
+      <ToolbarMoreMenu items={items}>
         <div className="overflow-menu-env" role="none">
-          <EnvSelect />
+          <ModelBadge />
         </div>
-      </OverflowMenu>
+      </ToolbarMoreMenu>
       {fileInput}
       <PanelToggle panel="inspector" label="Inspector" open={openPanel === 'inspector'} onToggle={toggle}>
-        &#9881;
+        <ToolIcon Icon={SlidersHorizontal} />
       </PanelToggle>
     </header>
   );
@@ -377,59 +368,48 @@ export function Topbar({ narrow = false, openPanel, onTogglePanel }: TopbarProps
   return narrow ? <NarrowTopbar openPanel={openPanel} onTogglePanel={onTogglePanel} /> : <WideTopbar />;
 }
 
+/**
+ * The 52px builder toolbar: breadcrumb and run status on the left, the
+ * model badge in the centre, and [Debug] [Stop][Run] | [Import][Export] [Save]
+ * on the right.
+ */
 function WideTopbar() {
-  const { spec, dirty, runStatus } = useAppState();
+  const { runStatus } = useAppState();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
 
   const isRunning = runStatus?.status === 'running';
 
   return (
-    <header className="topbar">
-      <BrandMark />
-      <div className="crumbs">
-        <span>Agents</span>
-        <span className="crumb-sep">/</span>
-        <b>{spec.name}</b>
-        {dirty && <span className="dirty-dot" title="Unsaved changes" />}
+    <header className="topbar topbar-builder">
+      <div className="topbar-left">
+        <Breadcrumb />
+        {/* The last run's status, and its "Open trace" link once known. */}
+        <RunStatus />
+        <ErrorNotice message={runErrorOf(runStatus)} />
+        <ErrorNotice message={actionError} />
+      </div>
+      {/* While a run waits on a tool approval, the approval takes the model badge's place. */}
+      <div className="topbar-center">
+        {pendingApprovalOf(runStatus) ? <ApprovalNotice runStatus={runStatus} /> : <ModelBadge />}
       </div>
       <div className="topbar-spacer" />
-
-      <RunNotices runStatus={runStatus} actionError={actionError} />
-
-      {/* The last run's status, and its "Open trace" link once known. */}
-      <RunStatus />
-
-      {/*
-        R3: real per-environment settings profile (name + provider type),
-        replacing the mockup's static "local · mock provider" label.
-        Falls back to the current spec's own provider while the profile
-        fetch hasn't resolved yet (e.g. runtime server not reachable).
-      */}
-      <EnvSelect />
-      {/*
-        O3: toggles debug mode - the Inspector exposes breakpoint toggles
-        on llm/tool nodes while on, and the Trace tab's DebugBar shows
-        Step/Continue controls (also shown automatically whenever a run is
-        actually paused at a breakpoint, even with this off).
-      */}
-      <DebugToggle />
-      <button className="btn btn-danger" onClick={() => void handleStop()} disabled={!isRunning}>
-        Stop
-      </button>
-      <button className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning}>
-        Run
-      </button>
-      <button className="btn" onClick={openImport}>
-        Import
-      </button>
-      {fileInput}
-      <button className="btn" onClick={exportSpec}>
-        Export
-      </button>
-      <button className="btn btn-primary" onClick={() => void handleSave()}>
-        Save
-      </button>
+      <div className="topbar-actions">
+        {/*
+          O3: toggles debug mode - the Inspector exposes breakpoint toggles
+          on llm/tool nodes while on, and the Trace tab's DebugBar shows
+          Step/Continue controls (also shown automatically whenever a run is
+          actually paused at a breakpoint, even with this off).
+        */}
+        <DebugToggle />
+        <ToolButton Icon={Square} label="Stop" className="btn btn-danger collapse-2" onClick={() => void handleStop()} disabled={!isRunning} />
+        <ToolButton Icon={Play} label="Run" className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning} />
+        <span className="toolbar-divider" aria-hidden="true" />
+        <ToolButton Icon={Upload} label="Import" className="btn btn-ghost collapse-1" onClick={openImport} />
+        {fileInput}
+        <ToolButton Icon={Download} label="Export" className="btn btn-ghost collapse-1" onClick={exportSpec} />
+        <ToolButton Icon={Save} label="Save" className="btn btn-primary" onClick={() => void handleSave()} />
+      </div>
     </header>
   );
 }

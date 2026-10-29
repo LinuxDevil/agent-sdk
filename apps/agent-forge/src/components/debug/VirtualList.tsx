@@ -7,6 +7,8 @@ export interface VirtualListProps<T> {
   overscan?: number;
   emptyMessage?: string;
   className?: string;
+  /** Names the scrolling list, which is then focusable so it scrolls from the keyboard. */
+  label?: string;
 }
 
 /**
@@ -25,6 +27,7 @@ export function VirtualList<T>({
   overscan = 8,
   emptyMessage,
   className,
+  label,
 }: VirtualListProps<T>) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -51,7 +54,14 @@ export function VirtualList<T>({
   const offsetY = firstVisible * rowHeight;
 
   return (
-    <div ref={measuredRef} className={className ?? 'logs-viewport'} onScroll={onScroll}>
+    <div
+      ref={measuredRef}
+      className={className ?? 'logs-viewport'}
+      onScroll={onScroll}
+      role={label ? 'group' : undefined}
+      aria-label={label}
+      tabIndex={label ? 0 : undefined}
+    >
       <div style={{ height: totalHeight, position: 'relative' }}>
         <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
           {items.slice(firstVisible, lastVisible).map((item, i) => renderRow(item, firstVisible + i))}

@@ -1,5 +1,6 @@
 import { useAppState } from '../../state/AppState';
 import type { DebugStatePayload } from '../../../shared/wireTypes';
+import { Bug, Play, StepForward } from 'lucide-react';
 import { JsonView } from '../../ui/JsonView';
 
 type DebugState = DebugStatePayload | undefined;
@@ -40,7 +41,7 @@ function LiveMessages({ debugState }: { debugState: DebugState }) {
   const messages = pausedMessages(debugState);
   if (messages.length === 0) return null;
   return (
-    <details style={{ width: '100%' }}>
+    <details className="debug-messages">
       <summary>Live message array ({messages.length})</summary>
       <JsonView value={messages} defaultExpandDepth={1} />
     </details>
@@ -63,14 +64,19 @@ export function DebugBar() {
 
   return (
     <div className="debug-bar">
-      <b>Debug</b>
+      <b className="debug-bar-title">
+        <Bug size={14} strokeWidth={1.75} aria-hidden="true" />
+        Debug
+      </b>
       <DebugStatus debugState={debugState} />
       <span className="step-count">step {stepCountOf(debugState)}</span>
       <div className="topbar-spacer" />
-      <button className="btn" onClick={() => void stepDebug()} disabled={isStepDisabled(debugState, debugMode)}>
+      <button className="btn btn-sm" onClick={() => void stepDebug()} disabled={isStepDisabled(debugState, debugMode)}>
+        <StepForward size={14} strokeWidth={1.75} aria-hidden="true" />
         Step
       </button>
-      <button className="btn btn-success" onClick={() => void continueDebug()} disabled={!paused}>
+      <button className="btn btn-success btn-sm" onClick={() => void continueDebug()} disabled={!paused}>
+        <Play size={14} strokeWidth={1.75} aria-hidden="true" />
         Continue
       </button>
       <LiveMessages debugState={debugState} />

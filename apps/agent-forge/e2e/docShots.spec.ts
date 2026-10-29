@@ -174,7 +174,7 @@ const rows = (page: Page) => page.getByRole('main').locator('table.data-table tb
 
 test('agents: the builder with an agent', async ({ page }) => {
   await open(page, '/agents');
-  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill('support-bot');
   await page.locator('#new-agent-template').selectOption('support-bot');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -287,7 +287,7 @@ test('x: 375 wide, Traces with the nav drawer closed and open', async ({ page })
  */
 async function newAgent(page: Page, name: string, template?: 'support-bot') {
   await open(page, '/agents');
-  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(name);
   if (template) await page.locator('#new-agent-template').selectOption(template);
   await page.getByRole('button', { name: 'Create', exact: true }).click();

@@ -14,14 +14,26 @@
  * for approval); the "typing" indicator below fills the gap, driven by the
  * real `status: 'running'` from the runtime server rather than a fake timeout.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
+import { Play, Plus, Sparkles, User, Wrench, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import type { ChatMessage } from '../../shared/wireTypes';
 import { ApprovalCard } from './ApprovalCard';
+import { ChatComposer } from './ChatComposer';
 import { formatTime } from './formatTime';
 
-function initialsFor(role: ChatMessage['role']): string {
-  return role === 'user' ? 'You' : 'AI';
+/** A bubble's avatar: an icon tile (the agent's sparkles, the user, or Run's play), decorative. */
+function Avatar({ Icon }: { Icon: LucideIcon }) {
+  return (
+    <div className="chat-avatar" aria-hidden="true">
+      <Icon size={14} strokeWidth={1.75} />
+    </div>
+  );
+}
+
+function avatarIconFor(message: ChatMessage): LucideIcon {
+  if (message.source === 'run') return Play;
+  return message.role === 'user' ? User : Sparkles;
 }
 
 /** Tool-result messages, indexed by the toolCallId they answer, for pairing under an assistant bubble's tool-call cards. */
@@ -42,7 +54,11 @@ function ToolCallCard({ toolCall, result }: { toolCall: NonNullable<ChatMessage[
   }
   return (
     <div className="chat-tool-call">
-      &rarr; {toolCall.function.name}({JSON.stringify(args)})
+      <div className="chat-tool-head">
+        <Wrench size={14} strokeWidth={1.75} aria-hidden="true" />
+        <span className="chat-tool-name">{toolCall.function.name}</span>
+      </div>
+      <div className="chat-tool-args">{JSON.stringify(args)}</div>
       {result && <div className="chat-tool-result">= {result.content}</div>}
     </div>
   );
@@ -57,12 +73,12 @@ function Bubble({ message, toolResults }: { message: ChatMessage; toolResults: M
   const fromRun = message.source === 'run';
   return (
     <div className={`chat-msg ${role}${fromRun ? ' run-input' : ''}`}>
-      <div className="chat-avatar">{fromRun ? 'Run' : initialsFor(message.role)}</div>
-      <div>
+      <Avatar Icon={avatarIconFor(message)} />
+      <div className="chat-msg-body">
         {fromRun && <div className="chat-run-label">Run input</div>}
         {message.content && <div className="chat-bubble">{message.content}</div>}
         {message.toolCalls?.map((tc) => (
-          <div className="chat-bubble" key={tc.id}>
+          <div className="chat-bubble chat-bubble-tool" key={tc.id}>
             <ToolCallCard toolCall={tc} result={toolResults.get(tc.id)} />
           </div>
         ))}
@@ -102,7 +118,7 @@ function ChatSessionBar({ viewedChatSession }: { viewedChatSession: ViewedChatSe
       <div className="chat-session-bar">
         <span>
           Viewing past conversation from {new Date(viewedChatSession.startedAt).toLocaleString()}
-          <button className="btn btn-ghost" onClick={returnToLiveChat}>
+          <button className="btn btn-ghost btn-sm" onClick={returnToLiveChat}>
             Back to live chat
           </button>
         </span>
@@ -112,6 +128,7 @@ function ChatSessionBar({ viewedChatSession }: { viewedChatSession: ViewedChatSe
   return (
     <div className="chat-session-bar">
       <select
+        className="select chat-session-select"
         aria-label="Past conversations"
         value=""
         onChange={(e) => {
@@ -127,7 +144,8 @@ function ChatSessionBar({ viewedChatSession }: { viewedChatSession: ViewedChatSe
             </option>
           ))}
       </select>
-      <button className="btn btn-ghost" onClick={() => void startNewChat()}>
+      <button className="btn btn-ghost btn-sm" onClick={() => void startNewChat()}>
+        <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
         New chat
       </button>
     </div>
@@ -137,7 +155,7 @@ function ChatSessionBar({ viewedChatSession }: { viewedChatSession: ViewedChatSe
 function TypingBubble() {
   return (
     <div className="chat-msg agent">
-      <div className="chat-avatar">AI</div>
+      <Avatar Icon={Sparkles} />
       <div className="chat-bubble">
         <div className="chat-typing">
           <span />
@@ -151,9 +169,9 @@ function TypingBubble() {
 
 function ApprovalBubble({ pendingApproval }: { pendingApproval: PendingApproval }) {
   return (
-    <div className="chat-msg agent">
-      <div className="chat-avatar">AI</div>
-      <div>
+    <div className="chat-msg agent chat-msg-approval">
+      <Avatar Icon={Sparkles} />
+      <div className="chat-msg-body">
         <ApprovalCard
           className="chat-approval-card"
           toolName={pendingApproval.toolName}
@@ -186,74 +204,14 @@ function MessageList({ messages, isRunning, pendingApproval }: MessageListProps)
   }, [renderable.length, isRunning]);
 
   return (
-    <div className="chat-messages" ref={listRef} role="log" aria-label="Conversation">
+    // Focusable, so the thread scrolls from the keyboard too.
+    <div className="chat-messages" ref={listRef} role="log" aria-label="Conversation" tabIndex={0}>
       <EmptyChatNotice count={renderable.length} isRunning={isRunning} />
       {renderable.map((m) => (
         <Bubble key={m.id} message={m} toolResults={toolResults} />
       ))}
       {isRunning && <TypingBubble />}
       {pendingApproval && <ApprovalBubble pendingApproval={pendingApproval} />}
-    </div>
-  );
-}
-
-function placeholderFor(viewing: boolean, isPausedForApproval: boolean): string {
-  if (viewing) return 'Return to the live chat to send a message';
-  if (isPausedForApproval) return 'Resolve the approval above to continue';
-  return 'Message this agent...';
-}
-
-interface ChatInputRowProps {
-  viewing: boolean;
-  isPausedForApproval: boolean;
-  inputDisabled: boolean;
-}
-
-function ChatInputRow({ viewing, isPausedForApproval, inputDisabled }: ChatInputRowProps) {
-  const { sendChatMessage } = useAppState();
-  const [input, setInput] = useState('');
-  const [sending, setSending] = useState(false);
-
-  async function handleSend() {
-    const text = input.trim();
-    if (!text || inputDisabled) return;
-    setSending(true);
-    try {
-      await sendChatMessage(text);
-      setInput('');
-    } catch {
-      // chatActionError already surfaces this - keep the draft so the user can retry.
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
-    }
-  }
-
-  return (
-    <div className="chat-input-row">
-      <textarea
-        aria-label="Message"
-        className="chat-input"
-        rows={1}
-        placeholder={placeholderFor(viewing, isPausedForApproval)}
-        value={input}
-        disabled={inputDisabled}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-      />
-      <button
-        className="btn btn-primary btn-send"
-        onClick={() => void handleSend()}
-        disabled={inputDisabled || sending || !input.trim()}
-      >
-        Send
-      </button>
     </div>
   );
 }
@@ -277,7 +235,7 @@ export function ChatPanel() {
         </div>
       )}
 
-      <ChatInputRow
+      <ChatComposer
         viewing={viewing}
         isPausedForApproval={!!pendingApproval}
         inputDisabled={isInputDisabled(viewing, liveRunState)}

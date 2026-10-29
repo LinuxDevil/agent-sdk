@@ -1,10 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { KeyRound, Rocket, SlidersHorizontal, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { DeployResult, ProviderKeyStatus, SettingsFile, SettingsProfile } from '../../shared/wireTypes';
 import { errorMessage } from './errorMessage';
 
 type KeyedProviderId = 'openai' | 'anthropic';
+
+/** One settings section drawn as a card: an icon, title and one-line description over its fields. */
+function SettingsCard({
+  Icon,
+  title,
+  description,
+  children,
+}: {
+  Icon: LucideIcon;
+  title: string;
+  description: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="settings-card" aria-label={title}>
+      <div className="settings-card-head">
+        <span className="settings-card-icon" aria-hidden="true">
+          <Icon size={16} strokeWidth={1.75} />
+        </span>
+        <span>
+          <span className="settings-card-title">{title}</span>
+          <span className="settings-card-desc">{description}</span>
+        </span>
+      </div>
+      {children}
+    </section>
+  );
+}
 
 const KEYED_PROVIDERS: { id: KeyedProviderId; label: string }[] = [
   { id: 'openai', label: 'OpenAI API key' },
@@ -155,14 +184,14 @@ function ProviderKeyField({ label, status, draft, onDraftChange, onSave, onRemov
         value={draft ?? ''}
         onChange={(e) => onDraftChange(e.target.value)}
       />
-      <div className="hint" style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-        <button className="btn" onClick={onSave} disabled={!draft?.trim()}>
+      <div className="hint settings-key-actions">
+        <button className="btn btn-sm" onClick={onSave} disabled={!draft?.trim()}>
           Save
         </button>
-        <button className="btn btn-ghost" onClick={onRemove} disabled={!status?.hasKey}>
+        <button className="btn btn-ghost btn-sm" onClick={onRemove} disabled={!status?.hasKey}>
           Remove
         </button>
-        <span>{keyStatusHint(status)}</span>
+        <span className="settings-key-status">{keyStatusHint(status)}</span>
       </div>
     </div>
   );
@@ -179,10 +208,7 @@ function InlineError({ message }: { message: string | undefined }) {
 function ProviderKeysSection() {
   const { providers, keyDrafts, providerError, setDraft, saveKey, removeKey } = useProviderKeys();
   return (
-    <>
-      <div className="rail-section-title" style={{ margin: '0 0 8px' }}>
-        Provider keys
-      </div>
+    <SettingsCard Icon={KeyRound} title="Provider keys" description="Stored on this machine; never shown in full.">
       {KEYED_PROVIDERS.map(({ id, label }) => (
         <ProviderKeyField
           key={id}
@@ -195,7 +221,7 @@ function ProviderKeysSection() {
         />
       ))}
       <InlineError message={providerError} />
-    </>
+    </SettingsCard>
   );
 }
 
@@ -249,7 +275,7 @@ function ProfileEditor({ profileDraft, isActive, onChange, onSave, onActivate }:
           aria-label="Enable OTel tracing"
         />
       </div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+      <div className="settings-actions">
         <button className="btn" onClick={onSave}>
           Save profile
         </button>
@@ -297,10 +323,11 @@ function ProfileSection({ profiles }: ProfileSectionProps) {
     profiles;
   const activeProfileId = settingsFile?.activeProfileId;
   return (
-    <>
-      <div className="rail-section-title" style={{ margin: '16px 0 8px' }}>
-        Settings profile
-      </div>
+    <SettingsCard
+      Icon={SlidersHorizontal}
+      title="Settings profile"
+      description="The environment runs use: provider, hook timeout and tracing."
+    >
       <ProfileSelect
         selectedId={profileDraft?.id}
         profiles={profileList(settingsFile)}
@@ -317,28 +344,17 @@ function ProfileSection({ profiles }: ProfileSectionProps) {
         />
       )}
       <InlineError message={profileError} />
-    </>
+    </SettingsCard>
   );
 }
 
 function DeployResultView({ result }: { result: DeployResult }) {
   return (
-    <div style={{ marginTop: 10 }}>
+    <div className="deploy-result">
       <div className="hint">
         {result.exitCode === 0 ? 'Build succeeded' : `Build failed (exit ${result.exitCode})`} — {result.command}
       </div>
-      <pre
-        style={{
-          marginTop: 6,
-          maxHeight: 220,
-          overflow: 'auto',
-          background: 'var(--surface-2)',
-          padding: 8,
-          borderRadius: 6,
-          fontSize: 12,
-          whiteSpace: 'pre-wrap',
-        }}
-      >
+      <pre className="deploy-log">
         {result.stdout}
         {result.stderr}
       </pre>
@@ -354,10 +370,7 @@ interface DeploySectionProps {
 function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
   const { deployAdapters, deploying, deployResult, deploy } = useDeploy(deployAdapter);
   return (
-    <div>
-      <div className="rail-section-title" style={{ margin: '0 0 8px' }}>
-        Deploy target
-      </div>
+    <SettingsCard Icon={Rocket} title="Deploy target" description="Build this agent's saved spec with a deploy adapter.">
       <div className="field">
         <label>Adapter</label>
         <select className="select" aria-label="Deploy adapter" value={deployAdapter} onChange={(e) => onAdapterChange(e.target.value)}>
@@ -372,7 +385,7 @@ function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
         {deploying ? 'Deploying…' : 'Deploy this agent'}
       </button>
       {deployResult && <DeployResultView result={deployResult} />}
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -395,21 +408,9 @@ export function SettingsPanel() {
   const profiles = useSettingsProfiles(setDeployAdapter, deployAdapter);
 
   return (
-    <div
-      style={{
-        fontFamily: 'var(--font-ui)',
-        padding: '12px 16px',
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: 20,
-        overflow: 'auto',
-        height: '100%',
-      }}
-    >
-      <div>
-        <ProviderKeysSection />
-        <ProfileSection profiles={profiles} />
-      </div>
+    <div className="settings-panel">
+      <ProviderKeysSection />
+      <ProfileSection profiles={profiles} />
       <DeploySection deployAdapter={deployAdapter} onAdapterChange={setDeployAdapter} />
     </div>
   );

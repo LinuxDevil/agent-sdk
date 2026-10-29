@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactElement } from 'react';
+import { Activity, Braces, History, MessageSquare, ScrollText, Settings, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import type { DrawerTab } from '../state/AppState';
 import { LogsPanel } from './debug/LogsPanel';
@@ -11,13 +12,13 @@ import { SettingsPanel } from './SettingsPanel';
 import { tabIds, tabListKeyDown } from './tabs';
 import { DrawerResizeHandle, useDrawerHeight } from './drawerHeight';
 
-const TABS: { id: DrawerTab; label: string }[] = [
-  { id: 'chat', label: 'Chat' },
-  { id: 'logs', label: 'Logs' },
-  { id: 'trace', label: 'Trace' },
-  { id: 'output', label: 'Output' },
-  { id: 'history', label: 'History' },
-  { id: 'settings', label: 'Settings' },
+const TABS: { id: DrawerTab; label: string; Icon: LucideIcon }[] = [
+  { id: 'chat', label: 'Chat', Icon: MessageSquare },
+  { id: 'logs', label: 'Logs', Icon: ScrollText },
+  { id: 'trace', label: 'Trace', Icon: Activity },
+  { id: 'output', label: 'Output', Icon: Braces },
+  { id: 'history', label: 'History', Icon: History },
+  { id: 'settings', label: 'Settings', Icon: Settings },
 ];
 const TAB_IDS = TABS.map((t) => t.id);
 
@@ -34,6 +35,27 @@ const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
 const FLUSH_TABS: ReadonlySet<DrawerTab> = new Set<DrawerTab>(['logs', 'trace', 'chat', 'settings']);
 const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
 
+type DrawerCounts = Partial<Record<DrawerTab, number>>;
+
+/** The live counts shown on the Chat (messages), Logs (lines) and Trace (spans) tabs. */
+function useDrawerCounts(): DrawerCounts {
+  const { chat, logs, spans } = useAppState();
+  return {
+    chat: chat.messages.filter((m) => m.role !== 'system').length,
+    logs: logs.length,
+    trace: spans.length,
+  };
+}
+
+/** A tab's count as a small muted pill; hidden from the accessible name, which stays the bare label. */
+function TabCount({ count }: { count: number | undefined }) {
+  return count ? (
+    <span className="count" aria-hidden="true">
+      {count}
+    </span>
+  ) : null;
+}
+
 /**
  * Tab-switching chrome, now with real content for the
  * Logs/Trace/Output tabs: `LogsPanel` (a live filtered/virtualized log
@@ -48,6 +70,7 @@ export function BottomDrawer() {
   const { drawerTab, setDrawerTab } = useAppState();
   const ids = tabIds('drawer', drawerTab);
   const { height, setHeight } = useDrawerHeight();
+  const counts = useDrawerCounts();
 
   // A real WAI-ARIA tablist (roles, aria-selected, arrow keys).
   return (
@@ -73,7 +96,9 @@ export function BottomDrawer() {
               className={`drawer-tab${selected ? ' active' : ''}`}
               onClick={() => setDrawerTab(tab.id)}
             >
+              <tab.Icon size={14} strokeWidth={1.75} aria-hidden="true" />
               {tab.label}
+              <TabCount count={counts[tab.id]} />
             </button>
           );
         })}

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useAppState } from '../../state/AppState';
 import { filterLogs } from '../../state/logReducer';
 import type { LogEntry, LogLevel, LogPhase } from '../../../shared/wireTypes';
+import type { StatusTone } from '../../ui/StatusPill';
 import type { AgentGraphSpec } from '../../graph/types';
 import { VirtualList } from './VirtualList';
 import { findLlmNodeId, findToolNodeId } from './nodeLookup';
@@ -9,7 +10,10 @@ import { formatTime } from '../formatTime';
 
 const LEVELS: LogLevel[] = ['info', 'warn', 'error', 'tool'];
 const PHASES: LogPhase[] = ['trigger', 'llm', 'tool', 'sandbox', 'checkpoint', 'approval', 'debug'];
-const ROW_HEIGHT = 22;
+const ROW_HEIGHT = 28;
+
+/** Each level's status-pill tone: info blue, warn amber, error red, tool violet. */
+const LEVEL_TONES: Record<LogLevel, StatusTone> = { info: 'running', warn: 'warning', error: 'error', tool: 'violet' };
 
 function nodeIdForLog(graph: AgentGraphSpec, entry: LogEntry): string | undefined {
   if (entry.phase === 'llm') return findLlmNodeId(graph);
@@ -80,6 +84,7 @@ function LogFilterBar({ filters }: { filters: LogFilters }) {
       />
       <input
         type="search"
+        className="input logs-search"
         aria-label="Search logs"
         placeholder="Search logs..."
         value={filters.search}
@@ -98,7 +103,9 @@ function LogRow({ entry, highlighted, onSelect }: { entry: LogEntry; highlighted
       title={entry.detail ? JSON.stringify(entry.detail) : undefined}
     >
       <span className="log-time">{formatTime(entry.timestamp)}</span>
-      <span className={`log-level lvl-${entry.level}`}>{entry.level}</span>
+      <span className={`log-level lvl-${entry.level}`}>
+        <span className={`status-pill pill-${LEVEL_TONES[entry.level]}`}>{entry.level}</span>
+      </span>
       <span className="log-msg">
         <b>[{entry.phase}]</b> {entry.message}
       </span>
@@ -127,10 +134,18 @@ export function LogsPanel() {
   return (
     <div className="logs-panel">
       <LogFilterBar filters={filters} />
+      {filtered.length > 0 && (
+        <div className="log-line log-head" aria-hidden="true">
+          <span>Time</span>
+          <span>Level</span>
+          <span>Message</span>
+        </div>
+      )}
       <VirtualList
         items={filtered}
         rowHeight={ROW_HEIGHT}
         emptyMessage={emptyMessage}
+        label="Log lines"
         renderRow={(entry: LogEntry) => {
           const nodeId = nodeIdForLog(graph, entry);
           return (
