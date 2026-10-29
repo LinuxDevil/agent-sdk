@@ -55,6 +55,8 @@ describe('ApprovalCard', () => {
     expect(card.querySelector('.approval-tool')?.textContent).toBe('demo-approval');
     expect(card.querySelector('.approval-args')?.textContent).toContain('mock input');
     expect([...card.querySelectorAll('.approval-actions button')].map(nameOf)).toEqual(['Approve', 'Reject']);
+    // only the toolbar's inline card (whose buttons may go icon-only) carries tooltips
+    expect(card.querySelector('.approval-actions button[title]')).toBeNull();
     act(() => (card.querySelector('.approval-actions button') as HTMLButtonElement).click());
     expect(appState.approveAgent).toHaveBeenCalledWith(true);
   });
@@ -66,6 +68,20 @@ describe('ApprovalCard', () => {
     expect(card.querySelector('.approval-tool')?.textContent).toBe('http');
     expect(card.querySelector('.approval-text')?.textContent).toBe('Approve http?');
     expect(card.querySelector('.approval-args')).toBeNull();
+    const buttons = [...card.querySelectorAll('.approval-actions button')];
+    expect(buttons.map((b) => b.getAttribute('title'))).toEqual(['Approve', 'Reject']);
+    expect(buttons.map(nameOf)).toEqual(['Approve', 'Reject']);
+  });
+
+  it("the inline variant's tooltip follows the busy label", async () => {
+    let resolve: () => void = () => undefined;
+    appState.approveAgent.mockImplementationOnce(() => new Promise<void>((r) => (resolve = r)));
+    const container = render(<ApprovalCard variant="inline" toolName="http" args={{}} />);
+    const approve = container.querySelector('.approval-actions button') as HTMLButtonElement;
+    act(() => approve.click());
+    expect(approve.getAttribute('title')).toBe('Approving...');
+    await act(async () => resolve());
+    expect(approve.getAttribute('title')).toBe('Approve');
   });
 });
 

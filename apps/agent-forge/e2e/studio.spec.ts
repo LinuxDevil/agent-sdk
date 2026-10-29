@@ -89,6 +89,47 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
   await expect(page.locator('.chat-msg.agent').last()).toBeVisible();
 });
 
+/** `inner` is drawn whole inside `outer` (not clipped by its overflow). */
+async function expectInside(inner: ReturnType<Page['locator']>, outer: ReturnType<Page['locator']>) {
+  const [a, b] = [await inner.boundingBox(), await outer.boundingBox()];
+  expect(a && b).toBeTruthy();
+  expect(a!.width).toBeGreaterThan(0);
+  expect(a!.x).toBeGreaterThanOrEqual(b!.x - 0.5);
+  expect(a!.x + a!.width).toBeLessThanOrEqual(b!.x + b!.width + 0.5);
+}
+
+/**
+ * R2: with a tool approval pending, the wide builder toolbar still links to the
+ * run's trace (icon-only once the bar is short) and keeps the MOCK badge next to
+ * the inline approval, at 1280 and at 1024 wide.
+ */
+test('a pending approval keeps "Open trace" and the MOCK badge in the toolbar at 1280 and 1024 wide', async ({ page }) => {
+  const agentId = `e2e-pending-trace-${Date.now()}`;
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto('/?token=e2e-studio-token');
+  await page.getByRole('button', { name: 'New agent', exact: true }).click();
+  await page.locator('#new-agent-name').fill(agentId);
+  await page.locator('#new-agent-template').selectOption('support-bot');
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.locator('[data-node-type="tool"]').click();
+  await page.locator('#node-tool-name').fill('demo-approval');
+  await page.locator('.chat-input').fill('Please call demo-approval to look something up for me.');
+  await page.locator('.btn-send').click();
+
+  const toolbar = page.locator('.topbar-builder');
+  await expect(toolbar.locator('.approval-card-inline')).toBeVisible({ timeout: 15_000 });
+  for (const width of [1280, 1024]) {
+    await page.setViewportSize({ width, height: 800 });
+    const trace = toolbar.getByRole('link', { name: 'Open trace', exact: true });
+    await expect(trace).toBeVisible();
+    await expect(trace).toHaveAttribute('href', /^#\/traces\/[^/]+$/);
+    await expectInside(trace, toolbar.locator('.topbar-left'));
+    const mock = toolbar.locator('.topbar-center .mock-badge');
+    await expect(mock).toHaveText('MOCK');
+    await expectInside(mock, toolbar.locator('.topbar-center'));
+  }
+});
+
 /** F5: the builder is the Agents screen, and `#/agents/:id` names the open agent. */
 async function createAgent(page: Page, id: string) {
   await page.getByRole('button', { name: 'New agent', exact: true }).click();
