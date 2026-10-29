@@ -150,4 +150,13 @@ describe('applyRunEvent', () => {
     expect(applyRunEvent(done, { type: 'delta', text: 'x' })).toBe(done);
     expect(applyRunEvent(STARTED_RUN, { type: 'error', message: 'boom', code: 'C' })).toMatchObject({ status: 'error', error: 'boom (C)' });
   });
+
+  it("keeps the done event's usage and times the run from startedAt", () => {
+    const usage = { promptTokens: 3, completionTokens: 4, totalTokens: 7, inputTokens: 3, outputTokens: 4, estimated: false };
+    const started = { ...STARTED_RUN, startedAt: 1000 };
+    const done = applyRunEvent(started, { type: 'done', finishReason: 'stop', text: 'x', usage }, 2250);
+    expect(done).toMatchObject({ status: 'done', usage, durationMs: 1250 });
+    expect(applyRunEvent(started, { type: 'error', message: 'boom' }, 1400)).toMatchObject({ durationMs: 400 });
+    expect(applyRunEvent(STARTED_RUN, { type: 'done', finishReason: 'stop', text: '' }, 5).durationMs).toBeUndefined();
+  });
 });

@@ -451,6 +451,93 @@ test('playground: loaded from a trace generation', async ({ page }) => {
   await shoot(page, 'playground');
 });
 
+/*
+ * Review-only shots of the Playground (`x-` names: not in the docs set). A run
+ * is staged by answering `POST /playground/run` with a canned SSE stream in the
+ * wire shape sse.ts parses (`data: <PlaygroundEvent>` frames).
+ */
+const sseFrames = (events: unknown[]) => events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join('');
+
+const PG_RUN_EVENTS = [
+  { type: 'tool_call', id: 'call_1', name: 'order-status', args: { orderId: '4512', include: ['carrier', 'eta'] } },
+  { type: 'delta', text: 'Your order #4512 shipped yesterday with UPS ' },
+  { type: 'delta', text: 'and is due on Thursday. Track it at ups.com with the number 1Z 999 AA1 01 2345 6784.' },
+  {
+    type: 'done',
+    finishReason: 'stop',
+    text: 'Your order #4512 shipped yesterday with UPS and is due on Thursday. Track it at ups.com with the number 1Z 999 AA1 01 2345 6784.',
+    traceId: 'e2e-trace',
+    usage: { promptTokens: 412, completionTokens: 86, totalTokens: 498, inputTokens: 412, outputTokens: 86, estimated: false, costUsd: 0.00031 },
+  },
+];
+
+async function stubPlaygroundRun(page: Page, events: unknown[], delayMs = 0) {
+  await page.route('**/playground/run', async (route) => {
+    if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
+    await route.fulfill({ status: 200, contentType: 'text/event-stream', body: sseFrames(events) });
+  });
+}
+
+/** Fills the system and user messages (the system one has a `{company}` variable) and its value. */
+async function fillPlayground(page: Page) {
+  await open(page, '/playground');
+  const boxes = page.getByRole('main').locator('textarea');
+  await boxes.nth(0).fill('You are a support agent for {company}. Answer in two sentences and cite the order id.');
+  await boxes.nth(1).fill('Where is my order #4512?');
+  await page.getByRole('main').getByRole('textbox', { name: '{company}' }).fill('Acme Outfitters');
+}
+
+test('x-playground-idle: a fresh playground', async ({ page }) => {
+  await open(page, '/playground');
+  await expect(page.getByRole('main').locator('textarea').first()).toBeVisible();
+  await shoot(page, 'x-playground-idle');
+});
+
+test('x-playground-run: a finished run with a tool call and metrics', async ({ page }) => {
+  await stubPlaygroundRun(page, PG_RUN_EVENTS, 1200);
+  await fillPlayground(page);
+  await page.getByRole('main').getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('link', { name: /Open trace/ })).toBeVisible();
+  const call = page.getByRole('main').locator('details.pg-tool-call > summary').first();
+  if (await call.count()) await call.click();
+  await shoot(page, 'x-playground-run');
+});
+
+test('x-playground-error: a failed run', async ({ page }) => {
+  await stubPlaygroundRun(page, [
+    { type: 'error', message: 'The openai provider has no API key. Add one under Settings, Providers.', code: 'LOUSHO_PROVIDER_MISSING_API_KEY' },
+  ]);
+  await fillPlayground(page);
+  await page.getByRole('main').getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('alert')).toBeVisible();
+  await shoot(page, 'x-playground-error');
+});
+
+test('x-playground-save: the save-prompt dialog open', async ({ page }) => {
+  await fillPlayground(page);
+  const trigger = page.getByRole('button', { name: 'Save prompt', exact: true });
+  if (await trigger.count()) await trigger.click();
+  await page.getByRole('main').getByRole('textbox', { name: 'Prompt name' }).fill('support-greeter');
+  await shoot(page, 'x-playground-save');
+});
+
+test('x-playground narrow: 375 and 860 wide after a run', async ({ page }) => {
+  await stubPlaygroundRun(page, PG_RUN_EVENTS);
+  await fillPlayground(page);
+  await page.getByRole('main').getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.getByRole('main').getByRole('link', { name: /Open trace/ })).toBeVisible();
+  for (const [width, height, name] of [[375, 812, 'x-playground-narrow-375'], [860, 900, 'x-playground-860']] as const) {
+    await page.setViewportSize({ width, height });
+    await page.getByRole('main').evaluate((el) => el.scrollTo(0, 0));
+    await shoot(page, name);
+  }
+  await page.getByRole('main').getByRole('link', { name: /Open trace/ }).scrollIntoViewIfNeeded();
+  await shoot(page, 'x-playground-860-output');
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('main').getByRole('button', { name: 'Run', exact: true }).scrollIntoViewIfNeeded();
+  await shoot(page, 'x-playground-narrow-375-runbar');
+});
+
 test('command palette: open over Traces', async ({ page }) => {
   await open(page, '/traces');
   await expect(rows(page).first()).toBeVisible();

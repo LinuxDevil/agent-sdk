@@ -1,9 +1,13 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
+import { BookmarkPlus, FileText, Info } from 'lucide-react';
 
 import { useRoute } from '../../router/useRoute';
+import { ScreenHeader } from '../../shell/ScreenHeader';
 import { MessageEditor } from './MessageEditor';
 import { ModelPicker, effectiveProvider, useProviderKeys, type ModelChoice } from './ModelPicker';
+import { RunBar } from './RunBar';
 import { RunOutput } from './RunOutput';
+import { SaveDialog, useSaveDialog } from './SaveDialog';
 import { SavePrompt } from './SavePrompt';
 import { ToolToggles } from './ToolToggles';
 import { VariableInputs } from './VariableInputs';
@@ -26,6 +30,79 @@ const DEEP_LINK_KEYS = ['trace', 'fromObs', 'prompt'];
 export function PlaygroundRoute() {
   const { query } = useRoute();
   return <PlaygroundScreen key={DEEP_LINK_KEYS.map((k) => query.get(k) ?? '').join('|')} />;
+}
+
+/** Ctrl/Cmd+Enter, not a key repeat and not mid-IME composition. */
+function isRunShortcut(e: KeyboardEvent): boolean {
+  if (e.key !== 'Enter' || e.repeat || e.nativeEvent.isComposing) return false;
+  return e.ctrlKey || e.metaKey;
+}
+
+type SaveDialogState = ReturnType<typeof useSaveDialog>;
+
+/** The page header: description, the loaded prompt's chip, and the Save prompt trigger. */
+function PlaygroundHeader({ prompt, save }: { prompt: Prefill['prompt']; save: SaveDialogState }) {
+  return (
+    <ScreenHeader
+      description="Try messages against a model without editing an agent."
+      status={
+        prompt ? (
+          <span className="chip pg-prompt-chip" title={prompt.promptRef}>
+            <FileText aria-hidden="true" />
+            {prompt.promptRef}
+          </span>
+        ) : null
+      }
+      actions={
+        <button
+          ref={save.triggerRef}
+          type="button"
+          className="btn pg-save-trigger"
+          aria-haspopup="dialog"
+          aria-expanded={save.open}
+          aria-controls="pg-save-dialog"
+          onClick={save.toggle}
+        >
+          <BookmarkPlus aria-hidden="true" />
+          Save prompt
+        </button>
+      }
+    />
+  );
+}
+
+interface ComposerProps {
+  messages: PlaygroundMessage[];
+  onChange: (messages: PlaygroundMessage[]) => void;
+  canRun: boolean;
+  running: boolean;
+  onRun: () => void;
+  onStop: () => void;
+}
+
+/** The Messages card and its run bar; Ctrl/Cmd+Enter anywhere in it runs, like the Run button. */
+function Composer({ messages, onChange, canRun, running, onRun, onStop }: ComposerProps) {
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (!isRunShortcut(e)) return;
+    e.preventDefault();
+    if (canRun) onRun();
+  };
+  return (
+    <section className="card pg-card pg-composer" aria-labelledby="pg-messages-title" onKeyDown={onKeyDown}>
+      <div className="pg-card-head">
+        <h2 id="pg-messages-title" className="pg-card-title">
+          Messages
+        </h2>
+        <span className="pg-card-meta tabular-nums">
+          {messages.length} {messages.length === 1 ? 'message' : 'messages'}
+        </span>
+      </div>
+      <div className="pg-card-body">
+        <MessageEditor messages={messages} onChange={onChange} />
+      </div>
+      <RunBar canRun={canRun} running={running} onRun={onRun} onStop={onStop} />
+    </section>
+  );
 }
 
 /**
@@ -59,47 +136,46 @@ export function PlaygroundScreen() {
   const body = buildRunBody({ messages, values, model, tools, promptRef: prompt?.promptRef });
   const systemText = messages.find((m) => m.role === 'system')?.content ?? '';
   const running = run.status === 'running';
+  const canRun = !!body && !running;
+  const runNow = () => {
+    if (body && !running) start(body);
+  };
+  const save = useSaveDialog();
 
   return (
     <div className="pg-screen">
-      <header className="pg-head">
-        <h2>Playground</h2>
-        {prompt && <span className="pg-prompt-chip">{prompt.promptRef}</span>}
-      </header>
+      <PlaygroundHeader prompt={prompt} save={save} />
+      <SaveDialog id="pg-save-dialog" open={save.open} onClose={save.close} triggerRef={save.triggerRef}>
+        <SavePrompt promptName={prompt?.name} systemText={systemText} />
+      </SaveDialog>
       {notice && (
         <p className="pg-notice" role="status">
-          {notice}
+          <Info aria-hidden="true" size={16} strokeWidth={1.75} />
+          <span>{notice}</span>
         </p>
       )}
       <div className="pg-layout">
-        <div className="pg-editor">
-          <MessageEditor messages={messages} onChange={setMessages} />
-          <VariableInputs names={names} values={values} onChange={setValues} />
-        </div>
-        <div className="pg-side">
-          <section className="pg-panel pg-settings" aria-labelledby="pg-settings-title">
-            <h3 id="pg-settings-title" className="pg-panel-title">
+        <aside className="card pg-card pg-config" aria-label="Run settings">
+          <section className="pg-config-section" aria-labelledby="pg-settings-title">
+            <h2 id="pg-settings-title" className="pg-section-title overline">
               Model
-            </h3>
+            </h2>
             <ModelPicker choice={choice} keys={keys} onChange={setChoice} />
-            <ToolToggles tools={tools} onChange={setTools} />
-            <div className="pg-actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!body || running}
-                onClick={() => body && start(body)}
-              >
-                Run
-              </button>
-              <button type="button" className="btn" disabled={!running} onClick={stop}>
-                Stop
-              </button>
-            </div>
-            <SavePrompt promptName={prompt?.name} systemText={systemText} />
           </section>
-          <RunOutput run={run} />
-        </div>
+          <VariableInputs names={names} values={values} onChange={setValues} />
+          <div className="pg-config-section">
+            <ToolToggles tools={tools} onChange={setTools} />
+          </div>
+        </aside>
+        <Composer
+          messages={messages}
+          onChange={setMessages}
+          canRun={canRun}
+          running={running}
+          onRun={runNow}
+          onStop={stop}
+        />
+        <RunOutput run={run} />
       </div>
     </div>
   );

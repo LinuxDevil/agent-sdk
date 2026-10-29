@@ -6,6 +6,8 @@ import { ToastProvider } from '../../../ui/Toast';
 import type { ObserveObservationRow, ObserveTraceDetail } from '../../../observe/types';
 import { PlaygroundRoute, PlaygroundScreen } from '../PlaygroundScreen';
 
+vi.mock('../../../state/AppState', () => ({ useAppState: () => ({ runStatus: null }) }));
+
 function gen(over: Partial<ObserveObservationRow> & { obs_id: string }): ObserveObservationRow {
   return {
     trace_id: 't1', session_id: null, agent_id: 'a1', parent_obs_id: null, kind: 'generation', name: 'llm',
@@ -215,6 +217,79 @@ describe('PlaygroundScreen', () => {
     stream.end();
     await waitFor(() => c.querySelector('.pg-output [role="alert"]') !== null);
     expect(c.querySelector('.pg-output [role="alert"]')!.textContent).toContain('No key');
+    expect(c.querySelector('.pg-output')!.textContent).not.toContain('Latency');
+  });
+
+  it('Ctrl+Enter in a message runs it, and shows the shortcut beside Run', async () => {
+    const stream = sseStream();
+    let ran = 0;
+    server((url) => {
+      if (url !== '/playground/run') return undefined;
+      ran += 1;
+      return stream.response();
+    });
+    const c = mount();
+    expect(c.querySelector('.pg-runbar kbd')).not.toBeNull();
+    const user = c.querySelectorAll<HTMLTextAreaElement>('.pg-content')[1]!;
+    typeInto(user, 'hi');
+    act(() => {
+      user.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    });
+    expect(ran).toBe(0);
+    act(() => {
+      user.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, repeat: true, bubbles: true }));
+      user.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, isComposing: true, bubbles: true }));
+    });
+    expect(ran).toBe(0);
+    act(() => {
+      user.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true }));
+    });
+    await waitFor(() => ran === 1);
+    stream.end();
+  });
+
+  it('shows tool calls as collapsible cards with their args, and the token and latency metrics', async () => {
+    const stream = sseStream();
+    server((url) => (url === '/playground/run' ? stream.response() : undefined));
+    const c = mount();
+    typeInto(c.querySelectorAll<HTMLTextAreaElement>('.pg-content')[1]!, 'hi');
+    act(() => button(c, 'Run').click());
+    stream.send({ type: 'tool_call', id: 'c1', name: 'order-status', args: { orderId: '4512' } });
+    await waitFor(() => c.querySelector('.pg-tool-call') !== null);
+    const call = c.querySelector<HTMLDetailsElement>('[aria-label="Tool calls"] details.pg-tool-call')!;
+    expect(call.querySelector('summary')!.textContent).toContain('order-status');
+    expect(call.open).toBe(false);
+    expect(call.textContent).toContain('4512');
+    stream.send({
+      type: 'done', finishReason: 'stop', text: 'ok',
+      usage: { promptTokens: 412, completionTokens: 86, totalTokens: 498, inputTokens: 412, outputTokens: 86, estimated: false },
+    });
+    stream.end();
+    await waitFor(() => c.querySelector('.pg-metrics') !== null);
+    const metrics = c.querySelector('.pg-metrics')!.textContent!;
+    expect(metrics).toContain('412');
+    expect(metrics).toContain('86');
+    expect(metrics).toMatch(/Latency/);
+  });
+
+  it('opens the save card from the header, and Escape closes it', () => {
+    server();
+    const c = mount();
+    const trigger = button(c, 'Save prompt');
+    const dialog = c.querySelector<HTMLElement>('[role="dialog"]')!;
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(dialog.hidden).toBe(true);
+    act(() => trigger.click());
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(dialog.hidden).toBe(false);
+    expect(document.activeElement).toBe(dialog.querySelector('input'));
+    // Escape closes it even once focus has left the card.
+    act(() => (document.activeElement as HTMLElement).blur());
+    act(() => {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(dialog.hidden).toBe(true);
+    expect(document.activeElement).toBe(trigger);
   });
 
   it('Stop aborts the stream', async () => {
