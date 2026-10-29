@@ -1,4 +1,4 @@
-import { test, expect, type Page, type Route } from '@playwright/test';
+import { test, expect, type Page, type Route, type WebSocketRoute } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -274,4 +274,68 @@ test('x: 375 wide, Traces with the nav drawer closed and open', async ({ page })
   await page.getByRole('button', { name: 'Navigation', exact: true }).click();
   await page.waitForTimeout(300);
   await page.screenshot({ path: path.join(OUT, 'x-narrow-drawer-open.png') });
+});
+
+/*
+ * Review-only shots of the Agents canvas (the `x-` prefix keeps them out of
+ * the docs set): an empty canvas, a graph with a node selected, and a run in
+ * progress. The run is staged by injecting a live status and spans into the
+ * agent's stream socket, so nodes and edges hold their running state.
+ */
+async function newAgent(page: Page, name: string, template?: 'support-bot') {
+  await open(page, '/agents');
+  await page.getByRole('button', { name: '+ New agent' }).click();
+  await page.locator('#new-agent-name').fill(name);
+  if (template) await page.locator('#new-agent-template').selectOption(template);
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await expect(page.locator('.crumbs b')).toHaveText(name);
+}
+
+test('agents x: the empty canvas with its templates', async ({ page }) => {
+  await newAgent(page, `empty-${Date.now()}`);
+  const nodes = page.locator('.react-flow__node');
+  while ((await nodes.count()) > 0) {
+    const before = await nodes.count();
+    await nodes.first().click();
+    await page.keyboard.press('Delete');
+    await expect(nodes).toHaveCount(before - 1);
+  }
+  await expect(page.getByRole('list', { name: 'Templates' })).toBeVisible();
+  await shoot(page, 'x-agents-empty');
+});
+
+test('agents x: a graph with a node selected', async ({ page }) => {
+  await newAgent(page, `selected-${Date.now()}`, 'support-bot');
+  await page.locator('[data-node-type="tool"]').click();
+  await expect(page.locator('.react-flow__node.selected [data-node-type="tool"]')).toBeVisible();
+  await shoot(page, 'x-agents-selected');
+});
+
+test('agents x: a run in progress', async ({ page }) => {
+  const sockets: WebSocketRoute[] = [];
+  await page.routeWebSocket(/\/stream/, (ws) => {
+    ws.connectToServer();
+    sockets.push(ws);
+  });
+  const name = `running-${Date.now()}`;
+  await newAgent(page, name, 'support-bot');
+  await expect(page.locator('[data-node-type="tool"]')).toBeVisible();
+  // The builder and the rail each hold a socket for the open agent; both get the run.
+  const own = () => sockets.filter((s) => s.url().includes(`/agents/${name}/stream`));
+  await expect.poll(() => own().length).toBeGreaterThan(1);
+  // Let the server's own on-connect status land first, so ours is the last word.
+  await page.waitForTimeout(500);
+  const start = Date.now() - 1_200;
+  const send = (message: unknown) => own().forEach((ws) => ws.send(JSON.stringify(message)));
+  send({ type: 'status', payload: { agentId: name, status: 'running' } });
+  send({
+    type: 'span',
+    payload: { id: 'x-tool', name: 'execute_tool http', startTime: start, endTime: start + 400, attributes: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'http' } },
+  });
+  send({
+    type: 'span',
+    payload: { id: 'x-chat', name: 'chat mock-1', startTime: start, kind: 'client', attributes: { 'gen_ai.operation.name': 'chat' } },
+  });
+  await expect(page.locator('[data-node-type="llm"] .status-pill')).toHaveText('running');
+  await shoot(page, 'x-agents-running');
 });
