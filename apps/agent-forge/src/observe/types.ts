@@ -331,3 +331,56 @@ export interface NewQueueScore {
   value: number;
   comment?: string;
 }
+
+/** Which traces an online evaluator runs on (every key optional; `{}` matches every trace). */
+export interface ObserveEvaluatorFilter {
+  agent_id?: string;
+  status?: 'ok' | 'error';
+  /** Substring of the trace root's name. */
+  name_contains?: string;
+}
+
+/** A `code` rule's config (`(trace) => number | { value, comment }` source) or a `judge` rule's (`provider/model` or `mock`, plus a rubric). */
+export type ObserveEvaluatorKindConfig =
+  | { kind: 'code'; config: { source: string } }
+  | { kind: 'judge'; config: { model: string; rubric: string } };
+
+/** The fields of an online evaluator rule a client sets (the body of `POST /api/v1/evaluators`). */
+export type NewEvaluator = ObserveEvaluatorKindConfig & {
+  name: string;
+  enabled?: boolean;
+  filter?: ObserveEvaluatorFilter;
+  /** 0..1, the share of matching traces the rule runs on. */
+  sample_rate?: number;
+};
+
+/** One online evaluator rule (`GET /api/v1/evaluators` row, and the `evaluator` of the detail/create/update answers). */
+export type ObserveEvaluator = ObserveEvaluatorKindConfig & {
+  rule_id: string;
+  name: string;
+  enabled: boolean;
+  filter: ObserveEvaluatorFilter;
+  sample_rate: number;
+  created_at: number;
+  updated_at: number;
+};
+
+/** `PUT /api/v1/evaluators/:id`: any subset of the create fields (`kind` needs a matching `config`). */
+export type EvaluatorPatch = Partial<Omit<NewEvaluator, 'kind' | 'config'>> & {
+  kind?: ObserveEvaluatorKindConfig['kind'];
+  config?: ObserveEvaluatorKindConfig['config'];
+};
+
+/** `GET /api/v1/evaluators`: a page of rules, oldest first. */
+export interface ObserveEvaluatorList {
+  evaluators: ObserveEvaluator[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** A dry run of one rule on one trace (`POST /api/v1/evaluators/:id/test`): no score is written. */
+export interface ObserveEvaluatorTestResult {
+  value: number | null;
+  comment: string | null;
+}

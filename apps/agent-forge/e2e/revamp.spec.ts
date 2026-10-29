@@ -127,7 +127,8 @@ const FILTERS: Record<ScreenId, string> = {
   datasets: '?offset=50',
   // Queues pages server-side the same way (`?offset=`).
   queues: '?offset=50',
-  evals: '',
+  // The list's kind/state filters (ridden along on the edit view for its way back) and the edit view's test-on-trace prefill.
+  evaluators: '?kind=code&enabled=true&trace=e2e-trace',
   prompts: '?diff=1,2',
   hub: '?agent=triage-bot&scope=fleet',
   settings: '',
@@ -200,6 +201,15 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
   '/evals/queues': async (main) => {
     await expectPreviousPage(main);
   },
+  '/evals/evaluators': async (main) => {
+    await expect(main.getByRole('combobox', { name: 'Kind' })).toHaveValue('code');
+    await expect(main.getByRole('combobox', { name: 'State' })).toHaveValue('true');
+    await expect(main.getByRole('switch', { name: 'answered enabled' })).toBeChecked();
+  },
+  '/evals/evaluators/:id': async (main) => {
+    await expect(main.getByRole('textbox', { name: 'Trace id' })).toHaveValue('e2e-trace');
+    await expect(main.getByRole('link', { name: 'All evaluators' })).toHaveAttribute('href', '#/evals/evaluators?kind=code&enabled=true');
+  },
   '/prompts/:name': async (main) => {
     await expect(main.getByRole('combobox', { name: 'Compare version A' })).toHaveValue('1');
     await expect(main.getByRole('combobox', { name: 'Compare version B' })).toHaveValue('2');
@@ -221,8 +231,6 @@ CONTROLS['/hub/:namespace'] = CONTROLS['/hub'];
 const NO_CONTROLS = new Set([
   '/agents', // canonicalises to the open agent; nothing to filter
   '/threads/:sessionId', // a thread's turns; the list's filters only ride along in the URL
-  '/evals/:section', // evaluators / annotation placeholder screen
-  '/evals/:section/:id', // evaluators / annotation placeholder screen
   '/evals/queues/:id', // one queue's review pane; no URL-backed controls beyond the id
   '/prompts', // the registry list has no filters
   '/settings', // no URL state

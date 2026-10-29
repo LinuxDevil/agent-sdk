@@ -216,6 +216,11 @@ export interface ProviderKeyStatus {
   hasKey: boolean;
   /** Last-4-visible masked form for display, e.g. '••••••••3f2a'. `null` when no key is stored. Never the real key. */
   masked: string | null;
+  /**
+   * The provider's env var (`OPENAI_API_KEY` / `ANTHROPIC_API_KEY`) is set in the server's environment. Runs fall back
+   * to it when no key is stored, so a provider with only `envKey` can still run. Never the value.
+   */
+  envKey: boolean;
 }
 
 /**

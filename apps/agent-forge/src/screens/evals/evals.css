@@ -5,10 +5,7 @@
   gap: 4px;
   border-bottom: 1px solid var(--border);
 }
-.screen-placeholder .evals-tabs {
-  margin-bottom: 16px;
-}
-/* Two classes: outranks a screen's own `a` colour (the placeholder's accent links). */
+/* Two classes: outranks a screen's own `a` colour. */
 .evals-tabs .evals-tab {
   padding: 6px 10px;
   border-bottom: 2px solid transparent;

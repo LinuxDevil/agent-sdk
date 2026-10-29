@@ -2,6 +2,7 @@ import type { Page, Route } from '@playwright/test';
 import type {
   ObserveAgentRow,
   ObserveDataset,
+  ObserveEvaluator,
   ObserveExample,
   ObserveHubEntry,
   ObserveInsights,
@@ -20,7 +21,8 @@ import type {
  * thread with one trace (an LLM call and a tool call), one prompt with two
  * versions, an eval's scores, a Context Hub namespace with a fleet and a
  * private entry, a dataset with two examples (one copied from the trace), and
- * an annotation queue whose next pending item is the trace.
+ * an annotation queue whose next pending item is the trace, and two online
+ * evaluator rules (a code rule with online scores, and a judge rule).
  */
 const NOW = Date.now();
 const T0 = NOW - 60_000;
@@ -225,6 +227,35 @@ const queueItem: ObserveQueueItem = {
   done_at: null,
 };
 
+const evaluators: ObserveEvaluator[] = [
+  {
+    rule_id: 'e2e-evaluator',
+    name: 'answered',
+    enabled: true,
+    filter: { agent_id: 'e2e-agent', status: 'ok' },
+    sample_rate: 1,
+    kind: 'code',
+    config: { source: "(trace) => (trace.output ? 1 : 0)" },
+    created_at: T0 - HOUR,
+    updated_at: T0 - HOUR,
+  },
+  {
+    rule_id: 'e2e-judge',
+    name: 'polite',
+    enabled: false,
+    filter: {},
+    sample_rate: 0.5,
+    kind: 'judge',
+    config: { model: 'openai/gpt-4o-mini', rubric: 'Is the reply polite?' },
+    created_at: T0 - HOUR,
+    updated_at: T0 - HOUR,
+  },
+];
+const onlineScores: ObserveScoreRow[] = [
+  { ...score, score_id: 'e2e-online-1', name: 'answered', source: 'online', value: 1, comment: null, obs_id: null },
+  { ...score, score_id: 'e2e-online-2', name: 'answered', source: 'online', value: 0, comment: null, obs_id: null, created_at: T0 - HOUR },
+];
+
 const json = (route: Route, body: unknown, status = 200) =>
   route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -260,9 +291,16 @@ export async function stubObserve(page: Page): Promise<void> {
       return json(route, { queues: [queue], total: 1, limit: Number(q.get('limit') ?? 100), offset: 0 });
     if (path === '/api/v1/queues/e2e-queue') return json(route, { queue });
     if (path === '/api/v1/queues/e2e-queue/next') return json(route, { item: queueItem });
+    if (path === '/api/v1/evaluators' && route.request().method() === 'GET') {
+      const rows = evaluators.filter((e) => (!q.get('kind') || e.kind === q.get('kind')) && (!q.get('enabled') || String(e.enabled) === q.get('enabled')));
+      return json(route, { evaluators: rows, total: rows.length, limit: Number(q.get('limit') ?? 100), offset: 0 });
+    }
+    if (path === '/api/v1/evaluators/e2e-evaluator' && route.request().method() === 'GET') return json(route, { evaluator: evaluators[0] });
+    if (path === '/api/v1/evaluators/e2e-evaluator/test') return json(route, { result: { value: 1, comment: '1 tool call(s)' } });
     if (path === '/api/v1/scores') {
       if (q.get('aggregate') === 'eval')
         return json(route, { evals: [{ name: 'e2e-eval', count: 4, passed: 3, pass_rate: 0.75, avg_value: 0.75, last_ts: T0 + 2_000 }] });
+      if (q.get('source') === 'online') return json(route, { scores: onlineScores });
       return json(route, { scores: [score, { ...score, score_id: 'e2e-score-2', value: 0, comment: 'wrong order id' }] });
     }
     return json(route, { error: 'not found' }, 404);

@@ -102,8 +102,8 @@ describe('parsePromptParam', () => {
 
 describe('request helpers', () => {
   const keys = [
-    { provider: 'openai' as const, hasKey: false, masked: null },
-    { provider: 'anthropic' as const, hasKey: true, masked: 'x' },
+    { provider: 'openai' as const, hasKey: false, masked: null, envKey: false },
+    { provider: 'anthropic' as const, hasKey: true, masked: 'x', envKey: false },
   ];
 
   it('offers keyed providers plus ollama and mock, defaulting to mock with no keys', () => {
