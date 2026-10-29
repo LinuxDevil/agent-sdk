@@ -50,6 +50,7 @@ beforeEach(() => {
   installMemoryStorage();
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   act(() => root?.unmount());
   container.remove();
   root = undefined;
@@ -186,7 +187,6 @@ describe('collapsible icon rail', () => {
     expect(nav().hasAttribute('data-collapsed')).toBe(false);
     act(() => collapseToggle()!.click());
     expect(nav().hasAttribute('data-collapsed')).toBe(true);
-    vi.restoreAllMocks();
   });
 });
 

@@ -171,6 +171,19 @@ test('the docked nav collapses to an icon rail that survives a reload, every lin
   await page.goto(`/?token=${TOKEN}#/traces`);
   await expectLanded(page, '#/traces');
   const nav = page.getByRole('navigation', { name: 'Primary' });
+  const card = nav.getByRole('status');
+  /** Settings and the collector card are pinned to the nav's bottom edge. */
+  const expectCardPinned = async () => {
+    await expect
+      .poll(async () => {
+        const [n, c] = [await nav.boundingBox(), await card.boundingBox()];
+        return n && c ? n.y + n.height - (c.y + c.height) : -1;
+      })
+      .toBeLessThanOrEqual(12);
+    const [n, c] = [await nav.boundingBox(), await card.boundingBox()];
+    expect(n!.y + n!.height - (c!.y + c!.height)).toBeGreaterThanOrEqual(0);
+  };
+  await expectCardPinned();
   await nav.getByRole('button', { name: 'Collapse navigation' }).click();
   const expand = nav.getByRole('button', { name: 'Expand navigation' });
   await expect(expand).toHaveAttribute('aria-expanded', 'false');
@@ -180,6 +193,7 @@ test('the docked nav collapses to an icon rail that survives a reload, every lin
   await expect(page.locator('.app')).toBeVisible();
   await expect(expand).toHaveAttribute('aria-expanded', 'false');
   expect(Math.round((await nav.boundingBox())?.width ?? 0)).toBe(56);
+  await expectCardPinned();
   for (const name of NAV_LABELS) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
   await expect(nav.getByRole('link', { name: 'Traces', exact: true })).toHaveAttribute('aria-current', 'page');
   await nav.getByRole('link', { name: 'Threads', exact: true }).click();

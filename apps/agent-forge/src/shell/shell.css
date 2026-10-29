@@ -1,5 +1,10 @@
-/* Left-navigation app shell. Tokens from theme.css only. */
+/*
+ * Left-navigation app shell. Tokens from theme.css only.
+ * --page-gutter: the horizontal page gutter every screen aligns to (PageHeader uses it;
+ * screens' content padding adopts it in the page tickets). 24px docked, 16px narrow.
+ */
 .app-shell {
+  --page-gutter: 24px;
   height: 100%;
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
@@ -98,7 +103,7 @@
   margin: var(--space-1) var(--space-2) 6px;
   background: var(--border);
 }
-.nav-footer {
+.nav-rail .nav-footer {
   margin-top: auto;
   border-top: 1px solid var(--border);
   padding-top: var(--space-2);
@@ -245,6 +250,7 @@
 
 /* Narrow: the nav is a slide-over drawer (same pattern as the Studio side panels). */
 .app-shell-narrow {
+  --page-gutter: 16px;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   position: relative;
