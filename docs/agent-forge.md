@@ -47,7 +47,10 @@ toolbar (the agent's name and run status, the model badge, then Debug, Stop,
 Run, Import, Export and Save), the
 agent rail (your saved agents plus a node/hook palette), the canvas, the
 Inspector (right), and a bottom drawer with Chat, Logs, Trace, Output,
-History and Settings tabs. The other screens are one click away in the
+History and Settings tabs. An agent opens with nothing selected and the
+whole graph fitted in view; the Inspector stays folded away until you
+select a node, or press **Show inspector** (the panel icon at the canvas's
+top-right), which is remembered. The other screens are one click away in the
 navigation; see [Navigation](#navigation).
 
 Below 860px wide the navigation becomes a drawer opened from the

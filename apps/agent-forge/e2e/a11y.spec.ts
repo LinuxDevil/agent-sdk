@@ -20,7 +20,14 @@ test('the page has landmarks, an h1 and a live run status', async ({ page }) => 
   await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
   await expect(page.getByRole('navigation', { name: 'Agents and node palette' })).toHaveCount(1);
   await expect(page.getByRole('main')).toHaveCount(1);
+  // Nothing is selected on load, so the Inspector starts collapsed; its toggle opens it from the keyboard.
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toHaveCount(0);
+  const showInspector = page.getByRole('button', { name: 'Show inspector' });
+  await expect(showInspector).toHaveAttribute('aria-expanded', 'false');
+  await showInspector.focus();
+  await page.keyboard.press('Enter');
   await expect(page.getByRole('complementary', { name: 'Inspector' })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Hide inspector' })).toHaveAttribute('aria-expanded', 'true');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent Forge');
   await expect(page.locator('.topbar [role="status"][aria-live="polite"]')).toContainText('idle');
 });
@@ -119,6 +126,16 @@ test('Ctrl+K opens the command palette; ? lists the shortcuts', async ({ page })
 
 /** Run axe (WCAG 2 A/AA) on the page as it stands; fail on any serious/critical violation, naming the rule and its targets. */
 async function expectNoSeriousAxeViolations(page: Page, label: string) {
+  // Let entrance animations (a dialog's fade-in) land first: mid-fade text blends with the scrim and
+  // reads as low contrast. Infinite ones (skeleton shimmer, running pulse) never finish, so they are skipped.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .map((a) => a.finished.catch(() => undefined))
+    )
+  );
   const { violations } = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
   const serious = violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
   const report = serious.map((v) => `${v.id} (${v.impact}): ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);

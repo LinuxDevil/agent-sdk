@@ -6,7 +6,9 @@ import { Inspector } from '../../components/Inspector';
 import { BottomDrawer } from '../../components/BottomDrawer';
 import { NARROW_QUERY, useMediaQuery } from '../../components/useMediaQuery';
 import { useShell } from '../../shell/AppShell';
+import { useAppState } from '../../state/AppState';
 import { useAgentRouteSync } from './useAgentRouteSync';
+import { useInspectorCollapsed } from './useInspectorCollapsed';
 
 /**
  * Below 860px the rail and the Inspector are slide-over drawers,
@@ -40,18 +42,20 @@ function useSidePanels() {
 /**
  * `#/agents` and `#/agents/:id` - the builder: agent rail, canvas, Inspector and the run drawer,
  * under the Build toolbar. The hash names the open agent (see `useAgentRouteSync`).
+ * The docked Inspector collapses while nothing is selected (`useInspectorCollapsed`).
  */
 export function AgentsScreen() {
   useAgentRouteSync();
   const panels = useSidePanels();
-  const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}`;
+  const inspector = useInspectorCollapsed(useAppState().selectedNodeId);
+  const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}${inspector.collapsed ? ' inspector-collapsed' : ''}`;
   return (
     <div className="app">
       <h1 className="visually-hidden">Agent Forge</h1>
       <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} />
       <div className={shellClass}>
         <LeftRail />
-        <CanvasArea />
+        <CanvasArea inspectorCollapsed={inspector.collapsed} onToggleInspector={inspector.toggle} />
         <Inspector />
         {panels.open && <div className="shell-scrim" aria-hidden="true" onClick={panels.close} />}
       </div>

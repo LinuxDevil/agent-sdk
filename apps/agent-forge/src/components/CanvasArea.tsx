@@ -11,6 +11,7 @@ import {
   getNodesBounds,
   getViewportForBounds,
   useReactFlow,
+  useStore,
   useStoreApi,
   type EdgeProps,
   type Connection,
@@ -20,7 +21,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Copy, LayoutGrid, Maximize, type LucideIcon } from 'lucide-react';
+import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
 import { NODE_TYPES, flowNodeType, miniMapNodeClassName, type AgentNodeData } from '../canvas/AgentNode';
@@ -122,13 +123,21 @@ const FIT_VIEW_OPTIONS = { padding: 0.15, maxZoom: 1 };
 
 /**
  * The automatic fits (on load, on resize, after auto layout) stop zooming out
- * here, so node text stays legible; a graph too big for the pane at this zoom
- * opens pinned to its top-left corner (where the trigger sits) instead of
- * centred. The user can still zoom out to MIN_ZOOM, or press Fit view.
+ * here, so node text stays legible (13px titles render at >= ~10px); a graph
+ * too big for the pane at this zoom opens pinned to its top-left corner (where
+ * the trigger sits) instead of centred. The user can still zoom out to
+ * MIN_ZOOM, or press Fit view.
  */
 const AUTO_FIT_MIN_ZOOM = 0.75;
 /** The inset (screen px) of a pinned graph's left/top edge. */
 const AUTO_FIT_INSET = 40;
+/**
+ * The automatic fits' margin round the graph: a fixed 32 screen px rather
+ * than Fit view's proportional 15%, which would cost the default four-stage
+ * graph ~0.1 of zoom in a 1280px-wide builder (the difference between
+ * fitting whole above AUTO_FIT_MIN_ZOOM and being cut off).
+ */
+const AUTO_FIT_PADDING = '32px';
 
 /**
  * React Flow's default floor (0.5) is too high for a 4-column graph in the
@@ -335,6 +344,15 @@ function useDropHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: 
 }
 
 /**
+ * A viewport animation's duration, or none under `prefers-reduced-motion:
+ * reduce` - every pan/fit animation on the canvas goes through this.
+ */
+function motionDuration(ms: number): { duration: number } | undefined {
+  const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return reduce ? undefined : { duration: ms };
+}
+
+/**
  * An automatic fit: the whole graph when it fits at AUTO_FIT_MIN_ZOOM or more
  * (never past 1:1), else that zoom with the graph's top-left corner in view.
  */
@@ -347,10 +365,10 @@ function useLegibleFit() {
       const { width, height } = store.getState();
       if (nodes.length === 0 || !width || !height) return;
       const bounds = getNodesBounds(nodes);
-      const fit = getViewportForBounds(bounds, width, height, AUTO_FIT_MIN_ZOOM, 1, FIT_VIEW_OPTIONS.padding);
+      const fit = getViewportForBounds(bounds, width, height, AUTO_FIT_MIN_ZOOM, 1, AUTO_FIT_PADDING);
       const x = bounds.width * fit.zoom > width ? AUTO_FIT_INSET - bounds.x * fit.zoom : fit.x;
       const y = bounds.height * fit.zoom > height ? AUTO_FIT_INSET - bounds.y * fit.zoom : fit.y;
-      void setViewport({ x, y, zoom: fit.zoom }, duration ? { duration } : undefined);
+      void setViewport({ x, y, zoom: fit.zoom }, duration ? motionDuration(duration) : undefined);
     },
     [getNodes, setViewport, store]
   );
@@ -400,6 +418,56 @@ function useFitViewOnLoad(agentId: string, graph: AgentGraphSpec, measured: Meas
   return graph.nodes.length > 0 && fittedKey !== loadKey;
 }
 
+/** A screen-space box: left/top edge and size. */
+interface ScreenBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** The margin (screen px) a selected node is kept from the pane's edges. */
+const SELECTION_MARGIN = 24;
+
+/** The shift along one axis that brings [start, start + size) inside [margin, pane - margin]; the start wins when it can't all fit. */
+function shiftIntoRange(start: number, size: number, pane: number): number {
+  if (start < SELECTION_MARGIN) return SELECTION_MARGIN - start;
+  const overflow = start + size - (pane - SELECTION_MARGIN);
+  return overflow > 0 ? -Math.min(overflow, start - SELECTION_MARGIN) : 0;
+}
+
+/** How far to pan (screen px) so `node` sits inside a `paneWidth` x `paneHeight` pane; zero when it already does. */
+export function panIntoView(node: ScreenBox, paneWidth: number, paneHeight: number): { dx: number; dy: number } {
+  return { dx: shiftIntoRange(node.left, node.width, paneWidth), dy: shiftIntoRange(node.top, node.height, paneHeight) };
+}
+
+/**
+ * Selecting a node opens the Inspector, which narrows the pane from the right
+ * (AgentsScreen.tsx): pan, at the same zoom, just enough to keep the selected
+ * node in view - on selection and when the pane's width changes under it (the
+ * Inspector opening or closing), not on height changes (dragging the bottom
+ * drawer's splitter must not snap the view back).
+ */
+function useKeepSelectionInView(selectedNodeId: string | undefined) {
+  const { getInternalNode, getViewport, setViewport } = useReactFlow();
+  const store = useStoreApi();
+  const paneWidth = useStore((s) => s.width);
+  useEffect(() => {
+    const paneHeight = store.getState().height;
+    const node = selectedNodeId ? getInternalNode(selectedNodeId) : undefined;
+    if (!node?.measured.width || !node.measured.height || !paneWidth || !paneHeight) return;
+    const { x, y, zoom } = getViewport();
+    const box = {
+      left: node.internals.positionAbsolute.x * zoom + x,
+      top: node.internals.positionAbsolute.y * zoom + y,
+      width: node.measured.width * zoom,
+      height: node.measured.height * zoom,
+    };
+    const { dx, dy } = panIntoView(box, paneWidth, paneHeight);
+    if (dx !== 0 || dy !== 0) void setViewport({ x: x + dx, y: y + dy, zoom }, motionDuration(150));
+  }, [selectedNodeId, paneWidth, store, getInternalNode, getViewport, setViewport]);
+}
+
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
 function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined) {
   const { fitView } = useReactFlow();
@@ -411,7 +479,7 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
   }
 
   function handleFitView() {
-    fitView({ ...FIT_VIEW_OPTIONS, duration: 200 });
+    fitView({ ...FIT_VIEW_OPTIONS, ...motionDuration(200) });
   }
 
   const handleDuplicate = useCallback(() => {
@@ -491,6 +559,38 @@ function CanvasToolbar({
   );
 }
 
+/** What the canvas needs to show the docked Inspector's Show/Hide toggle (AgentsScreen.tsx owns the state). */
+export interface InspectorToggleProps {
+  inspectorCollapsed?: boolean;
+  onToggleInspector?: () => void;
+}
+
+/**
+ * The docked Inspector's Show/Hide toggle, on the canvas's top-right edge
+ * next to the Inspector it opens. Wide layout only (agents.css): below 860px
+ * the top bar's Inspector button opens it as a drawer.
+ */
+function InspectorToggle({ inspectorCollapsed = false, onToggleInspector }: InspectorToggleProps) {
+  if (!onToggleInspector) return null;
+  const label = inspectorCollapsed ? 'Show inspector' : 'Hide inspector';
+  const Icon = inspectorCollapsed ? PanelRightOpen : PanelRightClose;
+  return (
+    <button
+      type="button"
+      className={`btn btn-secondary btn-sm canvas-inspector-toggle${inspectorCollapsed ? '' : ' btn-icon'}`}
+      onClick={onToggleInspector}
+      aria-label={label}
+      aria-expanded={!inspectorCollapsed}
+      aria-controls="studio-inspector"
+      title={label}
+    >
+      <Icon aria-hidden="true" />
+      {/* Collapsed, the word makes the way back obvious; the accessible name stays "Show inspector". */}
+      {inspectorCollapsed && <span aria-hidden="true">Inspector</span>}
+    </button>
+  );
+}
+
 /** The MiniMap (bottom-right) and zoom/fit Controls (bottom-left), both themed in agents.css. */
 function CanvasNavigator() {
   return (
@@ -545,7 +645,7 @@ function useCanvasElements() {
   return { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId };
 }
 
-function CanvasInner() {
+function CanvasInner(inspectorToggle: InspectorToggleProps) {
   const { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId } =
     useCanvasElements();
   const { connectError, flashError } = useConnectError();
@@ -555,6 +655,7 @@ function CanvasInner() {
   const { onDragOver, onDrop } = useDropHandlers(graph, setGraph, flashError);
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
   useFitViewOnResize();
+  useKeepSelectionInView(selectedNodeId);
   const fitting = useFitViewOnLoad(agentId, graph, measured);
 
   return (
@@ -565,6 +666,7 @@ function CanvasInner() {
         onFitView={handleFitView}
         onDuplicate={handleDuplicate}
       />
+      <InspectorToggle {...inspectorToggle} />
       <EmptyCanvas />
       {connectError && (
         <div className="canvas-connect-error" role="alert">
@@ -601,6 +703,6 @@ function CanvasInner() {
  * adopters at `@xyflow/react` (same team, actively released); see the
  * epic's PR description for the full rationale.
  */
-export function CanvasArea() {
-  return <CanvasInner />;
+export function CanvasArea(props: InspectorToggleProps) {
+  return <CanvasInner {...props} />;
 }

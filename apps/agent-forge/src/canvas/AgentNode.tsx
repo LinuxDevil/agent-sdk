@@ -6,7 +6,7 @@ import { StatusPill } from '../ui/StatusPill';
 import { NODE_KINDS } from './nodeKinds';
 
 /**
- * Custom ReactFlow node renderer for every `AgentGraphNodeType`: a 240px card
+ * Custom ReactFlow node renderer for every `AgentGraphNodeType`: a 208px card
  * whose header carries a kind icon tile, the node's name and its run status
  * pill; a meta row (an LLM node's `provider/model` chip and tool count); a
  * body of key/value config rows read straight from the node's
