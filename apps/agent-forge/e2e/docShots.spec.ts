@@ -31,7 +31,8 @@ function shotScheme(): 'light' | 'dark' {
   throw new Error(`LOUSHO_DOC_SHOTS_SCHEME must be "light" or "dark", got "${raw}"`);
 }
 
-test.use({ viewport: { width: 1280, height: 800 }, colorScheme: shotScheme() });
+// Validated only when the shots run, so a stray value never breaks collection of a normal e2e run.
+test.use({ viewport: { width: 1280, height: 800 }, colorScheme: process.env.LOUSHO_DOC_SHOTS ? shotScheme() : 'light' });
 
 const APP = '/?token=e2e-studio-token';
 const OUT = process.env.LOUSHO_DOC_SHOTS_OUT

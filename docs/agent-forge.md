@@ -832,6 +832,6 @@ or relative to where you run the command), and `LOUSHO_DOC_SHOTS_SCHEME=dark`
 shoots the dark theme (`light` is the default; any other value fails the run).
 
 ```bash
-LOUSHO_DOC_SHOTS=1 LOUSHO_DOC_SHOTS_OUT=/tmp/shots-dark LOUSHO_DOC_SHOTS_SCHEME=dark   npx playwright test -c apps/agent-forge/playwright.config.ts docShots
+LOUSHO_DOC_SHOTS=1 LOUSHO_DOC_SHOTS_OUT=/tmp/shots-dark LOUSHO_DOC_SHOTS_SCHEME=dark npx playwright test -c apps/agent-forge/playwright.config.ts docShots
 ```
 

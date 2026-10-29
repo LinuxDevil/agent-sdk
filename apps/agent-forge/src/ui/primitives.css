@@ -116,7 +116,8 @@
   background: none;
   border: none;
   border-radius: var(--radius-sm);
-  padding: 2px;
+  /* 16px icon + 4px each side: a 24x24 hit target */
+  padding: 4px;
   color: var(--text-muted);
   line-height: 1;
   cursor: pointer;
