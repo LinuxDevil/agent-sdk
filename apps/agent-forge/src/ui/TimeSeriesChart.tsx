@@ -83,6 +83,11 @@ function formatTime(t: number, multiDay: boolean): string {
   return multiDay ? `${MONTHS[d.getMonth()]} ${d.getDate()}` : `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+/** The summary label's ends: the date alone for day buckets, date and time for shorter ones (a 24h span starts and ends at the same HH:MM). */
+function formatStamp(t: number, multiDay: boolean): string {
+  return multiDay ? formatTime(t, true) : `${formatTime(t, true)} ${formatTime(t, false)}`;
+}
+
 function bucketCount(from: number, to: number, bucketMs: number): number {
   if (!(bucketMs > 0) || !(to > from)) return 1;
   return Math.max(1, Math.ceil((to - from) / bucketMs));
@@ -471,7 +476,7 @@ export function TimeSeriesChart({
   const hoverX = h.hover === null ? 0 : cx(L, h.hover);
   const label =
     `Time series chart: ${series.map((s) => s.label).join(', ') || 'no series'}; ` +
-    `${n} buckets from ${formatTime(from, multiDay)} to ${formatTime(from + n * bucketMs, multiDay)}`;
+    `${n} buckets from ${formatStamp(from, multiDay)} to ${formatStamp(from + n * bucketMs, multiDay)}`;
 
   return (
     <div className="tsc" ref={wrapRef}>

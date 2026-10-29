@@ -89,6 +89,8 @@ describe('TimeSeriesChart', () => {
     expect(labels.length).toBeGreaterThan(1);
     for (const l of labels) expect(l).toMatch(/^\d\d:\d\d$/);
     expect(new Set(labels).size).toBe(labels.length);
+    // The summary names both ends with their dates, so a 25 h span does not read "10:00 to 10:00".
+    expect(svgOf(c).getAttribute('aria-label')).toContain('25 buckets from Oct 25 10:00 to Oct 26 11:00');
   });
 
   it('renders at least three nice y ticks inside the domain, formatted with yFormat', () => {

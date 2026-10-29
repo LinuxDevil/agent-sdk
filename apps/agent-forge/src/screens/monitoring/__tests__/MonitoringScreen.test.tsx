@@ -108,10 +108,29 @@ describe('MonitoringScreen', () => {
     expect(support.textContent).toContain('5s ago');
     expect(support.textContent).toContain('12');
     expect(support.textContent).toContain('25.0%');
-    expect(support.querySelector('a[href="#/traces?agent=a1"]')).not.toBeNull();
+    expect(support.querySelector('a[href="#/traces?agent=a1"]')?.textContent).toBe('View traces for Support bot');
+    // A truncated name shows in full (with the id) as a tooltip.
+    expect(support.querySelector('.mon-agent-name')?.getAttribute('title')).toBe('Support bot — a1');
     const billing = fleetRow(c, 'Billing bot')!;
     expect(billing.querySelector('.status-pill.pill-ok')?.textContent).toBe('healthy');
     expect(billing.querySelector('[data-dropped]')?.textContent).toBe('—');
+  });
+
+  it('at phone widths the traces link is icon-only with the same accessible name', async () => {
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(max-width: 600px)',
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    daemon();
+    const c = render(<MonitoringScreen />);
+    await waitFor(() => fleetRow(c, 'Support bot') !== undefined);
+    const link = fleetRow(c, 'Support bot')!.querySelector('a.mon-traces-link')!;
+    expect(link.classList.contains('btn-icon')).toBe(true);
+    expect(link.textContent).toBe('View traces for Support bot');
+    expect(link.querySelector('.visually-hidden')?.textContent).toBe('View traces for Support bot');
+    // Runs and error rate stay.
+    expect(fleetRow(c, 'Support bot')!.textContent).toContain('25.0%');
   });
 
   it('renders a single-bucket series as a point', async () => {
@@ -183,7 +202,8 @@ describe('MonitoringScreen', () => {
     expect(card('Error rate').querySelector('.metric-delta')?.textContent).toContain('down 10 pp vs previous 24h');
     expect(card('Error rate').querySelector('.metric-delta')?.getAttribute('data-tone')).toBe('good');
     expect(card('p95 latency').querySelector('.metric-value')?.textContent).toBe('1.0s');
-    expect(card('p95 latency').textContent).toContain('runs-weighted');
+    // With a delta on the line, the weighting moves to the card's tooltip.
+    expect(card('p95 latency').closest('[title]')?.getAttribute('title')).toContain('Runs-weighted');
     expect(card('Cost').querySelector('.metric-value')?.textContent).toBe('$1.00');
     expect(card('Cost').querySelector('.metric-delta')?.getAttribute('data-tone')).toBe('good');
     expect(card('Runs').querySelector('svg.metric-sparkline')).not.toBeNull();
@@ -197,6 +217,7 @@ describe('MonitoringScreen', () => {
     const c = render(<MonitoringScreen />);
     await waitFor(() => drawn(c, 'Runs'));
     expect(c.querySelector('.metric-delta')).toBeNull();
+    expect(c.textContent).toContain('runs-weighted');
   });
 
   it('shows card skeletons while the charts load, and an empty state for an empty window', async () => {

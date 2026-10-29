@@ -32,7 +32,9 @@
   min-width: 0;
 }
 .mon-agent-filter .select {
-  max-width: 220px;
+  /* fixed: a long agent name in the options must not widen the header */
+  width: 180px;
+  max-width: 100%;
 }
 
 /* ---------- Metric cards ---------- */
@@ -40,6 +42,14 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-4);
+}
+/* The p95 card's tooltip wrapper is the grid item; the card fills it. */
+.mon-metric {
+  display: flex;
+  min-width: 0;
+}
+.mon-metric > .metric-card {
+  flex: 1;
 }
 /* Stack the sparkline under the figures so it spans the card. */
 .mon-metrics .metric-card {
@@ -49,11 +59,21 @@
   gap: var(--space-3);
 }
 .mon-metrics .metric-sparkline,
-.mon-metrics .metric-spark-skeleton {
+.mon-metrics .metric-spark-skeleton,
+.mon-metrics .metric-card:not(:has(.metric-sparkline, .metric-spark-skeleton))::after {
   width: 100%;
   height: 28px;
-  /* pinned to the card's foot, so a hint that wraps never misaligns the row */
+  /* pinned to the card's foot, so the row's sparklines line up */
   margin-top: auto;
+}
+/* An empty or loading card keeps a populated card's height: the meta line and sparkline row are reserved. */
+.mon-metrics .metric-card:not(:has(.metric-sparkline, .metric-spark-skeleton))::after {
+  content: '';
+  display: block;
+}
+.mon-metrics .metric-main {
+  /* overline 15.4 + gap 4 + value 32 + gap 4 + one 18px meta line */
+  min-height: 74px;
 }
 
 /* ---------- Fleet card ---------- */
@@ -166,6 +186,13 @@
   }
   .mon-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Compact fleet columns (FleetTable's COMPACT_QUERY): the error figure without its bar. */
+@media (max-width: 600px) {
+  .mon-rate-bar {
+    display: none;
   }
 }
 

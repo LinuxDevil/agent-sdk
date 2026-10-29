@@ -1,6 +1,7 @@
 import { ArrowUpRight, Bot } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { useMemo, type CSSProperties } from 'react';
 
+import { useMediaQuery } from '../../components/useMediaQuery';
 import { fmtAge, fmtDuration, fmtInt, fmtPercent } from '../../observe/format';
 import type { ObserveAgentInsights, ObserveAgentRow } from '../../observe/types';
 import { DataTable, type Column } from '../../ui/DataTable';
@@ -40,54 +41,96 @@ function ErrorRate({ rate }: { rate: number | null | undefined }) {
   );
 }
 
-const COLUMNS: Column<FleetRow>[] = [
-  {
-    key: 'agent',
-    header: 'Agent',
-    render: ({ agent }) => (
-      <span className="mon-agent" title={agent.agent_id}>
-        <span className="mon-agent-name">{agentLabel(agent)}</span>
-        {agent.version && <span className="mon-meta">v{agent.version}</span>}
+/** At phone widths the table drops to compact columns: an icon-only traces link, no error bar. */
+const COMPACT_QUERY = '(max-width: 600px)';
+
+function AgentCell({ agent }: { agent: ObserveAgentRow }) {
+  const label = agentLabel(agent);
+  return (
+    <span className="mon-agent">
+      <span className="mon-agent-name" title={label === agent.agent_id ? label : `${label} — ${agent.agent_id}`}>
+        {label}
       </span>
-    ),
-  },
-  { key: 'status', header: 'Health', width: 104, render: ({ agent }) => <StatusPill status={agent.status} /> },
-  {
-    key: 'heartbeat',
-    header: 'Last heartbeat',
-    width: 116,
-    hideBelow: 880,
-    render: ({ agent }) => <span title={hostTitle(agent)}>{fmtAge(agent.heartbeat_age_ms)}</span>,
-  },
-  { key: 'runs', header: 'Runs', label: 'Runs today', width: 72, align: 'right', hideBelow: 420, render: ({ agent }) => fmtInt(agent.runs_today) },
-  { key: 'error_rate', header: 'Error rate', width: 120, align: 'right', hideBelow: 480, render: ({ agent }) => <ErrorRate rate={agent.error_rate_today} /> },
-  { key: 'p95', header: 'p95', label: 'p95 (24h)', width: 72, align: 'right', hideBelow: 640, render: ({ p95 }) => fmtDuration(p95) },
-  {
-    key: 'dropped',
-    header: 'Dropped',
-    label: 'Dropped events',
-    width: 80,
-    align: 'right',
-    hideBelow: 720,
-    render: ({ agent }) => (
-      <span className={agent.dropped ? 'mon-dropped' : undefined} data-dropped={agent.dropped ?? ''}>
-        {agent.dropped === null || agent.dropped === undefined ? '—' : fmtInt(agent.dropped)}
-      </span>
-    ),
-  },
-  {
-    key: 'traces',
-    header: <span className="visually-hidden">Traces</span>,
-    label: 'Traces',
-    width: 128,
-    render: ({ agent }) => (
-      <a className="btn btn-ghost btn-sm mon-traces-link" href={`#/traces?agent=${encodeURIComponent(agent.agent_id)}`}>
-        View traces<span className="visually-hidden"> for {agentLabel(agent)}</span>
-        <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden="true" />
-      </a>
-    ),
-  },
-];
+      {agent.version && <span className="mon-meta">v{agent.version}</span>}
+    </span>
+  );
+}
+
+function TracesLink({ agent, compact }: { agent: ObserveAgentRow; compact: boolean }) {
+  const label = agentLabel(agent);
+  return (
+    <a
+      className={`btn btn-ghost btn-sm mon-traces-link${compact ? ' btn-icon' : ''}`}
+      href={`#/traces?agent=${encodeURIComponent(agent.agent_id)}`}
+      title={compact ? `View traces for ${label}` : undefined}
+    >
+      {compact ? <span className="visually-hidden">View traces for {label}</span> : <>View traces<span className="visually-hidden"> for {label}</span></>}
+      <ArrowUpRight size={14} strokeWidth={1.75} aria-hidden="true" />
+    </a>
+  );
+}
+
+function DroppedCell({ dropped }: { dropped: number | null | undefined }) {
+  return (
+    <span className={dropped ? 'mon-dropped' : undefined} data-dropped={dropped ?? ''}>
+      {dropped === null || dropped === undefined ? '—' : fmtInt(dropped)}
+    </span>
+  );
+}
+
+/**
+ * The fleet columns. Fixed widths for everything but the agent name, which takes the rest;
+ * columns drop out as the table narrows, and `compact` (phone widths) slims the ones that stay
+ * so the name, health, runs and error rate still fit at 375 px.
+ */
+function fleetColumns(compact: boolean): Column<FleetRow>[] {
+  return [
+    { key: 'agent', header: 'Agent', render: ({ agent }) => <AgentCell agent={agent} /> },
+    { key: 'status', header: 'Health', width: compact ? 100 : 104, render: ({ agent }) => <StatusPill status={agent.status} /> },
+    {
+      key: 'heartbeat',
+      header: 'Last heartbeat',
+      width: 116,
+      hideBelow: 880,
+      render: ({ agent }) => <span title={hostTitle(agent)}>{fmtAge(agent.heartbeat_age_ms)}</span>,
+    },
+    {
+      key: 'runs',
+      header: 'Runs',
+      label: 'Runs today',
+      width: compact ? 56 : 72,
+      align: 'right',
+      hideBelow: 280,
+      render: ({ agent }) => fmtInt(agent.runs_today),
+    },
+    {
+      key: 'error_rate',
+      header: compact ? 'Errors' : 'Error rate',
+      label: 'Error rate',
+      width: compact ? 60 : 120,
+      align: 'right',
+      hideBelow: 300,
+      render: ({ agent }) => <ErrorRate rate={agent.error_rate_today} />,
+    },
+    { key: 'p95', header: 'p95', label: 'p95 (24h)', width: 72, align: 'right', hideBelow: 640, render: ({ p95 }) => fmtDuration(p95) },
+    {
+      key: 'dropped',
+      header: 'Dropped',
+      label: 'Dropped events',
+      width: 80,
+      align: 'right',
+      hideBelow: 720,
+      render: ({ agent }) => <DroppedCell dropped={agent.dropped} />,
+    },
+    {
+      key: 'traces',
+      header: <span className="visually-hidden">Traces</span>,
+      label: 'Traces',
+      width: compact ? 44 : 128,
+      render: ({ agent }) => <TracesLink agent={agent} compact={compact} />,
+    },
+  ];
+}
 
 /**
  * The fleet: every registered agent with its derived status, last heartbeat,
@@ -105,10 +148,12 @@ export function FleetTable({
 }) {
   const p95 = new Map((insights ?? []).map((a) => [a.agent_id, a.p95_latency_ms]));
   const rows = agents.map((agent) => ({ agent, p95: p95.get(agent.agent_id) }));
+  const compact = useMediaQuery(COMPACT_QUERY);
+  const columns = useMemo(() => fleetColumns(compact), [compact]);
   return (
     <DataTable
       id="monitoring-fleet"
-      columns={COLUMNS}
+      columns={columns}
       rows={rows}
       rowKey={(r) => r.agent.agent_id}
       loading={loading}

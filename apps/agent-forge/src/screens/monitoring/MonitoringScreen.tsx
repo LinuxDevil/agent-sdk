@@ -111,6 +111,7 @@ export function MonitoringScreen() {
     <ScreenHeader
       title="Monitoring"
       className="mon-header"
+      status={null}
       description="Fleet health, throughput, latency and cost over time."
       actions={
         <div className="mon-controls">

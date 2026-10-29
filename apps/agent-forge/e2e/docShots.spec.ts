@@ -66,6 +66,21 @@ const agents: ObserveAgentRow[] = FLEET.map((a) => ({
   runs_today: a.runs,
   error_rate_today: a.errorRate,
 }));
+/**
+ * A registered agent with an 80-character name that has not run today (so it is in the
+ * fleet table, where the name truncates with a tooltip, but in no chart).
+ */
+agents.push({
+  ...agents[0]!,
+  agent_id: 'onboarding-concierge',
+  name: 'Customer onboarding concierge for enterprise accounts across EMEA and APAC (v2).',
+  status: 'stale',
+  last_heartbeat: NOW - 95_000,
+  heartbeat_age_ms: 95_000,
+  dropped: 0,
+  runs_today: 0,
+  error_rate_today: 0,
+});
 
 /**
  * Rollup rows per agent for every `granularity` bucket from `since` to now: gentle
@@ -218,14 +233,14 @@ test('threads: the session list', async ({ page }) => {
 test('monitoring: fleet and charts', async ({ page }) => {
   await open(page, '/monitoring');
   await expect(page.locator('.mon-chart').first()).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Fleet' }).locator('tbody tr')).toHaveCount(FLEET.length);
+  await expect(page.getByRole('region', { name: 'Fleet' }).locator('tbody tr')).toHaveCount(agents.length);
   await shoot(page, 'monitoring');
 });
 
 // Review shots of the Monitoring redesign (x- prefix: never docs images).
 const monitoringReady = async (page: Page) => {
   await expect(page.locator('.mon-chart svg.tsc-svg').first()).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Fleet' }).locator('tbody tr:not(.skeleton-row)')).toHaveCount(FLEET.length);
+  await expect(page.getByRole('region', { name: 'Fleet' }).locator('tbody tr:not(.skeleton-row)')).toHaveCount(agents.length);
 };
 
 for (const win of ['1h', '7d'] as const) {
