@@ -154,7 +154,7 @@ test('a ?token= link lands on Agents; the Build toolbar stays on Agents', async 
 
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Traces' }).click();
   await expectLanded(page, '#/traces');
-  await expect(page.locator('.topbar .crumbs')).toHaveText('Traces');
+  await expect(page.getByRole('banner').getByRole('heading', { level: 1 })).toHaveText('Traces');
   for (const name of ['Run', 'Stop', 'Import', 'Export', 'Save', 'Debug']) {
     await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
   }
@@ -162,4 +162,55 @@ test('a ?token= link lands on Agents; the Build toolbar stays on Agents', async 
 
   await page.goto(`/?token=${TOKEN}#/no-such-screen`);
   await expectLanded(page, '#/agents');
+});
+
+const NAV_LABELS = ['Agents', 'Playground', 'Traces', 'Threads', 'Monitoring', 'Evaluations', 'Prompts', 'Context Hub', 'Settings'];
+
+test('the docked nav collapses to an icon rail that survives a reload, every link still named', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`/?token=${TOKEN}#/traces`);
+  await expectLanded(page, '#/traces');
+  const nav = page.getByRole('navigation', { name: 'Primary' });
+  const card = nav.getByRole('status');
+  /** Settings and the collector card are pinned to the nav's bottom edge. */
+  const expectCardPinned = async () => {
+    await expect
+      .poll(async () => {
+        const [n, c] = [await nav.boundingBox(), await card.boundingBox()];
+        return n && c ? n.y + n.height - (c.y + c.height) : -1;
+      })
+      .toBeLessThanOrEqual(12);
+    const [n, c] = [await nav.boundingBox(), await card.boundingBox()];
+    expect(n!.y + n!.height - (c!.y + c!.height)).toBeGreaterThanOrEqual(0);
+  };
+  await expectCardPinned();
+  await nav.getByRole('button', { name: 'Collapse navigation' }).click();
+  const expand = nav.getByRole('button', { name: 'Expand navigation' });
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  await expect.poll(async () => Math.round((await nav.boundingBox())?.width ?? 0)).toBe(56);
+
+  await page.reload();
+  await expect(page.locator('.app')).toBeVisible();
+  await expect(expand).toHaveAttribute('aria-expanded', 'false');
+  expect(Math.round((await nav.boundingBox())?.width ?? 0)).toBe(56);
+  await expectCardPinned();
+  for (const name of NAV_LABELS) await expect(nav.getByRole('link', { name, exact: true })).toBeVisible();
+  await expect(nav.getByRole('link', { name: 'Traces', exact: true })).toHaveAttribute('aria-current', 'page');
+  await nav.getByRole('link', { name: 'Threads', exact: true }).click();
+  await expectLanded(page, '#/threads');
+
+  // Narrow ignores the collapsed state: the drawer opens full width and closes as before.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expect(nav.getByRole('button', { name: 'Expand navigation' })).toHaveCount(0);
+  const toggle = page.getByRole('button', { name: 'Navigation', exact: true });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(nav.getByRole('link', { name: 'Traces', exact: true })).toBeVisible();
+  await expect(nav.locator('.nav-label').first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(nav).toBeHidden();
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await nav.getByRole('button', { name: 'Expand navigation' }).click();
+  await expect(nav.getByRole('button', { name: 'Collapse navigation' })).toHaveAttribute('aria-expanded', 'true');
 });

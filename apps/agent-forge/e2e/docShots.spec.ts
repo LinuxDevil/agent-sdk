@@ -254,3 +254,24 @@ test('command palette: open over Traces', async ({ page }) => {
   await page.waitForTimeout(150);
   await page.screenshot({ path: path.join(OUT, 'studio-command-palette.png') });
 });
+
+// Review-only shots of the shell (`x-` names: not in the docs set).
+test('x: collapsed rail on Traces', async ({ page }) => {
+  await open(page, '/traces');
+  await expect(rows(page).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Collapse navigation' }).click();
+  await page.waitForTimeout(250);
+  await page.mouse.move(0, 0);
+  await page.screenshot({ path: path.join(OUT, 'x-rail-collapsed.png') });
+});
+
+test('x: 375 wide, Traces with the nav drawer closed and open', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await open(page, '/traces');
+  await expect(rows(page).first()).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(OUT, 'x-narrow-traces.png') });
+  await page.getByRole('button', { name: 'Navigation', exact: true }).click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(OUT, 'x-narrow-drawer-open.png') });
+});
