@@ -7,6 +7,7 @@ import { LLMProvider, Message, ProviderUsage } from '../providers';
 import { ToolRegistry } from '../tools';
 import {
   AgentFlow,
+  AgentStepNode,
   EditorStep,
   EndNode,
   ExpressionEvaluatorNode,
@@ -60,6 +61,13 @@ import { FlowApprovalPause, FlowRun, addUsage, durableOptions, flowStateOf, flow
 import type { FlowPendingApproval } from '../execution/checkpoint';
 
 /**
+ * The part of a `createAgent()` agent an `agent` step calls.
+ */
+export interface FlowStepAgent {
+  send(input: string, options?: { signal?: AbortSignal; parentSpanId?: string }): Promise<{ text: string; finishReason: string }>;
+}
+
+/**
  * Flow execution context
  */
 export interface FlowExecutionContext {
@@ -70,6 +78,12 @@ export interface FlowExecutionContext {
    * and is rejected with `LOUSHO_CONFIG_INVALID`.
    */
   agent: AgentConfig;
+  /**
+   * Agents `agent` steps can run, by name. A `createAgent()` result fits as
+   * is. Unlike `agent` (the plain config every `llmCall` uses), these run
+   * their own loop: tools, guardrails, approvals.
+   */
+  agents?: Readonly<Record<string, FlowStepAgent>>;
   session?: unknown;
   variables: Record<string, unknown>;
   provider: LLMProvider;
@@ -219,8 +233,10 @@ export interface FlowExecutionEventDataMap {
   /** Attempt `attempt` of `maxAttempts` failed (the event's `error`); the next starts after `delayMs`. */
   'step-retry': FlowStepRetry;
   'variable-set': { variable: string; value: unknown };
-  'llm-call': { model: string | undefined; prompt: string };
-  'llm-response': { text: string; usage: ProviderUsage | undefined };
+  /** An `llmCall` step carries `model`; an `agent` step carries `agent` (its key in `FlowExecutionContext.agents`) instead. */
+  'llm-call': { model?: string; agent?: string; prompt: string };
+  /** An `llmCall` step carries `usage`; an `agent` step carries `agent` (the agent's own usage is in its `send()` result). */
+  'llm-response': { text: string; usage?: ProviderUsage; agent?: string };
   'tool-call': { tool: string; arguments: Record<string, unknown> };
   'tool-result': { tool: string; result: unknown };
   'condition-evaluated': { condition: string; result: boolean };
@@ -375,6 +391,7 @@ type ExecutableNode =
   | ForEachItemsNode
   | ExpressionEvaluatorNode
   | LLMCallNode
+  | AgentStepNode
   | ToolCallNode
   | SetVariableNode
   | ReturnNode
@@ -763,6 +780,7 @@ export class FlowExecutor {
     forEach: (node, context, events, onEvent) => this.executeForEach(node, context, events, onEvent),
     evaluator: (node, context, events, onEvent) => this.executeEvaluator(node, context, events, onEvent),
     llmCall: (node, context, events, onEvent) => this.executeLLMCall(node, context, events, onEvent),
+    agent: (node, context, events, onEvent) => this.executeAgentStep(node, context, events, onEvent),
     toolCall: (node, context, events, onEvent) => this.executeToolCall(node, context, events, onEvent),
     setVariable: (node, context, events, onEvent) => this.executeSetVariable(node, context, events, onEvent),
     return: (node, context) => this.executeReturn(node, context),
@@ -798,7 +816,7 @@ export class FlowExecutor {
       // `StepNode` is in the node union (editors produce it), but nothing runs it.
       const hint =
         node.type === 'step'
-          ? ` ('step' nodes are an editor shape FlowExecutor does not run: to run a createAgent() agent in a flow, register a tool that calls agent.send() and use a 'toolCall' step, or use an 'llmCall' step)`
+          ? ` ('step' is an editor shape: use { type: 'agent', agent, input } with FlowExecutionContext.agents)`
           : '';
       throw new SDKError(`Unknown node type: ${node.type}${hint}`, 'LOUSHO_FLOW_INVALID');
     }
@@ -1306,6 +1324,57 @@ export class FlowExecutor {
     });
 
     // Store result in variable if specified
+    this.storeOutputVariable(node, result.text, context, events, onEvent);
+
+    return result.text;
+  }
+
+  /**
+   * Execute an agent step: send the interpolated input to the agent the
+   * context's `agents` map holds under `node.agent`, and store its reply
+   * text. The agent runs its own loop; the step reuses the `llm-call` /
+   * `llm-response` events (carrying `agent`, not `model`).
+   */
+  private static async executeAgentStep(
+    node: AgentStepNode,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): Promise<string> {
+    const target = context.agents?.[node.agent];
+    if (!target) {
+      const have = Object.keys(context.agents ?? {}).sort();
+      throw new SDKError(
+        `agent step: no agent '${node.agent}' in the flow context's agents (have: ${have.length > 0 ? have.join(', ') : 'none'})`,
+        'LOUSHO_FLOW_INVALID'
+      );
+    }
+    const input = this.interpolate(node.input ?? '{{input}}', context.variables);
+
+    // Emit LLM call event
+    emitEvent(events, onEvent, {
+      type: 'llm-call',
+      timestamp: new Date(),
+      data: { agent: node.agent, prompt: input },
+    });
+
+    // The agent's own `invoke_agent` span nests under this node's `flow.node agent` span.
+    const result = await target.send(input, { signal: context.signal, parentSpanId: context.parentSpanId });
+    if (result.finishReason === 'awaiting-approval') {
+      throw new SDKError(
+        `agent step '${node.agent}' paused for an approval; agent steps cannot pause a flow yet - decide its tools with permissions or approve`,
+        'LOUSHO_FLOW_EXECUTION_FAILED'
+      );
+    }
+
+    // Emit LLM response event
+    emitEvent(events, onEvent, {
+      type: 'llm-response',
+      timestamp: new Date(),
+      data: { agent: node.agent, text: result.text },
+    });
+
+    // Store the reply text (a string, so durable checkpoints stay cloneable) if specified
     this.storeOutputVariable(node, result.text, context, events, onEvent);
 
     return result.text;

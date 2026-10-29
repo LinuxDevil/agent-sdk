@@ -66,6 +66,17 @@ interface AgentSettings {
 }
 
 // @public
+export interface AgentStepNode extends NodeRunOptions {
+    agent: string;
+    // (undocumented)
+    id?: string;
+    input?: string;
+    outputVariable?: string;
+    // (undocumented)
+    type: 'agent';
+}
+
+// @public
 export function applyInputTransformation<T extends FlowDefinitionNode>(flowDef: T, transformFn: (node: T) => unknown): Promise<void>;
 
 // @public
@@ -464,6 +475,7 @@ export interface FlowDefinitionNode {
 // @public
 export interface FlowExecutionContext {
     agent: AgentConfig;
+    agents?: Readonly<Record<string, FlowStepAgent>>;
     approve?: ApproveToolCall;
     captureContent?: boolean;
     checkpointStore?: CheckpointStore;
@@ -516,15 +528,15 @@ export interface FlowExecutionEventDataMap {
         flowCode: string;
         flowName: string;
     };
-    // (undocumented)
     'llm-call': {
-        model: string | undefined;
+        model?: string;
+        agent?: string;
         prompt: string;
     };
-    // (undocumented)
     'llm-response': {
         text: string;
-        usage: ProviderUsage | undefined;
+        usage?: ProviderUsage;
+        agent?: string;
     };
     // (undocumented)
     'loop-iteration': {
@@ -638,6 +650,18 @@ export type FlowResumeContext = Omit<FlowExecutionContext, 'variables' | 'checkp
     variables?: Record<string, unknown>;
     approval?: FlowApprovalDecision;
 };
+
+// @public
+export interface FlowStepAgent {
+    // (undocumented)
+    send(input: string, options?: {
+        signal?: AbortSignal;
+        parentSpanId?: string;
+    }): Promise<{
+        text: string;
+        finishReason: string;
+    }>;
+}
 
 // @public
 export interface FlowStepRetry {
@@ -1129,7 +1153,7 @@ export interface ReturnNode extends NodeRunOptions {
 }
 
 // @public
-export type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+export type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {

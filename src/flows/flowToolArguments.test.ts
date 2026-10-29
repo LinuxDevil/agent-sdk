@@ -95,6 +95,6 @@ describe('agents in flows', () => {
     const result = await run({ type: 'step', agent: 'researcher', input: '{{topic}}' }, new ToolRegistry(), { topic: 'cats' });
     expect(result.success).toBe(false);
     expect(result.error).toMatchObject({ code: 'LOUSHO_FLOW_INVALID' });
-    expect(result.error?.message).toContain("'toolCall'");
+    expect(result.error?.message).toContain("{ type: 'agent', agent, input }");
   });
 });

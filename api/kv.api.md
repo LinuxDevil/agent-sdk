@@ -63,6 +63,17 @@ interface AgentSettings {
 }
 
 // @public
+interface AgentStepNode extends NodeRunOptions {
+    agent: string;
+    // (undocumented)
+    id?: string;
+    input?: string;
+    outputVariable?: string;
+    // (undocumented)
+    type: 'agent';
+}
+
+// @public
 interface AgentStore {
     approvals?: ApprovalStore;
     checkpoints?: CheckpointStore;
@@ -805,7 +816,7 @@ interface ReturnNode extends NodeRunOptions {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {

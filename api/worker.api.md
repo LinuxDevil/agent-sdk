@@ -293,6 +293,17 @@ interface AgentSpecTrigger {
 }
 
 // @public
+interface AgentStepNode extends NodeRunOptions {
+    agent: string;
+    // (undocumented)
+    id?: string;
+    input?: string;
+    outputVariable?: string;
+    // (undocumented)
+    type: 'agent';
+}
+
+// @public
 export interface AgentStore {
     approvals?: ApprovalStore;
     checkpoints?: CheckpointStore;
@@ -3108,7 +3119,7 @@ interface RunStartEvent extends AgentEventBase<'run.start'> {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
