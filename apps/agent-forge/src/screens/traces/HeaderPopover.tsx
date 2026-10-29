@@ -5,9 +5,13 @@
  */
 import '../datasets/datasets.css';
 import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
 
-/** The button labelled `label` and, while open, a `role="dialog"` of the same name holding `children(close)`. */
-export function HeaderPopover({ label, children }: { label: string; children: (close: () => void) => ReactNode }) {
+/**
+ * The button labelled `label` (a secondary button, with `icon` before the label)
+ * and, while open, a `role="dialog"` of the same name holding `children(close)`.
+ */
+export function HeaderPopover({ label, icon: Icon, children }: { label: string; icon?: LucideIcon; children: (close: () => void) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const close = () => {
@@ -24,11 +28,12 @@ export function HeaderPopover({ label, children }: { label: string; children: (c
       <button
         ref={trigger}
         type="button"
-        className="btn btn-ghost"
+        className="btn"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => (open ? close() : setOpen(true))}
       >
+        {Icon && <Icon aria-hidden="true" />}
         {label}
       </button>
       {open && (

@@ -1,75 +1,180 @@
 /*
- * Trace screen (#/traces/:traceId): header over the unified trace viewer,
- * plus the feedback form inside the inspector. Colours from src/theme.css
- * tokens only.
+ * Trace screen (#/traces/:traceId): a header card over the unified trace
+ * viewer (steps pane + inspector), plus the feedback form inside the
+ * inspector. On wide screens the viewer fills the window and its two panes
+ * scroll on their own; at 900 px and below everything stacks and the page
+ * scrolls. Colours from src/theme.css tokens only.
  */
 
 .trace-screen {
   display: flex;
+  flex: 1 0 auto;
   flex-direction: column;
-  gap: 12px;
-  min-height: 0;
-  padding: 16px;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5) var(--page-gutter);
+  box-sizing: border-box;
   font-family: var(--font-ui);
   color: var(--text);
 }
-
-.trace-loading {
-  padding: 24px;
-  color: var(--text-muted);
+.trace-screen > .run-viewer,
+.trace-loading > .run-viewer {
+  flex: 1 1 0;
+  min-height: 440px;
+  grid-template-rows: minmax(0, 1fr);
 }
 
-/* ---------- header ---------- */
-.trace-header {
+/* ---------- header card ---------- */
+/* the kit's .card (surface, hairline, radius-lg, soft lift) with the header's own rhythm. */
+.trace-card {
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+}
+.trace-crumbs ol {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px 16px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+.trace-crumbs li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.trace-crumbs svg {
+  flex: none;
+  color: var(--text-faint);
+}
+.trace-crumbs a {
+  color: var(--text-muted);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+}
+.trace-crumbs a:hover {
+  color: var(--text);
+}
+.trace-crumbs a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.trace-crumbs [aria-current] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-overline);
+  color: var(--text-faint);
 }
 .trace-title {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.trace-title-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 240px;
   min-width: 0;
 }
 .trace-title h2 {
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 16px;
   font-weight: 600;
-  overflow-wrap: anywhere;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
-.trace-copy-link {
-  margin-left: auto;
+.trace-title .status-pill {
+  flex: none;
+}
+.trace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.trace-playground {
+  text-decoration: none;
 }
 .trace-facts {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 20px;
+  gap: 6px;
   margin: 0;
 }
 .trace-fact {
-  display: flex;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
   min-width: 0;
-  font-size: 13px;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 26px;
+  padding: 0 9px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  font-size: var(--fs-meta);
 }
 .trace-fact dt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
   color: var(--text-muted);
 }
+.trace-fact dt svg {
+  color: var(--text-faint);
+}
 .trace-fact dd {
+  min-width: 0;
   margin: 0;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 .trace-fact a {
   color: var(--accent);
+  text-decoration: none;
+}
+.trace-fact a:hover {
+  text-decoration: underline;
 }
 .trace-fact code {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-overline);
+}
+
+/* ---------- loading ---------- */
+.trace-loading {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.trace-skeleton-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.trace-skeleton-pane {
+  padding: var(--space-3) var(--space-4);
 }
 
 /* ---------- feedback form (inside RunInspector's Feedback section) ---------- */
@@ -77,41 +182,74 @@
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 .trace-feedback-choices {
   display: inline-flex;
-  gap: 4px;
+  gap: var(--space-1);
 }
 .trace-feedback-choice[aria-pressed='true'] {
   background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
 }
 .trace-feedback-comment {
   flex: 1 1 200px;
   min-width: 0;
 }
 .trace-feedback-comment textarea {
+  display: block;
   width: 100%;
+  min-height: 32px;
   box-sizing: border-box;
-  padding: 6px 8px;
+  padding: 6px 10px;
   font: inherit;
   font-size: 13px;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
   resize: vertical;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
 }
 .trace-feedback-comment textarea:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
 }
 
+@media (max-width: 900px) {
+  .trace-screen > .run-viewer,
+  .trace-loading > .run-viewer {
+    flex: none;
+    min-height: 0;
+    grid-template-rows: none;
+  }
+}
 @media (max-width: 600px) {
   .trace-screen {
-    padding: 12px;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--page-gutter);
+  }
+  .trace-card {
+    padding: var(--space-3) var(--space-4);
+  }
+  .trace-actions .btn {
+    min-height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: var(--radius-sm);
+  }
+  .trace-actions .btn-icon {
+    width: 28px;
+    padding: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-feedback-comment textarea {
+    transition: none;
   }
 }

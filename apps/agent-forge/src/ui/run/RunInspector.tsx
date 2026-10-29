@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { AlertTriangle, FileWarning, FlaskConical } from 'lucide-react';
 
 import { fmtCost, fmtDuration, fmtInt } from '../../observe/format';
 import type { ObserveObservationRow, ObserveScoreRow } from '../../observe/types';
@@ -6,6 +7,7 @@ import { JsonView } from '../JsonView';
 import { MessageView } from '../MessageView';
 import { StatusPill } from '../StatusPill';
 import { displayName, displayStatus, elapsedMs, isRunning, playgroundHref } from './rows';
+import { KindIcon } from './RunTree';
 import './run.css';
 
 /**
@@ -98,8 +100,10 @@ function Usage({ row }: { row: ObserveObservationRow }) {
 }
 
 /**
- * The selected observation in detail. Sections, in order: Error (only for a
- * failed step: a red `role="alert"` banner) → Input → Output (both
+ * The selected observation in detail, under a sticky header (kind, name,
+ * status, duration, "Open in Playground" for a generation). Sections, in
+ * order: Error (only for a failed step: a danger `role="alert"` card with the
+ * message in mono) → Input → Output (both
  * `MessageView`) → Feedback (scores) → Tokens/Cost/Model → Attributes
  * (`JsonView` of `attrs`, omitted when null). A truncated row says so.
  */
@@ -108,26 +112,39 @@ export function RunInspector({ observation: row, scores, now, renderFeedback, pl
   return (
     <div className="run-inspector" data-obs-id={row.obs_id}>
       <header className="run-inspector-head">
-        <span className="run-inspector-kind">{row.kind}</span>
-        <h2 className="run-inspector-name">{displayName(row)}</h2>
-        <StatusPill status={displayStatus(row)} />
-        <span className="run-dur">
-          {fmtDuration(ms)}
-          {isRunning(row) ? ' running' : ''}
-        </span>
-        {playgroundLinks && row.kind === 'generation' && (
-          <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)}>
-            Open in Playground
-          </a>
-        )}
+        <div className="run-inspector-title">
+          <KindIcon kind={row.kind} />
+          <span className="run-inspector-kind">{row.kind}</span>
+        </div>
+        <div className="run-inspector-title">
+          <h2 className="run-inspector-name">{displayName(row)}</h2>
+          <StatusPill status={displayStatus(row)} />
+          <span className="run-dur">
+            {fmtDuration(ms)}
+            {isRunning(row) ? ' running' : ''}
+          </span>
+          {playgroundLinks && row.kind === 'generation' && (
+            <a className="btn btn-sm btn-ghost run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)}>
+              <FlaskConical aria-hidden="true" />
+              Open in Playground
+            </a>
+          )}
+        </div>
       </header>
       {row.status === 'error' && (
         <div className="run-error-banner" role="alert" data-section="error">
-          <strong>Error</strong> {errorText(row.attrs)}
+          <AlertTriangle className="run-error-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
+          <div className="run-error-body">
+            <strong>Error</strong>
+            <code className="run-error-message">{errorText(row.attrs)}</code>
+          </div>
         </div>
       )}
       {row.truncated && (
-        <p className="run-truncated-note">Truncated: this step&apos;s input or output was cut at ~64 KB by the reporter.</p>
+        <p className="run-truncated-note">
+          <FileWarning size={14} strokeWidth={1.75} aria-hidden="true" />
+          Truncated: this step&apos;s input or output was cut at ~64 KB by the reporter.
+        </p>
       )}
       {/* MessageView brings its own labelled header, so no Section title here. */}
       <div className="run-section run-section-input" data-section="input">

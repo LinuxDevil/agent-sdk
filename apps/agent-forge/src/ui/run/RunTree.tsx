@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Bot, Circle, FlaskConical, Layers, Sparkles, Wrench, Zap, type LucideIcon } from 'lucide-react';
 
 import { VirtualList } from '../../components/debug/VirtualList';
 import { fmtDuration, fmtInt } from '../../observe/format';
@@ -35,22 +35,22 @@ export interface RunTreeProps {
 
 const INDENT_PX = 16;
 
-/** One small 16px glyph per observation kind; anything unknown gets the generic dot. */
-const KIND_ICON: Record<string, ReactNode> = {
-  span: <path d="M4 7h16M4 12h10M4 17h6" />,
-  generation: <path d="M12 3l2.2 5.8L20 11l-5.8 2.2L12 19l-2.2-5.8L4 11l5.8-2.2z" />,
-  tool: <path d="M14.5 5.5a4 4 0 0 0-5 5L4 16l4 4 5.5-5.5a4 4 0 0 0 5-5l-2.5 2.5-2-2z" />,
-  event: <path d="M13 3L5 14h6l-1 7 8-11h-6z" />,
+/** One lucide icon per observation kind; anything unknown gets the generic circle. */
+const KIND_ICON: Record<string, LucideIcon> = {
+  agent: Bot,
+  span: Layers,
+  generation: Sparkles,
+  tool: Wrench,
+  event: Zap,
 };
-const GENERIC_ICON = <circle cx="12" cy="12" r="4" />;
 
-function KindIcon({ kind }: { kind: string }) {
+/** The kind as a small tinted icon tile (`.run-kind-<kind>`, `other` when unknown), the kind name for screen readers. */
+export function KindIcon({ kind }: { kind: string }) {
   const known = Object.hasOwn(KIND_ICON, kind);
+  const Icon = known ? KIND_ICON[kind] : Circle;
   return (
     <span className={cx('run-kind', `run-kind-${known ? kind : 'other'}`)} data-kind={kind} title={kind}>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-        {known ? KIND_ICON[kind] : GENERIC_ICON}
-      </svg>
+      <Icon size={12} strokeWidth={2} aria-hidden="true" />
       <span className="visually-hidden">{kind}</span>
     </span>
   );
@@ -83,6 +83,7 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
       data-obs-id={row.obs_id}
       data-depth={node.depth}
     >
+      {node.depth > 0 && <span className="run-guides" style={{ width: node.depth * INDENT_PX }} aria-hidden="true" />}
       <button
         type="button"
         className="run-row-main"
@@ -101,7 +102,8 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
       </button>
       {playgroundLinks && row.kind === 'generation' && (
         <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)} title={`Open ${name} in Playground`}>
-          Open in Playground
+          <FlaskConical size={14} strokeWidth={1.75} aria-hidden="true" />
+          <span className="visually-hidden">Open in Playground</span>
         </a>
       )}
     </div>
@@ -109,10 +111,10 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
 }
 
 /**
- * The trace as an indented tree, one row per observation in depth-first
- * order: kind icon, full name (wraps; virtualised rows keep a `title`
+ * The trace as an indented tree (with indent guides), one row per observation
+ * in depth-first order: kind icon tile, full name (wraps; virtualised rows keep a `title`
  * tooltip), status when not ok, model chip, total tokens and duration.
- * Generation rows carry an "Open in Playground" link. Above 500 observations
+ * Generation rows carry an "Open in Playground" icon link. Above 500 observations
  * the rows render through `VirtualList` at a fixed height.
  */
 export function RunTree({ observations, selectedObsId, onSelect, now, playgroundLinks = true }: RunTreeProps) {

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { GanttChart, ListTree, type LucideIcon } from 'lucide-react';
 
 import { nestObservations } from '../../observe/tree';
 import type { ObserveObservationRow, ObserveScoreRow } from '../../observe/types';
@@ -30,10 +31,31 @@ export interface TraceViewerProps {
   playgroundLinks?: boolean;
 }
 
-const MODES: { mode: TraceViewMode; label: string }[] = [
-  { mode: 'tree', label: 'Tree' },
-  { mode: 'waterfall', label: 'Waterfall' },
+const MODES: { mode: TraceViewMode; label: string; icon: LucideIcon }[] = [
+  { mode: 'tree', label: 'Tree', icon: ListTree },
+  { mode: 'waterfall', label: 'Waterfall', icon: GanttChart },
 ];
+
+/** The steps pane's bar: the Tree/Waterfall segmented control (when the caller owns a mode) and the step count. */
+function StepsBar({ mode, onModeChange, count }: { mode: TraceViewMode; onModeChange?: (mode: TraceViewMode) => void; count: number }) {
+  return (
+    <div className="run-steps-bar">
+      {onModeChange && (
+        <div className="run-mode-toggle" role="group" aria-label="Trace layout">
+          {MODES.map((m) => (
+            <button key={m.mode} type="button" aria-pressed={mode === m.mode} onClick={() => onModeChange(m.mode)}>
+              <m.icon size={14} strokeWidth={1.75} aria-hidden="true" />
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <span className="run-steps-count">
+        {count} {count === 1 ? 'step' : 'steps'}
+      </span>
+    </div>
+  );
+}
 
 /** The selected row, else the earliest-started error, else the first root. */
 function pickInspected(rows: ObserveObservationRow[], selectedObsId: string | null | undefined): ObserveObservationRow | undefined {
@@ -72,15 +94,7 @@ export function TraceViewer({
   return (
     <div className="run-viewer" data-mode={mode}>
       <div className="run-viewer-steps">
-        {onModeChange && (
-          <div className="run-mode-toggle" role="group" aria-label="Trace layout">
-            {MODES.map((m) => (
-              <button key={m.mode} type="button" aria-pressed={mode === m.mode} onClick={() => onModeChange(m.mode)}>
-                {m.label}
-              </button>
-            ))}
-          </div>
-        )}
+        <StepsBar mode={mode} onModeChange={onModeChange} count={observations.length} />
         {mode === 'waterfall' ? <Waterfall {...listProps} /> : <RunTree {...listProps} playgroundLinks={playgroundLinks} />}
       </div>
       <div className="run-viewer-inspector">
