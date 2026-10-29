@@ -3,6 +3,7 @@
  * value preview (full preview in the tooltip), and the writer, last publish
  * and TTL. A card opens the entry; j/k move between cards.
  */
+import { useId } from 'react';
 import { KeyRound } from 'lucide-react';
 import type { ObserveHubEntry } from '../../observe/types';
 import { fmtStarted } from '../../observe/format';
@@ -24,20 +25,32 @@ function EntryCard({
   onOpen: () => void;
 }) {
   const preview = valuePreview(entry.value);
+  const id = useId();
+  // Named by its key alone; the scope, preview and facts are its description.
   return (
     <li>
-      <button type="button" className="hub-card" data-roving aria-current={selected ? 'true' : undefined} onClick={onOpen}>
+      <button
+        type="button"
+        className="hub-card"
+        data-roving
+        aria-current={selected ? 'true' : undefined}
+        aria-labelledby={`${id}-key`}
+        aria-describedby={`${id}-scope ${id}-value ${id}-meta`}
+        onClick={onOpen}
+      >
         <span className="hub-card-top">
           <KeyRound size={14} strokeWidth={1.75} aria-hidden="true" />
-          <span className="hub-card-key" title={entry.key}>
+          <span className="hub-card-key" id={`${id}-key`} title={entry.key}>
             {entry.key}
           </span>
-          <StatusPill status={entry.scope} />
+          <span id={`${id}-scope`} className="hub-card-scope">
+            <StatusPill status={entry.scope} />
+          </span>
         </span>
-        <span className="hub-card-value" title={preview}>
+        <span className="hub-card-value" id={`${id}-value`} title={preview}>
           {preview}
         </span>
-        <span className="hub-card-meta">
+        <span className="hub-card-meta" id={`${id}-meta`}>
           <span className="hub-card-writer">{writer}</span>
           <span aria-hidden="true">·</span>
           <span>Updated {fmtStarted(entry.created_at, now)}</span>

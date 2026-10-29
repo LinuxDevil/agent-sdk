@@ -7,7 +7,7 @@
  * proxy's write allowlist. The daemon resets `created_at` on every publish, so
  * an edit restarts the TTL clock - the editor says so next to the TTL.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, KeyRound, Pencil, X } from 'lucide-react';
 import { observeClient } from '../../observe/observeClient';
 import type { ObserveHubEntry } from '../../observe/types';
@@ -148,8 +148,13 @@ export function HubEntryDetail({
 }) {
   const [editing, setEditing] = useState(false);
   const editable = entry.scope === 'fleet' && entry.agent_id !== null;
+  const ref = useRef<HTMLElement>(null);
+  // Stacked under the cards (narrow widths), the opened entry may sit below the fold: bring it into view.
+  useEffect(() => {
+    if (window.matchMedia?.('(max-width: 1179px)').matches) ref.current?.scrollIntoView?.({ block: 'nearest' });
+  }, []);
   return (
-    <section className="card hub-entry" aria-label={`Entry ${entry.key}`}>
+    <section ref={ref} className="card hub-entry" aria-label={`Entry ${entry.key}`}>
       <div className="hub-entry-head">
         <KeyRound size={16} strokeWidth={1.75} aria-hidden="true" />
         <h3 className="hub-entry-key" title={entry.key}>

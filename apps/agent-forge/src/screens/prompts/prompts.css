@@ -95,22 +95,39 @@
 }
 
 /* ---------- Detail: main column + history rail ---------- */
+/* one column: version, compare, history. Wide: the history rail spans both rows beside version + compare,
+   or, while a side-by-side diff is open, Compare spans both columns under the version and the rail. */
 .prompt-detail-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: 'version' 'compare' 'history';
   gap: var(--space-4);
   align-items: start;
+}
+.prompt-area-version {
+  grid-area: version;
+  min-width: 0;
+}
+.prompt-detail-grid > .prompt-compare {
+  grid-area: compare;
+}
+.prompt-detail-grid > .prompt-history {
+  grid-area: history;
 }
 @media (min-width: 1180px) {
   .prompt-detail-grid {
     grid-template-columns: minmax(0, 1fr) 300px;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      'version history'
+      'compare history';
   }
-}
-.prompt-detail-main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  min-width: 0;
+  .prompt-detail-grid-wide {
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      'version history'
+      'compare compare';
+  }
 }
 .prompt-version-title {
   font-variant-numeric: tabular-nums;
@@ -376,6 +393,15 @@
   font-size: 11.5px;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+/* chips on the selected row's accent tint: lift them onto the surface so they keep their edge */
+.prompt-timeline-item[aria-current='true'] .prompt-label {
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 35%, transparent);
+}
+.prompt-timeline-item[aria-current='true'] .prompt-label-neutral,
+.prompt-timeline-item[aria-current='true'] .prompt-version-badge {
+  background: var(--surface);
 }
 .prompt-timeline-item[aria-current='true'] .prompt-timeline-meta,
 .prompt-timeline-item[aria-current='true'] .prompt-timeline-vars {

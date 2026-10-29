@@ -151,6 +151,7 @@ describe('PromptsScreen', () => {
   it('#/prompts/mira@2 selects version 2 on load, and a label ref selects its version', async () => {
     let container = await mountAt('#/prompts/mira@2');
     expect(container.querySelector('.prompt-version-title')?.textContent).toContain('Version 2');
+    expect(container.querySelector('section[aria-label="Selected version"] .prompt-version-title')).not.toBeNull();
     expect(container.querySelector('.prompt-text')?.textContent).toBe(V2.text);
     expect(container.querySelector('.prompt-timeline [aria-current="true"]')?.textContent).toContain('v2');
 

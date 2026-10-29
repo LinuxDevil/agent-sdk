@@ -43,7 +43,7 @@ const COLUMNS: Column<ObservePromptRow>[] = [
   { key: 'updated', header: 'Updated', width: 140, hideBelow: 720, render: (p) => fmtDateTime(p.created_at) },
 ];
 
-const HEADER = <ScreenHeader title="Prompts" description="Versioned prompt templates and the labels that pin a version." />;
+const HEADER = <ScreenHeader title="Prompts" status={null} description="Versioned prompt templates and the labels that pin a version." />;
 
 function PromptList() {
   const prompts = usePrompts();

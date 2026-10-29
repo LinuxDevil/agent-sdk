@@ -88,14 +88,17 @@ function Compare({
   selected,
   versions,
   diff,
+  layout,
+  onLayout,
 }: {
   name: string;
   refParam: string | undefined;
   selected: ObservePromptVersion;
   versions: readonly ObservePromptVersion[];
   diff: [number, number] | undefined;
+  layout: DiffLayout;
+  onLayout: (next: DiffLayout) => void;
 }) {
-  const [layout, setLayout] = useState<DiffLayout>('unified');
   const find = (n: number) => versions.find((v) => v.version === n);
   const a = diff && find(diff[0]);
   const b = diff && find(diff[1]);
@@ -120,7 +123,7 @@ function Compare({
     <Card
       title="Compare versions"
       description="Line diff between any two versions."
-      actions={a && b ? <DiffLayoutToggle value={layout} onChange={setLayout} /> : undefined}
+      actions={a && b ? <DiffLayoutToggle value={layout} onChange={onLayout} /> : undefined}
       className="prompt-compare"
     >
       <div className="prompt-compare-bar">
@@ -150,7 +153,7 @@ function Compare({
 function PromptText({ text }: { text: string }) {
   const lines = text.split('\n');
   return (
-    <pre className="prompt-text" tabIndex={0} aria-label="Prompt text">
+    <pre className="prompt-text" tabIndex={0} role="region" aria-label="Prompt text">
       {lines.map((line, i) => (
         <span key={i} className="prompt-line">
           {line}
@@ -175,27 +178,30 @@ function SelectedVersion({
 }) {
   const variables = variablesText(selected.variables);
   return (
-    <Card
-      title={<span className="prompt-version-title">Version {selected.version}</span>}
-      actions={<LabelMoves name={name} selected={selected} versions={versions} onMoved={onMoved} />}
-      className="prompt-version"
-    >
-      <div className="prompt-version-head">
-        <LabelChips labels={selected.labels} />
-        <span className="prompt-meta">Created {fmtDateTime(selected.created_at)}</span>
-        {variables && (
-          <span className="prompt-meta">
-            Variables <code className="prompt-vars">{variables}</code>
-          </span>
-        )}
-        {selected.hash && (
-          <span className="prompt-meta">
-            Hash <code className="prompt-vars">{selected.hash.slice(0, 10)}</code>
-          </span>
-        )}
-      </div>
-      <PromptText text={selected.text ?? ''} />
-    </Card>
+    <section className="prompt-area-version" aria-label="Selected version">
+      <Card
+        as="div"
+        title={<span className="prompt-version-title">Version {selected.version}</span>}
+        actions={<LabelMoves name={name} selected={selected} versions={versions} onMoved={onMoved} />}
+        className="prompt-version"
+      >
+        <div className="prompt-version-head">
+          <LabelChips labels={selected.labels} />
+          <span className="prompt-meta">Created {fmtDateTime(selected.created_at)}</span>
+          {variables && (
+            <span className="prompt-meta">
+              Variables <code className="prompt-vars">{variables}</code>
+            </span>
+          )}
+          {selected.hash && (
+            <span className="prompt-meta">
+              Hash <code className="prompt-vars">{selected.hash.slice(0, 10)}</code>
+            </span>
+          )}
+        </div>
+        <PromptText text={selected.text ?? ''} />
+      </Card>
+    </section>
   );
 }
 
@@ -205,7 +211,7 @@ function PromptHeader({ name, selected, latest }: { name: string; selected?: Obs
     <ScreenHeader
       title={name}
       breadcrumbs={[{ label: 'Prompts', href: '#/prompts' }, { label: name }]}
-      status={selected ? <LabelChips labels={latest ? [...selected.labels, 'latest'] : selected.labels} /> : null}
+      status={selected ? <LabelChips labels={latest ? [...new Set([...selected.labels, 'latest'])] : selected.labels} /> : null}
       actions={
         selected && (
           <>
@@ -234,6 +240,10 @@ export function PromptDetail({ param }: { param: string }) {
   const versions = history.data?.versions ?? [];
   const selected = resolveRef(versions, ref);
   const diff = parseDiff(route.query);
+  const [layout, setLayout] = useState<DiffLayout>('unified');
+  // Side by side needs the room: the Compare card then spans the history rail's column too.
+  const has = (n: number) => versions.some((v) => v.version === n);
+  const wide = layout === 'split' && diff !== undefined && has(diff[0]) && has(diff[1]);
   if (down) return <ObserveDaemonDown />;
 
   let body;
@@ -252,12 +262,10 @@ export function PromptDetail({ param }: { param: string }) {
     );
   else
     body = (
-      <div className="prompt-detail-grid">
-        <div className="prompt-detail-main">
-          <SelectedVersion name={name} selected={selected} versions={versions} onMoved={() => setRefreshKey((k) => k + 1)} />
-          <Compare name={name} refParam={ref} selected={selected} versions={versions} diff={diff} />
-        </div>
+      <div className={wide ? 'prompt-detail-grid prompt-detail-grid-wide' : 'prompt-detail-grid'}>
+        <SelectedVersion name={name} selected={selected} versions={versions} onMoved={() => setRefreshKey((k) => k + 1)} />
         <VersionTimeline versions={versions} selected={selected} onOpen={(v) => navigate(promptPath(name, v.version, diff), { replace: true })} />
+        <Compare name={name} refParam={ref} selected={selected} versions={versions} diff={diff} layout={layout} onLayout={setLayout} />
       </div>
     );
 

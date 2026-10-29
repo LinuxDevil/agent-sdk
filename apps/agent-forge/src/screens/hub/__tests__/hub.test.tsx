@@ -255,6 +255,10 @@ describe('HubScreen', () => {
     cards[0].focus();
     act(() => cards[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'j', bubbles: true })));
     expect(document.activeElement).toBe(cards[1]);
+    // A card is named by its key alone; the preview and facts describe it.
+    const named = document.getElementById(cards[1].getAttribute('aria-labelledby')!);
+    expect(named?.className).toBe('hub-card-key');
+    expect(cards[1].getAttribute('aria-describedby')?.split(' ')).toHaveLength(3);
     await open(cards[1]);
     expect(c.querySelector('.hub-card[aria-current="true"]')).toBe(cards[1]);
     expect(c.querySelector('section.hub-entry')?.getAttribute('aria-label')).toBe(`Entry ${cards[1].querySelector('.hub-card-key')?.textContent}`);
