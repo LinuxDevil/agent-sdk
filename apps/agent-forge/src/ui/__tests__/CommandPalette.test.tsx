@@ -214,6 +214,40 @@ describe('CommandPalette edge cases', () => {
   });
 });
 
+describe('CommandPalette modal keys', () => {
+  it.each([
+    ['palette', () => key('k', { ctrlKey: true }), () => input()],
+    ['? sheet', () => key('?'), () => document.querySelector('button.btn') as HTMLElement],
+  ])('the %s keeps keydown away from window-level handlers behind it', (_name, open, focused) => {
+    const behind = vi.fn();
+    mount();
+    open();
+    window.addEventListener('keydown', behind);
+    try {
+      const target = focused();
+      for (const k of ['s', 'j', 'ArrowDown', 'Enter']) key(k, {}, target);
+      expect(behind).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', behind);
+    }
+  });
+
+  it('still toggles with Ctrl+K from inside the palette and lets keys through once closed', () => {
+    const behind = vi.fn();
+    mount();
+    key('k', { ctrlKey: true });
+    key('k', { ctrlKey: true }, input());
+    expect(dialog('Command palette')).toBeNull();
+    window.addEventListener('keydown', behind);
+    try {
+      key('s', {}, document.body);
+      expect(behind).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('keydown', behind);
+    }
+  });
+});
+
 describe('matchShortcut', () => {
   const ev = (k: string, init: KeyboardEventInit = {}) => new KeyboardEvent('keydown', { key: k, ...init });
   it('maps Ctrl/Cmd+K and ? and nothing else', () => {

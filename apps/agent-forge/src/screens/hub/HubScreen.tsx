@@ -13,9 +13,9 @@ import './hub.css';
 import { useMemo, useState } from 'react';
 import { matchRoute, navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
-import { useAgents, useDaemonHealth, useHubEntries } from '../../observe/useObserve';
+import { useAgents, useDaemonDown, useDaemonHealth, useHubEntries } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
-import { ObserveDaemonDownError, type HubEntryFilter } from '../../observe/observeClient';
+import type { HubEntryFilter } from '../../observe/observeClient';
 import type { ObserveAgentRow, ObserveHubEntry } from '../../observe/types';
 import { fmtDateTime, fmtInt, fmtStarted } from '../../observe/format';
 import { DataTable, type Column } from '../../ui/DataTable';
@@ -180,8 +180,9 @@ function HubContent({ namespace }: { namespace: string | undefined }) {
   const filter: HubEntryFilter | undefined =
     viewer === undefined ? undefined : { agent_id: viewer, namespace, scope: state.scope, limit: HUB_LIMIT };
   const entries = useHubEntries(filter, refreshKey);
+  const down = useDaemonDown(false, [agents, entries]);
 
-  if (agents.error instanceof ObserveDaemonDownError || entries.error instanceof ObserveDaemonDownError) return <ObserveDaemonDown />;
+  if (down) return <ObserveDaemonDown />;
   if (viewer === undefined) {
     if (agents.loading || agents.error) return <ObserveError error={agents.error} />;
     return (

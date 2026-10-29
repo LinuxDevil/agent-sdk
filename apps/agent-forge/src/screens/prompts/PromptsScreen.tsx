@@ -8,9 +8,8 @@
 import './prompts.css';
 import { matchRoute, navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
-import { useDaemonHealth, usePrompts } from '../../observe/useObserve';
+import { useDaemonDown, useDaemonHealth, usePrompts } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
-import { ObserveDaemonDownError } from '../../observe/observeClient';
 import type { ObservePromptRow } from '../../observe/types';
 import { fmtDateTime, fmtInt } from '../../observe/format';
 import { DataTable, type Column } from '../../ui/DataTable';
@@ -31,7 +30,7 @@ const COLUMNS: Column<ObservePromptRow>[] = [
 
 function PromptList() {
   const prompts = usePrompts();
-  if (prompts.error instanceof ObserveDaemonDownError) return <ObserveDaemonDown />;
+  if (useDaemonDown(false, [prompts])) return <ObserveDaemonDown />;
   return (
     <section className="prompts-screen" aria-label="Prompts">
       <h2 className="visually-hidden">Prompts</h2>

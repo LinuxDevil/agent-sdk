@@ -63,9 +63,10 @@ function Dialog({
     };
   }, []);
   const onKeyDown = (e: ReactKeyboardEvent) => {
+    // Modal: no keydown leaks to window-level handlers behind it (a queue's `S` skip, table row keys).
+    e.stopPropagation();
     if (e.key === 'Escape') {
       e.preventDefault();
-      e.stopPropagation();
       onClose();
     } else if (e.key === 'Tab') {
       e.preventDefault(); // one focusable control per dialog: keep focus inside
@@ -188,7 +189,8 @@ function ShortcutSheet({ onClose }: { onClose: () => void }) {
 
 /**
  * The global command palette (Ctrl/Cmd+K) and `?` shortcut sheet. Mount once
- * in the app shell; it owns the window keydown listener for both.
+ * in the app shell; it owns the window keydown listener for both. While either
+ * is open it stops every keydown inside it from reaching window-level handlers.
  */
 export function CommandPalette() {
   const { agents } = useAppState();
@@ -204,8 +206,9 @@ export function CommandPalette() {
       e.preventDefault();
       setOpen((o) => (id === 'palette' && o === 'palette' ? null : id));
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    // Capture phase: the dialog stops every keydown it gets from bubbling to window, so the toggle must not wait for it.
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
   }, []);
 
   const onClose = () => setOpen(null);

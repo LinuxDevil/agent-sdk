@@ -13,9 +13,9 @@ import './traces.css';
 import { useEffect, useMemo } from 'react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
-import { useAgents, useDaemonHealth, useTraces } from '../../observe/useObserve';
+import { useAgents, useDaemonDown, useDaemonHealth, useTraces } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
-import { ObserveDaemonDownError, type TraceSort } from '../../observe/observeClient';
+import type { TraceSort } from '../../observe/observeClient';
 import type { ObserveTraceRow } from '../../observe/types';
 import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../observe/format';
 import { DataTable, type Column, type TableSort } from '../../ui/DataTable';
@@ -97,6 +97,7 @@ function TracesList() {
   const filter = useMemo(() => toTraceFilter(state, now), [state, now]);
   const traces = useTraces(filter);
   const agents = useAgents();
+  const down = useDaemonDown(false, [traces, agents]);
 
   useEffect(() => rememberListQuery(formatTracesQuery(state)), [state]);
 
@@ -117,7 +118,7 @@ function TracesList() {
     facet('model', 'Model', uniqueSorted(rows.map((t) => t.model)), state.model, setText('model')),
     facet('project', 'Project', uniqueSorted(agentRows.map((a) => a.project)), state.project, setText('project')),
   ];
-  if (traces.error instanceof ObserveDaemonDownError) return <ObserveDaemonDown />;
+  if (down) return <ObserveDaemonDown />;
 
   return (
     <section className="traces-screen" aria-label="Traces">

@@ -88,8 +88,8 @@
   overflow: hidden;
 }
 .run-name {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 1 1 8ch;
+  min-width: 8ch; /* never a letter per line in a narrow pane: the chips below wrap instead */
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -118,8 +118,9 @@
 }
 .run-row-main {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 8px;
+  gap: 2px 8px;
   flex: 1 1 auto;
   min-width: 0;
   padding: 6px 8px;
@@ -131,6 +132,7 @@
   cursor: pointer;
 }
 .run-row-virtual .run-row-main {
+  flex-wrap: nowrap;
   align-items: center;
   padding-top: 0;
   padding-bottom: 0;
