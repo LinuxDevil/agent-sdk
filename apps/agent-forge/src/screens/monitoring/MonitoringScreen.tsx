@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { AgentSelect, ObserveDaemonDown, ObserveError } from '../../observe/chrome';
-import { useAgents, useDaemonDown, useDaemonHealth, useInsights } from '../../observe/useObserve';
+import { useAgents, useDaemonDown, useDaemonHealth, useInsights, useTaggedInsights } from '../../observe/useObserve';
 import { navigate } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
 import { ScreenHeader } from '../../shell/ScreenHeader';
@@ -73,7 +73,9 @@ function useMonitoringData(win: MonitoringWindow, agentId: string) {
   const chart = chartWindow(win, now);
   const agents = useAgents(undefined, refreshKey);
   const fleetInsights = useInsights({ days: 1 }, refreshKey);
-  const insights = useInsights(
+  // Tagged by window and agent: a switch shows the loading state, not the old rows on the new buckets.
+  const insights = useTaggedInsights(
+    `${win}:${agentId}`,
     { ...insightsSpan(chart), agent_id: agentId || undefined, granularity: chart.granularity },
     refreshKey,
   );
@@ -99,7 +101,7 @@ export function MonitoringScreen() {
   const labelOf = (id: string) => names.get(id) ?? id.slice(0, 8);
   const rows = insights.data?.series ?? [];
   // Charts draw the window only; the earlier rows are the metric cards' comparison.
-  const windowRows = splitWindow(rows, chart.from).current;
+  const windowRows = splitWindow(rows, chart).window;
   const chartsLoading = insights.data === undefined && insights.loading;
   // An `agent=` id the fleet doesn't list still filters, so the select offers it too.
   const agentOptions = useMemo(() => {
@@ -135,7 +137,7 @@ export function MonitoringScreen() {
     <div className="mon-screen">
       {header}
       <ObserveError error={error} />
-      <MetricRow rows={rows} from={chart.from} win={win} loading={chartsLoading} />
+      <MetricRow rows={rows} chart={chart} win={win} loading={chartsLoading} />
       <section className="mon-fleet" aria-label="Fleet">
         <Card as="div" title="Agents" description="Registered agents: today's runs and error rate, last-24h p95." padding="none">
           <FleetTable

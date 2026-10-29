@@ -2,28 +2,29 @@ import { fmtCost, fmtDuration, fmtInt, fmtPercent } from '../../observe/format';
 import type { ObserveRollupRow } from '../../observe/types';
 import { MetricCard } from '../../ui/MetricCard';
 import { metricSummary, splitWindow } from './monitoringMetrics';
-import type { MonitoringWindow } from './monitoringSeries';
+import type { ChartWindow, MonitoringWindow } from './monitoringSeries';
 
 const points = (v: number) => `${v.toLocaleString('en-US', { maximumFractionDigits: 1 })} pp`;
 
 /**
  * The four KPI cards over the chart window: runs, error rate, p95 latency and
- * cost, each with its per-bucket sparkline and the change against the
- * previous window (`rows` reach back one window before `from`).
+ * cost over the whole window (bucket in progress included), each with its
+ * per-bucket sparkline and the change over the window's complete buckets
+ * against as many just before it (`rows` reach back one window before `from`).
  */
 export function MetricRow({
   rows,
-  from,
+  chart,
   win,
   loading,
 }: {
   rows: ObserveRollupRow[];
-  from: number;
+  chart: ChartWindow;
   win: MonitoringWindow;
   loading: boolean;
 }) {
-  const { current, previous } = splitWindow(rows, from);
-  const m = metricSummary(current, previous);
+  const split = splitWindow(rows, chart);
+  const m = metricSummary(split.window, split.compare);
   const label = `vs previous ${win}`;
   const delta = (value: number | undefined, goodWhen: 'up' | 'down', format?: (v: number) => string) =>
     value === undefined ? undefined : { value, goodWhen, label, format };
