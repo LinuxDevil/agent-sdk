@@ -6,9 +6,12 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import type * as http from 'node:http';
+import * as nodeHttp from 'node:http';
 import * as nodePath from 'node:path';
 import { defaultPidPath, isObserveDaemon, probeHealth, sameDbPath, startObserveDaemon, type ObserveDaemon } from './daemon';
-import { OBSERVE_SERVICE } from './envelope';
+import { OBSERVE_SERVICE, type IngestEvent } from './envelope';
+import { emitObserveEvents } from './emit';
+import { publishPrompt } from './promptClient';
 import { createToken, openDb } from './store';
 import type { RouteContext } from './routes/httpKit';
 import { statusRoutes } from './routes/status';
@@ -218,5 +221,81 @@ describe('port collision', () => {
     await expect(startObserveDaemon({ dbPath: ':memory:', port: daemon.port })).rejects.toMatchObject({ code: 'EADDRINUSE' });
     // the probe distinguishes our daemon from a random listener
     expect(isObserveDaemon(await probeHealth(daemon.port))).toBe(true);
+  });
+});
+
+/** One raw request (fetch can't set `Host`, and browsers own `Origin`): resolves with the status and the parsed body. */
+function rawRequest(
+  daemon: ObserveDaemon,
+  method: string,
+  path: string,
+  headers: Record<string, string>,
+  body?: string
+): Promise<{ status: number; body: { error?: string; code?: string } }> {
+  return new Promise((resolve, reject) => {
+    const req = nodeHttp.request({ host: '127.0.0.1', port: daemon.port, method, path, headers }, (res) => {
+      let text = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => (text += chunk));
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, body: text ? (JSON.parse(text) as { error?: string; code?: string }) : {} }));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+describe('cross-site write guard on /api/*', () => {
+  const rule = JSON.stringify({ name: 'spend-keys', kind: 'judge', sample_rate: 1, config: { model: 'gpt-4o-mini', rubric: 'x' } });
+  const ruleCount = async (daemon: ObserveDaemon): Promise<number> =>
+    ((await (await fetch(url(daemon, '/api/v1/evaluators'))).json()) as { evaluators: unknown[] }).evaluators.length;
+
+  it('a text/plain "simple" POST to /api/v1/evaluators answers 415 and creates no rule', async () => {
+    const daemon = await start();
+    const res = await fetch(url(daemon, '/api/v1/evaluators'), { method: 'POST', headers: { 'content-type': 'text/plain' }, body: rule });
+    expect(res.status).toBe(415);
+    expect(((await res.json()) as { code: string }).code).toBe('LOUSHO_REQUEST_INVALID');
+    expect(await ruleCount(daemon)).toBe(0);
+  });
+
+  it('a cross-origin JSON POST answers 403 and creates no rule', async () => {
+    const daemon = await start();
+    const res = await rawRequest(daemon, 'POST', '/api/v1/evaluators', { 'content-type': 'application/json', origin: 'http://evil.com' }, rule);
+    expect(res.status).toBe(403);
+    expect(res.body.code).toBe('LOUSHO_REQUEST_INVALID');
+    expect(await ruleCount(daemon)).toBe(0);
+  });
+
+  it('a DNS-rebinding Host answers 403, even on GET', async () => {
+    const daemon = await start();
+    const res = await rawRequest(daemon, 'GET', '/api/v1/traces', { host: `attacker.example:${daemon.port}` });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toMatch(/loopback Host/i);
+  });
+
+  it('/health stays outside the guard', async () => {
+    const daemon = await start();
+    expect((await rawRequest(daemon, 'GET', '/health', { host: 'attacker.example' })).status).toBe(200);
+  });
+
+  it('a plain JSON POST with no Origin (SDK / CLI / Studio proxy) still creates the rule', async () => {
+    const daemon = await start();
+    const res = await fetch(url(daemon, '/api/v1/evaluators'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: rule });
+    expect(res.status).toBe(201);
+    expect(await ruleCount(daemon)).toBe(1);
+  });
+
+  it('the SDK clients (ingest emitter, prompt client) still write through the real fetch', async () => {
+    const daemon = await start();
+    const base = `http://127.0.0.1:${daemon.port}`;
+    const sent = await emitObserveEvents([{ type: 'observation', data: obs() } as IngestEvent], { target: { url: base } });
+    expect(sent).toBe(1);
+    const published = await publishPrompt(base, { name: 'greet', text: 'Hello' });
+    expect(published.version).toBe(1);
+  });
+
+  it('the token check runs first: an unauthenticated text/plain POST answers 401, not 415', async () => {
+    const daemon = await start({ requireToken: true });
+    const res = await fetch(url(daemon, '/api/v1/evaluators'), { method: 'POST', headers: { 'content-type': 'text/plain' }, body: rule });
+    expect(res.status).toBe(401);
   });
 });

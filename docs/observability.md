@@ -441,6 +441,23 @@ is printed per process and reporting stays off. `LOUSHO_OBSERVE_PROJECT` labels
 the rows; `LOUSHO_OBSERVE_TOKEN` sends a bearer token for daemons bound
 beyond loopback (`--require-token` plus `lousho observe token create`).
 
+**Security.** Because the loopback daemon takes no token, it refuses requests
+a web page in your browser could forge. On every `/api/*` route:
+
+- a daemon bound to loopback answers only loopback `Host` names (`localhost`,
+  `*.localhost`, `127.x.y.z`, `[::1]`), any other `Host` gets 403, which defeats
+  DNS rebinding;
+- a write (anything but `GET`/`HEAD`/`OPTIONS`) whose `Origin` is not a
+  loopback `http(s)` origin (including `Origin: null`), or that carries
+  `Sec-Fetch-Site: cross-site`, gets 403;
+- a write that has a body must send `Content-Type: application/json`, anything
+  else (`text/plain`, form posts) gets 415.
+
+The SDK reporter, the CLI and the Studio proxy send no `Origin` and always
+send JSON, so they are unaffected; a custom client that writes to the daemon
+must send `application/json` too. On a daemon that requires a token, the 401
+check comes first.
+
 One SQLite file (default `~/.lousho/observe.db`, WAL mode) holds the fleet's
 observations, sessions, eval scores, prompt versions and shared context.
 `npx lousho studio` renders it (see [Agent Forge](./agent-forge.md#screens)):

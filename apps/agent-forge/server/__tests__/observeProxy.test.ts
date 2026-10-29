@@ -27,6 +27,7 @@ describe('observe proxy', () => {
   let daemon: http.Server | undefined;
   let daemonUrl: string;
   let lastDelete: { url: string | undefined; contentType: string | null; body: string } | undefined;
+  let lastHeaders: http.IncomingHttpHeaders | undefined;
   const prevEnv = process.env.LOUSHO_OBSERVE_URL;
 
   beforeEach(async () => {
@@ -43,6 +44,7 @@ describe('observe proxy', () => {
 
     // A stand-in for `lousho observe`: echoes the method, path, content-type and body it was sent.
     daemon = http.createServer((req, res) => {
+      lastHeaders = req.headers;
       let body = '';
       req.on('data', (chunk: Buffer) => (body += chunk.toString()));
       req.on('end', () => {
@@ -107,6 +109,20 @@ describe('observe proxy', () => {
     const res = await request(app).post('/observe/api/v1/scores').send(score);
     expect(res.status).toBe(201);
     expect(res.body).toEqual({ echoed: '/api/v1/scores', method: 'POST', contentType: 'application/json', body: score });
+  });
+
+  it("does not forward the browser's Origin, Sec-Fetch-* or Referer upstream (the daemon refuses cross-origin writes)", async () => {
+    const res = await request(app)
+      .post('/observe/api/v1/evaluators')
+      .set('Host', 'localhost:5173')
+      .set('Origin', 'http://localhost:5173')
+      .set('Referer', 'http://localhost:5173/evaluators')
+      .set('Sec-Fetch-Site', 'same-origin')
+      .set('Sec-Fetch-Mode', 'cors')
+      .send({ name: 'r', kind: 'code' });
+    expect(res.status).toBe(201);
+    expect(lastHeaders?.['content-type']).toBe('application/json');
+    for (const header of ['origin', 'referer', 'sec-fetch-site', 'sec-fetch-dest']) expect(lastHeaders?.[header]).toBeUndefined();
   });
 
   it('does not forward other writes - ingest and unlisted routes stay 405', async () => {
