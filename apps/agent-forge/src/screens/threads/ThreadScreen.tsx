@@ -6,8 +6,8 @@
  * full root input/output (the session rows only carry 200-char previews).
  */
 import { useRef, useState } from 'react';
-import { useSession } from '../../observe/useObserve';
-import { ObserveError } from '../../observe/chrome';
+import { useDaemonDown, useSession } from '../../observe/useObserve';
+import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import type { ObserveTraceRow } from '../../observe/types';
 import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../observe/format';
 import { EmptyState } from '../../ui/EmptyState';
@@ -67,6 +67,9 @@ function Turn({ trace, index, now }: { trace: ObserveTraceRow; index: number; no
 export function ThreadScreen({ sessionId }: { sessionId: string }) {
   const thread = useSession(sessionId);
   const [now] = useState(() => Date.now());
+  // Only the session query counts: one turn's detail failing is that turn's own problem, not the daemon's.
+  const down = useDaemonDown(false, [thread]);
+  if (down) return <ObserveDaemonDown />;
 
   const session = thread.data?.session;
   const traces = thread.data?.traces ?? [];

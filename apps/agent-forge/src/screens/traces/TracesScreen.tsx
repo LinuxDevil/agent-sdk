@@ -13,10 +13,10 @@ import './traces.css';
 import { useEffect, useMemo } from 'react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
-import { useAgents, useDaemonHealth, useTraces } from '../../observe/useObserve';
+import { useAgents, useDaemonDown, useDaemonHealth, useTraces } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
-import { ObserveDaemonDownError, type TraceSort } from '../../observe/observeClient';
-import type { ObserveTraceRow } from '../../observe/types';
+import type { TraceSort } from '../../observe/observeClient';
+import type { ObserveAgentRow, ObserveTraceRow } from '../../observe/types';
 import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../observe/format';
 import { DataTable, type Column, type TableSort } from '../../ui/DataTable';
 import { FilterBar } from '../../ui/FilterBar';
@@ -88,6 +88,24 @@ function PromptChip({ prompt, onRemove }: { prompt: string | undefined; onRemove
   );
 }
 
+const toSort = (next: TableSort | undefined): TracesUrlState['sort'] =>
+  next && SORTABLE.includes(next.key) ? { key: next.key as TraceSort, order: next.order } : undefined;
+
+/** The agent / status / model / project facets; model options come from the rows on screen. */
+function traceFacets(
+  state: TracesUrlState,
+  rows: ObserveTraceRow[],
+  agentRows: ObserveAgentRow[],
+  setText: (key: 'agent' | 'status' | 'model' | 'project') => (v: string | undefined) => void
+) {
+  return [
+    agentFacet(agentRows, state.agent, setText('agent')),
+    facet('status', 'Status', STATUSES, state.status, setText('status')),
+    facet('model', 'Model', uniqueSorted(rows.map((t) => t.model)), state.model, setText('model')),
+    facet('project', 'Project', uniqueSorted(agentRows.map((a) => a.project)), state.project, setText('project')),
+  ];
+}
+
 function TracesList() {
   const route = useRoute();
   const queryString = route.query.toString();
@@ -97,6 +115,7 @@ function TracesList() {
   const filter = useMemo(() => toTraceFilter(state, now), [state, now]);
   const traces = useTraces(filter);
   const agents = useAgents();
+  const down = useDaemonDown(false, [traces, agents]);
 
   useEffect(() => rememberListQuery(formatTracesQuery(state)), [state]);
 
@@ -106,18 +125,11 @@ function TracesList() {
   const setText = (key: 'agent' | 'status' | 'model' | 'project' | 'q' | 'prompt') => (v: string | undefined) => update({ [key]: v || undefined });
 
   const range = useRangeFilter(state.window, '24h', (window) => update({ window }));
-  const onSort = (next: TableSort | undefined) =>
-    update({ sort: next && SORTABLE.includes(next.key) ? { key: next.key as TraceSort, order: next.order } : undefined });
+  const onSort = (next: TableSort | undefined) => update({ sort: toSort(next) });
 
   const rows = traces.data?.traces ?? [];
-  const agentRows = agents.data ?? [];
-  const facets = [
-    agentFacet(agentRows, state.agent, setText('agent')),
-    facet('status', 'Status', STATUSES, state.status, setText('status')),
-    facet('model', 'Model', uniqueSorted(rows.map((t) => t.model)), state.model, setText('model')),
-    facet('project', 'Project', uniqueSorted(agentRows.map((a) => a.project)), state.project, setText('project')),
-  ];
-  if (traces.error instanceof ObserveDaemonDownError) return <ObserveDaemonDown />;
+  const facets = traceFacets(state, rows, agents.data ?? [], setText);
+  if (down) return <ObserveDaemonDown />;
 
   return (
     <section className="traces-screen" aria-label="Traces">

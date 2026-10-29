@@ -316,3 +316,16 @@ for (const width of [860, 375]) {
     });
   }
 }
+
+test('queue review at 1280px: a trace tree row name never wraps one letter per line', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(`${APP}#/evals/queues/e2e-queue`);
+  await expect(page.locator('[data-review-trace="e2e-trace"]')).toBeVisible();
+  const names = page.locator('[data-review-trace="e2e-trace"] .run-name');
+  await expect(names.first()).toBeVisible();
+  for (const name of await names.all()) {
+    const box = (await name.boundingBox())!;
+    const line = await name.evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height);
+    expect(box.height, `${await name.textContent()} wraps`).toBeLessThanOrEqual(line * 2 + 1);
+  }
+});

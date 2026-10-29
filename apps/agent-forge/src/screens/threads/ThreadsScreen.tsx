@@ -13,9 +13,8 @@ import './threads.css';
 import { useEffect, useMemo } from 'react';
 import { matchRoute, navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
-import { useAgents, useDaemonHealth, useSessions } from '../../observe/useObserve';
+import { useAgents, useDaemonDown, useDaemonHealth, useSessions } from '../../observe/useObserve';
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
-import { ObserveDaemonDownError } from '../../observe/observeClient';
 import type { ObserveSessionRow } from '../../observe/types';
 import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../observe/format';
 import { DataTable, type Column } from '../../ui/DataTable';
@@ -89,6 +88,7 @@ function ThreadsList() {
   const filter = useMemo(() => toSessionFilter(state, now), [state, now]);
   const sessions = useSessions(filter);
   const agents = useAgents();
+  const down = useDaemonDown(false, [sessions, agents]);
 
   useEffect(() => rememberThreadsQuery(formatThreadsQuery(state)), [state]);
 
@@ -100,7 +100,7 @@ function ThreadsList() {
     agentFacet(agents.data ?? [], state.agent, (agent) => update({ agent })),
     facet('status', 'Status', STATUSES, state.status, (status) => update({ status })),
   ];
-  if (sessions.error instanceof ObserveDaemonDownError) return <ObserveDaemonDown />;
+  if (down) return <ObserveDaemonDown />;
 
   return (
     <section className="threads-screen" aria-label="Threads">

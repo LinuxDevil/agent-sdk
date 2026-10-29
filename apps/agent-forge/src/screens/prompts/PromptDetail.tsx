@@ -11,8 +11,8 @@
 import { useState } from 'react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
-import { usePromptVersions } from '../../observe/useObserve';
-import { ObserveError } from '../../observe/chrome';
+import { useDaemonDown, usePromptVersions } from '../../observe/useObserve';
+import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { observeClient } from '../../observe/observeClient';
 import type { ObservePromptVersion } from '../../observe/types';
 import { fmtDateTime, fmtInt } from '../../observe/format';
@@ -171,9 +171,11 @@ export function PromptDetail({ param }: { param: string }) {
   const route = useRoute();
   const [refreshKey, setRefreshKey] = useState(0);
   const history = usePromptVersions(name, refreshKey);
+  const down = useDaemonDown(false, [history]);
   const versions = history.data?.versions ?? [];
   const selected = resolveRef(versions, ref);
   const diff = parseDiff(route.query);
+  if (down) return <ObserveDaemonDown />;
 
   let body;
   if (history.loading && !history.data) body = <p className="prompt-note">Loading prompt...</p>;
