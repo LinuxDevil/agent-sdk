@@ -208,9 +208,11 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
     await expect(main.getByRole('combobox', { name: 'State' })).toHaveValue('true');
     await expect(main.getByRole('switch', { name: 'answered enabled' })).toBeChecked();
   },
-  '/evals/evaluators/:id': async (main) => {
+  '/evals/evaluators/:id': async (main, page) => {
     await expect(main.getByRole('textbox', { name: 'Trace id' })).toHaveValue('e2e-trace');
-    await expect(main.getByRole('link', { name: 'All evaluators' })).toHaveAttribute('href', '#/evals/evaluators?kind=code&enabled=true');
+    // The way back is the header breadcrumb (the screen header sits outside <main>).
+    const crumbs = page.getByRole('navigation', { name: 'Breadcrumb' });
+    await expect(crumbs.getByRole('link', { name: 'Evaluators' })).toHaveAttribute('href', '#/evals/evaluators?kind=code&enabled=true');
   },
   '/prompts/:name': async (main) => {
     await expect(main.getByRole('combobox', { name: 'Compare version A' })).toHaveValue('1');
@@ -323,6 +325,8 @@ test('queue review at 1280px: a trace tree row name never wraps one letter per l
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto(`${APP}#/evals/queues/e2e-queue`);
   await expect(page.locator('[data-review-trace="e2e-trace"]')).toBeVisible();
+  // The review opens on the root step's messages; the tree is the Trace view.
+  await page.getByRole('group', { name: 'Item view' }).getByRole('button', { name: 'Trace' }).click();
   const names = page.locator('[data-review-trace="e2e-trace"] .run-name');
   await expect(names.first()).toBeVisible();
   for (const name of await names.all()) {

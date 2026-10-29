@@ -1,97 +1,402 @@
-/* Annotation queues (#/evals/queues, #/evals/queues/:id). Builds on datasets.css; tokens only. */
-.queues-rubric {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-  margin: 0;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+/* Annotation queues (#/evals/queues, #/evals/queues/:id). The page and card grid (ds-*) live in ../evals/evals.css; tokens only. */
+
+/* ---------- Queue cards ---------- */
+.qu-card {
+  gap: var(--space-3);
 }
-.queues-rubric legend {
-  padding: 0 4px;
-  font-size: 12px;
+.qu-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.qu-chips-none {
+  font-size: var(--fs-meta);
+  font-style: italic;
+  color: var(--text-faint);
+}
+.qu-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  font-size: var(--fs-meta);
+  color: var(--text);
+  white-space: nowrap;
+}
+.qu-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.qu-chip-range {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.qu-chip-more {
   color: var(--text-muted);
 }
-.queues-rubric-row {
+.qu-card-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+}
+.qu-card-progress-text {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.qu-reviewed b {
+  font-weight: 600;
+  color: var(--text);
+}
+.qu-skipped {
+  color: var(--text-faint);
+}
+.qu-card .ds-card-meta {
+  margin-top: 0;
+}
+
+/* The progress bar: done in the accent, skipped in a quiet tone, the rest the track. */
+.qu-bar {
+  display: flex;
+  width: 100%;
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--surface-3);
+}
+.qu-bar-done {
+  background: var(--accent-solid);
+  transition: width var(--dur) var(--ease);
+}
+.qu-bar-complete .qu-bar-done {
+  background: var(--success);
+}
+.qu-bar-skipped {
+  background: color-mix(in srgb, var(--text-faint) 55%, transparent);
+  transition: width var(--dur) var(--ease);
+}
+
+/* ---------- New annotation queue ---------- */
+.qu-new {
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+}
+.qu-new-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.qu-new-name {
+  max-width: 360px;
+}
+.qu-rubric {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.qu-legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.qu-rubric-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.qu-rubric-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.qu-rubric-index {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-bottom: 5px;
+  border-radius: var(--radius-full);
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.qu-rubric-fields {
+  flex: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 8px;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
 }
-.queues-field-narrow {
-  flex: 0 1 120px;
+.qu-rubric-name {
+  flex: 1 1 160px;
 }
-.queues-form-actions {
+.qu-rubric-wide {
+  flex: 3 1 220px;
+}
+.qu-rubric-bound {
+  flex: 0 1 88px;
+}
+.qu-rubric-remove {
+  margin-bottom: 2px;
+}
+.qu-new-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
-}
-.queues-progress {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-.queues-empty-links {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 16px;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
 }
 
-/* Review: the trace beside the score form; stacked on narrow screens. */
-.queues-review {
+/* ---------- Review ---------- */
+.qu-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.qu-progress-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--fs-table);
+  font-variant-numeric: tabular-nums;
+}
+.qu-position {
+  color: var(--text-muted);
+}
+.qu-position b {
+  font-weight: 600;
+  color: var(--text);
+}
+.qu-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+.qu-empty-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+/* The item beside the sticky score card; stacked (item, then scores) below 1100px. */
+.qu-review {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 340px);
+  gap: var(--space-4);
   align-items: start;
   min-width: 0;
 }
-@media (max-width: 900px) {
-  .queues-review {
+.qu-review > .qu-rubric-card {
+  position: sticky;
+  top: var(--space-4);
+}
+@media (max-width: 1100px) {
+  .qu-review {
     grid-template-columns: minmax(0, 1fr);
   }
+  .qu-review > .qu-rubric-card {
+    position: static;
+  }
 }
-.queues-review-trace {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.qu-item {
   min-width: 0;
 }
-.queues-review-trace h3 a {
-  font-family: var(--font-mono);
-  font-weight: 400;
+.qu-item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
 }
-.queues-rubric-form {
+.qu-item-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.qu-item-head .segmented {
+  margin-left: auto;
+}
+.qu-item-body {
+  min-width: 0;
+  padding: var(--space-4) var(--space-5);
+}
+.qu-item-body-trace {
+  padding: var(--space-3);
+}
+.qu-messages {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
   min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
 }
-.queues-score {
+
+/* The score card: header, one block per rubric entry, the footer actions. */
+.qu-rubric-card {
+  min-width: 0;
+}
+.qu-rubric-head {
+  padding: var(--space-4) var(--space-5) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.qu-rubric-body {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
 }
-.queues-score .datasets-field input,
-.queues-comment {
+.qu-score {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
   min-width: 0;
-  padding: 4px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--bg);
+}
+.qu-score-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.qu-score-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-body);
+  font-weight: 600;
   color: var(--text);
-  font: inherit;
-  font-size: 13px;
 }
-.queues-keys {
-  font-size: 12px;
+.qu-score-range {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.qu-score-input {
+  width: 72px;
+  margin-left: auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.qu-score-desc {
+  margin: 0;
+  font-size: var(--fs-meta);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+/* Quick-pick scores: one segmented row, the picked value in the accent. */
+.qu-choices {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.qu-choice {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: var(--fs-table);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
+}
+.qu-choice:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.qu-choice[aria-pressed='true'] {
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  box-shadow: var(--shadow-sm);
+}
+.qu-choice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.qu-comment {
+  min-height: 52px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-table);
+}
+.qu-rubric-footer {
+  display: flex;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--border);
+}
+.qu-skip {
+  flex: 1;
+  justify-content: center;
+}
+.qu-submit {
+  flex: 2;
+  justify-content: center;
+}
+.qu-rubric-footer kbd {
+  margin-left: var(--space-1);
+}
+.qu-submit kbd {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--on-accent) 18%, transparent);
+  color: var(--on-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qu-bar-done,
+  .qu-bar-skipped,
+  .qu-choice {
+    transition: none;
+  }
 }

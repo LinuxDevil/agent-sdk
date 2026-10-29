@@ -140,6 +140,8 @@ const ITEM_H1: Record<string, string> = {
   '/prompts/e2e-prompt?diff=1,2': 'e2e-prompt',
   '/prompts/:name': 'e2e-prompt',
   '/hub/:namespace': 'e2e-namespace',
+  '/evals/queues/:id': 'support-review',
+  '/evals/evaluators/:id': 'answered',
 };
 for (const { label, path } of SCANS) {
   test(`${label} keeps the landmarks and passes axe`, async ({ page }) => {
@@ -246,7 +248,7 @@ test('the axe scans see the stubbed daemon data, not the down state', async ({ p
     ['/hub', 'e2e-namespace'],
     ['/hub/e2e-namespace', 'order-policy'],
     ['/evals/queues', 'support-review'],
-    ['/evals/queues/e2e-queue', 'lookup_order'],
+    ['/evals/queues/e2e-queue', 'Where is my order?'],
   ]) {
     await page.goto(`/?token=e2e-studio-token#${path}`);
     await expect(main.getByText(text).first(), path).toBeVisible();

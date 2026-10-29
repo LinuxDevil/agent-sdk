@@ -125,11 +125,20 @@ async function mountAt(hash: string) {
   return container;
 }
 
-const buttonNamed = (container: HTMLElement, name: string) =>
-  [...container.querySelectorAll('button')].find((b) => b.textContent?.trim() === name || b.getAttribute('aria-label') === name);
+/** A button's name: its aria-label, else its text without aria-hidden parts (the kbd hints). */
+function nameOf(button: HTMLButtonElement): string {
+  const label = button.getAttribute('aria-label');
+  if (label) return label;
+  const copy = button.cloneNode(true) as HTMLElement;
+  copy.querySelectorAll('[aria-hidden="true"]').forEach((el) => el.remove());
+  return copy.textContent?.trim() ?? '';
+}
 
-function type(input: HTMLInputElement, value: string) {
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+const buttonNamed = (container: HTMLElement, name: string) => [...container.querySelectorAll('button')].find((b) => nameOf(b) === name);
+
+function type(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
+  const proto = input instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(proto, 'value')!.set!;
   act(() => {
     setter.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -163,11 +172,15 @@ describe('queue paths', () => {
 });
 
 describe('QueuesScreen list', () => {
-  it('renders one row per queue with its counts, under the Evaluations tabs', async () => {
+  it('renders one card per queue with its rubric chips and counts, under the Evaluations tabs', async () => {
     const container = await mountAt('#/evals/queues');
-    const row = container.querySelector('tbody tr')!;
-    expect(row.textContent).toContain('support-review');
-    expect([...row.querySelectorAll('td')].slice(1, 4).map((td) => td.textContent)).toEqual(['2', '3', '1']);
+    const card = container.querySelector('.ds-grid .qu-card')!;
+    expect(card.textContent).toContain('support-review');
+    expect([...card.querySelectorAll('.qu-chip')].map((c) => c.textContent)).toEqual(['helpfulness0–5', 'tone1–3']);
+    // pending / done / skipped: 2 / 3 / 1.
+    expect(card.querySelector('.qu-pending')?.textContent).toBe('2 pending');
+    expect(card.querySelector('.qu-reviewed')?.textContent).toBe('3 reviewed of 6');
+    expect(card.querySelector('.qu-skipped')?.textContent).toBe('1 skipped');
     expect(container.querySelector('nav[aria-label="Evaluations"] [aria-current="page"]')?.textContent).toBe('Annotation queues');
     const list = calls.find((c) => c.path === '/api/v1/queues')!;
     expect(list.query.get('limit')).toBe('50');
@@ -177,21 +190,23 @@ describe('QueuesScreen list', () => {
     queues = [];
     const container = await mountAt('#/evals/queues');
     expect(container.textContent).toContain('No annotation queues yet');
+    expect(buttonNamed(container.querySelector('.empty-state') as HTMLElement, 'New queue')).toBeDefined();
   });
 
-  it('opens the review view on row open', async () => {
+  it('links each card to its review view', async () => {
     const container = await mountAt('#/evals/queues');
-    act(() => (container.querySelector('tbody tr') as HTMLElement).click());
-    expect(window.location.hash).toBe('#/evals/queues/q1');
+    expect(container.querySelector('.qu-card')?.getAttribute('href')).toBe('#/evals/queues/q1');
   });
 
   it('creates a queue with its rubric rows (blank fields left out) and shows a 409 inline', async () => {
     const container = await mountAt('#/evals/queues');
+    expect(container.querySelector('form[aria-label="New annotation queue"]')).toBeNull();
+    await act(async () => buttonNamed(container, 'New queue')!.click());
     const form = container.querySelector('form[aria-label="New annotation queue"]') as HTMLFormElement;
     type(form.querySelector('input[name="queue-name"]') as HTMLInputElement, 'support-review');
     type(form.querySelector('input[name="rubric-name-0"]') as HTMLInputElement, 'accuracy');
     expect(buttonNamed(container, 'Remove rubric row 1')!.disabled).toBe(true);
-    await act(async () => buttonNamed(container, 'Add rubric row')!.click());
+    await act(async () => buttonNamed(container, 'Add rubric entry')!.click());
     type(form.querySelector('input[name="rubric-name-1"]') as HTMLInputElement, 'tone');
     type(form.querySelector('input[name="rubric-description-1"]') as HTMLInputElement, 'Polite?');
     type(form.querySelector('input[name="rubric-min-1"]') as HTMLInputElement, '1');
@@ -208,11 +223,13 @@ describe('QueuesScreen list', () => {
       name: 'fresh',
       rubric: [{ name: 'accuracy' }, { name: 'tone', description: 'Polite?', min: 1, max: 3 }],
     });
-    expect(container.querySelector('tbody')!.textContent).toContain('fresh');
+    expect(container.querySelector('.ds-grid')!.textContent).toContain('fresh');
+    expect(container.querySelector('form[aria-label="New annotation queue"]')).toBeNull();
   });
 
   it('keeps Create disabled while a rubric row has no name', async () => {
     const container = await mountAt('#/evals/queues');
+    await act(async () => buttonNamed(container, 'New queue')!.click());
     type(container.querySelector('input[name="queue-name"]') as HTMLInputElement, 'fresh');
     expect(buttonNamed(container, 'Create queue')!.disabled).toBe(true);
   });
@@ -228,13 +245,53 @@ describe('QueuesScreen review', () => {
     expect(scoreInput(container, 'tone').min).toBe('1');
     expect(container.textContent).toContain('Did it answer the question?');
     expect(container.querySelector('[aria-label="Queue progress"]')?.textContent).toMatch(/2 pending.*3 done.*1 skipped/);
+    // n of m: n = done + skipped + 1, m = done + skipped + pending.
+    expect(container.querySelector('.qu-position')?.textContent).toBe('Item 5 of 6');
+    expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('4');
+    // Messages is the default view: the root step's input and output.
+    expect(buttonNamed(container, 'Messages')!.getAttribute('aria-pressed')).toBe('true');
+    expect([...container.querySelectorAll('.mv-body')].map((b) => b.textContent)).toEqual(['"hello"', '"hi"']);
+  });
+
+  it('switches the item to the whole trace and back', async () => {
+    const container = await mountAt('#/evals/queues/q1');
+    expect(buttonNamed(container, 'Tree')).toBeUndefined();
+    await act(async () => buttonNamed(container, 'Trace')!.click());
+    expect(buttonNamed(container, 'Trace')!.getAttribute('aria-pressed')).toBe('true');
+    expect(buttonNamed(container, 'Tree')).toBeDefined();
+    await act(async () => buttonNamed(container, 'Messages')!.click());
+    expect(container.querySelectorAll('.mv-body')).toHaveLength(2);
+  });
+
+  it('a score button sets the value and picking it again clears it', async () => {
+    const container = await mountAt('#/evals/queues/q1');
+    const tone = container.querySelector('[role="group"][aria-label="tone score"]') as HTMLElement;
+    expect([...tone.querySelectorAll('button')].map((b) => b.textContent)).toEqual(['1', '2', '3']);
+    await act(async () => buttonNamed(tone, '2')!.click());
+    expect(scoreInput(container, 'tone').value).toBe('2');
+    expect(buttonNamed(tone, '2')!.getAttribute('aria-pressed')).toBe('true');
+    await act(async () => buttonNamed(tone, '2')!.click());
+    expect(scoreInput(container, 'tone').value).toBe('');
+  });
+
+  it('Enter in a comment submits; Shift+Enter does not', async () => {
+    const container = await mountAt('#/evals/queues/q1');
+    const comment = container.querySelector('textarea[name="comment-tone"]') as HTMLTextAreaElement;
+    type(scoreInput(container, 'tone'), '3');
+    await act(async () => {
+      comment.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(completes()).toHaveLength(0);
+    await press('Enter', comment);
+    expect(completes()[0].body).toEqual({ scores: [{ name: 'tone', value: 3 }] });
   });
 
   it('Submit posts only the scored entries (with comments) and loads the next item', async () => {
     const container = await mountAt('#/evals/queues/q1');
     type(scoreInput(container, 'helpfulness'), '4');
-    type(container.querySelector('input[name="comment-helpfulness"]') as HTMLInputElement, 'solid');
-    await act(async () => buttonNamed(container, 'Submit')!.click());
+    type(container.querySelector('textarea[name="comment-helpfulness"]') as HTMLTextAreaElement, 'solid');
+    await act(async () => buttonNamed(container, 'Submit & next')!.click());
     await flush();
     expect(completes()).toHaveLength(1);
     expect(completes()[0].path).toBe('/api/v1/queues/q1/items/i1/complete');
@@ -268,6 +325,7 @@ describe('QueuesScreen review', () => {
 
   it('Enter on a button leaves the button alone (no submit)', async () => {
     const container = await mountAt('#/evals/queues/q1');
+    await act(async () => buttonNamed(container, 'Trace')!.click());
     await press('Enter', buttonNamed(container, 'Tree')!);
     expect(completes()).toHaveLength(0);
   });
@@ -285,7 +343,7 @@ describe('QueuesScreen review', () => {
   it('on a 409 (finished elsewhere) toasts and loads the next item', async () => {
     completeStatus = 409;
     const container = await mountAt('#/evals/queues/q1');
-    await act(async () => buttonNamed(container, 'Submit')!.click());
+    await act(async () => buttonNamed(container, 'Submit & next')!.click());
     await flush();
     expect(document.body.textContent).toContain('already finished');
     expect(reviewedTrace(container)).toBe('trace-2');
