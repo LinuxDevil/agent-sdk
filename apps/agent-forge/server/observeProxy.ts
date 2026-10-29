@@ -65,11 +65,12 @@ export const OBSERVE_WRITE_ALLOWLIST: readonly ObserveWrite[] = [
 
 /**
  * A raw path segment the daemon would decode into something other than one
- * plain name: `.`/`..` (literal or percent-encoded), an encoded `/` or `\`,
- * or an undecodable escape. The allowlist regexes only see raw segments.
+ * plain name: `.`/`..` (literal or percent-encoded), a literal or encoded `\`
+ * (URL parsing reads `\` as `/` for http(s)), an encoded `/`, or an
+ * undecodable escape. The allowlist regexes only see raw segments.
  */
 function isUnsafeSegment(raw: string): boolean {
-  if (/%2f|%5c/i.test(raw)) return true;
+  if (raw.includes('\\') || /%2f|%5c/i.test(raw)) return true;
   try {
     const decoded = decodeURIComponent(raw);
     return decoded === '.' || decoded === '..';
@@ -109,8 +110,10 @@ export function daemonHeaders(jsonBody = true): Record<string, string> {
 /**
  * The daemon URL for a proxied request: {@link observeTarget} plus the path
  * after `/observe` and the raw query. `undefined` when the result would leave
- * the target - another origin, userinfo, or (through `..` segments) out of
- * the target's base path - so the caller refuses rather than fetching it.
+ * the target (another origin, userinfo) or URL parsing would rewrite the path
+ * at all (`.`/`..` or `%2e` segments, `\` read as `/`) - the upstream path must
+ * be exactly the target's base path + `routedPath` - so the caller refuses
+ * rather than fetching it, whatever the method.
  */
 export function observeUpstreamUrl(routedPath: string, search: string): URL | undefined {
   if (!routedPath.startsWith('/') || (search !== '' && !search.startsWith('?'))) return undefined;
@@ -118,18 +121,19 @@ export function observeUpstreamUrl(routedPath: string, search: string): URL | un
     const target = new URL(observeTarget());
     const upstream = new URL(`${observeTarget()}${routedPath}${search}`);
     const base = target.pathname.replace(/\/+$/, '');
-    const inBase = base === '' || upstream.pathname === base || upstream.pathname.startsWith(`${base}/`);
+    const unchangedPath = upstream.pathname === `${base}${routedPath}`;
     const sameOrigin = upstream.origin === target.origin && upstream.username === '' && upstream.password === '';
-    return sameOrigin && inBase ? upstream : undefined;
+    return sameOrigin && unchangedPath ? upstream : undefined;
   } catch {
     return undefined;
   }
 }
 
-/** The raw query of `req.url` (`?...`, or `''`), whatever request-target form the client sent. */
+/** The raw query of `req.url` (`?...`, or `''`), whatever request-target form the client sent; never from inside a `#` fragment. */
 function rawSearch(req: Request): string {
-  const start = req.url.indexOf('?');
-  return start === -1 ? '' : req.url.slice(start);
+  const url = req.url.split('#', 1)[0];
+  const start = url.indexOf('?');
+  return start === -1 ? '' : url.slice(start);
 }
 
 export function registerObserveProxy(app: Express): void {

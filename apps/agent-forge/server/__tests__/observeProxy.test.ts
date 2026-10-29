@@ -393,7 +393,7 @@ describe('observe proxy (upstream origin and credentials)', () => {
   });
 
   /** One raw HTTP/1.1 request (any request-target form) with the studio token and a loopback Host; the status and body. */
-  function raw(method: string, target: string, headers: Record<string, string> = {}): Promise<{ status: number; body: string }> {
+  function raw(method: string, target: string, headers: Record<string, string> = {}, body = ''): Promise<{ status: number; body: string }> {
     return new Promise((resolve, reject) => {
       const socket = net.connect(studioPort, '127.0.0.1');
       let data = '';
@@ -411,7 +411,7 @@ describe('observe proxy (upstream origin and credentials)', () => {
         'Connection: close',
         ...Object.entries(headers).map(([k, v]) => `${k}: ${v}`),
       ];
-      socket.write(`${lines.join('\r\n')}\r\n\r\n`);
+      socket.write(`${lines.join('\r\n')}\r\n\r\n${body}`);
     });
   }
 
@@ -448,7 +448,6 @@ describe('observe proxy (upstream origin and credentials)', () => {
 
   it.each([
     () => `/observe//127.0.0.1:${evilPort}/api/v1/traces`,
-    () => `/observe/\\\\127.0.0.1:${evilPort}/api/v1/traces`,
     () => `/observe/%2F%2F127.0.0.1:${evilPort}/api/v1/traces`,
     () => `/observe/@127.0.0.1:${evilPort}/api/v1/traces`,
     () => `/observe/api/v1/traces?next=http://127.0.0.1:${evilPort}/x&a=@127.0.0.1:${evilPort}`,
@@ -457,6 +456,46 @@ describe('observe proxy (upstream origin and credentials)', () => {
     await raw('GET', target());
     expect(evilSeen).toEqual([]);
     expect(daemonSeen).toHaveLength(1);
+  });
+
+  it.each([
+    ['DELETE', '/observe/api/v1/datasets/x/examples/a\\..\\..\\..\\..\\..\\..\\api\\v1\\prompts\\mira'],
+    ['PUT', '/observe/api/v1/evaluators/a\\..\\..\\..\\..\\api\\v1\\prompts\\mira'],
+    ['PUT', '/observe/api/v1/evaluators/a\\..\\..\\..\\..\\v1\\traces'],
+    ['POST', '/observe/api/v1/datasets/a\\..\\..\\..\\v1/examples'],
+    ['PUT', '/observe/api/v1/evaluators/a\\b'],
+    ['PUT', '/observe/api/v1/prompts/mi\\ra/labels/prod'],
+  ])('a literal backslash in an allowlisted write segment is refused before any fetch: %s %s', async (method, target) => {
+    const res = await raw(method, target, { 'Content-Type': 'application/json', 'Content-Length': '2' }, '{}');
+    expect(res.status).toBe(405);
+    expect(daemonSeen).toEqual([]);
+  });
+
+  it('a backslash dot-segment write against a base-path target with the daemon token set never reaches the daemon', async () => {
+    process.env.LOUSHO_OBSERVE_URL = `${daemonUrl}/base`;
+    process.env.LOUSHO_OBSERVE_TOKEN = 'daemon-token-abc';
+    const res = await raw('DELETE', '/observe/api/v1/datasets/x/examples/a\\..\\..\\..\\..\\..\\..\\api\\v1\\prompts\\mira');
+    expect(res.status).toBe(405);
+    expect(daemonSeen).toEqual([]);
+  });
+
+  it.each([
+    '/observe/api/v1/traces/a\\..\\..\\prompts',
+    '/observe/\\\\127.0.0.1:1/api/v1/traces',
+    '/observe/api/v1/..',
+    '/observe/api/v1/%2e%2e/x',
+    '/observe/api/./v1/traces',
+  ])('a read whose path URL normalisation would rewrite answers 400 without a fetch: %s', async (target) => {
+    const res = await raw('GET', target);
+    expect(res.status).toBe(400);
+    expect(daemonSeen).toEqual([]);
+  });
+
+  it('the query is taken from before a fragment, never from inside it', async () => {
+    await raw('GET', `/observe/api/v1/traces#?@127.0.0.1:${evilPort}`);
+    expect(evilSeen).toEqual([]);
+    expect(daemonSeen.map((seen) => seen.url)).not.toContain(`/api/v1/traces?@127.0.0.1:${evilPort}`);
+    for (const seen of daemonSeen) expect(seen.url).not.toContain('?');
   });
 
   it('sends no bearer to the daemon when LOUSHO_OBSERVE_TOKEN is unset, and never the client credentials', async () => {
@@ -518,8 +557,8 @@ describe('observeUpstreamUrl', () => {
     expect(observeUpstreamUrl('//evil.example/x', '')?.href).toBe('https://collector.test/base//evil.example/x');
   });
 
-  it.each(['@evil.example/api', ':1@evil.example/api', '.evil.example/api', '/../../x', '/api/%2e%2e/%2e%2e/x'])(
-    'refuses a path that would leave the target origin or base path: %s',
+  it.each(['@evil.example/api', ':1@evil.example/api', '.evil.example/api', '/../../x', '/api/%2e%2e/%2e%2e/x', '/api\\..\\x','/api/./x', '/api/..'])(
+    'refuses a path that would leave the target origin or that URL parsing would rewrite: %s',
     (routed) => {
       process.env.LOUSHO_OBSERVE_URL = 'http://127.0.0.1:7777/base';
       expect(observeUpstreamUrl(routed, '')).toBeUndefined();
