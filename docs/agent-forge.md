@@ -220,17 +220,19 @@ Everything under Observe, Evaluate and Assets reads the observe daemon
 (`lousho observe start`) through the Studio server's `/observe` proxy. The
 proxy reads only `LOUSHO_OBSERVE_URL` (default `http://127.0.0.1:7777`);
 `LOUSHO_OBSERVE` does not change where the screens read (it only picks where
-builder runs report, see the [walkthrough](#first-agent-walkthrough)). The
-proxy sends no bearer token: `LOUSHO_OBSERVE_TOKEN` is used only by run
-reporting and the judge evaluators (the claim loop and the judge test
-route). So point the screens at a loopback daemon
-started without `--require-token`. Against a daemon that requires a token,
-`/health` still answers (the collector item says running), but every
-`/api/` read comes back `401` and the screens show that error instead of
-data. The proxy only forwards reads plus the writes the screens make
-(feedback scores, prompt label moves, hub entry edits, dataset and example
-writes, annotation queue writes); every other write, ingest above all, is
-refused.
+builder runs report, see the [walkthrough](#first-agent-walkthrough)). When
+`LOUSHO_OBSERVE_TOKEN` is set, the proxy sends it to the daemon as the bearer
+token on every read and write (as run reporting and the judge evaluators do),
+so the screens also work against a daemon started with `--require-token`.
+Without it, such a daemon answers `401` to every `/api/` read and the screens
+show that error instead of data (`/health` still answers, so the collector
+item says running). The browser's own credentials (the Studio token, cookies,
+`Authorization`) are never passed on. The proxy only forwards reads plus the
+writes the screens make (feedback scores, new prompt versions from the
+Playground, prompt label moves, hub entry edits, dataset and example writes,
+annotation queue writes, evaluator rule writes); every other write, ingest
+above all, is refused with `405`. It always calls the daemon at
+`LOUSHO_OBSERVE_URL`, whatever host the request line names.
 
 The last nav item says whether the daemon answers: **Collector: checking…**
 until the first probe, **Collector: running at `<url>`**, or **Collector:
