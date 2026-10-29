@@ -1,23 +1,13 @@
 import './commandPalette.css';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import {
-  Activity,
   ArrowDown,
-  ArrowRight,
   ArrowUp,
   Bot,
-  ClipboardCheck,
   CornerDownLeft,
-  Database,
-  FileText,
-  FlaskConical,
-  ListTree,
-  MessagesSquare,
   Search,
-  Settings,
   SunMoon,
   TextSearch,
-  Workflow,
   type LucideIcon,
 } from 'lucide-react';
 import { navigate } from '../router/router';
@@ -45,19 +35,6 @@ interface AgentRef {
 
 const TRACE_ID = /^[0-9a-fA-F-]{8,}$/;
 
-/** Icons for the "Go to" commands, by nav item id; an unknown item gets an arrow. */
-const NAV_ICON: Record<string, LucideIcon | undefined> = {
-  agents: Workflow,
-  playground: FlaskConical,
-  traces: ListTree,
-  threads: MessagesSquare,
-  monitoring: Activity,
-  evals: ClipboardCheck,
-  prompts: FileText,
-  hub: Database,
-  settings: Settings,
-};
-
 function baseCommands(agents: AgentRef[], openAgent: (id: string) => void): Command[] {
   return [
     ...NAV_ITEMS.map((item) => ({
@@ -65,7 +42,8 @@ function baseCommands(agents: AgentRef[], openAgent: (id: string) => void): Comm
       label: `Go to ${item.label}`,
       run: () => navigate(item.href),
       group: 'Navigation',
-      icon: NAV_ICON[item.id] ?? ArrowRight,
+      // The nav rail's own icon, so a destination looks the same in both places.
+      icon: item.icon,
     })),
     ...agents.map((a) => ({ id: `agent:${a.id}`, label: `Open agent ${a.name}`, run: () => openAgent(a.id), group: 'Agents', icon: Bot })),
     { id: 'theme', label: 'Toggle theme', run: toggleTheme, group: 'Actions', icon: SunMoon },

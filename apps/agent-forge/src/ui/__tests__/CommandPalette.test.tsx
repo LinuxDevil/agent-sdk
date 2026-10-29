@@ -15,6 +15,7 @@ vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 
 import { CommandPalette, buildCommands } from '../CommandPalette';
 import { SHORTCUTS, matchShortcut } from '../../shell/shortcuts';
+import { NAV_ITEMS } from '../../shell/NavRail';
 import { applyStoredTheme } from '../../shell/theme';
 import { ToastProvider } from '../Toast';
 
@@ -274,6 +275,13 @@ describe('CommandPalette groups and look', () => {
     const active = document.getElementById(input().getAttribute('aria-activedescendant')!);
     expect(active?.textContent).toBe('Toggle theme');
     expect(active?.closest('[role="group"]')).toBe(document.querySelectorAll('[role="group"]')[2]);
+  });
+
+  it('"Go to" commands use the same icon as their nav rail item', () => {
+    for (const item of NAV_ITEMS) {
+      const cmd = buildCommands(`Go to ${item.label}`, [], () => {}).find((c) => c.id === `go:${item.id}`);
+      expect(cmd?.icon, item.id).toBe(item.icon);
+    }
   });
 
   it('puts a pasted trace id in its own leading group', () => {
