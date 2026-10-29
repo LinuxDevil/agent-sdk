@@ -4,6 +4,7 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  MarkerType,
   MiniMap,
   ReactFlow,
   useReactFlow,
@@ -14,6 +15,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import { Copy, LayoutGrid, Maximize, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
 import { NODE_TYPES, flowNodeType, miniMapNodeClassName, type AgentNodeData } from '../canvas/AgentNode';
@@ -100,8 +102,24 @@ function toRfNodes(graph: AgentGraphSpec, decor: NodeDecor, measured: MeasuredSi
   }));
 }
 
-function toRfEdges(graph: AgentGraphSpec): Edge[] {
-  return graph.edges.map((e) => ({ id: e.id, source: e.source, target: e.target }));
+/**
+ * Smoothstep edges ending in a closed arrow. An edge whose source node is
+ * running is animated in the accent colour (`.edge-running` in agents.css;
+ * reduced motion keeps the colour and drops the dash animation).
+ */
+export function toRfEdges(graph: AgentGraphSpec, statuses: Record<string, NodeRunStatus> = {}): Edge[] {
+  return graph.edges.map((e) => {
+    const running = statuses[e.source] === 'running';
+    return {
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: 'smoothstep',
+      animated: running,
+      className: running ? 'edge-running' : undefined,
+      markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, color: running ? 'var(--accent)' : 'var(--border-strong)' },
+    };
+  });
 }
 
 /** Apply every ReactFlow position change that carries a position to the graph. */
@@ -327,6 +345,34 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
   return { handleAutoLayout, handleFitView, handleDuplicate };
 }
 
+/** One icon button of the canvas toolbar: `label` is its accessible name, `tooltip` its title. */
+function ToolbarButton({
+  Icon,
+  label,
+  tooltip,
+  onClick,
+  disabled,
+}: {
+  Icon: LucideIcon;
+  label: string;
+  tooltip: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost btn-icon btn-sm"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={tooltip}
+    >
+      <Icon aria-hidden="true" />
+    </button>
+  );
+}
+
 function CanvasToolbar({
   canDuplicate,
   onAutoLayout,
@@ -339,22 +385,36 @@ function CanvasToolbar({
   onDuplicate: () => void;
 }) {
   return (
-    <div className="canvas-toolbar">
-      <button className="btn" onClick={onAutoLayout} title="Auto layout the current graph">
-        Auto layout
-      </button>
-      <button className="btn" onClick={onFitView} title="Fit view to graph">
-        Fit view
-      </button>
-      <button
-        className="btn"
+    <div className="canvas-toolbar" role="group" aria-label="Canvas tools">
+      <ToolbarButton Icon={LayoutGrid} label="Auto layout" tooltip="Auto layout the current graph" onClick={onAutoLayout} />
+      <ToolbarButton Icon={Maximize} label="Fit view" tooltip="Fit view to graph" onClick={onFitView} />
+      <ToolbarButton
+        Icon={Copy}
+        label="Duplicate"
+        tooltip="Duplicate selected node (Ctrl/Cmd+D)"
         onClick={onDuplicate}
         disabled={!canDuplicate}
-        title="Duplicate selected node (Ctrl/Cmd+D)"
-      >
-        Duplicate
-      </button>
+      />
     </div>
+  );
+}
+
+/** The MiniMap (bottom-right) and zoom/fit Controls (bottom-left), both themed in agents.css. */
+function CanvasNavigator() {
+  return (
+    <>
+      <MiniMap
+        position="bottom-right"
+        pannable
+        zoomable
+        bgColor="var(--surface)"
+        maskColor="color-mix(in srgb, var(--bg) 70%, transparent)"
+        nodeClassName={miniMapNodeClassName}
+        nodeBorderRadius={6}
+        ariaLabel="Graph overview"
+      />
+      <Controls position="bottom-left" orientation="vertical" showInteractive={false} />
+    </>
   );
 }
 
@@ -384,7 +444,7 @@ function CanvasInner() {
     () => toRfNodes(graph, { selectedNodeId, onRename, highlightedNodeId, breakpoints, statuses }, measured),
     [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey, statuses, measured]
   );
-  const edges = useMemo(() => toRfEdges(graph), [graph]);
+  const edges = useMemo(() => toRfEdges(graph, statuses), [graph, statuses]);
 
   const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured);
   const { onConnect, isValidConnection } = useConnectionHandlers(graph, setGraph, flashError);
@@ -420,15 +480,8 @@ function CanvasInner() {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--border)" />
-        <MiniMap
-          position="top-right"
-          pannable
-          zoomable
-          nodeClassName={miniMapNodeClassName}
-          nodeBorderRadius={4}
-          ariaLabel="Graph overview"
-        />
-        <Controls position="bottom-right" showInteractive={false} />
+        {/* Nothing to overview or zoom on an empty canvas; the template card has the room. */}
+        {graph.nodes.length > 0 && <CanvasNavigator />}
       </ReactFlow>
     </main>
   );

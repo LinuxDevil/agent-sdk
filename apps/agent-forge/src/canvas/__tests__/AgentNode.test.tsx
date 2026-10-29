@@ -46,6 +46,24 @@ describe('AgentNode card', () => {
     expect(card.querySelector('.node-row code')?.textContent).toBe('http');
   });
 
+  it('marks a running node and gives each kind its own icon tile tone', () => {
+    const llm = renderCard(nodeOf('llm'), { status: 'running' });
+    expect(llm.classList.contains('running')).toBe(true);
+    expect(llm.querySelector('.node-kind')?.classList.contains('kind-violet')).toBe(true);
+    expect(llm.querySelector('.node-kind svg')).not.toBeNull();
+    const tool = renderCard(nodeOf('tool'), { status: 'done' });
+    expect(tool.classList.contains('running')).toBe(false);
+    expect(tool.querySelector('.node-kind')?.classList.contains('kind-info')).toBe(true);
+  });
+
+  it('keeps a long name whole in its tooltip while the card truncates it', () => {
+    const long = 'x'.repeat(80);
+    const card = renderCard({ ...nodeOf('llm'), label: long });
+    const title = card.querySelector('.rf-node-title');
+    expect(title?.textContent).toBe(long);
+    expect(title?.getAttribute('title')).toContain(long);
+  });
+
   it('renders the LLM card markup', () => {
     const card = renderCard(nodeOf('llm'), { toolCount: 1, status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();
