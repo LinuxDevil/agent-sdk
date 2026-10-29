@@ -9,7 +9,9 @@ import {
   type ReactNode,
   type RefObject,
 } from 'react';
+import { AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { isEditableTarget } from '../canvas/isEditableTarget';
+import { SkeletonRows } from './Skeleton';
 import './dataTable.css';
 
 /** Default minimum column width (px) when a column sets no `minWidth`. */
@@ -36,6 +38,9 @@ export interface Column<T> {
   /** Hide the column while the table's container is narrower than this many px. */
   hideBelow?: number;
 }
+
+/** Skeleton rows shown while a first load is in flight. */
+const SKELETON_ROWS = 6;
 
 /** The active sort: one column key and a direction. The table never sorts rows itself. */
 export interface TableSort {
@@ -234,20 +239,18 @@ interface HeaderCellProps<T> {
 function HeaderCell<T>({ column, width, sort, onSortChange, onResize, onCommit }: HeaderCellProps<T>) {
   const sortable = Boolean(column.sortable);
   const state = ariaSort(sort, column.key);
-  const arrow = state === 'ascending' ? '▲' : state === 'descending' ? '▼' : '';
+  const Arrow = state === 'ascending' ? ArrowUp : state === 'descending' ? ArrowDown : ArrowUpDown;
   return (
     <th
       scope="col"
       aria-sort={sortable ? state : undefined}
-      className={column.align === 'right' ? 'dt-right' : undefined}
+      className={alignClass(column)}
       style={{ minWidth: minWidthOf(column) }}
     >
       {sortable ? (
         <button type="button" className="dt-sort" onClick={() => onSortChange?.(nextSort(sort, column.key))}>
           {column.header}
-          <span className="dt-sort-arrow" aria-hidden="true">
-            {arrow}
-          </span>
+          <Arrow className={state === 'none' ? 'dt-sort-arrow dt-sort-idle' : 'dt-sort-arrow'} size={14} strokeWidth={1.75} aria-hidden="true" />
         </button>
       ) : (
         <span className="dt-head">{column.header}</span>
@@ -261,6 +264,29 @@ function cellContent<T>(column: Column<T>, row: T): ReactNode {
   if (column.render) return column.render(row);
   const value = (row as Record<string, unknown>)[column.key];
   return value == null ? '' : String(value);
+}
+
+/** Plain-text cell content doubles as its tooltip, so ellipsised text stays readable. */
+const titleOf = (content: ReactNode) =>
+  (typeof content === 'string' && content !== '') || typeof content === 'number' ? String(content) : undefined;
+
+const alignClass = <T,>(c: Column<T> | undefined) => (c?.align === 'right' ? 'dt-right' : undefined);
+
+/** Props for {@link ErrorCell}. */
+interface ErrorCellProps {
+  children: ReactNode;
+  /** Tooltip; defaults to `children` when that is a string. */
+  title?: string;
+}
+
+/** An error message in a table cell: danger text behind an alert icon, truncated with a tooltip. */
+export function ErrorCell({ children, title }: ErrorCellProps) {
+  return (
+    <span className="dt-error" title={title ?? (typeof children === 'string' ? children : undefined)}>
+      <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
+      <span className="dt-error-text">{children}</span>
+    </span>
+  );
 }
 
 interface BodyRowProps<T> {
@@ -283,11 +309,14 @@ function BodyRow<T>({ row, index, columns, active, selected, onOpen }: BodyRowPr
       aria-current={selected ? true : undefined}
       onClick={openable ? (e) => !(e.target as Element).closest('a, button, input, select, textarea') && onOpen!(index) : undefined}
     >
-      {columns.map((c) => (
-        <td key={c.key} className={c.align === 'right' ? 'dt-right' : undefined}>
-          {cellContent(c, row)}
-        </td>
-      ))}
+      {columns.map((c) => {
+        const content = cellContent(c, row);
+        return (
+          <td key={c.key} className={alignClass(c)} title={titleOf(content)}>
+            {content}
+          </td>
+        );
+      })}
     </tr>
   );
 }
@@ -331,6 +360,20 @@ function useRowNavigation<T>(rows: T[], rowKey: (r: T) => string, onRowOpen: ((r
   return { tableRef, current, onKeyDown, open };
 }
 
+/** The body with no rows: skeleton rows on a first load, else `empty` in one full-width cell. */
+function EmptyBody<T>({ columns, loading, empty }: { columns: Column<T>[]; loading?: boolean; empty: ReactNode }) {
+  if (loading) {
+    return <SkeletonRows as="tr" rows={SKELETON_ROWS} cols={columns.length} cellClassName={(i) => alignClass(columns[i])} />;
+  }
+  return (
+    <tr>
+      <td className="dt-empty" colSpan={columns.length}>
+        {empty}
+      </td>
+    </tr>
+  );
+}
+
 function Pager({ offset, limit, total, onChange }: NonNullable<DataTableProps<unknown>['page']>) {
   const fmt = (n: number) => n.toLocaleString('en-US');
   // An offset past the end (total shrank under us) still reads as a valid range.
@@ -340,11 +383,13 @@ function Pager({ offset, limit, total, onChange }: NonNullable<DataTableProps<un
   return (
     <div className="dt-pager">
       <span className="dt-pager-range">{range}</span>
-      <button type="button" disabled={offset <= 0} onClick={() => onChange(Math.max(0, offset - limit))}>
+      <button type="button" className="btn btn-sm" disabled={offset <= 0} onClick={() => onChange(Math.max(0, offset - limit))}>
+        <ChevronLeft aria-hidden="true" />
         Previous
       </button>
-      <button type="button" disabled={offset + limit >= total} onClick={() => onChange(offset + limit)}>
+      <button type="button" className="btn btn-sm" disabled={offset + limit >= total} onClick={() => onChange(offset + limit)}>
         Next
+        <ChevronRight aria-hidden="true" />
       </button>
     </div>
   );
@@ -393,12 +438,8 @@ export function DataTable<T>(props: DataTableProps<T>) {
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && !loading ? (
-            <tr>
-              <td className="dt-empty" colSpan={visible.length}>
-                {empty}
-              </td>
-            </tr>
+          {rows.length === 0 ? (
+            <EmptyBody columns={visible} loading={loading} empty={empty} />
           ) : (
             rows.map((r, i) => (
               <BodyRow

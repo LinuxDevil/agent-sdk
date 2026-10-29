@@ -34,7 +34,8 @@ function counter() {
 }
 
 const primaryNav = (page: Page) => page.getByRole('navigation', { name: 'Primary' });
-const bodyRows = (page: Page) => page.getByRole('main').locator('table.data-table tbody tr');
+/** Data rows only: a first load shows skeleton rows (`.skeleton-row`) until the rows arrive. */
+const bodyRows = (page: Page) => page.getByRole('main').locator('table.data-table tbody tr:not(.skeleton-row)');
 
 async function openApp(page: Page, hash = '') {
   await page.goto(`${APP}${hash ? `#${hash}` : ''}`);

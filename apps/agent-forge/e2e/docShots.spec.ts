@@ -169,7 +169,8 @@ async function shoot(page: Page, screen: string) {
   await page.screenshot({ path: path.join(OUT, `studio-${screen}.png`) });
 }
 
-const rows = (page: Page) => page.getByRole('main').locator('table.data-table tbody tr');
+/** Data rows only: a first load shows skeleton rows (`.skeleton-row`) until the rows arrive. */
+const rows = (page: Page) => page.getByRole('main').locator('table.data-table tbody tr:not(.skeleton-row)');
 
 test('agents: the builder with an agent', async ({ page }) => {
   await open(page, '/agents');
@@ -253,4 +254,32 @@ test('command palette: open over Traces', async ({ page }) => {
   await input.fill('go');
   await page.waitForTimeout(150);
   await page.screenshot({ path: path.join(OUT, 'studio-command-palette.png') });
+});
+
+// --- Kit states (x- shots: review-only, never used in the docs) -------------
+
+test('x-kit: traces empty state', async ({ page }) => {
+  await page.route('**/observe/api/v1/traces?**', (route) => json(route, { traces: [], total: 0, limit: 50, offset: 0 }));
+  await open(page, '/traces');
+  await expect(page.getByRole('main').locator('.empty-state')).toBeVisible();
+  await shoot(page, 'x-kit-empty-traces');
+});
+
+test('x-kit: traces table loading', async ({ page }) => {
+  // Never answered: the table stays in its first-load state.
+  await page.route('**/observe/api/v1/traces?**', () => undefined);
+  await open(page, '/traces');
+  await expect(page.getByRole('main').locator('table.data-table[aria-busy="true"]')).toBeVisible();
+  await shoot(page, 'x-kit-loading-traces');
+});
+
+test('x-kit: filter bar with a facet and the custom range open', async ({ page }) => {
+  await open(page, '/traces');
+  await expect(rows(page).first()).toBeVisible();
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: 'Custom' }).click();
+  await main.locator('.facet-btn').first().click();
+  await expect(main.locator('.facet-pop')).toBeVisible();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(OUT, 'studio-x-kit-filters.png') });
 });

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DataTable, type Column, type TableSort } from '../DataTable';
+import { DataTable, ErrorCell, type Column, type TableSort } from '../DataTable';
 import { render, rerender } from './render';
 
 interface Row {
@@ -113,6 +113,36 @@ describe('DataTable rendering', () => {
     expect(bodyRows(c)).toHaveLength(3);
     rerender(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} loading empty="Nothing here" />);
     expect(c.textContent).not.toContain('Nothing here');
+  });
+
+  it('shows six skeleton rows (one cell per visible column) and one Loading status on a first load', () => {
+    setWidth(1200);
+    const c = render(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} loading empty="Nothing here" />);
+    const skeletonRows = c.querySelectorAll('tbody tr.skeleton-row');
+    expect(skeletonRows).toHaveLength(6);
+    expect(skeletonRows[0].querySelectorAll('td')).toHaveLength(3);
+    expect(skeletonRows[0].querySelectorAll('td')[1].classList.contains('dt-right')).toBe(true);
+    expect(c.querySelectorAll('tbody [role="status"]')).toHaveLength(1);
+    expect(c.querySelector('tbody [role="status"]')?.textContent).toBe('Loading');
+    expect(c.textContent).not.toContain('Loading…');
+    // Skeleton rows are not data rows: no row index, never focusable.
+    expect(c.querySelector('tbody tr[data-row-index]')).toBeNull();
+    setWidth(600);
+    expect(c.querySelectorAll('tbody tr.skeleton-row')[0].querySelectorAll('td')).toHaveLength(2);
+  });
+
+  it('keeps real rows (no skeleton) when loading with rows already shown', () => {
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} loading empty="x" />);
+    expect(c.querySelector('.skeleton-row')).toBeNull();
+  });
+
+  it('titles plain-text cells so truncated text keeps a tooltip', () => {
+    setWidth(1200);
+    const c = render(<DataTable columns={COLUMNS} rows={ROWS} rowKey={(r) => r.id} empty="x" />);
+    const [name, tokens, id] = bodyRows(c)[0].querySelectorAll('td');
+    expect(name.title).toBe('alpha');
+    expect(tokens.title).toBe('10 tok');
+    expect(id.title).toBe('a');
   });
 
   it('applies the density class (compact default, comfortable on request)', () => {
@@ -393,5 +423,27 @@ describe('DataTable paging', () => {
     rerender(<DataTable columns={COLUMNS} rows={[]} rowKey={(r) => r.id} page={page(1250)} empty="x" />);
     expect(c.querySelector('.dt-pager-range')?.textContent).toBe('1,234–1,234 of 1,234');
     expect(btn('Previous').disabled).toBe(false);
+  });
+});
+
+describe('ErrorCell', () => {
+  it('renders danger text with an aria-hidden 14px alert icon and a title tooltip', () => {
+    const c = render(<ErrorCell>upstream 529 overloaded</ErrorCell>);
+    const cell = c.querySelector('.dt-error') as HTMLElement;
+    expect(cell.textContent).toBe('upstream 529 overloaded');
+    expect(cell.title).toBe('upstream 529 overloaded');
+    const svg = cell.querySelector('svg') as SVGElement;
+    expect(svg.getAttribute('aria-hidden')).toBe('true');
+    expect(svg.getAttribute('width')).toBe('14');
+    expect(cell.querySelector('.dt-error-text')?.textContent).toBe('upstream 529 overloaded');
+  });
+
+  it('takes an explicit title for non-string content', () => {
+    const c = render(
+      <ErrorCell title="boom: stack">
+        <b>boom</b>
+      </ErrorCell>,
+    );
+    expect((c.querySelector('.dt-error') as HTMLElement).title).toBe('boom: stack');
   });
 });
