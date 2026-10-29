@@ -1,7 +1,7 @@
 import { useEffect, type ReactNode } from 'react';
 import { matchRoute, navigate } from '../router/router';
 import { useRoute } from '../router/useRoute';
-import { Topbar } from '../components/Topbar';
+import { ScreenHeaderHost } from '../shell/ScreenHeader';
 import { SettingsPanel } from '../components/SettingsPanel';
 import { TracesScreen } from './traces/TracesScreen';
 import { ThreadsScreen } from './threads/ThreadsScreen';
@@ -45,13 +45,16 @@ function TraceRoute() {
   return <TraceScreen key={traceId} traceId={traceId} />;
 }
 
-/** Every screen but Agents: the shell top bar over the screen's content. */
+/**
+ * Every screen but Agents: the shell's ScreenHeader (its h1 is the page's h1) over the
+ * screen's content. A screen may render its own `<ScreenHeader … />` to replace the default.
+ */
 function ScreenFrame({ children }: { children: ReactNode }) {
   return (
     <div className="app app-screen">
-      <h1 className="visually-hidden">Agent Forge</h1>
-      <Topbar />
-      <main className="screen-main">{children}</main>
+      <ScreenHeaderHost>
+        <main className="screen-main">{children}</main>
+      </ScreenHeaderHost>
     </div>
   );
 }

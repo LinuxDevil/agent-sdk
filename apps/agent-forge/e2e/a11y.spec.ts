@@ -143,8 +143,11 @@ for (const { label, path } of SCANS) {
     await expect(page.locator('main')).toHaveCount(1);
     await expect(page.getByRole('banner')).toHaveCount(1);
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agent Forge');
-    await expect(page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]')).toHaveCount(1);
+    const current = page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]');
+    await expect(current).toHaveCount(1);
+    // Agents keeps its visually hidden "Agent Forge" h1; every other screen's h1 is its PageHeader title (the nav label).
+    const h1 = path.startsWith('/agents') ? 'Agent Forge' : await current.innerText();
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(h1);
     await expectNoSeriousAxeViolations(page, path);
   });
 }
