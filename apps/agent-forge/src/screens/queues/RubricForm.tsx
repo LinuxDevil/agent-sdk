@@ -87,7 +87,6 @@ function submitOnEnter(e: ReactKeyboardEvent<HTMLTextAreaElement>) {
   e.currentTarget.form?.requestSubmit();
 }
 
-
 /** The quick-pick buttons; picking the chosen value again clears it (back to "not scored"). */
 function ScoreChoices({ name, choices, draft, onChange }: { name: string; choices: number[]; draft: Draft; onChange: (next: Draft) => void }) {
   return (
@@ -155,7 +154,7 @@ function ScoreField({
         name={`comment-${entry.name}`}
         rows={2}
         aria-label={`Comment on ${entry.name} (optional)`}
-        placeholder="Comment (optional)"
+        placeholder="Comment (optional), Shift+↵ for a new line"
         value={draft.comment}
         onKeyDown={submitOnEnter}
         onChange={(e) => onChange({ ...draft, comment: e.target.value })}

@@ -173,7 +173,16 @@ function NoEvaluators({ filtered, creating, onNew }: { filtered: boolean; creati
   if (filtered)
     return (
       <Card as="div">
-        <EmptyState icon={Sparkles} title="No evaluators match these filters" hint={FILTERED_HINT} />
+        <EmptyState
+          icon={Sparkles}
+          title="No evaluators match these filters"
+          hint={FILTERED_HINT}
+          action={
+            <button type="button" className="btn btn-ghost" onClick={() => navigate(evaluatorsPath({ offset: 0 }), { replace: true })}>
+              Clear filters
+            </button>
+          }
+        />
       </Card>
     );
   return (

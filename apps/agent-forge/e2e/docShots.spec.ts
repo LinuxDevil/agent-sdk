@@ -1266,6 +1266,26 @@ test('evals x: new evaluator form (code rule)', async ({ page }) => {
   await shoot(page, 'x-evals-evaluator-new-code');
 });
 
+test('evals x: new evaluator form (LLM judge)', async ({ page }) => {
+  // A stored provider key enables the judge option (no real key is sent anywhere: the route answers in the browser).
+  await page.route('**/settings/providers', (route) =>
+    route.request().method() === 'GET'
+      ? json(route, [
+          { provider: 'openai', hasKey: true, masked: '<your-key>', envKey: false },
+          { provider: 'anthropic', hasKey: false, masked: null, envKey: false },
+        ])
+      : route.fallback(),
+  );
+  await open(page, '/evals/evaluators');
+  await page.getByRole('button', { name: 'New evaluator' }).first().click();
+  const form = page.getByRole('form', { name: 'New evaluator' });
+  await form.getByRole('radio', { name: 'LLM judge' }).check();
+  await form.locator('[name="evaluator-name"]').fill('helpful');
+  await form.locator('[name="evaluator-model"]').fill('gpt-4o-mini');
+  await form.locator('[name="evaluator-rubric"]').fill('Score 1 when the reply answers the customer question with the order status, 0 otherwise.');
+  await shoot(page, 'x-evals-evaluator-new-judge');
+});
+
 test('evals x: evaluator edit view (code rule)', async ({ page }) => {
   await open(page, '/evals/evaluators/e2e-evaluator');
   await expect(page.getByRole('form', { name: 'Edit evaluator' })).toBeVisible();

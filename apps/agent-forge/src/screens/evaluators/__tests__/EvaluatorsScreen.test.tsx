@@ -211,6 +211,15 @@ describe('EvaluatorsScreen list', () => {
     const container = await mountAt('#/evals/evaluators');
     expect(container.querySelector('.empty-state')?.textContent).toContain('No evaluators yet');
     expect(buttonNamed(container.querySelector('.empty-state') as HTMLElement, 'New evaluator')).toBeDefined();
+    expect(buttonNamed(container, 'Clear filters')).toBeUndefined();
+  });
+
+  it('offers Clear filters when the filters match nothing', async () => {
+    rules = [];
+    const container = await mountAt('#/evals/evaluators?kind=judge');
+    expect(container.querySelector('.empty-state')?.textContent).toContain('No evaluators match these filters');
+    await click(buttonNamed(container, 'Clear filters')!);
+    expect(window.location.hash).toBe('#/evals/evaluators');
   });
 
   it('reads the last-run counts in one online-score request, not one per rule', async () => {
