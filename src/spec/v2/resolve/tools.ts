@@ -12,6 +12,7 @@
  * stays in `../tools.ts`.
  */
 import { ConfigurationError } from '../../../execution/errors';
+import { hasEnforcedApproval } from '../../../execution/permissions';
 import { hubTools } from '../../../observe/hubClient';
 import { BUILTIN_TOOL_FACTORIES } from '../../../tools/builtinRegistry';
 import { defineTool, isDefinedTool } from '../../../tools/defineTool';
@@ -52,16 +53,29 @@ function refFlags(ref: ToolRef): { needsApproval?: boolean; deferLoading?: boole
 }
 
 /**
- * `tools` with the ref's flags on each entry: a DefinedTool is spread back
- * into `defineTool` (which re-validates and re-brands it), anything else —
- * a HostedTool — gets a plain copy.
+ * One `tools` entry with `flags` applied: a DefinedTool is spread back into
+ * `defineTool` (which re-validates and re-brands it), anything else — a
+ * HostedTool — gets a plain copy. A tool the install receipt binds to an
+ * enforced approval keeps that 'ask': a spec may defer its loading but may
+ * never relax (`approval: 'never'`) the manifest the code was installed under.
+ */
+function flaggedTool(
+  tool: ToolDescriptor | HostedTool,
+  flags: { needsApproval?: boolean; deferLoading?: boolean }
+): ToolDescriptor | HostedTool {
+  const applicable = hasEnforcedApproval(tool as ToolDescriptor)
+    ? { ...(flags.deferLoading !== undefined && { deferLoading: flags.deferLoading }) }
+    : flags;
+  return isDefinedTool(tool) ? defineTool({ ...tool, ...applicable }) : { ...tool, ...applicable };
+}
+
+/**
+ * `tools` with the ref's flags on each entry, via {@link flaggedTool}.
  */
 function applyRefFlags(tools: ResolvedTools, ref: ToolRef): ResolvedTools {
   const flags = refFlags(ref);
   if (flags === undefined) return tools;
-  return Object.fromEntries(
-    Object.entries(tools).map(([name, tool]) => [name, isDefinedTool(tool) ? defineTool({ ...tool, ...flags }) : { ...tool, ...flags }])
-  );
+  return Object.fromEntries(Object.entries(tools).map(([name, tool]) => [name, flaggedTool(tool, flags)]));
 }
 
 /** The LOUSHO_SPEC_UNSUPPORTED throw for the kinds S05 will resolve. */

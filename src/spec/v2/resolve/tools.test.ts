@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { importModule } from '../../../agentDir/importModule';
+import { hasEnforcedApproval } from '../../../execution/permissions';
 import { isDefinedTool } from '../../../tools/defineTool';
-import type { ToolDescriptor, ToolExecutionContext } from '../../../types';
+import type { ApprovalCheckContext, ToolDescriptor, ToolExecutionContext } from '../../../types';
 import { resolveToolRef } from './tools';
 
 const fixtures = path.join(__dirname, '..', '__fixtures__');
@@ -109,6 +110,15 @@ describe('resolveToolRef { registry }', () => {
     const echo = tools['echo'] as ToolDescriptor;
     expect(echo).not.toBe(await fixtureTool(registryDir, 'tools/echo.ts'));
     await expect(echo.execute?.({ text: 'hi' }, {} as ToolExecutionContext)).resolves.toBe('hi');
+  });
+
+  it("keeps the receipt's enforced approval over the ref's approval 'never'", async () => {
+    const tools = await resolveToolRef({ registry: 'echo-kit', approval: 'never' }, { baseDir: registryDir }, 'tools.0');
+    const echo = tools['echo'] as ToolDescriptor;
+    expect(hasEnforcedApproval(echo)).toBe(true);
+    expect(echo.needsApproval).not.toBe(false);
+    const ask = echo.needsApproval as (args: unknown, ctx: ApprovalCheckContext) => Promise<unknown>;
+    await expect(ask({ text: 'x' }, {} as ApprovalCheckContext)).resolves.toBe('ask');
   });
 
   it('rejects a name the receipt does not record', async () => {
