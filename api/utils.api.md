@@ -68,11 +68,9 @@ interface AgentSettings {
 // @public
 interface AgentStepNode extends NodeRunOptions {
     agent: string;
-    // (undocumented)
     id?: string;
     input?: string;
     outputVariable?: string;
-    // (undocumented)
     type: 'agent';
 }
 

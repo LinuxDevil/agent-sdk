@@ -68,11 +68,9 @@ interface AgentSettings {
 // @public
 export interface AgentStepNode extends NodeRunOptions {
     agent: string;
-    // (undocumented)
     id?: string;
     input?: string;
     outputVariable?: string;
-    // (undocumented)
     type: 'agent';
 }
 
@@ -653,7 +651,6 @@ export type FlowResumeContext = Omit<FlowExecutionContext, 'variables' | 'checkp
 
 // @public
 export interface FlowStepAgent {
-    // (undocumented)
     send(input: string, options?: {
         signal?: AbortSignal;
         parentSpanId?: string;

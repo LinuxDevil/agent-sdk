@@ -334,7 +334,9 @@ export interface LLMCallNode extends NodeRunOptions {
  * ```
  */
 export interface AgentStepNode extends NodeRunOptions {
+  /** Runs a context agent (`FlowExecutionContext.agents[agent]`). */
   type: 'agent';
+  /** The node's optional id, used as its `stepId` (see step ids in docs/flows.md). */
   id?: string;
   /** Key in `FlowExecutionContext.agents`. */
   agent: string;

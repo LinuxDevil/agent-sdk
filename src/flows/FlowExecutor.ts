@@ -64,7 +64,20 @@ import type { FlowPendingApproval } from '../execution/checkpoint';
  * The part of a `createAgent()` agent an `agent` step calls.
  */
 export interface FlowStepAgent {
-  send(input: string, options?: { signal?: AbortSignal; parentSpanId?: string }): Promise<{ text: string; finishReason: string }>;
+  /**
+   * Send one message and resolve with the reply. The `agent` step passes the
+   * flow's `signal` and its own `flow.node agent` span id as `parentSpanId`,
+   * so the agent's `invoke_agent` span nests under the step's span.
+   */
+  send(
+    input: string,
+    options?: { signal?: AbortSignal; parentSpanId?: string }
+  ): Promise<{
+    /** The agent's reply text; stored in the step's `outputVariable`. */
+    text: string;
+    /** Why the run ended; `'awaiting-approval'` fails the step (`LOUSHO_FLOW_EXECUTION_FAILED`). */
+    finishReason: string;
+  }>;
 }
 
 /**
@@ -234,9 +247,19 @@ export interface FlowExecutionEventDataMap {
   'step-retry': FlowStepRetry;
   'variable-set': { variable: string; value: unknown };
   /** An `llmCall` step carries `model`; an `agent` step carries `agent` (its key in `FlowExecutionContext.agents`) instead. */
-  'llm-call': { model?: string; agent?: string; prompt: string };
+  'llm-call': {
+    model?: string;
+    /** The `FlowExecutionContext.agents` key an `agent` step ran; unset on `llmCall` steps. */
+    agent?: string;
+    prompt: string;
+  };
   /** An `llmCall` step carries `usage`; an `agent` step carries `agent` (the agent's own usage is in its `send()` result). */
-  'llm-response': { text: string; usage?: ProviderUsage; agent?: string };
+  'llm-response': {
+    text: string;
+    usage?: ProviderUsage;
+    /** The `FlowExecutionContext.agents` key an `agent` step ran; unset on `llmCall` steps. */
+    agent?: string;
+  };
   'tool-call': { tool: string; arguments: Record<string, unknown> };
   'tool-result': { tool: string; result: unknown };
   'condition-evaluated': { condition: string; result: boolean };
