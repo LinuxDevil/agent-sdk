@@ -74,8 +74,8 @@ describe('loadSpecV2', () => {
     );
   });
 
-  it('throws LOUSHO_SPEC_UNSUPPORTED for a v1 spec with tools until the tools section lands', () => {
+  it('loads a v1 spec with tools as builtin refs', () => {
     const filePath = tmpFile('tools.yaml', 'name: bot\nprompt: Hi\nprovider: { type: mock, model: m }\ntools: [http]\n');
-    expect(() => loadSpecV2(filePath)).toThrow(expect.objectContaining({ code: 'LOUSHO_SPEC_UNSUPPORTED' }));
+    expect(loadSpecV2(filePath).tools).toEqual([{ builtin: 'http_request' }]);
   });
 });

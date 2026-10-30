@@ -11,6 +11,7 @@ import { modelIdSchema, relativePathSchema } from './common';
 import { guardrailListSchema } from './guardrails';
 import { permissionListSchema } from './permissions';
 import { runtimeShape } from './runtime';
+import { toolRefListSchema } from './tools';
 import { pendingField } from './unsupported';
 import type { AgentSpecV2 } from './types';
 
@@ -40,7 +41,7 @@ export const agentSpecV2Shape = {
     .regex(/^[^@\s]+@[^@\s]+$/, "must be 'name@version' or 'name@label', e.g. 'support@prod'")
     .optional(),
   ...runtimeShape,
-  tools: pendingField('tools'),
+  tools: toolRefListSchema.optional(),
   skills: pendingField('skills'),
   memory: pendingField('memory'),
   subagents: pendingField('subagents'),

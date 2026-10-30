@@ -16,6 +16,7 @@ import type { SubagentOptions } from '../../subagents/backgroundTasks';
 import type { GuardrailSpec } from './guardrails';
 import type { McpServerSpecV2 } from './mcpServers';
 import type { PermissionRuleSpec } from './permissions';
+import type { ToolRef } from './tools';
 
 /** AgentSpec v2. Hand-written and kept in lockstep with schema.ts, like v1's AgentSpec. */
 export interface AgentSpecV2 {
@@ -45,7 +46,7 @@ export interface AgentSpecV2 {
   maxSubagentDepth?: number;
   maxHandoffs?: number;
   // Sections not landed yet. Each later ticket replaces exactly its own line.
-  tools?: never; // S04a
+  tools?: ToolRef[]; // S04a
   skills?: never; // S14
   memory?: never; // S13
   subagents?: never; // S08
