@@ -41,4 +41,35 @@ describe('agentSpecV2Schema mcpServers', () => {
     const result = parse([{ name: 'fs', command: 'npx' }]);
     expect(result.success).toBe(false);
   });
+
+  it('accepts a SecretRef in stdio env values', () => {
+    const result = parse({ gh: { command: 'npx', env: { GITHUB_TOKEN: { env: 'GITHUB_TOKEN' }, LOG: 'debug' } } });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a SecretRef in HTTP headers', () => {
+    const result = parse({ api: { url: 'https://x.test/mcp', headers: { Authorization: { secret: 'api-key' } } } });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a SecretRef in oauth.clientSecret', () => {
+    const result = parse({
+      api: { url: 'https://x.test/mcp', oauth: { redirectUri: 'https://a.test/cb', clientId: 'c', clientSecret: { secret: 'cs' } } },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('reports a bad ref at mcpServers.<server>.env.<KEY>.env', () => {
+    const result = parse({ gh: { command: 'npx', env: { T: { env: 'bad name' } } } });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(issuePath(result.error.issues[0])).toBe('mcpServers.gh.env.T.env');
+  });
+
+  it("keeps v1's message for values that are neither strings nor refs", () => {
+    const result = parse({ gh: { command: 'npx', env: { T: 42 } } });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(result.error.issues.some((issue) => issueMessage(issue).includes('must be a map of string to string'))).toBe(true);
+  });
 });

@@ -13,8 +13,8 @@ import type { RateLimitOptions } from '../../providers/rateLimit';
 import type { ReasoningOption } from '../../providers/reasoning';
 import type { BackoffOptions } from '../../providers/resilience';
 import type { SubagentOptions } from '../../subagents/backgroundTasks';
-import type { McpServerSpec } from '../schema';
 import type { GuardrailSpec } from './guardrails';
+import type { McpServerSpecV2 } from './mcpServers';
 
 /** AgentSpec v2. Hand-written and kept in lockstep with schema.ts, like v1's AgentSpec. */
 export interface AgentSpecV2 {
@@ -39,7 +39,7 @@ export interface AgentSpecV2 {
   permissionMode?: PermissionMode;
   approvalTtlMs?: number;
   askQuestion?: boolean;
-  mcpServers?: Record<string, McpServerSpec>; // S03 widens the value type with secret refs
+  mcpServers?: Record<string, McpServerSpecV2>;
   subagentOptions?: Omit<SubagentOptions, 'sessions'>;
   maxSubagentDepth?: number;
   maxHandoffs?: number;
