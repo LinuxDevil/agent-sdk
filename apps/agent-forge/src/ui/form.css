@@ -1,0 +1,166 @@
+/*
+ * Form primitives: Field label/hint/error chrome, the 28px control size,
+ * invalid states, prose/autogrow textareas, the switch wrap and the styled
+ * Checkbox. The base .field/.input/.select/.textarea/.switch rules stay in
+ * base.css; everything below only adds to them.
+ */
+
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.field-required {
+  margin-left: 2px;
+  color: var(--text-faint);
+}
+.field-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-3);
+}
+.field-inline > .field-label {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.field-inline > .hint {
+  flex-basis: 100%;
+}
+.input-sm,
+.select-sm {
+  min-height: 28px;
+  font-size: 12px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+}
+.select-sm {
+  padding-right: 26px;
+  background-position: right 6px center;
+  background-size: 14px 14px;
+}
+.input[aria-invalid='true'],
+.select[aria-invalid='true'],
+.textarea[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+.input[aria-invalid='true']:focus,
+.select[aria-invalid='true']:focus,
+.textarea[aria-invalid='true']:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 24%, transparent);
+}
+.textarea-prose {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.textarea-autogrow {
+  field-sizing: content;
+  min-height: 64px;
+  max-height: 320px;
+  resize: none;
+}
+.switch-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.switch-sm {
+  width: 26px;
+  height: 14px;
+}
+.switch-sm::after {
+  width: 10px;
+  height: 10px;
+}
+.switch-sm.on::after {
+  transform: translateX(12px);
+}
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.checkbox-row {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+  font-size: 13px;
+}
+.checkbox-row-disabled {
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+.checkbox {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface);
+  cursor: inherit;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+.checkbox:checked,
+.checkbox:indeterminate {
+  background: var(--accent-solid);
+  border-color: var(--accent-solid);
+}
+.checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: 1.5px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--on-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.checkbox:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 6.5px;
+  height: 2px;
+  background: var(--on-accent);
+  border-radius: 1px;
+}
+.checkbox:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.checkbox:disabled {
+  opacity: 0.45;
+}
+.checkbox-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.checkbox-label {
+  color: var(--text);
+  font-weight: 500;
+  line-height: 20px;
+}
+.checkbox-description {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checkbox {
+    transition: none;
+  }
+}
