@@ -5,11 +5,14 @@
  * helpers, `{ hub }` through `hubTools()` (no tools when no hub is
  * configured). The ref's `approval`/`deferLoading` flags land on every tool
  * it yields (DefinedTools go back through `defineTool`, which re-validates).
- * `{ file }`, `{ registry }`, `{ integration }` and `{ openapi }` throw
- * LOUSHO_SPEC_UNSUPPORTED here — S04b and S05 replace them. Node-side: the
- * factories pull in `node:*`; the schema stays in `../tools.ts`.
+ * `{ file }` and `{ registry }` load tool code from `host.baseDir` through
+ * `./toolFiles.ts` (the install receipt's permission manifest stays enforced);
+ * `{ integration }` and `{ openapi }` throw LOUSHO_SPEC_UNSUPPORTED here —
+ * S05 replaces them. Node-side: the factories pull in `node:*`; the schema
+ * stays in `../tools.ts`.
  */
 import { ConfigurationError } from '../../../execution/errors';
+import { hasEnforcedApproval } from '../../../execution/permissions';
 import { hubTools } from '../../../observe/hubClient';
 import { BUILTIN_TOOL_FACTORIES } from '../../../tools/builtinRegistry';
 import { defineTool, isDefinedTool } from '../../../tools/defineTool';
@@ -25,6 +28,7 @@ import {
 import type { ToolDescriptor } from '../../../types';
 import { BUILTIN_TOOL_NAMES, TOOL_REF_KINDS, type ToolRef, type ToolRefCommon, type ToolRefKind } from '../tools';
 import type { SecretHost } from './secrets';
+import { fileRefTools, registryRefTools } from './toolFiles';
 
 /** What resolveToolRef needs from the host; S16's host extends it. */
 export interface ToolRefHost extends SecretHost {
@@ -49,19 +53,32 @@ function refFlags(ref: ToolRef): { needsApproval?: boolean; deferLoading?: boole
 }
 
 /**
- * `tools` with the ref's flags on each entry: a DefinedTool is spread back
- * into `defineTool` (which re-validates and re-brands it), anything else —
- * a HostedTool — gets a plain copy.
+ * One `tools` entry with `flags` applied: a DefinedTool is spread back into
+ * `defineTool` (which re-validates and re-brands it), anything else — a
+ * HostedTool — gets a plain copy. A tool the install receipt binds to an
+ * enforced approval keeps that 'ask': a spec may defer its loading but may
+ * never relax (`approval: 'never'`) the manifest the code was installed under.
+ */
+function flaggedTool(
+  tool: ToolDescriptor | HostedTool,
+  flags: { needsApproval?: boolean; deferLoading?: boolean }
+): ToolDescriptor | HostedTool {
+  const applicable = hasEnforcedApproval(tool as ToolDescriptor)
+    ? { ...(flags.deferLoading !== undefined && { deferLoading: flags.deferLoading }) }
+    : flags;
+  return isDefinedTool(tool) ? defineTool({ ...tool, ...applicable }) : { ...tool, ...applicable };
+}
+
+/**
+ * `tools` with the ref's flags on each entry, via {@link flaggedTool}.
  */
 function applyRefFlags(tools: ResolvedTools, ref: ToolRef): ResolvedTools {
   const flags = refFlags(ref);
   if (flags === undefined) return tools;
-  return Object.fromEntries(
-    Object.entries(tools).map(([name, tool]) => [name, isDefinedTool(tool) ? defineTool({ ...tool, ...flags }) : { ...tool, ...flags }])
-  );
+  return Object.fromEntries(Object.entries(tools).map(([name, tool]) => [name, flaggedTool(tool, flags)]));
 }
 
-/** The LOUSHO_SPEC_UNSUPPORTED throw for the kinds S04b/S05 will resolve. */
+/** The LOUSHO_SPEC_UNSUPPORTED throw for the kinds S05 will resolve. */
 function unsupported(kind: ToolRefKind, field: string): never {
   throw new ConfigurationError(
     `AgentSpec v2: '${field}' (${kind} tool reference) cannot be resolved by this version of the SDK.`,
@@ -105,8 +122,10 @@ function hubToolsRecord(host: ToolRefHost): ResolvedTools {
 const RESOLVERS: Record<ToolRefKind, (ref: ToolRef, host: ToolRefHost, field: string) => Promise<ResolvedTools>> = {
   builtin: async (ref, _host, field) =>
     'builtin' in ref ? applyRefFlags(builtinTools(ref.builtin, ref.options, field), ref) : unsupported('builtin', field),
-  registry: async (_ref, _host, field) => unsupported('registry', field),
-  file: async (_ref, _host, field) => unsupported('file', field),
+  registry: async (ref, host, field) =>
+    'registry' in ref ? applyRefFlags(await registryRefTools(ref.registry, host, field), ref) : unsupported('registry', field),
+  file: async (ref, host, field) =>
+    'file' in ref ? applyRefFlags(await fileRefTools(ref.file, host, field), ref) : unsupported('file', field),
   integration: async (_ref, _host, field) => unsupported('integration', field),
   openapi: async (_ref, _host, field) => unsupported('openapi', field),
   hosted: async (ref, _host, field) =>
@@ -116,8 +135,8 @@ const RESOLVERS: Record<ToolRefKind, (ref: ToolRef, host: ToolRefHost, field: st
 
 /**
  * Builds the tools one validated ToolRef stands for. `field` (e.g. 'tools.2')
- * names it in errors. file/registry/integration/openapi throw
- * ConfigurationError LOUSHO_SPEC_UNSUPPORTED here (S04b, S05 replace them).
+ * names it in errors. integration/openapi throw ConfigurationError
+ * LOUSHO_SPEC_UNSUPPORTED here (S05 replaces them).
  */
 export async function resolveToolRef(ref: ToolRef, host: ToolRefHost, field: string): Promise<ResolvedTools> {
   const kind = TOOL_REF_KINDS.find((candidate) => candidate in ref);
