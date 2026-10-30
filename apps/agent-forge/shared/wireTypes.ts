@@ -11,6 +11,7 @@
  * the app over `GET /agents/:id/status` and `WS /agents/:id/stream`.
  */
 import type { AgentEventUsage, CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lousho/build-ai-agent';
+import type { WorkspaceRef } from './workspace';
 
 /**
  * Status pill states the app's agent list / topbar render (as in the
@@ -299,6 +300,16 @@ export interface ForkRunResponse {
 
 /** `GET /runs/compare?a=&b=` - `compareTrajectories(a, b)`. */
 export type RunComparisonPayload = TrajectoryComparison;
+
+/**
+ * `GET /workspace`'s response: `baseDir` is the workspace root the client
+ * keys its draft cache by (unchanged); `workspace` is the full ref so the
+ * client can address this workspace by id on later requests.
+ */
+export interface WorkspaceInfo {
+  baseDir: string;
+  workspace: WorkspaceRef;
+}
 
 /** One `POST /playground/run` message (server/playground.ts; the Playground screen's editor rows). */
 export interface PlaygroundMessage {

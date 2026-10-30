@@ -45,6 +45,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { ProviderKeyStatus } from '../shared/wireTypes';
+import type { StudioPaths } from './workspace/studioPaths';
 
 /** Providers this app manages stored keys for - matches `src/providers/` real (non-mock) provider types that take a plain API key (not `ollama`, which uses a base URL instead - see `PROVIDER_ENV_TABLE` in `src/providers/resolveProvider.ts`). */
 const SECRET_PROVIDERS = ['openai', 'anthropic'] as const;
@@ -77,10 +78,22 @@ export class SecretsStore {
   private readonly keyFile: string;
   private readonly secretsFile: string;
 
-  constructor(baseDir: string) {
-    this.dir = path.join(baseDir, '.lousho');
-    this.keyFile = path.join(this.dir, 'secrets.key');
-    this.secretsFile = path.join(this.dir, 'secrets.json');
+  /**
+   * `location` is either the legacy base directory (the files live at
+   * `<baseDir>/.lousho/secrets.{json,key}`) or the `secrets`/`secretsKey`
+   * paths of `studioPaths()` (constructed once while wiring - handlers
+   * never compute file locations themselves).
+   */
+  constructor(location: string | Pick<StudioPaths, 'secrets' | 'secretsKey'>) {
+    if (typeof location === 'string') {
+      this.dir = path.join(location, '.lousho');
+      this.keyFile = path.join(this.dir, 'secrets.key');
+      this.secretsFile = path.join(this.dir, 'secrets.json');
+    } else {
+      this.secretsFile = location.secrets;
+      this.keyFile = location.secretsKey;
+      this.dir = path.dirname(this.secretsFile);
+    }
   }
 
   private ensureDir(): void {

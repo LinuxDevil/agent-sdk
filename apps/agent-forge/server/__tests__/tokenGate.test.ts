@@ -139,7 +139,7 @@ describe('studio token gate (path variants)', () => {
     expect(agents.status).toBe(200);
     expect(Array.isArray(agents.body)).toBe(true);
     expect((await request(app).get(`/settings/providers?token=${TOKEN}`)).status).toBe(200);
-    expect((await request(app).get('/workspace').set(STUDIO_TOKEN_HEADER, TOKEN)).body).toEqual({ baseDir });
+    expect((await request(app).get('/workspace').set(STUDIO_TOKEN_HEADER, TOKEN)).body.baseDir).toBe(baseDir);
     // Reaches the playground handler (a validation error, not the gate).
     const run = await request(app).post('/playground/run').set(STUDIO_TOKEN_HEADER, TOKEN).send({});
     expect(run.status).toBe(400);

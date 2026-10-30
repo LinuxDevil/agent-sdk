@@ -79,6 +79,14 @@ describe('SettingsStore', () => {
     expect(() => store.removeProfile('local')).toThrow(/last remaining/);
   });
 
+  it('writes to the given file when constructed with a paths object instead of a baseDir', () => {
+    const settings = path.join(baseDir, 'custom-home', 'settings.json');
+    const fromPaths = new SettingsStore({ settings });
+    fromPaths.setActive('staging');
+    expect(fs.existsSync(settings)).toBe(true);
+    expect(new SettingsStore({ settings }).list().activeProfileId).toBe('staging');
+  });
+
   it('falls back to defaults if the settings file is corrupted', () => {
     fs.mkdirSync(path.join(baseDir, '.lousho'), { recursive: true });
     fs.writeFileSync(path.join(baseDir, '.lousho', 'settings.json'), 'not json', 'utf8');

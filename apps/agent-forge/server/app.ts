@@ -7,7 +7,7 @@
  *   GET  /agents/:id                 -> AgentSpec | 404
  *   PUT  /agents/:id                 -> save an AgentSpec to disk (body: AgentSpec)
  *   DELETE /agents/:id               -> remove the saved spec, 204
- *   GET  /workspace                  -> { baseDir } - the directory `.lousho/` lives under
+ *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
@@ -26,6 +26,9 @@
  * the same underlying http.Server, since `ws` needs the raw HTTP upgrade
  * event rather than an Express route).
  *
+ * Every route reads its workspace from workspaceOf(req) (header
+ * x-lousho-workspace or ?ws=, else the launch folder).
+ *
  * Built on Express (over Fastify): this SDK's only existing local server
  * (src/cli/dev.ts) is hand-rolled `node:http`, so there's no established
  * in-repo convention to match either way. Express is chosen for its
@@ -38,7 +41,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import { ConfigurationError, SDKError, type AgentSpec, type ForkPatch } from '@lousho/build-ai-agent';
-import { TriggerRegistry } from '@lousho/build-ai-agent/triggers';
 import type { AgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,
@@ -51,7 +53,11 @@ import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { ForkRunRequest, ForkRunResponse, SettingsProfile } from '../shared/wireTypes';
+import type { ForkRunRequest, ForkRunResponse, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import { chatTriggersFor, singleWorkspace, type WorkspaceContext } from './workspace/context';
+import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
+import { configureStudioHome } from './workspace/studioPaths';
+import { workspaceRefFor } from './workspace/workspaceId';
 import {
   DEFAULT_TRACE_LIMIT,
   MAX_TRACE_LIMIT,
@@ -68,14 +74,19 @@ import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { withAgentLock } from './storage/atomic';
 
-export interface CreateAppOptions {
-  agentStore: AgentStore;
-  runManager: RunManager;
-  /** Directory `.lousho/**` lives under - same `baseDir` the server was started with. Required for R1/R2/R3's routes. */
+interface CreateAppBaseOptions {
+  /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
   baseDir: string;
-  /** Defaults to `new SecretsStore(baseDir)` when omitted. */
+  /**
+   * The Studio home directory every Studio-global file lives under
+   * (settings, secrets, Author sessions, … - see workspace/studioPaths.ts).
+   * Defaults to `<baseDir>/.lousho` today, which keeps every file exactly
+   * where it was; a later change moves the default to `~/.lousho/studio`.
+   */
+  studioHome?: string;
+  /** Defaults to `new SecretsStore(studioPaths())` when omitted. */
   secretsStore?: SecretsStore;
-  /** Defaults to `new SettingsStore(baseDir)` when omitted. */
+  /** Defaults to `new SettingsStore(studioPaths())` when omitted. */
   settingsStore?: SettingsStore;
   /**
    * Directory holding the pre-built Agent Forge client (the
@@ -101,6 +112,23 @@ export interface CreateAppOptions {
   /** The judge `POST /observe/api/v1/evaluators/:id/test` runs for a judge rule (tests); default the real model call (judge.ts). */
   judge?: JudgeFn;
 }
+
+/**
+ * How `createApp` learns the workspace it serves: either an already-built
+ * `WorkspaceContext` (startStudioServer's real one, or a test's stub) or
+ * the legacy `{agentStore, runManager}` pair existing tests pass, which
+ * `createApp` wraps in a context for the launch folder.
+ */
+type CreateAppWorkspaceOptions =
+  | { workspace: WorkspaceContext; agentStore?: never; runManager?: never }
+  | { workspace?: undefined; agentStore: AgentStore; runManager: RunManager };
+
+/**
+ * `createApp`'s options: the launch folder and Studio-global services,
+ * plus exactly one way of describing the workspace it serves (a built
+ * `WorkspaceContext`, or the legacy `{agentStore, runManager}` pair).
+ */
+export type CreateAppOptions = CreateAppBaseOptions & CreateAppWorkspaceOptions;
 
 /** Path prefixes of the API (everything except `/health` and the static client). */
 const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe', '/playground'];
@@ -158,19 +186,19 @@ function respondWithMappedError(res: Response, error: unknown, mappings: [ErrorC
   res.status(match[1]).json({ error: (error as Error).message });
 }
 
-/** Saved-agent CRUD: list, load, save. */
-function registerAgentRoutes(app: Express, agentStore: AgentStore): void {
+/** Saved-agent CRUD: list, load, save - all on the request's workspace (`workspaceOf(req).agentStore`). */
+function registerAgentRoutes(app: Express): void {
   app.get(
     '/agents',
-    asyncRoute(async (_req, res) => {
-      res.json(await agentStore.list());
+    asyncRoute(async (req, res) => {
+      res.json(await workspaceOf(req).agentStore.list());
     })
   );
 
   app.get(
     '/agents/:id',
     asyncRoute(async (req, res) => {
-      const spec = await agentStore.load(paramId(req));
+      const spec = await workspaceOf(req).agentStore.load(paramId(req));
       if (!spec) {
         res.status(404).json({ error: `No saved agent '${paramId(req)}'` });
         return;
@@ -188,7 +216,7 @@ function registerAgentRoutes(app: Express, agentStore: AgentStore): void {
           res.status(400).json({ error: 'Request body must be a valid AgentSpec' });
           return;
         }
-        await agentStore.save(paramId(req), spec);
+        await workspaceOf(req).agentStore.save(paramId(req), spec);
         res.status(204).end();
       });
     })
@@ -198,7 +226,7 @@ function registerAgentRoutes(app: Express, agentStore: AgentStore): void {
     '/agents/:id',
     asyncRoute(async (req, res) => {
       await withAgentLock(paramId(req), async () => {
-        await agentStore.remove(paramId(req));
+        await workspaceOf(req).agentStore.remove(paramId(req));
         res.status(204).end();
       });
     })
@@ -207,16 +235,18 @@ function registerAgentRoutes(app: Express, agentStore: AgentStore): void {
 
 /**
  * The workspace the studio serves - the client keys its draft
- * cache by it, so unsaved edits never leak into another project's studio.
+ * cache by `baseDir`, so unsaved edits never leak into another project's
+ * studio, and reads `workspace` to address this workspace by id.
  */
-function registerWorkspaceRoute(app: Express, baseDir: string): void {
-  app.get('/workspace', (_req, res) => {
-    res.json({ baseDir: path.resolve(baseDir) });
+function registerWorkspaceRoute(app: Express): void {
+  app.get('/workspace', (req, res) => {
+    const ws = workspaceOf(req);
+    res.json({ baseDir: ws.ref.root, workspace: ws.ref } satisfies WorkspaceInfo);
   });
 }
 
-/** Run lifecycle: start, stop, status, and resolving a pending tool approval. */
-function registerRunRoutes(app: Express, runManager: RunManager): void {
+/** Run lifecycle: start, stop, status, and resolving a pending tool approval (all on `workspaceOf(req).runs`). */
+function registerRunRoutes(app: Express): void {
   app.post(
     '/agents/:id/run',
     asyncRoute(async (req, res) => {
@@ -226,8 +256,9 @@ function registerRunRoutes(app: Express, runManager: RunManager): void {
         return;
       }
       try {
-        await runManager.run(paramId(req), input, spec);
-        res.status(202).json(runManager.status(paramId(req)));
+        const runs = workspaceOf(req).runs;
+        await runs.run(paramId(req), input, spec);
+        res.status(202).json(runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [
           [AlreadyRunningError, 409],
@@ -240,12 +271,13 @@ function registerRunRoutes(app: Express, runManager: RunManager): void {
   );
 
   app.post('/agents/:id/stop', (req, res) => {
-    runManager.stop(paramId(req));
-    res.status(202).json(runManager.status(paramId(req)));
+    const runs = workspaceOf(req).runs;
+    runs.stop(paramId(req));
+    res.status(202).json(runs.status(paramId(req)));
   });
 
   app.get('/agents/:id/status', (req, res) => {
-    res.json(runManager.status(paramId(req)));
+    res.json(workspaceOf(req).runs.status(paramId(req)));
   });
 
   app.post(
@@ -263,8 +295,9 @@ function registerRunRoutes(app: Express, runManager: RunManager): void {
         return;
       }
       try {
-        await runManager.approve(paramId(req), approvalId, approved, note);
-        res.status(202).json(runManager.status(paramId(req)));
+        const runs = workspaceOf(req).runs;
+        await runs.approve(paramId(req), approvalId, approved, note);
+        res.status(202).json(runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [
           [NoActiveRunError, 409],
@@ -298,38 +331,43 @@ function parseForkRequest(body: Partial<ForkRunRequest> | undefined): { fromStep
   return { fromStep: fromStep as number, patch };
 }
 
-/** The persisted traces of an agent's runs (files under `.lousho/agents/<id>/traces`, the ones `lousho traces` reads). */
-function registerTraceRoutes(app: Express, agentStore: AgentStore, baseDir: string): void {
-  const known = async (id: string) => traceDirExists(baseDir, id) || (await agentStore.load(id)) !== undefined;
+/** `true` when the workspace knows the agent id - a saved spec, or a traces dir from a run whose spec was never saved. */
+async function knownAgent(ws: WorkspaceContext, id: string): Promise<boolean> {
+  return traceDirExists(ws.ref.root, id) || (await ws.agentStore.load(id)) !== undefined;
+}
 
+/** The persisted traces of an agent's runs (files under `.lousho/agents/<id>/traces`, the ones `lousho traces` reads). */
+function registerTraceRoutes(app: Express): void {
   app.get(
     '/agents/:id/traces',
     asyncRoute(async (req, res) => {
+      const ws = workspaceOf(req);
       const raw = Number.parseInt(String(req.query.limit ?? ''), 10);
       const limit = Number.isInteger(raw) && raw > 0 ? Math.min(raw, MAX_TRACE_LIMIT) : DEFAULT_TRACE_LIMIT;
-      if (!(await known(paramId(req)))) {
+      if (!(await knownAgent(ws, paramId(req)))) {
         res.status(404).json({ error: `No saved agent '${paramId(req)}'` });
         return;
       }
-      res.json({ traces: await listAgentTraces(baseDir, paramId(req), limit) });
+      res.json({ traces: await listAgentTraces(ws.ref.root, paramId(req), limit) });
     })
   );
 
   app.get(
     '/agents/:id/traces/:traceId',
     asyncRoute(async (req, res) => {
+      const ws = workspaceOf(req);
       const traceId = Array.isArray(req.params.traceId) ? req.params.traceId[0] : req.params.traceId;
       if (!isValidTraceId(traceId)) {
         res.status(400).json({ error: 'Invalid trace id' });
         return;
       }
-      if (!(await known(paramId(req)))) {
+      if (!(await knownAgent(ws, paramId(req)))) {
         res.status(404).json({ error: `No saved agent '${paramId(req)}'` });
         return;
       }
       let spans;
       try {
-        spans = await readAgentTrace(baseDir, paramId(req), traceId);
+        spans = await readAgentTrace(ws.ref.root, paramId(req), traceId);
       } catch (error) {
         if (error instanceof SDKError) {
           res.status(400).json({ error: error.message });
@@ -347,7 +385,7 @@ function registerTraceRoutes(app: Express, agentStore: AgentStore, baseDir: stri
 }
 
 /** Time travel: a run's step history, forking it from a step, and comparing two runs. */
-function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
+function registerTimeTravelRoutes(app: Express): void {
   app.get(
     '/runs/compare',
     asyncRoute(async (req, res) => {
@@ -356,7 +394,7 @@ function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
         res.status(400).json({ error: "Query must include valid run ids 'a' and 'b'" });
         return;
       }
-      const comparison = await runManager.compare(a, b);
+      const comparison = await workspaceOf(req).runs.compare(a, b);
       if (!comparison) {
         res.status(404).json({ error: `No checkpoint for run '${a}' or '${b}'` });
         return;
@@ -368,7 +406,7 @@ function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
   app.get(
     '/runs/:id/history',
     asyncRoute(async (req, res) => {
-      const steps = await runManager.history(paramId(req));
+      const steps = await workspaceOf(req).runs.history(paramId(req));
       if (!steps) {
         res.status(404).json({ error: `No checkpoint history for run '${paramId(req)}'` });
         return;
@@ -386,8 +424,9 @@ function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
         return;
       }
       try {
-        const runId = await runManager.fork(paramId(req), parsed.fromStep, parsed.patch);
-        res.status(202).json({ runId, fromStep: parsed.fromStep, status: runManager.status(runId) } satisfies ForkRunResponse);
+        const runs = workspaceOf(req).runs;
+        const runId = await runs.fork(paramId(req), parsed.fromStep, parsed.patch);
+        res.status(202).json({ runId, fromStep: parsed.fromStep, status: runs.status(runId) } satisfies ForkRunResponse);
       } catch (error) {
         respondWithMappedError(res, error, [
           [AgentNotFoundError, 404],
@@ -400,7 +439,7 @@ function registerTimeTravelRoutes(app: Express, runManager: RunManager): void {
 }
 
 /** Chat transport and multi-session history. */
-function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistry: TriggerRegistry): void {
+function registerChatRoutes(app: Express): void {
   // Chat transport. `POST /agents/:id/message` appends a user message
   // and either continues the agent's existing conversation or starts a
   // fresh one (see RunManager.sendMessage()'s doc comment for the exact
@@ -416,9 +455,10 @@ function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistr
         return;
       }
       try {
-        const chatTrigger = triggerRegistry.get('chat') as ChatTriggerAdapter;
+        const ws = workspaceOf(req);
+        const chatTrigger = ws.chatTriggers.get('chat') as ChatTriggerAdapter;
         await chatTrigger.trigger(paramId(req), message, spec);
-        res.status(202).json(runManager.status(paramId(req)));
+        res.status(202).json(ws.runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [
           [AlreadyRunningError, 409],
@@ -434,17 +474,17 @@ function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistr
   // stream's initial `{type:'chat'}` push, for a client that wants it
   // without opening a socket).
   app.get('/agents/:id/chat', (req, res) => {
-    res.json(runManager.chatState(paramId(req)));
+    res.json(workspaceOf(req).runs.chatState(paramId(req)));
   });
 
   // Multi-session chat history - archives the current transcript and
   // starts a new, empty one.
   app.post('/agents/:id/chat/new', (req, res) => {
-    res.json(runManager.newChat(paramId(req)));
+    res.json(workspaceOf(req).runs.newChat(paramId(req)));
   });
 
   app.get('/agents/:id/chats', (req, res) => {
-    res.json(runManager.listChats(paramId(req)));
+    res.json(workspaceOf(req).runs.listChats(paramId(req)));
   });
 
   app.get('/agents/:id/chats/:sessionId', (req, res) => {
@@ -453,7 +493,7 @@ function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistr
       res.status(400).json({ error: 'Invalid session id' });
       return;
     }
-    const record = runManager.loadChatSession(paramId(req), sessionId);
+    const record = workspaceOf(req).runs.loadChatSession(paramId(req), sessionId);
     if (!record) {
       res.status(404).json({ error: `No chat session '${sessionId}' for agent '${paramId(req)}'` });
       return;
@@ -463,12 +503,12 @@ function registerChatRoutes(app: Express, runManager: RunManager, triggerRegistr
 }
 
 /** Step-debugger controls. */
-function registerDebugRoutes(app: Express, runManager: RunManager): void {
+function registerDebugRoutes(app: Express): void {
   // Step-through debugger controls (Topbar's "Debug" button). See
   // debugController.ts for exactly what "breakpoint"/"paused" mean given
   // AgentExecutor's real control surface.
   app.get('/agents/:id/debug', (req, res) => {
-    res.json(runManager.debugState(paramId(req)));
+    res.json(workspaceOf(req).runs.debugState(paramId(req)));
   });
 
   app.put(
@@ -479,19 +519,22 @@ function registerDebugRoutes(app: Express, runManager: RunManager): void {
         res.status(400).json({ error: "Request body must include a 'breakpoints' string array" });
         return;
       }
-      runManager.setBreakpoints(paramId(req), breakpoints);
-      res.json(runManager.debugState(paramId(req)));
+      const runs = workspaceOf(req).runs;
+      runs.setBreakpoints(paramId(req), breakpoints);
+      res.json(runs.debugState(paramId(req)));
     }
   );
 
   app.post('/agents/:id/debug/continue', (req, res) => {
-    runManager.continueRun(paramId(req));
-    res.json(runManager.debugState(paramId(req)));
+    const runs = workspaceOf(req).runs;
+    runs.continueRun(paramId(req));
+    res.json(runs.debugState(paramId(req)));
   });
 
   app.post('/agents/:id/debug/step', (req, res) => {
-    runManager.stepRun(paramId(req));
-    res.json(runManager.debugState(paramId(req)));
+    const runs = workspaceOf(req).runs;
+    runs.stepRun(paramId(req));
+    res.json(runs.debugState(paramId(req)));
   });
 }
 
@@ -594,7 +637,7 @@ function registerProfileRoutes(app: Express, settings: SettingsStore): void {
   });
 }
 
-function registerDeployRoutes(app: Express, agentStore: AgentStore, baseDir: string): void {
+function registerDeployRoutes(app: Express): void {
   // ---------------------------------------------------------------------
   // Deploy target picker + "Deploy this agent" action.
   // ---------------------------------------------------------------------
@@ -610,12 +653,13 @@ function registerDeployRoutes(app: Express, agentStore: AgentStore, baseDir: str
         res.status(400).json({ error: `'adapter' must be one of: ${DEPLOY_ADAPTERS.join(', ')}` });
         return;
       }
-      const saved = await agentStore.load(paramId(req));
+      const ws = workspaceOf(req);
+      const saved = await ws.agentStore.load(paramId(req));
       if (!saved) {
         res.status(404).json({ error: `No saved agent '${paramId(req)}' to deploy - save it first` });
         return;
       }
-      const result = await runDeploy(baseDir, paramId(req), adapter);
+      const result = await runDeploy(ws.ref.root, paramId(req), adapter);
       res.status(result.exitCode === 0 ? 200 : 422).json(result);
     })
   );
@@ -640,17 +684,31 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
   }
 }
 
-export function createApp({
-  agentStore,
-  runManager,
-  baseDir,
-  secretsStore,
-  settingsStore,
-  staticDir,
-  access,
-  playgroundObserve,
-  judge,
-}: CreateAppOptions): Express {
+/**
+ * The context the `workspaceMiddleware` serves when the caller passed the
+ * legacy `{agentStore, runManager}` form instead of a ready-built
+ * `workspace`: the launch folder's ref around those two stores.
+ */
+function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
+  if (options.workspace) return options.workspace;
+  return {
+    ref: workspaceRefFor(options.baseDir),
+    agentStore: options.agentStore,
+    runs: options.runManager,
+    chatTriggers: chatTriggersFor(options.runManager),
+  };
+}
+
+export function createApp(options: CreateAppOptions): Express {
+  const { baseDir, staticDir, access, playgroundObserve, judge } = options;
+  // The Studio home is process-wide and configured once, here, before any
+  // request is served; request handlers never call studioPaths() - the
+  // stores below close over the paths resolved now.
+  const paths = configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
+  const secrets = options.secretsStore ?? new SecretsStore(paths);
+  const settings = options.settingsStore ?? new SettingsStore(paths);
+  const workspace = defaultWorkspaceContext(options);
+
   const app = express();
   // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`
   // used to reach its handler past a case-sensitive gate. Set before the first
@@ -673,16 +731,11 @@ export function createApp({
     next();
   });
   app.use(express.json({ limit: '2mb' }));
-
-  const secrets = secretsStore ?? new SecretsStore(baseDir);
-  const settings = settingsStore ?? new SettingsStore(baseDir);
-
-  // `POST /agents/:id/message` below is routed through a
-  // TriggerRegistry-registered ChatTriggerAdapter rather than calling
-  // `runManager.sendMessage()` directly - see chatTriggerAdapter.ts for why
-  // this is a behavior-preserving wrapper, not a rewrite.
-  const triggerRegistry = new TriggerRegistry();
-  triggerRegistry.register('chat', new ChatTriggerAdapter(runManager));
+  // Resolve every request's workspace before the first route so handlers
+  // read their per-workspace stores from workspaceOf(req), never a
+  // closed-over singleton. Studio serves exactly one workspace today -
+  // the launch folder - so this changes nothing user-visible.
+  app.use(workspaceMiddleware(singleWorkspace(workspace)));
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
 
@@ -701,16 +754,16 @@ export function createApp({
     next();
   });
 
-  registerAgentRoutes(app, agentStore);
-  registerWorkspaceRoute(app, baseDir);
-  registerRunRoutes(app, runManager);
-  registerChatRoutes(app, runManager, triggerRegistry);
-  registerDebugRoutes(app, runManager);
-  registerTimeTravelRoutes(app, runManager);
-  registerTraceRoutes(app, agentStore, baseDir);
+  registerAgentRoutes(app);
+  registerWorkspaceRoute(app);
+  registerRunRoutes(app);
+  registerChatRoutes(app);
+  registerDebugRoutes(app);
+  registerTimeTravelRoutes(app);
+  registerTraceRoutes(app);
   registerProviderKeyRoutes(app, secrets);
   registerProfileRoutes(app, settings);
-  registerDeployRoutes(app, agentStore, baseDir);
+  registerDeployRoutes(app);
   registerPlaygroundRoute(app, { secretsStore: secrets, baseDir, ...(playgroundObserve ? { observe: playgroundObserve } : {}) });
   // The observe panels' read path: `/observe/**` -> the `lousho observe`
   // daemon (see observeProxy.ts), plus its small write allowlist (feedback
