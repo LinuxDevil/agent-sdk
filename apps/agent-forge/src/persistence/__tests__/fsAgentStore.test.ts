@@ -1,8 +1,10 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec, AgentSpecV2 } from '@lousho/build-ai-agent';
+import { AgentRepo } from '../../../server/storage/agentRepo';
 import { createFsAgentStore } from '../fsAgentStore';
 
 const spec: AgentSpec = {
@@ -22,7 +24,7 @@ describe('createFsAgentStore', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('writes a spec to .lousho/agents/<id>.yaml and reads it back via loadSpec()', async () => {
+  it('writes a spec to .lousho/agents/<id>.yaml and reads it back through the v1 facade', async () => {
     const store = createFsAgentStore(tmpDir);
     await store.save('ops-pipeline', spec);
 
@@ -31,6 +33,46 @@ describe('createFsAgentStore', () => {
 
     const loaded = await store.load('ops-pipeline');
     expect(loaded).toEqual(spec);
+  });
+
+  it('stores the spec v2 working copy on disk', async () => {
+    const store = createFsAgentStore(tmpDir);
+    await store.save('ops-pipeline', spec);
+
+    const filePath = path.join(tmpDir, '.lousho', 'agents', 'ops-pipeline.yaml');
+    const onDisk = parseYaml(fs.readFileSync(filePath, 'utf8')) as Record<string, unknown>;
+    expect(onDisk.version).toBe(2);
+    expect(onDisk.model).toBe('mock/mock-1');
+    expect(onDisk.instructions).toBe('Coordinate the ops pipeline.');
+    expect(onDisk).not.toHaveProperty('prompt');
+    expect(onDisk).not.toHaveProperty('provider');
+  });
+
+  it('keeps v2-only keys (description, skills, guardrail ids) when a v1 save only changes the prompt', async () => {
+    const repo = new AgentRepo(tmpDir);
+    const store = createFsAgentStore(tmpDir, repo);
+    const stored = {
+      version: 2,
+      name: 'ops-pipeline',
+      model: 'mock/mock-1',
+      instructions: 'old prompt',
+      description: 'kept across saves',
+      skills: [{ registry: 'summarizer' }],
+      guardrails: [{ id: 'g9', name: 'pii' }],
+    } as unknown as AgentSpecV2;
+    await repo.writeSpec('ops-pipeline', stored);
+
+    const legacy = (await store.load('ops-pipeline'))!;
+    await store.save('ops-pipeline', { ...legacy, prompt: 'new prompt' });
+
+    const after = (await repo.readSpec('ops-pipeline'))! as AgentSpecV2 & {
+      description?: string;
+      skills?: unknown[];
+    };
+    expect(after.instructions).toBe('new prompt');
+    expect(after.description).toBe('kept across saves');
+    expect(after.skills).toEqual([{ registry: 'summarizer' }]);
+    expect(after.guardrails).toEqual([{ id: 'g9', name: 'pii' }]);
   });
 
   it('returns undefined for a missing id and empty list before any save', async () => {

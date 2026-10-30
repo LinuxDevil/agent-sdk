@@ -5,6 +5,7 @@ import { TriggerRegistry } from '@lousho/build-ai-agent/triggers';
 import { ALL_WORKSPACES } from '../../../shared/workspace';
 import type { AgentStore } from '../../../src/persistence/AgentStore';
 import type { RunManager } from '../../runRegistry';
+import { AgentRepo } from '../../storage/agentRepo';
 import { singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from '../context';
 import { requestedWorkspaceId, workspaceMiddleware, workspaceOf } from '../middleware';
 
@@ -18,6 +19,7 @@ const emptyStore: AgentStore = {
 function ctx(id: string): WorkspaceContext {
   return {
     ref: { id, name: id, root: `/root/${id}`, addedAt: 'a', lastOpenedAt: 'a' },
+    repo: new AgentRepo(`/root/${id}`),
     agentStore: emptyStore,
     runs: {} as RunManager,
     chatTriggers: new TriggerRegistry(),

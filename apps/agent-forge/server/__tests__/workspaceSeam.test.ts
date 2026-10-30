@@ -13,6 +13,7 @@ import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import type { AgentStore, AgentStoreEntry } from '../../src/persistence/AgentStore';
 import { WORKSPACE_ID_RE } from '../../shared/workspace';
 import { workspaceIdFor, workspaceRefFor } from '../workspace/workspaceId';
+import { AgentRepo } from '../storage/agentRepo';
 import type { WorkspaceContext } from '../workspace/context';
 
 const SPEC: AgentSpec = {
@@ -100,6 +101,7 @@ describe('workspace seam', () => {
     const status = vi.fn().mockReturnValue({ agentId: 'x', status: 'idle', updatedAt: 't' });
     const workspace: WorkspaceContext = {
       ref: workspaceRefFor(baseDir),
+      repo: new AgentRepo(baseDir),
       agentStore: {
         list: async () => entries,
         load: async () => undefined,

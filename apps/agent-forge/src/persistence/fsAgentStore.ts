@@ -1,18 +1,21 @@
-import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { stringify as stringifyYaml } from 'yaml';
-import { loadSpec, type AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec } from '@lousho/build-ai-agent';
 import type { AgentStore, AgentStoreEntry } from './AgentStore';
-import { isValidAgentId } from '../../shared/agentId';
-import { writeFileAtomic } from '../../server/storage/atomic';
+import { AgentRepo } from '../../server/storage/agentRepo';
+import { mergeLegacySave, toLegacySpec } from '../../server/storage/legacySpec';
+import { withAgentLock } from '../../server/storage/atomic';
 
 /**
- * Filesystem-backed `AgentStore`, saving/loading plain `AgentSpec` YAML
- * files under `<baseDir>/.lousho/agents/<id>.yaml`. Deliberately reuses the
- * core SDK's `loadSpec()` for reading (so files this store writes validate
- * and load exactly the way any other AgentSpec YAML file does) and the same
- * `yaml` package for writing - there is only one AgentSpec file format in
- * this repo, not a second bespoke one for the app.
+ * Filesystem-backed `AgentStore` - a v1 facade over `AgentRepo`, which owns
+ * `<baseDir>/.lousho/agents/<id>.yaml` as an AgentSpec v2 working copy plus
+ * the `meta.json` / `layout.json` / `working.json` sidecars.
+ *
+ * Every caller of this interface (the routes, RunManager, deploy) still
+ * speaks AgentSpec v1, so reads project the stored spec down
+ * (`toLegacySpec`) and saves merge the v1 body onto the stored v2 spec
+ * (`mergeLegacySave`) - the file on disk is v2 while nothing user-visible
+ * changes. The `save` read-modify-write runs inside `withAgentLock(id)`;
+ * `AgentRepo` itself stays lock-free.
  *
  * The studio server (server/index.ts) serves this store over
  * `GET/PUT/DELETE /agents`, and the browser app reads it through
@@ -24,49 +27,47 @@ export function agentSpecFilePath(baseDir: string, id: string): string {
   return path.join(baseDir, '.lousho', 'agents', `${id}.yaml`);
 }
 
-export function createFsAgentStore(baseDir: string): AgentStore {
-  const agentsDir = path.join(baseDir, '.lousho', 'agents');
-
-  function filePath(id: string): string {
-    return agentSpecFilePath(baseDir, id);
-  }
-
+/**
+ * The `AgentStore` over `baseDir`'s `.lousho/agents`. `repo` is the
+ * `AgentRepo` for the same workspace root - the workspace context passes
+ * its own so every per-workspace store shares one repo; it defaults to a
+ * fresh `AgentRepo(baseDir)` for callers that only want the store.
+ */
+export function createFsAgentStore(baseDir: string, repo: AgentRepo = new AgentRepo(baseDir)): AgentStore {
   return {
     async list(): Promise<AgentStoreEntry[]> {
-      if (!fs.existsSync(agentsDir)) return [];
-      const files = fs.readdirSync(agentsDir).filter((f) => f.endsWith('.yaml') || f.endsWith('.yml'));
       const entries: AgentStoreEntry[] = [];
-      for (const file of files) {
-        const id = file.replace(/\.ya?ml$/, '');
+      for (const id of repo.listIds()) {
         // The studio lists this directory now, so one hand-edited
-        // file that no longer parses (or an id the API would reject) is
-        // skipped instead of failing the whole list.
-        if (!isValidAgentId(id)) continue;
+        // file that no longer parses is skipped instead of failing the
+        // whole list (repo.listIds already filtered invalid ids).
         try {
-          const stat = fs.statSync(path.join(agentsDir, file));
-          entries.push({ id, spec: loadSpec(path.join(agentsDir, file)), updatedAt: stat.mtime.toISOString() });
+          const spec = await repo.readSpec(id);
+          if (spec === undefined) continue;
+          entries.push({ id, spec: toLegacySpec(spec), updatedAt: repo.updatedAt(id) });
         } catch (error) {
-          console.warn(`[agent-forge] skipping unreadable agent spec '${file}': ${(error as Error).message}`);
+          console.warn(`[agent-forge] skipping unreadable agent spec '${id}': ${(error as Error).message}`);
         }
       }
-      return entries.sort((a, b) => a.id.localeCompare(b.id));
+      return entries;
     },
 
     async load(id: string): Promise<AgentSpec | undefined> {
-      const file = filePath(id);
-      if (!fs.existsSync(file)) return undefined;
-      return loadSpec(file);
+      const spec = await repo.readSpec(id);
+      return spec === undefined ? undefined : toLegacySpec(spec);
     },
 
     async save(id: string, spec: AgentSpec): Promise<void> {
-      // Atomic (temp + rename, creating the agents dir as needed): a reader
-      // polling <id>.yaml never sees a half-written spec.
-      await writeFileAtomic(filePath(id), stringifyYaml(spec));
+      // One lock around the whole read-modify-write: read the stored v2
+      // spec, merge the v1 save onto it (preserving the v2-only keys the
+      // v1 body cannot express), validate and write atomically.
+      await withAgentLock(id, async () => {
+        await repo.writeSpec(id, mergeLegacySave(await repo.readSpec(id), spec));
+      });
     },
 
     async remove(id: string): Promise<void> {
-      const file = filePath(id);
-      if (fs.existsSync(file)) fs.unlinkSync(file);
+      await repo.remove(id);
     },
   };
 }
