@@ -14,6 +14,7 @@ import type { ReasoningOption } from '../../providers/reasoning';
 import type { BackoffOptions } from '../../providers/resilience';
 import type { SubagentOptions } from '../../subagents/backgroundTasks';
 import type { McpServerSpec } from '../schema';
+import type { GuardrailSpec } from './guardrails';
 
 /** AgentSpec v2. Hand-written and kept in lockstep with schema.ts, like v1's AgentSpec. */
 export interface AgentSpecV2 {
@@ -48,7 +49,7 @@ export interface AgentSpecV2 {
   memory?: never; // S13
   subagents?: never; // S08
   handoffs?: never; // S09
-  guardrails?: never; // S11
+  guardrails?: GuardrailSpec[]; // S11
   permissions?: never; // S10
   hooks?: never; // S12
   output?: never; // S15
