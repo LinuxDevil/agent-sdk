@@ -10946,6 +10946,7 @@ An `evaluator` step stores its result in `outputVariable` too, like
 | `sequence` | Runs its `steps` one after another. |
 | `parallel` | Runs its steps at the same time. If one fails, the others are cancelled (see [Cancelling a flow](#cancelling-a-flow)). |
 | `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders; see [Template values](#template-values)); `outputVariable` stores the reply text. |
+| `agent` | Sends `input` (placeholders interpolated) to a `createAgent()` agent registered in the context's `agents` (see [Running an agent in a flow](#running-an-agent-in-a-flow)); `outputVariable` stores the reply text. |
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated; see [Argument values](#argument-values)). |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
@@ -11228,11 +11229,54 @@ decide later.
 
 ## Running an agent in a flow
 
-A flow's steps run under the plain `agent` config in the context
-(`{ name, prompt?, settings }`). Passing a `createAgent()` agent as
-`context.agent` is refused with `LOUSHO_CONFIG_INVALID`. To run a
-`createAgent()` agent as one step, register a tool that calls
-`agent.send()`, and call that tool in a `toolCall` step:
+An `agent` step calls a `createAgent()` agent registered in the context's
+`agents` map, by name. The agent runs its own loop — its model, tools,
+guardrails and approvals — and the step stores its reply text:
+
+```ts
+import { createAgent } from '@lousho/build-ai-agent';
+import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+
+const writer = createAgent({ name: 'writer', model: 'openai/gpt-4o-mini', instructions: 'Draft a reply.' });
+
+const flow: AgentFlow = {
+  code: 'support',
+  name: 'Support',
+  flow: {
+    type: 'sequence',
+    steps: [
+      { type: 'agent', agent: 'writer', input: 'Write about {{topic}}', outputVariable: 'draft' },
+      { type: 'llmCall', prompt: 'Polish this draft: {{draft}}' },
+    ],
+  },
+};
+
+const result = await FlowExecutor.execute(flow, { agent, provider, variables: { topic: 'WebAssembly' }, agents: { writer } });
+```
+
+- `input` is the message sent to the agent; `{{variable}}` placeholders are
+  replaced (default `'{{input}}'`, the flow's `input` variable).
+- An `agent` step emits `llm-call` and `llm-response` events carrying
+  `data.agent` (not `data.model`), and takes `retry` and `timeoutMs` like
+  any other step. Its reply is stored as text; the agent's usage is in its
+  `send()` result, not the flow's `result.usage`.
+- A step naming an agent that is not in `agents` fails with
+  `LOUSHO_FLOW_INVALID`, naming the keys that are registered.
+- An agent whose run pauses for an approval (a `needsApproval` tool with no
+  approver) fails the step with `LOUSHO_FLOW_EXECUTION_FAILED`: agent steps
+  cannot pause a flow. Decide the agent's tools with permissions or an
+  `approve` callback on the agent.
+- Traced, the agent's `invoke_agent` span nests under the step's
+  `flow.node agent` span.
+
+A flow's other steps still run under the plain `agent` config in the
+context (`{ name, prompt?, settings }`); passing a `createAgent()` agent as
+`context.agent` is refused with `LOUSHO_CONFIG_INVALID`.
+
+Instead of an `agent` step, you can register a tool that calls
+`agent.send()` and call it in a `toolCall` step — the call then goes
+through the flow's permission and approval gates, and its result can be a
+typed value rather than text:
 
 ```ts
 import { z } from 'zod';
@@ -11260,13 +11304,11 @@ const flow: AgentFlow = {
 const result = await FlowExecutor.execute(flow, { agent: { name: 'report' }, provider, toolRegistry, variables: { topic: 'WebAssembly' } });
 ```
 
-The agent runs with its own model, tools and approvals. Its usage is in the
-`send()` result, not in the flow's `result.usage`. For a single model call
-with no tools, an `llmCall` step is simpler.
+For a single model call with no tools, an `llmCall` step is simpler.
 
 The `step` node type (`StepNode`, `{ type: 'step', agent, input }`) is a
 shape that visual editors produce. `FlowExecutor` does not run it: a flow
-that reaches one fails with `LOUSHO_FLOW_INVALID`.
+that reaches one fails with `LOUSHO_FLOW_INVALID` — use an `agent` step.
 
 ## Flows, sub-agents or skills?
 

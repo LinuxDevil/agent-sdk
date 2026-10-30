@@ -156,6 +156,7 @@ export type RuntimeStep =
   | ForEachItemsNode
   | ExpressionEvaluatorNode
   | LLMCallNode
+  | AgentStepNode
   | ToolCallNode
   | SetVariableNode
   | ReturnNode
@@ -163,10 +164,12 @@ export type RuntimeStep =
   | ThrowNode;
 
 /**
- * An editor-side node naming an agent and its input. `FlowExecutor` does not
- * run it: a flow that reaches one fails with `LOUSHO_FLOW_INVALID`. To run a
- * `createAgent()` agent in a flow, register a tool that calls `agent.send()`
- * and use a `toolCall` step (see docs/flows.md, "Running an agent in a flow").
+ * An editor-side node naming an agent and its input, kept in the union
+ * because visual editors produce it. `FlowExecutor` does not run it: a flow
+ * that reaches one fails with `LOUSHO_FLOW_INVALID`. To run a `createAgent()`
+ * agent as a flow step, use an `agent` step (see {@link AgentStepNode}) with
+ * the agents registered in `FlowExecutionContext.agents` (see docs/flows.md,
+ * "Running an agent in a flow").
  */
 export interface StepNode {
   type: 'step';
@@ -316,6 +319,30 @@ export interface LLMCallNode extends NodeRunOptions {
   temperature?: number;
   maxTokens?: number;
   /** Variable that receives the response text. */
+  outputVariable?: string;
+}
+
+/**
+ * Runs a registered agent (`FlowExecutionContext.agents[agent]`) on `input`
+ * and stores its reply text. Unlike an `llmCall` step (one provider call
+ * under the flow's plain `agent` config), the agent runs its own loop:
+ * tools, guardrails, approvals.
+ *
+ * @example
+ * ```ts
+ * const draft: EditorStep = { type: 'agent', agent: 'writer', input: 'Write about {{topic}}', outputVariable: 'draft' };
+ * ```
+ */
+export interface AgentStepNode extends NodeRunOptions {
+  /** Runs a context agent (`FlowExecutionContext.agents[agent]`). */
+  type: 'agent';
+  /** The node's optional id, used as its `stepId` (see step ids in docs/flows.md). */
+  id?: string;
+  /** Key in `FlowExecutionContext.agents`. */
+  agent: string;
+  /** Message sent to the agent; `{{var}}` placeholders are replaced. Default `'{{input}}'`. */
+  input?: string;
+  /** Variable that receives the agent's reply text. */
   outputVariable?: string;
 }
 

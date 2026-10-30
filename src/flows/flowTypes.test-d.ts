@@ -8,6 +8,8 @@ describe('EditorStep covers every node kind FlowExecutor runs', () => {
       steps: [
         { type: 'llmCall', prompt: 'Hi {{name}}', model: 'm', temperature: 0, maxTokens: 10, outputVariable: 'out' },
         { type: 'toolCall', tool: 'search', arguments: { q: '{{out}}' }, outputVariable: 'hits' },
+        { type: 'agent', agent: 'x' },
+        { type: 'agent', agent: 'writer', input: 'Write about {{out}}', outputVariable: 'draft', retry: { maxAttempts: 2 }, timeoutMs: 5_000 },
         { type: 'setVariable', variable: 'n', value: 1 },
         { type: 'forEach', items: '$hits', itemVariable: 'hit', indexVariable: 'i', step: { type: 'end', value: '$hit' } },
         { type: 'evaluator', expression: 'n > 0' },

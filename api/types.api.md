@@ -55,6 +55,15 @@ export interface AgentSettings {
 }
 
 // @public
+interface AgentStepNode extends NodeRunOptions {
+    agent: string;
+    id?: string;
+    input?: string;
+    outputVariable?: string;
+    type: 'agent';
+}
+
+// @public
 export interface ApprovalCheckContext {
     messages: readonly Message[];
     principal?: Readonly<Principal>;
@@ -458,7 +467,7 @@ interface ReturnNode extends NodeRunOptions {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
