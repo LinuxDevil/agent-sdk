@@ -65,6 +65,8 @@ import { checkApiAccess, checkHostAndOrigin, type StudioAccessOptions } from './
 import { registerObserveProxy } from './observeProxy';
 import { registerPlaygroundRoute, type PlaygroundOptions } from './playground';
 import { registerJudgeTestRoute, type JudgeFn } from './judge';
+import { asyncRoute, paramId, sendError } from './http/routeUtils';
+import { withAgentLock } from './storage/atomic';
 
 export interface CreateAppOptions {
   agentStore: AgentStore;
@@ -143,12 +145,6 @@ function needsToken(req: Request): boolean {
   return !PUBLIC_METHODS.has(req.method) || isApiPath(req.path);
 }
 
-function asyncRoute(fn: (req: Request, res: Response) => Promise<void>) {
-  return (req: Request, res: Response, next: NextFunction) => {
-    fn(req, res).catch(next);
-  };
-}
-
 type ErrorClass = new (...args: never[]) => Error;
 
 /**
@@ -160,17 +156,6 @@ function respondWithMappedError(res: Response, error: unknown, mappings: [ErrorC
   const match = mappings.find(([errorClass]) => error instanceof errorClass);
   if (!match) throw error;
   res.status(match[1]).json({ error: (error as Error).message });
-}
-
-/**
- * Express 5's `req.params[name]` is typed `string | string[]` (a route
- * param can repeat, e.g. `/:id+`). None of this file's routes use repeating
- * params, so `:id` is always a single string in practice - this just
- * narrows the type for TS rather than changing any behavior.
- */
-function paramId(req: Request): string {
-  const id = req.params.id;
-  return Array.isArray(id) ? id[0] : id;
 }
 
 /** Saved-agent CRUD: list, load, save. */
@@ -197,21 +182,25 @@ function registerAgentRoutes(app: Express, agentStore: AgentStore): void {
   app.put(
     '/agents/:id',
     asyncRoute(async (req, res) => {
-      const spec = req.body as AgentSpec;
-      if (!spec || typeof spec !== 'object' || !spec.name || !spec.prompt || !spec.provider) {
-        res.status(400).json({ error: 'Request body must be a valid AgentSpec' });
-        return;
-      }
-      await agentStore.save(paramId(req), spec);
-      res.status(204).end();
+      await withAgentLock(paramId(req), async () => {
+        const spec = req.body as AgentSpec;
+        if (!spec || typeof spec !== 'object' || !spec.name || !spec.prompt || !spec.provider) {
+          res.status(400).json({ error: 'Request body must be a valid AgentSpec' });
+          return;
+        }
+        await agentStore.save(paramId(req), spec);
+        res.status(204).end();
+      });
     })
   );
 
   app.delete(
     '/agents/:id',
     asyncRoute(async (req, res) => {
-      await agentStore.remove(paramId(req));
-      res.status(204).end();
+      await withAgentLock(paramId(req), async () => {
+        await agentStore.remove(paramId(req));
+        res.status(204).end();
+      });
     })
   );
 }
@@ -706,7 +695,7 @@ export function createApp({
   // `req.params.id` as a decoded string containing `/`/`..`.
   app.use(['/agents/:id', '/runs/:id'], (req, res, next) => {
     if (!isValidAgentId(paramId(req))) {
-      res.status(400).json({ error: 'Invalid agent id' });
+      sendError(res, 400, 'Invalid agent id', 'LOUSHO_AGENT_ID_INVALID');
       return;
     }
     next();

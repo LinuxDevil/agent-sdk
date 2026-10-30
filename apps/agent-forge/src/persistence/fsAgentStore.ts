@@ -4,6 +4,7 @@ import { stringify as stringifyYaml } from 'yaml';
 import { loadSpec, type AgentSpec } from '@lousho/build-ai-agent';
 import type { AgentStore, AgentStoreEntry } from './AgentStore';
 import { isValidAgentId } from '../../shared/agentId';
+import { writeFileAtomic } from '../../server/storage/atomic';
 
 /**
  * Filesystem-backed `AgentStore`, saving/loading plain `AgentSpec` YAML
@@ -28,10 +29,6 @@ export function createFsAgentStore(baseDir: string): AgentStore {
 
   function filePath(id: string): string {
     return agentSpecFilePath(baseDir, id);
-  }
-
-  function ensureDir(): void {
-    fs.mkdirSync(agentsDir, { recursive: true });
   }
 
   return {
@@ -62,8 +59,9 @@ export function createFsAgentStore(baseDir: string): AgentStore {
     },
 
     async save(id: string, spec: AgentSpec): Promise<void> {
-      ensureDir();
-      fs.writeFileSync(filePath(id), stringifyYaml(spec), 'utf8');
+      // Atomic (temp + rename, creating the agents dir as needed): a reader
+      // polling <id>.yaml never sees a half-written spec.
+      await writeFileAtomic(filePath(id), stringifyYaml(spec));
     },
 
     async remove(id: string): Promise<void> {

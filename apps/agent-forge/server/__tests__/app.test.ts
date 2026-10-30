@@ -101,15 +101,18 @@ describe('HTTP API', () => {
     const traversalId = encodeURIComponent('../../pwned');
     const put = await request(app).put(`/agents/${traversalId}`).send(SPEC);
     expect(put.status).toBe(400);
+    expect(put.body).toEqual({ error: 'Invalid agent id', code: 'LOUSHO_AGENT_ID_INVALID' });
 
     const escapedFile = path.join(baseDir, '..', 'pwned.yaml');
     expect(fs.existsSync(escapedFile)).toBe(false);
 
     const run = await request(app).post(`/agents/${traversalId}/run`).send({ input: 'hi', spec: SPEC });
     expect(run.status).toBe(400);
+    expect(run.body.code).toBe('LOUSHO_AGENT_ID_INVALID');
 
     const status = await request(app).get(`/agents/${traversalId}/status`);
     expect(status.status).toBe(400);
+    expect(status.body.code).toBe('LOUSHO_AGENT_ID_INVALID');
   });
 
   it('PUT then GET round-trips an AgentSpec', async () => {
