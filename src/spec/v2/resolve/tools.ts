@@ -7,8 +7,9 @@
  * it yields (DefinedTools go back through `defineTool`, which re-validates).
  * `{ file }` and `{ registry }` load tool code from `host.baseDir` through
  * `./toolFiles.ts` (the install receipt's permission manifest stays enforced);
- * `{ integration }` and `{ openapi }` throw LOUSHO_SPEC_UNSUPPORTED here —
- * S05 replaces them. Node-side: the factories pull in `node:*`; the schema
+ * `{ integration }` and `{ openapi }` build the credentialed connectors
+ * through `./integrationTools.ts`, resolving their secrets against the host.
+ * Node-side: the factories pull in `node:*`; the schema
  * stays in `../tools.ts`.
  */
 import { ConfigurationError } from '../../../execution/errors';
@@ -27,6 +28,7 @@ import {
 } from '../../../tools/hosted';
 import type { ToolDescriptor } from '../../../types';
 import { BUILTIN_TOOL_NAMES, TOOL_REF_KINDS, type ToolRef, type ToolRefCommon, type ToolRefKind } from '../tools';
+import { resolveIntegrationRef, resolveOpenApiRef } from './integrationTools';
 import type { SecretHost } from './secrets';
 import { fileRefTools, registryRefTools } from './toolFiles';
 
@@ -126,8 +128,10 @@ const RESOLVERS: Record<ToolRefKind, (ref: ToolRef, host: ToolRefHost, field: st
     'registry' in ref ? applyRefFlags(await registryRefTools(ref.registry, host, field), ref) : unsupported('registry', field),
   file: async (ref, host, field) =>
     'file' in ref ? applyRefFlags(await fileRefTools(ref.file, host, field), ref) : unsupported('file', field),
-  integration: async (_ref, _host, field) => unsupported('integration', field),
-  openapi: async (_ref, _host, field) => unsupported('openapi', field),
+  integration: async (ref, host, field) =>
+    'integration' in ref ? applyRefFlags(await resolveIntegrationRef(ref, host, field), ref) : unsupported('integration', field),
+  openapi: async (ref, host, field) =>
+    'openapi' in ref ? applyRefFlags(await resolveOpenApiRef(ref, host, field), ref) : unsupported('openapi', field),
   hosted: async (ref, _host, field) =>
     'hosted' in ref ? applyRefFlags(hostedTools(ref.hosted, ref.options), ref) : unsupported('hosted', field),
   hub: async (ref, host) => applyRefFlags(hubToolsRecord(host), ref),
@@ -135,8 +139,8 @@ const RESOLVERS: Record<ToolRefKind, (ref: ToolRef, host: ToolRefHost, field: st
 
 /**
  * Builds the tools one validated ToolRef stands for. `field` (e.g. 'tools.2')
- * names it in errors. integration/openapi throw ConfigurationError
- * LOUSHO_SPEC_UNSUPPORTED here (S05 replaces them).
+ * names it in errors. A kind this version cannot resolve throws
+ * ConfigurationError LOUSHO_SPEC_UNSUPPORTED.
  */
 export async function resolveToolRef(ref: ToolRef, host: ToolRefHost, field: string): Promise<ResolvedTools> {
   const kind = TOOL_REF_KINDS.find((candidate) => candidate in ref);

@@ -96,9 +96,66 @@ describe('spec v2 tools', () => {
     expect(error.errors).toHaveProperty('tools.0.version');
   });
 
-  it('reports integration refs as not supported yet', () => {
-    const error = thrown(spec([{ integration: 'github', credentials: {} }]));
-    expect(error.code).toBe('LOUSHO_SPEC_UNSUPPORTED');
+  it('accepts an integration ref whose credentials are strings or secret refs', () => {
+    const result = agentSpecV2Schema.safeParse(
+      spec([{ integration: 'github', credentials: { token: { env: 'GITHUB_TOKEN' }, owner: 'acme', repo: 'web' } }])
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it('refuses a literal string where the credential is a secret', () => {
+    const error = thrown(
+      spec([{ integration: 'github', credentials: { token: 'ghp_x', owner: 'acme', repo: 'web' } }])
+    );
+    expect(error.errors).toHaveProperty('tools.0.credentials.token');
+    expect(error.message).toContain('is a secret');
+  });
+
+  it('names each required credential an integration ref misses', () => {
+    const error = thrown(
+      spec([{ integration: 'github', credentials: { token: { env: 'GITHUB_TOKEN' }, owner: 'acme' } }])
+    );
+    expect(error.errors).toHaveProperty('tools.0.credentials.repo');
+    expect(error.message).toContain("'github' needs credentials.repo");
+  });
+
+  it('names a credential key the integration does not take', () => {
+    const error = thrown(
+      spec([
+        {
+          integration: 'jira',
+          credentials: { baseUrl: 'https://x.atlassian.net', email: 'a@b.c', apiToken: { env: 'JIRA_TOKEN' }, password: 'x' },
+        },
+      ])
+    );
+    expect(error.errors).toHaveProperty('tools.0.credentials.password');
+    expect(error.message).toContain("unknown credential 'password' for 'jira'");
+  });
+
+  it('rejects an integration name the SDK has no tools for', () => {
+    const error = thrown(spec([{ integration: 'teams', credentials: {} }]));
+    expect(error.errors).toHaveProperty('tools.0.integration');
+  });
+
+  it('accepts an openapi ref with include and a bearer token ref', () => {
+    const result = agentSpecV2Schema.safeParse(
+      spec([
+        { openapi: { url: 'https://api.example.com/openapi.json', include: ['getOrder'], bearerToken: { secret: 'orders' } } },
+      ])
+    );
+    expect(result.success).toBe(true);
+  });
+
+  it('requires an https openapi url unless the host is loopback', () => {
+    const error = thrown(spec([{ openapi: { url: 'http://api.example.com/x' } }]));
+    expect(error.message).toContain('must be an https URL');
+    const ok = agentSpecV2Schema.safeParse(spec([{ openapi: { url: 'http://localhost:3000/openapi.json' } }]));
+    expect(ok.success).toBe(true);
+  });
+
+  it('requires the openapi bearer token to be a secret ref', () => {
+    const error = thrown(spec([{ openapi: { url: 'https://x.test/o.json', bearerToken: 'abc' } }]));
+    expect(error.errors).toHaveProperty('tools.0.openapi.bearerToken');
   });
 
   it('rejects duplicate ids', () => {
