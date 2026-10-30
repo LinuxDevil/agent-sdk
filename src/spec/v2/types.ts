@@ -15,6 +15,7 @@ import type { BackoffOptions } from '../../providers/resilience';
 import type { SubagentOptions } from '../../subagents/backgroundTasks';
 import type { GuardrailSpec } from './guardrails';
 import type { McpServerSpecV2 } from './mcpServers';
+import type { PermissionRuleSpec } from './permissions';
 
 /** AgentSpec v2. Hand-written and kept in lockstep with schema.ts, like v1's AgentSpec. */
 export interface AgentSpecV2 {
@@ -50,7 +51,7 @@ export interface AgentSpecV2 {
   subagents?: never; // S08
   handoffs?: never; // S09
   guardrails?: GuardrailSpec[]; // S11
-  permissions?: never; // S10
+  permissions?: PermissionRuleSpec[]; // S10
   hooks?: never; // S12
   output?: never; // S15
   triggers?: never; // S22
