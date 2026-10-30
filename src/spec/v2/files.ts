@@ -1,9 +1,9 @@
 /**
  * Node-side helpers for AgentSpec v2 file references (`instructions.file`,
  * tool and hook files): resolve them against the spec's base directory
- * without letting them escape it. The only `src/spec/v2` file that may
- * import `node:*` - the schema files stay browser-safe and never import
- * this one.
+ * without letting them escape it. With `loadSpec.ts`, one of the two
+ * `src/spec/v2` files that may import `node:*` - the schema files stay
+ * browser-safe and never import either.
  */
 import * as path from 'node:path';
 import { ConfigurationError } from '../../execution/errors';
