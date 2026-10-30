@@ -25,6 +25,7 @@ import type {
   SpanEvent,
   TraceDetailPayload,
   TraceSummaryPayload,
+  WorkspaceInfo,
 } from '../../shared/wireTypes';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
 import type { AgentStoreEntry } from '../persistence/AgentStore';
@@ -119,8 +120,8 @@ class RuntimeClient implements AgentApi {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'DELETE' });
   }
 
-  /** The directory the studio serves (`.lousho/` lives under it). */
-  async workspace(): Promise<{ baseDir: string }> {
+  /** The workspace the studio serves (`baseDir` is its root; `workspace` is the full ref for addressing it by id). */
+  async workspace(): Promise<WorkspaceInfo> {
     return this.request('/workspace', { method: 'GET' });
   }
 

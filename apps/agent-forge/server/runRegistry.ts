@@ -819,6 +819,7 @@ export class RunManager extends EventEmitter {
    * the newest checkpoint saved at that step - the one fork() forks from.
    * Undefined when the run has no history.
    */
+  // fallow-ignore-next-line unused-class-member -- called as `workspaceOf(req).runs.history(...)` in app.ts route handlers
   async history(runId: string): Promise<RunHistoryStep[] | undefined> {
     const entries = (await getCheckpointHistory(this.opts.checkpointStore, runId)) ?? [];
     const rows: CheckpointHistoryEntry[] = [];
@@ -836,6 +837,7 @@ export class RunManager extends EventEmitter {
    * with the source run's spec - same lifecycle, status and WS stream as any
    * other run (`/agents/<id>/status`, `WS /agents/<id>/stream`).
    */
+  // fallow-ignore-next-line unused-class-member -- called as `workspaceOf(req).runs.fork(...)` in app.ts route handlers
   async fork(runId: string, fromStep: number, patch: ForkPatch): Promise<string> {
     const spec = this.entries.get(runId)?.lastSpec ?? (await this.opts.loadSpec(runId));
     if (!spec) throw new AgentNotFoundError(`No agent spec for run '${runId}'`);
@@ -848,6 +850,7 @@ export class RunManager extends EventEmitter {
   }
 
   /** `compareTrajectories()` of two runs' latest checkpoints, or undefined when either has none. */
+  // fallow-ignore-next-line unused-class-member -- called as `workspaceOf(req).runs.compare(...)` in app.ts route handlers
   async compare(a: string, b: string): Promise<TrajectoryComparison | undefined> {
     const [left, right] = await Promise.all([this.opts.checkpointStore.load(a), this.opts.checkpointStore.load(b)]);
     return left && right ? compareTrajectories(left, right) : undefined;
@@ -870,6 +873,7 @@ export class RunManager extends EventEmitter {
   }
 
   /** Resumes a run paused at a breakpoint, or arms a pause at the very next LLM/tool boundary if not currently paused. */
+  // fallow-ignore-next-line unused-class-member -- called as `workspaceOf(req).runs.stepRun(...)` in app.ts route handlers
   stepRun(agentId: string): void {
     this.entries.get(agentId)?.debugSession?.step();
   }

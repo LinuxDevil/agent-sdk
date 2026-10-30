@@ -16,6 +16,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SettingsFile, SettingsProfile } from '../shared/wireTypes';
+import type { StudioPaths } from './workspace/studioPaths';
 
 const DEFAULT_PROFILES: SettingsProfile[] = [
   {
@@ -56,8 +57,14 @@ function defaultFile(): SettingsFile {
 export class SettingsStore {
   private readonly file: string;
 
-  constructor(baseDir: string) {
-    this.file = path.join(baseDir, '.lousho', 'settings.json');
+  /**
+   * `location` is either the legacy base directory (the file lives at
+   * `<baseDir>/.lousho/settings.json`) or the `settings` path of
+   * `studioPaths()` (constructed once while wiring - handlers never
+   * compute file locations themselves).
+   */
+  constructor(location: string | Pick<StudioPaths, 'settings'>) {
+    this.file = typeof location === 'string' ? path.join(location, '.lousho', 'settings.json') : location.settings;
   }
 
   private ensureDir(): void {

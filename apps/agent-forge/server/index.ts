@@ -9,16 +9,16 @@ import { once } from 'node:events';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createFsAgentStore } from '../src/persistence/fsAgentStore';
 import { createApp } from './app';
 import { attachWebSocketServer } from './wsServer';
 import { RunManager } from './runRegistry';
-import { FileCheckpointStore } from './checkpointStore';
-import { FileApprovalStore } from './approvalStore';
 import { SecretsStore } from './secretsStore';
 import { SettingsStore } from './settingsStore';
 import { startJudgeLoop, type JudgeLoopOptions } from './judge';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
+import { createWorkspaceContext } from './workspace/context';
+import { configureStudioHome, studioPaths } from './workspace/studioPaths';
+import { workspaceRefFor } from './workspace/workspaceId';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -98,30 +98,26 @@ export async function startStudioServer(
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
   const staticDir = resolveStaticDir(options.staticDir, moduleDir);
 
-  const agentStore = createFsAgentStore(baseDir);
-  const checkpointStore = new FileCheckpointStore(baseDir);
-  const approvalStore = new FileApprovalStore(baseDir);
-  const secretsStore = new SecretsStore(baseDir);
-  const settingsStore = new SettingsStore(baseDir);
+  // The Studio home keeps every file where it was (the launch folder's
+  // `.lousho/`); moving it to `~/.lousho/studio` is a later change of this
+  // one default - every store below already reads its paths from it.
+  configureStudioHome(path.join(baseDir, '.lousho'));
+  const paths = studioPaths();
+  const secretsStore = new SecretsStore(paths);
+  const settingsStore = new SettingsStore(paths);
 
-  const runManager = new RunManager({
-    baseDir,
-    checkpointStore,
-    approvalStore,
-    loadSpec: (agentId) => agentStore.load(agentId),
-    saveSpec: (agentId, spec) => agentStore.save(agentId, spec),
+  const workspace = createWorkspaceContext(workspaceRefFor(baseDir), {
     secretsStore,
     settingsStore,
-    // Builder runs report to the observe daemon, so "Open trace" resolves.
-    ...(options.observe === false ? {} : { observe: true as const }),
+    observe: options.observe !== false,
   });
 
   const token = options.token ?? (process.env[STUDIO_TOKEN_ENV] || mintStudioToken());
   const allowedOrigins = (process.env[STUDIO_ALLOWED_ORIGINS_ENV] ?? '').split(',').filter(Boolean);
   const access = { token, allowedHosts: allowedHostsFor(host), allowedOrigins };
-  const app = createApp({ agentStore, runManager, baseDir, secretsStore, settingsStore, staticDir, access });
+  const app = createApp({ workspace, baseDir, studioHome: paths.home, secretsStore, settingsStore, staticDir, access });
   const server = http.createServer(app);
-  attachWebSocketServer(server, runManager, access);
+  attachWebSocketServer(server, workspace.runs, access);
 
   await listen(server, port, host);
   const judgeOption = options.judge ?? (options.observe === false ? false : {});
@@ -132,7 +128,7 @@ export async function startStudioServer(
   return {
     server,
     port: boundPort,
-    runManager,
+    runManager: workspace.runs,
     token,
     url: `http://${urlHost}:${boundPort}/?token=${encodeURIComponent(token)}`,
     close: () => {

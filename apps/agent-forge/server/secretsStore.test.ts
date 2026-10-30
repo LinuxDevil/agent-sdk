@@ -96,6 +96,18 @@ describe('SecretsStore', () => {
     expect(() => store.list()).not.toThrow();
   });
 
+  it('writes to the given files when constructed with a paths object instead of a baseDir', () => {
+    const paths = {
+      secrets: path.join(baseDir, 'custom-home', 'secrets.json'),
+      secretsKey: path.join(baseDir, 'custom-home', 'secrets.key'),
+    };
+    const fromPaths = new SecretsStore(paths);
+    fromPaths.setKey('openai', 'sk-paths-form');
+    expect(fs.existsSync(paths.secrets)).toBe(true);
+    expect(fs.existsSync(paths.secretsKey)).toBe(true);
+    expect(fromPaths.getKey('openai')).toBe('sk-paths-form');
+  });
+
   it('isSecretProvider narrows only the managed providers', () => {
     expect(isSecretProvider('openai')).toBe(true);
     expect(isSecretProvider('anthropic')).toBe(true);
