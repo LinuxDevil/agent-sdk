@@ -15,6 +15,7 @@ import type { BackoffOptions } from '../../providers/resilience';
 import type { SubagentOptions } from '../../subagents/backgroundTasks';
 import type { GuardrailSpec } from './guardrails';
 import type { McpServerSpecV2 } from './mcpServers';
+import type { OutputSpecV2 } from './output';
 import type { PermissionRuleSpec } from './permissions';
 import type { ToolRef } from './tools';
 
@@ -54,7 +55,7 @@ export interface AgentSpecV2 {
   guardrails?: GuardrailSpec[]; // S11
   permissions?: PermissionRuleSpec[]; // S10
   hooks?: never; // S12
-  output?: never; // S15
+  output?: OutputSpecV2; // S15
   triggers?: never; // S22
   abortListeners?: never; // R03
   flow?: never; // S21
