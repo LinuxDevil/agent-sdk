@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "items": {
+    "echo-kit": {
+      "type": "tool",
+      "registry": "test",
+      "installedAt": "2026-01-01T00:00:00.000Z",
+      "permissions": {},
+      "files": [{ "path": "tools/echo.ts", "sha256": "0" }]
+    }
+  }
+}
