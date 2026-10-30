@@ -188,14 +188,13 @@ describe('resolveToolRef unsupported kinds', () => {
     });
   });
 
-  it('rejects integration and openapi refs (S05)', async () => {
-    await expect(resolveToolRef({ integration: 'github', credentials: {} }, {}, 'tools.1')).rejects.toMatchObject({
-      code: 'LOUSHO_SPEC_UNSUPPORTED',
-      field: 'tools.1',
-    });
-    await expect(resolveToolRef({ openapi: { url: 'https://x.test/openapi.json' } }, {}, 'tools.1')).rejects.toMatchObject({
-      code: 'LOUSHO_SPEC_UNSUPPORTED',
-      field: 'tools.1',
-    });
+  it('resolves an integration ref and stamps its flags on the tools (S05)', async () => {
+    const tools = await resolveToolRef(
+      { integration: 'slack', credentials: { webhookUrl: { env: 'SLACK_HOOK' } }, approval: 'always' },
+      { env: { SLACK_HOOK: 'https://hooks.slack.com/x' } },
+      'tools.1'
+    );
+    expect(Object.keys(tools)).toEqual(['slack_alert']);
+    expect((tools['slack_alert'] as ToolDescriptor | undefined)?.needsApproval).toBe(true);
   });
 });

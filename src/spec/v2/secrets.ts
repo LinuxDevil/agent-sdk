@@ -31,14 +31,13 @@ const namedSecretRefSchema = z
   })
   .strict();
 
-/** A `{ env: 'NAME' }` or `{ secret: 'name' }` ref — exactly one of the two keys, nothing else. */
+/** A `{ env: 'NAME' }` or `{ secret: 'name' }` ref — exactly one of the two keys, nothing else. Used wherever a spec field holds only a ref (openapi `bearerToken`, trigger secrets). */
 export const secretRefSchema = z.union(
   [envRefSchema, namedSecretRefSchema],
   anyError("must be { env: 'NAME' } or { secret: 'name' }")
 );
 
 /** A literal string or a SecretRef (fields that may hold either, e.g. integration credentials, MCP env). */
-// fallow-ignore-next-line unused-export -- consumed by later spec v2 section schemas (S05 integration credentials)
 export const stringOrSecretSchema = z.union(
   [z.string(), secretRefSchema],
   anyError("must be a string, { env: 'NAME' } or { secret: 'name' }")

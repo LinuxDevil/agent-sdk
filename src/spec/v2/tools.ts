@@ -14,7 +14,7 @@
 import { z } from 'zod';
 import { closestMatch } from '../../utils/closestMatch';
 import { forwardIssues, refineUniqueIds, relativePathSchema, specIdSchema } from './common';
-import type { SecretRef } from './secrets';
+import { secretRefSchema, stringOrSecretSchema, type SecretRef } from './secrets';
 import { addUnsupportedIssue } from './unsupported';
 
 /** The key that selects a {@link ToolRef}'s variant; exactly one must be present on each ref. */
@@ -35,6 +35,32 @@ export interface ToolRefCommon {
 
 /** The credentialed integrations an `{ integration }` ref names (S05). */
 export type IntegrationName = 'github' | 'jira' | 'slack' | 'email';
+
+/**
+ * The credential keys each {@link IntegrationName} takes: `required` keys
+ * must be set, `optional` keys may be. A value is a literal string or a
+ * SecretRef; {@link refineIntegration} reports every key that is missing or
+ * unknown by name.
+ */
+// fallow-ignore-next-line unused-export -- consumed by later spec v2 consumers (S06 tool catalog, Studio integration forms)
+export const INTEGRATION_CREDENTIALS = {
+  github: { required: ['token', 'owner', 'repo'], optional: [] },
+  jira: { required: ['baseUrl', 'email', 'apiToken'], optional: [] },
+  email: { required: ['apiKey'], optional: ['apiUrl', 'defaultFrom'] },
+  slack: { required: ['webhookUrl'], optional: [] },
+} as const satisfies Record<IntegrationName, { required: readonly string[]; optional: readonly string[] }>;
+
+/**
+ * The credential keys that hold a secret. A literal string there is refused:
+ * the value would land in git and in spec exports, so it must be a SecretRef.
+ */
+// fallow-ignore-next-line unused-export -- consumed by later spec v2 consumers (S06 tool catalog, Studio integration forms)
+export const SECRET_CREDENTIALS: Record<IntegrationName, readonly string[]> = {
+  github: ['token'],
+  jira: ['apiToken'],
+  email: ['apiKey'],
+  slack: ['webhookUrl'],
+};
 
 /** Options of an `{ openapi }` ref: one tool per selected operation (S05). */
 export interface OpenApiToolRefOptions {
@@ -187,12 +213,44 @@ const fileVariant = z
   })
   .strict();
 
-/** The variant of a kind the SDK cannot run yet: parses anything, then always raises "not supported yet" (S05 replaces it). */
-function pendingVariant(kind: string) {
-  return z.any().superRefine((_value, ctx) => {
-    addUnsupportedIssue(ctx, `'${kind}' tool references cannot be run by this version of the SDK`);
-  });
+/**
+ * Whether `url` is https, or http on a loopback host — the same rule
+ * `openApiTools` applies to the document URL it fetches.
+ */
+function httpsOrLocal(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === 'https:' ||
+      (parsed.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname))
+    );
+  } catch {
+    return false;
+  }
 }
+
+const integrationVariant = z
+  .object({
+    ...COMMON,
+    integration: z.enum(['github', 'jira', 'slack', 'email']),
+    credentials: z.record(z.string(), stringOrSecretSchema),
+  })
+  .strict();
+
+const openApiVariant = z
+  .object({
+    ...COMMON,
+    openapi: z
+      .object({
+        url: z.string().url().refine(httpsOrLocal, 'must be an https URL (http only for localhost)'),
+        include: z.array(z.string().min(1)).optional(),
+        exclude: z.array(z.string().min(1)).optional(),
+        approval: z.enum(['mutating', 'always', 'never']).optional(),
+        bearerToken: secretRefSchema.optional(),
+      })
+      .strict(),
+  })
+  .strict();
 
 const hostedVariant = z
   .object({
@@ -213,8 +271,8 @@ const VARIANTS: Record<ToolRefKind, z.ZodTypeAny> = {
   builtin: builtinVariant,
   registry: registryVariant,
   file: fileVariant,
-  integration: pendingVariant('integration'),
-  openapi: pendingVariant('openapi'),
+  integration: integrationVariant,
+  openapi: openApiVariant,
   hosted: hostedVariant,
   hub: hubVariant,
 };
@@ -280,14 +338,52 @@ function checkHosted(entry: Record<string, unknown>, ctx: z.RefinementCtx): void
   forwardIssues(HOSTED_TOOL_OPTIONS[hosted].safeParse(entry['options'] ?? {}), ctx, ['options']);
 }
 
-/** Rule 5: `approval: 'auto'` is model-decided, which has no SDK mechanism yet (R01). */
+/**
+ * Rule 5: an `{ integration }` ref's credential keys are the integration's
+ * known ones — every required key present, no unknown keys — and a key in
+ * {@link SECRET_CREDENTIALS} is a SecretRef, never a literal string (a spec
+ * is a file in git and is exported). The variant schema has already checked
+ * the values' shape.
+ */
+function refineIntegration(entry: Record<string, unknown>, ctx: z.RefinementCtx): void {
+  const integration = entry['integration'] as IntegrationName;
+  const spec = INTEGRATION_CREDENTIALS[integration];
+  const credentials = (entry['credentials'] ?? {}) as Record<string, unknown>;
+  for (const key of spec.required) {
+    if (!(key in credentials)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `'${integration}' needs credentials.${key}`,
+        path: ['credentials', key],
+      });
+    }
+  }
+  const allowed: readonly string[] = [...spec.required, ...spec.optional];
+  for (const [key, value] of Object.entries(credentials)) {
+    if (!allowed.includes(key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `unknown credential '${key}' for '${integration}'. Allowed: ${allowed.join(', ')}`,
+        path: ['credentials', key],
+      });
+    } else if (typeof value === 'string' && SECRET_CREDENTIALS[integration].includes(key)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `credentials.${key} is a secret: write { env: 'NAME' } or { secret: 'name' } instead of the value`,
+        path: ['credentials', key],
+      });
+    }
+  }
+}
+
+/** Rule 6: `approval: 'auto'` is model-decided, which has no SDK mechanism yet (R01). */
 function checkApproval(entry: Record<string, unknown>, ctx: z.RefinementCtx): void {
   if (entry['approval'] === 'auto') {
     addUnsupportedIssue(ctx, "approval 'auto' (model-decided approvals)", ['approval']);
   }
 }
 
-/** Rule 6: install receipts record no version, so `version` cannot be pinned yet. */
+/** Rule 7: install receipts record no version, so `version` cannot be pinned yet. */
 function checkRegistryVersion(kind: ToolRefKind, entry: Record<string, unknown>, ctx: z.RefinementCtx): void {
   if (kind === 'registry' && entry['version'] !== undefined) {
     addUnsupportedIssue(ctx, "registry 'version' (install receipts do not record versions)", ['version']);
@@ -301,6 +397,7 @@ function refineToolRef(value: unknown, ctx: z.RefinementCtx): void {
   const entry = value as Record<string, unknown>;
   if (kind === 'builtin') checkBuiltin(entry, ctx);
   if (kind === 'hosted') checkHosted(entry, ctx);
+  if (kind === 'integration') refineIntegration(entry, ctx);
   checkApproval(entry, ctx);
   checkRegistryVersion(kind, entry, ctx);
 }
