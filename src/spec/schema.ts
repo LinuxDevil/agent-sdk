@@ -12,6 +12,7 @@ import { anyError, typeErrors, type SafeParser } from '../utils/zodCompat';
 import type { McpApproval, McpToolFilter } from '../tools/mcp/McpToolLoader';
 import type { RunLimits } from '../execution/budget';
 import { guardrailEntrySchema, type AgentSpecGuardrail } from './guardrailOptions';
+import { runLimitsSchema } from './runLimitsSchema';
 
 export interface AgentSpecProvider {
   type: string;
@@ -166,21 +167,6 @@ const providerSchema = z.object({
 });
 
 const POLICY = 'AgentSpec validation failed:';
-
-const posInt = z.number().int().positive();
-
-const runLimitsSchema = z
-  .object({
-    maxTokens: posInt.optional(),
-    maxInputTokens: posInt.optional(),
-    maxOutputTokens: posInt.optional(),
-    maxCostUsd: z.number().positive().optional(),
-    maxDurationMs: posInt.optional(),
-    maxSteps: posInt.optional(),
-    maxToolErrors: posInt.optional(),
-    onExceeded: z.enum(['stop', 'throw']).optional(),
-  })
-  .strict();
 
 const policySchema = z
   .object({
