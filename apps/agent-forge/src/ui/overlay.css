@@ -1,0 +1,186 @@
+/* Sheet (right-side drawer) and Dialog (centred, incl. alertdialog confirms). Both portal to
+   document.body so .screen-main's `container-type: size` cannot trap their fixed positioning. */
+/* z scale: dock sheet 45/50 (U03), command palette 60, sheet/dialog 70, menus/tooltips 80/90 (U10), toasts 1000 */
+.overlay-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: var(--scrim);
+}
+.overlay-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+.sheet {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  width: min(100vw, 448px);
+  background: var(--surface);
+  color: var(--text);
+  border-left: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  outline: none;
+}
+.sheet-sm {
+  width: min(100vw, 384px);
+}
+.sheet-lg {
+  width: min(100vw, 512px);
+}
+.sheet-xl {
+  width: min(100vw, 672px);
+}
+.sheet-xxl {
+  width: min(100vw, 960px);
+}
+.sheet-header,
+.dialog-header {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.sheet-header {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+/* wraps title + description so the close button stays top-right in both headers */
+.sheet-heading {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sheet-title,
+.dialog-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+.sheet-description,
+.dialog-description {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.sheet-close {
+  flex: none;
+  margin: -4px -6px 0 0;
+}
+.sheet-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-5) var(--space-6);
+}
+.sheet-footer,
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.sheet-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border);
+}
+
+.dialog {
+  position: relative;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(512px, 100%);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  padding: var(--space-6);
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  outline: none;
+}
+.dialog-sm {
+  width: min(400px, 100%);
+}
+.dialog-header {
+  flex-direction: row;
+}
+.dialog-header > :first-child {
+  flex: 1;
+}
+/* negative margins bleed the scrolling body to the card edge while keeping its padding */
+.dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--space-6));
+  padding: 0 var(--space-6);
+}
+.dialog-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+@media (max-width: 860px) {
+  .sheet,
+  .sheet-sm,
+  .sheet-lg,
+  .sheet-xl,
+  .sheet-xxl {
+    width: 100vw;
+    border-left: 0;
+  }
+  .sheet-header,
+  .sheet-body,
+  .sheet-footer {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+  .dialog-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet {
+    animation: sheet-in var(--dur) var(--ease);
+  }
+  .dialog {
+    animation: dialog-in var(--dur) var(--ease);
+  }
+  .overlay-scrim {
+    animation: scrim-in var(--dur-fast) var(--ease);
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+}
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
