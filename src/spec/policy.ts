@@ -1,42 +1,16 @@
 /**
  * `AgentSpec.policy` compiled into `createAgent()` options.
  */
-import type { z } from 'zod';
 import type { CreateAgentConfig } from '../createAgent';
 import { ValidationError } from '../execution/errors';
-import { moderationGuardrail, piiGuardrail, promptInjectionGuardrail, secretsGuardrail } from '../execution/guardrailStarterSet';
+import { type AgentGuardrails, type IoGuardrail } from '../execution/ioGuardrails';
 import { ask } from '../execution/permissions';
-import {
-  denyTopicsGuardrail,
-  llmJudgeGuardrail,
-  maxLengthGuardrail,
-  regexGuardrail,
-  type AgentGuardrails,
-  type IoGuardrail,
-} from '../execution/ioGuardrails';
-import { GUARDRAIL_OPTIONS, guardrailParts, isSpecGuardrailName, unknownGuardrailMessage, type SpecGuardrailName } from './guardrailOptions';
+import { buildSpecGuardrail } from './guardrailBuilders';
+import { GUARDRAIL_OPTIONS, guardrailParts, isSpecGuardrailName, unknownGuardrailMessage } from './guardrailOptions';
 import { agentSpecPolicySchema, type AgentSpecPolicy } from './schema';
 
 /** The `createAgent()` options a policy compiles to. */
 export type CompiledPolicy = Pick<CreateAgentConfig, 'permissions' | 'guardrails' | 'limits' | 'askQuestion' | 'compaction'>;
-
-type GuardrailOptions<N extends SpecGuardrailName> = z.infer<(typeof GUARDRAIL_OPTIONS)[N]>;
-
-const DEFAULT_MAX_CHARS = 10_000;
-const DEFAULT_JUDGE_INSTRUCTION = 'Reject anything unsafe, abusive or outside what this agent is meant to do.';
-
-/** How each built-in guardrail name builds its guardrail from its options. */
-const BUILDERS: { [N in SpecGuardrailName]: (options: GuardrailOptions<N>) => IoGuardrail } = {
-  'max-length': ({ maxChars = DEFAULT_MAX_CHARS }) => maxLengthGuardrail({ maxChars }),
-  'secret-scan': (options) => regexGuardrail({ name: 'secret-scan', ...options }),
-  regex: ({ pattern, flags, ...options }) => regexGuardrail({ name: 'regex', pattern: new RegExp(pattern, flags), ...options }),
-  'deny-topics': ({ topics }) => denyTopicsGuardrail({ topics }),
-  'llm-judge': ({ model, instruction = DEFAULT_JUDGE_INSTRUCTION }) => llmJudgeGuardrail({ model, instruction }),
-  pii: (options) => piiGuardrail(options),
-  secrets: ({ extraPatterns, ...options }) => secretsGuardrail({ ...options, extraPatterns: extraPatterns?.map((pattern) => new RegExp(pattern)) }),
-  'prompt-injection': (options) => promptInjectionGuardrail(options),
-  moderation: (options) => moderationGuardrail(options),
-};
 
 type GuardrailTarget = 'input' | 'output' | 'tools';
 
@@ -45,8 +19,10 @@ function compileGuardrails(entries: NonNullable<AgentSpecPolicy['guardrails']>):
   for (const entry of entries) {
     const { name, options } = guardrailParts(entry);
     if (!isSpecGuardrailName(name)) throw new ValidationError(`specToAgent: ${unknownGuardrailMessage(name)}`, undefined, 'LOUSHO_SPEC_INVALID');
-    const { on = ['input', 'output'], ...rest } = GUARDRAIL_OPTIONS[name].parse(options) as { on?: GuardrailTarget | GuardrailTarget[] };
-    const guardrail = (BUILDERS[name] as (options: unknown) => IoGuardrail)(rest);
+    const { on = ['input', 'output'], ...rest } = GUARDRAIL_OPTIONS[name].parse(options) as {
+      on?: GuardrailTarget | GuardrailTarget[];
+    } & Record<string, unknown>;
+    const guardrail = buildSpecGuardrail(name, rest);
     for (const target of typeof on === 'string' ? [on] : on) lists[target].push(guardrail);
   }
   const compiled = Object.fromEntries(Object.entries(lists).filter(([, list]) => list.length > 0));

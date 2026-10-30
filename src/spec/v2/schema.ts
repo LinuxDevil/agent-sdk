@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { anyError, typeErrors } from '../../utils/zodCompat';
 import type { SpecObjectSchema } from '../schema';
 import { modelIdSchema, relativePathSchema } from './common';
+import { guardrailListSchema } from './guardrails';
 import { runtimeShape } from './runtime';
 import { pendingField } from './unsupported';
 import type { AgentSpecV2 } from './types';
@@ -43,7 +44,7 @@ export const agentSpecV2Shape = {
   memory: pendingField('memory'),
   subagents: pendingField('subagents'),
   handoffs: pendingField('handoffs'),
-  guardrails: pendingField('guardrails'),
+  guardrails: guardrailListSchema.optional(),
   permissions: pendingField('permissions'),
   hooks: pendingField('hooks'),
   output: pendingField('output'),

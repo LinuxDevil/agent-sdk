@@ -12,7 +12,6 @@ import { z } from 'zod';
 export const UNSUPPORTED_PREFIX = 'not supported yet: ';
 
 /** Adds an issue saying `what` cannot run on this SDK version yet; `path` is relative to the refined value. */
-// fallow-ignore-next-line unused-export -- consumed by later spec v2 section schemas (deeper unsupported checks)
 export function addUnsupportedIssue(ctx: z.RefinementCtx, what: string, path: (string | number)[] = []): void {
   ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${UNSUPPORTED_PREFIX}${what}`, path });
 }
