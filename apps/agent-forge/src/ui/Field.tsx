@@ -31,6 +31,8 @@ export interface FieldProps {
   id?: string;
   /** Label left, control right (switch rows); hint/error wrap full-width below. */
   inline?: boolean;
+  /** Schema path for `data-path`, e.g. `modelSettings.temperature` (schemaForm rows). */
+  dataPath?: string;
   className?: string;
   children: ReactNode;
 }
@@ -47,6 +49,7 @@ export function Field({
   required = false,
   id,
   inline,
+  dataPath,
   className,
   children,
 }: FieldProps): JSX.Element {
@@ -69,7 +72,7 @@ export function Field({
     .join(' ');
   return (
     <FieldContext.Provider value={ids}>
-      <div className={classes}>
+      <div className={classes} data-path={dataPath}>
         <label className="field-label" htmlFor={controlId}>
           {label}
           {required ? (

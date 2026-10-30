@@ -1,0 +1,47 @@
+/*
+ * Schema-driven form: stacked U06 fields, nested-object fieldsets and the
+ * primitive-list rows. Controls and invalid styling come from base.css /
+ * form.css; this file only lays out the schema-specific chrome.
+ */
+
+.schema-form {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.schema-object {
+  margin: 0 0 14px;
+  padding: var(--space-3) var(--space-3) 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.schema-legend {
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.schema-object-hint {
+  margin: 0 0 var(--space-2);
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.schema-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.schema-list-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.schema-list-row > .input {
+  flex: 1;
+  min-width: 0;
+}
+.schema-list-add {
+  align-self: flex-start;
+}
