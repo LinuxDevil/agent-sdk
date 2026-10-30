@@ -72,6 +72,7 @@ const ERROR_CODES: {
     readonly LOUSHO_SPEC_INVALID: "Fix the spec fields named in the message (each is shown as its path and the problem).";
     readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
     readonly LOUSHO_SPEC_UNSUPPORTED_FORMAT: "Save the spec as .yaml, .yml or .json.";
+    readonly LOUSHO_SPEC_UNSUPPORTED: "Remove the field the message names, or upgrade @lousho/build-ai-agent to a version that can run it.";
     readonly LOUSHO_SCHEDULE_INVALID: "Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.";
     readonly LOUSHO_SCHEDULE_RUN_INCOMPLETE: "Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.";
     readonly LOUSHO_CHANNEL_INVALID: "Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.";
