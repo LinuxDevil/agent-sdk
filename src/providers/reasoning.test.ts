@@ -17,7 +17,15 @@ import { OpenRouterProvider } from './OpenRouterProvider';
 import type { LLMProvider, Message } from './llm';
 import type { AiSdkModule } from './aiSdkCompat';
 import { itOnAiV4 } from './aiMajor.testkit';
-import { openRouterReasoning, reasoningProviderOptions } from './reasoning';
+import { openRouterReasoning, reasoningProviderOptions, supportsReasoning } from './reasoning';
+
+describe('supportsReasoning', () => {
+  it('reports whether a provider/model pair is in a known reasoning family', () => {
+    expect(supportsReasoning('anthropic', 'claude-sonnet-4-5')).toBe(true);
+    expect(supportsReasoning('openai', 'gpt-4o')).toBe(false);
+    expect(supportsReasoning('unknown', 'x')).toBe(false);
+  });
+});
 
 type V7Options = Parameters<MockLanguageModelV4['doGenerate']>[0];
 type V7Result = Awaited<ReturnType<MockLanguageModelV4['doGenerate']>>;

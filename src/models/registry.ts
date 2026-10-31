@@ -69,6 +69,18 @@ export function registerModel(info: ModelInfo): void {
 }
 
 /**
+ * Every registered model (the built-in snapshot plus `registerModel()`
+ * additions, later registration winning), in registration order. Each entry
+ * is a copy, so changing it does not change the registry.
+ *
+ * @example
+ * listRegisteredModels().filter((m) => m.provider === 'ollama');
+ */
+export function listRegisteredModels(): ModelInfo[] {
+  return [...registry.values()].map((info) => ({ ...info }));
+}
+
+/**
  * A snapshot/tag suffix: a date (`-2024-07-18`, `-20251001`, `-0613`), `-latest`,
  * or a `:tag` / `@version`. A bare `-7b-instruct` or `-5` names a different
  * model, not a snapshot of this one.
