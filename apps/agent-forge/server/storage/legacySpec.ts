@@ -14,7 +14,7 @@
  */
 import { agentSpecV2Schema, upgradeSpec, type AgentSpec, type AgentSpecGuardrail, type AgentSpecPolicy, type AgentSpecV2 } from '@lousho/build-ai-agent';
 import type { SerializedHook } from '../compileHooks';
-import { sortKeysDeep } from './specHash';
+import { sortKeysDeep } from '../../shared/stableJson';
 
 /** A `spec.tools` entry read as data - the bridge only needs the kind keys it projects or produces. */
 interface PendingToolRef {

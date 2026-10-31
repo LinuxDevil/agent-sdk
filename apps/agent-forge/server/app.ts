@@ -73,6 +73,7 @@ import { registerPlaygroundRoute, type PlaygroundOptions } from './playground';
 import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { AgentRepo, InvalidSpecError } from './storage/agentRepo';
+import { VersionStore } from './storage/versionStore';
 
 interface CreateAppBaseOptions {
   /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
@@ -697,10 +698,12 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  */
 function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
   if (options.workspace) return options.workspace;
+  const repo = new AgentRepo(options.baseDir);
   return {
     ref: workspaceRefFor(options.baseDir),
-    repo: new AgentRepo(options.baseDir),
+    repo,
     agentStore: options.agentStore,
+    versions: new VersionStore(repo),
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
   };
