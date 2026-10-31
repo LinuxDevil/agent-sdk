@@ -432,7 +432,7 @@ export interface AgentSpecV2 {
     subagents?: Record<string, SubagentSpec_2>;
     tools?: ToolRef[];
     toolSearch?: false | Omit<ToolSearchOptions, 'search'>;
-    triggers?: never;
+    triggers?: TriggerSpec[];
     version: 2;
 }
 
@@ -963,6 +963,9 @@ export interface Channel<TEvent = unknown> {
 }
 
 // @public
+const CHANNEL_KINDS: readonly ["telegram", "slack", "github", "teams", "discord", "http"];
+
+// @public
 export interface ChannelApprovalContext<TEvent = unknown> extends ChannelReplyContext<TEvent> {
     // (undocumented)
     approval: PendingApproval;
@@ -1029,6 +1032,9 @@ export interface ChannelInbound<TEvent = unknown> {
     replyTo: unknown;
     sessionKey: string;
 }
+
+// @public
+type ChannelKind = (typeof CHANNEL_KINDS)[number];
 
 // @public
 export interface ChannelReplyContext<TEvent = unknown> {
@@ -7515,6 +7521,38 @@ export interface TrajectoryStep {
 
 // @public
 export function transcriptRevision(messages: readonly Message[] | undefined): string;
+
+// @public
+type TriggerSpec = {
+    id: string;
+    type: 'chat';
+} | {
+    id: string;
+    type: 'cron';
+    cron: string;
+    timezone?: string;
+    prompt: string;
+    sharedSession?: boolean;
+} | {
+    id: string;
+    type: 'webhook';
+    path: string;
+    secret?: SecretRef;
+    promptTemplate: string;
+    filter?: string;
+} | {
+    id: string;
+    type: 'channel';
+    channel: ChannelKind;
+    secrets: Record<string, SecretRef>;
+    filter?: string;
+} | {
+    id: string;
+    type: 'agent';
+    after: string;
+    on: 'done' | 'error' | 'any';
+    promptTemplate: string;
+};
 
 // @public
 export function twoPhaseStrategy(options: SummarizeStrategyOptions): CompactionStrategy;
