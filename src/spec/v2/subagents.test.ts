@@ -35,7 +35,7 @@ describe('agentSpecV2Schema subagents', () => {
   });
 
   it('rejects top-level-only keys on an inline agent', () => {
-    for (const key of ['triggers', 'flow', 'evals', 'version']) {
+    for (const key of ['triggers', 'abortListeners', 'flow', 'evals', 'version']) {
       const result = parse({ research: { inline: { ...research, [key]: key === 'version' ? 2 : [] } } });
       expect(result.success, `${key} must be rejected`).toBe(false);
       if (result.success) continue;

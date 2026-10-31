@@ -16,7 +16,7 @@ import { secretRefSchema } from './secrets';
 export const SUBAGENT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 /** The keys an inline sub-agent may not set: only the top-level agent has them. */
-export const TOP_LEVEL_ONLY_KEYS = ['version', 'triggers', 'flow', 'evals'] as const;
+export const TOP_LEVEL_ONLY_KEYS = ['version', 'triggers', 'abortListeners', 'flow', 'evals'] as const;
 
 /** The key that selects a SubagentSpec's form; exactly one must be present on each entry. */
 const SUBAGENT_FORMS = ['ref', 'inline', 'remote'] as const;

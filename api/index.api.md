@@ -3315,7 +3315,7 @@ export function includes(needle: string): Check<string>;
 export type InferSchemaOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output'];
 
 // @public
-type InlineAgentSpec = Omit<AgentSpecV2, 'version' | 'triggers' | 'flow' | 'evals' | 'description'> & {
+type InlineAgentSpec = Omit<AgentSpecV2, 'version' | 'triggers' | 'abortListeners' | 'flow' | 'evals' | 'description'> & {
     description: string;
 };
 

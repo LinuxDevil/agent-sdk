@@ -105,7 +105,7 @@ export interface AgentSpecV2 {
 }
 
 /** A sub-agent written inline: an AgentSpecV2 without the keys only a top-level agent has. `description` is required. */
-export type InlineAgentSpec = Omit<AgentSpecV2, 'version' | 'triggers' | 'flow' | 'evals' | 'description'> & {
+export type InlineAgentSpec = Omit<AgentSpecV2, 'version' | 'triggers' | 'abortListeners' | 'flow' | 'evals' | 'description'> & {
   /** What this sub-agent does; the lead model reads it to decide which sub-agent to delegate to. */
   description: string;
 };

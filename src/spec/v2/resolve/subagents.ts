@@ -34,7 +34,14 @@ async function refSubagent(name: string, spec: { ref: string }, host: SubagentHo
       'LOUSHO_SPEC_UNSUPPORTED'
     );
   }
-  const { version: _version, triggers: _triggers, flow: _flow, evals: _evals, ...rest } = await host.loadAgentRef(spec.ref);
+  const {
+    version: _version,
+    triggers: _triggers,
+    abortListeners: _abortListeners,
+    flow: _flow,
+    evals: _evals,
+    ...rest
+  } = await host.loadAgentRef(spec.ref);
   if (typeof rest.description !== 'string' || rest.description.trim() === '') {
     throw new ConfigurationError(
       `AgentSpec v2: sub-agent '${name}' (${spec.ref}) has no description; the lead model needs one to pick it.`,
