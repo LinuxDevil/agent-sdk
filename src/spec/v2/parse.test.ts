@@ -57,16 +57,16 @@ describe('parseAgentSpecV2', () => {
   });
 
   it('throws LOUSHO_SPEC_UNSUPPORTED when only placeholder sections are set', () => {
-    const error = thrown({ ...base, skills: [] });
+    const error = thrown({ ...base, triggers: [] });
     expect(error.code).toBe('LOUSHO_SPEC_UNSUPPORTED');
     expect(error.message).toContain('uses fields this SDK cannot run yet');
-    expect(error.message).toContain("'skills'");
+    expect(error.message).toContain("'triggers'");
   });
 
   it('throws LOUSHO_SPEC_INVALID when unsupported and invalid problems mix', () => {
-    const error = thrown({ ...base, skills: [], model: 'gpt-4o' });
+    const error = thrown({ ...base, triggers: [], model: 'gpt-4o' });
     expect(error.code).toBe('LOUSHO_SPEC_INVALID');
-    expect(error.errors).toHaveProperty('skills');
+    expect(error.errors).toHaveProperty('triggers');
     expect(error.errors).toHaveProperty('model');
   });
 

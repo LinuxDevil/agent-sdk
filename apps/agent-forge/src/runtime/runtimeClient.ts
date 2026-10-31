@@ -9,9 +9,11 @@
 import type { AgentSpec } from 'lousho';
 import type {
   AgentRunStatusPayload,
+  ChangeDraft,
   ChatSessionMeta,
   ChatSessionRecord,
   ChatStatePayload,
+  CreateDraftRequest,
   DebugStatePayload,
   DeployResult,
   ForkRunRequest,
@@ -21,6 +23,7 @@ import type {
   RunHistoryPayload,
   SettingsFile,
   SettingsProfile,
+  SettleDraftRequest,
   StreamMessage,
   SpanEvent,
   TraceDetailPayload,
@@ -118,6 +121,42 @@ class RuntimeClient implements AgentApi {
 
   async deleteAgent(agentId: string): Promise<void> {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'DELETE' });
+  }
+
+  /** The agent's pending change draft, or `undefined` when it has none (the route answers 204). */
+  async getDraft(agentId: string): Promise<ChangeDraft | undefined> {
+    return this.request<ChangeDraft | undefined>(`/agents/${encodeURIComponent(agentId)}/draft`, {
+      method: 'GET',
+    });
+  }
+
+  /** Creates a pending change draft; the server displaces any existing one to history as withdrawn. */
+  async createDraft(agentId: string, request: CreateDraftRequest): Promise<ChangeDraft> {
+    return this.request<ChangeDraft>(`/agents/${encodeURIComponent(agentId)}/draft`, {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  /** Withdraws the pending draft to history; 404 when there is none. */
+  async withdrawDraft(agentId: string): Promise<ChangeDraft> {
+    return this.request<ChangeDraft>(`/agents/${encodeURIComponent(agentId)}/draft`, { method: 'DELETE' });
+  }
+
+  /** Applies the pending draft's patch over the current spec as a `source: 'draft'` version; 409 when `draftId` is stale. */
+  async approveDraft(agentId: string, request?: SettleDraftRequest): Promise<ChangeDraft> {
+    return this.request<ChangeDraft>(`/agents/${encodeURIComponent(agentId)}/draft/approve`, {
+      method: 'POST',
+      body: JSON.stringify(request ?? {}),
+    });
+  }
+
+  /** Moves the pending draft to history as rejected, keeping the working copy. */
+  async rejectDraft(agentId: string, request?: SettleDraftRequest): Promise<ChangeDraft> {
+    return this.request<ChangeDraft>(`/agents/${encodeURIComponent(agentId)}/draft/reject`, {
+      method: 'POST',
+      body: JSON.stringify(request ?? {}),
+    });
   }
 
   /** The workspace the studio serves (`baseDir` is its root; `workspace` is the full ref for addressing it by id). */

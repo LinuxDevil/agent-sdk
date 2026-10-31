@@ -6,6 +6,7 @@ import { ALL_WORKSPACES } from '../../../shared/workspace';
 import type { AgentStore } from '../../../src/persistence/AgentStore';
 import type { RunManager } from '../../runRegistry';
 import { AgentRepo } from '../../storage/agentRepo';
+import { DraftStore } from '../../storage/draftStore';
 import { VersionStore } from '../../storage/versionStore';
 import { singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from '../context';
 import { requestedWorkspaceId, workspaceMiddleware, workspaceOf } from '../middleware';
@@ -24,6 +25,7 @@ function ctx(id: string): WorkspaceContext {
     repo,
     agentStore: emptyStore,
     versions: new VersionStore(repo),
+    drafts: new DraftStore(repo),
     runs: {} as RunManager,
     chatTriggers: new TriggerRegistry(),
   };

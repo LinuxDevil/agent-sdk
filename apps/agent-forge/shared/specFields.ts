@@ -55,11 +55,12 @@ const SPEC_FIELDS = {
 } as const satisfies Record<Exclude<keyof AgentSpecV2, 'version'>, true>;
 
 /**
- * The comparison order: every spec key, then 'labels' (meta state a
- * snapshot also carries). Module-private; D10 exports it when the Versions
- * tab needs the same order for its section grouping.
+ * The canonical order of every draftable field: every spec key (except
+ * `version`), then 'labels' (meta state a snapshot also carries).
+ * `computeChangedFields` reports in this order and the draft routes use
+ * it as the allowlist of patch keys.
  */
-const SPEC_FIELD_ORDER: readonly string[] = [...Object.keys(SPEC_FIELDS), 'labels'];
+export const SPEC_FIELD_ORDER: readonly string[] = [...Object.keys(SPEC_FIELDS), 'labels'];
 
 /**
  * A field value as comparison sees it: `undefined`, `null`, `''`, `[]` and

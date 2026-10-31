@@ -422,3 +422,82 @@ export interface VersionListItem {
 export interface VersionRecord extends VersionListItem {
   snapshot: SpecSnapshot;
 }
+
+/**
+ * Where a change draft came from: the Author ('author'), a suggestion
+ * pass ('suggestion') or a hand-made API call ('manual').
+ */
+export type DraftOrigin = 'author' | 'suggestion' | 'manual';
+
+/**
+ * The draft lifecycle: `pending` while it sits in
+ * `.lousho/agents/<id>/drafts/current.json` (at most one per agent),
+ * then `approved`/`rejected`/`withdrawn` once it moves to `drafts/history/`.
+ */
+export type DraftStatus = 'pending' | 'approved' | 'rejected' | 'withdrawn';
+
+/**
+ * A patch over a spec plus labels (the same semantics the Author's
+ * AuthorPatch uses): an omitted key keeps the current value, `null`
+ * removes the key (`labels: null` clears to `[]`), any other value
+ * replaces - lists wholesale. `version` is never patchable.
+ */
+export type SpecPatch = { [K in Exclude<keyof AgentSpecV2, 'version'>]?: AgentSpecV2[K] | null } & {
+  labels?: string[] | null;
+};
+
+/**
+ * The advisory auto-review a pending draft carries once the review pass
+ * has looked at it (filled by the pass, never at create time). The
+ * `fingerprint` binds the verdict to the exact submission it judged.
+ */
+export interface DraftAutoReview {
+  outcome: 'approved' | 'escalated' | 'unavailable';
+  safe: boolean;
+  rationale: string;
+  concerns: { area: 'safety' | 'coherence' | 'trigger_reach'; detail: string }[];
+  modelId: string | null;
+  checkedAt: string;
+  fingerprint: string;
+}
+
+/**
+ * One `.lousho/agents/<id>/drafts/` record: a proposed patch to the
+ * working copy, pending review. `baseVersion`/`baseSpecHash` snapshot
+ * what the draft was written against so the UI can flag drift
+ * (currentVersion > baseVersion). `note` is the reviewer's comment on
+ * approve/reject; `autoReview` stays null until the review pass runs.
+ */
+export interface ChangeDraft {
+  id: string;
+  agentId: string;
+  status: DraftStatus;
+  origin: DraftOrigin;
+  patch: SpecPatch;
+  reason: string;
+  /** Latest version number when the draft was made (drift = current > base); null when there are none yet. */
+  baseVersion: number | null;
+  /** `specHash()` of the working copy when the draft was made. */
+  baseSpecHash: string;
+  autoReview: DraftAutoReview | null;
+  /** Reviewer note recorded on approve/reject. */
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  respondedAt: string | null;
+}
+
+/** `POST /agents/:id/draft`'s body: the patch plus where it came from and why. */
+export interface CreateDraftRequest {
+  patch: SpecPatch;
+  origin: DraftOrigin;
+  reason: string;
+}
+
+/** `POST /agents/:id/draft/approve` · `/reject`'s body - both fields optional. */
+export interface SettleDraftRequest {
+  /** Guards a stale sheet: when given and not the current draft's id, the route answers 409. */
+  draftId?: string;
+  /** Reviewer note recorded on the settled draft. */
+  note?: string;
+}
