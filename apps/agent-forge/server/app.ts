@@ -7,6 +7,8 @@
  *   GET  /agents/:id                 -> AgentSpec | 404
  *   PUT  /agents/:id                 -> save an AgentSpec to disk (body: AgentSpec)
  *   DELETE /agents/:id               -> remove the saved spec, 204
+ *   GET/POST/DELETE /agents/:id/draft -> the pending ChangeDraft (routes/draftRoutes.ts)
+ *   POST /agents/:id/draft/approve · /reject -> settle the pending draft
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
@@ -73,7 +75,9 @@ import { registerPlaygroundRoute, type PlaygroundOptions } from './playground';
 import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { AgentRepo, InvalidSpecError } from './storage/agentRepo';
+import { DraftStore } from './storage/draftStore';
 import { VersionStore } from './storage/versionStore';
+import { registerDraftRoutes } from './routes/draftRoutes';
 
 interface CreateAppBaseOptions {
   /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
@@ -704,6 +708,7 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
     repo,
     agentStore: options.agentStore,
     versions: new VersionStore(repo),
+    drafts: new DraftStore(repo),
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
   };
@@ -765,6 +770,10 @@ export function createApp(options: CreateAppOptions): Express {
   });
 
   registerAgentRoutes(app);
+  // Draft routes: get/create/withdraw/approve/reject the per-agent pending
+  // ChangeDraft (server/routes/draftRoutes.ts - stores come from
+  // workspaceOf(req), the workspace seam).
+  registerDraftRoutes(app);
   registerWorkspaceRoute(app);
   registerRunRoutes(app);
   registerChatRoutes(app);
