@@ -3,6 +3,7 @@ import type { AgentStore, AgentStoreEntry } from './AgentStore';
 import { AgentRepo } from '../../server/storage/agentRepo';
 import { mergeLegacySave, toLegacySpec } from '../../server/storage/legacySpec';
 import { withAgentLock } from '../../server/storage/atomic';
+import { VersionStore } from '../../server/storage/versionStore';
 
 /**
  * Filesystem-backed `AgentStore` - a v1 facade over `AgentRepo`, which owns
@@ -28,6 +29,7 @@ import { withAgentLock } from '../../server/storage/atomic';
  * fresh `AgentRepo(baseDir)` for callers that only want the store.
  */
 export function createFsAgentStore(baseDir: string, repo: AgentRepo = new AgentRepo(baseDir)): AgentStore {
+  const versions = new VersionStore(repo);
   return {
     async list(): Promise<AgentStoreEntry[]> {
       const entries: AgentStoreEntry[] = [];
@@ -56,6 +58,10 @@ export function createFsAgentStore(baseDir: string, repo: AgentRepo = new AgentR
       // spec, merge the v1 save onto it (preserving the v2-only keys the
       // v1 body cannot express), validate and write atomically.
       await withAgentLock(id, async () => {
+        // If the yaml on disk was edited outside Studio since our last
+        // write, preserve that content as a baseline version before we
+        // overwrite it. Autosave still writes no version of its own.
+        await versions.reconcileExternalEdit(id);
         await repo.writeSpec(id, mergeLegacySave(await repo.readSpec(id), spec));
       });
     },

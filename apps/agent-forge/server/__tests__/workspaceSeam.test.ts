@@ -14,6 +14,7 @@ import type { AgentStore, AgentStoreEntry } from '../../src/persistence/AgentSto
 import { WORKSPACE_ID_RE } from '../../shared/workspace';
 import { workspaceIdFor, workspaceRefFor } from '../workspace/workspaceId';
 import { AgentRepo } from '../storage/agentRepo';
+import { VersionStore } from '../storage/versionStore';
 import type { WorkspaceContext } from '../workspace/context';
 
 const SPEC: AgentSpec = {
@@ -99,15 +100,17 @@ describe('workspace seam', () => {
   it('createApp({ workspace }) routes read the given context, not a closed-over store', async () => {
     const entries: AgentStoreEntry[] = [{ id: 'stub-agent', spec: SPEC, updatedAt: 't' }];
     const status = vi.fn().mockReturnValue({ agentId: 'x', status: 'idle', updatedAt: 't' });
+    const repo = new AgentRepo(baseDir);
     const workspace: WorkspaceContext = {
       ref: workspaceRefFor(baseDir),
-      repo: new AgentRepo(baseDir),
+      repo,
       agentStore: {
         list: async () => entries,
         load: async () => undefined,
         save: async () => {},
         remove: async () => {},
       },
+      versions: new VersionStore(repo),
       runs: { status } as unknown as RunManager,
       chatTriggers: new TriggerRegistry(),
     };

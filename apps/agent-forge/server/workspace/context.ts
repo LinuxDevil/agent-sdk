@@ -18,6 +18,7 @@ import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
 import type { AgentStore } from '../../src/persistence/AgentStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
+import { VersionStore } from '../storage/versionStore';
 import { ChatTriggerAdapter } from '../chatTriggerAdapter';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
@@ -32,6 +33,8 @@ export interface WorkspaceContext {
   repo: AgentRepo;
   /** v1 facade over `repo` (fsAgentStore) - what the still-v1 routes and RunManager use. */
   agentStore: AgentStore;
+  /** Append-only version history under `<id>/versions/` - captures and the external-edit baseline live here (storage/versionStore.ts). */
+  versions: VersionStore;
   runs: RunManager;
   /** `'chat'` → `ChatTriggerAdapter(runs)`; `POST /agents/:id/message` goes through it (chatTriggerAdapter.ts). */
   chatTriggers: TriggerRegistry;
@@ -100,5 +103,5 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     // Builder runs report to the observe daemon, so "Open trace" resolves.
     ...(services.observe ? { observe: true as const } : {}),
   });
-  return { ref, repo, agentStore, runs, chatTriggers: chatTriggersFor(runs) };
+  return { ref, repo, agentStore, versions: new VersionStore(repo), runs, chatTriggers: chatTriggersFor(runs) };
 }

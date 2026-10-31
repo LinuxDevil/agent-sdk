@@ -11,22 +11,7 @@
 import { createHash } from 'node:crypto';
 import { stringify as stringifyYaml } from 'yaml';
 import type { AgentSpecV2 } from '@lousho/build-ai-agent';
-
-/**
- * `value` with every object's keys sorted, recursively. Arrays keep their
- * order (their element objects are still key-sorted); scalars pass through.
- * Shared with `mergeLegacySave`, which uses it for deep-equality on spec
- * areas.
- */
-export function sortKeysDeep(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeysDeep);
-  if (typeof value !== 'object' || value === null) return value;
-  const sorted: Record<string, unknown> = {};
-  for (const key of Object.keys(value).sort()) {
-    sorted[key] = sortKeysDeep((value as Record<string, unknown>)[key]);
-  }
-  return sorted;
-}
+import { sortKeysDeep } from '../../shared/stableJson';
 
 /** The canonical YAML a spec hashes as: `yaml.stringify` of the deep key-sorted spec. */
 function canonicalSpecYaml(spec: AgentSpecV2): string {

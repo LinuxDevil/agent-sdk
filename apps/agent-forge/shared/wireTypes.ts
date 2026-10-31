@@ -10,7 +10,7 @@
  * defines the wire shape of the status/events the server reports back to
  * the app over `GET /agents/:id/status` and `WS /agents/:id/stream`.
  */
-import type { AgentEventUsage, CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lousho/build-ai-agent';
+import type { AgentEventUsage, AgentSpecV2, CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lousho/build-ai-agent';
 import type { WorkspaceRef } from './workspace';
 
 /**
@@ -365,4 +365,60 @@ export interface CanvasLayout {
   nodes: Record<string, { x: number; y: number; collapsed?: boolean }>;
   notes: Array<{ id: string; x: number; y: number; text: string }>;
   viewport?: { x: number; y: number; zoom: number };
+}
+
+/**
+ * Why a version was written (Contract B). `baseline` records the spec as
+ * found on disk before Studio overwrites a file it did not write itself
+ * (external edit or pre-versioning agent); `restore`/`publish` mark the
+ * lifecycle transitions that produce a new version.
+ */
+export type VersionKind = 'create' | 'update' | 'restore' | 'baseline' | 'publish';
+
+/** Which Studio surface caused the version - attribution for the Versions tab. */
+export type VersionSource =
+  | 'editor'
+  | 'author'
+  | 'import'
+  | 'draft'
+  | 'suggestion'
+  | 'restore'
+  | 'external_file_edit'
+  | 'template'
+  | 'copy';
+
+/**
+ * Everything a version restores: the spec v2 working copy plus the
+ * `meta.json` labels (labels are restorable state; `enabled` deliberately
+ * is not - a restore never re-enables an agent).
+ */
+export interface SpecSnapshot {
+  spec: AgentSpecV2;
+  labels: string[];
+}
+
+/**
+ * One line of `.lousho/agents/<id>/versions/index.jsonl`: everything the
+ * versions list renders without loading the full snapshot.
+ */
+export interface VersionListItem {
+  version: number;
+  kind: VersionKind;
+  source: VersionSource;
+  /** Top-level spec keys + 'labels', in canonical order - the change chips. */
+  changedFields: string[];
+  restoredFromVersion: number | null;
+  /** Filled later by the summary pass; null until then. */
+  summary: string | null;
+  /** The Author message that caused this version, clamped to 400 chars. */
+  requestText: string | null;
+  authorSessionId: string | null;
+  /** `specHash()` of the snapshot's spec - cheap no-op and external-edit detection. */
+  specHash: string;
+  createdAt: string;
+}
+
+/** One `.lousho/agents/<id>/versions/<NNNNNN>.json` file: a list item plus the full restorable snapshot. */
+export interface VersionRecord extends VersionListItem {
+  snapshot: SpecSnapshot;
 }

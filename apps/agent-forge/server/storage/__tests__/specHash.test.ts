@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { AgentSpecV2 } from '@lousho/build-ai-agent';
-import { sortKeysDeep, specHash } from '../specHash';
+import { sortKeysDeep } from '../../../shared/stableJson';
+import { specHash } from '../specHash';
 
 const base: AgentSpecV2 = { version: 2, name: 'bot', model: 'mock/m1', instructions: 'Be helpful.' };
 
