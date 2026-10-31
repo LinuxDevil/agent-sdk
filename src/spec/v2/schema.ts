@@ -10,6 +10,7 @@ import type { SpecObjectSchema } from '../schema';
 import { modelIdSchema, relativePathSchema } from './common';
 import { guardrailListSchema } from './guardrails';
 import { hookListSchema } from './hooks';
+import { memoryListSchema } from './memory';
 import { outputSpecSchema } from './output';
 import { permissionListSchema } from './permissions';
 import { runtimeShape } from './runtime';
@@ -72,7 +73,7 @@ export const agentSpecV2Shape = {
   ...runtimeShape,
   tools: toolRefListSchema.optional(),
   skills: pendingField('skills'),
-  memory: pendingField('memory'),
+  memory: memoryListSchema.optional(),
   subagents: subagentsSchemaOf(inlineAgentSchema).optional(),
   handoffs: pendingField('handoffs'),
   guardrails: guardrailListSchema.optional(),
