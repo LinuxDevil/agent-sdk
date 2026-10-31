@@ -9,6 +9,7 @@ import { anyError, typeErrors } from '../../utils/zodCompat';
 import type { SpecObjectSchema } from '../schema';
 import { modelIdSchema, relativePathSchema } from './common';
 import { guardrailListSchema } from './guardrails';
+import { handoffListSchema } from './handoffs';
 import { hookListSchema } from './hooks';
 import { outputSpecSchema } from './output';
 import { permissionListSchema } from './permissions';
@@ -74,7 +75,7 @@ export const agentSpecV2Shape = {
   skills: pendingField('skills'),
   memory: pendingField('memory'),
   subagents: subagentsSchemaOf(inlineAgentSchema).optional(),
-  handoffs: pendingField('handoffs'),
+  handoffs: handoffListSchema.optional(),
   guardrails: guardrailListSchema.optional(),
   permissions: permissionListSchema.optional(),
   hooks: hookListSchema.optional(),
