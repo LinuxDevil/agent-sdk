@@ -18,6 +18,7 @@ import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
 import type { AgentStore } from '../../src/persistence/AgentStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
+import { DraftStore } from '../storage/draftStore';
 import { VersionStore } from '../storage/versionStore';
 import { ChatTriggerAdapter } from '../chatTriggerAdapter';
 import { FileApprovalStore } from '../approvalStore';
@@ -35,6 +36,8 @@ export interface WorkspaceContext {
   agentStore: AgentStore;
   /** Append-only version history under `<id>/versions/` - captures and the external-edit baseline live here (storage/versionStore.ts). */
   versions: VersionStore;
+  /** Pending + settled change drafts under `<id>/drafts/` (storage/draftStore.ts). */
+  drafts: DraftStore;
   runs: RunManager;
   /** `'chat'` → `ChatTriggerAdapter(runs)`; `POST /agents/:id/message` goes through it (chatTriggerAdapter.ts). */
   chatTriggers: TriggerRegistry;
@@ -103,5 +106,13 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     // Builder runs report to the observe daemon, so "Open trace" resolves.
     ...(services.observe ? { observe: true as const } : {}),
   });
-  return { ref, repo, agentStore, versions: new VersionStore(repo), runs, chatTriggers: chatTriggersFor(runs) };
+  return {
+    ref,
+    repo,
+    agentStore,
+    versions: new VersionStore(repo),
+    drafts: new DraftStore(repo),
+    runs,
+    chatTriggers: chatTriggersFor(runs),
+  };
 }
