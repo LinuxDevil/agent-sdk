@@ -427,7 +427,7 @@ export interface AgentSpecV2 {
     rateLimit?: RateLimitOptions;
     reasoning?: ReasoningOption;
     retry?: false | AgentSpecV2Retry;
-    skills?: never;
+    skills?: SkillRef[];
     subagentOptions?: Omit<SubagentOptions, 'sessions'>;
     subagents?: Record<string, SubagentSpec_2>;
     tools?: ToolRef[];
@@ -6351,6 +6351,19 @@ export interface Skill {
     // (undocumented)
     readonly name: string;
 }
+
+// @public
+type SkillRef = {
+    dir: string;
+} | {
+    registry: string;
+} | {
+    inline: {
+        name: string;
+        description: string;
+        content: string;
+    };
+};
 
 // @public
 export interface SkippedMcpTool {

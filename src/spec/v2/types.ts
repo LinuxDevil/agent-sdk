@@ -21,6 +21,7 @@ import type { McpServerSpecV2 } from './mcpServers';
 import type { OutputSpecV2 } from './output';
 import type { PermissionRuleSpec } from './permissions';
 import type { SecretRef } from './secrets';
+import type { SkillRef } from './skills';
 import type { ToolRef } from './tools';
 
 /** AgentSpec v2. Hand-written and kept in lockstep with schema.ts, like v1's AgentSpec. */
@@ -81,8 +82,8 @@ export interface AgentSpecV2 {
   // Sections not landed yet. Each later ticket replaces exactly its own line.
   /** Tool references (S04a): builtin, registry, file, integration, openapi, hosted or hub. */
   tools?: ToolRef[]; // S04a
-  /** Skills (S14); not supported yet. */
-  skills?: never; // S14
+  /** Skill references (S14): folders, `lousho add` installs or skills embedded in the spec. */
+  skills?: SkillRef[]; // S14
   /** Long-term memory slots (S13): `remember_`/`recall_`/`forget_` tools and run-start recall. */
   memory?: MemorySpec[]; // S13
   /** Sub-agents this agent can delegate to with the `task` tool (S08), keyed by their `sub:<name>` names. */

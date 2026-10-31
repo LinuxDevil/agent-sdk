@@ -1,6 +1,6 @@
 import { SDKError } from '../execution/errors';
 /** Skill names are file/tool friendly: lowercase, digits, `-` and `_`, 1-64 characters. */
-const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-_]{0,63}$/;
+export const SKILL_NAME_PATTERN = /^[a-z0-9][a-z0-9-_]{0,63}$/;
 
 /** Options accepted by {@link defineSkill}. */
 export interface DefineSkillOptions {
