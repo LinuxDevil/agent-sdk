@@ -1,0 +1,24 @@
+name: Publish GitHub Packages
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+permissions:
+  contents: read
+  packages: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run build:studio
+      - run: npm run build -w create-lousho-agent
+      - run: node scripts/publish-github-packages.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
