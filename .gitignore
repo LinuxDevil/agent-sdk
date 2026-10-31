@@ -74,3 +74,6 @@ snip.txt
 
 # Smoke-test artifacts
 .smoke/shots/
+
+# npm auth token
+.npmrc

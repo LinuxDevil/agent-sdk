@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-alpha.30] - 2026-10-31
+
 What is on `main` and not yet on npm. Entries marked **Behavior change** can
 break working code; [Upgrading](docs/upgrading.md) lists each one with its
 opt-out.
