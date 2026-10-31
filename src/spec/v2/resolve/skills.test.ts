@@ -87,6 +87,22 @@ describe('resolveSkillRef', () => {
     });
   });
 
+  it('rejects a { dir } that escapes the base directory', async () => {
+    const base = baseDir();
+    await expect(resolveSkillRef({ dir: '../x' }, { baseDir: base })).rejects.toMatchObject({
+      code: 'LOUSHO_SPEC_INVALID',
+      message: expect.stringContaining('must be a relative path inside'),
+    });
+  });
+
+  it('rejects a { registry } name that would escape skills/, even unvalidated', async () => {
+    const base = baseDir();
+    await expect(resolveSkillRef({ registry: '../../x' }, { baseDir: base })).rejects.toMatchObject({
+      code: 'LOUSHO_SKILL_INVALID',
+      message: expect.stringContaining("'../../x' is not a valid skill name"),
+    });
+  });
+
   it('rejects an entry with two kind keys at parse time', () => {
     expect(skillRefSchema.safeParse({ dir: 'x', registry: 'y' }).success).toBe(false);
   });

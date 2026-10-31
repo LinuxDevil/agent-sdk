@@ -9,7 +9,7 @@
 import { stat } from 'node:fs/promises';
 import * as path from 'node:path';
 import { SDKError } from '../../../execution/errors';
-import { defineSkill, type Skill } from '../../../skills/defineSkill';
+import { defineSkill, SKILL_NAME_PATTERN, type Skill } from '../../../skills/defineSkill';
 import { loadSkills } from '../../../skills/loadSkills';
 import { specFilePath } from '../files';
 import type { SkillRef } from '../skills';
@@ -71,6 +71,11 @@ async function dirSkills(dir: string, host: SkillHost): Promise<Skill[]> {
 
 /** `{ registry: name }` → the skill `lousho add` installed at `<baseDir>/skills/<name>/`. */
 async function registrySkill(name: string, host: SkillHost): Promise<Skill[]> {
+  // The schema already enforces this, but resolveSkillRef also runs on unvalidated input:
+  // without the check a name like '../../x' would escape baseDir.
+  if (!SKILL_NAME_PATTERN.test(name)) {
+    return invalid(`registry skill '${name}' is not a valid skill name (1-64 characters: lowercase a-z, 0-9, '-' and '_', starting with a letter or digit)`);
+  }
   const dir = path.resolve(host.baseDir, 'skills', name);
   const skill = (await isFile(path.join(dir, 'SKILL.md'))) ? await folderSkill(dir) : undefined;
   if (skill === undefined) {
@@ -79,16 +84,11 @@ async function registrySkill(name: string, host: SkillHost): Promise<Skill[]> {
   return [skill];
 }
 
-/** A ref that reached resolveSkillRef without passing the schema (the dispatcher narrowed wrong). */
-function notARef(ref: SkillRef): never {
-  throw new SDKError(`skills: entry is not a skill reference (${JSON.stringify(ref)})`, 'LOUSHO_SKILL_INVALID');
-}
-
 /** One ref → its skills, keyed by ref kind so the dispatch is a lookup. */
-const RESOLVERS: Record<'inline' | 'dir' | 'registry', (ref: SkillRef, host: SkillHost) => Promise<Skill[]>> = {
-  inline: (ref) => ('inline' in ref ? Promise.resolve([defineSkill(ref.inline)]) : notARef(ref)),
-  dir: (ref, host) => ('dir' in ref ? dirSkills(ref.dir, host) : notARef(ref)),
-  registry: (ref, host) => ('registry' in ref ? registrySkill(ref.registry, host) : notARef(ref)),
+const RESOLVERS = {
+  inline: (ref: Extract<SkillRef, { inline: unknown }>) => Promise.resolve([defineSkill(ref.inline)]),
+  dir: (ref: Extract<SkillRef, { dir: string }>, host: SkillHost) => dirSkills(ref.dir, host),
+  registry: (ref: Extract<SkillRef, { registry: string }>, host: SkillHost) => registrySkill(ref.registry, host),
 };
 
 /**
@@ -99,6 +99,7 @@ const RESOLVERS: Record<'inline' | 'dir' | 'registry', (ref: SkillRef, host: Ski
  * `LOUSHO_SKILL_INVALID`.
  */
 export async function resolveSkillRef(ref: SkillRef, host: SkillHost): Promise<Skill[]> {
-  const kind = 'dir' in ref ? 'dir' : 'registry' in ref ? 'registry' : 'inline';
-  return RESOLVERS[kind](ref, host);
+  if ('dir' in ref) return RESOLVERS.dir(ref, host);
+  if ('registry' in ref) return RESOLVERS.registry(ref, host);
+  return RESOLVERS.inline(ref);
 }
