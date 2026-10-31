@@ -1,11 +1,18 @@
 name: CI
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+# A newer push to the same PR cancels the run it supersedes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
-  ci:
+  # Static gates: types, lint, API surface, generated files, docs snippets. The three ci jobs run in
+  # parallel (each builds dist/ itself), so a PR waits for the slowest one instead of the sum.
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,12 +36,6 @@ jobs:
       # The examples are type-checked too (tsconfig.examples.json), so they cannot drift from the API.
       - run: npm run typecheck:examples
       - run: npm run lint
-      # Build the root SDK's dist *before* running tests:
-      # packages/create-lousho/src/template.e2e.test.ts `npm pack`s the
-      # root SDK's own source tree to install it into a generated project,
-      # which needs dist/ (package.json's main/module/types) to already
-      # exist - it was previously built only in the step after tests, so
-      # this test always failed once it actually got a chance to run.
       - run: npm run build
         # The dual-entry build's DTS pass (worker + executor entries) exceeds
         # the default heap, like the compat job's build below.
@@ -42,56 +43,78 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=12288
       # API surface gate: every exports entry has a checked-in api/*.api.md
       # report; a public-API change fails here until `npm run api:update` is run
-      # and the diff committed. Runs only in the main job so the report reflects
-      # the default peers, not the compat job's ai/zod pairing.
+      # and the diff committed. Runs only here so the report reflects the default peers, not the compat job's ai/zod pairing.
       - run: npm run api:check
-      # packages/create-lousho's own tests execFileSync its bin/cli.js,
-      # which requires ITS dist/index.js to exist too - build it before the
-      # test step (this is a separate package from the root SDK above).
       - run: npm run build --workspace=packages/create-lousho
       # Every ```ts block in README.md and docs/*.md must type-check against
       # src/ (quick-start also runs against the packed tarball). Needs dist/.
       - run: npm run docs:verify-snippets -- --skip-build
-      # llms.txt / llms-full.txt are generated from README + docs; fail if stale.
       # Compile-time API tests (*.test-d.ts): inference of defineTool, flow types, fs adapter.
       - run: npm run test:types
+      # llms.txt / llms-full.txt are generated from README + docs; fail if stale.
       - run: npm run docs:llms:check
       # TypeDoc "not documented" count may only go down.
       - run: npm run docs:ratchet
       # registry/dist is generated from registry/; fail if stale.
       - run: npm run registry:check
-      - run: npm run test:coverage
-      # Agent Forge (apps/agent-forge) imports the SDK as
-      # `lousho` via `file:../..`, i.e. the root dist/ built
-      # above, so these run after the root build. Its client and server
-      # suites were never run in CI before, which is how a Stop-then-Run
-      # resume regression landed unnoticed.
+      # Agent Forge imports the SDK as `lousho` via `file:../..`, i.e. the root dist/ built above.
       - run: npm run typecheck --workspace apps/agent-forge
       - run: npm run typecheck:server --workspace apps/agent-forge
+      # Source and tests also type-check against zod 4 (last: it changes node_modules).
+      - run: npm install --no-save zod@4
+      - run: npx tsc --noEmit
+      - run: npm run typecheck:tests
+  # Unit tests with coverage, the Agent Forge suites, and the dead-code/duplication gate.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
+      # Build the root SDK's dist *before* running tests: packages/create-lousho/src/template.e2e.test.ts
+      # `npm pack`s the root SDK to install it into a generated project, which needs dist/ to exist.
+      - run: npm run build
+        # The dual-entry build's DTS pass (worker + executor entries) exceeds
+        # the default heap, like the compat job's build below.
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+      # packages/create-lousho's own tests execFileSync its bin/cli.js, which needs ITS dist/index.js too.
+      - run: npm run build --workspace=packages/create-lousho
+      - run: npm run test:coverage
       - run: npm run test --workspace apps/agent-forge -- --run
       - run: npm run test:server --workspace apps/agent-forge
       # Dead code, duplication and complexity gate (config: .fallowrc.json).
       # Bare `fallow` fails on any finding. Runs after the coverage step because
       # its CRAP scores read coverage/coverage-final.json.
       - run: npm run fallow || (npx fallow health; npx fallow dupes; exit 1)
-      # What `npm pack` produces must install and work in a fresh project: builds, packs the SDK and
-      # create-lousho, `npm publish --dry-run` (never a real publish), installs the tarballs plus
-      # peers in a fresh project, loads every export in ESM and CJS, a mock-model turn, the bin and tsc.
+  # What `npm pack` produces must install and work in a fresh project: builds, packs the SDK and
+  # create-lousho, `npm publish --dry-run` (never a real publish), installs the tarballs plus
+  # peers in a fresh project, loads every export in ESM and CJS, a mock-model turn, the bin and tsc.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
       - run: npm run pack-smoke
         env:
           NODE_OPTIONS: --max-old-space-size=12288
       # Hello-world bundle and tarball unpacked size against scripts/size-budget.json (after pack-smoke's builds).
       - run: npm run size-check
-      # Source and tests also type-check against zod 4 (last: it changes node_modules).
-      - run: npm install --no-save zod@4
-      - run: npx tsc --noEmit
-      - run: npm run typecheck:tests
   # The newest peers the ranges accept (`ai` 7, `@ai-sdk/*` 4, `ollama-ai-provider-v2` 4, zod 4), installed
   # on top of the default `ai` 4 / zod 3 install (`--no-save` leaves the lockfile alone; `--save-prod
   # --legacy-peer-deps` because ollama-ai-provider-v2 is an optional peer and the dev install's v1 conflicts
   # with zod 4). Then the sandbox egress, credential broker and docker deploy image against the runner's
   # real Docker Engine (`*.docker.test.ts`, which fail instead of skipping with LOUSHO_DOCKER_TESTS=1).
   compat:
+    # Slow (full suite on the newest peers plus Docker); runs on main and by hand, not on every PR push.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
