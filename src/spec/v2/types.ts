@@ -23,6 +23,7 @@ import type { PermissionRuleSpec } from './permissions';
 import type { SecretRef } from './secrets';
 import type { SkillRef } from './skills';
 import type { ToolRef } from './tools';
+import type { TriggerSpec } from './triggers';
 
 /** AgentSpec v2. Hand-written and kept in lockstep with schema.ts, like v1's AgentSpec. */
 export interface AgentSpecV2 {
@@ -98,8 +99,8 @@ export interface AgentSpecV2 {
   hooks?: HookSpec[]; // S12
   /** Structured output: a JSON Schema the final reply is validated into `result.object` with (S15). */
   output?: OutputSpecV2; // S15
-  /** Triggers that start runs (S22); not supported yet. */
-  triggers?: never; // S22
+  /** Triggers that start runs (S22a): chat, cron, webhook, channel and agent-chain entries. */
+  triggers?: TriggerSpec[]; // S22a
   /** Listeners that abort queued or running runs (R03); not supported yet. */
   abortListeners?: never; // R03
   /** A flow the run follows instead of a plain agent loop (S21); not supported yet. */

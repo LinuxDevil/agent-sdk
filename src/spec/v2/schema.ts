@@ -18,6 +18,7 @@ import { runtimeShape } from './runtime';
 import { skillRefListSchema } from './skills';
 import { subagentsSchemaOf, TOP_LEVEL_ONLY_KEYS } from './subagents';
 import { toolRefListSchema } from './tools';
+import { triggerListSchema } from './triggers';
 import { pendingField } from './unsupported';
 import type { AgentSpecV2 } from './types';
 
@@ -82,7 +83,7 @@ export const agentSpecV2Shape = {
   permissions: permissionListSchema.optional(),
   hooks: hookListSchema.optional(),
   output: outputSpecSchema.optional(),
-  triggers: pendingField('triggers'),
+  triggers: triggerListSchema.optional(),
   abortListeners: pendingField('abortListeners'),
   flow: pendingField('flow'),
   evals: pendingField('evals'),
