@@ -1,14 +1,6 @@
 import { AgentSpec, McpServerSpec } from './schema';
 import { createAgent, SimpleAgent, CreateAgentConfig } from '../createAgent';
-import { resolveProvider } from '../providers/resolveProvider';
-import { LLMProvider, LLMProviderRegistry } from '../providers/llm';
 import { ConfigurationError } from '../execution/errors';
-// No provider-registration side-effect import is needed here:
-// LLMProviderRegistry.create() - reached below directly, and via
-// resolveProvider() for the real provider types - registers the built-in
-// providers lazily on a miss, so 'mock', 'openai', 'anthropic',
-// 'openrouter' and 'ollama' all resolve in CLI bundles like dist/cli/dev.js
-// that never load src/index.ts.
 import { httpTool } from '../tools/built-in/http';
 import { currentDateTool } from '../tools/built-in/currentDate';
 import { dayNameTool } from '../tools/built-in/dayName';
@@ -16,24 +8,11 @@ import { webFetchTool } from '../tools/built-in/webFetch';
 import { ToolDescriptor } from '../types';
 import { compilePolicy } from './policy';
 
-const REAL_PROVIDER_TYPES = new Set(['openai', 'anthropic', 'google', 'ollama', 'openrouter']);
-
-/**
- * Resolves a spec's provider config to an LLMProvider. Real provider types
- * go through resolveProvider() (env-var driven credentials, as
- * usual). Any other registered type - notably 'mock', which intentionally
- * has no env var and is never part of resolveProvider()'s whitelist - is
- * created directly via LLMProviderRegistry. This is what lets `lousho dev`
- * run end-to-end against a MockLLMProvider in tests without
- * real API credentials, while still reusing resolveProvider() verbatim for
- * every real provider type.
- */
-export function resolveSpecProvider(type: string, model: string): LLMProvider {
-  if (REAL_PROVIDER_TYPES.has(type.toLowerCase())) {
-    return resolveProvider(`${type}/${model}`);
-  }
-  return LLMProviderRegistry.create(type, { defaultModel: model });
-}
+// resolveSpecProvider lives in ./provider.ts, shared with the v2 compiler
+// (src/spec/v2/specToAgent.ts); re-exported so this module's public surface
+// is unchanged.
+import { resolveSpecProvider } from './provider';
+export { resolveSpecProvider };
 
 /**
  * Built-in tool names an AgentSpec's `tools` list can reference without

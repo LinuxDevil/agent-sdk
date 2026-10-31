@@ -393,6 +393,67 @@ export interface AgentSpecTrigger {
 export const agentSpecTriggerSchema: SpecSchema<AgentSpecTrigger>;
 
 // @public
+export interface AgentSpecV2 {
+    abortListeners?: never;
+    approvalTtlMs?: number;
+    askQuestion?: boolean;
+    codeMode?: boolean | CodeModeOptions;
+    compaction?: boolean | AgentSpecV2Compaction;
+    description?: string;
+    evals?: never;
+    fallbackModels?: string[];
+    flow?: never;
+    guardrails?: GuardrailSpec[];
+    handoffs?: never;
+    hooks?: never;
+    instructions: string | {
+        file: string;
+    };
+    instructionsByFamily?: Record<string, string>;
+    limits?: RunLimits;
+    maxHandoffs?: number;
+    maxSteps?: number;
+    maxSubagentDepth?: number;
+    mcpServers?: Record<string, McpServerSpecV2>;
+    memory?: never;
+    model: string;
+    modelSettings?: ModelSettings;
+    name: string;
+    output?: OutputSpecV2;
+    permissionMode?: PermissionMode;
+    permissions?: PermissionRuleSpec[];
+    promptCaching?: PromptCachingOption;
+    promptRef?: string;
+    rateLimit?: RateLimitOptions;
+    reasoning?: ReasoningOption;
+    retry?: false | AgentSpecV2Retry;
+    skills?: never;
+    subagentOptions?: Omit<SubagentOptions, 'sessions'>;
+    subagents?: never;
+    tools?: ToolRef[];
+    toolSearch?: false | Omit<ToolSearchOptions, 'search'>;
+    triggers?: never;
+    version: 2;
+}
+
+// @public
+interface AgentSpecV2Compaction {
+    contextWindow?: number;
+    protectedTokens?: number;
+    reserveOutputTokens?: number;
+    summarizer?: string;
+    thresholdPercent?: number;
+}
+
+// @public
+interface AgentSpecV2Retry {
+    backoff?: BackoffOptions;
+    idleTimeoutMs?: number;
+    maxRetries?: number;
+    timeoutMs?: number;
+}
+
+// @public
 interface AgentStepNode extends NodeRunOptions {
     agent: string;
     id?: string;
@@ -1356,7 +1417,17 @@ export function compareTrajectories(a: Checkpoint | Message[], b: Checkpoint | M
 export type CompiledPolicy = Pick<CreateAgentConfig, 'permissions' | 'guardrails' | 'limits' | 'askQuestion' | 'compaction'>;
 
 // @public
+export interface CompiledSpec {
+    config: CreateAgentConfig;
+    mcpServers: Record<string, McpServerSpec>;
+    toolNamesByRef: string[][];
+}
+
+// @public
 export function compilePolicy(policy: AgentSpecPolicy | undefined): CompiledPolicy;
+
+// @public
+export function compileSpec(spec: AgentSpecV2, host: SpecHost): Promise<CompiledSpec>;
 
 // @public (undocumented)
 interface ConditionNode {
@@ -2917,6 +2988,25 @@ export interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote
 }
 
 // @public
+type GuardrailSide = 'input' | 'output' | 'tools';
+
+// @public
+interface GuardrailSpec {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    name: SpecGuardrailName;
+    // (undocumented)
+    on?: GuardrailSide | GuardrailSide[];
+    // (undocumented)
+    onTripped?: 'block' | 'rewrite' | 'warn';
+    // (undocumented)
+    options?: Record<string, unknown>;
+    // (undocumented)
+    runInParallel?: boolean;
+}
+
+// @public
 export interface GuardrailTrip {
     info?: GuardrailTripInfo;
     // (undocumented)
@@ -3287,6 +3377,9 @@ export interface InputSteeredEvent extends AgentEventBase<'input.steered'> {
     // (undocumented)
     text: string;
 }
+
+// @public
+type IntegrationName = 'github' | 'jira' | 'slack' | 'email';
 
 // @public
 export interface IoGuardrail {
@@ -3824,6 +3917,16 @@ export type McpServerSpec = McpStdioServerSpec | McpHttpServerSpec;
 
 // @public (undocumented)
 export const mcpServerSpecSchema: SpecSchema<McpServerSpec>;
+
+// @public
+type McpServerSpecV2 = (Omit<McpStdioServerSpec, 'env'> & {
+    env?: Record<string, string | SecretRef>;
+}) | (Omit<McpHttpServerSpec, 'headers' | 'oauth'> & {
+    headers?: Record<string, string | SecretRef>;
+    oauth?: Omit<McpOAuthOptions, 'clientSecret'> & {
+        clientSecret?: string | SecretRef;
+    };
+});
 
 // @public
 export type McpServerStatus = 'idle' | 'connected' | 'failed' | 'needs-auth';
@@ -4505,6 +4608,20 @@ export interface OpenApiOperationInfo {
 }
 
 // @public
+interface OpenApiToolRefOptions {
+    // (undocumented)
+    approval?: 'mutating' | 'always' | 'never';
+    // (undocumented)
+    bearerToken?: SecretRef;
+    // (undocumented)
+    exclude?: string[];
+    // (undocumented)
+    include?: string[];
+    // (undocumented)
+    url: string;
+}
+
+// @public
 export interface OpenApiToolResult {
     body: unknown;
     // (undocumented)
@@ -4596,6 +4713,13 @@ export interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1>
     promptSchema?: boolean;
     responseFormat?: 'final' | 'always';
     schema: TSchema;
+}
+
+// @public
+interface OutputSpecV2 {
+    jsonSchema: Record<string, unknown>;
+    promptSchema?: boolean;
+    responseFormat?: 'final' | 'always';
 }
 
 // @public
@@ -4780,6 +4904,18 @@ export interface PermissionRule {
     tool: PermissionToolMatcher;
     ttlMs?: number;
     when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
+}
+
+// @public
+interface PermissionRuleSpec {
+    action: 'allow' | 'deny' | 'ask' | 'auto';
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    reason?: string;
+    tool: string | string[];
+    ttlMs?: number;
+    when?: Record<string, string | WhenArgMatcher>;
 }
 
 // @public
@@ -5787,6 +5923,19 @@ export const SECRET_PATTERNS: ReadonlyArray<{
 }>;
 
 // @public
+interface SecretHost {
+    env?: Readonly<Record<string, string | undefined>>;
+    resolveSecret?: (name: string) => string | undefined | Promise<string | undefined>;
+}
+
+// @public
+type SecretRef = {
+    env: string;
+} | {
+    secret: string;
+};
+
+// @public
 export const secretScanCheck: PatchCheck;
 
 // @public
@@ -6196,8 +6345,22 @@ export type SpecAgent = SimpleAgent & {
     readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
 };
 
+// @public
+export type SpecAgentV2 = SimpleAgent & {
+    readonly spec: AgentSpecV2;
+    readonly mcpServers: Readonly<Record<string, McpServerSpec>>;
+    readonly toolNamesByRef: readonly (readonly string[])[];
+};
+
 // @public (undocumented)
 export type SpecGuardrailName = (typeof SPEC_GUARDRAIL_NAMES)[number];
+
+// @public
+export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'> {
+    baseDir: string;
+    exporter?: TraceExporter;
+    store?: AgentStore;
+}
 
 // @public
 export interface SpecObjectSchema<T> extends SpecSchema<T> {
@@ -6213,6 +6376,9 @@ export interface SpecSchema<T> extends SafeParser<T> {
 
 // @public
 export function specToAgent(spec: AgentSpec, options?: Pick<CreateAgentConfig, 'store' | 'exporter'>): SpecAgent;
+
+// @public
+export function specV2ToAgent(spec: AgentSpecV2, host: SpecHost): Promise<SpecAgentV2>;
 
 // @public (undocumented)
 type StandardResult<Output> = {
@@ -7065,6 +7231,42 @@ export interface ToolPartialEvent extends AgentEventBase<'tool.partial'> {
     toolCallId: string;
     // (undocumented)
     toolName: string;
+}
+
+// @public
+type ToolRef = (ToolRefCommon & {
+    builtin: string;
+    options?: Record<string, unknown>;
+}) | (ToolRefCommon & {
+    registry: string;
+    version?: string;
+}) | (ToolRefCommon & {
+    file: string;
+}) | (ToolRefCommon & {
+    integration: IntegrationName;
+    credentials: Record<string, string | SecretRef>;
+}) | (ToolRefCommon & {
+    openapi: OpenApiToolRefOptions;
+}) | {
+    id?: string;
+    hosted: 'web_search' | 'code_interpreter' | 'file_search';
+    options?: Record<string, unknown>;
+} | {
+    id?: string;
+    hub: true;
+};
+
+// @public
+interface ToolRefCommon {
+    approval?: 'always' | 'never' | 'auto';
+    deferLoading?: boolean;
+    id?: string;
+}
+
+// @public
+interface ToolRefHost extends SecretHost {
+    agentName?: string;
+    baseDir?: string;
 }
 
 // @public
