@@ -334,3 +334,35 @@ export type PlaygroundEvent =
   | { type: 'tool_call'; id: string; name: string; args: Record<string, unknown> }
   | { type: 'done'; finishReason: string; text: string; traceId?: string; usage?: AgentEventUsage }
   | { type: 'error'; message: string; code?: string };
+
+/**
+ * Agent metadata Studio keeps next to the spec in
+ * `.lousho/agents/<id>/meta.json` (PLAN Contract B): everything about the
+ * agent that is not the spec itself - enable state, failure streak,
+ * labels and publish state.
+ */
+export interface AgentMeta {
+  schemaVersion: 1;
+  enabled: boolean;
+  disabledAt: string | null;
+  disabledReason: 'manual' | 'auto_failure_streak' | null;
+  failureStreak: number;
+  labels: string[];
+  createdFrom?: { kind: 'blank' | 'template' | 'import' | 'copy' | 'author'; ref?: string };
+  publishedVersion: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * The canvas layout Studio keeps next to the spec in
+ * `.lousho/agents/<id>/layout.json` (PLAN Contract B): node positions,
+ * sticky notes and the last viewport - presentation state the spec
+ * deliberately does not carry.
+ */
+export interface CanvasLayout {
+  schemaVersion: 1;
+  nodes: Record<string, { x: number; y: number; collapsed?: boolean }>;
+  notes: Array<{ id: string; x: number; y: number; text: string }>;
+  viewport?: { x: number; y: number; zoom: number };
+}

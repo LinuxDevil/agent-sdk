@@ -17,6 +17,7 @@ import { TriggerRegistry } from '@lousho/build-ai-agent/triggers';
 import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
 import type { AgentStore } from '../../src/persistence/AgentStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import { ChatTriggerAdapter } from '../chatTriggerAdapter';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
@@ -27,7 +28,9 @@ import type { SettingsStore } from '../settingsStore';
 /** Everything a per-agent route needs for one workspace. */
 export interface WorkspaceContext {
   ref: WorkspaceRef;
-  /** Facade over `<ref.root>/.lousho/agents` (fsAgentStore). */
+  /** This workspace's `.lousho/agents` storage: the spec v2 working copies and their meta/layout/working sidecars. */
+  repo: AgentRepo;
+  /** v1 facade over `repo` (fsAgentStore) - what the still-v1 routes and RunManager use. */
   agentStore: AgentStore;
   runs: RunManager;
   /** `'chat'` → `ChatTriggerAdapter(runs)`; `POST /agents/:id/message` goes through it (chatTriggerAdapter.ts). */
@@ -84,7 +87,8 @@ export function chatTriggersFor(runs: RunManager): TriggerRegistry {
  * stores the runs share across workspaces.
  */
 export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceServices): WorkspaceContext {
-  const agentStore = createFsAgentStore(ref.root);
+  const repo = new AgentRepo(ref.root);
+  const agentStore = createFsAgentStore(ref.root, repo);
   const runs = new RunManager({
     baseDir: ref.root,
     checkpointStore: new FileCheckpointStore(ref.root),
@@ -96,5 +100,5 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     // Builder runs report to the observe daemon, so "Open trace" resolves.
     ...(services.observe ? { observe: true as const } : {}),
   });
-  return { ref, agentStore, runs, chatTriggers: chatTriggersFor(runs) };
+  return { ref, repo, agentStore, runs, chatTriggers: chatTriggersFor(runs) };
 }

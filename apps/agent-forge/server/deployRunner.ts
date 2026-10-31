@@ -12,8 +12,11 @@
  */
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
+import { stringify as stringifyYaml } from 'yaml';
 import type { DeployResult } from '../shared/wireTypes';
-import { agentSpecFilePath } from '../src/persistence/fsAgentStore';
+import { AgentRepo } from './storage/agentRepo';
+import { writeFileAtomic } from './storage/atomic';
+import { toLegacySpec } from './storage/legacySpec';
 
 /**
  * Deploy target names this app offers in the Settings dropdown. Mirrors
@@ -45,11 +48,34 @@ export function isDeployAdapter(value: string): value is DeployAdapter {
  * `dist/cli/build.js` exists) - same prerequisite the `lousho` CLI itself
  * has outside this dev environment.
  */
-export function runDeploy(baseDir: string, agentId: string, adapter: string): Promise<DeployResult> {
+/**
+ * The v1 spec file `lousho build` gets: the working copy on disk is spec v2,
+ * which the deploy adapters' v1 `loadSpec` rejects outright, so the deploy
+ * projects it through the same `toLegacySpec` facade the GET routes use and
+ * writes a derived `.lousho/build/<agentId>.v1.yaml` it owns - `lousho
+ * build`/`lousho dev` only speak v1 until they get their own v2 loader.
+ */
+async function writeLegacyDeploySpec(baseDir: string, agentId: string): Promise<string | undefined> {
+  const spec = await new AgentRepo(baseDir).readSpec(agentId);
+  if (spec === undefined) return undefined;
+  const filePath = path.join(baseDir, '.lousho', 'build', `${agentId}.v1.yaml`);
+  await writeFileAtomic(filePath, stringifyYaml(toLegacySpec(spec)));
+  return filePath;
+}
+
+export async function runDeploy(baseDir: string, agentId: string, adapter: string): Promise<DeployResult> {
   const cliEntry = path.join(baseDir, 'bin', 'lousho.js');
-  const agentPath = agentSpecFilePath(baseDir, agentId);
   const outDir = path.join(baseDir, '.lousho', 'build', adapter, agentId);
+  const agentPath = await writeLegacyDeploySpec(baseDir, agentId);
   const args = ['build', `--target=${adapter}`, `--agent=${agentPath}`, `--out=${outDir}`];
+  if (agentPath === undefined) {
+    return {
+      exitCode: 1,
+      stdout: '',
+      stderr: `No saved agent '${agentId}' to deploy - save it first`,
+      command: `node ${cliEntry} ${args.join(' ')}`,
+    };
+  }
 
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [cliEntry, ...args], { cwd: baseDir });

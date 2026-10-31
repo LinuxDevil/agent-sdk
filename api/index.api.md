@@ -454,6 +454,9 @@ interface AgentSpecV2Retry {
 }
 
 // @public
+export const agentSpecV2Schema: SpecObjectSchema<AgentSpecV2>;
+
+// @public
 interface AgentStepNode extends NodeRunOptions {
     agent: string;
     id?: string;
@@ -3659,6 +3662,9 @@ export function loadSkills(dir: string): Promise<Skill[]>;
 
 // @public
 export function loadSpec(filePath: string): AgentSpec;
+
+// @public
+export function loadSpecV2(filePath: string): AgentSpecV2;
 
 // @public
 type LocalOrRemoteSubagent = SimpleAgent | RemoteSubagent;
@@ -7436,6 +7442,9 @@ export interface UIMessagePartLike {
 
 // @public
 export type UnsupportedFiles = 'error' | 'text-note';
+
+// @public
+export function upgradeSpec(input: unknown): AgentSpecV2;
 
 // @public
 interface UpstreamFailure {

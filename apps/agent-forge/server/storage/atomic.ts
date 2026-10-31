@@ -55,6 +55,7 @@ async function retryRename(tmpPath: string, filePath: string): Promise<void> {
  * the error is rethrown.
  */
 export async function writeFileAtomic(filePath: string, data: string | Uint8Array): Promise<void> {
+
   const tmpPath = `${filePath}.${randomBytes(4).toString('hex')}.tmp`;
   await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
   await fsPromises.writeFile(tmpPath, data);
@@ -123,5 +124,29 @@ export async function withAgentLock<T>(agentId: string, fn: () => Promise<T>): P
   } finally {
     release();
     if (lockTails.get(agentId) === tail) lockTails.delete(agentId);
+  }
+}
+
+/**
+ * `writeFileAtomic` for JSON files: `JSON.stringify(value, null, 2)` plus a
+ * trailing newline - the layout every `.lousho`-side `.json` file shares
+ * (meta.json, layout.json, working.json), so they stay diff-friendly.
+ */
+export async function writeJsonAtomic(filePath: string, value: unknown): Promise<void> {
+  await writeFileAtomic(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+/**
+ * Reads `filePath` as JSON; `undefined` when it does not exist (ENOENT) so
+ * callers can fall back to their defaults. Any other read or parse error
+ * propagates - a corrupt file is a real problem to surface, not a
+ * "use defaults" situation.
+ */
+export async function readJsonFile<T>(filePath: string): Promise<T | undefined> {
+  try {
+    return JSON.parse(await fsPromises.readFile(filePath, 'utf8')) as T;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
   }
 }

@@ -72,7 +72,7 @@ import { registerObserveProxy } from './observeProxy';
 import { registerPlaygroundRoute, type PlaygroundOptions } from './playground';
 import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
-import { withAgentLock } from './storage/atomic';
+import { AgentRepo, InvalidSpecError } from './storage/agentRepo';
 
 interface CreateAppBaseOptions {
   /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
@@ -210,25 +210,31 @@ function registerAgentRoutes(app: Express): void {
   app.put(
     '/agents/:id',
     asyncRoute(async (req, res) => {
-      await withAgentLock(paramId(req), async () => {
-        const spec = req.body as AgentSpec;
-        if (!spec || typeof spec !== 'object' || !spec.name || !spec.prompt || !spec.provider) {
-          res.status(400).json({ error: 'Request body must be a valid AgentSpec' });
+      // The facade's save() takes the agent lock itself around the
+      // read-modify-write - wrapping here too would re-enter it.
+      const spec = req.body as AgentSpec;
+      if (!spec || typeof spec !== 'object' || !spec.name || !spec.prompt || !spec.provider) {
+        res.status(400).json({ error: 'Request body must be a valid AgentSpec' });
+        return;
+      }
+      try {
+        await workspaceOf(req).agentStore.save(paramId(req), spec);
+      } catch (error) {
+        if (error instanceof InvalidSpecError) {
+          sendError(res, 400, error.message, error.code, { issues: error.issues });
           return;
         }
-        await workspaceOf(req).agentStore.save(paramId(req), spec);
-        res.status(204).end();
-      });
+        throw error;
+      }
+      res.status(204).end();
     })
   );
 
   app.delete(
     '/agents/:id',
     asyncRoute(async (req, res) => {
-      await withAgentLock(paramId(req), async () => {
-        await workspaceOf(req).agentStore.remove(paramId(req));
-        res.status(204).end();
-      });
+      await workspaceOf(req).agentStore.remove(paramId(req));
+      res.status(204).end();
     })
   );
 }
@@ -693,6 +699,7 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
   if (options.workspace) return options.workspace;
   return {
     ref: workspaceRefFor(options.baseDir),
+    repo: new AgentRepo(options.baseDir),
     agentStore: options.agentStore,
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
