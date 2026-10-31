@@ -25,8 +25,8 @@ provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
 `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+import { createAgent } from 'lousho';
+import { fileTraceExporter } from 'lousho/traces';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -44,8 +44,8 @@ reported once per exporter with `console.warn` and otherwise ignored.
 With the executor, pass the exporter to `AgentExecutor.execute()`:
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent/executor';
-import { type TraceExporter } from '@lousho/build-ai-agent';
+import { AgentExecutor } from 'lousho/executor';
+import { type TraceExporter } from 'lousho';
 
 const exporter: TraceExporter = {
   onSpanStart: (span) => console.log('[start]', span.kind, span.name),
@@ -56,7 +56,7 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, exporter });
 ```
 
 For real OpenTelemetry spans, import `createOtelTraceExporter()` from
-`@lousho/build-ai-agent/otel` (needs the optional peer dependency
+`lousho/otel` (needs the optional peer dependency
 `@opentelemetry/api` and a registered `TracerProvider`). It carries span kind
 and error status over to OpenTelemetry. See `examples/tracing`
 (`npm run example:tracing:console`, `npm run example:tracing:otel`, which also prints metrics).
@@ -74,7 +74,7 @@ To put several runs in one trace, pass a span id of yours as `parentSpanId`;
 the run's `invoke_agent` span becomes its child, and its cost rolls up into it:
 
 ```ts
-import { withSpan, type SimpleAgent, type TraceExporter } from '@lousho/build-ai-agent';
+import { withSpan, type SimpleAgent, type TraceExporter } from 'lousho';
 
 declare const exporter: TraceExporter;
 declare const planner: SimpleAgent;
@@ -213,7 +213,7 @@ duration metric, only the model and tool calls inside them.
 ```ts
 import { metrics } from '@opentelemetry/api';
 import { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { createOtelTraceExporter } from '@lousho/build-ai-agent/otel';
+import { createOtelTraceExporter } from 'lousho/otel';
 
 // Swap ConsoleMetricExporter for an OTLP exporter to reach any backend.
 metrics.setGlobalMeterProvider(
@@ -283,7 +283,7 @@ piece of plain text (before JSON encoding) and returns what to record; if it
 throws, that text is recorded as `[redacted]` and the run carries on:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 createAgent({
   model: 'openai/gpt-4o-mini',
@@ -299,8 +299,8 @@ createAgent({
 With the executor, opt in per run:
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent/executor';
-import { type TraceExporter } from '@lousho/build-ai-agent';
+import { AgentExecutor } from 'lousho/executor';
+import { type TraceExporter } from 'lousho';
 
 declare const exporter: TraceExporter;
 
@@ -356,13 +356,13 @@ governs only the `gen_ai.*` content attributes.
 
 ## Local traces
 
-`fileTraceExporter()` from `@lousho/build-ai-agent/traces` writes each run to a
+`fileTraceExporter()` from `lousho/traces` writes each run to a
 file, and `lousho traces` shows the files in the terminal. No OpenTelemetry
 backend, no extra package.
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
-import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+import { createAgent, defineTool } from 'lousho';
+import { fileTraceExporter } from 'lousho/traces';
 import { z } from 'zod';
 
 const getWeather = defineTool({

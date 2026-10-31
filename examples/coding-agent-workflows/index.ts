@@ -29,10 +29,10 @@
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { createAgent, defineTool, resolveProvider, type LLMProvider, type SimpleAgent } from '@lousho/build-ai-agent';
-import { ToolRegistry } from '@lousho/build-ai-agent/executor';
-import { FlowBuilder, FlowExecutor, type EditorStep, type FlowExecutionResult } from '@lousho/build-ai-agent/flows';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool, resolveProvider, type LLMProvider, type SimpleAgent } from 'lousho';
+import { ToolRegistry } from 'lousho/executor';
+import { FlowBuilder, FlowExecutor, type EditorStep, type FlowExecutionResult } from 'lousho/flows';
+import { mockModel } from 'lousho/testing';
 
 export const LIVE_MODEL = 'openrouter/openai/gpt-4o-mini';
 

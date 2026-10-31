@@ -50,9 +50,9 @@ describe('brands across two loaded copies of the SDK', () => {
 function project(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'lousho-dual-'));
   dirs.push(dir);
-  mkdirSync(path.join(dir, 'node_modules', '@lousho'), { recursive: true });
+  mkdirSync(path.join(dir, 'node_modules'), { recursive: true });
   // 'junction' makes a directory link without the symlink privilege on Windows; other platforms ignore the type.
-  symlinkSync(ROOT, path.join(dir, 'node_modules', '@lousho', 'build-ai-agent'), 'junction');
+  symlinkSync(ROOT, path.join(dir, 'node_modules', 'lousho'), 'junction');
   symlinkSync(path.join(ROOT, 'node_modules', 'zod'), path.join(dir, 'node_modules', 'zod'), 'junction');
   writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'dual', private: true }));
   const agent = path.join(dir, 'simple');
@@ -61,12 +61,12 @@ function project(): string {
   writeFileSync(path.join(agent, 'instructions.md'), 'You are simple.\n');
   writeFileSync(
     path.join(agent, 'tools', 'ping.mjs'),
-    "import { z } from 'zod';\nimport { defineTool } from '@lousho/build-ai-agent';\n" +
+    "import { z } from 'zod';\nimport { defineTool } from 'lousho';\n" +
       "export default defineTool({ name: 'ping', description: 'Ping', input: z.object({}), execute: () => 'pong' });\n"
   );
   writeFileSync(
     path.join(agent, 'tools', 'pong.cjs'),
-    "const { z } = require('zod');\nconst { defineTool } = require('@lousho/build-ai-agent');\n" +
+    "const { z } = require('zod');\nconst { defineTool } = require('lousho');\n" +
       "module.exports = defineTool({ name: 'pong', description: 'Pong', input: z.object({}), execute: () => 'ping' });\n"
   );
   return dir;
@@ -77,14 +77,14 @@ const LIST_TOOLS = `.then(async (r) => { const { manifest } = await r.resolveAge
 describe.skipIf(!BUILT)('agent directory tools through both builds (needs npm run build)', () => {
   it('loads ESM and CJS tool files from the CJS build', () => {
     const cwd = project();
-    const res = spawnSync(process.execPath, ['-e', `Promise.resolve(require('@lousho/build-ai-agent'))${LIST_TOOLS}`], { cwd, encoding: 'utf8' });
+    const res = spawnSync(process.execPath, ['-e', `Promise.resolve(require('lousho'))${LIST_TOOLS}`], { cwd, encoding: 'utf8' });
     expect(res.stderr).toBe('');
     expect(res.stdout.trim()).toBe('ping,pong');
   });
 
   it('loads ESM and CJS tool files from the ESM build', () => {
     const cwd = project();
-    const res = spawnSync(process.execPath, ['--input-type=module', '-e', `import('@lousho/build-ai-agent')${LIST_TOOLS}`], { cwd, encoding: 'utf8' });
+    const res = spawnSync(process.execPath, ['--input-type=module', '-e', `import('lousho')${LIST_TOOLS}`], { cwd, encoding: 'utf8' });
     expect(res.stderr).toBe('');
     expect(res.stdout.trim()).toBe('ping,pong');
   });

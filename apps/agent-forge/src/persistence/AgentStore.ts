@@ -1,4 +1,4 @@
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec } from 'lousho';
 
 export interface AgentStoreEntry {
   id: string;

@@ -97,7 +97,7 @@ describe('DockerAdapter', () => {
     const sdk = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', '..', 'package.json'), 'utf8'));
     // The image's `npm install --omit=dev` installs only what the bundle left
     // external: not the SDK, which dist/server.js bundles.
-    expect(manifest.dependencies['@lousho/build-ai-agent']).toBeUndefined();
+    expect(manifest.dependencies['lousho']).toBeUndefined();
     expect(manifest.dependencies['@ai-sdk/openai']).toBeDefined();
     expect(manifest.dependencies['@modelcontextprotocol/sdk']).toBe(sdk.peerDependencies['@modelcontextprotocol/sdk']);
     expect(manifest.scripts.start).toBe('node dist/server.js');

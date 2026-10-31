@@ -5,7 +5,7 @@ import { defineConfig } from 'tsup';
  *
  * `server:dev`/`server:start` run this server straight off its
  * TypeScript source via `tsx`, which is fine for local development but not
- * for a published npm package: a consumer installing `@lousho/build-ai-agent`
+ * for a published npm package: a consumer installing `lousho`
  * has neither `tsx` nor this app's devDependencies (vite, vitest, jsdom, ...)
  * available, and shipping raw `.ts` server source that needs a TS loader at
  * runtime would make `lousho studio` depend on tooling nobody asked to
@@ -13,10 +13,10 @@ import { defineConfig } from 'tsup';
  * one plain ESM `.js` file under `dist-server/`, the same way the SDK's own
  * root `tsup.config.ts` builds `src/**` into `dist/**`.
  *
- * `@lousho/build-ai-agent` itself is left external rather than bundled: at
+ * `lousho` itself is left external rather than bundled: at
  * runtime this file always lives inside an install of that very package
  * (either the workspace symlink in this monorepo, or
- * `node_modules/@lousho/build-ai-agent` for anyone who installed the
+ * `node_modules/lousho` for anyone who installed the
  * published package), so Node's package self-reference resolution
  * (package.json `name` + `exports`) finds it directly - no need to duplicate
  * the entire SDK's compiled output a second time inside
@@ -31,7 +31,7 @@ import { defineConfig } from 'tsup';
  * `package.json` dependencies.
  *
  * `yaml` is the one exception: it's left external (like
- * `@lousho/build-ai-agent`) because the root package already depends on it
+ * `lousho`) because the root package already depends on it
  * directly (see the root `package.json`), so it's always available via
  * normal node_modules resolution wherever this server runs - and, more
  * importantly, esbuild's CJS-in-ESM interop for yaml's own bundled build
@@ -61,6 +61,6 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   minify: false,
-  external: ['@lousho/build-ai-agent', 'yaml'],
+  external: ['lousho', 'yaml'],
   noExternal: ['express', 'ws'],
 });

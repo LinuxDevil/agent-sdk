@@ -62,8 +62,8 @@ The four operations, and where each lives in the SDK:
 | **Isolate** | Run work in a clean context so detail doesn't flood the lead | Sub-agents (`task` calls see only their prompt), code mode (`run_code` returns one value), the `inputFilter` boundary |
 
 ```ts no-run
-import { createAgent, loadSkills } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, loadSkills } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const provider = mockModel([{ text: 'done' }]);
 const researchAgent = createAgent({ provider, instructions: 'You research one slice.' });

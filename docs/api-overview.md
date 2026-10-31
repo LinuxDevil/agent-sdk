@@ -1,6 +1,6 @@
 # API Overview
 
-The package root (`@lousho/build-ai-agent`) exports everything below. For
+The package root (`lousho`) exports everything below. For
 the complete, generated API reference (every export, signature and doc
 comment), build the TypeDoc site:
 
@@ -19,7 +19,7 @@ How the pieces fit:
 └──────────────┬──────────────────────┘
                │
 ┌──────────────▼──────────────────────┐
-│     @lousho/build-ai-agent          │
+│     lousho          │
 │  ┌────────────────────────────┐    │
 │  │ createAgent / Builder /     │    │
 │  │ Executor (approvals,        │    │
@@ -44,9 +44,9 @@ How the pieces fit:
 | Export                        | Description                                                                 |
 | ----------------------------- | --------------------------------------------------------------------------- |
 | `createAgent(config)`         | Zero-config `{ send(message) }` agent from a `model` string or provider (+ instructions, tools). |
-| `AgentBuilder` (from `@lousho/build-ai-agent/executor`) | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](./executor-api.md). |
-| `AgentExecutor.execute(opts)` (from `@lousho/build-ai-agent/executor`) | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](./executor-api.md). |
-| `resumeAfterApproval()` (from `@lousho/build-ai-agent/executor`) | Resume an execution paused for human approval. Advanced: see [the executor API](./executor-api.md). |
+| `AgentBuilder` (from `lousho/executor`) | Fluent builder for an `AgentConfig` (`AgentBuilder.create().setName(...)...build()`). Advanced: see [the executor API](./executor-api.md). |
+| `AgentExecutor.execute(opts)` (from `lousho/executor`) | Static executor: runs an agent (LLM + tool-calling loop) and resolves to an `ExecutionResult`. Advanced: see [the executor API](./executor-api.md). |
+| `resumeAfterApproval()` (from `lousho/executor`) | Resume an execution paused for human approval. Advanced: see [the executor API](./executor-api.md). |
 | `InMemoryApprovalStore`       | Process-local `ApprovalStore`; the default store of `createAgent()` agents. |
 | `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` (from `/utils`) | File-backed approval and checkpoint stores over a `StorageService` (see [Approvals](./approvals.md), [Durable execution](./durable-execution.md)). |
 | `SqliteStore` (from `/sqlite`) | Sessions, checkpoints and approvals in one SQLite file (see [Sessions](./sessions.md#choosing-a-store)). |
@@ -74,8 +74,8 @@ resolves with the task prompt as `input` and the lead run's `sessionId`,
 `metadata` and `principal`.
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
 const refund = defineTool({ name: 'refund', description: 'Refunds an order', input: z.object({ orderId: z.string() }), execute: async () => 'ok' });
@@ -104,14 +104,14 @@ when it is created.
 
 ### UI bindings
 
-`@lousho/build-ai-agent/react` exports `useLoushoAgent(source, options?)`, a
+`lousho/react` exports `useLoushoAgent(source, options?)`, a
 React hook that runs an agent in process (`{ agent, sessionId? }`) or over HTTP
 (`{ url }`) and returns `messages`, `status`, `pendingApproval`,
 `send()`, `stop()`, `approve()` and `reject()`. Its framework-neutral parts,
 `reduceAgentEvents()` and `parseEventStream()`, are exported too. See
-[React](./react.md). `@lousho/build-ai-agent/vue` exports the same
+[React](./react.md). `lousho/vue` exports the same
 `useLoushoAgent()` as a Vue 3 composable, with the state as refs. See
-[Vue](./vue.md). `@lousho/build-ai-agent/svelte` exports `loushoAgent()`, the
+[Vue](./vue.md). `lousho/svelte` exports `loushoAgent()`, the
 same state and actions as a Svelte store (`$agent`). See [Svelte](./svelte.md).
 
 ### Sub-agents
@@ -209,7 +209,7 @@ See [Providers](./providers.md) for how a model string is resolved and which mod
 
 ## Testing
 
-Exported from `@lousho/build-ai-agent/testing` (see [Testing agents](testing.md)).
+Exported from `lousho/testing` (see [Testing agents](testing.md)).
 
 | Export                | Description                                                                              |
 | --------------------- | ---------------------------------------------------------------------------------------- |
@@ -222,18 +222,18 @@ Exported from `@lousho/build-ai-agent/testing` (see [Testing agents](testing.md)
 | -------------------------------------------- | --------------------------------------------- |
 | `defineTool({ name, description, input, execute, ... })` | Define a tool; `execute`/`needsApproval` args are inferred from the zod `input`. Accepted by `createAgent({ tools: [...] })`, `ToolRegistry.register(tool)` and `AgentBuilder.addTool(tool)`. |
 | `ToolInput<typeof t>`, `ToolOutput<typeof t>` | Argument and result types of a defined tool. |
-| `ToolRegistry` (from `@lousho/build-ai-agent/tools` or `@lousho/build-ai-agent/executor`) | Holds the tools an agent config refers to (advanced: `register(tool)` or `register(name, descriptor)`). |
+| `ToolRegistry` (from `lousho/tools` or `lousho/executor`) | Holds the tools an agent config refers to (advanced: `register(tool)` or `register(name, descriptor)`). |
 | `httpTool`, `currentDateTool`, `dayNameTool` | Built-in tools.                               |
 | `createFsTools(fs, options?)`, `createShellTool(shell, options?)` | Workspace tools (`read_file`, `write_file`, `edit_file`, `list_dir`, `glob`, `grep`, `shell`) over an `FsProvider` / `ShellProvider`. See [Workspace tools](workspace-tools.md). |
 | `NodeWorkspace`, `MemoryWorkspace`, `SandboxShell` | Workspace providers: a real directory (paths confined to `root`, minimal shell env), an in-memory tree with a scripted `exec` for tests, and a `ShellProvider` over a `SandboxAdapter` (Docker). |
 | `createTodoTools({ store?, onChange? })`     | `todo_write` / `todo_read` tools (plus `getTodos()`) so agents can plan and track multi-step work; see [Todo tools](./tools.md#todo-tools). |
 | `connectMcp(servers, options?)`             | Connect MCP servers from config (stdio or HTTP) and load their tools; see [Share servers with `connectMcp()`](./mcp.md#share-servers-with-connectmcp). |
-| `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `@lousho/build-ai-agent/tools`, and `@lousho/build-ai-agent/mcp`. |
+| `loadMcpTools(client, connectionName)`       | Load a connected MCP server's tools as `ToolDescriptor`s. Available from the package root, `lousho/tools`, and `lousho/mcp`. |
 
 See [Tools](./tools.md) for a guide to defining and registering tools.
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -259,7 +259,7 @@ execute }`) is legacy, still built for compatibility, and used only for
 descriptors that do not set `inputSchema` / `execute`.
 
 ```ts
-import { loadMcpTools } from '@lousho/build-ai-agent/mcp';
+import { loadMcpTools } from 'lousho/mcp';
 
 const tools = await loadMcpTools(mcpClient, 'my-server');
 ```
@@ -286,7 +286,7 @@ warning naming the server, the tool and the reason, and `onSkip` to collect
 what was left out:
 
 ```ts
-import { loadMcpTools, type SkippedMcpTool } from '@lousho/build-ai-agent/mcp';
+import { loadMcpTools, type SkippedMcpTool } from 'lousho/mcp';
 
 const skipped: SkippedMcpTool[] = [];
 const tools = await loadMcpTools(mcpClient, 'my-server', {
@@ -315,13 +315,13 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 
 ## Flows, evals, observability and security
 
-- `FlowBuilder` / `FlowExecutor` (`@lousho/build-ai-agent/flows`) - multi-step
+- `FlowBuilder` / `FlowExecutor` (`lousho/flows`) - multi-step
   workflow graphs; see [Flows](./flows.md).
-- `TriggerAdapter` and `TriggerRegistry` (`@lousho/build-ai-agent/triggers`) -
+- `TriggerAdapter` and `TriggerRegistry` (`lousho/triggers`) -
   the extension point for your own wake-up mechanism, plus `verifySlackSignature()`,
   `parseCronExpression()` and the `WebhookAuth` helpers; see [Triggers](./triggers.md).
 - `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` and `routeAuth()`
-  (`@lousho/build-ai-agent/auth`) - route auth as an ordered list; the caller
+  (`lousho/auth`) - route auth as an ordered list; the caller
   it accepts reaches the run as `principal`; see [Route auth and principals](./auth.md).
 - `defineEval()`, scorers such as `exactMatch`, `toolCallOrder` and `budget`, checks such
   as `includes` and `atLeast`, and `llmJudge()` - agent evals run under vitest
@@ -329,7 +329,7 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
 - `withSpan()` and `TraceExporter` - tracing for `AgentExecutor.execute()`.
   `TraceExporter` is a bring-your-own-exporter interface (no exporter
   ships by default); for real OpenTelemetry spans, import
-  `createOtelTraceExporter()` from the `@lousho/build-ai-agent/otel`
+  `createOtelTraceExporter()` from the `lousho/otel`
   subpath (requires the optional peer dependency `@opentelemetry/api`)
   instead of hand-rolling the OTel bridge - see
   `examples/tracing/run-otel.ts`. Spans follow the OpenTelemetry GenAI
@@ -343,7 +343,7 @@ Token estimates, the model price table, and the usage and cost of a run: see [Mo
   `GenerateHookContext` - hooks that observe, deny, rewrite or redact tool calls
   and model calls. See [Hooks](./hooks.md).
 - `EncryptionUtils`, `sha256`, `StorageService`
-  (`@lousho/build-ai-agent/utils`) - supporting utilities; see
+  (`lousho/utils`) - supporting utilities; see
   [Utilities](./utilities.md).
 
 ## Deployment

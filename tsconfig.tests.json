@@ -3,7 +3,7 @@
   "compilerOptions": {
     "noEmit": true,
     "rootDir": "."
-    // tsconfig.json `paths` map self-imports (`@lousho/build-ai-agent[/sub]`,
+    // tsconfig.json `paths` map self-imports (`lousho[/sub]`,
     // used by agent-dir fixtures and every example) to src/, so this config,
     // typecheck:examples and `npx tsx examples/...` need no build. They live
     // there without comments: fallow cannot read a commented tsconfig.json.

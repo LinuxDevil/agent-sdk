@@ -6,8 +6,8 @@ pause (`dontAsk`). Switch it in the middle of a session, the way you would work
 with a coding agent: plan first, then let it edit.
 
 ```ts
-import { createAgent, createFsTools, MemoryWorkspace } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, createFsTools, MemoryWorkspace } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
 const agent = createAgent({
@@ -73,7 +73,7 @@ says nothing is treated as one with side effects and is refused.
 Declare a custom read-only tool like this:
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 const lookUpOrder = defineTool({
@@ -95,7 +95,7 @@ The hint is a promise you make about your tool: plan mode trusts it.
 alone, so a tool of your own named `write_file` is not approved silently.
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 const appendLine = defineTool({
@@ -140,7 +140,7 @@ Switching is always an explicit call to `setPermissionMode()`. Each switch is
 reported to `onPermissionModeChange` with `{ sessionId, from, to, at }`:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   provider,

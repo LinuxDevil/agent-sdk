@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { TriggerRegistry } from '@lousho/build-ai-agent/triggers';
+import { TriggerRegistry } from 'lousho/triggers';
 import { ALL_WORKSPACES } from '../../../shared/workspace';
 import type { AgentStore } from '../../../src/persistence/AgentStore';
 import type { RunManager } from '../../runRegistry';

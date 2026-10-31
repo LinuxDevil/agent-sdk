@@ -1,5 +1,5 @@
 /**
- * R2: `@lousho/build-ai-agent/kv` must bundle for a hand-written Cloudflare
+ * R2: `lousho/kv` must bundle for a hand-written Cloudflare
  * Worker, which has no shim for Node builtins. This guards the barrel's
  * import graph: no module it reaches may import a `node:` path.
  */
@@ -11,7 +11,7 @@ import * as kv from './kv';
 // esbuild keeps a service process alive after build(); end it so it does not outlive this file.
 afterAll(() => stop());
 
-describe('@lousho/build-ai-agent/kv (R2)', () => {
+describe('lousho/kv (R2)', () => {
   it('bundles for the browser platform with no node: import in its graph', async () => {
     const result = await build({
       entryPoints: [join(__dirname, 'kv.ts')],

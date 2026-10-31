@@ -1,5 +1,5 @@
 /**
- * What `import ... from '@lousho/build-ai-agent'` means inside an agent
+ * What `import ... from 'lousho'` means inside an agent
  * directory built with `lousho build --target=cloudflare-worker` (and
  * #298 for schedules, channels and memory).
  *

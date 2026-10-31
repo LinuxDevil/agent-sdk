@@ -1,4 +1,4 @@
-import type { AgentHook, Message } from '@lousho/build-ai-agent';
+import type { AgentHook, Message } from 'lousho';
 
 /**
  * The kit's hooks (pointed at by `agent.json`'s `hooks`): a loop guard that

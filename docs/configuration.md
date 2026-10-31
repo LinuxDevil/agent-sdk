@@ -140,7 +140,7 @@ mcpServers:
 ```
 
 ```ts
-import { agentSpecSchema, specToAgent, type McpServerSpec } from '@lousho/build-ai-agent';
+import { agentSpecSchema, specToAgent, type McpServerSpec } from 'lousho';
 
 const filesystem: McpServerSpec = { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] };
 const spec = agentSpecSchema.parse({
@@ -183,7 +183,7 @@ other models. The `vendor/` model prefix chooses the provider; with OpenRouter
 use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -225,7 +225,7 @@ To build the same thing by hand, or for providers you construct yourself,
 anywhere a provider is accepted:
 
 ```ts
-import { createAgent, resolveProvider, withFallback, withRetry } from '@lousho/build-ai-agent';
+import { createAgent, resolveProvider, withFallback, withRetry } from 'lousho';
 
 const provider = withFallback(
   [
@@ -296,7 +296,7 @@ flow waves and eval suites cannot burst unbounded model calls. Every limit is
 optional:
 
 ```ts
-import { withRateLimit, resolveProvider } from '@lousho/build-ai-agent';
+import { withRateLimit, resolveProvider } from 'lousho';
 
 const provider = withRateLimit(resolveProvider('openai/gpt-4o-mini'), {
   requestsPerMinute: 60, // calls started per rolling minute
@@ -326,7 +326,7 @@ its own provider is queued too). Give several agents the same
 `createRateLimiter()` to share it across them.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const researcher = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You research.', description: 'Finds sources' });
 createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher }, rateLimit: { maxConcurrent: 2 } });
@@ -405,7 +405,7 @@ A `send()` or `stream()` call can pass its own, which win key by key over the
 agent's:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -440,7 +440,7 @@ Besides `modelSettings`, a `send()` or `stream()` call can set its own
 instructions for that run:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You triage support tickets.' });
 await agent.send('Summarize the ticket.', { maxSteps: 2, instructions: 'Answer in French.' });
@@ -458,7 +458,7 @@ keeps `model` / `provider` and `instructions` / `prompt` mutually exclusive,
 so TypeScript rejects spreading it next to a literal that sets one of them.
 
 ```ts
-import { createAgent, type CreateAgentBase } from '@lousho/build-ai-agent';
+import { createAgent, type CreateAgentBase } from 'lousho';
 
 const shared: CreateAgentBase = { maxSteps: 8, modelSettings: { temperature: 0 } };
 
@@ -517,7 +517,7 @@ with a checkpoint store it is checkpointed as finished, like `'max-steps'`.
 (`LOUSHO_BUDGET_EXCEEDED`, with the same `budget`) instead.
 
 ```ts
-import { BudgetExceededError, createAgent } from '@lousho/build-ai-agent';
+import { BudgetExceededError, createAgent } from 'lousho';
 
 const agent = createAgent({
   provider,
@@ -546,7 +546,7 @@ continued from its store keeps its budget. Both apply together; the first limit
 reached stops the turn. A turn that was aborted is not counted.
 
 ```ts
-import { createAgent, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore } from 'lousho';
 
 const agent = createAgent({ provider, store: memoryStore(), limits: { maxTokens: 20_000 } });
 const session = agent.session({ id: 'user-42', limits: { maxCostUsd: 1 } });
@@ -560,7 +560,7 @@ Many repositories keep guidance for coding agents in an `AGENTS.md` (or
 `CLAUDE.md`) file. `createAgent` can append it to the agent's instructions:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   instructions: 'You review pull requests.',

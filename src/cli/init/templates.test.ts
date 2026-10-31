@@ -73,7 +73,7 @@ describe('renderProject', () => {
     expect(pkg).toMatchObject({ name: 'demo-agent', type: 'module', private: true });
     expect(Object.keys(pkg.scripts)).toEqual(expect.arrayContaining(['dev', 'test', 'doctor']));
     expect(pkg.scripts.doctor).toMatch(/^lousho doctor/);
-    expect(pkg.dependencies['@lousho/build-ai-agent']).toBe('^1.0.0-alpha.8');
+    expect(pkg.dependencies['lousho']).toBe('^1.0.0-alpha.8');
     expect(pkg.dependencies).toMatchObject({ ai: SCAFFOLD_PAIRINGS[provider]!.ai, zod: provider === 'ollama' ? '^4.0.0' : '^3.25.76' });
 
     expect(JSON.parse(files['tsconfig.json']!).compilerOptions).toMatchObject({ strict: true, module: 'NodeNext' });
@@ -98,7 +98,7 @@ describe('renderProject', () => {
     (provider, template) => {
       const files = renderProject(config(provider, template));
       expect(files['src/agent.ts']).toContain(
-        "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';"
+        "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';"
       );
       // The default export is what `lousho dev|chat|mcp|acp|build src/agent.ts` load.
       expect(files['src/agent.ts']).toContain('export default config;');
@@ -107,7 +107,7 @@ describe('renderProject', () => {
       expect(pkg.scripts.build).toBe('lousho build src/agent.ts --target=node-server');
       expect(files['src/agent.ts']).toMatch(new RegExp(`model: '${provider}/[^']+'`));
       expect(files['src/agent.ts']).toContain('instructions');
-      expect(files['src/agent.test.ts']).toContain("import { mockModel } from '@lousho/build-ai-agent/testing';");
+      expect(files['src/agent.test.ts']).toContain("import { mockModel } from 'lousho/testing';");
       expect(files['agent.yaml']).toBeUndefined();
       expect(JSON.parse(files['package.json']!).scripts.dev).toContain('src/index.ts');
     }

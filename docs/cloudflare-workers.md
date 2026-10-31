@@ -12,7 +12,7 @@
 | [Agent directories](./agent-directories.md) | yes: config, `instructions.md`, `tools/`, `skills/`, `subagents/`, `schedules/` (Worker cron rules), `channels/` (mounted under `/channels`), `memory/` (`kvMemory()`, or `inMemoryMemory()` per isolate) and `projectInstructions` (embedded at build time) | yes, all of it |
 | Providers | `mock`, `openai`, `anthropic`, `openrouter` | `mock`, `openai`, `anthropic`, `ollama`, `openrouter` |
 | Built-in tools | `current-date`, `day-name`, `http` (listed host names only, from the `LOUSHO_HTTP_ALLOW` binding) | all, including `http` and `web-fetch` |
-| Tools written in TypeScript | yes, in an agent directory: no Node builtins, and from `@lousho/build-ai-agent` only the names listed under [Agent directories on a Worker](#build-and-deploy) | yes, in an agent directory |
+| Tools written in TypeScript | yes, in an agent directory: no Node builtins, and from `lousho` only the names listed under [Agent directories on a Worker](#build-and-deploy) | yes, in an agent directory |
 | Sandboxed tool execution | no (the build swaps the sandbox for a shim that fails when used) | yes |
 | MCP servers over stdio | no (the child process cannot start; the shim fails when used) | yes |
 | [Code mode](./code-mode.md) (`codeMode`) | no (the build swaps QuickJS for a shim that fails the run at its start) | yes |
@@ -92,7 +92,7 @@ Provider API keys are read from Worker bindings named `<TYPE>_API_KEY` (for exam
 `wrangler secret put OPENAI_API_KEY`, `wrangler secret put ANTHROPIC_API_KEY` or
 `wrangler secret put OPENROUTER_API_KEY`). The peer packages (`@ai-sdk/openai` for
 `openai` and `openrouter`, `@ai-sdk/anthropic` for `anthropic`, and `ai`) must be
-installed alongside `@lousho/build-ai-agent` for `lousho build` to bundle them.
+installed alongside `lousho` for `lousho build` to bundle them.
 
 **Agent directories on a Worker.** A Worker has no file system and cannot import
 a file by path at run time, so the build reads the
@@ -145,7 +145,7 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
 - Tool files are bundled from where they are, so their relative imports and their
   `node_modules` resolve as in development. A tool that imports a Node builtin fails the
   build's leak check, which names the file.
-- In a tool or `agent.ts`, `@lousho/build-ai-agent` is a Worker-safe subset of the package:
+- In a tool or `agent.ts`, `lousho` is a Worker-safe subset of the package:
   `defineTool`, `isDefinedTool`, `always`, `never`, `once`, `defineSkill`, `defineSchedule`,
   `isDefinedSchedule`, `defineChannel`, `httpChannel`, `slackChannel`, `discordChannel`,
   `telegramChannel`, `githubChannel`, `teamsChannel`, `defineMemory`, `inMemoryMemory`,
@@ -211,8 +211,8 @@ binding typed as `KVBinding` (the `get`/`put`/`delete` part of Cloudflare's
 from the `/worker` subpath - see [Writing your own Worker](#writing-your-own-worker):
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent/worker';
-import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
+import { createAgent } from 'lousho/worker';
+import { KVStore, type KVBinding } from 'lousho/kv';
 
 interface Env {
   AGENT_KV: KVBinding;
@@ -275,7 +275,7 @@ new call, which gets a new approval id, so a tool that must act once per
 invoice also needs a key from its own arguments (the invoice number here):
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 // `payments` stands in for your payment client.
@@ -317,7 +317,7 @@ day-of-week (`LOUSHO_SCHEDULE_INVALID`).
 
 In a Worker you write yourself, wire an agent defined in code with
 `handleScheduled(agent, schedules, controller, ctx)` (exported from
-`@lousho/build-ai-agent/worker` — the `@lousho/build-ai-agent/deploy-runtime-worker`
+`lousho/worker` — the `lousho/deploy-runtime-worker`
 specifier in the generated code is a virtual one that only `lousho build`'s
 bundler resolves; do not import it yourself). It runs the schedules whose
 `cron` equals `controller.cron` inside `ctx.waitUntil()` and never throws; list
@@ -326,9 +326,9 @@ the same expressions under `[triggers] crons` yourself. Give the agent a store
 isolate's memory and is gone when it is recycled:
 
 ```ts
-import { createAgent, createMockProvider, defineSchedule, handleScheduled } from '@lousho/build-ai-agent/worker';
-import type { ScheduledContext, ScheduledController } from '@lousho/build-ai-agent/worker';
-import { KVStore, type KVBinding } from '@lousho/build-ai-agent/kv';
+import { createAgent, createMockProvider, defineSchedule, handleScheduled } from 'lousho/worker';
+import type { ScheduledContext, ScheduledController } from 'lousho/worker';
+import { KVStore, type KVBinding } from 'lousho/kv';
 
 interface Env {
   AGENT_CHECKPOINTS: KVBinding;
@@ -350,7 +350,7 @@ export default {
 
 ## Writing your own Worker
 
-Import from `@lousho/build-ai-agent/worker`, not the package root. The root entry
+Import from `lousho/worker`, not the package root. The root entry
 also exports file stores, the agent-directory loader, MCP over stdio, sandboxes
 and other Node-only modules, so bundling it for `platform: 'browser'` fails with
 `Could not resolve "async_hooks"` and friends. `/worker` is `createAgent` plus the
@@ -362,8 +362,8 @@ import {
   createAgent, createMockProvider, defineSchedule, defineTool, handleScheduled,
   memoryStore, serveFetch, OpenAIProvider, AnthropicProvider, OpenRouterProvider,
   LLMProviderRegistry, SDKError, /* ... */
-} from '@lousho/build-ai-agent/worker';
-import { KVStore } from '@lousho/build-ai-agent/kv'; // also re-exported from /worker
+} from 'lousho/worker';
+import { KVStore } from 'lousho/kv'; // also re-exported from /worker
 ```
 
 The exports: `createAgent` (and its config types), `memoryStore`, the KV stores
@@ -436,8 +436,8 @@ read-modify-write is not atomic.
 ## Bundle size and Node builtins
 
 The KV-backed stores (`KVStore`, `KVCheckpointStore` and `CHECKPOINT_KV_BINDING`,
-exported from `@lousho/build-ai-agent/kv`) have no `node:*` references anywhere
-in their dependency graph, and neither does the `@lousho/build-ai-agent/worker`
+exported from `lousho/kv`) have no `node:*` references anywhere
+in their dependency graph, and neither does the `lousho/worker`
 entry a hand-written Worker bundles (its build is checked the same way; see
 [Writing your own Worker](#writing-your-own-worker)). The Worker runs the spec as a `createAgent()` agent, whose
 Node-only imports (project instructions, the file session store, guardrail

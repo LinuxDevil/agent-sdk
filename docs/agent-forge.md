@@ -20,11 +20,11 @@ endpoint, and how settings/secrets/deploy wiring works.
 
 ## Installation
 
-Agent Forge ships inside `@lousho/build-ai-agent` itself - there's no
+Agent Forge ships inside `lousho` itself - there's no
 separate package to install:
 
 ```bash
-npm install @lousho/build-ai-agent
+npm install lousho
 ```
 
 That's it. `lousho studio` (below) runs a pre-built copy of the app; you

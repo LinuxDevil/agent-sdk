@@ -1,13 +1,13 @@
 {
-  "name": "create-lousho-agent",
-  "version": "0.1.2-alpha.9",
-  "description": "npm create lousho-agent: scaffold a new @lousho/build-ai-agent project (runs `lousho init`)",
+  "name": "create-lousho",
+  "version": "0.1.2-alpha.10",
+  "description": "npm create lousho: scaffold a new lousho project (runs `lousho init`)",
   "license": "MIT",
   "homepage": "https://lousho.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/LinuxDevil/agent-sdk.git",
-    "directory": "packages/create-lousho-agent"
+    "directory": "packages/create-lousho"
   },
   "keywords": [
     "lousho",
@@ -21,7 +21,7 @@
     "node": ">=22.19.0"
   },
   "bin": {
-    "create-lousho-agent": "bin/cli.js"
+    "create-lousho": "bin/cli.js"
   },
   "files": [
     "dist",
@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lousho/build-ai-agent": "^1.0.0-alpha.30",
+    "lousho": "^1.0.0-alpha.31",
     "prompts": "^2.4.2"
   },
   "devDependencies": {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { ConfigurationError, type AgentSpec } from '@lousho/build-ai-agent';
+import { ConfigurationError, type AgentSpec } from 'lousho';
 import { buildAgentFromSpec } from './buildAgent';
 import { SecretsStore } from './secretsStore';
 

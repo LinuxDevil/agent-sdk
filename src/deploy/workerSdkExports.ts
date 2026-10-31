@@ -1,13 +1,13 @@
 /**
  * The names an agent directory's files may import from
- * '@lousho/build-ai-agent' in a cloudflare-worker build: the exports of
+ * 'lousho' in a cloudflare-worker build: the exports of
  * src/deploy/workerSdk.ts (a test keeps the two equal). In its own module so
  * the adapter (adapters/cloudflare.ts) and the build-time module evaluation
  * (./evalModule.ts) can share it without a circular import.
  */
 import { SDKError } from '../execution/errors';
 
-/** The names an agent directory's files may import from '@lousho/build-ai-agent' in a Worker build. */
+/** The names an agent directory's files may import from 'lousho' in a Worker build. */
 export const WORKER_SDK_EXPORTS = [
   'AnthropicProvider',
   'ConfigurationError',
@@ -49,7 +49,7 @@ export function explainWorkerBuildError(error: unknown): unknown {
   return new SDKError(
     `cloudflare-worker build: ${message}
 In a Cloudflare Worker, the files of an agent directory can import only these ` +
-      `from '@lousho/build-ai-agent': ${WORKER_SDK_EXPORTS.join(', ')}. Use --target=node-server or --target=docker for the rest.`,
+      `from 'lousho': ${WORKER_SDK_EXPORTS.join(', ')}. Use --target=node-server or --target=docker for the rest.`,
     'LOUSHO_DEPLOY_FAILED',
     { cause: error }
   );

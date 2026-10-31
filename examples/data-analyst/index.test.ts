@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mockModel, testToolContext } from '@lousho/build-ai-agent/testing';
+import { mockModel, testToolContext } from 'lousho/testing';
 import {
   createAnalystTools,
   createDataAnalyst,

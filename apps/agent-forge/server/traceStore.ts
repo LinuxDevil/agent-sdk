@@ -10,7 +10,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { listTraces, readTrace, type TraceSummary } from '@lousho/build-ai-agent/traces';
+import { listTraces, readTrace, type TraceSummary } from 'lousho/traces';
 import type { SpanEvent, TraceSummaryPayload } from '../shared/wireTypes';
 
 /** A trace id is a UUID in practice; this is the strictest shape that still allows prefixes. */

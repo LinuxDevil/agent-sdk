@@ -1,6 +1,6 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec } from 'lousho';
 import { HttpAgentStore } from '../persistence/HttpAgentStore';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';

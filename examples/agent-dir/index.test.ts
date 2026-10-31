@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { loadAgentDir } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { loadAgentDir } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 describe('examples/agent-dir', () => {
   it('loads from disk and its tool and skill are callable offline', async () => {

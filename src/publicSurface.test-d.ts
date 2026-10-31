@@ -9,83 +9,83 @@ import { describe, it, expectTypeOf } from 'vitest';
 
 describe('public surface: moved types are off the root, on their subpath', () => {
   it('flow types moved to ./flows', () => {
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T1 = import('./index').AgentFlow;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T2 = import('./index').EditorStep;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T3 = import('./index').FlowExecutionEvent;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T4 = import('./index').FlowExecutionEventOf;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T5 = import('./index').FlowExecutionResult;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T6 = import('./index').FlowExecutionContext;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T7 = import('./index').FlowChunkEvent;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T8 = import('./index').FlowInputVariable;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T9 = import('./index').FlowInputType;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T10 = import('./index').FlowAgentDefinition;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T11 = import('./index').FlowToolSetting;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T12 = import('./index').FlowExecutionMode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T13 = import('./index').FlowOutputMode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T14 = import('./index').EditorShapeStep;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T15 = import('./index').RuntimeStep;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T16 = import('./index').StepNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T17 = import('./index').SequenceNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T18 = import('./index').ParallelNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T19 = import('./index').OneOfNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T20 = import('./index').ForEachNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T21 = import('./index').EvaluatorNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T22 = import('./index').BestOfAllNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T23 = import('./index').ToolNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T24 = import('./index').UIComponentNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T25 = import('./index').ConditionNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T26 = import('./index').LoopNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T27 = import('./index').OneOfOption;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T28 = import('./index').OneOfOptionsNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T29 = import('./index').ForEachItemsNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T30 = import('./index').ExpressionEvaluatorNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T31 = import('./index').LLMCallNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T32 = import('./index').ToolCallNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T33 = import('./index').SetVariableNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T34 = import('./index').ReturnNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T35 = import('./index').EndNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T36 = import('./index').ThrowNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T37 = import('./index').FlowDefinitionNode;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T38 = import('./index').FlowExecutionEventType;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/flows'
+    // @ts-expect-error - moved to 'lousho/flows'
     type _T39 = import('./index').FlowExecutionEventDataMap;
 
     // Present on './flows':
@@ -131,31 +131,31 @@ describe('public surface: moved types are off the root, on their subpath', () =>
   });
 
   it('integration types moved to ./integrations', () => {
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T1 = import('./index').EmailToolOptions;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T2 = import('./index').JiraConfig;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T3 = import('./index').JiraTicket;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T4 = import('./index').JiraComment;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T5 = import('./index').JiraTransition;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T6 = import('./index').GitHubConfig;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T7 = import('./index').GitHubFile;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T8 = import('./index').GitHubSearchResult;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T9 = import('./index').GitHubPullRequest;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T10 = import('./index').GitHubBranch;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T11 = import('./index').SlackBlock;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T12 = import('./index').SlackAlertPayload;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/integrations'
+    // @ts-expect-error - moved to 'lousho/integrations'
     type _T13 = import('./index').SlackToolOptions;
 
     expectTypeOf<import('./integrations').EmailToolOptions>().not.toBeNever();
@@ -174,19 +174,19 @@ describe('public surface: moved types are off the root, on their subpath', () =>
   });
 
   it('utility types moved to ./utils', () => {
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/utils'
+    // @ts-expect-error - moved to 'lousho/utils'
     type _T1 = import('./index').EncryptionConfig;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/utils'
+    // @ts-expect-error - moved to 'lousho/utils'
     type _T2 = import('./index').DTOEncryptionSettings;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/utils'
+    // @ts-expect-error - moved to 'lousho/utils'
     type _T3 = import('./index').AuthorizationContext;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/utils'
+    // @ts-expect-error - moved to 'lousho/utils'
     type _T4 = import('./index').FileSystemAdapter;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/utils'
+    // @ts-expect-error - moved to 'lousho/utils'
     type _T5 = import('./index').PathAdapter;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/utils'
+    // @ts-expect-error - moved to 'lousho/utils'
     type _T6 = import('./index').IStorageService;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/utils'
+    // @ts-expect-error - moved to 'lousho/utils'
     type _T7 = import('./index').StorageConfig;
 
     expectTypeOf<import('./utils').EncryptionConfig>().not.toBeNever();
@@ -301,11 +301,11 @@ describe('public surface: the patch-guardrail type names are gone', () => {
 
 describe('public surface: the executor API moved to ./executor', () => {
   it('moved types are off the root, on ./executor', () => {
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _T1 = import('./index').ExecuteOptions;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _T2 = import('./index').ResumeExecuteOptions;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _T3 = import('./index').ResumeRequest;
     expectTypeOf<import('./executor').ExecuteOptions>().not.toBeNever();
     expectTypeOf<import('./executor').ResumeExecuteOptions>().not.toBeNever();
@@ -313,19 +313,19 @@ describe('public surface: the executor API moved to ./executor', () => {
   });
 
   it('moved values are off the root, on ./executor', () => {
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _V1 = typeof import('./index').AgentBuilder;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _V2 = typeof import('./index').AgentExecutor;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _V3 = typeof import('./index').resumeAfterApproval;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _V4 = typeof import('./index').streamResumeAfterApproval;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _V5 = typeof import('./index').resumeRequest;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _V6 = typeof import('./index').ToolRegistry;
-    // @ts-expect-error - moved to '@lousho/build-ai-agent/executor'
+    // @ts-expect-error - moved to 'lousho/executor'
     type _V7 = typeof import('./index').globalToolRegistry;
     expectTypeOf<typeof import('./executor').AgentBuilder>().not.toBeNever();
     expectTypeOf<typeof import('./executor').AgentExecutor>().not.toBeNever();

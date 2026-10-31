@@ -15,7 +15,7 @@ reply gets one more step, so the model answers it in the same run. The
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const run = agent.stream('Plan a weekend in Rome.');
@@ -62,8 +62,8 @@ Without a stream, pass an `InputQueue` to `AgentExecutor.execute()` (see
 [the executor API](./executor-api.md)):
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent/executor';
-import { InputQueue } from '@lousho/build-ai-agent';
+import { AgentExecutor } from 'lousho/executor';
+import { InputQueue } from 'lousho';
 
 const inputQueue = new InputQueue();
 const pending = AgentExecutor.execute({ agent, provider, input: 'Plan my trip.', inputQueue });
@@ -90,7 +90,7 @@ the user changes their mind while the agent is still thinking:
 - `applied` is `false` once the run has finished: send the input as a new turn.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const run = agent.stream('Plan a weekend in Rome.');

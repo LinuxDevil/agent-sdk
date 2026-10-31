@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MockLLMProvider } from '@lousho/build-ai-agent';
+import { MockLLMProvider } from 'lousho';
 import { RunAbortedError, withAbortSignal } from './abortableProvider';
 
 const request = { model: 'mock-1', messages: [{ role: 'user' as const, content: 'hi' }] };

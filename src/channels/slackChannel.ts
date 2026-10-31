@@ -127,7 +127,7 @@ function button(text: string, actionId: string, style: string, value: string) {
  *
  * @example
  * ```ts
- * import { slackChannel } from '@lousho/build-ai-agent';
+ * import { slackChannel } from 'lousho';
  *
  * const slack = slackChannel({
  *   signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',

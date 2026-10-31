@@ -12,7 +12,7 @@ Give a cron expression and exactly one of `prompt` (text sent to the agent as a
 new turn) or `run` (your own function).
 
 ```ts
-import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, defineSchedule, startSchedules } from 'lousho';
 
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
 
@@ -58,7 +58,7 @@ server or a test exits normally. A script that does nothing but run schedules
 would therefore exit straight away; pass `keepAlive: true` for that:
 
 ```ts no-run
-import { createAgent, createMockProvider, defineSchedule, startSchedules } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, defineSchedule, startSchedules } from 'lousho';
 
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
 const running = startSchedules(agent, [defineSchedule({ cron: '@hourly', prompt: 'Check the queue.' })], { keepAlive: true });
@@ -84,7 +84,7 @@ claim is best effort across edge locations (see
 [Durable execution](./durable-execution.md#run-leases)).
 
 ```ts
-import { createAgent, createMockProvider, defineSchedule, fireSchedule } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, defineSchedule, fireSchedule } from 'lousho';
 
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider() });
 const report = defineSchedule({ name: 'report', cron: '0 9 * * *', prompt: 'Run the daily report.' });
@@ -105,7 +105,7 @@ they show an empty transcript for a schedule id. Read a fire's report from the
 checkpoint store instead, or continue it with `agent.fork(id)`:
 
 ```ts
-import { createAgent, createMockProvider, defineSchedule, fireSchedule, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, defineSchedule, fireSchedule, memoryStore } from 'lousho';
 
 const store = memoryStore();
 const agent = createAgent({ instructions: 'You write reports.', provider: createMockProvider(), store });
@@ -131,7 +131,7 @@ my-agent/
 `schedules/` loads exactly as before.
 
 ```ts
-import { createAgent, resolveAgentDir, startSchedules } from '@lousho/build-ai-agent';
+import { createAgent, resolveAgentDir, startSchedules } from 'lousho';
 
 const { config, schedules } = await resolveAgentDir('./my-agent');
 const agent = createAgent(config);

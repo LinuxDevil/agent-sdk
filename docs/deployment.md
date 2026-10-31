@@ -41,7 +41,7 @@ directory's [schedules](./schedules.md) when it listens, mounts its
 routes keep the bearer token), and logs `schedules: ...; channels: ...`.
 The directory's code files are pre-bundled with the build's tsup step into
 `dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
-'@lousho/build-ai-agent'` import in a tool is the SDK the server runs), and
+'lousho'` import in a tool is the SDK the server runs), and
 only the files the server reads as data are copied: `instructions.md`,
 `instructions/`, `skills/`, a JSON/YAML config, and the same in each
 `subagents/<name>/`. Nothing else in the directory reaches `dist/`: not `.env`
@@ -58,7 +58,7 @@ The Cloudflare Worker target builds a directory's config, `instructions.md`,
 provider the Worker lacks, and the other features the Worker column of
 [What works and what does not](./cloudflare-workers.md#what-works-and-what-does-not)
 leaves out, naming what to remove. Tools run inside the Worker with its rights, and may import
-only a Worker-safe part of `@lousho/build-ai-agent`
+only a Worker-safe part of `lousho`
 ([Cloudflare Workers](./cloudflare-workers.md#build-and-deploy) has the details):
 
 ```bash
@@ -291,7 +291,7 @@ signal handler: stop accepting, let the requests in flight finish, then call
 
 ```ts
 import { createServer } from 'node:http';
-import { createAgent, mountChannels } from '@lousho/build-ai-agent';
+import { createAgent, mountChannels } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const handler = mountChannels(agent, []);
@@ -368,7 +368,7 @@ never needs one you do not use. The generated `package.json` already lists the
 ones the agent needs where the server runs - the provider package the spec names (at the
 range pairing with the build's `ai` major, e.g. `@ai-sdk/openai` for an OpenAI
 agent) and `@modelcontextprotocol/sdk` when the spec has `mcpServers` - and
-nothing else: `@lousho/build-ai-agent`, `ai` and `zod` are inside the bundle, so the
+nothing else: `lousho`, `ai` and `zod` are inside the bundle, so the
 docker image's `npm install --omit=dev` or a `npm install` next to the
 node-server output installs them. Anything else (an agent directory's own
 imports, `dockerode` for sandboxed tools) you add yourself; a code path that

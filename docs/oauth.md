@@ -38,7 +38,7 @@ token, an operator who knows which authenticator the old tokens belong to moves
 them once:
 
 ```ts
-import { fileStore } from '@lousho/build-ai-agent';
+import { fileStore } from 'lousho';
 
 const store = fileStore('./.lousho', { tokenKey: process.env.LOUSHO_TOKEN_KEY });
 const legacy = { owner: 'user', principalId: 'U04ABCDEF' } as const;
@@ -60,7 +60,7 @@ key unambiguous: a principal id containing `|` cannot collide with another
 owner.
 
 ```ts
-import { tokenStoreKey } from '@lousho/build-ai-agent';
+import { tokenStoreKey } from 'lousho';
 
 tokenStoreKey('github', { owner: 'app' }); // 'github|app'
 tokenStoreKey('github', { owner: 'user', principalId: 'a|b', issuer: 'https://id.example.com' });
@@ -72,7 +72,7 @@ tokenStoreKey('github', { owner: 'user', principalId: 'a|b', issuer: 'https://id
 `AgentStore.tokens` is an `OAuthTokenStore`:
 
 ```ts
-import { memoryStore } from '@lousho/build-ai-agent';
+import { memoryStore } from 'lousho';
 
 const { tokens } = memoryStore();
 const alice = { owner: 'user', principalId: 'alice', issuer: 'https://id.example.com' } as const;
@@ -115,7 +115,7 @@ node -e "console.log(Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toS
 ```
 
 ```ts
-import { createAgent, fileStore, generateTokenKey } from '@lousho/build-ai-agent';
+import { createAgent, fileStore, generateTokenKey } from 'lousho';
 
 console.log(generateTokenKey()); // store it as a secret, e.g. LOUSHO_TOKEN_KEY
 
@@ -171,7 +171,7 @@ Define the provider once, at module level next to the tools that use it, with
 `defineOAuthProvider()`. A tool asks for a token with `ctx.getToken(provider)`:
 
 ```ts
-import { createAgent, defineOAuthProvider, defineTool, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, defineOAuthProvider, defineTool, memoryStore } from 'lousho';
 import { z } from 'zod';
 
 export const github = defineOAuthProvider({
@@ -236,7 +236,7 @@ the agent's credential for every user: without the token the call fails with
 The operator signs the app in once with `agent.oauth.signInUrl(provider)`:
 
 ```ts
-import { createAgent, defineOAuthProvider, fileStore } from '@lousho/build-ai-agent';
+import { createAgent, defineOAuthProvider, fileStore } from 'lousho';
 
 const slackBot = defineOAuthProvider({
   name: 'slack_bot',
@@ -319,7 +319,7 @@ link continues the run by approving the pause. Serving your own route, do the
 same:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ provider });
 
@@ -393,8 +393,8 @@ token store (encrypted by the persistent stores) under the provider name
 one.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { createAgent } from 'lousho';
+import { SqliteStore } from 'lousho/sqlite';
 
 const agent = createAgent({
   provider,

@@ -43,7 +43,7 @@ const channels = mountFetchChannels(agent, [slack], { waitUntil: (turn) => void 
 
 ```ts no-run
 import * as http from 'node:http';
-import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, httpChannel, mountChannels } from 'lousho';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 const channels = mountChannels(agent, [
@@ -118,7 +118,7 @@ Discord, Telegram, Teams, GitHub) keeps its own answer and tells the user the
 request failed in the conversation.
 
 ```ts
-import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';
+import { createAgent, defineChannel, mountChannels } from 'lousho';
 
 const agent = createAgent({ instructions: 'You answer text messages.', provider });
 
@@ -202,7 +202,7 @@ dropped silently once the surface was acknowledged. `resolveApproval()`
 throws `LOUSHO_APPROVAL_CONFLICT` for an approval another request is deciding.
 
 ```ts
-import { createAgent, defineChannel, mountChannels } from '@lousho/build-ai-agent';
+import { createAgent, defineChannel, mountChannels } from 'lousho';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider, askQuestion: true });
 
@@ -247,7 +247,7 @@ the verified request (the alerting system that sent the hook, an integration
 user); `body` is the parsed JSON body, `undefined` when it is not JSON.
 
 ```ts
-import { createAgent, httpChannel, mountChannels, webhookChannel } from '@lousho/build-ai-agent';
+import { createAgent, httpChannel, mountChannels, webhookChannel } from 'lousho';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider });
 
@@ -340,7 +340,7 @@ Set up the app at [api.slack.com/apps](https://api.slack.com/apps):
 
 ```ts
 import * as http from 'node:http';
-import { createAgent, mountChannels, slackChannel } from '@lousho/build-ai-agent';
+import { createAgent, mountChannels, slackChannel } from 'lousho';
 
 const agent = createAgent({ instructions: 'You are a helpful Slack bot.', provider });
 
@@ -415,7 +415,7 @@ curl -X POST "https://discord.com/api/v10/applications/$APP_ID/guilds/$GUILD_ID/
 
 ```ts
 import * as http from 'node:http';
-import { createAgent, discordChannel, mountChannels } from '@lousho/build-ai-agent';
+import { createAgent, discordChannel, mountChannels } from 'lousho';
 
 const agent = createAgent({ instructions: 'You are a helpful Discord bot.', provider });
 
@@ -499,7 +499,7 @@ curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/setWebhook" -H "Co
 
 ```ts
 import * as http from 'node:http';
-import { createAgent, mountChannels, telegramChannel } from '@lousho/build-ai-agent';
+import { createAgent, mountChannels, telegramChannel } from 'lousho';
 
 const agent = createAgent({ instructions: 'You are a helpful Telegram bot.', provider });
 
@@ -551,7 +551,7 @@ so it also runs on Workers.
   them somewhere shared and durable, e.g. Redis `SET NX EX`:
 
   ```ts
-  import { githubChannel, type DeliveryStore } from '@lousho/build-ai-agent';
+  import { githubChannel, type DeliveryStore } from 'lousho';
 
   const seenIds = new Set<string>(); // stands in for Redis or a database table
   const deliveries: DeliveryStore = { seen: (id) => seenIds.has(id) || (seenIds.add(id), false) };
@@ -652,7 +652,7 @@ agent from answering its own comments.
 
 ```ts
 import * as http from 'node:http';
-import { createAgent, githubChannel, mountChannels } from '@lousho/build-ai-agent';
+import { createAgent, githubChannel, mountChannels } from 'lousho';
 
 const agent = createAgent({ instructions: 'You answer questions about this repository.', provider });
 
@@ -748,7 +748,7 @@ Set up the bot:
 
 ```ts
 import * as http from 'node:http';
-import { createAgent, mountChannels, teamsChannel } from '@lousho/build-ai-agent';
+import { createAgent, mountChannels, teamsChannel } from 'lousho';
 
 const agent = createAgent({ instructions: 'You help the team with questions.', provider });
 

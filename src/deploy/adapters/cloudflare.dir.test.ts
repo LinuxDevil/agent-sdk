@@ -239,7 +239,7 @@ describe('cloudflare-worker target: agent directories (#298)', () => {
       const dir = agentDir({
         ...MINIMAL,
         'schedules/report.ts':
-          "import { defineSchedule } from '@lousho/build-ai-agent';\n" +
+          "import { defineSchedule } from 'lousho';\n" +
           "export default defineSchedule({ cron: '0 9 * * MON', timezone: 'Europe/Berlin', prompt: 'Hi' });\n",
       });
       await expect(CloudflareWorkerAdapter.scaffold(dir, outDirFor(dir))).rejects.toMatchObject({
@@ -295,7 +295,7 @@ describe('cloudflare-worker target: agent directories (#298)', () => {
     const explained = explainWorkerBuildError(esbuild) as Error & { code?: string; cause?: unknown };
     expect(explained.code).toBe('LOUSHO_DEPLOY_FAILED');
     expect(explained.message).toContain('for import "fileStore"');
-    expect(explained.message).toContain(`from '@lousho/build-ai-agent': ${WORKER_SDK_EXPORTS.join(', ')}`);
+    expect(explained.message).toContain(`from 'lousho': ${WORKER_SDK_EXPORTS.join(', ')}`);
     expect(explained.cause).toBe(esbuild);
     const other = new Error('Build failed with 1 error: Could not resolve "x"');
     expect(explainWorkerBuildError(other)).toBe(other);

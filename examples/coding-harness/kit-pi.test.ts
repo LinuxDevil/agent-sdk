@@ -12,7 +12,7 @@
  * delegating to a real Pi coding agent over OpenRouter.
  *
  * Like kit.test.ts this needs `npm run build` to have run (the kit's files
- * import `@lousho/build-ai-agent` by name and the loader goes through dist).
+ * import `lousho` by name and the loader goes through dist).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -22,8 +22,8 @@ import * as path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall, type FauxResponseStep } from '@earendil-works/pi-ai';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
-import { loadAgentDir } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { loadAgentDir } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { runAdd } from '../../src/cli/add';
 import { FIXTURE } from './index';
 
@@ -92,7 +92,7 @@ async function fauxPi(stateDir: string) {
 }
 
 beforeEach(async () => {
-  // The node_modules link lets the kit's `@lousho/build-ai-agent` imports resolve.
+  // The node_modules link lets the kit's `lousho` imports resolve.
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-coding-pi-'));
   fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');
   const result = await add(['coding-pi', '--registry', INDEX, '--dir', '.', '--yes', '--allow', 'exec,fs-write,network,env']);
@@ -140,7 +140,7 @@ describe('lousho add coding-pi', () => {
 
 describe('the installed kit, loaded', () => {
   it('puts the pi coder in the subagents map and keeps the explorer a delegate tool', async () => {
-    const { resolveAgentDir } = await import('@lousho/build-ai-agent');
+    const { resolveAgentDir } = await import('lousho');
     const { config, manifest } = await resolveAgentDir(root, { provider: mockModel(['x']) });
 
     expect(manifest.subagents).toEqual(['coder', 'explorer']);

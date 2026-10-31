@@ -10,7 +10,7 @@
  * defines the wire shape of the status/events the server reports back to
  * the app over `GET /agents/:id/status` and `WS /agents/:id/stream`.
  */
-import type { AgentEventUsage, AgentSpecV2, CheckpointStatus, TrajectoryComparison, TrajectoryStep } from '@lousho/build-ai-agent';
+import type { AgentEventUsage, AgentSpecV2, CheckpointStatus, TrajectoryComparison, TrajectoryStep } from 'lousho';
 import type { WorkspaceRef } from './workspace';
 
 /**

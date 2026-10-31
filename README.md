@@ -1,13 +1,13 @@
 # Lousho — TypeScript AI agent SDK
 
-[![npm](https://img.shields.io/npm/v/@lousho/build-ai-agent)](https://www.npmjs.com/package/@lousho/build-ai-agent)
+[![npm](https://img.shields.io/npm/v/lousho)](https://www.npmjs.com/package/lousho)
 ![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg?branch=main)
 [![Docs](https://img.shields.io/badge/docs-lousho.com-0F9D74)](https://lousho.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry. No hosted runtime.
 
-Install with `@lousho/build-ai-agent`.
+Install with `lousho`.
 
 What still sets it apart (as of October 2026; see the
 [honest comparison](docs/comparison.md) for where rivals are ahead):
@@ -38,21 +38,33 @@ What still sets it apart (as of October 2026; see the
 
 ## Installation
 
-Requires Node.js 22.19 or newer (the floor comes from the `undici@8` dependency; `.ts` agent files also rely on Node's built-in type stripping, on by default since 22.18). Scaffold a new project with one command:
+Requires Node.js 22.19 or newer (the floor comes from the `undici@8` dependency; `.ts` agent files also rely on Node's built-in type stripping, on by default since 22.18). Lousho is published to [GitHub Packages](https://github.com/LinuxDevil/agent-sdk/packages) as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`. GitHub Packages needs a login even for public packages. Create a [personal access token (classic) with `read:packages`](https://github.com/settings/tokens), then log in once for the scope (use the token as the password):
 
 ```bash
-npm create lousho-agent my-agent                     # agent, example tool, offline test
+npm login --scope=@linuxdevil --auth-type=legacy --registry=https://npm.pkg.github.com
+```
+
+Install the SDK under the plain name `lousho` with an npm alias, so imports stay `from 'lousho'`:
+
+```bash
+npm install lousho@npm:@linuxdevil/lousho@alpha ai zod
+```
+
+Scaffold a new project with one command:
+
+```bash
+npx --package=@linuxdevil/create-lousho@alpha create-lousho my-agent   # agent, example tool, offline test
 cd my-agent                                          # copy .env.example to .env (cp on macOS/Linux, copy on Windows), put your API key in it
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
 
-From a locally packed tarball: `npx --package=<absolute path to create-lousho-agent-x.y.z.tgz> create-lousho-agent my-agent` (`npx ../x.tgz` fails on Windows).
+From a locally packed tarball: `npx --package=<absolute path to create-lousho-x.y.z.tgz> create-lousho my-agent` (`npx ../x.tgz` fails on Windows).
 
 To add it to an existing project, install the SDK with the current `ai` major
 and the provider packages that pair with it:
 
 ```bash
-npm install @lousho/build-ai-agent ai@^7.0.0 zod
+npm install lousho@npm:@linuxdevil/lousho@alpha ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
@@ -67,7 +79,7 @@ prints a fix for anything missing.
 The snippet uses top-level `await`, so the file must be an ES module (`.mts`, or `"type": "module"` in `package.json`).
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4.1-mini', instructions: 'You are a helpful assistant.' });
 const { text } = await agent.send('Hello!');
@@ -92,7 +104,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Memory**: `defineMemory()` slots, scoped globally, per session or per user, are recalled into the prompt at the start of a run and read and written with `remember_` / `recall_` tools. [Memory](docs/memory.md)
 - **Structured output**: `output: zodSchema` makes the final reply a typed, validated `result.object`, with one repair step. [Structured output](docs/structured-output.md)
 - **Streaming**: `agent.stream()` and `session.stream()` yield typed, versioned JSON events ready for SSE. [Streaming](docs/streaming.md)
-- **UI bindings**: `useLoushoAgent()` from `@lousho/build-ai-agent/react` (and `/vue`; `loushoAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](docs/react.md), [Vue](docs/vue.md), [Svelte](docs/svelte.md)
+- **UI bindings**: `useLoushoAgent()` from `lousho/react` (and `/vue`; `loushoAgent()` store from `/svelte`) turns the event stream into chat state, with approvals. [React](docs/react.md), [Vue](docs/vue.md), [Svelte](docs/svelte.md)
 - **AI SDK UI**: `toUIMessageStreamResponse(agent.stream(...))` renders a run with the Vercel AI SDK's `useChat`. [AI SDK UI](docs/ai-sdk-ui.md)
 - **Next.js and Fetch frameworks**: `createRouteHandler(agent)` serves the session API from an App Router, SvelteKit, Hono or Bun route. [Next.js](docs/nextjs.md)
 - **Durable execution**: `createAgent({ store })` checkpoints every step, and `agent.resume()` finishes a crashed or interrupted run without redoing finished tools (it throws `SessionAwaitingApprovalError` on an approval-paused run, which continues via `agent.approvals.resolve()`). [Durable execution](docs/durable-execution.md)
@@ -108,7 +120,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 - **Hooks, guardrails, sandboxing**: veto tool calls, gate a patch on fail-closed checks, run tools in Docker. [Guardrails](docs/guardrails.md)
 - **Channels, flows and triggers**: `defineChannel()` / `mountChannels()` map a surface's messages to sessions and send replies and approvals back; fixed multi-step workflows; webhook, Slack and cron adapters. [Channels](docs/channels.md), [Flows](docs/flows.md), [Triggers](docs/triggers.md)
 - **Tracing**: OpenTelemetry GenAI spans (`invoke_agent`, `chat`, `execute_tool`); content capture is opt-in. [Observability](docs/observability.md)
-- **Trace viewer**: `createAgent({ exporter: fileTraceExporter() })` (from `@lousho/build-ai-agent/traces`) keeps each run as a local file; `npx lousho traces` lists runs and prints one as a tree with durations, tokens and cost. [Local traces](docs/observability.md#local-traces)
+- **Trace viewer**: `createAgent({ exporter: fileTraceExporter() })` (from `lousho/traces`) keeps each run as a local file; `npx lousho traces` lists runs and prints one as a tree with durations, tokens and cost. [Local traces](docs/observability.md#local-traces)
 - **Testing and evals**: `mockModel`, `recordReplay` cassettes, `defineEval()` trajectory assertions, `lousho eval` with `--record` / `--replay` cassettes and `--drift` trajectory diffs. [Testing](docs/testing.md), [Evals](docs/evals.md)
 - **CLI**: `init`, `doctor`, `dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. [CLI](docs/cli.md)
 - **Editors (ACP)**: `lousho acp ./my-agent` serves your agent to Zed and other Agent Client Protocol editors, with tool calls and permission prompts. [ACP](docs/acp.md)
@@ -120,7 +132,7 @@ agent can be an `agent.yaml` spec served with `npx lousho dev agent.yaml`
 ### A tool-using agent, streamed
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const getWeather = defineTool({
@@ -145,7 +157,7 @@ for await (const event of agent.stream('What should I wear in Lisbon today?')) {
 ### Pause for approval, then resume
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -170,8 +182,8 @@ if (run.finishReason === 'awaiting-approval') {
 ### Durable sessions with SQLite
 
 ```ts
-import { createAgent, resolveProvider } from '@lousho/build-ai-agent';
-import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { createAgent, resolveProvider } from 'lousho';
+import { SqliteStore } from 'lousho/sqlite';
 
 // Transcripts, per-step checkpoints and approvals in one SQLite file, wired by one option.
 const agent = createAgent({ provider: resolveProvider('openai/gpt-4.1-mini'), store: new SqliteStore('./.lousho/agent.db') });
@@ -227,10 +239,10 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [Models and cost](docs/models-and-cost.md) | Token estimates, the model price table, usage and USD cost of a run |
 | [AI SDK UI](docs/ai-sdk-ui.md) | `useChat` on a Lousho run: `toUIMessageStreamResponse()`, `fromUIMessages()`, approvals |
 | [Next.js](docs/nextjs.md) | `createRouteHandler(agent)`: the session API as a Fetch route (App Router, SvelteKit, Hono), auth, `useChat` endpoint |
-| [Route auth](docs/auth.md) | `@lousho/build-ai-agent/auth`: `jwt()`, `oidc()`, `basic()`, `apiToken()` as an ordered list; the caller as `principal` in the run |
+| [Route auth](docs/auth.md) | `lousho/auth`: `jwt()`, `oidc()`, `basic()`, `apiToken()` as an ordered list; the caller as `principal` in the run |
 | [React](docs/react.md) | `useLoushoAgent()`: chat state from the event stream, in process or over HTTP; `reduceAgentEvents()`, `parseEventStream()` |
-| [Vue](docs/vue.md) | `useLoushoAgent()` from `@lousho/build-ai-agent/vue`: the React hook as a Vue 3 composable |
-| [Svelte](docs/svelte.md) | `loushoAgent()` from `@lousho/build-ai-agent/svelte`: the React hook as a Svelte store |
+| [Vue](docs/vue.md) | `useLoushoAgent()` from `lousho/vue`: the React hook as a Vue 3 composable |
+| [Svelte](docs/svelte.md) | `loushoAgent()` from `lousho/svelte`: the React hook as a Svelte store |
 | [Durable execution](docs/durable-execution.md) | Checkpoints, crash resume, approvals mid-batch, at-least-once tools |
 | [Sub-agents](docs/sub-agents.md) | The `subagents` option and its `task` tool, inheritance, approvals in sub-agents |
 | [Handoffs](docs/handoffs.md) | `handoffs: [billing, support]`: hand the conversation to another agent, input filters, sessions, approvals after a handoff |
@@ -243,7 +255,7 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [Context compaction](docs/compaction.md) | `createAgent({ compaction })`: prune old tool results, then summarize old turns |
 | [Channels](docs/channels.md) | `defineChannel()`, `mountChannels()`, `httpChannel()`, `webhookChannel()`, `slackChannel()`: surfaces mapped to sessions, replies and approvals sent back |
 | [Schedules](docs/schedules.md) | `defineSchedule()` cron schedules, `schedules/` in an agent directory, `startSchedules()` |
-| [Triggers](docs/triggers.md) | `@lousho/build-ai-agent/triggers`: `TriggerAdapter`, `TriggerRegistry`, webhook auth and Slack signature helpers; triggers vs channels vs schedules |
+| [Triggers](docs/triggers.md) | `lousho/triggers`: `TriggerAdapter`, `TriggerRegistry`, webhook auth and Slack signature helpers; triggers vs channels vs schedules |
 | [Flows](docs/flows.md) | Fixed multi-step workflows with `FlowBuilder` and `FlowExecutor` |
 | [Workspace tools](docs/workspace-tools.md) | File system and shell tools for coding agents, and their security model |
 | [Build a coding agent](docs/build-a-coding-agent.md) | A terminal coding agent step by step: workspace tools, approvals, streaming, a session, offline tests |

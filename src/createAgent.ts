@@ -396,13 +396,13 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * session turns, `resume()` and runs continued by `agent.approvals.resolve()`.
    * Each run is one `invoke_agent` span with `chat` and `execute_tool` spans
    * under it; sub-agents' spans join the lead's trace. `fileTraceExporter()`
-   * from `@lousho/build-ai-agent/traces` writes them to `.lousho/traces` for
+   * from `lousho/traces` writes them to `.lousho/traces` for
    * `npx lousho traces`; `createOtelTraceExporter()` sends them to
    * OpenTelemetry. See docs/observability.md.
    *
    * @example
    * ```ts
-   * import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+   * import { fileTraceExporter } from 'lousho/traces';
    * createAgent({ model: 'openai/gpt-4o-mini', exporter: fileTraceExporter() });
    * ```
    */
@@ -428,7 +428,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    *
    * @example
    * ```ts
-   * import { fileTraceExporter } from '@lousho/build-ai-agent/traces';
+   * import { fileTraceExporter } from 'lousho/traces';
    * createAgent({ model: 'openai/gpt-4o-mini', exporter: fileTraceExporter(), redactContent: false });
    * // Your own redaction of captured content (replaces the built-in scrubber):
    * createAgent({ model: 'openai/gpt-4o-mini', redactContent: (text) => text.replace(/\b\d{16}\b/g, '[card]') });

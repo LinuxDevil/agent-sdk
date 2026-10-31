@@ -16,7 +16,7 @@ file system and a shell for it, and `createFsTools()` and `createShellTool()`
 turn it into tools.
 
 ```ts
-import { NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { NodeWorkspace, createFsTools, createShellTool } from 'lousho';
 
 const workspace = new NodeWorkspace({ root: process.cwd() });
 const tools = [...createFsTools(workspace), createShellTool(workspace)];
@@ -41,7 +41,7 @@ per-tool map. For the shell, pass a predicate over the command string and gate
 only the commands you consider risky.
 
 ```ts
-import { NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { NodeWorkspace, createFsTools, createShellTool } from 'lousho';
 
 const DESTRUCTIVE = /\b(rm|mv|chmod|chown|git\s+(push|reset|clean|checkout))\b|>/;
 
@@ -73,7 +73,7 @@ written and `tool.start` announces each tool call (see
 [Streaming](./streaming.md)).
 
 ```ts
-import { NodeWorkspace, createAgent, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { NodeWorkspace, createAgent, createFsTools, createShellTool } from 'lousho';
 
 const workspace = new NodeWorkspace({ root: process.cwd() });
 const agent = createAgent({
@@ -110,7 +110,7 @@ the rest of the work. That run can pause again, so loop until there is no
 
 ```ts
 import { createInterface } from 'node:readline/promises';
-import { createAgent, type AgentRun } from '@lousho/build-ai-agent';
+import { createAgent, type AgentRun } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a coding agent.' });
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -165,7 +165,7 @@ same pause handling.
 // coding.ts
 // Run: OPENAI_API_KEY=... npx tsx coding.ts "Fix the failing test"
 import { createInterface } from 'node:readline/promises';
-import { NodeWorkspace, createAgent, createFsTools, createShellTool, type AgentRun } from '@lousho/build-ai-agent';
+import { NodeWorkspace, createAgent, createFsTools, createShellTool, type AgentRun } from 'lousho';
 
 const DESTRUCTIVE = /\b(rm|mv|chmod|chown|git\s+(push|reset|clean|checkout))\b|>/;
 
@@ -249,8 +249,8 @@ memory and takes a scripted `exec` for the shell, and `mockModel` plays the
 model. Assert on `workspace.snapshot()` and `workspace.commands`.
 
 ```ts
-import { createAgent, createFsTools, createShellTool, MemoryWorkspace } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, createFsTools, createShellTool, MemoryWorkspace } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const workspace = new MemoryWorkspace({
   files: { 'math.js': 'exports.add = (a, b) => a - b;\n' },
@@ -277,8 +277,8 @@ To test the approval path, gate `write_file` the way the real agent does.
 runs the write and finishes the turn.
 
 ```ts
-import { createAgent, createFsTools, MemoryWorkspace } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, createFsTools, MemoryWorkspace } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const workspace = new MemoryWorkspace({ files: { 'notes.txt': 'old\n' } });
 const agent = createAgent({

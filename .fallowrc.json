@@ -32,7 +32,7 @@
   ],
   "ignoreExports": [
     {
-      "file": "packages/create-lousho-agent/src/index.ts",
+      "file": "packages/create-lousho/src/index.ts",
       "exports": [
         "main"
       ]

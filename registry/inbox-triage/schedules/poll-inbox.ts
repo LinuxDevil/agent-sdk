@@ -1,4 +1,4 @@
-import { defineSchedule } from '@lousho/build-ai-agent';
+import { defineSchedule } from 'lousho';
 
 /**
  * The kit's batch intake: every 15 minutes the agent sweeps the inbox for

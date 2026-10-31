@@ -36,7 +36,7 @@ The `vendor/` model prefix chooses the provider; with OpenRouter use
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts no-run
-import { createAgent, defineMemory, fileMemory } from '@lousho/build-ai-agent';
+import { createAgent, defineMemory, fileMemory } from 'lousho';
 
 const preferences = defineMemory({
   name: 'preferences',
@@ -84,8 +84,8 @@ A scope function sees the run's `sessionId` and the `metadata` passed to
 sessions:
 
 ```ts
-import { createAgent, defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineMemory, inMemoryMemory } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const userFacts = defineMemory({
   name: 'user_facts',
@@ -128,7 +128,7 @@ every start: `add()` dedupes on text, so nothing is copied twice. Each copy
 keeps `text` and `metadata` and gets a new `id` and `createdAt`.
 
 ```ts
-import { defineMemory, fileMemory, migrateMemoryKeys } from '@lousho/build-ai-agent';
+import { defineMemory, fileMemory, migrateMemoryKeys } from 'lousho';
 
 const provider = fileMemory({ dir: './.lousho/memory' });
 const notes = defineMemory({ name: 'notes', scope: 'global', provider });
@@ -166,7 +166,7 @@ the count.
 
 ```ts
 import { z } from 'zod';
-import { defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+import { defineMemory, inMemoryMemory } from 'lousho';
 
 const relationship = defineMemory({
   name: 'relationship',
@@ -197,7 +197,7 @@ adding a second version. The item keeps its id, becomes the newest, and
 
 ```ts
 import { z } from 'zod';
-import { defineMemory, inMemoryMemory } from '@lousho/build-ai-agent';
+import { defineMemory, inMemoryMemory } from 'lousho';
 
 const settings = defineMemory({
   name: 'settings',
@@ -283,8 +283,8 @@ by meaning instead of by keyword, use `sqliteVectorMemory()`: see
 [Semantic recall](#semantic-recall).
 
 ```ts no-run
-import { createAgent, defineMemory } from '@lousho/build-ai-agent';
-import { SqliteStore, sqliteMemory } from '@lousho/build-ai-agent/sqlite';
+import { createAgent, defineMemory } from 'lousho';
+import { SqliteStore, sqliteMemory } from 'lousho/sqlite';
 
 const store = new SqliteStore('./.lousho/agent.db');
 const notes = defineMemory({ name: 'notes', scope: 'global', provider: sqliteMemory(store) });
@@ -294,7 +294,7 @@ const agent = createAgent({ model: 'openai/gpt-4o-mini', store, memory: [notes] 
 For a hosted store or your own ranking, implement `MemoryProvider`:
 
 ```ts
-import type { MemoryItem, MemoryProvider } from '@lousho/build-ai-agent';
+import type { MemoryItem, MemoryProvider } from 'lousho';
 
 const items = new Map<string, MemoryItem[]>();
 const myProvider: MemoryProvider = {
@@ -323,8 +323,8 @@ With [`mockModel`](./testing.md), assert on the system prompt of the first
 request and drive the tools with scripted tool calls:
 
 ```ts
-import { createAgent, defineMemory, inMemoryMemory, memoryKey } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineMemory, inMemoryMemory, memoryKey } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const store = inMemoryMemory();
 const notes = defineMemory({ name: 'notes', scope: 'global', provider: store });
@@ -366,7 +366,7 @@ package that pairs with your `ai` major, as for language models). It adds no
 dependency: `ai` is already a peer, and the provider package is yours.
 
 ```ts no-run
-import { createAgent, defineMemory, aiSdkEmbedder, inMemoryVectorMemory } from '@lousho/build-ai-agent';
+import { createAgent, defineMemory, aiSdkEmbedder, inMemoryVectorMemory } from 'lousho';
 import { createOpenAI } from '@ai-sdk/openai';
 
 const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -388,7 +388,7 @@ Two providers rank by meaning, with the same options:
 - `inMemoryVectorMemory({ embedder, maxItems?, minScore? })` keeps items in this
   process.
 - `sqliteVectorMemory(store, { embedder, maxItems?, minScore? })` (from
-  `@lousho/build-ai-agent/sqlite`) keeps them in the agent's SQLite file, in a
+  `lousho/sqlite`) keeps them in the agent's SQLite file, in a
   `memory_vectors` table that an existing file gains when it is opened. Vectors
   survive restarts.
 
@@ -412,14 +412,14 @@ re-embeds them in batches and returns how many it changed.
 `reindex(providerKey)` does one key only — for a slot's key, pass
 `memoryKey(slot, ctx)`.
 
-`hashEmbedder()` from `@lousho/build-ai-agent/testing` is a deterministic
+`hashEmbedder()` from `lousho/testing` is a deterministic
 offline embedder for tests: a hashed bag of word stems, so texts that share
 words are close. It is not a semantic model and does not know that "vegetarian"
 and "eat" are related.
 
 ```ts
-import { inMemoryVectorMemory } from '@lousho/build-ai-agent';
-import { hashEmbedder } from '@lousho/build-ai-agent/testing';
+import { inMemoryVectorMemory } from 'lousho';
+import { hashEmbedder } from 'lousho/testing';
 
 const memory = inMemoryVectorMemory({ embedder: hashEmbedder() });
 await memory.add('global', { text: 'Sam is vegetarian' });

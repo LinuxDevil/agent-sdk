@@ -1,4 +1,4 @@
-import type { ApproveToolCall } from '@lousho/build-ai-agent';
+import type { ApproveToolCall } from 'lousho';
 import { autoApproveSenders, findDraft, getMessage } from './lib/mailstore.ts';
 
 /**

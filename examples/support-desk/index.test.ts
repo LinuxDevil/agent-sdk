@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mockModel, type MockModel } from '@lousho/build-ai-agent/testing';
+import { mockModel, type MockModel } from 'lousho/testing';
 import { createSupportDesk, demoState, scriptedBilling, scriptedTriage } from './index';
 
 const toolNames = (model: MockModel, call: number) => (model.calls[call]?.tools ?? []).map((tool) => tool.function.name);

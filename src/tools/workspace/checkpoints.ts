@@ -233,8 +233,8 @@ function groupByPath(backups: readonly WorkspaceFileBackup[]): Map<string, Works
  *
  * @example
  * ```ts
- * import { createAgent, createFsTools, MemoryWorkspace, WorkspaceCheckpoints } from '@lousho/build-ai-agent';
- * import { mockModel } from '@lousho/build-ai-agent/testing';
+ * import { createAgent, createFsTools, MemoryWorkspace, WorkspaceCheckpoints } from 'lousho';
+ * import { mockModel } from 'lousho/testing';
  * const workspace = new MemoryWorkspace({ files: { 'a.txt': 'one\n' } });
  * const checkpoints = new WorkspaceCheckpoints(workspace);
  * const agent = createAgent({

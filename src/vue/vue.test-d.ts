@@ -1,5 +1,5 @@
 /**
- * The public types of `@lousho/build-ai-agent/vue`.
+ * The public types of `lousho/vue`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
 import type { ComputedRef, Ref } from 'vue';
@@ -21,7 +21,7 @@ import {
   type UseLoushoAgentResult,
 } from './index';
 
-describe('@lousho/build-ai-agent/vue types', () => {
+describe('lousho/vue types', () => {
   it('accepts an in-process agent or a URL as the source, plain or as a ref', () => {
     const agent = createAgent({ provider: createMockProvider() });
     expectTypeOf({ agent, sessionId: 'chat-1' }).toMatchTypeOf<LoushoAgentSource>();

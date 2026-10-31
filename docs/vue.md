@@ -6,11 +6,11 @@ the same sources, the same state and the same actions, over the same
 field means, the two kinds of source, how approvals work and the server side;
 this page covers what differs.
 
-It lives in the `@lousho/build-ai-agent/vue` subpath. `vue` (3.x) is an
+It lives in the `lousho/vue` subpath. `vue` (3.x) is an
 optional peer dependency: install it in the app that uses the composable.
 
 ```ts
-import { useLoushoAgent } from '@lousho/build-ai-agent/vue';
+import { useLoushoAgent } from 'lousho/vue';
 
 // In <script setup>:
 const { messages, status, pendingApproval, send, stop, approve, reject, reset } = useLoushoAgent(
@@ -59,7 +59,7 @@ and in the template:
 
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
-ones as in `@lousho/build-ai-agent/react`.
+ones as in `lousho/react`.
 
 ## Todos
 
@@ -70,7 +70,7 @@ shows the plan of an agent with the [todo tools](./tools.md#todo-tools) live, fr
 the same stream as the chat (see [React](./react.md#todos)).
 
 ```ts
-import { useLoushoAgent, useTodos } from '@lousho/build-ai-agent/vue';
+import { useLoushoAgent, useTodos } from 'lousho/vue';
 
 // In <script setup>:
 const agent = useLoushoAgent({ url: '/api/agent' });

@@ -1,5 +1,5 @@
 /**
- * `@lousho/build-ai-agent/auth`: route auth helpers that run as an
+ * `lousho/auth`: route auth helpers that run as an
  * ordered list and fail closed, and the `Principal` they hand to the run.
  * Web Crypto and `fetch` only: usable in Node, Workers and edge routes.
  * See docs/auth.md.

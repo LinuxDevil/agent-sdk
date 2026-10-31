@@ -7,7 +7,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { FileCheckpointStore } from '../checkpointStore';
-import type { Checkpoint } from '@lousho/build-ai-agent';
+import type { Checkpoint } from 'lousho';
 import { describeCheckpointHistoryContract } from '../../../../src/execution/__fixtures__/checkpointHistoryContract';
 
 const dirs: string[] = [];

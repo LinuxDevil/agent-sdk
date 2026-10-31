@@ -1,6 +1,6 @@
 {
-  "name": "@lousho/build-ai-agent",
-  "version": "1.0.0-alpha.30",
+  "name": "lousho",
+  "version": "1.0.0-alpha.31",
   "description": "TypeScript AI agent SDK with tools, MCP, durable sessions, human approvals, and OpenTelemetry. Runs in your own Node process.",
   "workspaces": [
     "apps/*",
@@ -311,8 +311,8 @@
     "build": "node --max-old-space-size=12288 node_modules/tsup/dist/cli-default.js",
     "dev": "node --max-old-space-size=12288 node_modules/tsup/dist/cli-default.js --watch",
     "pre-release": "npm version prerelease --preid=alpha --no-git-tag-version && node scripts/sync-version.mjs && npm publish --access public --tag alpha",
-    "pre-release:create-lousho-agent": "npm version prerelease --preid=alpha --no-git-tag-version -w create-lousho-agent && npm run build -w create-lousho-agent && npm publish -w create-lousho-agent --access public --tag alpha",
-    "release:create-lousho-agent": "npm version patch --no-git-tag-version -w create-lousho-agent && npm run build -w create-lousho-agent && npm publish -w create-lousho-agent --access public",
+    "pre-release:create-lousho": "npm version prerelease --preid=alpha --no-git-tag-version -w create-lousho && npm run build -w create-lousho && npm publish -w create-lousho --access public --tag alpha",
+    "release:create-lousho": "npm version patch --no-git-tag-version -w create-lousho && npm run build -w create-lousho && npm publish -w create-lousho --access public",
     "test": "vitest",
     "test:coverage": "vitest run --coverage --config vitest.coverage.config.ts",
     "test:live": "vitest run --config vitest.live.config.ts",
@@ -376,8 +376,7 @@
     "ollama",
     "opentelemetry",
     "vercel-ai-sdk",
-    "lousho",
-    "build-ai-agent"
+    "lousho"
   ],
   "author": "Lousho Team",
   "license": "MIT",

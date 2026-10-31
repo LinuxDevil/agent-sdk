@@ -5,7 +5,7 @@
 Public beta: `gpt-6-luna` is the only model the endpoint serves, and the surface may still change. The endpoint is not part of chat completions, so it does not go through `createAgent()` providers or OpenRouter — it needs `OPENAI_API_KEY` (or `apiKey`/`baseURL` for a compatible endpoint).
 
 ```ts
-import { decide } from '@lousho/build-ai-agent';
+import { decide } from 'lousho';
 
 const { answers } = await decide({
   input: 'I was charged twice for my order.',
@@ -32,7 +32,7 @@ if (route.type === 'choice' && route.confidence >= 0.7) {
 ## Question types
 
 ```ts no-run
-import { decide, type DecisionQuestion } from '@lousho/build-ai-agent';
+import { decide, type DecisionQuestion } from 'lousho';
 
 const questions: DecisionQuestion[] = [
   // predicate: probability 0-1 that a condition holds
@@ -69,7 +69,7 @@ const questions: DecisionQuestion[] = [
 Independent questions share one `input` and one request:
 
 ```ts no-run
-import { decide, type DecisionQuestion } from '@lousho/build-ai-agent';
+import { decide, type DecisionQuestion } from 'lousho';
 
 const questions: DecisionQuestion[] = [
   { type: 'predicate', name: 'is_spam', instructions: 'Is this spam?' },
@@ -91,7 +91,7 @@ const byName = Object.fromEntries(answers.map((a) => [a.name, a]));
 ## Options
 
 ```ts no-run
-import { decide } from '@lousho/build-ai-agent';
+import { decide } from 'lousho';
 
 const result = await decide({
   input: '...',

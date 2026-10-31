@@ -45,7 +45,7 @@ Add the agent to Zed's `settings.json`, then pick it in the agent panel:
 }
 ```
 
-Run it from the project that has `@lousho/build-ai-agent` installed (or use
+Run it from the project that has `lousho` installed (or use
 an absolute path to `node_modules/.bin/lousho` as `command`). Provider keys
 come from `env` or from the environment Zed was started in.
 
@@ -118,7 +118,7 @@ It resolves once `input` ends, after aborting any running turn.
 
 ```ts
 import * as readline from 'node:readline';
-import { createAgent, serveAcp } from '@lousho/build-ai-agent';
+import { createAgent, serveAcp } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a coding assistant.' });
 

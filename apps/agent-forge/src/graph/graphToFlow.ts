@@ -1,4 +1,4 @@
-import type { AgentFlow, EditorStep } from '@lousho/build-ai-agent/flows';
+import type { AgentFlow, EditorStep } from 'lousho/flows';
 import type { AgentGraphEdge, AgentGraphNode, AgentGraphSpec } from './types';
 
 /**

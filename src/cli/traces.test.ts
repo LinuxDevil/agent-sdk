@@ -95,7 +95,7 @@ describe('lousho traces', () => {
     const { code, out } = await run([]);
     expect(code).toBe(0);
     expect(out).toBe(
-      "No traces in .lousho/traces. Add exporter: fileTraceExporter() to createAgent() (import { fileTraceExporter } from '@lousho/build-ai-agent/traces'), or run lousho dev / chat with --traces."
+      "No traces in .lousho/traces. Add exporter: fileTraceExporter() to createAgent() (import { fileTraceExporter } from 'lousho/traces'), or run lousho dev / chat with --traces."
     );
   });
 

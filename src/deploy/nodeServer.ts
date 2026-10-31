@@ -7,7 +7,7 @@
  * approvals and the legacy `POST /chat { message }`, plus `GET /ready`
  * (readiness: 200 while serving, 503 once `shutdown()` has begun; `/health` stays
  * the liveness probe). When auth is configured (a bearer
- * token, or an auth list from `@lousho/build-ai-agent/auth`), every route except
+ * token, or an auth list from `lousho/auth`), every route except
  * `/health` and `/ready` requires it, including a channel route, unless that channel
  * authenticates its own requests (it has a `verify`: a signed platform channel,
  * a webhook with a secret, an `httpChannel({ verify })`).

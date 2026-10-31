@@ -28,8 +28,8 @@ for the [judge evals](#judge-evals) below.
 ```ts no-run
 // refund.eval.ts
 import { z } from 'zod';
-import { createAgent, defineEval, defineTool, includes } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineEval, defineTool, includes } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const lookupOrder = defineTool({
   name: 'lookup_order',
@@ -111,7 +111,7 @@ it. Pass `{ subagent: 'researcher' }` to look at one sub-agent (and the
 sub-agents under it) only:
 
 ```ts
-import { createAgent, defineEval } from '@lousho/build-ai-agent';
+import { createAgent, defineEval } from 'lousho';
 
 const researcher = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You research.', description: 'Finds sources' });
 const agent = createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher } });
@@ -141,7 +141,7 @@ case `n` times; the case passes when all `n` runs pass, or when at least
 `passAt: k` of them do:
 
 ```ts
-import { createAgent, defineEval } from '@lousho/build-ai-agent';
+import { createAgent, defineEval } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You handle refunds.' });
 
@@ -167,8 +167,8 @@ any object; its `label` (or `name`, or its `input`) names it.
 
 ```ts no-run
 import { z } from 'zod';
-import { createAgent, defineEval, defineTool } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineEval, defineTool } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const lookupOrder = defineTool({
   name: 'lookup_order',
@@ -220,7 +220,7 @@ curl -X POST "$LOUSHO_OBSERVE/api/v1/datasets/refunds/examples" -H 'content-type
 ```
 
 ```ts no-run
-import { createAgent, defineEval, includes } from '@lousho/build-ai-agent';
+import { createAgent, defineEval, includes } from 'lousho';
 
 defineEval({
   name: 'refunds',
@@ -258,8 +258,8 @@ it.
 
 ```ts no-run
 // tone.judge.eval.ts: run with `lousho eval --judge`
-import { createAgent, defineEval, atLeast } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineEval, atLeast } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 defineEval({
   name: 'tone',
@@ -338,7 +338,7 @@ model. `--timeout ms` sets the limit for every case (`0` turns it off). With
 One eval can set its own limit, which wins over both:
 
 ```ts
-import { createAgent, defineEval } from '@lousho/build-ai-agent';
+import { createAgent, defineEval } from 'lousho';
 
 defineEval({
   name: 'research report',
@@ -475,7 +475,7 @@ a real judge only in `*.judge.eval.ts` files.
 How it works: the run loop sends every model call (`generate` or `stream`, from
 a plain run, a streamed run, a sub-agent or an approval resume) through one
 provider-interception seam, `setProviderInterceptor()` (exported from
-`@lousho/build-ai-agent/testing`; `src/providers/interception.ts` in the
+`lousho/testing`; `src/providers/interception.ts` in the
 source). Nothing is installed by default, so the seam is
 free. While a case runs under one of these modes, `lousho eval` answers it with
 the provider wrapped by `recordReplay()` for that case's cassette. You can use
@@ -519,7 +519,7 @@ and tools the behaviour you want to check.
 In code, pass a `target` (this overrides `agent`; `--url` overrides both):
 
 ```ts
-import { defineEval, remoteTarget } from '@lousho/build-ai-agent';
+import { defineEval, remoteTarget } from 'lousho';
 
 defineEval({
   name: 'deployed refund flow',

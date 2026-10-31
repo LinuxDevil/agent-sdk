@@ -1,5 +1,5 @@
 /**
- * #289: `@lousho/build-ai-agent/worker` must bundle for a hand-written
+ * #289: `lousho/worker` must bundle for a hand-written
  * Cloudflare Worker, which has no shim for Node builtins (unlike the
  * generated Worker, whose `lousho build` applies them itself). The SDK
  * ships the entry pre-shimmed: tsup.config.ts builds src/deploy/worker.ts
@@ -18,7 +18,7 @@ import * as workerSdk from './workerSdk';
 // esbuild keeps a service process alive after build(); end it so it does not outlive this file.
 afterAll(() => stop());
 
-describe('@lousho/build-ai-agent/worker (#289)', () => {
+describe('lousho/worker (#289)', () => {
   it('bundles for the browser platform with no node: import in its graph or output', async () => {
     const result = await build({
       entryPoints: [join(__dirname, 'worker.ts')],

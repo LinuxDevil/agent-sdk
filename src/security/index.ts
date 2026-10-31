@@ -4,7 +4,7 @@
  * Provides cryptographic utilities, sandboxing, and security-related functions
  */
 
-// './types' and './crypto' moved to '@lousho/build-ai-agent/utils'
+// './types' and './crypto' moved to 'lousho/utils'
 // (src/utils/index.ts re-exports them).
 
 // Sandboxing

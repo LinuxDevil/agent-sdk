@@ -21,7 +21,7 @@ Give each sub-agent a `description` (the lead model reads it to choose), then
 pass them to the lead as `subagents`:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const researcher = createAgent({
   provider,
@@ -109,8 +109,8 @@ needs no code. A lead that keeps its work across turns or restarts needs a
 store and a session:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { createAgent } from 'lousho';
+import { SqliteStore } from 'lousho/sqlite';
 
 const store = new SqliteStore('./.lousho/agent.db');
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
@@ -158,7 +158,7 @@ sometimes pass one sub-agent's `taskId` to another and waste a turn on the
 error; this removes the option.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const analyst = createAgent({ provider, instructions: 'You analyze.', description: 'Analyzes data' });
 const lead = createAgent({ provider, subagents: { analyst }, subagentOptions: { continuation: false } });
@@ -194,7 +194,7 @@ At most `maxConcurrent` background sub-agents of one lead run run at once
 as slots free. Set it with `subagentOptions` on `createAgent()`:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
 
@@ -235,7 +235,7 @@ events arrive before the lead's `run.done`.
 The result lists every background task of the run with its final status:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds and summarizes sources' });
 const lead = createAgent({ provider, instructions: 'You coordinate research.', subagents: { researcher } });
@@ -287,7 +287,7 @@ Limits:
   cannot be resumed: the model chose not to wait for it.
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const shell = defineTool({
@@ -318,7 +318,7 @@ the set can change between runs; `resolve()` is called when the lead picks a
 name (return `undefined` for an unknown one).
 
 ```ts
-import { createAgent, type SubagentCatalog } from '@lousho/build-ai-agent';
+import { createAgent, type SubagentCatalog } from 'lousho';
 
 const experts = new Map([
   ['researcher', createAgent({ provider, instructions: 'You research.' })],
@@ -340,7 +340,7 @@ next to local ones, and the lead delegates to it with the same `task` tool,
 including `background: true`.
 
 ```ts
-import { createAgent, remoteAgent } from '@lousho/build-ai-agent';
+import { createAgent, remoteAgent } from 'lousho';
 
 const lead = createAgent({
   provider,
@@ -404,7 +404,7 @@ final answer becomes the `task` result; a continuation that pauses again pauses
 the lead again.
 
 ```ts
-import type { SimpleAgent } from '@lousho/build-ai-agent';
+import type { SimpleAgent } from 'lousho';
 declare const lead: SimpleAgent; // the lead agent above
 
 const paused = await lead.send('Deploy the docs site');
@@ -438,7 +438,7 @@ use the ready-made Pi adapter.
 Pi's tools (`read`, `bash`, `edit`, `write`, ...) work on a local directory.
 
 ```ts
-import { createAgent, piAgent, ask, allow } from '@lousho/build-ai-agent';
+import { createAgent, piAgent, ask, allow } from 'lousho';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
 
 const runtime = await ModelRuntime.create(); // reads ~/.pi/agent auth, env keys
@@ -529,7 +529,7 @@ the enclosing sub-agent as `parent` when nested deeper. A hook that should only
 see the top-level run returns early:
 
 ```ts
-import { HookRegistry } from '@lousho/build-ai-agent';
+import { HookRegistry } from 'lousho';
 
 const hooks = new HookRegistry();
 hooks.register({
@@ -565,7 +565,7 @@ sub-agents it runs inside (e.g. `['researcher']`). Approve or reject it with
 is needed):
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const lead = createAgent({
   provider,
@@ -622,8 +622,8 @@ Resume with `resumeAfterApproval()`, passing the same `subagents` option as the
 paused run:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval, ToolRegistry } from '@lousho/build-ai-agent/executor';
-import { createAgent } from '@lousho/build-ai-agent';
+import { AgentExecutor, resumeAfterApproval, ToolRegistry } from 'lousho/executor';
+import { createAgent } from 'lousho';
 
 const subagents = { researcher: createAgent({ provider, instructions: 'You research.', description: 'Researches' }) };
 

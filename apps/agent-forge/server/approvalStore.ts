@@ -8,7 +8,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from '@lousho/build-ai-agent';
+import type { ApprovalStore, ExecutionSnapshot, PendingApproval, ResolvedApproval } from 'lousho';
 
 export class FileApprovalStore implements ApprovalStore {
   constructor(private readonly baseDir: string) {}

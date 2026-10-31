@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { MockLLMProvider, type AgentConfig } from '@lousho/build-ai-agent';
-import { FlowExecutor } from '@lousho/build-ai-agent/flows';
+import { MockLLMProvider, type AgentConfig } from 'lousho';
+import { FlowExecutor } from 'lousho/flows';
 import { graphToFlow, hasRouterNode } from '../graphToFlow';
 import { graphToSpec } from '../graphToSpec';
 import type { AgentGraphSpec } from '../types';
@@ -179,7 +179,7 @@ describe('a branching graph actually executes different paths via FlowExecutor a
         name === 'refund-tool'
           ? { tool: { description: 'x', parameters: {}, execute: async () => ({ refunded: true }) } }
           : undefined,
-    } as unknown as import('@lousho/build-ai-agent/tools').ToolRegistry;
+    } as unknown as import('lousho/tools').ToolRegistry;
   }
 
   it('takes the conditioned branch (runs the tool) when the LLM output matches its condition', async () => {

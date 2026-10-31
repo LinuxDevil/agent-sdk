@@ -1,4 +1,4 @@
-import { webhookChannel } from '@lousho/build-ai-agent';
+import { webhookChannel } from 'lousho';
 
 /**
  * Alert intake (PagerDuty-style): POSTs land on /channels/alerts; the JSON

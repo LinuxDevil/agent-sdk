@@ -26,7 +26,7 @@ model prefix chooses the provider; with OpenRouter use
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const convertCurrency = defineTool({
@@ -56,7 +56,7 @@ const agent = createAgent({
 Or mark a whole MCP server: every tool it lists is deferred.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -126,7 +126,7 @@ the search. Deferral itself is turned on by marking tools or servers
 | `search(query, tools)` | keyword ranking | Your own ranking (for example embeddings): return tool names, best first. Unknown names and duplicates are dropped. If it throws, the call is a tool error and loads nothing. |
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',

@@ -1,4 +1,4 @@
-import type { ApproveToolCall } from '@lousho/build-ai-agent';
+import type { ApproveToolCall } from 'lousho';
 
 /**
  * The kit's approver (pointed at by `agent.json`'s `approve`): the agent asks

@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import type { AgentSpecV2 } from '@lousho/build-ai-agent';
+import type { AgentSpecV2 } from 'lousho';
 import { AgentRepo } from '../agentRepo';
 import { VersionStore, type CaptureInput } from '../versionStore';
 import type { VersionListItem, VersionRecord } from '../../../shared/wireTypes';

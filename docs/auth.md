@@ -1,7 +1,7 @@
 # Route auth and principals
 
 An agent served over HTTP needs to know two things about each request: may it
-call at all, and who is it. `@lousho/build-ai-agent/auth` answers both. You
+call at all, and who is it. `lousho/auth` answers both. You
 give a route an ordered list of auth entries (`jwt()`, `oidc()`, `basic()`,
 `apiToken()`, `anonymous()` or your own function); the first entry that
 accepts the request returns a **principal**, and that principal goes into the
@@ -9,9 +9,9 @@ run, where your `model` / `instructions` / `tools` functions and memory scopes
 can read it.
 
 ```ts no-run
-import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
-import { apiToken, jwt } from '@lousho/build-ai-agent/auth';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, createRouteHandler } from 'lousho';
+import { apiToken, jwt } from 'lousho/auth';
+import { mockModel } from 'lousho/testing';
 
 const agent = createAgent({
   provider: mockModel(['Hello!']),
@@ -83,7 +83,7 @@ exactly one key source:
 | `jwksUrl` | a JWKS endpoint (https, or http on localhost) | `RS256`, `ES256` by default; RSA and EC keys only |
 
 ```ts
-import { jwt } from '@lousho/build-ai-agent/auth';
+import { jwt } from 'lousho/auth';
 
 const fromOurAuthServer = jwt({
   jwksUrl: 'https://auth.example.com/.well-known/jwks.json',
@@ -123,7 +123,7 @@ or http on `localhost` / `127.0.0.1` / `[::1]` — the same rule as `jwt()`'s
 `jwksUrl`). Algorithms default to `RS256` and `ES256`; HMAC is not allowed.
 
 ```ts
-import { oidc } from '@lousho/build-ai-agent/auth';
+import { oidc } from 'lousho/auth';
 
 const google = oidc({ issuer: 'https://accounts.google.com', audience: process.env.GOOGLE_CLIENT_ID ?? 'client-id' });
 ```
@@ -139,7 +139,7 @@ carries `WWW-Authenticate: Basic realm="<realm>", charset="UTF-8"` so browsers
 show their login prompt.
 
 ```ts
-import { basic } from '@lousho/build-ai-agent/auth';
+import { basic } from 'lousho/auth';
 
 const operators = basic({ users: { ops: process.env.OPS_PASSWORD! }, realm: 'agent' });
 // Or check against your own store (compare in constant time there):
@@ -168,7 +168,7 @@ Any function of the `Request` is an entry. Declare the challenges it answers a
 `401` with, or it advertises `Bearer`:
 
 ```ts
-import { AuthError, type AuthFn } from '@lousho/build-ai-agent/auth';
+import { AuthError, type AuthFn } from 'lousho/auth';
 
 const tenantKey: AuthFn = async (request) => {
   const key = request.headers.get('x-tenant-key');
@@ -228,7 +228,7 @@ In an [agent directory](./agent-directories.md), put the list in `auth.ts` (or
 
 ```ts no-verify
 // my-agent/auth.ts
-import { apiToken, oidc } from '@lousho/build-ai-agent/auth';
+import { apiToken, oidc } from 'lousho/auth';
 
 export default [
   oidc({ issuer: 'https://login.example.com', audience: 'agent-api' }),
@@ -258,8 +258,8 @@ The principal is on the run context next to `sessionId` and `metadata`. The
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent, defineMemory, inMemoryMemory, type Principal } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineMemory, inMemoryMemory, type Principal } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const notes = defineMemory({
   name: 'notes',
@@ -343,7 +343,7 @@ none in any of these places.
 ### In a tool
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 export const myOrders = defineTool({
@@ -364,8 +364,8 @@ from the request body or the model, and a tool cannot change it.
 ### Approval policies and permission rules
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
 const deploy = defineTool({
@@ -393,8 +393,8 @@ A decision can name who made it. The approved tool sees the decider as
 `ctx.approval.by`, next to `ctx.approval.note`:
 
 ```ts
-import { createAgent, defineTool, type Principal } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool, type Principal } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -464,8 +464,8 @@ see the example under [Who may decide an approval](#who-may-decide-an-approval))
 caller keeps the check stateless:
 
 ```ts
-import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
-import { jwt } from '@lousho/build-ai-agent/auth';
+import { createAgent, createRouteHandler, memoryStore } from 'lousho';
+import { jwt } from 'lousho/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
 // The user id a session id starts with: everything before its last `-`. A prefix match would let
@@ -521,7 +521,7 @@ Behind a reverse proxy:
   rewrites `Host`, list the upstream name the proxy sends, not the public one.
 
 ```ts
-import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
+import { createAgent, createRouteHandler } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -551,8 +551,8 @@ customer can no longer approve their own refund, and a supervisor can read any
 session (to see what they are approving) and decide in it:
 
 ```ts
-import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
-import { jwt } from '@lousho/build-ai-agent/auth';
+import { createAgent, createRouteHandler, memoryStore } from 'lousho';
+import { jwt } from 'lousho/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
 const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
@@ -574,8 +574,8 @@ claims, a manager decides them, and nobody approves their own:
 
 ```ts no-verify
 // my-agent/auth.ts
-import { apiToken } from '@lousho/build-ai-agent/auth';
-import type { ApprovalAccessRequest, SessionAccessRequest } from '@lousho/build-ai-agent';
+import { apiToken } from 'lousho/auth';
+import type { ApprovalAccessRequest, SessionAccessRequest } from 'lousho';
 
 export default [
   apiToken(process.env.ALICE_TOKEN!, { id: 'alice' }),

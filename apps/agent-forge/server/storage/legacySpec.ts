@@ -12,7 +12,7 @@
  * Deleted once the routes (D06a), RunManager (D12b) and the canvas (C02)
  * speak spec v2 directly.
  */
-import { agentSpecV2Schema, upgradeSpec, type AgentSpec, type AgentSpecGuardrail, type AgentSpecPolicy, type AgentSpecV2 } from '@lousho/build-ai-agent';
+import { agentSpecV2Schema, upgradeSpec, type AgentSpec, type AgentSpecGuardrail, type AgentSpecPolicy, type AgentSpecV2 } from 'lousho';
 import type { SerializedHook } from '../compileHooks';
 import { sortKeysDeep } from '../../shared/stableJson';
 

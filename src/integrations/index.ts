@@ -2,7 +2,7 @@
  * Integrations
  * The credentialed third-party tools - Jira, GitHub, Slack and email. They
  * used to ship on the package root (and `./tools`); import them from
- * `@lousho/build-ai-agent/integrations`. The files themselves still live in
+ * `lousho/integrations`. The files themselves still live in
  * `src/tools/built-in/`; this barrel only re-exports them.
  */
 

@@ -26,7 +26,7 @@ import {
   WorkspaceCheckpoints,
   WorkspaceError,
   type FsProvider,
-} from '@lousho/build-ai-agent';
+} from 'lousho';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

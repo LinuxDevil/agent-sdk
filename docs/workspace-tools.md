@@ -9,7 +9,7 @@ sandbox such as E2B, Daytona or Cloudflare.
 For a walkthrough, see [Build a coding agent](./build-a-coding-agent.md).
 
 ```ts
-import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { createAgent, NodeWorkspace, createFsTools, createShellTool } from 'lousho';
 
 const workspace = new NodeWorkspace({ root: './project' }); // every path is confined to this directory
 const agent = createAgent({
@@ -33,7 +33,7 @@ if (paused.finishReason === 'awaiting-approval') {
 predicate that returns `false` for the commands you trust.
 
 ```ts
-import { createAgent, NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { createAgent, NodeWorkspace, createFsTools, createShellTool } from 'lousho';
 
 const workspace = new NodeWorkspace({ root: './project' });
 const agent = createAgent({
@@ -61,8 +61,8 @@ the same, and `resumeAfterApproval(...)` is what `agent.approvals.resolve()`
 calls once a human approves:
 
 ```ts
-import { AgentExecutor, ToolRegistry } from '@lousho/build-ai-agent/executor';
-import { NodeWorkspace, createFsTools, createShellTool } from '@lousho/build-ai-agent';
+import { AgentExecutor, ToolRegistry } from 'lousho/executor';
+import { NodeWorkspace, createFsTools, createShellTool } from 'lousho';
 
 const workspace = new NodeWorkspace({ root: '.' }); // every path is confined to this directory
 const registry = new ToolRegistry();
@@ -116,7 +116,7 @@ has `timedOut: true` or `aborted: true` and a `note` saying why.
 | `name`             | `'shell'` | Tool name. |
 
 ```ts
-import { createShellTool, NodeWorkspace } from '@lousho/build-ai-agent';
+import { createShellTool, NodeWorkspace } from 'lousho';
 
 const shell = createShellTool(new NodeWorkspace({ root: '.' }), {
   needsApproval: (command) => !/^(ls|cat|git (status|diff|log))\b/.test(command), // read-only commands run without asking
@@ -143,8 +143,8 @@ agent created is deleted, one it edited or overwrote gets its content back.
 With `dryRun: true` it changes nothing and returns the same report.
 
 ```ts
-import { createAgent, createFsTools, MemoryWorkspace, WorkspaceCheckpoints } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, createFsTools, MemoryWorkspace, WorkspaceCheckpoints } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
 const checkpoints = new WorkspaceCheckpoints(workspace); // backups in memory; FileWorkspaceCheckpointStore keeps them on disk
@@ -281,7 +281,7 @@ A `deny` you pass **replaces** the defaults, it does not extend them: list
 'secrets']` (entry names, not paths), or pass `deny: []` to turn the check off.
 
 ```ts
-import { createFsTools, NodeWorkspace } from '@lousho/build-ai-agent';
+import { createFsTools, NodeWorkspace } from 'lousho';
 
 const workspace = new NodeWorkspace({ root: '.' });
 const tools = createFsTools(workspace, { readOnly: true, deny: ['.git', '.env', '.env.*'] });
@@ -329,7 +329,7 @@ Node's process launcher also adds the session variables every process needs
 them is a secret.
 
 ```ts
-import { NodeWorkspace } from '@lousho/build-ai-agent';
+import { NodeWorkspace } from 'lousho';
 
 const workspace = new NodeWorkspace({
   root: './project',
@@ -368,7 +368,7 @@ refused command is never offered for approval:
   returns `true` for the rest of the line (`''` when there is none):
 
   ```ts
-  import { createShellTool, NodeWorkspace } from '@lousho/build-ai-agent';
+  import { createShellTool, NodeWorkspace } from 'lousho';
 
   const workspace = new NodeWorkspace({ root: '.' });
   createShellTool(workspace, {
@@ -431,7 +431,7 @@ you pass, nothing from the host. File tools can keep using `NodeWorkspace`
 on the same directory:
 
 ```ts
-import { createFsTools, createShellTool, NodeWorkspace, SandboxShell, SubprocessSandbox } from '@lousho/build-ai-agent';
+import { createFsTools, createShellTool, NodeWorkspace, SandboxShell, SubprocessSandbox } from 'lousho';
 
 const workspace = new NodeWorkspace({ root: './project' });
 const shell = new SandboxShell(new SubprocessSandbox({ image: 'node:20-alpine' }), { cwd: workspace.root });
@@ -487,7 +487,7 @@ list is only enforced when a proxy is the container's only way out.
    before; the network stays for the sandbox's next run until `close()`.
 
 ```ts
-import { createCredentialBroker, createShellTool, SandboxShell, SubprocessSandbox } from '@lousho/build-ai-agent';
+import { createCredentialBroker, createShellTool, SandboxShell, SubprocessSandbox } from 'lousho';
 
 const token = 'ghp_example'; // read from your secret store; it never enters the container
 const broker = await createCredentialBroker({ rules: { 'api.github.com': { authorization: () => `Bearer ${token}` } } });
@@ -543,7 +543,7 @@ the SDK's tests exercise the wiring against a fake Docker client, not a live
 daemon.
 
 ```ts
-import { createShellTool, SandboxShell, SubprocessSandbox } from '@lousho/build-ai-agent';
+import { createShellTool, SandboxShell, SubprocessSandbox } from 'lousho';
 
 const sandbox = new SubprocessSandbox({ image: 'node:20-alpine', network: 'none' });
 const shell = new SandboxShell(sandbox, {
@@ -574,7 +574,7 @@ local HTTP proxy that adds the auth headers to requests for the hosts you
 name, so the command only ever sees the proxy's address.
 
 ```ts
-import { createCredentialBroker, NodeWorkspace } from '@lousho/build-ai-agent';
+import { createCredentialBroker, NodeWorkspace } from 'lousho';
 
 const token = 'ghp_example'; // read from your secret store; never passed to the command
 const broker = await createCredentialBroker({
@@ -635,7 +635,7 @@ custom tool could call it directly. Throw `WorkspaceError` with a readable
 message on failure.
 
 ```ts
-import { normalizeWorkspacePath, WorkspaceError, type FsProvider, type ShellProvider } from '@lousho/build-ai-agent';
+import { normalizeWorkspacePath, WorkspaceError, type FsProvider, type ShellProvider } from 'lousho';
 
 // A stand-in for your remote sandbox SDK (E2B, Daytona, Cloudflare, ...).
 declare const remote: {
@@ -691,8 +691,8 @@ way. Its `exec` is a stub you program, and every command it receives is
 recorded. Combine it with `mockModel` for deterministic tests:
 
 ```ts
-import { createAgent, createFsTools, createShellTool, MemoryWorkspace } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, createFsTools, createShellTool, MemoryWorkspace } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const workspace = new MemoryWorkspace({
   files: { 'src/math.ts': 'export const add = (a: number, b: number) => a - b;\n' },

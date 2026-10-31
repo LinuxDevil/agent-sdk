@@ -5,11 +5,11 @@
 render-ready state: messages with their text and tool calls, a `status` for
 the composer, and the tool call waiting for approval, if any.
 
-It lives in the `@lousho/build-ai-agent/react` subpath. `react` (18 or 19) is
+It lives in the `lousho/react` subpath. `react` (18 or 19) is
 an optional peer dependency: install it in the app that uses the hook.
 
 ```tsx
-import { useLoushoAgent } from '@lousho/build-ai-agent/react';
+import { useLoushoAgent } from 'lousho/react';
 
 export function Chat() {
   const agent = useLoushoAgent({ url: '/api/agent' });
@@ -120,8 +120,8 @@ model prefix chooses the provider; with OpenRouter use
 
 ```ts
 import { createServer, type IncomingMessage } from 'node:http';
-import { createAgent } from '@lousho/build-ai-agent';
-import type { ApprovalOutcome } from '@lousho/build-ai-agent/react';
+import { createAgent } from 'lousho';
+import type { ApprovalOutcome } from 'lousho/react';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -170,8 +170,8 @@ gets a fresh in-memory transcript and the next turn forgets the first (see
 The hook takes the agent itself, too. Called from a custom hook:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { useLoushoAgent } from '@lousho/build-ai-agent/react';
+import { createAgent } from 'lousho';
+import { useLoushoAgent } from 'lousho/react';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -191,7 +191,7 @@ event)`, a pure reducer over `AgentEvent`s and a few local actions
 exported from the same subpath, for a custom binding or a non-React client:
 
 ```ts
-import { initialAgentUIState, parseEventStream, reduceAgentEvents } from '@lousho/build-ai-agent/react';
+import { initialAgentUIState, parseEventStream, reduceAgentEvents } from 'lousho/react';
 
 let state = reduceAgentEvents(initialAgentUIState, { type: 'ui.send', input: 'Weather in Paris?' });
 const response = await fetch('http://localhost:3000/api/agent', {
@@ -219,7 +219,7 @@ chat and the plan. The list carries across turns and is cleared by nothing but a
 new hook (it is not restored when the page reconnects to an existing session).
 
 ```tsx
-import { useLoushoAgent, useTodos } from '@lousho/build-ai-agent/react';
+import { useLoushoAgent, useTodos } from 'lousho/react';
 
 export function Plan() {
   const agent = useLoushoAgent({ url: '/api/agent' });

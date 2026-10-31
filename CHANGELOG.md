@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-alpha.31] - 2026-11-01
+
+- **Behavior change:** the package is renamed from `@lousho/build-ai-agent` to `lousho`, and the scaffolder from `create-lousho-agent` to `create-lousho` (`npm create lousho`). Update imports from `@lousho/build-ai-agent` to `lousho` (subpaths such as `lousho/testing` keep their names). Both are published to GitHub Packages as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`; see [Installation](docs/installation.md).
+
 ## [1.0.0-alpha.30] - 2026-10-31
 
 What is on `main` and not yet on npm. Entries marked **Behavior change** can

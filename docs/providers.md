@@ -9,7 +9,7 @@ OpenRouter use `openrouter/<vendor>/<model>` (e.g.
 `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { resolveProvider, LLMProviderRegistry } from '@lousho/build-ai-agent';
+import { resolveProvider, LLMProviderRegistry } from 'lousho';
 
 // The convenient way — reads the credential from the environment
 const openai = resolveProvider('openai/gpt-4o-mini');       // OPENAI_API_KEY
@@ -63,7 +63,7 @@ it anyway:
    present. With none set it throws an error listing the fixes.
 
 ```ts no-run
-import { createAgent, createMockProvider, resolveProvider } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, resolveProvider } from 'lousho';
 
 const fromString = createAgent({ model: 'anthropic/claude-sonnet-5-5' });
 const fromInstance = createAgent({ provider: resolveProvider('openai/gpt-4o-mini'), model: 'gpt-4o' });
@@ -81,7 +81,7 @@ error, 5xx) twice by default, and with `fallbackModels` moves on to the next
 model when the call still fails:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -124,7 +124,7 @@ Parts sent through `createAgent()`:
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
 
@@ -140,7 +140,7 @@ console.log(answer.text);
 A `Message[]` is passed through as it is; `textOf()` returns the text parts of a message:
 
 ```ts
-import { createAgent, textOf, type Message } from '@lousho/build-ai-agent';
+import { createAgent, textOf, type Message } from 'lousho';
 
 const agent = createAgent({ instructions: 'Describe images briefly.', model: 'openai/gpt-4o-mini' });
 const messages: Message[] = [
@@ -199,8 +199,8 @@ console.log(textOf(messages[0]), '->', result.text);
 `AgentExecutor.execute()` takes the same messages as its `input` (see [the executor API](./executor-api.md)):
 
 ```ts
-import { AgentBuilder, AgentExecutor } from '@lousho/build-ai-agent/executor';
-import { resolveProvider, type Message } from '@lousho/build-ai-agent';
+import { AgentBuilder, AgentExecutor } from 'lousho/executor';
+import { resolveProvider, type Message } from 'lousho';
 
 const agent = AgentBuilder.create().setName('vision').setPrompt('Describe images briefly.').build();
 const input: Message[] = [
@@ -262,7 +262,7 @@ text is not retried, so it fails after one `timeout`. To fail sooner, lower
 `timeout` or `retry.maxRetries`.
 
 ```ts
-import { OpenAIProvider } from '@lousho/build-ai-agent';
+import { OpenAIProvider } from 'lousho';
 
 const provider = new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY!, timeout: 60_000 });
 ```
@@ -276,7 +276,7 @@ Pass `store: true` to have OpenAI store them (for its dashboard logs or
 evals). `store` is ignored with `api: 'chat'`.
 
 ```ts
-import { OpenAIProvider } from '@lousho/build-ai-agent';
+import { OpenAIProvider } from 'lousho';
 
 const provider = new OpenAIProvider({ apiKey: process.env.OPENAI_API_KEY!, store: true });
 ```
@@ -293,7 +293,7 @@ instead. Install `undici` and pass its `Agent` as the dispatcher:
 
 ```ts
 import { Agent } from 'undici';
-import { createAgent, OpenAIProvider } from '@lousho/build-ai-agent';
+import { createAgent, OpenAIProvider } from 'lousho';
 
 // Wait up to 15 minutes for the response headers and between body chunks.
 const dispatcher = new Agent({ headersTimeout: 15 * 60_000, bodyTimeout: 15 * 60_000 });
@@ -321,7 +321,7 @@ your function, so a failure you return from it is classified as it would be
 from the real network:
 
 ```ts
-import { OpenRouterProvider } from '@lousho/build-ai-agent';
+import { OpenRouterProvider } from 'lousho';
 
 let failures = 1;
 const provider = new OpenRouterProvider({
@@ -339,7 +339,7 @@ into an `LLMProvider`, so you do not write an adapter:
 
 ```ts
 import { createOpenAI } from '@ai-sdk/openai';
-import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+import { createAgent, fromAiSdk } from 'lousho';
 
 const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const agent = createAgent({
@@ -390,7 +390,7 @@ npm install @earendil-works/pi-ai@^1.0.3
 ```
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 // OpenRouter's `openai/gpt-4o-mini`, through pi's openrouter adapter:
 const agent = createAgent({ model: 'pi/openrouter/openai/gpt-4o-mini' });
@@ -436,7 +436,7 @@ wire format. Point `OpenAIProvider` at the server's `/v1` URL and pick the API
 it implements with `api`:
 
 ```ts no-run
-import { createAgent, OpenAIProvider } from '@lousho/build-ai-agent';
+import { createAgent, OpenAIProvider } from 'lousho';
 
 const agent = createAgent({
   provider: new OpenAIProvider({
@@ -489,7 +489,7 @@ Ollama's `/v1` need).
 
 ```ts no-run
 import { createOpenAI } from '@ai-sdk/openai';
-import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+import { createAgent, fromAiSdk } from 'lousho';
 
 const local = createOpenAI({ baseURL: 'http://localhost:8080/v1', apiKey: 'any' });
 const agent = createAgent({ provider: fromAiSdk(local.chat('qwen3-8b')), instructions: 'You are a helpful assistant.' });

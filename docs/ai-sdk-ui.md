@@ -18,7 +18,7 @@ The `vendor/` model prefix chooses the provider; with OpenRouter use
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent, fromUIMessages, memoryStore, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
+import { createAgent, fromUIMessages, memoryStore, toUIMessageStreamResponse, type UIMessageLike } from 'lousho';
 
 // The store must outlive the request: without one, every `agent.session({ id })`
 // gets a fresh in-memory transcript and the next turn would start empty.
@@ -155,5 +155,5 @@ kept: a `system` message (or any other role, or an entry that is not a message)
 is dropped, so a caller cannot add instructions to the agent's prompt. Set
 instructions on the agent (`createAgent({ instructions })`), not in the request.
 
-A dedicated `@lousho/build-ai-agent/ai-sdk-ui` subpath may follow; for now the
+A dedicated `lousho/ai-sdk-ui` subpath may follow; for now the
 functions come from the package root.

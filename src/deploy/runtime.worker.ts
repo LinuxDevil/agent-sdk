@@ -2,7 +2,7 @@
  * Cloudflare Worker runtime for generated workers.
  *
  * The worker.ts the cloudflare-worker adapter scaffolds imports
- * `@lousho/build-ai-agent/deploy-runtime-worker`, resolved at build time to
+ * `lousho/deploy-runtime-worker`, resolved at build time to
  * this file. Everything reachable from here must run without Node builtins
  * (Workers have no node:fs/node:http/...): the adapter bundles with
  * platform 'browser' and swaps the one Node-dependent module on

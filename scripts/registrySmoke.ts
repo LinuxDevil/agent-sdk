@@ -7,9 +7,9 @@
  * downloads. `pack-smoke` tests the tarball built from the checkout; this tests
  * the published copy. Run it right after a publish, and on the weekly CI job.
  *
- *   1. `npm view` of `@lousho/build-ai-agent` and `create-lousho-agent` (retried:
+ *   1. `npm view` of `lousho` and `create-lousho` (retried:
  *      a fresh publish can lag for a minute),
- *   2. `npm create lousho-agent demo -- --yes --provider openrouter --no-git`
+ *   2. `npm create lousho demo -- --yes --provider openrouter --no-git`
  *      (installs from the registry) and a check of the installed SDK version,
  *   3. the generated project's own `npm test` and `npm run typecheck`,
  *   4. `lousho --help` and `lousho doctor --json`, and every `exports` subpath
@@ -29,7 +29,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { IS_WIN, SDK_NAME, checkBin, checkModuleLoads, createReporter, run, type Reporter } from './smokeKit';
 
-const CREATE_NAME = 'create-lousho-agent';
+const CREATE_NAME = 'create-lousho';
 /**
  * `lousho studio` only works outside the SDK repository from this version on. Older
  * published versions print `SKIP studio` instead of failing, so the scheduled job is not red

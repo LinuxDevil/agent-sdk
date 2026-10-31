@@ -1,5 +1,5 @@
 /**
- * End-to-end test of `create-lousho-agent` (which runs `lousho init`): scaffolds
+ * End-to-end test of `create-lousho` (which runs `lousho init`): scaffolds
  * a project in a FRESH TEMP DIRECTORY (never inside this checkout) with
  * `--sdk-path` pointing at this checkout, so the generator `npm pack`s the
  * local SDK build instead of fetching a published version. It lets `init`
@@ -82,7 +82,7 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
   it.each(['openai', 'openrouter'])(
     '%s: generates a project that installs from the locally packed SDK, typechecks, passes its own tests and builds a server that starts',
     async (provider) => {
-      base = fs.mkdtempSync(path.join(os.tmpdir(), `create-lousho-agent-e2e-${provider}-`));
+      base = fs.mkdtempSync(path.join(os.tmpdir(), `create-lousho-e2e-${provider}-`));
       const dir = path.join(base, 'test-agent');
 
       execFileSync(
@@ -92,8 +92,8 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
       );
 
       const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
-      expect(pkg.dependencies['@lousho/build-ai-agent']).toMatch(/^file:\.\/.*\.tgz$/);
-      expect(fs.existsSync(path.join(dir, 'node_modules', '@lousho', 'build-ai-agent'))).toBe(true);
+      expect(pkg.dependencies['lousho']).toMatch(/^file:\.\/.*\.tgz$/);
+      expect(fs.existsSync(path.join(dir, 'node_modules', 'lousho'))).toBe(true);
 
       npm(['run', 'typecheck'], dir);
       const testOutput = npm(['test'], dir);
@@ -101,7 +101,7 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
 
       const sdkPkg = JSON.parse(fs.readFileSync(path.join(SDK_ROOT, 'package.json'), 'utf8'));
       const installed = JSON.parse(
-        fs.readFileSync(path.join(dir, 'node_modules', '@lousho', 'build-ai-agent', 'package.json'), 'utf8')
+        fs.readFileSync(path.join(dir, 'node_modules', 'lousho', 'package.json'), 'utf8')
       );
       expect(installed.version).toBe(sdkPkg.version);
 

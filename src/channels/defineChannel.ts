@@ -181,7 +181,7 @@ const SESSION_ID = /^[A-Za-z0-9_-]{1,128}$/;
  *
  * @example
  * ```ts
- * import { defineChannel } from '@lousho/build-ai-agent';
+ * import { defineChannel } from 'lousho';
  *
  * const sms = defineChannel({
  *   name: 'sms',

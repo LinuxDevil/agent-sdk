@@ -16,7 +16,7 @@ Already on `1.0.0-alpha.19`? Skip to
 since.
 
 ```bash
-npm install @lousho/build-ai-agent@^1.0.0-alpha.19
+npm install lousho@^1.0.0-alpha.19
 ```
 
 ## Import paths that moved
@@ -27,23 +27,23 @@ are unchanged apart from where they live.
 
 | Name(s) | Old import | New import |
 | ------- | ---------- | ---------- |
-| `AgentExecutor`, `AgentBuilder`, `ExecuteOptions`, `ResumeExecuteOptions`, `ResumeRequest`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()` | `@lousho/build-ai-agent` or `@lousho/build-ai-agent/core` | `@lousho/build-ai-agent/executor` |
-| `ToolRegistry`, `globalToolRegistry` | `@lousho/build-ai-agent` or `@lousho/build-ai-agent/core` | `@lousho/build-ai-agent/executor` (also still in `@lousho/build-ai-agent/tools`) |
-| `ExecutionResult`, `ExecutionFinishReason` (the executor's types) | `@lousho/build-ai-agent/core` | `@lousho/build-ai-agent/executor` (`ExecutionResult` is also still in the root, where `createAgent()`'s result type lives) |
-| `FlowBuilder`, `FlowExecutor`, `validateFlow` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) | `@lousho/build-ai-agent` or `@lousho/build-ai-agent/types` | `@lousho/build-ai-agent/flows` |
-| `createJiraTools`, `createGitHubTools`, `createSlackTool`, `slackTool`, `postSlackAlert`, `createEmailTool` and their types | `@lousho/build-ai-agent` or `@lousho/build-ai-agent/tools` | `@lousho/build-ai-agent/integrations` |
-| `EncryptionUtils`, `DTOEncryptionFilter`, `DecryptionError`, `sha256`, `generatePassword` | `@lousho/build-ai-agent` | `@lousho/build-ai-agent/utils` |
-| `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | `@lousho/build-ai-agent` | `@lousho/build-ai-agent/utils` (with `createAgent()` stores, prefer `fileStore(dir)` from the root) |
-| `validateWithSchema`, `safeValidate`, `isValidEmail` and the other validators | `@lousho/build-ai-agent` | `@lousho/build-ai-agent/utils` |
+| `AgentExecutor`, `AgentBuilder`, `ExecuteOptions`, `ResumeExecuteOptions`, `ResumeRequest`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()` | `lousho` or `lousho/core` | `lousho/executor` |
+| `ToolRegistry`, `globalToolRegistry` | `lousho` or `lousho/core` | `lousho/executor` (also still in `lousho/tools`) |
+| `ExecutionResult`, `ExecutionFinishReason` (the executor's types) | `lousho/core` | `lousho/executor` (`ExecutionResult` is also still in the root, where `createAgent()`'s result type lives) |
+| `FlowBuilder`, `FlowExecutor`, `validateFlow` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) | `lousho` or `lousho/types` | `lousho/flows` |
+| `createJiraTools`, `createGitHubTools`, `createSlackTool`, `slackTool`, `postSlackAlert`, `createEmailTool` and their types | `lousho` or `lousho/tools` | `lousho/integrations` |
+| `EncryptionUtils`, `DTOEncryptionFilter`, `DecryptionError`, `sha256`, `generatePassword` | `lousho` | `lousho/utils` |
+| `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | `lousho` | `lousho/utils` (with `createAgent()` stores, prefer `fileStore(dir)` from the root) |
+| `validateWithSchema`, `safeValidate`, `isValidEmail` and the other validators | `lousho` | `lousho/utils` |
 
-The `@lousho/build-ai-agent/core` subpath no longer exists; everything it
+The `lousho/core` subpath no longer exists; everything it
 exported is under `/executor`.
 
 ```ts
-import { AgentExecutor, AgentBuilder, ToolRegistry } from '@lousho/build-ai-agent/executor';
-import { FlowBuilder, validateFlow } from '@lousho/build-ai-agent/flows';
-import { createSlackTool } from '@lousho/build-ai-agent/integrations';
-import { EncryptionUtils, validateWithSchema } from '@lousho/build-ai-agent/utils';
+import { AgentExecutor, AgentBuilder, ToolRegistry } from 'lousho/executor';
+import { FlowBuilder, validateFlow } from 'lousho/flows';
+import { createSlackTool } from 'lousho/integrations';
+import { EncryptionUtils, validateWithSchema } from 'lousho/utils';
 ```
 
 ## Removed APIs and their replacements
@@ -75,13 +75,13 @@ import { EncryptionUtils, validateWithSchema } from '@lousho/build-ai-agent/util
 
 ```ts no-verify
 // Before (alpha):
-import { createDelegateTool } from '@lousho/build-ai-agent';
+import { createDelegateTool } from 'lousho';
 const delegate = createDelegateTool({ agent: billing, name: 'billing' });
 ```
 
 ```ts
 // After (1.0): the lead gets a `task` tool per sub-agent.
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const billing = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You answer billing questions.' });
 const lead = createAgent({
@@ -114,7 +114,7 @@ results and behavior are unchanged; `SECRET_PATTERNS` keeps its name. See
 
 ## Migrating from triggers
 
-`WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and their option/handle types were removed from `@lousho/build-ai-agent/triggers`. `TriggerAdapter`, `TriggerRegistry`, the `WebhookAuth` helpers, `verifySlackSignature()` and `parseCronExpression()` stay. See [Triggers](./triggers.md).
+`WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and their option/handle types were removed from `lousho/triggers`. `TriggerAdapter`, `TriggerRegistry`, the `WebhookAuth` helpers, `verifySlackSignature()` and `parseCronExpression()` stay. See [Triggers](./triggers.md).
 
 | Removed | Replacement |
 | ------- | ----------- |
@@ -299,7 +299,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | The observe daemon ends idle sessions: once none of a session's runs is open and nothing in it has started or finished for 30 minutes, its status becomes `ended` (with `ended_at` = its last activity) instead of staying `active`; a new run in it makes it `active` again. See [Idle sessions](./observability.md#idle-sessions). | `lousho observe start --session-idle-minutes N` (`0` keeps sessions `active` until their agent goes down) |
 | The observe daemon prunes old data by default: on its first sweep and then once a day it deletes every trace whose observations all finished more than 30 days ago, with that trace's scores and prompt-use links, and sessions that are no longer `active`, ended before the window and no longer referenced. A trace with a run still open, active sessions, the Insights rollups, prompts, hub entries, the agent registry, tokens, datasets, evaluator rules and annotation queues are never pruned. See [Retention](./observability.md#retention). | `lousho observe start --retention-days 0` keeps everything (or `N` for another window) |
 | `lousho mcp --port N` or `--host H` without `--http` is a usage error (exit 2); stdio has no port. | drop the flags, or add `--http` |
-| The `package.json` of a node-server or docker build no longer lists `@lousho/build-ai-agent` (the bundle contains it). | add it yourself if other code next to the build imports the SDK |
+| The `package.json` of a node-server or docker build no longer lists `lousho` (the bundle contains it). | add it yourself if other code next to the build imports the SDK |
 | The npm package no longer ships `dist/cli/*.js` (the CommonJS CLI build) or `dist/cli/*.d.ts`; `bin/lousho.js` never loaded them. | run the CLI through `bin/lousho.js` (`npx lousho`) |
 
 ## What 1.0 promises
@@ -307,7 +307,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 Starting at 1.0 the package follows semver on its public surface:
 
 - **Public**: every entry point `exports` declares - the root
-  `@lousho/build-ai-agent` and the `/executor`, `/tools`, `/flows`,
+  `lousho` and the `/executor`, `/tools`, `/flows`,
   `/integrations`, `/utils`, `/mcp`, `/types`, `/testing`, `/otel`, `/hooks`,
   `/sqlite`, `/auth`, `/kv`, `/worker`, `/traces`, `/triggers`, `/react`,
   `/vue` and `/svelte` subpaths - and every name in the checked-in API

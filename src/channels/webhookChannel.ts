@@ -80,7 +80,7 @@ async function verifyWebhook(auth: WebhookAuth | undefined, req: ChannelRequest)
  *
  * @example
  * ```ts
- * import { webhookChannel } from '@lousho/build-ai-agent';
+ * import { webhookChannel } from 'lousho';
  *
  * const hooks = webhookChannel({
  *   secret: process.env.WEBHOOK_SECRET ?? '',

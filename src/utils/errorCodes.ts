@@ -37,7 +37,7 @@ export const ERROR_CODES = {
   LOUSHO_SPEC_UNKNOWN_FIELD: 'Rename the field to the suggested spec field, or remove it.',
   LOUSHO_SPEC_UNSUPPORTED_FORMAT: 'Save the spec as .yaml, .yml or .json.',
   /** An AgentSpec v2 sets a field this version of the SDK cannot run yet. */
-  LOUSHO_SPEC_UNSUPPORTED: 'Remove the field the message names, or upgrade @lousho/build-ai-agent to a version that can run it.',
+  LOUSHO_SPEC_UNSUPPORTED: 'Remove the field the message names, or upgrade lousho to a version that can run it.',
   /** An AgentSpec v2 secret ref (`{ env }` / `{ secret }`) has no value where the agent is being built. */
   LOUSHO_SPEC_SECRET_MISSING: 'Set the environment variable or add the named secret the message gives, then run the agent again.',
   LOUSHO_SCHEDULE_INVALID: 'Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.',

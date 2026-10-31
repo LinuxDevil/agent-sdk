@@ -641,12 +641,12 @@ describe('helpers', () => {
   });
 
   it('codes an unresolvable package import with a hint naming the package and where Node looks for it', () => {
-    const esm = Object.assign(new Error("Cannot find package '@lousho/build-ai-agent' imported from /k/tools/fs.ts"), { code: 'ERR_MODULE_NOT_FOUND' });
+    const esm = Object.assign(new Error("Cannot find package 'lousho' imported from /k/tools/fs.ts"), { code: 'ERR_MODULE_NOT_FOUND' });
     const error = explainImportError('/k/tools/fs.ts', esm) as SDKError;
     expect(error).toBeInstanceOf(SDKError);
     expect(error.code).toBe('LOUSHO_AGENT_DIR_INVALID');
     expect(error.message).toContain('failed to import /k/tools/fs.ts');
-    expect(error.hint).toContain('npm install @lousho/build-ai-agent');
+    expect(error.hint).toContain('npm install lousho');
     expect(error.hint).toContain('node_modules');
     const cjs = Object.assign(new Error("Cannot find module 'zod/v4'\nRequire stack:\n- /k/a.ts"), { code: 'MODULE_NOT_FOUND' });
     expect((explainImportError('/k/a.ts', cjs) as SDKError).hint).toContain('npm install zod');

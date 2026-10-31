@@ -42,7 +42,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
-import { ConfigurationError, SDKError, type AgentSpec, type ForkPatch } from '@lousho/build-ai-agent';
+import { ConfigurationError, SDKError, type AgentSpec, type ForkPatch } from 'lousho';
 import type { AgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,

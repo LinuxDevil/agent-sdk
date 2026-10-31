@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MissingPeerDependencyError } from '../providers/optionalPeer';
 import { runInit } from './init';
 
-// `npx @lousho/build-ai-agent init` installs the SDK without its optional `prompts` peer.
+// `npx lousho init` installs the SDK without its optional `prompts` peer.
 vi.mock('./init/prompts', () => ({
   askMissing: async () => {
     throw new MissingPeerDependencyError('prompts', 'npm install prompts@^2.4.2', { feature: 'the interactive prompts of lousho init' });
@@ -34,6 +34,6 @@ describe('lousho init on a terminal without the prompts package', () => {
 
     expect(code).toBe(0);
     expect(fs.existsSync(path.join(root, 'demo', 'src', 'agent.ts'))).toBe(true);
-    expect(err.join('')).toMatch(/optional 'prompts' package.*--provider and --template.*npm create lousho-agent/);
+    expect(err.join('')).toMatch(/optional 'prompts' package.*--provider and --template.*npm create lousho/);
   });
 });

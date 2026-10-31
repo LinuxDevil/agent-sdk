@@ -7,5 +7,5 @@
     "env": ["INCIDENT_WEBHOOK_SECRET", "INCIDENT_TIMELINE_FILE"],
     "needsApproval": true
   },
-  "dependencies": ["@lousho/build-ai-agent"]
+  "dependencies": ["lousho"]
 }

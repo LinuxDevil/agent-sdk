@@ -6,7 +6,7 @@
  * ones (stage B below) type-check AND run without error against the LOCALLY BUILT package
  * - exactly what a reader copy-pasting it into a fresh project would get.
  *
- * How (mirrors create-lousho-agent approach for its generated
+ * How (mirrors create-lousho approach for its generated
  * projects): build the SDK, `npm pack` it, install the tarball into a
  * throwaway temp project, write each snippet there as its own ES module
  * (`snippet-<n>.mts`), then
@@ -24,7 +24,7 @@
  *
  *   A. SOURCE CHECK - every ```ts / ```typescript block in README.md and
  *      docs/*.md (all of them, not just the quick start) is type-checked
- *      against the real SDK SOURCE: `@lousho/build-ai-agent` and its subpaths
+ *      against the real SDK SOURCE: `lousho` and its subpaths
  *      are resolved to `src/` through `paths` derived from package.json
  *      `exports`, so a docs example can never drift from the code (wrong
  *      argument order, methods that do not exist, ...). Types only; nothing
@@ -64,13 +64,13 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 /** Docs whose every snippet is type-checked AND executed against the packed tarball (stage B); see isRunnableByDefault. */
 const RUNNABLE_DOCS = [path.join(REPO_ROOT, 'docs', 'quick-start.md')];
 /** Ambient names (typed against the SDK where possible) that intentionally-partial snippets may use without defining. */
-const SDK = "import('@lousho/build-ai-agent')";
+const SDK = "import('lousho')";
 const PLACEHOLDERS: Record<string, string> = {
   agent: `${SDK}.AgentConfig`,
   provider: `${SDK}.LLMProvider`,
-  registry: `import('@lousho/build-ai-agent/executor').ToolRegistry`,
-  toolRegistry: `import('@lousho/build-ai-agent/executor').ToolRegistry`,
-  storage: `import('@lousho/build-ai-agent/utils').StorageService`,
+  registry: `import('lousho/executor').ToolRegistry`,
+  toolRegistry: `import('lousho/executor').ToolRegistry`,
+  storage: `import('lousho/utils').StorageService`,
   approvalStore: `${SDK}.ApprovalStore`,
   checkpointStore: `${SDK}.CheckpointStore`,
   mcpClient: "import('@modelcontextprotocol/sdk/client/index.js').Client",
@@ -144,7 +144,7 @@ const npmCmd = isWindows ? 'npm.cmd' : 'npm';
 function run(cmd: string, args: string[], cwd: string): string {
   // shell:true is needed on Windows to run npm.cmd; every argument here is a
   // fixed literal or a path this script computed itself (same reasoning as
-  // packages/create-lousho-agent/src/template.ts).
+  // packages/create-lousho/src/template.ts).
   return execFileSync(cmd, args, { cwd, encoding: 'utf8', shell: isWindows, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
@@ -172,7 +172,7 @@ function setUpProject(projectDir: string, skipBuild: boolean): void {
   // `@ai-sdk/*` peer on several majors: pin the pairing the repo
   // develops against (its devDependencies), not whatever the widest range resolves to.
   const dependencies: Record<string, string> = {
-    '@lousho/build-ai-agent': `file:./${tarball}`,
+    'lousho': `file:./${tarball}`,
     ai: dev.ai,
     zod: peers.zod,
     '@ai-sdk/openai': dev['@ai-sdk/openai'],

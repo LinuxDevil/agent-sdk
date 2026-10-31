@@ -69,12 +69,12 @@ describe('cloudflare-worker build errors', () => {
     const dir = writeAgentDir({
       'instructions.md': 'Be brief.\n',
       'agent.json': '{ "model": "mock/test" }\n',
-      'tools/store.ts': "import { fileStore } from '@lousho/build-ai-agent';\nexport default fileStore;\n",
+      'tools/store.ts': "import { fileStore } from 'lousho';\nexport default fileStore;\n",
     });
     const { run, thrown } = await buildInChild(dir);
     expect(thrown?.code).toBe('LOUSHO_DEPLOY_FAILED');
     expect(thrown?.message).toContain('for import "fileStore"');
-    expect(thrown?.message).toContain("the files of an agent directory can import only these from '@lousho/build-ai-agent'");
+    expect(thrown?.message).toContain("the files of an agent directory can import only these from 'lousho'");
     expect(run.stderr).not.toMatch(/\[ERROR\]|Build failed/);
   }, 180_000);
 });

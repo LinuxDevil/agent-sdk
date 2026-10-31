@@ -68,7 +68,7 @@ export interface StudioOptions {
    */
   mode?: StudioMode;
   /**
-   * Root of the installed `@lousho/build-ai-agent` package, whose own
+   * Root of the installed `lousho` package, whose own
    * `apps/agent-forge` is used when `repoRoot` has none. Defaults to the
    * package this CLI runs from; tests point it at a temporary directory.
    */
@@ -122,7 +122,7 @@ function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
   if (!fs.existsSync(path.join(appDir, 'server', 'index.ts'))) {
     // Neither the build nor the source: a package packed without Agent Forge (a local `npm pack`).
     throw new ConfigurationError(
-      `lousho studio: this copy of @lousho/build-ai-agent has no Agent Forge build ('${distServerEntry(appDir)}' is missing). ` +
+      `lousho studio: this copy of lousho has no Agent Forge build ('${distServerEntry(appDir)}' is missing). ` +
         "It was packed without it: install a published release, or in the SDK checkout run 'npm run build:studio' before 'npm pack'.",
       'studio'
     );
@@ -169,7 +169,7 @@ function agentForgeNotFound(repoRoot: string, packageRoot: string): Configuratio
   return new ConfigurationError(
     `lousho studio: could not find apps/agent-forge under '${repoRoot}' or in the installed package ` +
       `('${path.join(packageRoot, 'apps', 'agent-forge')}'). Run this from the root of a repo that ` +
-      'includes the Agent Forge app, or reinstall @lousho/build-ai-agent.', 'studio');
+      'includes the Agent Forge app, or reinstall lousho.', 'studio');
 }
 
 /** Logs a child process's non-zero exit (a null code means it was killed by a signal). */

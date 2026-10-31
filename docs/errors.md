@@ -31,7 +31,7 @@ serialising the error is unchanged). It is absent when the run failed before
 it started.
 
 ```ts
-import { createAgent, type RunUsage } from '@lousho/build-ai-agent';
+import { createAgent, type RunUsage } from 'lousho';
 
 try {
   await createAgent({ provider }).send('Go');
@@ -52,7 +52,7 @@ on purpose: `PropagatingToolError` and its subclasses (a tool throws one to
 stop the run), `WorkspaceError` (a workspace operation refused or failed -
 the model sees it as a tool error), `McpToolError` (a loaded MCP tool whose
 server reports `isError`; also a tool error), `AuthError` (an
-`@lousho/build-ai-agent/auth` entry rejects the request with its 401 or 403),
+`lousho/auth` entry rejects the request with its 401 or 403),
 `CronExpressionError` (`parseCronExpression()`, which
 `defineSchedule()` wraps as `LOUSHO_SCHEDULE_INVALID`) and
 `DecryptionError` (`EncryptionUtils`, `DTOEncryptionFilter`).
@@ -63,7 +63,7 @@ server reports `isError`; also a tool error), `AuthError` (an
 and `.cassette` / `.callNumber` fields.
 
 ```ts
-import { createAgent, SDKError } from '@lousho/build-ai-agent';
+import { createAgent, SDKError } from 'lousho';
 
 try {
   await createAgent({ provider, instructions: 'Be brief.' }).send('hi');
@@ -399,7 +399,7 @@ where the agent is being built.
 agent spec has no field for.
 
 **Fix:** build the agent with `createAgent()` and pass the configured tool, e.g.
-`createGitHubTools(config)` from `@lousho/build-ai-agent/integrations`.
+`createGitHubTools(config)` from `lousho/integrations`.
 
 **Example:** `tools: [github]` in a spec.
 
@@ -1190,7 +1190,7 @@ dataset and add examples to it (`POST /api/v1/datasets`, `POST
 **Means:** a record/replay cassette is missing, is not valid JSON or does not
 match the recorded request. The message names the file. A mismatch inside a
 run reaches `send()` as the `CassetteMismatchError` itself (from
-`@lousho/build-ai-agent/testing`, with `.cassette` and `.callNumber`) - it is
+`lousho/testing`, with `.cassette` and `.callNumber`) - it is
 a test-fixture failure, so it is never compacted into a
 `CompactedLLMProviderError`.
 
@@ -1281,7 +1281,7 @@ See [Budgets](./configuration.md#budgets).
 
 ### LOUSHO_AUTH_CONFIG_INVALID
 
-**Means:** a route auth helper from `@lousho/build-ai-agent/auth` (`jwt()`,
+**Means:** a route auth helper from `lousho/auth` (`jwt()`,
 `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with, and
 refused them when it was created, not at the first request. The message names
 the option: no key source or two of them, an HMAC `secret` shorter than 32

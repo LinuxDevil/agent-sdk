@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 
 // The registry's mock provider calls a tool the user message names, with { input: 'mock input' }.
 export default defineTool({

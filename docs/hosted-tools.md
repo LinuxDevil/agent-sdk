@@ -6,7 +6,7 @@ web search, code interpreter and file search are the common ones. Put them in
 each call in its events, keeps it on the transcript and counts it in usage.
 
 ```ts
-import { createAgent, webSearch, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, webSearch, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const saveNote = defineTool({
@@ -109,7 +109,7 @@ providers and with any AI SDK model wrapped by
 [`fromAiSdk()`](./providers.md#any-ai-sdk-model-fromaisdk):
 
 ```ts no-verify
-import { createAgent, fromAiSdk, hostedTool } from '@lousho/build-ai-agent';
+import { createAgent, fromAiSdk, hostedTool } from 'lousho';
 import { openai } from '@ai-sdk/openai';
 
 const agent = createAgent({
@@ -126,7 +126,7 @@ A hosted call is reported like a tool call, with `executedBy: 'provider'` on
 `tool.start`, `tool.done` and `tool.error`:
 
 ```ts
-import { createAgent, webSearch } from '@lousho/build-ai-agent';
+import { createAgent, webSearch } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [webSearch()] });
 
@@ -180,7 +180,7 @@ without a human, leave the tool out of `tools`, or choose tools per run with a
 function:
 
 ```ts
-import { createAgent, webSearch } from '@lousho/build-ai-agent';
+import { createAgent, webSearch } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -217,8 +217,8 @@ hosted tools; a resuming agent with a different set reports
 request, so an agent with hosted tools runs offline:
 
 ```ts
-import { createAgent, webSearch } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, webSearch } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const model = mockModel([
   {

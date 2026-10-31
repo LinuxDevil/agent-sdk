@@ -73,7 +73,7 @@ not the shared `LOUSHO_CONFIG_INVALID` path. The only short flags besides
 instead of the generated one; globs then narrow that config's files as vitest
 filters.
 
-`npm create lousho-agent my-agent` runs `lousho init` with the same arguments.
+`npm create lousho my-agent` runs `lousho init` with the same arguments.
 To scaffold against an unreleased build of the SDK, pass `--sdk-path` (see
 [Installing from a local build](./installation.md#installing-from-a-local-build)).
 

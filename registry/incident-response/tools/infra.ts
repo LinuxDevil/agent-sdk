@@ -11,7 +11,7 @@
  * that labels a production service as staging.
  */
 import { z } from 'zod';
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 
 export type Environment = 'staging' | 'production';
 export type ServiceStatus = 'healthy' | 'degraded' | 'down' | 'restarting';

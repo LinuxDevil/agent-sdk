@@ -27,8 +27,8 @@ describe('checkItem', () => {
       ["import shell from 'shelljs';"],
       ["const cp = await import('node:child_process');"],
       ["export { spawn } from 'child_process';"],
-      ["import { createShellTool } from '@lousho/build-ai-agent';\nexport default createShellTool();"],
-      ["import { SubprocessSandbox } from '@lousho/build-ai-agent';"],
+      ["import { createShellTool } from 'lousho';\nexport default createShellTool();"],
+      ["import { SubprocessSandbox } from 'lousho';"],
     ])('needs exec: true for %s', (code) => {
       expect(refused(code).join('\n')).toContain('declare exec: true in permissions');
       expect(refused(code, { exec: true })).toEqual([]);
@@ -51,8 +51,8 @@ describe('checkItem', () => {
     });
 
     it('treats createFsTools as filesystem access', () => {
-      expect(refused("import { createFsTools } from '@lousho/build-ai-agent';")).toHaveLength(1);
-      expect(refused("import { createFsTools } from '@lousho/build-ai-agent';", { filesystem: 'read' })).toEqual([]);
+      expect(refused("import { createFsTools } from 'lousho';")).toHaveLength(1);
+      expect(refused("import { createFsTools } from 'lousho';", { filesystem: 'read' })).toEqual([]);
     });
   });
 

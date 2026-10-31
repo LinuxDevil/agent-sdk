@@ -15,7 +15,7 @@
  * the stores themselves stay lock-free.
  */
 import type { Express, Response } from 'express';
-import { agentSpecV2Schema } from '@lousho/build-ai-agent';
+import { agentSpecV2Schema } from 'lousho';
 import { computeChangedFields, SPEC_FIELD_ORDER } from '../../shared/specFields';
 import type {
   CreateDraftRequest,

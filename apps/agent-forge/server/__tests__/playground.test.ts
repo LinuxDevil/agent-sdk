@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { LLMProviderRegistry, createMockProvider, type AgentEvent } from '@lousho/build-ai-agent';
+import { LLMProviderRegistry, createMockProvider, type AgentEvent } from 'lousho';
 import request from 'supertest';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
