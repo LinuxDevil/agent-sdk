@@ -415,7 +415,7 @@ export interface AgentSpecV2 {
     maxSteps?: number;
     maxSubagentDepth?: number;
     mcpServers?: Record<string, McpServerSpecV2>;
-    memory?: never;
+    memory?: MemorySpec[];
     model: string;
     modelSettings?: ModelSettings;
     name: string;
@@ -4110,6 +4110,22 @@ export interface MemoryProviderOptions {
 }
 
 // @public
+type MemoryProviderSpec = {
+    type: 'in-memory';
+    maxItems?: number;
+} | {
+    type: 'file';
+    dir: string;
+    maxItems?: number;
+} | {
+    type: 'sqlite-vector';
+    path?: string;
+    embedder: string;
+    maxItems?: number;
+    minScore?: number;
+};
+
+// @public
 export type MemoryScope = 'global' | 'session' | ((ctx: MemoryScopeContext) => string | undefined);
 
 // @public
@@ -4120,6 +4136,11 @@ export interface MemoryScopeContext {
     // (undocumented)
     sessionId?: string;
 }
+
+// @public
+type MemoryScopeSpec = 'global' | 'session' | {
+    metadataKey: string;
+};
 
 // @public
 export class MemorySessionStore implements SessionStore {
@@ -4143,6 +4164,28 @@ export interface MemorySlot extends Readonly<Pick<DefineMemoryOptions, 'name' | 
         maxItems: number;
         query: 'last-input' | 'none';
     };
+}
+
+// @public
+interface MemorySpec {
+    description?: string;
+    expose?: {
+        remember?: boolean;
+        recall?: boolean;
+        forget?: boolean;
+    };
+    itemJsonSchema?: Record<string, unknown>;
+    itemKey?: string | string[];
+    name: string;
+    // (undocumented)
+    provider: MemoryProviderSpec;
+    recall?: {
+        onSessionStart?: boolean;
+        maxItems?: number;
+        query?: 'last-input' | 'none';
+    };
+    // (undocumented)
+    scope: MemoryScopeSpec;
 }
 
 // @public

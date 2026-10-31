@@ -16,6 +16,7 @@ import type { SubagentOptions } from '../../subagents/backgroundTasks';
 import type { GuardrailSpec } from './guardrails';
 import type { HandoffSpec } from './handoffs';
 import type { HookSpec } from './hooks';
+import type { MemorySpec } from './memory';
 import type { McpServerSpecV2 } from './mcpServers';
 import type { OutputSpecV2 } from './output';
 import type { PermissionRuleSpec } from './permissions';
@@ -82,8 +83,8 @@ export interface AgentSpecV2 {
   tools?: ToolRef[]; // S04a
   /** Skills (S14); not supported yet. */
   skills?: never; // S14
-  /** Long-term memory slots (S13); not supported yet. */
-  memory?: never; // S13
+  /** Long-term memory slots (S13): `remember_`/`recall_`/`forget_` tools and run-start recall. */
+  memory?: MemorySpec[]; // S13
   /** Sub-agents this agent can delegate to with the `task` tool (S08), keyed by their `sub:<name>` names. */
   subagents?: Record<string, SubagentSpec>; // S08
   /** Agents this agent can hand the conversation to (S09). */
