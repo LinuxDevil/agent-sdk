@@ -184,21 +184,21 @@ describe('spec v2 triggers', () => {
 
   it('rejects an unknown trigger type', () => {
     const error = thrown(spec([{ id: 'x', type: 'monitor' }]));
-    expect(Object.keys(error.errors).some((path) => path.startsWith('triggers.0'))).toBe(true);
+    expect(Object.keys(error.errors ?? {}).some((path) => path.startsWith('triggers.0'))).toBe(true);
     expect(error.code).toBe('LOUSHO_SPEC_INVALID');
   });
 
   it('rejects a non-object trigger entry', () => {
     for (const trigger of ['daily', 42, null]) {
       const error = thrown(spec([trigger]));
-      expect(Object.keys(error.errors).some((path) => path.startsWith('triggers.0'))).toBe(true);
+      expect(Object.keys(error.errors ?? {}).some((path) => path.startsWith('triggers.0'))).toBe(true);
     }
   });
 
   it('rejects an entry with an extra key (strict variants)', () => {
     for (const [type, example] of Object.entries(EXAMPLES)) {
       const error = thrown(spec([{ ...example, unexpected: true }]));
-      expect(Object.keys(error.errors).some((path) => path.startsWith('triggers.0')), type).toBe(true);
+      expect(Object.keys(error.errors ?? {}).some((path) => path.startsWith('triggers.0')), type).toBe(true);
     }
   });
 
