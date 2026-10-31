@@ -9,6 +9,7 @@ import { anyError, typeErrors } from '../../utils/zodCompat';
 import type { SpecObjectSchema } from '../schema';
 import { modelIdSchema, relativePathSchema } from './common';
 import { guardrailListSchema } from './guardrails';
+import { hookListSchema } from './hooks';
 import { outputSpecSchema } from './output';
 import { permissionListSchema } from './permissions';
 import { runtimeShape } from './runtime';
@@ -76,7 +77,7 @@ export const agentSpecV2Shape = {
   handoffs: pendingField('handoffs'),
   guardrails: guardrailListSchema.optional(),
   permissions: permissionListSchema.optional(),
-  hooks: pendingField('hooks'),
+  hooks: hookListSchema.optional(),
   output: outputSpecSchema.optional(),
   triggers: pendingField('triggers'),
   abortListeners: pendingField('abortListeners'),
