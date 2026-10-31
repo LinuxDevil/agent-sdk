@@ -1,4 +1,3 @@
-import * as path from 'node:path';
 import type { AgentSpec } from '@lousho/build-ai-agent';
 import type { AgentStore, AgentStoreEntry } from './AgentStore';
 import { AgentRepo } from '../../server/storage/agentRepo';
@@ -22,11 +21,6 @@ import { withAgentLock } from '../../server/storage/atomic';
  * `HttpAgentStore` - so the agent list is exactly
  * `.lousho/agents/` of the directory `lousho studio` was started in.
  */
-/** Where `createFsAgentStore(baseDir)` reads/writes agent `id`'s spec - exposed so the runtime server's deploy route can hand `lousho build --agent=<path>` the exact file this store manages, without duplicating the `.lousho/agents/<id>.yaml` convention. */
-export function agentSpecFilePath(baseDir: string, id: string): string {
-  return path.join(baseDir, '.lousho', 'agents', `${id}.yaml`);
-}
-
 /**
  * The `AgentStore` over `baseDir`'s `.lousho/agents`. `repo` is the
  * `AgentRepo` for the same workspace root - the workspace context passes

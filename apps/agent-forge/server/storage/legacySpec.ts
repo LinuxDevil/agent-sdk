@@ -71,11 +71,31 @@ function isBuiltinToolName(name: string): boolean {
   }).success;
 }
 
-/** v2 tool refs back to v1 `tools: string[]` - `{ builtin }` and `{ registry }` names project; other kinds are dropped. */
+/**
+ * The v1 tool name each v2 builtin projects to - the inverse of
+ * `upgradeSpec`'s V1_TOOL_NAMES. A builtin with no v1 alias (e.g. `todo`)
+ * has no v1 runtime form and drops, like the other non-projectable kinds.
+ */
+const V1_BUILTIN_NAMES: Readonly<Record<string, string>> = {
+  http_request: 'http',
+  current_date: 'current-date',
+  day_name: 'day-name',
+  web_fetch: 'web-fetch',
+};
+
+/**
+ * v2 tool refs back to v1 `tools: string[]` - a `{ builtin }` projects to its
+ * v1 alias (or drops when v1 has no name for it), a `{ registry }` projects
+ * to its item name (a Studio-local tool round-trips, and `lousho build`
+ * sees the same string a v1 spec would have held); other kinds are dropped.
+ */
 function legacyTools(tools: PendingToolRef[] | undefined): string[] | undefined {
   const names = (tools ?? []).flatMap((ref) => {
-    const name = toolRefName(ref);
-    return name === undefined ? [] : [name];
+    if (typeof ref.builtin === 'string') {
+      const v1 = V1_BUILTIN_NAMES[ref.builtin];
+      return v1 === undefined ? [] : [v1];
+    }
+    return typeof ref.registry === 'string' ? [ref.registry] : [];
   });
   return names.length > 0 ? names : undefined;
 }

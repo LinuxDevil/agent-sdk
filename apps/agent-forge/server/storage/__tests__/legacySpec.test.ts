@@ -8,7 +8,7 @@ const fixtures: [string, AgentSpec][] = [
   ['minimal', base],
   [
     'tools + requiresApproval true',
-    { ...base, tools: ['http_request', 'web_fetch'], policy: { requiresApproval: true } },
+    { ...base, tools: ['http', 'web-fetch'], policy: { requiresApproval: true } },
   ],
   [
     'requiresApproval list + guardrails with options',
@@ -83,8 +83,8 @@ describe('mergeLegacySave', () => {
       tools: [{ builtin: 'web_fetch' }, { registry: 'toolkit-extra' }],
     } as unknown as AgentSpecV2;
     const before = toLegacySpec(stored);
-    expect(before.tools).toEqual(['web_fetch', 'toolkit-extra']);
-    const merged = mergeLegacySave(stored, { ...before, tools: ['http_request'] });
+    expect(before.tools).toEqual(['web-fetch', 'toolkit-extra']);
+    const merged = mergeLegacySave(stored, { ...before, tools: ['http'] });
     expect((merged as { tools?: unknown }).tools).toEqual([
       { registry: 'toolkit-extra' },
       { builtin: 'http_request' },
