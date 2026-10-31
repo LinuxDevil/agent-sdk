@@ -35,22 +35,10 @@ What still sets it apart (as of October 2026; see the
 
 ## Installation
 
-Requires Node.js 22.19 or newer (the floor comes from the `undici@8` dependency; `.ts` agent files also rely on Node's built-in type stripping, on by default since 22.18). Lousho is published to [GitHub Packages](https://github.com/LinuxDevil/agent-sdk/packages) as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`. GitHub Packages needs a login even for public packages. Create a [personal access token (classic) with `read:packages`](https://github.com/settings/tokens), then log in once for the scope (use the token as the password):
+Requires Node.js 22.19 or newer (the floor comes from the `undici@8` dependency; `.ts` agent files also rely on Node's built-in type stripping, on by default since 22.18). Scaffold a new project with one command:
 
 ```bash
-npm login --scope=@linuxdevil --auth-type=legacy --registry=https://npm.pkg.github.com
-```
-
-Install the SDK under the plain name `lousho` with an npm alias, so imports stay `from 'lousho'`:
-
-```bash
-npm install lousho@npm:@linuxdevil/lousho@alpha ai zod
-```
-
-Scaffold a new project with one command:
-
-```bash
-npx --package=@linuxdevil/create-lousho@alpha create-lousho my-agent   # agent, example tool, offline test
+npm create lousho my-agent   # agent, example tool, offline test
 cd my-agent                                          # copy .env.example to .env (cp on macOS/Linux, copy on Windows), put your API key in it
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
@@ -61,7 +49,7 @@ To add it to an existing project, install the SDK with the current `ai` major
 and the provider packages that pair with it:
 
 ```bash
-npm install lousho@npm:@linuxdevil/lousho@alpha ai@^7.0.0 zod
+npm install lousho ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
@@ -381,22 +369,6 @@ Source: docs/installation.md
 
 ## Install the package
 
-Lousho is published to [GitHub Packages](https://github.com/LinuxDevil/agent-sdk/packages) as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`. GitHub Packages needs a login even for public packages. Create a [personal access token (classic) with `read:packages`](https://github.com/settings/tokens), then log in once for the scope (use the token as the password):
-
-```bash
-npm login --scope=@linuxdevil --auth-type=legacy --registry=https://npm.pkg.github.com
-```
-
-Install the SDK under the plain name `lousho` with an npm alias, so imports stay `from 'lousho'`:
-
-```bash
-npm install lousho@npm:@linuxdevil/lousho@alpha ai zod
-```
-
-Other package managers take the same alias: `pnpm add lousho@npm:@linuxdevil/lousho@alpha ai zod`, `yarn add lousho@npm:@linuxdevil/lousho@alpha ai zod`.
-
-Once the packages are also on npmjs.com, the plain form works without the `.npmrc`:
-
 ```bash
 npm install lousho ai zod
 # or
@@ -628,7 +600,7 @@ one-line `CLAUDE.md` importing it) telling coding agents the project's files,
 scripts and conventions. It then installs the dependencies and runs `git init`.
 
 ```bash
-npx --package=@linuxdevil/create-lousho@alpha create-lousho my-agent   # or: npx lousho init my-agent
+npm create lousho my-agent   # or: npx lousho init my-agent
 npx lousho init my-agent --yes --provider anthropic --template tools --no-install
 ```
 
@@ -740,7 +712,7 @@ agent, an example tool, an offline test, a `.env.example` for your provider),
 installs its dependencies and runs `git init`:
 
 ```bash
-npx --package=@linuxdevil/create-lousho@alpha create-lousho my-agent
+npm create lousho my-agent
 cd my-agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your API key in it
 npm run dev              # chat with your agent in the terminal
@@ -761,7 +733,7 @@ Prefer to add the SDK to an existing project? Install it by hand (see
 [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md)):
 
 ```bash
-npm install lousho@npm:@linuxdevil/lousho@alpha ai@^7.0.0 zod
+npm install lousho ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 

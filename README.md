@@ -38,22 +38,10 @@ What still sets it apart (as of October 2026; see the
 
 ## Installation
 
-Requires Node.js 22.19 or newer (the floor comes from the `undici@8` dependency; `.ts` agent files also rely on Node's built-in type stripping, on by default since 22.18). Lousho is published to [GitHub Packages](https://github.com/LinuxDevil/agent-sdk/packages) as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`. GitHub Packages needs a login even for public packages. Create a [personal access token (classic) with `read:packages`](https://github.com/settings/tokens), then log in once for the scope (use the token as the password):
+Requires Node.js 22.19 or newer (the floor comes from the `undici@8` dependency; `.ts` agent files also rely on Node's built-in type stripping, on by default since 22.18). Scaffold a new project with one command:
 
 ```bash
-npm login --scope=@linuxdevil --auth-type=legacy --registry=https://npm.pkg.github.com
-```
-
-Install the SDK under the plain name `lousho` with an npm alias, so imports stay `from 'lousho'`:
-
-```bash
-npm install lousho@npm:@linuxdevil/lousho@alpha ai zod
-```
-
-Scaffold a new project with one command:
-
-```bash
-npx --package=@linuxdevil/create-lousho@alpha create-lousho my-agent   # agent, example tool, offline test
+npm create lousho my-agent   # agent, example tool, offline test
 cd my-agent                                          # copy .env.example to .env (cp on macOS/Linux, copy on Windows), put your API key in it
 npm run dev                                          # chat in the terminal; `npm test` runs offline
 ```
@@ -64,7 +52,7 @@ To add it to an existing project, install the SDK with the current `ai` major
 and the provider packages that pair with it:
 
 ```bash
-npm install lousho@npm:@linuxdevil/lousho@alpha ai@^7.0.0 zod
+npm install lousho ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 

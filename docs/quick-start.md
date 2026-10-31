@@ -11,7 +11,7 @@ agent, an example tool, an offline test, a `.env.example` for your provider),
 installs its dependencies and runs `git init`:
 
 ```bash
-npx --package=@linuxdevil/create-lousho@alpha create-lousho my-agent
+npm create lousho my-agent
 cd my-agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your API key in it
 npm run dev              # chat with your agent in the terminal
@@ -32,7 +32,7 @@ Prefer to add the SDK to an existing project? Install it by hand (see
 [Installation](./installation.md)):
 
 ```bash
-npm install lousho@npm:@linuxdevil/lousho@alpha ai@^7.0.0 zod
+npm install lousho ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 

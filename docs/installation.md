@@ -8,22 +8,6 @@
 
 ## Install the package
 
-Lousho is published to [GitHub Packages](https://github.com/LinuxDevil/agent-sdk/packages) as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`. GitHub Packages needs a login even for public packages. Create a [personal access token (classic) with `read:packages`](https://github.com/settings/tokens), then log in once for the scope (use the token as the password):
-
-```bash
-npm login --scope=@linuxdevil --auth-type=legacy --registry=https://npm.pkg.github.com
-```
-
-Install the SDK under the plain name `lousho` with an npm alias, so imports stay `from 'lousho'`:
-
-```bash
-npm install lousho@npm:@linuxdevil/lousho@alpha ai zod
-```
-
-Other package managers take the same alias: `pnpm add lousho@npm:@linuxdevil/lousho@alpha ai zod`, `yarn add lousho@npm:@linuxdevil/lousho@alpha ai zod`.
-
-Once the packages are also on npmjs.com, the plain form works without the `.npmrc`:
-
 ```bash
 npm install lousho ai zod
 # or
@@ -255,7 +239,7 @@ one-line `CLAUDE.md` importing it) telling coding agents the project's files,
 scripts and conventions. It then installs the dependencies and runs `git init`.
 
 ```bash
-npx --package=@linuxdevil/create-lousho@alpha create-lousho my-agent   # or: npx lousho init my-agent
+npm create lousho my-agent   # or: npx lousho init my-agent
 npx lousho init my-agent --yes --provider anthropic --template tools --no-install
 ```
 
