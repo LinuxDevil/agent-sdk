@@ -8,11 +8,10 @@
 
 ## Install the package
 
-Lousho is published to [GitHub Packages](https://github.com/LinuxDevil/agent-sdk/packages) as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`. GitHub Packages needs a token even for public packages, so add a [personal access token (classic) with `read:packages`](https://github.com/settings/tokens) and the scope's registry to your project or user `.npmrc`:
+Lousho is published to [GitHub Packages](https://github.com/LinuxDevil/agent-sdk/packages) as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`. GitHub Packages needs a login even for public packages. Create a [personal access token (classic) with `read:packages`](https://github.com/settings/tokens), then log in once for the scope (use the token as the password):
 
-```ini
-@linuxdevil:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```bash
+npm login --scope=@linuxdevil --auth-type=legacy --registry=https://npm.pkg.github.com
 ```
 
 Install the SDK under the plain name `lousho` with an npm alias, so imports stay `from 'lousho'`:
