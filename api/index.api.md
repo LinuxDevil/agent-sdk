@@ -404,7 +404,7 @@ export interface AgentSpecV2 {
     fallbackModels?: string[];
     flow?: never;
     guardrails?: GuardrailSpec[];
-    handoffs?: never;
+    handoffs?: HandoffSpec[];
     hooks?: HookSpec[];
     instructions: string | {
         file: string;
@@ -3109,6 +3109,15 @@ export interface HandoffOptions {
     onHandoff?: (data: HandoffInputData & {
         sessionId?: string;
     }) => void | Promise<void>;
+    toolName?: string;
+}
+
+// @public
+interface HandoffSpec {
+    agent: string;
+    description?: string;
+    inputFilter?: 'removeToolCalls' | 'lastUserMessage';
+    inputJsonSchema?: Record<string, unknown>;
     toolName?: string;
 }
 

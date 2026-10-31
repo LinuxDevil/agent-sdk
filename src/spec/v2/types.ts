@@ -14,6 +14,7 @@ import type { ReasoningOption } from '../../providers/reasoning';
 import type { BackoffOptions } from '../../providers/resilience';
 import type { SubagentOptions } from '../../subagents/backgroundTasks';
 import type { GuardrailSpec } from './guardrails';
+import type { HandoffSpec } from './handoffs';
 import type { HookSpec } from './hooks';
 import type { McpServerSpecV2 } from './mcpServers';
 import type { OutputSpecV2 } from './output';
@@ -85,8 +86,8 @@ export interface AgentSpecV2 {
   memory?: never; // S13
   /** Sub-agents this agent can delegate to with the `task` tool (S08), keyed by their `sub:<name>` names. */
   subagents?: Record<string, SubagentSpec>; // S08
-  /** Agents this agent can hand the conversation to (S09); not supported yet. */
-  handoffs?: never; // S09
+  /** Agents this agent can hand the conversation to (S09). */
+  handoffs?: HandoffSpec[]; // S09
   /** Input, output and tool guardrails of each run (S11). */
   guardrails?: GuardrailSpec[]; // S11
   /** Permission rules over tool calls (S10). */
