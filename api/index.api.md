@@ -2997,6 +2997,9 @@ export interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote
 }
 
 // @public
+export function guardrailsFromSpec(entries: readonly GuardrailSpec[]): AgentGuardrails | undefined;
+
+// @public
 type GuardrailSide = 'input' | 'output' | 'tools';
 
 // @public
@@ -3089,6 +3092,14 @@ export const handoffFilters: {
     removeToolCalls(data: HandoffInputData): Message[];
     lastUserMessage(data: HandoffInputData): Message[];
 };
+
+// @public
+export function handoffFromSpec(spec: HandoffSpec, host: HandoffHost, index: number): Promise<Handoff>;
+
+// @public
+interface HandoffHost {
+    resolveHandoffAgent?(agent: string): Promise<SimpleAgent>;
+}
 
 // @public
 export interface HandoffInputData {
@@ -3194,6 +3205,9 @@ export class HookRegistry {
     size(): number;
     unregister(name: string): boolean;
 }
+
+// @public
+export function hooksFromSpec(hooks: readonly HookSpec[], host: HookHost): Promise<AgentHook[]>;
 
 // @public
 type HookSpec = {
@@ -3536,6 +3550,20 @@ export interface IToolRegistry {
     // (undocumented)
     register(name: string, descriptor: ToolDescriptor): void;
 }
+
+// @public
+export function jsonSchemaToStandardSchema(schema: Record<string, unknown>): StandardSchemaV1<unknown, unknown> & {
+    readonly '~standard': StandardSchemaV1['~standard'] & {
+        readonly jsonSchema: {
+            input(options?: {
+                target?: string;
+            }): Record<string, unknown>;
+            output(options?: {
+                target?: string;
+            }): Record<string, unknown>;
+        };
+    };
+};
 
 // @public
 export function jsonSchemaToZod(schema: unknown, root?: unknown): ZodTypeAny;
@@ -4077,6 +4105,16 @@ export type MemoryExecHandler = (command: string, options: ShellExecOptions) => 
 
 // @public
 export type MemoryExecReply = Partial<ShellExecResult>;
+
+// @public
+export function memoryFromSpec(spec: MemorySpec, host: MemoryHost): Promise<MemorySlot>;
+
+// @public
+interface MemoryHost {
+    baseDir: string;
+    resolveEmbedder?: (id: string) => EmbeddingProvider | Promise<EmbeddingProvider>;
+    toStandardSchema?: (jsonSchema: Record<string, unknown>) => StandardSchemaV1;
+}
 
 // @public
 export interface MemoryItem {
@@ -4812,6 +4850,9 @@ export interface OutputError {
 }
 
 // @public
+export function outputFromSpec(output: OutputSpecV2): OutputSpec;
+
+// @public
 export interface OutputSpec<TSchema extends StandardSchemaV1 = StandardSchemaV1> {
     promptSchema?: boolean;
     responseFormat?: 'final' | 'always';
@@ -5020,6 +5061,9 @@ interface PermissionRuleSpec {
     ttlMs?: number;
     when?: Record<string, string | WhenArgMatcher>;
 }
+
+// @public
+export function permissionsFromSpec(rules: readonly PermissionRuleSpec[]): PermissionRule[];
 
 // @public
 export type PermissionToolMatcher = string | readonly string[] | RegExp;
@@ -5591,16 +5635,31 @@ export interface ResolvedHandoff {
 }
 
 // @public
+type ResolvedTools = Record<string, ToolDescriptor | HostedTool>;
+
+// @public
 export function resolveHistoryLimit(limit: number | undefined): number;
 
 // @public
+export function resolveMcpServers(servers: Readonly<Record<string, McpServerSpecV2>>, host: SecretHost): Promise<Record<string, McpServerSpec>>;
+
+// @public
 export function resolveProvider(spec: string): LLMProvider;
+
+// @public
+export function resolveSecretRef(ref: SecretRef, host: SecretHost, field: string): Promise<string>;
+
+// @public
+export function resolveSkillRef(ref: SkillRef, host: SkillHost): Promise<Skill[]>;
 
 // @public
 export function resolveSpecProvider(type: string, model: string): LLMProvider;
 
 // @public
 export function resolveSpecTool(name: string): ToolDescriptor;
+
+// @public
+export function resolveToolRef(ref: ToolRef, host: ToolRefHost, field: string): Promise<ResolvedTools>;
 
 // @public
 interface ResponseWatch {
@@ -6362,6 +6421,11 @@ export interface Skill {
 }
 
 // @public
+interface SkillHost {
+    baseDir: string;
+}
+
+// @public
 type SkillRef = {
     dir: string;
 } | {
@@ -6472,9 +6536,11 @@ export type SpecAgentV2 = SimpleAgent & {
 export type SpecGuardrailName = (typeof SPEC_GUARDRAIL_NAMES)[number];
 
 // @public
-export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'>, HookHost {
+export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'>, MemoryHost, SkillHost, HookHost {
     baseDir: string;
     exporter?: TraceExporter;
+    loadAgentRef?(ref: string): Promise<AgentSpecV2>;
+    resolveHandoffAgent?(agent: string): Promise<SimpleAgent>;
     store?: AgentStore;
 }
 
@@ -6506,7 +6572,6 @@ type StandardResult<Output> = {
 
 // @public
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
-    // (undocumented)
     readonly '~standard': {
         readonly version: 1;
         readonly vendor: string;
@@ -6631,6 +6696,15 @@ export interface SubagentCatalog {
     list(): readonly SubagentSummary[] | Promise<readonly SubagentSummary[]>;
     // (undocumented)
     resolve(name: string): LocalOrRemoteSubagent | undefined | Promise<LocalOrRemoteSubagent | undefined>;
+}
+
+// @public
+export function subagentFromSpec(name: string, spec: SubagentSpec_2, host: SubagentHost): Promise<SimpleAgent | RemoteSubagent>;
+
+// @public
+interface SubagentHost extends SecretHost {
+    buildAgent(spec: InlineAgentSpec, name: string, path: string): Promise<SimpleAgent>;
+    loadAgentRef?(ref: string): Promise<AgentSpecV2>;
 }
 
 // @public

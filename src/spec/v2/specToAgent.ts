@@ -1,8 +1,9 @@
 /**
  * specV2ToAgent(): compiles a validated AgentSpec v2 into a live
  * createAgent() agent — the async v2 counterpart of v1's sync specToAgent().
- * SECTION_COMPILERS covers the plain-data keys, `tools`, `mcpServers` and
- * `output`; later tickets append the remaining sections to the same list.
+ * SECTION_COMPILERS covers the plain-data keys, `tools`, `mcpServers`,
+ * `output` and, through ./sections.ts, `skills`, `memory`, `subagents`,
+ * `handoffs`, `guardrails`, `permissions` and `hooks`.
  * Node-only: `instructions.file` reads under host.baseDir and the tool
  * resolvers load code, so this file is never part of the browser-safe
  * spec entry.
@@ -19,6 +20,7 @@ import { outputFromSpec } from './jsonSchemaAdapter';
 import { parseAgentSpecV2 } from './parse';
 import { resolveMcpServers } from './resolve/mcpServers';
 import { resolveToolRef, type ResolvedTools } from './resolve/tools';
+import { sectionCompilers } from './sections';
 import type { SpecHost } from './host';
 import type { AgentSpecV2 } from './types';
 
@@ -142,8 +144,19 @@ const mcpSection: SectionCompiler = async (spec, host, out) => {
 /** `spec.output` → `output` through the JSON-Schema → Standard-Schema adapter. */
 const outputSection: SectionCompiler = async (spec) => (spec.output === undefined ? {} : { output: outputFromSpec(spec.output) });
 
-/** The section compilers, run in order; later tickets append theirs. */
-const SECTION_COMPILERS: readonly SectionCompiler[] = [dataSection, toolsSection, mcpSection, outputSection];
+/**
+ * The section compilers, run in order: S16a's core four, then S16b's
+ * skills/memory/subagents/handoffs/guardrails/permissions/hooks from
+ * ./sections.ts (specV2ToAgent is passed in so inline and `{ ref }`
+ * sub-agents recurse through this same pipeline — no import cycle).
+ */
+const SECTION_COMPILERS: readonly SectionCompiler[] = [
+  dataSection,
+  toolsSection,
+  mcpSection,
+  outputSection,
+  ...sectionCompilers(specV2ToAgent),
+];
 
 /**
  * spec → createAgent config; no agent built. `spec` is taken as already
