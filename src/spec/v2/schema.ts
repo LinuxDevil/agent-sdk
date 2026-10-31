@@ -15,6 +15,7 @@ import { memoryListSchema } from './memory';
 import { outputSpecSchema } from './output';
 import { permissionListSchema } from './permissions';
 import { runtimeShape } from './runtime';
+import { skillRefListSchema } from './skills';
 import { subagentsSchemaOf, TOP_LEVEL_ONLY_KEYS } from './subagents';
 import { toolRefListSchema } from './tools';
 import { pendingField } from './unsupported';
@@ -73,7 +74,7 @@ export const agentSpecV2Shape = {
     .optional(),
   ...runtimeShape,
   tools: toolRefListSchema.optional(),
-  skills: pendingField('skills'),
+  skills: skillRefListSchema.optional(),
   memory: memoryListSchema.optional(),
   subagents: subagentsSchemaOf(inlineAgentSchema).optional(),
   handoffs: handoffListSchema.optional(),
