@@ -429,7 +429,7 @@ export interface AgentSpecV2 {
     retry?: false | AgentSpecV2Retry;
     skills?: never;
     subagentOptions?: Omit<SubagentOptions, 'sessions'>;
-    subagents?: never;
+    subagents?: Record<string, SubagentSpec_2>;
     tools?: ToolRef[];
     toolSearch?: false | Omit<ToolSearchOptions, 'search'>;
     triggers?: never;
@@ -3316,6 +3316,11 @@ export function includes(needle: string): Check<string>;
 
 // @public
 export type InferSchemaOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output'];
+
+// @public
+type InlineAgentSpec = Omit<AgentSpecV2, 'version' | 'triggers' | 'abortListeners' | 'flow' | 'evals' | 'description'> & {
+    description: string;
+};
 
 // @public
 export class InMemoryApprovalStore implements ApprovalStore {
@@ -6574,6 +6579,19 @@ interface SubagentSpec {
     toolRegistry?: ToolRegistry;
     toolSearch?: false | ToolSearchOptions;
 }
+
+// @public
+type SubagentSpec_2 = {
+    ref: string;
+} | {
+    inline: InlineAgentSpec;
+} | {
+    remote: {
+        url: string;
+        auth?: SecretRef;
+        description: string;
+    };
+};
 
 // @public
 export interface SubagentSummary {

@@ -17,6 +17,7 @@ import type { GuardrailSpec } from './guardrails';
 import type { McpServerSpecV2 } from './mcpServers';
 import type { OutputSpecV2 } from './output';
 import type { PermissionRuleSpec } from './permissions';
+import type { SecretRef } from './secrets';
 import type { ToolRef } from './tools';
 
 /** AgentSpec v2. Hand-written and kept in lockstep with schema.ts, like v1's AgentSpec. */
@@ -81,8 +82,8 @@ export interface AgentSpecV2 {
   skills?: never; // S14
   /** Long-term memory slots (S13); not supported yet. */
   memory?: never; // S13
-  /** Sub-agents this agent can delegate to (S08); not supported yet. */
-  subagents?: never; // S08
+  /** Sub-agents this agent can delegate to with the `task` tool (S08), keyed by their `sub:<name>` names. */
+  subagents?: Record<string, SubagentSpec>; // S08
   /** Agents this agent can hand the conversation to (S09); not supported yet. */
   handoffs?: never; // S09
   /** Input, output and tool guardrails of each run (S11). */
@@ -102,6 +103,33 @@ export interface AgentSpecV2 {
   /** Eval gates the publish gate runs (X01); not supported yet. */
   evals?: never; // X01
 }
+
+/** A sub-agent written inline: an AgentSpecV2 without the keys only a top-level agent has. `description` is required. */
+export type InlineAgentSpec = Omit<AgentSpecV2, 'version' | 'triggers' | 'abortListeners' | 'flow' | 'evals' | 'description'> & {
+  /** What this sub-agent does; the lead model reads it to decide which sub-agent to delegate to. */
+  description: string;
+};
+
+/** One entry of `spec.subagents`: an embedded spec, a spec file or agent folder under the base directory, or a deployed agent. */
+export type SubagentSpec =
+  | {
+      /** Agent spec file (.yaml/.yml/.json) or agent folder, relative to baseDir. */
+      ref: string;
+    }
+  | {
+      /** An agent spec embedded in this one. */
+      inline: InlineAgentSpec;
+    }
+  | {
+      remote: {
+        /** Base URL of the deployed agent; the task goes to `<url>/chat`. */
+        url: string;
+        /** Bearer token of the deployment, as a SecretRef (never a literal: a spec is a file in git). */
+        auth?: SecretRef;
+        /** What the remote agent is for, shown to the lead model. */
+        description: string;
+      };
+    };
 
 /** `compaction` as data (AgentCompactionOptions minus `strategy` / `onCompaction`; `summarizer` is a 'provider/model' string). */
 export interface AgentSpecV2Compaction {
