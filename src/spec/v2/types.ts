@@ -14,6 +14,7 @@ import type { ReasoningOption } from '../../providers/reasoning';
 import type { BackoffOptions } from '../../providers/resilience';
 import type { SubagentOptions } from '../../subagents/backgroundTasks';
 import type { GuardrailSpec } from './guardrails';
+import type { HookSpec } from './hooks';
 import type { McpServerSpecV2 } from './mcpServers';
 import type { OutputSpecV2 } from './output';
 import type { PermissionRuleSpec } from './permissions';
@@ -90,8 +91,8 @@ export interface AgentSpecV2 {
   guardrails?: GuardrailSpec[]; // S11
   /** Permission rules over tool calls (S10). */
   permissions?: PermissionRuleSpec[]; // S10
-  /** Hooks run around model and tool calls (S12); not supported yet. */
-  hooks?: never; // S12
+  /** Hooks run around model and tool calls (S12): files under the base folder or host-sandboxed inline code. */
+  hooks?: HookSpec[]; // S12
   /** Structured output: a JSON Schema the final reply is validated into `result.object` with (S15). */
   output?: OutputSpecV2; // S15
   /** Triggers that start runs (S22); not supported yet. */

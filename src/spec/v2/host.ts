@@ -7,16 +7,18 @@
  */
 import type { TraceExporter } from '../../execution/tracing';
 import type { AgentStore } from '../../storage/agentStore';
+import type { HookHost } from './resolve/hooks';
 import type { SecretHost } from './resolve/secrets';
 import type { ToolRefHost } from './resolve/tools';
 
 /**
  * The host specV2ToAgent()/compileSpec() compile against: SecretHost for
- * `{ env }`/`{ secret }` refs, ToolRefHost's baseDir (required here) and
- * the createAgent() options only a host can supply. `agentName` is taken
- * from the spec, not the host.
+ * `{ env }`/`{ secret }` refs, ToolRefHost's baseDir (required here),
+ * HookHost's `inlineHook` sandbox runner (absent → inline hooks are
+ * unsupported) and the createAgent() options only a host can supply.
+ * `agentName` is taken from the spec, not the host.
  */
-export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'> {
+export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'>, HookHost {
   /** Directory `instructions.file` and `{ file }`/`{ registry }` tool refs resolve against. Required here (ToolRefHost's is optional). */
   baseDir: string;
   /** Trace exporter the built agent runs with (createAgent's `exporter`). */

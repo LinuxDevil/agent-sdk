@@ -405,7 +405,7 @@ export interface AgentSpecV2 {
     flow?: never;
     guardrails?: GuardrailSpec[];
     handoffs?: never;
-    hooks?: never;
+    hooks?: HookSpec[];
     instructions: string | {
         file: string;
     };
@@ -3130,6 +3130,9 @@ interface HmacWebhookAuth {
 }
 
 // @public
+const HOOK_POINTS: readonly ["preToolCall", "postToolCall", "preGenerate", "postGenerate"];
+
+// @public
 const HOOK_REGISTRY_BRAND: unique symbol;
 
 // @public
@@ -3146,6 +3149,17 @@ export interface HookContext {
 export type HookEventPayload = Extract<AgentEventPayload, {
     type: 'compaction.start' | 'compaction.done';
 }>;
+
+// @public
+interface HookHost {
+    baseDir?: string;
+    inlineHook?(hook: InlineHookSpec & {
+        id: string;
+    }): AgentHook;
+}
+
+// @public
+type HookPoint = (typeof HOOK_POINTS)[number];
 
 // @public
 export class HookRegistry {
@@ -3165,6 +3179,15 @@ export class HookRegistry {
     size(): number;
     unregister(name: string): boolean;
 }
+
+// @public
+type HookSpec = {
+    id: string;
+    file: string;
+} | {
+    id: string;
+    inline: InlineHookSpec;
+};
 
 // @public
 export interface HostedTool {
@@ -3321,6 +3344,14 @@ export type InferSchemaOutput<S extends StandardSchemaV1> = NonNullable<S['~stan
 type InlineAgentSpec = Omit<AgentSpecV2, 'version' | 'triggers' | 'abortListeners' | 'flow' | 'evals' | 'description'> & {
     description: string;
 };
+
+// @public
+interface InlineHookSpec {
+    code: string;
+    enabled?: boolean;
+    name: string;
+    point: HookPoint;
+}
 
 // @public
 export class InMemoryApprovalStore implements ApprovalStore {
@@ -6367,7 +6398,7 @@ export type SpecAgentV2 = SimpleAgent & {
 export type SpecGuardrailName = (typeof SPEC_GUARDRAIL_NAMES)[number];
 
 // @public
-export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'> {
+export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'>, HookHost {
     baseDir: string;
     exporter?: TraceExporter;
     store?: AgentStore;
