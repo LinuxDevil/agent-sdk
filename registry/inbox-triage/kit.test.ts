@@ -5,7 +5,7 @@
  * lands in the outbox). The store is a temp dir via INBOX_TRIAGE_HOME so the
  * kit's seeded data/ stays untouched.
  *
- * The kit's files import `@lousho/build-ai-agent` by name, which resolves to
+ * The kit's files import `lousho` by name, which resolves to
  * the workspace self-link (dist/) inside this repo - like
  * examples/coding-harness/kit.test.ts this needs `npm run build` to have run.
  */
@@ -13,9 +13,9 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { loadAgentDir, resolveAgentDir, startSchedules } from '@lousho/build-ai-agent';
-import type { ChannelContext, ChannelInbound, ChannelRequest } from '@lousho/build-ai-agent';
-import { mockModel, type MockModel } from '@lousho/build-ai-agent/testing';
+import { loadAgentDir, resolveAgentDir, startSchedules } from 'lousho';
+import type { ChannelContext, ChannelInbound, ChannelRequest } from 'lousho';
+import { mockModel, type MockModel } from 'lousho/testing';
 
 const KIT = __dirname;
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'inbox-triage-'));

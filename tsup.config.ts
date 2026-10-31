@@ -90,7 +90,7 @@ export default defineConfig([
   },
   {
     /**
-     * The Worker-safe `@lousho/build-ai-agent/worker` entry (#289), built
+     * The Worker-safe `lousho/worker` entry (#289), built
      * with the same shims `lousho build --target=cloudflare-worker` applies,
      * so the published file has no `node:` import for a hand-written
      * Worker's bundler to fail on. A separate config because the plugins

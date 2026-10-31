@@ -15,8 +15,8 @@
  */
 import * as http from 'node:http';
 import { closeServer, listenOn, sendJson, sendNotFound } from './httpHelpers';
-import { AgentExecutor, ExecuteOptions } from '@lousho/build-ai-agent/executor';
-import { ExecutionResult } from '@lousho/build-ai-agent';
+import { AgentExecutor, ExecuteOptions } from 'lousho/executor';
+import { ExecutionResult } from 'lousho';
 
 /**
  * A single error/incident signal from a monitoring source.

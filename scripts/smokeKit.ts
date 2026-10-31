@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export const SDK_NAME = '@lousho/build-ai-agent';
+export const SDK_NAME = 'lousho';
 export const IS_WIN = process.platform === 'win32';
 
 /** Optional peers: a subpath whose load fails because one of these is absent is checked by file existence only. */

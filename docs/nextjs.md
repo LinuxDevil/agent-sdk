@@ -13,7 +13,7 @@ prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`
 
 ```ts
 // app/api/agent/[[...path]]/route.ts
-import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, createRouteHandler, memoryStore } from 'lousho';
 
 // `store` is what lets a session survive across requests: without one every
 // `agent.session({ id })` the handler opens gets a fresh in-memory transcript,
@@ -36,7 +36,7 @@ and spend your model budget. Pass a bearer token, or a function that checks your
 own session or cookie:
 
 ```ts
-import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
+import { createAgent, createRouteHandler } from 'lousho';
 
 declare function isSignedIn(request: Request): Promise<boolean>;
 
@@ -89,8 +89,8 @@ customer's session (`GET /chat/:id`, to show what they are approving) and to
 decide in it; by default the session belongs to the customer alone:
 
 ```ts
-import { createAgent, createRouteHandler, memoryStore } from '@lousho/build-ai-agent';
-import { jwt } from '@lousho/build-ai-agent/auth';
+import { createAgent, createRouteHandler, memoryStore } from 'lousho';
+import { jwt } from 'lousho/auth';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', store: memoryStore() });
 const isSupervisor = (principal?: { claims?: Readonly<Record<string, unknown>> }) => principal?.claims?.role === 'supervisor';
@@ -131,7 +131,7 @@ see [Route auth and principals](./auth.md).
 
 ```tsx no-verify
 'use client';
-import { useLoushoAgent } from '@lousho/build-ai-agent/react';
+import { useLoushoAgent } from 'lousho/react';
 
 export function Chat() {
   const agent = useLoushoAgent({ url: '/api/agent', headers: { Authorization: `Bearer ${token}` } }, { approvalsUrl: '/api/agent/approvals' });
@@ -158,7 +158,7 @@ const { messages, sendMessage } = useChat({ transport: new DefaultChatTransport(
 The same handler, mounted where the framework wants it:
 
 ```ts
-import { createAgent, createRouteHandler } from '@lousho/build-ai-agent';
+import { createAgent, createRouteHandler } from 'lousho';
 
 const { handler } = createRouteHandler(createAgent({ model: 'openai/gpt-4o-mini' }), { basePath: '/agent', auth: 'secret' });
 

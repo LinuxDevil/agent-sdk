@@ -18,7 +18,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run build:studio
-      - run: npm run build -w create-lousho-agent
+      - run: npm run build -w create-lousho
       - run: node scripts/publish-github-packages.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

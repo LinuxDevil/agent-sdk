@@ -25,8 +25,8 @@
  *   daemon unchanged.
  */
 import type { Express, Request, Response } from 'express';
-import type { AgentSpec } from '@lousho/build-ai-agent';
-import { evaluatorTraceFrom, type EvaluatorTrace, type ObservationRow } from '@lousho/build-ai-agent/traces';
+import type { AgentSpec } from 'lousho';
+import { evaluatorTraceFrom, type EvaluatorTrace, type ObservationRow } from 'lousho/traces';
 import { buildAgentFromSpec } from './buildAgent';
 import { daemonHeaders, observeTarget } from './observeProxy';
 import { providerOf } from './playground';

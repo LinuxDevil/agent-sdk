@@ -35,7 +35,7 @@ npm install quickjs-emscripten@^0.32.0
 ```
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const prices: Record<string, number> = { apple: 1.2, pear: 0.8, plum: 2 };

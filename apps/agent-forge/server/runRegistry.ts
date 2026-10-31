@@ -10,10 +10,10 @@
  */
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { fanOutExporters, fileTraceExporter, type ObserveExporterOptions } from '@lousho/build-ai-agent/traces';
+import { fanOutExporters, fileTraceExporter, type ObserveExporterOptions } from 'lousho/traces';
 import { agentTraceDir } from './traceStore';
 import { observeReporting, withoutCapturedContent, type ObserveReporting } from './observeReporting';
-import { AgentExecutor, ToolRegistry, resumeAfterApproval } from '@lousho/build-ai-agent/executor';
+import { AgentExecutor, ToolRegistry, resumeAfterApproval } from 'lousho/executor';
 import {
   type AgentEvent,
   type CheckpointStore,
@@ -28,8 +28,8 @@ import {
   type CheckpointHistoryEntry,
   type ForkPatch,
   type TrajectoryComparison,
-} from '@lousho/build-ai-agent';
-import { FlowExecutor, type AgentFlow } from '@lousho/build-ai-agent/flows';
+} from 'lousho';
+import { FlowExecutor, type AgentFlow } from 'lousho/flows';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
@@ -643,10 +643,10 @@ export class RunManager extends EventEmitter {
     agentId: string,
     flow: AgentFlow,
     deps: {
-      agent: import('@lousho/build-ai-agent').AgentConfig;
-      provider: import('@lousho/build-ai-agent').LLMProvider;
+      agent: import('lousho').AgentConfig;
+      provider: import('lousho').LLMProvider;
       toolRegistry?: ToolRegistry;
-      sandbox: import('@lousho/build-ai-agent').SandboxAdapter;
+      sandbox: import('lousho').SandboxAdapter;
     }
   ): void {
     FlowExecutor.execute(

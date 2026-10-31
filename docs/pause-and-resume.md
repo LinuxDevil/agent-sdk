@@ -13,7 +13,7 @@ section links to the page that has the full detail.
 Set `needsApproval` on the tool. The run pauses before the tool executes:
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 export const refund = defineTool({
@@ -41,9 +41,9 @@ shared by several processes on one host) or `fileStore(dir)` (plain JSON files).
 `finishReason: 'awaiting-approval'` and the id to decide:
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
-import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool } from 'lousho';
+import { SqliteStore } from 'lousho/sqlite';
+import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
 const refund = defineTool({
@@ -78,9 +78,9 @@ run left in the store. `agent.approvals.resolve()` runs the call (or rejects it)
 continues the run, and resolves with the result:
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
-import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool } from 'lousho';
+import { SqliteStore } from 'lousho/sqlite';
+import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
 const refund = defineTool({
@@ -135,8 +135,8 @@ This snippet stands in for the crash with a tool that throws
 step), then recovers:
 
 ```ts
-import { createAgent, defineTool, memoryStore, PropagatingToolError } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool, memoryStore, PropagatingToolError } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
 let charges = 0;

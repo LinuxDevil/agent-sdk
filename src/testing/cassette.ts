@@ -214,7 +214,7 @@ function readSdkVersion(): string {
         name?: string;
         version?: string;
       };
-      if (manifest.name === '@lousho/build-ai-agent' && manifest.version) return manifest.version;
+      if (manifest.name === 'lousho' && manifest.version) return manifest.version;
     } catch {
       // keep walking up
     }

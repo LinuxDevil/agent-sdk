@@ -6,13 +6,13 @@ sources, the same state and the same actions, over the same
 field means, the two kinds of source, how approvals work and the server side;
 this page covers what differs.
 
-It lives in the `@lousho/build-ai-agent/svelte` subpath. The store implements
+It lives in the `lousho/svelte` subpath. The store implements
 Svelte's store contract (`subscribe(run) => unsubscribe`) by hand, so it works
 with `$agent` in Svelte 4 and 5 and needs no `svelte` import: there is no peer
 dependency to install.
 
 ```ts
-import { loushoAgent } from '@lousho/build-ai-agent/svelte';
+import { loushoAgent } from 'lousho/svelte';
 
 // In a component's <script lang="ts">, or a module that several components share:
 export const agent = loushoAgent({ url: '/api/agent' }, { approvalsUrl: '/api/approvals' });
@@ -71,7 +71,7 @@ snippets here):
 
 The reducer and the stream parser are exported from this subpath too
 (`reduceAgentEvents`, `initialAgentUIState`, `parseEventStream`), the same
-ones as in `@lousho/build-ai-agent/react`.
+ones as in `lousho/react`.
 
 ## Todos
 
@@ -83,7 +83,7 @@ the same stream as the chat, and notifies only when the list changes (see
 [React](./react.md#todos)).
 
 ```ts
-import { loushoAgent, loushoTodos } from '@lousho/build-ai-agent/svelte';
+import { loushoAgent, loushoTodos } from 'lousho/svelte';
 
 export const agent = loushoAgent({ url: '/api/agent' });
 export const plan = loushoTodos(agent);

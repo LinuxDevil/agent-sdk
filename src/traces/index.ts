@@ -1,5 +1,5 @@
 /**
- * `@lousho/build-ai-agent/traces`: local trace files for `lousho traces`.
+ * `lousho/traces`: local trace files for `lousho traces`.
  * A subpath of its own because it uses `node:fs`.
  */
 export { fileTraceExporter, type FileTraceExporterOptions } from './fileTraceExporter';

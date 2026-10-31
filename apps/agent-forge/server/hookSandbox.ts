@@ -24,7 +24,7 @@
  * chance to mediate it exactly like it would for a sandboxed tool.
  */
 
-import type { SandboxAdapter } from '@lousho/build-ai-agent';
+import type { SandboxAdapter } from 'lousho';
 
 /** Generic ctx payload shape a hook script receives/returns (HookContext family, minus non-serializable fields like `messages`/`toolCall`). */
 export type HookSandboxCtx = Record<string, unknown>;

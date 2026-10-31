@@ -30,7 +30,7 @@ export interface HttpChannelOptions {
  *
  * @example
  * ```ts
- * import { httpChannel } from '@lousho/build-ai-agent';
+ * import { httpChannel } from 'lousho';
  *
  * const api = httpChannel({ verify: async (req) => req.headers.authorization === `Bearer ${process.env.API_TOKEN}` });
  * ```

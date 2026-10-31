@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-`@lousho/build-ai-agent` is in the 1.0.0 alpha line on npm. Until 1.0 ships,
+`lousho` is in the 1.0.0 alpha line on npm. Until 1.0 ships,
 only the latest alpha release receives security fixes. If you are on an older
 alpha, upgrade before reporting, and confirm the issue still reproduces.
 
@@ -22,7 +22,7 @@ tab and choose **Report a vulnerability**, or go straight to
 
 Please include:
 
-- the affected version (`npm ls @lousho/build-ai-agent`) and Node.js version;
+- the affected version (`npm ls lousho`) and Node.js version;
 - the deployment target, if relevant (`node-server`, `docker`,
   `cloudflare-worker`, or embedded in your own code);
 - a description of the impact: what an attacker can read, change or run;

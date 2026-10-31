@@ -1,10 +1,10 @@
 /**
- * The Worker-safe entry point `@lousho/build-ai-agent/worker` (#289): what a
+ * The Worker-safe entry point `lousho/worker` (#289): what a
  * hand-written Cloudflare Worker imports `createAgent` and friends from.
  *
  * The package root (`src/index.ts`) also exports file stores, the
  * agent-directory loader, MCP over stdio, sandboxes and other Node-only
- * modules, so `import { createAgent } from '@lousho/build-ai-agent'` cannot
+ * modules, so `import { createAgent } from 'lousho'` cannot
  * be bundled for a Worker: esbuild fails resolving `node:fs`, `node:crypto`
  * & co. This entry exports `createAgent` and the rest of what a Worker can
  * run, and the SDK's own build produces it through workerEntryPlugins()

@@ -9,15 +9,15 @@
 export { VERSION } from './version';
 
 // The executor API (AgentBuilder, AgentExecutor, resume functions,
-// ToolRegistry) moved to '@lousho/build-ai-agent/executor'.
+// ToolRegistry) moved to 'lousho/executor'.
 
 // Type exports
 export * from './types';
 
-// Tools (ToolRegistry moved to '@lousho/build-ai-agent/executor')
+// Tools (ToolRegistry moved to 'lousho/executor')
 export * from './tools/rootTools';
 
-// Flows moved to '@lousho/build-ai-agent/flows'.
+// Flows moved to 'lousho/flows'.
 
 
 
@@ -39,7 +39,7 @@ export * from './security';
 // boundary, not a security boundary - see docs/specs/0001-observability-platform/0001-sandboxing.md.
 export * from './sandbox';
 
-// Storage moved to '@lousho/build-ai-agent/utils'.
+// Storage moved to 'lousho/utils'.
 
 
 // Token estimation and model registry
@@ -49,7 +49,7 @@ export * from './models';
 export * from './context';
 
 // Utils: the error helpers stay on the root; encryption, StorageService and
-// the validators moved to '@lousho/build-ai-agent/utils'.
+// the validators moved to 'lousho/utils'.
 export * from './utils/errors';
 export * from './utils/errorCodes';
 
@@ -64,7 +64,7 @@ export * from './createAgent';
 export { createAgent } from './createAgent';
 // Handoffs: hand the conversation to another agent
 export * from './handoffs';
-// Who is calling: the helpers live in '@lousho/build-ai-agent/auth'; the type rides in SendOptions.
+// Who is calling: the helpers live in 'lousho/auth'; the type rides in SendOptions.
 export type { Principal } from './auth/types';
 export type { AgentApprovals, ApproveToolCall, ResolveApprovalOptions } from './createAgentApprovals';
 export type { PendingRun } from './agentPending';

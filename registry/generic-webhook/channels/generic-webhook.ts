@@ -1,4 +1,4 @@
-import { webhookChannel } from '@lousho/build-ai-agent';
+import { webhookChannel } from 'lousho';
 
 // Verifies `x-signature-256: sha256=<hmac of the raw body>` against WEBHOOK_SECRET
 // (the format GitHub webhooks use). The channel refuses to load when the secret

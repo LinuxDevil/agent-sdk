@@ -1,9 +1,9 @@
-# create-lousho-agent
+# create-lousho
 
-Scaffold a new [`@lousho/build-ai-agent`](https://www.npmjs.com/package/@lousho/build-ai-agent) project with one command:
+Scaffold a new [`lousho`](https://www.npmjs.com/package/lousho) project with one command:
 
 ```bash
-npm create lousho-agent my-agent
+npm create lousho my-agent
 cd my-agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your API key in it
 npm run dev              # chat with your agent in the terminal
@@ -29,12 +29,12 @@ Without arguments it asks for the directory, the provider and the template. For 
 With npm, put the options after `--`:
 
 ```bash
-npm create lousho-agent my-agent -- --yes --provider anthropic --template tools
+npm create lousho my-agent -- --yes --provider anthropic --template tools
 ```
 
-Running a packed `.tgz` of this package on Windows: `npx C:\abs\path\create-lousho-agent-<version>.tgz` silently does nothing (an npm quirk with absolute drive-letter paths). Use a relative path (`npx ./create-lousho-agent-<version>.tgz my-agent`) or a `file:` spec (`npx file:C:/abs/path/create-lousho-agent-<version>.tgz my-agent`).
+Running a packed `.tgz` of this package on Windows: `npx C:\abs\path\create-lousho-<version>.tgz` silently does nothing (an npm quirk with absolute drive-letter paths). Use a relative path (`npx ./create-lousho-<version>.tgz my-agent`) or a `file:` spec (`npx file:C:/abs/path/create-lousho-<version>.tgz my-agent`).
 
-This package is a thin wrapper: it runs `lousho init` from the SDK, so `npx @lousho/build-ai-agent init --help` lists every option.
+This package is a thin wrapper: it runs `lousho init` from the SDK, so `npx lousho init --help` lists every option.
 
 ## Links
 

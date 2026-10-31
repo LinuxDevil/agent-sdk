@@ -1,6 +1,6 @@
 /**
  * Utilities
- * The `@lousho/build-ai-agent/utils` subpath: encryption, the StorageService
+ * The `lousho/utils` subpath: encryption, the StorageService
  * and the stores built on it, and the small validators. These used to ship
  * on the package root; the error helpers (`errors`, `errorCodes`) stayed on
  * the root and are NOT re-exported here.

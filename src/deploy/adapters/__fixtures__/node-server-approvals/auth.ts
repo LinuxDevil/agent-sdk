@@ -1,5 +1,5 @@
-import { apiToken } from '@lousho/build-ai-agent/auth';
-import type { ApprovalAccessRequest, SessionAccessRequest } from '@lousho/build-ai-agent';
+import { apiToken } from 'lousho/auth';
+import type { ApprovalAccessRequest, SessionAccessRequest } from 'lousho';
 
 // One token per user; the principal's id is the user.
 export default [apiToken('alice-token', { id: 'alice' }), apiToken('bob-token', { id: 'bob' }), apiToken('manager-token', { id: 'manager' })];

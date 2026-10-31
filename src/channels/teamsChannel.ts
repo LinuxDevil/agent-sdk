@@ -146,7 +146,7 @@ const submit = (title: string, data: Decision) => ({ type: 'Action.Submit', titl
  *
  * @example
  * ```ts
- * import { teamsChannel } from '@lousho/build-ai-agent';
+ * import { teamsChannel } from 'lousho';
  *
  * const teams = teamsChannel({
  *   appId: process.env.MICROSOFT_APP_ID ?? '',

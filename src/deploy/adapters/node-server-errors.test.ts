@@ -26,7 +26,7 @@ describe('node-server build errors', () => {
   it('reports an unresolved import as a coded error that says what to install, and leaves no dist/', async () => {
     const dir = writeAgentDir({
       'instructions.md': 'Be brief.\n',
-      'agent.ts': "import { createMockProvider } from '@lousho/build-ai-agent';\nexport default { provider: createMockProvider({ name: 'mock', responses: ['x'] }) };\n",
+      'agent.ts': "import { createMockProvider } from 'lousho';\nexport default { provider: createMockProvider({ name: 'mock', responses: ['x'] }) };\n",
       'tools/uses-missing.ts': "import { nope } from 'definitely-not-installed-pkg';\nexport default nope;\n",
     });
     const outDir = path.join(path.dirname(dir), 'out');

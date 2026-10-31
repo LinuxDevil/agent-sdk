@@ -24,7 +24,7 @@ import { toLegacySpec } from './storage/legacySpec';
  * (`node-server`, `cloudflare-worker`, `docker`) - hand-kept in sync rather
  * than imported, because that function (and the adapter registry it
  * populates) is an internal wiring helper the SDK's public
- * `@lousho/build-ai-agent` entrypoint doesn't re-export (only the
+ * `lousho` entrypoint doesn't re-export (only the
  * `DeploymentAdapter`/`getAdapter`/`registerAdapter` TYPES are public, via
  * `src/deploy/types.ts`). `lousho build --target=<name>` is still the real
  * source of truth for what's actually buildable - an unknown/stale name

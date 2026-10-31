@@ -31,7 +31,7 @@ export interface ToolModule {
 const EXAMPLE = `Expected a tool made with defineTool(), for example:
 
   import { z } from 'zod';
-  import { defineTool } from '@lousho/build-ai-agent';
+  import { defineTool } from 'lousho';
   export default defineTool({ name: 'ping', description: 'Ping', input: z.object({}), execute: () => 'pong' });`;
 
 /** Tools found in one exported value: a tool, an array of tools, or (CJS) an exports object of tools. */
@@ -50,7 +50,7 @@ function describeExports(mod: Record<string, unknown>): string {
   const shown = names.map((n) => `${n}: ${typeof mod[n]}`).join(', ');
   return (
     `it exports { ${shown} } but none of these is a defineTool() tool ` +
-    '(if it is, check the file imports defineTool from the same copy of @lousho/build-ai-agent that loads the directory)'
+    '(if it is, check the file imports defineTool from the same copy of lousho that loads the directory)'
   );
 }
 

@@ -278,7 +278,7 @@ export function maxLengthGuardrail({ maxChars }: { maxChars: number }): IoGuardr
  *
  * @example
  * ```ts
- * import { regexGuardrail } from '@lousho/build-ai-agent';
+ * import { regexGuardrail } from 'lousho';
  *
  * const ssn = regexGuardrail({ name: 'ssn', pattern: /\b\d{3}-\d{2}-\d{4}\b/, action: 'rewrite' });
  * ```

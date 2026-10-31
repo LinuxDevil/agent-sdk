@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec } from 'lousho';
 import { HttpAgentStore, type AgentApi } from '../HttpAgentStore';
 import type { AgentStoreEntry } from '../AgentStore';
 

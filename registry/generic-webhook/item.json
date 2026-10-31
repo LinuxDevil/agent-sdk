@@ -5,5 +5,5 @@
   "permissions": {
     "env": ["WEBHOOK_SECRET"]
   },
-  "dependencies": ["@lousho/build-ai-agent"]
+  "dependencies": ["lousho"]
 }

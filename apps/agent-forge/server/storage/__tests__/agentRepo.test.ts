@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentSpecV2 } from '@lousho/build-ai-agent';
+import type { AgentSpecV2 } from 'lousho';
 import { AgentRepo, InvalidSpecError } from '../agentRepo';
 import { specHash } from '../specHash';
 import type { AgentMeta, CanvasLayout } from '../../../shared/wireTypes';

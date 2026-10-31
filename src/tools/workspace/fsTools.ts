@@ -288,8 +288,8 @@ function mutatingTools(links: LinkGuard, limits: FsLimits, approvals: FsToolAppr
  *
  * @example
  * ```ts
- * import { createAgent, createFsTools, MemoryWorkspace } from '@lousho/build-ai-agent';
- * import { mockModel } from '@lousho/build-ai-agent/testing';
+ * import { createAgent, createFsTools, MemoryWorkspace } from 'lousho';
+ * import { mockModel } from 'lousho/testing';
  * const workspace = new MemoryWorkspace({ files: { 'notes.md': '# Notes\n' } });
  * const agent = createAgent({
  *   instructions: 'You edit files in the workspace.',

@@ -1,5 +1,5 @@
 /**
- * A project scaffolded by create-lousho-agent does not install
+ * A project scaffolded by create-lousho does not install
  * `@opentelemetry/api` (an optional peer of the SDK; `ai` keeps its own copy
  * nested under node_modules/ai), so the node-server build must neither fail
  * to resolve it nor need it to start: the OTel exporter is loaded only when

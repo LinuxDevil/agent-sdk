@@ -4,7 +4,7 @@
  * spec field order so the Versions tab's change chips never reshuffle
  * between saves.
  */
-import type { AgentSpecV2 } from '@lousho/build-ai-agent';
+import type { AgentSpecV2 } from 'lousho';
 import { stableStringify } from './stableJson';
 import type { SpecSnapshot } from './wireTypes';
 

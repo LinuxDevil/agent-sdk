@@ -2,7 +2,7 @@
 
 MCP works in two directions. Your agent can call the tools of MCP servers, or
 your agent can be an MCP server that Claude Code, Cursor and other MCP clients
-call. Both live in the `@lousho/build-ai-agent/mcp` subpath, and
+call. Both live in the `lousho/mcp` subpath, and
 `@modelcontextprotocol/sdk` is an optional peer: install it to use either
 direction.
 
@@ -11,7 +11,7 @@ npm install @modelcontextprotocol/sdk
 ```
 
 `connectMcp`, `loadMcpTools` and `serveMcp` are exported from
-`@lousho/build-ai-agent/mcp`; the package root and `@lousho/build-ai-agent/tools`
+`lousho/mcp`; the package root and `lousho/tools`
 export them too. `createAgent({ mcpServers })` needs no import from the subpath.
 
 ## Use MCP servers in an agent
@@ -26,7 +26,7 @@ or `ready()`, reconnects. Without `mcpServers`, `ready()` and `close()` do nothi
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -122,8 +122,8 @@ own tools and MCP tools can sit in one list. (Spreading into one record,
 `tools: { ...mcp.tools, my_tool: myTool }`, works too.)
 
 ```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
-import { connectMcp } from '@lousho/build-ai-agent/mcp';
+import { createAgent } from 'lousho';
+import { connectMcp } from 'lousho/mcp';
 
 const mcp = await connectMcp(
   { files: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem', '.'] } },
@@ -200,7 +200,7 @@ in `loadMcpTools(client, name, { approval })`:
 `allow`, `deny` or `ask`.
 
 ```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -224,15 +224,15 @@ its tools with `loadMcpTools()`, then pass the result to `createAgent()` (or
 register it on a `ToolRegistry`):
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { loadMcpTools } from '@lousho/build-ai-agent/mcp';
+import { createAgent } from 'lousho';
+import { loadMcpTools } from 'lousho/mcp';
 
 const tools = await loadMcpTools(mcpClient, 'my-server');
 const agent = createAgent({ instructions: '...', provider, tools });
 ```
 
 `loadMcpTools` is also available from the package root and from
-`@lousho/build-ai-agent/tools`.
+`lousho/tools`.
 
 ## Serve an agent over MCP
 
@@ -241,8 +241,8 @@ optionally, some of its tools) as an MCP server, so Claude Code, Cursor and
 other MCP clients can call it.
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
-import { serveMcp } from '@lousho/build-ai-agent/mcp';
+import { createAgent, defineTool } from 'lousho';
+import { serveMcp } from 'lousho/mcp';
 import { z } from 'zod';
 
 const searchDocs = defineTool({
@@ -307,7 +307,7 @@ needs approval is never advertised read-only. The built-in `read_file`, `list_di
 `glob`, `grep`, `todo_read`, `current_date` and `day_name` tools are read-only.
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 const lookupOrder = defineTool({

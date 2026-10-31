@@ -141,6 +141,6 @@ Open an issue at <https://github.com/LinuxDevil/agent-sdk/issues>. Include:
 
 - the output of `npx lousho doctor --json`,
 - the error code (`LOUSHO_...`) and the full message,
-- the SDK version (`npm ls @lousho/build-ai-agent`) and your `ai` version.
+- the SDK version (`npm ls lousho`) and your `ai` version.
 
 Never paste an API key.

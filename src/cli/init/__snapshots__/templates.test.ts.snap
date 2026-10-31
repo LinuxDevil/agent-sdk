@@ -1,7 +1,7 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`renderProject > snapshot: anthropic / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -38,7 +38,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: anthropic / telegram agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -82,7 +82,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: anthropic / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -135,7 +135,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: google / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -172,7 +172,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: google / telegram agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -216,7 +216,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: google / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -284,8 +284,8 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
-    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^7.0.0",
+    "lousho": "^1.0.0-alpha.8",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -304,7 +304,7 @@ exports[`renderProject > snapshot: minimal package.json 1`] = `
 `;
 
 exports[`renderProject > snapshot: ollama / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -341,7 +341,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: ollama / telegram agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -385,7 +385,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: ollama / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -438,7 +438,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openai / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -475,7 +475,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openai / telegram agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -519,7 +519,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openai / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -572,7 +572,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openrouter / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -609,7 +609,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openrouter / telegram agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -653,7 +653,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: openrouter / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -706,7 +706,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: pi / minimal agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -743,7 +743,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: pi / telegram agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -787,7 +787,7 @@ export function buildAgent(provider?: LLMProvider) {
 `;
 
 exports[`renderProject > snapshot: pi / tools agent.ts 1`] = `
-"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@lousho/build-ai-agent';
+"import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
 import { z } from 'zod';
 
 /** An example tool: the model calls it when it needs the current date or time. */
@@ -857,8 +857,8 @@ exports[`renderProject > snapshot: telegram package.json 1`] = `
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
-    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^7.0.0",
+    "lousho": "^1.0.0-alpha.8",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -892,8 +892,8 @@ exports[`renderProject > snapshot: tools package.json 1`] = `
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
-    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^7.0.0",
+    "lousho": "^1.0.0-alpha.8",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -926,8 +926,8 @@ exports[`renderProject > snapshot: yaml package.json 1`] = `
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.0",
-    "@lousho/build-ai-agent": "^1.0.0-alpha.8",
     "ai": "^7.0.0",
+    "lousho": "^1.0.0-alpha.8",
     "zod": "^3.25.76"
   },
   "devDependencies": {

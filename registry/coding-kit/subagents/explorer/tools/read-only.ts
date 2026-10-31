@@ -6,7 +6,7 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createFsTools, NodeWorkspace } from '@lousho/build-ai-agent';
+import { createFsTools, NodeWorkspace } from 'lousho';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const workspace = new NodeWorkspace({ root });

@@ -2,7 +2,7 @@
  * Node runtime for generated deployment servers.
  *
  * The server.ts that the node-server/docker adapters scaffold imports
- * `@lousho/build-ai-agent/deploy-runtime`; at build time that import is
+ * `lousho/deploy-runtime`; at build time that import is
  * resolved to this file (see sdkRuntimePlugin in ./bundle.ts) and bundled
  * into dist/server.js, so the built server is self-contained.
  *

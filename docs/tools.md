@@ -9,7 +9,7 @@ accepted (`createAgent({ tools: [...] })`, `ToolRegistry.register(tool)`,
 > Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
 
 ```ts
-import { defineTool, createAgent, type ToolInput, type ToolOutput } from '@lousho/build-ai-agent';
+import { defineTool, createAgent, type ToolInput, type ToolOutput } from 'lousho';
 import { z } from 'zod';
 
 const weather = defineTool({
@@ -158,7 +158,7 @@ The transcript message carries `isError: true`; `tool-result` events, `onToolRes
 `toolErrorMessage` to `createAgent` to replace the text of `execution` errors:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   instructions: 'You answer questions about orders.',
@@ -218,7 +218,7 @@ its next model call with `finishReason: 'budget-exceeded'` and
 under `onExceeded: 'throw'`, see [Budgets](./configuration.md#budgets)).
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const stats = defineTool({ name: 'stats', description: 'Weekly stats', input: z.object({}), execute: async () => (await fetch('https://stats.example.com/week')).json() });
@@ -238,7 +238,7 @@ if (result.toolErrors) console.warn(`${result.toolErrors} tool call(s) failed; t
 | `createTodoTools()` | `todo_write` / `todo_read` so an agent can plan multi-step work; see [Todo tools](#todo-tools). |
 | `askQuestionTool()`, `createAgent({ askQuestion: true })` | `ask_question`: the agent asks the user something and the run pauses until `agent.approvals.answer()`; see [Asking the user a question](./approvals.md#asking-the-user-a-question). |
 | `createFsTools()`, `createShellTool()` | File system and shell tools for coding agents; see [Workspace tools](./workspace-tools.md). |
-| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `@lousho/build-ai-agent/integrations`) | Integrations that need credentials, so they are built with options. `createSlackTool()` reads the webhook URL from `SLACK_WEBHOOK_URL` unless you pass `webhookUrl`; `createJiraTools()` takes `baseUrl`, `email` and `apiToken` explicitly (conventionally from `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`). |
+| `createEmailTool()`, `createSlackTool()`, `createGitHubTools()`, `createJiraTools()` (from `lousho/integrations`) | Integrations that need credentials, so they are built with options. `createSlackTool()` reads the webhook URL from `SLACK_WEBHOOK_URL` unless you pass `webhookUrl`; `createJiraTools()` takes `baseUrl`, `email` and `apiToken` explicitly (conventionally from `JIRA_BASE_URL`, `JIRA_EMAIL` and `JIRA_API_TOKEN`). |
 | `createAgent({ mcpServers })`, `connectMcp(servers)` | Every tool of MCP servers given as config (stdio `command` or HTTP `url`), named `<server>__<tool>`; see [Use MCP servers in an agent](./mcp.md#use-mcp-servers-in-an-agent). |
 | `openApiTools(document, options)` | One tool per operation of an OpenAPI 3.0 / 3.1 document; mutating operations ask for approval. See [OpenAPI tools](./openapi-tools.md). |
 | `loadMcpTools(client, name)` | Every tool of a connected MCP server; see [MCP tools](./mcp.md#tools-from-a-client-you-connected-yourself). |
@@ -276,7 +276,7 @@ the provider; with OpenRouter use `openrouter/<vendor>/<model>`, e.g.
 `openrouter/openai/gpt-4o-mini`):
 
 ```ts
-import { createAgent, createWebFetchTool } from '@lousho/build-ai-agent';
+import { createAgent, createWebFetchTool } from 'lousho';
 
 const webFetch = createWebFetchTool({
   timeoutMs: 30_000, // whole request: redirects and body included
@@ -315,7 +315,7 @@ emits a `todo.updated` stream event with the new list and its counts (see
 `useTodos()` / `loushoTodos()`, so a UI shows the plan live without `onChange`.
 
 ```ts
-import { createAgent, createTodoTools, type TodoStore } from '@lousho/build-ai-agent';
+import { createAgent, createTodoTools, type TodoStore } from 'lousho';
 
 const todos = createTodoTools({ onChange: (list) => console.log(list.length, 'todos') });
 const planner = createAgent({ instructions: 'Plan multi-step work, then do it.', provider, tools: todos.tools });
@@ -338,8 +338,8 @@ raw `ToolDescriptor` (a built-in tool, an MCP tool, or an existing `tool()` from
 the `ai` SDK), and `registerMany()` for a record of descriptors or an array of defined tools.
 
 ```ts
-import { ToolRegistry } from '@lousho/build-ai-agent/tools';
-import { currentDateTool, defineTool } from '@lousho/build-ai-agent';
+import { ToolRegistry } from 'lousho/tools';
+import { currentDateTool, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const lookupOrder = defineTool({
@@ -371,7 +371,7 @@ the result `null`, as does any tool that returns `undefined`: the transcript, th
 model and `tool.done` all see `null`.
 
 ```ts
-import { createAgent, defineTool, type ToolOutput } from '@lousho/build-ai-agent';
+import { createAgent, defineTool, type ToolOutput } from 'lousho';
 import { z } from 'zod';
 
 const buildReport = defineTool({

@@ -6,7 +6,7 @@ connector is an **MCP server**: add it to `mcpServers` and its tools join the
 agent's registry namespaced as `<server>__<tool>`.
 
 ```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openrouter/openai/gpt-4o-mini',
@@ -47,8 +47,8 @@ into the SDK's approval gate: a `slack.post_message` pauses the run until
 approved, `docs.get_document` does not. Tune it per server:
 
 ```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const provider = mockModel([{ text: 'ok' }]);
 

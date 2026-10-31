@@ -14,11 +14,11 @@
  * rather than being fixer-core itself.
  */
 import { z } from 'zod';
-import { AgentExecutor, ExecuteOptions } from '@lousho/build-ai-agent/executor';
-import { ExecutionResult } from '@lousho/build-ai-agent';
-import { AgentConfig, ToolDescriptor } from '@lousho/build-ai-agent';
-import { defineTool } from '@lousho/build-ai-agent';
-import { LLMProvider } from '@lousho/build-ai-agent';
+import { AgentExecutor, ExecuteOptions } from 'lousho/executor';
+import { ExecutionResult } from 'lousho';
+import { AgentConfig, ToolDescriptor } from 'lousho';
+import { defineTool } from 'lousho';
+import { LLMProvider } from 'lousho';
 
 /**
  * A request to diagnose-and-fix an error, built from an ErrorSignal

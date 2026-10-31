@@ -1,7 +1,7 @@
 /**
  * `lousho init [dir] [options]` - scaffold a runnable project in one command.
  *
- * This is the one generator. `npm create lousho-agent` (packages/create-lousho-agent)
+ * This is the one generator. `npm create lousho` (packages/create-lousho)
  * is a thin wrapper that runs this command. See init/templates.ts for what is
  * generated.
  */
@@ -89,7 +89,7 @@ function validateFlags(options: InitOptions): void {
 
 /**
  * The prompts, or the flags and defaults when the optional `prompts` peer is
- * missing (e.g. `npx @lousho/build-ai-agent init` installs only the SDK):
+ * missing (e.g. `npx lousho init` installs only the SDK):
  * there is nothing to install in an npx run, so say how to choose instead.
  */
 async function askOrDefault(input: AskInput, environment: InitEnvironment): Promise<InitAnswers> {
@@ -99,7 +99,7 @@ async function askOrDefault(input: AskInput, environment: InitEnvironment): Prom
     if (!(error instanceof MissingPeerDependencyError)) throw error;
     environment.writeError(
       "lousho init: interactive prompts need the optional 'prompts' package, which is not installed; using your flags and the defaults. " +
-        'Choose with a directory argument, --provider and --template, or run `npm create lousho-agent`, which includes the prompts.\n'
+        'Choose with a directory argument, --provider and --template, or run `npm create lousho`, which includes the prompts.\n'
     );
     return { ...input.defaults, ...input.known };
   }
@@ -194,7 +194,7 @@ async function scaffold(options: InitOptions, environment: InitEnvironment): Pro
 }
 
 /**
- * Entry point behind `lousho init` (and `npm create lousho-agent`). Resolves to
+ * Entry point behind `lousho init` (and `npm create lousho`). Resolves to
  * the process exit code; usage errors are printed, not thrown.
  */
 export async function runInit(argv: string[], environment: InitEnvironment = realInitEnvironment()): Promise<number> {

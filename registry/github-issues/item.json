@@ -7,5 +7,5 @@
     "env": ["GITHUB_TOKEN"],
     "needsApproval": true
   },
-  "dependencies": ["@lousho/build-ai-agent", "zod"]
+  "dependencies": ["lousho", "zod"]
 }

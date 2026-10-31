@@ -9,7 +9,7 @@ See also: [Pause, restart, resume](./pause-and-resume.md), a short end-to-end tu
 > Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`).
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const chat = createAgent({ instructions: 'Be brief.', provider });
 
@@ -71,7 +71,7 @@ The `vendor/` model prefix chooses the provider; with OpenRouter use
 `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const session = agent.session({ id: 'user-42', turnPolicy: 'queue' });
@@ -123,7 +123,7 @@ returns the same `AgentRun` (typed events plus a `result` promise, see
 it.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const chat = createAgent({ instructions: 'Be brief.', provider });
 const session = chat.session();
@@ -192,8 +192,8 @@ crash, a failed checkpoint write or a `PropagatingToolError` can then be
 finished later, in another process:
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { createAgent } from 'lousho';
+import { SqliteStore } from 'lousho/sqlite';
 
 const agent = createAgent({ provider, store: new SqliteStore('./.lousho/agent.db') });
 
@@ -286,7 +286,7 @@ console.log(finished?.text, await agent.session({ id: 'user-42' }).pending()); /
 A `SessionStore` keeps transcripts between calls:
 
 ```ts
-import type { Message } from '@lousho/build-ai-agent';
+import type { Message } from 'lousho';
 
 interface SessionStore {
   load(id: string): Promise<Message[] | undefined>;
@@ -317,7 +317,7 @@ writer in another process can still slip between, losing one turn.
   files on Windows and macOS too.
 
 ```ts
-import { createAgent, FileSessionStore } from '@lousho/build-ai-agent';
+import { createAgent, FileSessionStore } from 'lousho';
 
 const agent = createAgent({ provider });
 const store = new FileSessionStore('./.lousho/sessions');
@@ -350,7 +350,7 @@ implementation by where the process runs:
 | In memory (`memoryStore()`) | `MemorySessionStore` | in memory | `InMemoryApprovalStore` | Tests, scripts, one process that never restarts |
 | Files (`fileStore(dir)`) | `<dir>/sessions/<id>.json` | `<dir>/checkpoints/`, `<dir>/checkpoint-history/` | `<dir>/approvals/<id>.json` | One machine, you want plain inspectable files |
 | SQLite | `store.sessions` | `store.checkpoints` | `store.approvals` | A Node server: one durable, transactional file, shared by several processes on one host (see [Sharing a SQLite file](#sharing-a-sqlite-file)) |
-| Cloudflare KV (`KVStore` from `@lousho/build-ai-agent/kv`) | `store.sessions` | `store.checkpoints` | `store.approvals` | Workers deployments (see [Deployment](deployment.md)) |
+| Cloudflare KV (`KVStore` from `lousho/kv`) | `store.sessions` | `store.checkpoints` | `store.approvals` | Workers deployments (see [Deployment](deployment.md)) |
 
 Each one is an `AgentStore` part: pass them together as
 `createAgent({ store: { sessions, checkpoints, approvals } })`. `memoryStore()`,
@@ -364,7 +364,7 @@ another writer or reader has open fails for a moment with `EPERM`, `EACCES` or
 file still end with one of them (the last rename wins):
 
 ```ts
-import { createAgent, fileStore } from '@lousho/build-ai-agent';
+import { createAgent, fileStore } from 'lousho';
 
 const agent = createAgent({ provider, store: fileStore('./.lousho') });
 // ./.lousho/sessions/user-42.json, ./.lousho/checkpoints/..., ./.lousho/approvals/...
@@ -401,7 +401,7 @@ session's transcript), and so are pending approvals and OAuth tokens. It
 resolves with the counts, `{ sessions, checkpoints, checkpointHistory, oauthPending }`:
 
 ```ts
-import { fileStore } from '@lousho/build-ai-agent';
+import { fileStore } from 'lousho';
 
 const store = fileStore('./.lousho');
 await store.prune({ olderThanMs: 30 * 24 * 60 * 60 * 1000 }); // a month
@@ -416,8 +416,8 @@ generated Worker uses `KVCheckpointStore`, see [Deployment](deployment.md)).
 re-exported from the root entry, so importing the SDK never loads it):
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { createAgent } from 'lousho';
+import { SqliteStore } from 'lousho/sqlite';
 
 const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
 const agent = createAgent({ provider, store }); // transcripts, per-step checkpoints and approvals
@@ -482,8 +482,8 @@ starts a new session from any of them, so you can try another direction
 without losing the original conversation:
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
 const searchFlights = defineTool({

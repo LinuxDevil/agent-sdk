@@ -12,7 +12,7 @@ const USAGE = [
   'Commands:',
   '  lousho init [dir] [--provider P] [--template T] [--yes] [--no-install] [--no-git] [--package-manager PM] [--force] [--sdk-path <dir|tgz>]',
   '      [--bot-name N --bot-token T --bot-username U --allowed-chats IDS --persona TXT]  (telegram template only)',
-  '      Scaffold a new agent project (what `npm create lousho-agent` runs).',
+  '      Scaffold a new agent project (what `npm create lousho` runs).',
   '  lousho dev <spec.yaml|spec.json|agent-dir|agent.ts> [--port N] [--host H] [--allowed-hosts a,b] [--no-schedules] [--traces[=dir]]',
   '      Serve an agent with a local chat UI and HTTP API; reloads on file changes.',
   '  lousho chat <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model] [--session id] [--store sqlite:<file>] [--traces[=dir]]',
@@ -46,7 +46,7 @@ const USAGE = [
 
 /**
  * Loads a command module from the ESM build (dist/cli/*.mjs). A user's tool
- * file (`tools/*.ts`) is an ES module, so its `import '@lousho/build-ai-agent'`
+ * file (`tools/*.ts`) is an ES module, so its `import 'lousho'`
  * resolves to the ESM build: loading the CLI from the same build means the
  * agent directory and the tools it loads share one copy of the SDK.
  */
@@ -56,7 +56,7 @@ function load(name) {
 
 /** Each command: the dist/cli module, its exported `run*` (resolves with the exit code), and whether it loads ./.env. */
 const COMMANDS = new Map([
-  // Scaffolds a new project; see src/cli/init.ts. Also what `npm create lousho-agent` runs.
+  // Scaffolds a new project; see src/cli/init.ts. Also what `npm create lousho` runs.
   ['init', { module: 'init', run: 'runInit' }],
   ['dev', { module: 'dev', run: 'runDev', env: true }],
   // A terminal REPL for an agent; see src/cli/chat.ts.

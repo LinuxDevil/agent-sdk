@@ -25,7 +25,7 @@ same reason is on `run.done` in [streaming](streaming.md) (and on `finish`,
 the deprecated `onEvent` counterpart).
 
 ```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider } from 'lousho';
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider(), maxSteps: 3 });
 const result = await agent.send('Research this thoroughly');
 if (result.finishReason === 'max-steps') console.warn(`Gave up after ${result.steps} steps`);
@@ -38,7 +38,7 @@ Pass an `AbortSignal` to stop a run: `agent.send(input, { signal })`,
 `resumeAfterApproval(..., { signal })`.
 
 ```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider } from 'lousho';
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 const controller = new AbortController();
 setTimeout(() => controller.abort(), 5_000); // e.g. from a Stop button
@@ -49,7 +49,7 @@ console.log(result.finishReason); // 'aborted' if it was cancelled, else 'stop'
 For a time limit, use `AbortSignal.timeout(ms)`:
 
 ```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider } from 'lousho';
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 const result = await agent.send('Summarize this', { signal: AbortSignal.timeout(30_000) });
 ```
@@ -101,7 +101,7 @@ for strictly sequential execution, e.g. when your tools share state that is
 not safe to touch concurrently.
 
 ```ts
-import { createAgent, createMockProvider, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const getWeather = defineTool({

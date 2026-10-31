@@ -13,7 +13,7 @@
  * Studio was launched in; `WorkspaceResolver` is the seam a lazy,
  * registry-backed multi-workspace resolver plugs into later.
  */
-import { TriggerRegistry } from '@lousho/build-ai-agent/triggers';
+import { TriggerRegistry } from 'lousho/triggers';
 import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
 import type { AgentStore } from '../../src/persistence/AgentStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';

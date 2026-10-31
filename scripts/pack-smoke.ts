@@ -5,7 +5,7 @@
  * Proves that what `npm pack` produces installs and works, in a fresh project
  * that has never seen this checkout:
  *
- *   1. builds the SDK, `create-lousho-agent` and Agent Forge (the
+ *   1. builds the SDK, `create-lousho` and Agent Forge (the
  *      `build:studio` step `prepublishOnly` also runs, so the packed tarball is
  *      the one that is really published; skip with --skip-build),
  *   2. `npm pack`s both into a temp dir and checks the SDK tarball (no `.env`,
@@ -39,12 +39,12 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 
 /**
  * Thresholds: after #191 this packs the tarball that is really published (SDK +
- * create-lousho-agent + the Agent Forge build `prepublishOnly` adds), measured
+ * create-lousho + the Agent Forge build `prepublishOnly` adds), measured
  * at 873 entries / 14,123,313 bytes (~13.5 MiB) unpacked / 3,826,273 bytes
  * (~3.65 MiB) packed. Before #191 the same measure was 902 entries /
  * ~20.8 MiB / ~5.6 MiB (test files, `__snapshots__`/`__cassettes__`, the Forge
  * server map and map `sourcesContent` no longer ship). Headroom ~20%.
- * Unpacked raised to 18 MiB by the @lousho/build-ai-agent/worker entry (#289):
+ * Unpacked raised to 18 MiB by the lousho/worker entry (#289):
  * the pre-built, pre-shimmed entry and #298's Worker channel helpers bring the
  * tarball to 917 entries / ~16.4 MiB / ~4.3 MiB packed. Re-measured on
  * 1.0.0-rc.0: 948 entries / ~16.4 MiB / ~4.3 MiB. Re-measured on
@@ -301,7 +301,7 @@ function checkAgentDir(project: string): void {
 function main(): void {
   if (!args.has('--skip-build')) {
     mustRun('npm run build', 'npm', ['run', 'build'], REPO_ROOT);
-    mustRun('npm run build (create-lousho-agent)', 'npm', ['run', 'build', '--workspace=packages/create-lousho-agent'], REPO_ROOT);
+    mustRun('npm run build (create-lousho)', 'npm', ['run', 'build', '--workspace=packages/create-lousho'], REPO_ROOT);
     // prepublishOnly also builds Agent Forge; without it the tarball is ~5 MB smaller than the published one.
     mustRun('npm run build:studio', 'npm', ['run', 'build:studio'], REPO_ROOT);
   }
@@ -313,10 +313,10 @@ function main(): void {
   fs.mkdirSync(project);
   try {
     const sdk = pack('(sdk)', REPO_ROOT, packDir);
-    const creator = pack('(create-lousho-agent)', path.join(REPO_ROOT, 'packages', 'create-lousho-agent'), packDir);
+    const creator = pack('(create-lousho)', path.join(REPO_ROOT, 'packages', 'create-lousho'), packDir);
     checkTarball(sdk.entry, sdk.tarball);
     dryRunPublish('(sdk)', sdk.tarball, base);
-    dryRunPublish('(create-lousho-agent)', creator.tarball, base);
+    dryRunPublish('(create-lousho)', creator.tarball, base);
 
     const peers = (process.env.PACK_SMOKE_PEERS ?? DEFAULT_PEERS).split(/\s+/).filter(Boolean);
     const fileUrl = (p: string) => `file:${p.replace(/\\/g, '/')}`;
@@ -325,26 +325,26 @@ function main(): void {
       JSON.stringify({ name: 'pack-smoke-project', version: '0.0.0', private: true }, null, 2)
     );
     mustRun(`npm install ${peers.join(' ')} typescript @types/node + sdk tarball`, 'npm', ['install', '--no-audit', '--no-fund', sdk.tarball, ...peers, 'typescript@5', '@types/node@22'], project);
-    // create-lousho-agent depends on the SDK by a registry range that does not exist yet: point it at the tarball.
+    // create-lousho depends on the SDK by a registry range that does not exist yet: point it at the tarball.
     const creatorProject = path.join(base, 'creator-project');
     fs.mkdirSync(creatorProject);
     fs.writeFileSync(
       path.join(creatorProject, 'package.json'),
       JSON.stringify({ name: 'pack-smoke-creator', version: '0.0.0', private: true, overrides: { [SDK_NAME]: fileUrl(sdk.tarball) } }, null, 2)
     );
-    mustRun('npm install create-lousho-agent tarball', 'npm', ['install', '--no-audit', '--no-fund', creator.tarball, ...peers], creatorProject);
+    mustRun('npm install create-lousho tarball', 'npm', ['install', '--no-audit', '--no-fund', creator.tarball, ...peers], creatorProject);
 
     const pkgDir = path.join(project, 'node_modules', ...SDK_NAME.split('/'));
     checkModuleLoads(rep, project, pkgDir);
     checkBin(rep, project);
     checkAgentDir(project);
     checkTypes(project);
-    const creatorBin = path.join(creatorProject, 'node_modules', '.bin', IS_WIN ? 'create-lousho-agent.cmd' : 'create-lousho-agent');
-    if (!fs.existsSync(creatorBin)) fail('create-lousho-agent bin was not installed');
+    const creatorBin = path.join(creatorProject, 'node_modules', '.bin', IS_WIN ? 'create-lousho.cmd' : 'create-lousho');
+    if (!fs.existsSync(creatorBin)) fail('create-lousho bin was not installed');
     else {
-      const res = run('npx', ['--no-install', 'create-lousho-agent', '--help'], creatorProject);
-      if (res.status !== 0) fail(`create-lousho-agent --help failed: ${res.stdout}${res.stderr}`);
-      else log('create-lousho-agent --help: ok');
+      const res = run('npx', ['--no-install', 'create-lousho', '--help'], creatorProject);
+      if (res.status !== 0) fail(`create-lousho --help failed: ${res.stdout}${res.stderr}`);
+      else log('create-lousho --help: ok');
     }
   } finally {
     if (args.has('--keep')) log(`kept ${base}`);

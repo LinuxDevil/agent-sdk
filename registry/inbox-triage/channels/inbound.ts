@@ -11,7 +11,7 @@
  * A paused turn replies 200 with the pending `approval`; decide it at
  * `POST /channels/inbound/approvals/<id>` like every channel.
  */
-import { defineChannel } from '@lousho/build-ai-agent';
+import { defineChannel } from 'lousho';
 import { addMessage } from '../lib/mailstore.ts';
 
 export default defineChannel({

@@ -47,7 +47,7 @@ export interface PruneResult {
  *
  * @example
  * ```ts
- * import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+ * import { SqliteStore } from 'lousho/sqlite';
  *
  * const store = new SqliteStore('./.lousho/agent.db'); // or ':memory:'
  * const session = agent.session({ id: 'user-42', store: store.sessions });

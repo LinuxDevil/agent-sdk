@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec } from 'lousho';
 import { RunManager } from '../runRegistry';
 import { agentTraceDir } from '../traceStore';
 import { FileCheckpointStore } from '../checkpointStore';

@@ -1,6 +1,6 @@
 # Triggers
 
-A trigger adapter turns one wake-up mechanism into an agent run. The `@lousho/build-ai-agent/triggers` subpath is the extension point for your own mechanism (`TriggerAdapter`, `TriggerRegistry`) plus a few helpers shared with channels and schedules: the `WebhookAuth` shapes, `verifySlackSignature()` and `parseCronExpression()`. The built-in webhook, Slack and cron adapters were removed; see [Migrating from triggers](./upgrading.md#migrating-from-triggers).
+A trigger adapter turns one wake-up mechanism into an agent run. The `lousho/triggers` subpath is the extension point for your own mechanism (`TriggerAdapter`, `TriggerRegistry`) plus a few helpers shared with channels and schedules: the `WebhookAuth` shapes, `verifySlackSignature()` and `parseCronExpression()`. The built-in webhook, Slack and cron adapters were removed; see [Migrating from triggers](./upgrading.md#migrating-from-triggers).
 
 ## Choosing between triggers, channels and schedules
 
@@ -30,8 +30,8 @@ Reply semantics differ per adapter. An adapter whose reply is the open request (
 Write your own adapter by returning a handle from `listen`:
 
 ```ts
-import { createAgent, createMockProvider } from '@lousho/build-ai-agent';
-import type { TriggerAdapter } from '@lousho/build-ai-agent/triggers';
+import { createAgent, createMockProvider } from 'lousho';
+import type { TriggerAdapter } from 'lousho/triggers';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 
@@ -54,7 +54,7 @@ handle.stop();
 The `WebhookAuth` shapes are the reference for `webhookChannel({ auth })` (see [Channels](./channels.md)). `checkWebhookAuth()` and `assertValidWebhookAuth()` are exported for your own handler.
 
 ```ts no-run
-import { createAgent, createMockProvider, mountChannels, webhookChannel } from '@lousho/build-ai-agent';
+import { createAgent, createMockProvider, mountChannels, webhookChannel } from 'lousho';
 
 const agent = createAgent({ instructions: 'You are helpful.', provider: createMockProvider() });
 
@@ -99,7 +99,7 @@ sent in clear text.
 `slackChannel()` verifies every request for you (see [Slack in Channels](./channels.md#slack)). For your own handler (slash commands, interactivity), verify the RAW body with `verifySlackSignature()`: HMAC-SHA256 over `v0:{X-Slack-Request-Timestamp}:{raw body}`, compared in constant time with `X-Slack-Signature` (`v0=<hex>`). Requests more than five minutes old, or more than a minute ahead of local time, are rejected (the timestamp is in seconds, as Slack sends it). See [Slack's documentation](https://docs.slack.dev/authentication/verifying-requests-from-slack).
 
 ```ts no-run
-import { verifySlackSignature } from '@lousho/build-ai-agent/triggers';
+import { verifySlackSignature } from 'lousho/triggers';
 
 const authentic = verifySlackSignature({
   signingSecret: process.env.SLACK_SIGNING_SECRET ?? '',

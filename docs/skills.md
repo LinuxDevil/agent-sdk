@@ -22,7 +22,7 @@ can correct itself.
 ## Skills in code
 
 ```ts
-import { createAgent, defineSkill } from '@lousho/build-ai-agent';
+import { createAgent, defineSkill } from 'lousho';
 
 const agent = createAgent({
   instructions: 'You are a release engineer.',
@@ -91,7 +91,7 @@ Use the imperative mood and link the PR.
   (both paths are listed).
 
 ```ts
-import { createAgent, loadSkills } from '@lousho/build-ai-agent';
+import { createAgent, loadSkills } from 'lousho';
 
 const agent = createAgent({
   instructions: 'You are a release engineer.',

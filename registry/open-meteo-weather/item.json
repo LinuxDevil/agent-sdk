@@ -5,5 +5,5 @@
   "permissions": {
     "network": ["api.open-meteo.com", "geocoding-api.open-meteo.com"]
   },
-  "dependencies": ["@lousho/build-ai-agent", "zod"]
+  "dependencies": ["lousho", "zod"]
 }

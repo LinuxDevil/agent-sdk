@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentSpec, AgentSpecV2 } from '@lousho/build-ai-agent';
+import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import { AgentRepo } from '../../../server/storage/agentRepo';
 import { createFsAgentStore } from '../fsAgentStore';
 

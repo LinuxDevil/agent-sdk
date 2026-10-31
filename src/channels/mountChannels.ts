@@ -66,7 +66,7 @@ export interface ChannelsHandler {
  * @example
  * ```ts
  * import * as http from 'node:http';
- * import { createAgent, createMockProvider, httpChannel, mountChannels } from '@lousho/build-ai-agent';
+ * import { createAgent, createMockProvider, httpChannel, mountChannels } from 'lousho';
  *
  * const agent = createAgent({ prompt: 'You are helpful.', provider: createMockProvider() });
  * const channels = mountChannels(agent, [httpChannel()]);

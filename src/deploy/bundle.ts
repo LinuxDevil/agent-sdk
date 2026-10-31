@@ -2,7 +2,7 @@
  * Shared bundling helpers for the built-in deployment adapters.
  *
  * Scaffolded entrypoints (server.ts / worker.ts) import the SDK through a
- * virtual specifier, `@lousho/build-ai-agent/deploy-runtime` (or
+ * virtual specifier, `lousho/deploy-runtime` (or
  * `.../deploy-runtime-worker`). At build time sdkRuntimePlugin() resolves
  * that specifier to the runtime source file of the SDK copy that is
  * running `lousho build` - so the output is bundled against exactly the
@@ -16,11 +16,11 @@ import type { OnResolveArgs, OnResolveResult, Plugin, PluginBuild, ResolveResult
 import { SDKError } from '../execution/errors';
 import { moduleDir } from '../utils/moduleDir';
 
-export const RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime';
-export const WORKER_RUNTIME_SPECIFIER = '@lousho/build-ai-agent/deploy-runtime-worker';
+export const RUNTIME_SPECIFIER = 'lousho/deploy-runtime';
+export const WORKER_RUNTIME_SPECIFIER = 'lousho/deploy-runtime-worker';
 
 /**
- * Walks up from this module's directory to the @lousho/build-ai-agent
+ * Walks up from this module's directory to the lousho
  * package root. Works both from source (src/deploy/) and from the bundled
  * CLI (dist/cli/build.js), in a checkout or an installed node_modules copy.
  */
@@ -31,7 +31,7 @@ export function findSdkRoot(startDir: string = moduleDir()): string {
     const parent = path.dirname(dir);
     if (parent === dir) {
       throw new SDKError(
-        `lousho build: could not locate the @lousho/build-ai-agent package root above ${startDir}`,
+        `lousho build: could not locate the lousho package root above ${startDir}`,
         'LOUSHO_DEPLOY_FAILED'
       );
     }
@@ -39,12 +39,12 @@ export function findSdkRoot(startDir: string = moduleDir()): string {
   }
 }
 
-/** True when `dir` holds the readable package.json of @lousho/build-ai-agent. */
+/** True when `dir` holds the readable package.json of lousho. */
 function isSdkPackageRoot(dir: string): boolean {
   const pkgPath = path.join(dir, 'package.json');
   if (!fs.existsSync(pkgPath)) return false;
   try {
-    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name === '@lousho/build-ai-agent';
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name === 'lousho';
   } catch {
     // not a readable package.json - keep walking up
     return false;
@@ -62,25 +62,25 @@ function runtimeSourceFile(fileName: string): string {
 /**
  * esbuild plugin mapping the virtual runtime specifiers to the SDK's runtime
  * sources. `sdkEntry: 'worker'` (cloudflare-worker target) resolves agent
- * code's `@lousho/build-ai-agent` to the Worker-safe subset in ./workerSdk.ts
+ * code's `lousho` to the Worker-safe subset in ./workerSdk.ts
  * instead of the package's main entry, which imports Node-only modules.
  */
 export function sdkRuntimePlugin({ sdkEntry = 'main' }: { sdkEntry?: 'main' | 'worker' } = {}): Plugin {
   return {
     name: 'lousho-deploy-runtime',
     setup(build) {
-      build.onResolve({ filter: /^@lousho\/build-ai-agent\/deploy-runtime(-worker)?$/ }, (args) => ({
+      build.onResolve({ filter: /^lousho\/deploy-runtime(-worker)?$/ }, (args) => ({
         path: runtimeSourceFile(
           args.path === WORKER_RUNTIME_SPECIFIER ? 'runtime.worker.ts' : 'runtime.ts'
         ),
       }));
-      // An agent directory's own `import ... from '@lousho/build-ai-agent'` bundles this SDK copy
+      // An agent directory's own `import ... from 'lousho'` bundles this SDK copy
       // (the one the runtime above comes from), so tools, schedules and channels share its classes.
-      build.onResolve({ filter: /^@lousho\/build-ai-agent$/ }, () => ({
+      build.onResolve({ filter: /^lousho$/ }, () => ({
         path: sdkEntry === 'worker' ? runtimeSourceFile('workerSdk.ts') : path.join(findSdkRoot(), 'src', 'index.ts'),
       }));
       // An agent directory's auth.ts imports its helpers from the auth subpath.
-      build.onResolve({ filter: /^@lousho\/build-ai-agent\/auth$/ }, () => ({
+      build.onResolve({ filter: /^lousho\/auth$/ }, () => ({
         path: path.join(findSdkRoot(), 'src', 'auth', 'index.ts'),
       }));
     },
@@ -170,7 +170,7 @@ export function workerUnsupportedPeerPlugin(): Plugin {
 }
 
 /**
- * The specifiers the `@lousho/build-ai-agent/worker` entry leaves external
+ * The specifiers the `lousho/worker` entry leaves external
  * (#289): `ai`, `zod` and `@opentelemetry/api` are the SDK's own peers a
  * user installs, and `@ai-sdk/openai` / `@ai-sdk/anthropic` are the
  * provider packages a real `openai`/`anthropic`/`openrouter` agent lazy-
@@ -185,7 +185,7 @@ export const WORKER_ENTRY_EXTERNALS = ['ai', 'zod', '@opentelemetry/api', '@ai-s
 
 /**
  * The esbuild plugins that build the Worker-safe
- * `@lousho/build-ai-agent/worker` entry (src/deploy/worker.ts ->
+ * `lousho/worker` entry (src/deploy/worker.ts ->
  * dist/deploy/worker.*) - the same shims the cloudflare-worker adapter
  * applies at `lousho build` time, baked into the published entry instead
  * (#289): `workerNodeShimPlugin` and `workerSandboxShimPlugin` redirect the

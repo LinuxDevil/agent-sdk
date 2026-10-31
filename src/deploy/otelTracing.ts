@@ -116,7 +116,7 @@ export async function otelTracingFromEnv(options: OtelTracingOptions): Promise<O
     provider.register();
     log.log('lousho server: exporting OTel traces to ' + endpoint);
     return {
-      exporter: createOtelTraceExporter({ tracer: provider.getTracer('@lousho/build-ai-agent') }),
+      exporter: createOtelTraceExporter({ tracer: provider.getTracer('lousho') }),
       shutdown: () => provider.shutdown(),
     };
   } catch (error) {

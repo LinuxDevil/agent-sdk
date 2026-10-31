@@ -7,14 +7,14 @@
  * and the tools, skills and channel are only loaded, never executed (no
  * request is made; WEBHOOK_SECRET is set only so the channel module loads).
  *
- * `resolveAgentDir` is imported from the package (`@lousho/build-ai-agent`,
+ * `resolveAgentDir` is imported from the package (`lousho`,
  * i.e. dist/) on purpose: the installed item files import the SDK by that
  * name, and a defineTool() tool is only recognized when the file and the
  * loader share one copy of the SDK — loading the directory through src/ would
  * be a second copy. This is also why the test needs `npm run build` to have
  * run, as in CI. The temp agent directory (in the OS temp dir) gets a
  * `node_modules` link to the repository's, so its `zod` and
- * `@lousho/build-ai-agent` imports resolve like a real project's (the
+ * `lousho` imports resolve like a real project's (the
  * package's workspace self-link, node_modules for zod).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -23,7 +23,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PassThrough, Writable } from 'node:stream';
-import { resolveAgentDir } from '@lousho/build-ai-agent';
+import { resolveAgentDir } from 'lousho';
 import { runAdd } from './add';
 import { IndexSchema, ItemSchema } from './registry';
 
@@ -56,7 +56,7 @@ async function add(args: string[]) {
 
 beforeEach(() => {
   // The node_modules link lets the installed files' `zod` and
-  // `@lousho/build-ai-agent` imports resolve (see the comment at the top).
+  // `lousho` imports resolve (see the comment at the top).
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-default-registry-'));
   fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');
   agentDir = path.join(root, 'agent');
@@ -128,7 +128,7 @@ describe('default registry (registry/dist)', () => {
     const kits = index.items.filter((entry) => entry.type === 'kit');
     expect(kits.length).toBeGreaterThan(0);
     const loader =
-      "const { resolveAgentDir } = await import('@lousho/build-ai-agent');" +
+      "const { resolveAgentDir } = await import('lousho');" +
       'const { manifest } = await resolveAgentDir(process.argv[1]);' +
       'console.log(JSON.stringify({ tools: manifest.tools.length }));';
     // Dummy keys and secrets: the kits are only loaded, never run.

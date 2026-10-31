@@ -1,4 +1,4 @@
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 import os from 'node:os';
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';

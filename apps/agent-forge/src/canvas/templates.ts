@@ -1,4 +1,4 @@
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec } from 'lousho';
 import { specToGraph } from '../graph/specToGraph';
 import type { AgentGraphSpec } from '../graph/types';
 

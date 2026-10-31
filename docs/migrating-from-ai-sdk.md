@@ -41,7 +41,7 @@ you already configured (keys, base URL, provider options) works as it is:
 
 ```ts no-run
 import { createOpenAI } from '@ai-sdk/openai';
-import { createAgent, fromAiSdk } from '@lousho/build-ai-agent';
+import { createAgent, fromAiSdk } from 'lousho';
 
 const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const agent = createAgent({ provider: fromAiSdk(openai.chat('gpt-4o-mini')), instructions: 'You are helpful.' });
@@ -59,7 +59,7 @@ See [Providers](./providers.md#any-ai-sdk-model-fromaisdk) for the options and w
 ```ts no-verify
 import { tool } from 'ai';
 import { z } from 'zod';
-import { createAgent, fromAiSdk, fromAiSdkTools } from '@lousho/build-ai-agent';
+import { createAgent, fromAiSdk, fromAiSdkTools } from 'lousho';
 
 const weather = tool({
   description: 'Get the weather in a city',
@@ -85,8 +85,8 @@ and a plain object works too. This one runs offline:
 
 ```ts
 import { z } from 'zod';
-import { createAgent, fromAiSdkTools } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, fromAiSdkTools } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const tools = fromAiSdkTools({
   weather: {
@@ -128,7 +128,7 @@ A `useChat` front end keeps working: the route returns the agent's run as a UI m
 stream.
 
 ```ts no-run
-import { createAgent, fromUIMessages, memoryStore, toUIMessageStreamResponse, type UIMessageLike } from '@lousho/build-ai-agent';
+import { createAgent, fromUIMessages, memoryStore, toUIMessageStreamResponse, type UIMessageLike } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are helpful.', store: memoryStore() });
 

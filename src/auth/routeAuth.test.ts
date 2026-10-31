@@ -99,7 +99,7 @@ describe('routeAuth', () => {
   });
 });
 
-describe('@lousho/build-ai-agent/auth', () => {
+describe('lousho/auth', () => {
   afterEach(() => stop());
 
   it('exports the helpers', () => {

@@ -8,8 +8,8 @@
  *   snippets: basic, streaming, compare, tools, agent-builder, models,
  *             cost, errors, conversation, capabilities
  */
-import { LLMProviderRegistry, Message } from '@lousho/build-ai-agent';
-import { AgentBuilder } from '@lousho/build-ai-agent/executor';
+import { LLMProviderRegistry, Message } from 'lousho';
+import { AgentBuilder } from 'lousho/executor';
 
 const apiKey = process.env.OPENROUTER_API_KEY || '';
 

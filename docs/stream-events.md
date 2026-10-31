@@ -122,7 +122,7 @@ payload. Each event type is exported too (`TextDeltaEvent`, `ToolDoneEvent`,
 `RunDoneEvent`, ...), and `AgentEventOf<'tool.done'>` picks one by name.
 
 ```ts
-import { isAgentEvent, isToolEvent, type AgentEvent } from '@lousho/build-ai-agent';
+import { isAgentEvent, isToolEvent, type AgentEvent } from 'lousho';
 
 function render(event: AgentEvent): string {
   switch (event.type) {

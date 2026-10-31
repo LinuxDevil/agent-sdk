@@ -6,7 +6,7 @@
 Dependency-free helpers for budgeting and context decisions.
 
 ```ts
-import { estimateTokens, estimateCost, getModelInfo, registerModel } from '@lousho/build-ai-agent';
+import { estimateTokens, estimateCost, getModelInfo, registerModel } from 'lousho';
 
 // A custom or self-hosted model: add it (or override a built-in) before use.
 registerModel({
@@ -36,7 +36,7 @@ The built-in context windows and prices are a dated snapshot (see the retrieval 
 Every `ExecutionResult` (and `agent.send()` result) carries `usage`, the running total of the whole run:
 
 ```ts
-import { createAgent, formatUsage } from '@lousho/build-ai-agent';
+import { createAgent, formatUsage } from 'lousho';
 
 const result = await createAgent({ provider, instructions: 'You compare cities.' }).send('Compare 3 cities');
 
@@ -61,7 +61,7 @@ console.log(formatUsage(result.usage)); // 1,234 in / 567 out tokens · $0.0042 
 Prices come from the model registry above, so to get a cost for a custom or fine-tuned model, register it under the id you pass as the model:
 
 ```ts
-import { registerModel } from '@lousho/build-ai-agent';
+import { registerModel } from 'lousho';
 
 registerModel({
   id: 'ft:gpt-4o-mini:acme',
@@ -82,7 +82,7 @@ Anthropic caches a request prefix only up to a `cache_control` breakpoint that t
 
 ```ts
 import { readFileSync } from 'node:fs';
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const longPolicy = readFileSync('./policy.md', 'utf8'); // a long, stable system prompt
 const agent = createAgent({ model: 'openrouter/anthropic/claude-haiku-4.5', instructions: longPolicy }); // promptCaching: 'auto'

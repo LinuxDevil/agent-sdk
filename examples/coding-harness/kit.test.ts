@@ -5,7 +5,7 @@
  * proven from the installed files instead of one createAgent() call.
  *
  * The scratch agent directory (in the OS temp dir) gets a `node_modules`
- * link to the repository's so the kit's `@lousho/build-ai-agent` imports
+ * link to the repository's so the kit's `lousho` imports
  * resolve, and the directory is loaded
  * through the package itself (dist/) - the kit's files import the SDK by
  * name and a defineTool() tool is only recognized by the same copy of it.
@@ -23,8 +23,8 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { PassThrough, Writable } from 'node:stream';
 import { spawn } from 'node:child_process';
-import { loadAgentDir } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { loadAgentDir } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { NodeServerAdapter } from '../../src/deploy/adapters/node-server';
 import { withBuildLock } from '../../src/deploy/buildLock.testkit';
 import { runAdd } from '../../src/cli/add';
@@ -57,7 +57,7 @@ async function add(args: string[]) {
 
 async function kitModule() {
   return (await import(pathToFileURL(path.join(root, 'tools', 'fs.ts')).href)) as {
-    checkpoints: import('@lousho/build-ai-agent').WorkspaceCheckpoints;
+    checkpoints: import('lousho').WorkspaceCheckpoints;
   };
 }
 
@@ -67,7 +67,7 @@ async function kitModule() {
  * approver by passing it in code.
  */
 async function kitApprove() {
-  return ((await import(pathToFileURL(path.join(root, 'approve.ts')).href)) as { default: import('@lousho/build-ai-agent').ApproveToolCall }).default;
+  return ((await import(pathToFileURL(path.join(root, 'approve.ts')).href)) as { default: import('lousho').ApproveToolCall }).default;
 }
 
 /** A provider that plays the lead's script and the explorer's, in call order. */
@@ -97,7 +97,7 @@ const systemOf = (call: { messages: readonly { role: string; content: unknown }[
   String(call.messages.find((m) => m.role === 'system')?.content);
 
 beforeEach(async () => {
-  // The node_modules link lets the kit's `@lousho/build-ai-agent` imports
+  // The node_modules link lets the kit's `lousho` imports
   // resolve (the SDK is a workspace self-link), like defaultRegistry.test.ts.
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-coding-kit-'));
   fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');
@@ -292,7 +292,7 @@ describe('lousho build --target=node-server', () => {
     fs.rmSync(path.join(root, 'agent.json'));
     fs.writeFileSync(
       path.join(root, 'agent.ts'),
-      `import { createMockProvider } from '@lousho/build-ai-agent';
+      `import { createMockProvider } from 'lousho';
 export default {
   provider: createMockProvider({ name: 'mock', responses: ['Fixed add() in math.js; node --test now passes.'] }),
   maxSteps: 20,

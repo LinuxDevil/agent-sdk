@@ -11,7 +11,7 @@ code at any time without a rewrite.
 > implied; the files run with your process's full permissions.
 
 ```ts
-import { loadAgentDir } from '@lousho/build-ai-agent';
+import { loadAgentDir } from 'lousho';
 
 const agent = await loadAgentDir('./my-agent');
 const { text } = await agent.send('Hello!');
@@ -108,7 +108,7 @@ rule decides.
 
 ```ts
 // hooks.ts — the default export is a hook or a list of them
-import type { AgentHook } from '@lousho/build-ai-agent';
+import type { AgentHook } from 'lousho';
 const audit: AgentHook = {
   name: 'audit',
   postToolCall(ctx) {
@@ -120,7 +120,7 @@ export default audit;
 
 ```ts
 // approve.ts — the default export decides every `ask`ed call
-import type { ApproveToolCall } from '@lousho/build-ai-agent';
+import type { ApproveToolCall } from 'lousho';
 const approve: ApproveToolCall = ({ args }) => !String(args.path ?? '').endsWith('.test.js');
 export default approve;
 ```
@@ -145,7 +145,7 @@ that exports no tool at all is an error, as are two tools with the same name
 ```ts no-verify
 // tools/send_email.ts
 import { z } from 'zod';
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 
 export default defineTool({
   name: 'send_email',
@@ -236,7 +236,7 @@ internal helper of the generated bundle); with your own server, use
 
 ```ts
 import { createServer } from 'node:http';
-import { createAgent, mountChannels, resolveAgentDir } from '@lousho/build-ai-agent';
+import { createAgent, mountChannels, resolveAgentDir } from 'lousho';
 
 // channels/support.ts: export default webhookChannel({ secret: process.env.HOOK_SECRET ?? '' })
 const { config, channels } = await resolveAgentDir('./my-agent');
@@ -259,7 +259,7 @@ naming the file. A `memory` override passed to `loadAgentDir(dir, { overrides })
 is merged with the directory's slots by name: the override wins a name clash.
 
 ```ts
-import { defineMemory, fileMemory, resolveAgentDir } from '@lousho/build-ai-agent';
+import { defineMemory, fileMemory, resolveAgentDir } from 'lousho';
 
 // memory/notes.ts: export default { scope: 'global', provider: fileMemory({ dir: './.lousho/memory' }) }
 const { manifest } = await resolveAgentDir('./my-agent', {
@@ -273,7 +273,7 @@ A relative `dir` in a `memory/*.ts` file resolves against the process working di
 ```ts
 // memory/notes.ts
 import { fileURLToPath } from 'node:url';
-import { fileMemory } from '@lousho/build-ai-agent';
+import { fileMemory } from 'lousho';
 
 export default {
   scope: 'global',
@@ -297,7 +297,7 @@ The path follows the module: a copied or bundled build keeps its memory next to 
 handy for tests and tooling:
 
 ```ts
-import { resolveAgentDir, createAgent } from '@lousho/build-ai-agent';
+import { resolveAgentDir, createAgent } from 'lousho';
 
 const { config, manifest } = await resolveAgentDir('./my-agent');
 console.log(manifest.tools, manifest.skills, manifest.subagents);
@@ -317,8 +317,8 @@ declares (`guardrails`, `onEvent`, `retry`, `reasoning`, `redactContent`,
 `output`, ...). Use it to swap the model in tests:
 
 ```ts no-run
-import { loadAgentDir } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { loadAgentDir } from 'lousho';
+import { mockModel } from 'lousho/testing';
 
 const agent = await loadAgentDir('./my-agent', { provider: mockModel(['Hi there.']) });
 ```

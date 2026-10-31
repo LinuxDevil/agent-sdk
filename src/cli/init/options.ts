@@ -15,7 +15,7 @@ export const PROVIDER_NAMES: readonly string[] = listProviders().map((info) => i
 
 export const INIT_USAGE = `Usage: lousho init [dir] [options]
 
-Scaffold a runnable @lousho/build-ai-agent project in one command.
+Scaffold a runnable lousho project in one command.
 
 Options:
   --provider <name>         ${PROVIDER_NAMES.join(' | ')}  (default: detected from your API key env var, else openai)

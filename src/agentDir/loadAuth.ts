@@ -17,7 +17,7 @@ type AgentDirAccessRules = Pick<ChatRoutesAccess, 'authorizeSession' | 'authoriz
 /**
  * The route auth of an agent directory, from its `auth.{ts,js,mjs,cjs,mts}`
  * file, which default-exports an auth entry or an ordered list of them
- * (`jwt()`, `oidc()`, `basic()`, `apiToken()`, ... from `@lousho/build-ai-agent/auth`),
+ * (`jwt()`, `oidc()`, `basic()`, `apiToken()`, ... from `lousho/auth`),
  * plus its optional named `authorizeSession` / `authorizeApproval` exports
  * (docs/auth.md). `undefined` when the directory has no such file.
  */
@@ -33,7 +33,7 @@ export async function loadAuth(dir: string): Promise<({ file: string; auth: Auth
   const valid = typeof auth === 'function' || (Array.isArray(auth) && auth.every((entry) => typeof entry === 'function'));
   if (!valid) {
     throw new SDKError(
-      `loadAgentDir: ${file}: the default export must be an auth function or a list of them (jwt(), oidc(), basic(), apiToken() from @lousho/build-ai-agent/auth).`,
+      `loadAgentDir: ${file}: the default export must be an auth function or a list of them (jwt(), oidc(), basic(), apiToken() from lousho/auth).`,
       'LOUSHO_AGENT_DIR_INVALID'
     );
   }

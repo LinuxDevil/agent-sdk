@@ -17,7 +17,7 @@ import {
   type ObserveExporterOptions,
   type Span,
   type TraceExporter,
-} from '@lousho/build-ai-agent/traces';
+} from 'lousho/traces';
 import { observeTarget } from './observeProxy';
 
 /** One agent name's reporter and whether its runs may capture content. */

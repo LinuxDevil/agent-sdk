@@ -10,7 +10,7 @@
  */
 import { createHash } from 'node:crypto';
 import { stringify as stringifyYaml } from 'yaml';
-import type { AgentSpecV2 } from '@lousho/build-ai-agent';
+import type { AgentSpecV2 } from 'lousho';
 import { sortKeysDeep } from '../../shared/stableJson';
 
 /** The canonical YAML a spec hashes as: `yaml.stringify` of the deep key-sorted spec. */

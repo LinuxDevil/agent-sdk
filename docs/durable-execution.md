@@ -10,8 +10,8 @@ and any `ApprovalStore` work the same way.
 See also: [Pause, restart, resume](./pause-and-resume.md), a short end-to-end tutorial.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
-import { SqliteStore } from '@lousho/build-ai-agent/sqlite';
+import { createAgent } from 'lousho';
+import { SqliteStore } from 'lousho/sqlite';
 
 const agent = createAgent({ provider, store: new SqliteStore('./.lousho/jobs.db') });
 
@@ -104,7 +104,7 @@ session (the session already has its system prompt). To end a session and
 start over under the same id, call `store.checkpoints.delete(sessionId)`.
 
 ```ts
-import { createAgent, memoryStore, SessionAwaitingApprovalError } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore, SessionAwaitingApprovalError } from 'lousho';
 
 const agent = createAgent({ provider, store: memoryStore() });
 
@@ -136,7 +136,7 @@ underneath):
 3. calls the model once every call of the turn has exactly one result.
 
 ```ts
-import { createAgent, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore } from 'lousho';
 
 const agent = createAgent({ provider, store: memoryStore() });
 
@@ -160,7 +160,7 @@ finishes it. `agent.pending()` lists those runs across every session and
 `send(msg, { sessionId })` id, so a restarted process can find them:
 
 ```ts
-import { createAgent, fileStore } from '@lousho/build-ai-agent';
+import { createAgent, fileStore } from 'lousho';
 
 const agent = createAgent({ provider, store: fileStore('./.lousho') });
 
@@ -225,8 +225,8 @@ without durable writes) is listed as `'in-progress'` with `lastError.code`
 to the code that serves traffic:
 
 ```ts
-import { createAgent, defineTool, memoryStore, PropagatingToolError } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, defineTool, memoryStore, PropagatingToolError } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
 let charges = 0;
@@ -416,7 +416,7 @@ model calls). To run a job once, derive the `sessionId` from the delivery id
 and look at the checkpoint before sending:
 
 ```ts
-import { createAgent, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore } from 'lousho';
 
 const store = memoryStore();
 const agent = createAgent({ provider, store });
@@ -454,7 +454,7 @@ same call is re-run on resume) is passed to `execute`, so it works as an
 idempotency key against a re-run of one call:
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 declare const payments: { charge(amount: number, opts: { idempotencyKey: string }): Promise<{ id: string }> };
@@ -490,7 +490,7 @@ one invoice) needs an idempotency key from your own data, such as the claim id
 in the arguments, checked or passed on to the system you write to:
 
 ```ts
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { z } from 'zod';
 
 declare const claims: { file(claim: { claimId: string }, opts: { idempotencyKey: string }): Promise<{ id: string }> };
@@ -520,14 +520,14 @@ Which stores keep one:
 | `SqliteStore` | yes (`checkpoint_history` table) | `new SqliteStore(path, { historyLimit })` |
 | `LocalStorageCheckpointStore` | yes | `new LocalStorageCheckpointStore(storage, { historyLimit })` |
 | `fileStore(dir)` (JSON files) | yes (`checkpoint-history/<id>.json`) | `fileStore(dir, { historyLimit })` |
-| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV, from `@lousho/build-ai-agent/kv`) | yes (see below) | `new KVStore(kv, { historyLimit })` |
+| `KVCheckpointStore` / `KVStore` (Cloudflare Workers KV, from `lousho/kv`) | yes (see below) | `new KVStore(kv, { historyLimit })` |
 | Agent Forge's `FileCheckpointStore` | yes | `new FileCheckpointStore(dir, { historyLimit })` |
 | a custom `CheckpointStore` | only if it implements `history()` | - |
 
 For example, with the in-memory store:
 
 ```ts
-import { getCheckpointHistory, memoryStore } from '@lousho/build-ai-agent';
+import { getCheckpointHistory, memoryStore } from 'lousho';
 
 const { checkpoints } = memoryStore({ historyLimit: 20 }); // default 50, 0 keeps none
 // new SqliteStore(path, { historyLimit }), new LocalStorageCheckpointStore(storage, { historyLimit })
@@ -582,7 +582,7 @@ saves the result as the `'in-progress'` checkpoint of the new session over
 fork like any unfinished run with `agent.resume(fork.sessionId)`:
 
 ```ts
-import { createAgent, compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+import { createAgent, compareTrajectories, memoryStore } from 'lousho';
 
 const store = memoryStore();
 const assistant = createAgent({ provider, store });
@@ -663,8 +663,8 @@ it and it has no result yet, or the human approved it) always rejects with
 whatever the option.
 
 ```ts
-import { createAgent, memoryStore } from '@lousho/build-ai-agent';
-import type { LLMProvider } from '@lousho/build-ai-agent';
+import { createAgent, memoryStore } from 'lousho';
+import type { LLMProvider } from 'lousho';
 
 declare const provider: LLMProvider;
 
@@ -705,8 +705,8 @@ call it corresponds to.
 `agent.send(message, { sessionId })`:
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent/executor';
-import { LocalStorageCheckpointStore } from '@lousho/build-ai-agent/utils';
+import { AgentExecutor } from 'lousho/executor';
+import { LocalStorageCheckpointStore } from 'lousho/utils';
 
 const checkpoints = new LocalStorageCheckpointStore(storage);
 
@@ -720,8 +720,8 @@ await AgentExecutor.execute({ agent, input: 'Make it 3 people', provider, sessio
 It throws `SessionAwaitingApprovalError` on a paused session, as `send()` does:
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent/executor';
-import { SessionAwaitingApprovalError, memoryStore } from '@lousho/build-ai-agent';
+import { AgentExecutor } from 'lousho/executor';
+import { SessionAwaitingApprovalError, memoryStore } from 'lousho';
 
 const { checkpoints } = memoryStore();
 
@@ -738,7 +738,7 @@ The exported `resumeAfterApproval()` function is what
 `agent.approvals.resolve()` calls:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval } from '@lousho/build-ai-agent/executor';
+import { AgentExecutor, resumeAfterApproval } from 'lousho/executor';
 
 const paused = await AgentExecutor.execute({
   agent, input, provider, toolRegistry, approvalStore, sessionId: 'chat-42', checkpointStore,
@@ -762,8 +762,8 @@ if (paused.finishReason === 'awaiting-approval') {
 fork's `sessionId` is `agent.resume(fork.sessionId)`:
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent/executor';
-import { compareTrajectories, memoryStore } from '@lousho/build-ai-agent';
+import { AgentExecutor } from 'lousho/executor';
+import { compareTrajectories, memoryStore } from 'lousho';
 
 const { checkpoints } = memoryStore();
 await AgentExecutor.execute({ agent, provider, toolRegistry, input: 'Plan my trip', sessionId: 'trip', checkpointStore: checkpoints });

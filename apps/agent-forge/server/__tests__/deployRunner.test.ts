@@ -11,7 +11,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import type { ChildProcess } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec } from 'lousho';
 
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();

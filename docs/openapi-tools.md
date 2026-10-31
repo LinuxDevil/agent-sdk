@@ -6,15 +6,15 @@ the API without a hand-written `defineTool()` per endpoint and without the raw
 [`http` tool](./tools.md#built-in-tools). Operations that change data ask for
 [approval](./approvals.md) by default.
 
-`openApiTools` is exported from `@lousho/build-ai-agent` and
-`@lousho/build-ai-agent/tools`. It needs no extra package. The `vendor/` model
+`openApiTools` is exported from `lousho` and
+`lousho/tools`. It needs no extra package. The `vendor/` model
 prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>`
 (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ## Quick start
 
 ```ts no-run
-import { createAgent, openApiTools } from '@lousho/build-ai-agent';
+import { createAgent, openApiTools } from 'lousho';
 
 const tools = await openApiTools('https://api.example.com/openapi.json', {
   include: ['getOrder', 'refundOrder'],
@@ -75,7 +75,7 @@ destructiveHint: false` on GET, HEAD and OPTIONS; `readOnlyHint: false` on the
 rest, with `destructiveHint: true` for DELETE. Anything that reads annotations treats these tools the way it treats MCP tools.
 
 ```ts no-run
-import { openApiTools } from '@lousho/build-ai-agent';
+import { openApiTools } from 'lousho';
 
 declare const spec: object;
 
@@ -93,7 +93,7 @@ never sees it) and added to the request. The value can be a function, called per
 request with the operation and the tool call id.
 
 ```ts no-run
-import { openApiTools } from '@lousho/build-ai-agent';
+import { openApiTools } from 'lousho';
 
 declare const spec: object;
 declare const currentTenant: () => string;
@@ -164,7 +164,7 @@ An API with hundreds of operations is hundreds of tools. Give the agent the ones
 it needs with `include` or `exclude`, or with a predicate on `op.tags`:
 
 ```ts no-run
-import { openApiTools } from '@lousho/build-ai-agent';
+import { openApiTools } from 'lousho';
 
 declare const spec: object;
 

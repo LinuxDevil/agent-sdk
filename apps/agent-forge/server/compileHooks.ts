@@ -8,8 +8,8 @@
  * `sandboxRunHook()` (hookSandbox.ts) rather than running the user's code
  * in this server process - see that file's doc comment for why.
  */
-import { HookRegistry, type AgentHook } from '@lousho/build-ai-agent';
-import type { SandboxAdapter, GenerateOptions, Message } from '@lousho/build-ai-agent';
+import { HookRegistry, type AgentHook } from 'lousho';
+import type { SandboxAdapter, GenerateOptions, Message } from 'lousho';
 import { sandboxRunHook } from './hookSandbox';
 
 /** Shape graphToSpec.ts serializes each hook as, under `spec.policy.hooks`. */

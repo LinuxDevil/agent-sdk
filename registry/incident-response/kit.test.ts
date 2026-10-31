@@ -1,7 +1,7 @@
 /**
  * The incident-response kit, exercised offline: the directory is loaded in
  * place with `loadAgentDir()` / `resolveAgentDir()` (the kit's files import
- * `@lousho/build-ai-agent` by name, resolved to this repo's dist through the
+ * `lousho` by name, resolved to this repo's dist through the
  * workspace self-link - like kit.test.ts in examples/coding-harness, this
  * needs `npm run build` to have run).
  *
@@ -17,8 +17,8 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createAgent, loadAgentDir, resolveAgentDir } from '@lousho/build-ai-agent';
-import { mockModel, type MockModel } from '@lousho/build-ai-agent/testing';
+import { createAgent, loadAgentDir, resolveAgentDir } from 'lousho';
+import { mockModel, type MockModel } from 'lousho/testing';
 // static imports share the module instances the loader's dynamic import gets
 import { infra, resetInfra } from './tools/infra.js';
 import { resetTimeline, timeline } from './hooks.js';

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { MemoryWorkspace } from '@lousho/build-ai-agent';
-import { mockModel } from '@lousho/build-ai-agent/testing';
+import { MemoryWorkspace } from 'lousho';
+import { mockModel } from 'lousho/testing';
 import { createCodingHarness, fakeExec, FIXTURE, instructionsFor, scriptedExplorer, scriptedLead } from './index';
 
 function memoryWorkspace(): MemoryWorkspace {

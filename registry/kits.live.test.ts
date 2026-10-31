@@ -5,7 +5,7 @@
  * resolved from OPENROUTER_API_KEY in the shell or a `.env` at the repo
  * root; vitest loads `.env` into `process.env`, `.env` is gitignored).
  *
- *   npm run build        # the kits import '@lousho/build-ai-agent' -> dist/
+ *   npm run build        # the kits import 'lousho' -> dist/
  *   npm run test:live
  *
  * NEVER in CI: `*.live.test.ts` is excluded from the default vitest config.
@@ -17,7 +17,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { loadAgentDir } from '@lousho/build-ai-agent';
+import { loadAgentDir } from 'lousho';
 import { infra, resetInfra } from './incident-response/tools/infra.js';
 import { resetTimeline, timeline } from './incident-response/hooks.js';
 

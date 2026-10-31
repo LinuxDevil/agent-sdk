@@ -19,7 +19,7 @@ description to decide when to hand off), then pass them to the triage agent as
 use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const lookupCharges = defineTool({
@@ -70,7 +70,7 @@ name with one of the agent's tools.
 Wrap a target in `handoff()` to configure it:
 
 ```ts
-import { createAgent, handoff, handoffFilters } from '@lousho/build-ai-agent';
+import { createAgent, handoff, handoffFilters } from 'lousho';
 import { z } from 'zod';
 
 const refunds = createAgent({ name: 'refunds', description: 'Issues refunds', model: 'openai/gpt-4o-mini' });
@@ -122,7 +122,7 @@ the middle of a conversation. Two filters are built in:
 - `handoffFilters.lastUserMessage`: keeps only the last user message.
 
 ```ts
-import { handoffFilters, type HandoffInputData } from '@lousho/build-ai-agent';
+import { handoffFilters, type HandoffInputData } from 'lousho';
 
 // The last four messages, without tool traffic.
 const recent = (data: HandoffInputData) => handoffFilters.removeToolCalls(data).slice(-4);
@@ -169,7 +169,7 @@ In a session the active agent is the one the transcript last handed off to
 `session.send()` / `session.stream()` runs that agent:
 
 ```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const billing = createAgent({ name: 'billing', description: 'Handles charges and refunds', model: 'openai/gpt-4o-mini' });
 const triage = createAgent({ name: 'triage', model: 'openai/gpt-4o-mini', handoffs: [billing] });
@@ -187,7 +187,7 @@ its targets, give the target an array and add the lead to it afterwards (the
 array is read at every run):
 
 ```ts
-import { createAgent, handoff, type Handoff } from '@lousho/build-ai-agent';
+import { createAgent, handoff, type Handoff } from 'lousho';
 
 const billingHandoffs: Handoff[] = [];
 const billing = createAgent({
@@ -237,7 +237,7 @@ A handoff is reported between the handoff call's `tool.start` / `tool.done`
 and the target's first `step.start`:
 
 ```ts no-run
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const billing = createAgent({ name: 'billing', description: 'Handles charges and refunds', model: 'openai/gpt-4o-mini' });
 const triage = createAgent({ name: 'triage', model: 'openai/gpt-4o-mini', handoffs: [billing] });

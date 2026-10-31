@@ -5,7 +5,7 @@
  * refuses it ("triage never deletes"), which is the kit's guardrail story.
  */
 import { z } from 'zod';
-import { defineTool } from '@lousho/build-ai-agent';
+import { defineTool } from 'lousho';
 import { getMessage, listMessages, updateMessage, type MessageStatus } from '../lib/mailstore.ts';
 
 const STATUS = z.enum(['new', 'triaged', 'replied', 'processed', 'trashed']);

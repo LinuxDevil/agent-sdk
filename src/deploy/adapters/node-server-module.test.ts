@@ -1,6 +1,6 @@
 /**
  * The node-server (and docker) targets build a .ts agent module - the file
- * `lousho dev src/agent.ts` serves, as create-lousho-agent scaffolds it: a
+ * `lousho dev src/agent.ts` serves, as create-lousho scaffolds it: a
  * default export holding createAgent() options. scaffold + tsup build + the
  * built dist/server.js as a real subprocess; only the LLM is the mock provider.
  */
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { NodeServerAdapter, loadAgentSpecForDeploy } from './node-server';
 import { withBuildLock } from '../buildLock.testkit';
 
-const AGENT_TS = `import { createMockProvider, type CreateAgentConfig } from '@lousho/build-ai-agent';
+const AGENT_TS = `import { createMockProvider, type CreateAgentConfig } from 'lousho';
 
 const instructions: string = 'You are a deployed agent module.';
 const config: CreateAgentConfig = { instructions, provider: createMockProvider({ name: 'mock', responses: ['module pong'] }) };

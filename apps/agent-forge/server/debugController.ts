@@ -29,7 +29,7 @@
  * only supported on `llm` and `tool` nodes, matching this app's graph model
  * (graph/types.ts) - see the epic report for the full breakdown.
  */
-import type { GenerateOptions, Message, ToolCall } from '@lousho/build-ai-agent';
+import type { GenerateOptions, Message, ToolCall } from 'lousho';
 
 export type DebugBoundary = 'before' | 'after';
 
@@ -77,7 +77,7 @@ export interface DebugStateSnapshot {
 const DEFAULT_PAUSE_TIMEOUT_MS = 15 * 60 * 1000;
 
 export type DebugHooks = Pick<
-  import('@lousho/build-ai-agent/executor').ExecuteOptions,
+  import('lousho/executor').ExecuteOptions,
   'onLLMRequest' | 'onLLMResponse' | 'onToolCall' | 'onToolResult'
 >;
 

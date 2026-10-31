@@ -1,5 +1,5 @@
 /**
- * How the generated project depends on `@lousho/build-ai-agent`.
+ * How the generated project depends on `lousho`.
  *
  * Normally a semver range of the version that generated it. For local
  * development (and the scaffolder's own e2e test) `--sdk-path` /
@@ -51,7 +51,7 @@ function vendorSdk(sdkPath: string, projectDir: string): string {
 }
 
 /**
- * The `dependencies["@lousho/build-ai-agent"]` value for the generated
+ * The `dependencies["lousho"]` value for the generated
  * project: a caret range of `version` (e.g. `^1.2.3`), or `file:./<tarball>` when `sdkPath` is given
  * (which also writes the tarball into `projectDir`).
  */

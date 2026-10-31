@@ -1,5 +1,5 @@
 /**
- * `@lousho/build-ai-agent/react`: the `useLoushoAgent()` hook, and
+ * `lousho/react`: the `useLoushoAgent()` hook, and
  * the framework-neutral reducer and stream parser it is built on (now in
  * src/ui, shared with the Vue binding).
  */

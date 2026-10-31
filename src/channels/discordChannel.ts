@@ -130,7 +130,7 @@ function button(label: string, customId: string, style: number) {
  *
  * @example
  * ```ts
- * import { discordChannel } from '@lousho/build-ai-agent';
+ * import { discordChannel } from 'lousho';
  *
  * const discord = discordChannel({
  *   publicKey: process.env.DISCORD_PUBLIC_KEY ?? '',

@@ -7,7 +7,7 @@ as `reasoning.*` events in `agent.stream()`, and as `result.reasoning`. The
 `openrouter/<vendor>/<model>` (e.g. `openrouter/anthropic/claude-sonnet-4.5`).
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'anthropic/claude-sonnet-4-5',

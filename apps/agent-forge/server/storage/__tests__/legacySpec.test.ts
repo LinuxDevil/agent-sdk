@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { upgradeSpec, type AgentSpec, type AgentSpecV2 } from '@lousho/build-ai-agent';
+import { upgradeSpec, type AgentSpec, type AgentSpecV2 } from 'lousho';
 import { mergeLegacySave, toLegacySpec } from '../legacySpec';
 
 const base: AgentSpec = { name: 'bot', prompt: 'Be helpful.', provider: { type: 'mock', model: 'm1' } };

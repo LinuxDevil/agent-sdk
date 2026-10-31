@@ -8,12 +8,29 @@
 
 ## Install the package
 
+Lousho is published to [GitHub Packages](https://github.com/LinuxDevil/agent-sdk/packages) as `@linuxdevil/lousho` and `@linuxdevil/create-lousho`. GitHub Packages needs a token even for public packages, so add a [personal access token (classic) with `read:packages`](https://github.com/settings/tokens) and the scope's registry to your project or user `.npmrc`:
+
+```ini
+@linuxdevil:registry=https://npm.pkg.github.com
+//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
+```
+
+Install the SDK under the plain name `lousho` with an npm alias, so imports stay `from 'lousho'`:
+
 ```bash
-npm install @lousho/build-ai-agent ai zod
+npm install lousho@npm:@linuxdevil/lousho@alpha ai zod
+```
+
+Other package managers take the same alias: `pnpm add lousho@npm:@linuxdevil/lousho@alpha ai zod`, `yarn add lousho@npm:@linuxdevil/lousho@alpha ai zod`.
+
+Once the packages are also on npmjs.com, the plain form works without the `.npmrc`:
+
+```bash
+npm install lousho ai zod
 # or
-pnpm add @lousho/build-ai-agent ai zod
+pnpm add lousho ai zod
 # or
-yarn add @lousho/build-ai-agent ai zod
+yarn add lousho ai zod
 ```
 
 `ai` (the Vercel AI SDK: `^4.3.19`, `^6.0.0` or `^7.0.0`) and `zod`
@@ -42,7 +59,7 @@ that pairs with your `ai` major. Install the pair from one row:
 For example, on the current `ai` major:
 
 ```bash
-npm install @lousho/build-ai-agent ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
+npm install lousho ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 ```
 
 **Ollama on `ai` 6/7 needs zod 4.** `ollama-ai-provider-v2` (the Ollama package
@@ -60,7 +77,7 @@ with zod 4, and `ai` 7 with zod 3 and with zod 4. The two zod 4 entries on
 `ai` 6 and 7 also install `ollama-ai-provider-v2` (3.x and 4.x) and run the
 Ollama provider against it, so Ollama on `ai` 6/7 is tested, not assumed.
 
-Peers are loaded on demand: importing `@lousho/build-ai-agent` (or any of
+Peers are loaded on demand: importing `lousho` (or any of
 its sub-entries) never loads a provider package, so you only need to install
 the ones you use. Each provider package is loaded the first time that
 provider makes a call; if it is missing, that call fails with a
@@ -74,7 +91,7 @@ npm install @ai-sdk/openai@^0.0.42
 ```
 
 ```ts no-run
-import { MissingPeerDependencyError, resolveProvider } from '@lousho/build-ai-agent';
+import { MissingPeerDependencyError, resolveProvider } from 'lousho';
 
 const provider = resolveProvider('openai/gpt-4o-mini'); // needs OPENAI_API_KEY; does not load the peer
 try {
@@ -96,9 +113,9 @@ the `lousho init` questions or code mode installs none of them:
 | --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `lousho doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
 | `@modelcontextprotocol/sdk` | `^1.31.0` | MCP: `createAgent({ mcpServers })` / `connectMcp()`, `serveMcp()` and `lousho mcp`            | `npm install @modelcontextprotocol/sdk@^1.31.0`  |
-| `@opentelemetry/api`        | `^1.9.1`  | OpenTelemetry tracing: `createOtelTraceExporter()` from `@lousho/build-ai-agent/otel`         | `npm install @opentelemetry/api@^1.9.1`          |
-| `react`                     | `^18`, `^19` | The React bindings (`@lousho/build-ai-agent/react`)                                      | `npm install react`                              |
-| `vue`                       | `^3`      | The Vue bindings (`@lousho/build-ai-agent/vue`)                                               | `npm install vue@^3`                             |
+| `@opentelemetry/api`        | `^1.9.1`  | OpenTelemetry tracing: `createOtelTraceExporter()` from `lousho/otel`         | `npm install @opentelemetry/api@^1.9.1`          |
+| `react`                     | `^18`, `^19` | The React bindings (`lousho/react`)                                      | `npm install react`                              |
+| `vue`                       | `^3`      | The Vue bindings (`lousho/vue`)                                               | `npm install vue@^3`                             |
 | `tsup`                      | `^8.0.0`  | `lousho build`, which bundles the agent for each target                                       | `npm install --save-dev tsup@^8.0.0`             |
 | `prompts`                   | `^2.4.2`  | The interactive questions of `lousho init` (`lousho init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
 | `quickjs-emscripten`        | `^0.32.0` | [Code mode](./code-mode.md): `createAgent({ codeMode })` runs `run_code` scripts in its QuickJS isolate | `npm install quickjs-emscripten@^0.32.0` |
@@ -111,7 +128,7 @@ that names the feature and the exact command, for example:
 The optional package 'dockerode' is not installed, but Docker sandboxing (SubprocessSandbox) needs it. Run: npm install dockerode@^5.0.1
 ```
 
-`npm create lousho-agent` installs `prompts` itself, so scaffolding with it
+`npm create lousho` installs `prompts` itself, so scaffolding with it
 needs nothing extra. `lousho doctor` lists every optional peer, what it
 enables and whether it is installed (a missing `dockerode` is an error only
 when the agent spec uses a sandboxed tool).
@@ -151,25 +168,25 @@ The entries `exports` declares, and what each one holds:
 
 | Import specifier | What it holds |
 | ---------------- | ------------- |
-| `@lousho/build-ai-agent` | The root: `createAgent()`, `defineTool()`, `defineChannel()`, agents' public types, events, stores (`memoryStore()`, `fileStore()`), hooks, guardrails, sessions, skills, memory, sub-agents, evals, spec files, deployment types |
-| `@lousho/build-ai-agent/executor` | The executor API (advanced - prefer `createAgent()`): `AgentExecutor`, `AgentBuilder`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()`, `ToolRegistry`, `globalToolRegistry` |
-| `@lousho/build-ai-agent/tools` | The tools surface: `defineTool()`, `ToolRegistry`, the built-in tools, MCP/OpenAPI helpers |
-| `@lousho/build-ai-agent/flows` | `FlowBuilder`, `FlowExecutor`, `validateFlow()` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) |
-| `@lousho/build-ai-agent/integrations` | The credentialed third-party tools: `createJiraTools()`, `createGitHubTools()`, `createSlackTool()` / `slackTool`, `postSlackAlert()`, `createEmailTool()` and their types |
-| `@lousho/build-ai-agent/utils` | `EncryptionUtils`, `sha256()`, `generatePassword()`, `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` and the validators (`validateWithSchema`, `isValidEmail`, ...) |
-| `@lousho/build-ai-agent/mcp` | MCP client and server helpers: `connectMcp()`, `loadMcpTools()`, `serveMcp()` |
-| `@lousho/build-ai-agent/types` | The public types without the runtime |
-| `@lousho/build-ai-agent/testing` | `mockModel()`, `recordReplay()` and the offline-test helpers |
-| `@lousho/build-ai-agent/otel` | `createOtelTraceExporter()` (needs the optional `@opentelemetry/api` peer) |
-| `@lousho/build-ai-agent/hooks` | The hooks surface: `HookRegistry`, hook types |
-| `@lousho/build-ai-agent/sqlite` | `SqliteStore` (sessions, checkpoints, approvals and tokens in one SQLite file; needs Node's `node:sqlite`) |
-| `@lousho/build-ai-agent/auth` | Route auth: `routeAuth()`, `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` |
-| `@lousho/build-ai-agent/kv` | `KVStore`, `KVCheckpointStore` for a hand-written Cloudflare Worker |
-| `@lousho/build-ai-agent/traces` | `fileTraceExporter()`, `listTraces()`, `readTrace()` (what `lousho traces` reads) |
-| `@lousho/build-ai-agent/triggers` | `TriggerAdapter`, `TriggerRegistry`, `verifySlackSignature`, `parseCronExpression` |
-| `@lousho/build-ai-agent/react` | `useLoushoAgent()` and the React helpers (needs `react`) |
-| `@lousho/build-ai-agent/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
-| `@lousho/build-ai-agent/svelte` | `loushoAgent()` as a Svelte store |
+| `lousho` | The root: `createAgent()`, `defineTool()`, `defineChannel()`, agents' public types, events, stores (`memoryStore()`, `fileStore()`), hooks, guardrails, sessions, skills, memory, sub-agents, evals, spec files, deployment types |
+| `lousho/executor` | The executor API (advanced - prefer `createAgent()`): `AgentExecutor`, `AgentBuilder`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()`, `ToolRegistry`, `globalToolRegistry` |
+| `lousho/tools` | The tools surface: `defineTool()`, `ToolRegistry`, the built-in tools, MCP/OpenAPI helpers |
+| `lousho/flows` | `FlowBuilder`, `FlowExecutor`, `validateFlow()` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) |
+| `lousho/integrations` | The credentialed third-party tools: `createJiraTools()`, `createGitHubTools()`, `createSlackTool()` / `slackTool`, `postSlackAlert()`, `createEmailTool()` and their types |
+| `lousho/utils` | `EncryptionUtils`, `sha256()`, `generatePassword()`, `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` and the validators (`validateWithSchema`, `isValidEmail`, ...) |
+| `lousho/mcp` | MCP client and server helpers: `connectMcp()`, `loadMcpTools()`, `serveMcp()` |
+| `lousho/types` | The public types without the runtime |
+| `lousho/testing` | `mockModel()`, `recordReplay()` and the offline-test helpers |
+| `lousho/otel` | `createOtelTraceExporter()` (needs the optional `@opentelemetry/api` peer) |
+| `lousho/hooks` | The hooks surface: `HookRegistry`, hook types |
+| `lousho/sqlite` | `SqliteStore` (sessions, checkpoints, approvals and tokens in one SQLite file; needs Node's `node:sqlite`) |
+| `lousho/auth` | Route auth: `routeAuth()`, `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` |
+| `lousho/kv` | `KVStore`, `KVCheckpointStore` for a hand-written Cloudflare Worker |
+| `lousho/traces` | `fileTraceExporter()`, `listTraces()`, `readTrace()` (what `lousho traces` reads) |
+| `lousho/triggers` | `TriggerAdapter`, `TriggerRegistry`, `verifySlackSignature`, `parseCronExpression` |
+| `lousho/react` | `useLoushoAgent()` and the React helpers (needs `react`) |
+| `lousho/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
+| `lousho/svelte` | `loushoAgent()` as a Svelte store |
 
 ### TypeScript settings
 
@@ -213,16 +230,16 @@ npm run build
 npm pack --pack-destination /path/to/your-project
 
 # in your project (peers come from the registry)
-npm install ./lousho-build-ai-agent-<version>.tgz ai zod
+npm install ./lousho-<version>.tgz ai zod
 ```
 
 To scaffold a new project the same way, from the checkout:
 `node bin/lousho.js init ../my-agent --sdk-path .`.
 
-On Windows, `npx C:\abs\path\create-lousho-agent-<version>.tgz` silently does
+On Windows, `npx C:\abs\path\create-lousho-<version>.tgz` silently does
 nothing (an npm quirk with absolute drive-letter paths). Use a relative path
-(`npx ./create-lousho-agent-<version>.tgz my-agent`) or a `file:` spec
-(`npx file:C:/abs/path/create-lousho-agent-<version>.tgz my-agent`) instead.
+(`npx ./create-lousho-<version>.tgz my-agent`) or a `file:` spec
+(`npx file:C:/abs/path/create-lousho-<version>.tgz my-agent`) instead.
 
 `npm install github:LinuxDevil/agent-sdk` does **not** work: `dist/` is not in
 git and the repository has no `prepare` build step, so the install has no
@@ -239,8 +256,8 @@ one-line `CLAUDE.md` importing it) telling coding agents the project's files,
 scripts and conventions. It then installs the dependencies and runs `git init`.
 
 ```bash
-npm create lousho-agent my-agent         # or: npx @lousho/build-ai-agent init my-agent
-npx @lousho/build-ai-agent init my-agent --yes --provider anthropic --template tools --no-install
+npx --package=@linuxdevil/create-lousho@alpha create-lousho my-agent   # or: npx lousho init my-agent
+npx lousho init my-agent --yes --provider anthropic --template tools --no-install
 ```
 
 | Flag | Meaning |
@@ -253,7 +270,7 @@ npx @lousho/build-ai-agent init my-agent --yes --provider anthropic --template t
 | `--force` | Write into a directory that is not empty (otherwise `init` refuses). |
 | `--sdk-path <dir\|tarball>` | For SDK development: depend on a checkout (it is `npm pack`ed) or a packed `.tgz` instead of the published version. Also read from `LOUSHO_SDK_PATH`. |
 
-`create-lousho-agent` (`packages/create-lousho-agent`) is a thin wrapper that
+`create-lousho` (`packages/create-lousho`) is a thin wrapper that
 runs `lousho init` with the same arguments.
 
 ## The `lousho` CLI

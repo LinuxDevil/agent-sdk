@@ -6,5 +6,5 @@
     "exec": true,
     "filesystem": "write"
   },
-  "dependencies": ["@lousho/build-ai-agent"]
+  "dependencies": ["lousho"]
 }

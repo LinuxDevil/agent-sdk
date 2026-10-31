@@ -26,7 +26,7 @@ export interface RouteHandlerOptions extends ChatRoutesAccess {
   basePath?: string;
   /**
    * Who may call (docs/auth.md): an ordered list of auth entries from
-   * `@lousho/build-ai-agent/auth` (`jwt()`, `oidc()`, `basic()`, `apiToken()`, ...)
+   * `lousho/auth` (`jwt()`, `oidc()`, `basic()`, `apiToken()`, ...)
    * or one entry; the accepted `principal` reaches the run. Also a bearer token
    * string (`apiToken(token)`), or a function returning a boolean (`true`
    * accepts with principal `{ id: 'anonymous', type: 'user', authenticator: 'custom' }`).

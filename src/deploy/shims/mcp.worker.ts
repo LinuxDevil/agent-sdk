@@ -1,6 +1,6 @@
 /**
  * Worker-safe stand-in for every `@modelcontextprotocol/sdk` specifier the
- * `@lousho/build-ai-agent/worker` entry reaches (#289).
+ * `lousho/worker` entry reaches (#289).
  *
  * `createAgent({ mcpServers })` lazy-imports the optional MCP peer through
  * tools/mcp/connect.ts (client/index.js, client/stdio.js,
@@ -20,7 +20,7 @@ import { SDKError } from '../../execution/errors';
 
 function unavailable(): never {
   throw new SDKError(
-    'MCP is not available from @lousho/build-ai-agent/worker: the entry does not bundle @modelcontextprotocol/sdk. ' +
+    'MCP is not available from lousho/worker: the entry does not bundle @modelcontextprotocol/sdk. ' +
       'Use the package root on Node.js, or `lousho build --target=cloudflare-worker`, which supports streamable-HTTP MCP servers.',
     'LOUSHO_DEPLOY_FAILED'
   );

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleFixerPatch } from './guardedPr';
-import { ToolDescriptor } from '@lousho/build-ai-agent';
+import { ToolDescriptor } from 'lousho';
 
 describe('handleFixerPatch', () => {
   const CLEAN_PATCH = '--- a/foo.txt\n+++ b/foo.txt\n@@ -1 +1 @@\n-old\n+new\n';

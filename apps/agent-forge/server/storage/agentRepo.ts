@@ -21,7 +21,7 @@ import * as fs from 'node:fs';
 import { promises as fsPromises } from 'node:fs';
 import * as path from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { agentSpecV2Schema, loadSpecV2, upgradeSpec, type AgentSpecV2 } from '@lousho/build-ai-agent';
+import { agentSpecV2Schema, loadSpecV2, upgradeSpec, type AgentSpecV2 } from 'lousho';
 import { isValidAgentId } from '../../shared/agentId';
 import type { AgentMeta, CanvasLayout } from '../../shared/wireTypes';
 import { readJsonFile, writeFileAtomic, writeJsonAtomic } from './atomic';

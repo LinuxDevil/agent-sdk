@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 function tempDir(): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'create-lousho-agent-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'create-lousho-'));
   tempDirs.push(dir);
   return dir;
 }
@@ -22,7 +22,7 @@ function run(args: string[]): string {
   return execFileSync(process.execPath, [CLI, ...args], { encoding: 'utf8', stdio: 'pipe' });
 }
 
-describe('create-lousho-agent wraps lousho init', () => {
+describe('create-lousho wraps lousho init', () => {
   it('finds the lousho bin of the installed SDK', () => {
     expect(fs.existsSync(loushoBin())).toBe(true);
     expect(path.basename(loushoBin())).toBe('lousho.js');
@@ -30,7 +30,7 @@ describe('create-lousho-agent wraps lousho init', () => {
 
   it('forwards its arguments to lousho init (--help)', () => {
     const help = run(['--help']);
-    expect(help).toContain('npm create lousho-agent [dir] -- [options] runs `lousho init [dir] [options]`');
+    expect(help).toContain('npm create lousho [dir] -- [options] runs `lousho init [dir] [options]`');
     expect(help).toContain('Usage: lousho init');
   });
 
@@ -44,7 +44,7 @@ describe('create-lousho-agent wraps lousho init', () => {
 
     expect(output).toContain('Next steps:');
     expect(fs.readFileSync(path.join(dir, '.env.example'), 'utf8')).toContain('ANTHROPIC_API_KEY=');
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).dependencies['@lousho/build-ai-agent']).toBe(
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).dependencies['lousho']).toBe(
       'file:./sdk-0.0.0.tgz'
     );
   });

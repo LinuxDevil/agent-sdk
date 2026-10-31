@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
-import type { AgentSpec } from '@lousho/build-ai-agent';
+import type { AgentSpec } from 'lousho';
 import { RunManager } from '../runRegistry';
 import { attachWebSocketServer } from '../wsServer';
 import { FileCheckpointStore } from '../checkpointStore';

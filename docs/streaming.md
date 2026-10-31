@@ -11,7 +11,7 @@ provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
 > Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`); `agent` is a `createAgent()` result; `input` is the user's text, a `string`; `approvalStore` is an `ApprovalStore`; `toolRegistry` is a `ToolRegistry`.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -72,7 +72,7 @@ interface AgentRun extends AsyncIterable<AgentEvent> {
   throw synchronously from `stream()`.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -99,7 +99,7 @@ Output guardrails still check only the final reply of a `send()`, as without
 a listener. Sub-agents' events arrive tagged with `subagent`.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -150,7 +150,7 @@ save, so the transcript is complete when the loop ends. An aborted or failed
 run, or one you stop reading early, is not saved.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const session = agent.session({ id: 'user-42' });
@@ -178,7 +178,7 @@ process, since everything is read from the approval store. A model chosen per
 run (`model` as a function) is the one the paused run used.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ provider /* , a tool with needsApproval */ });
 const paused = await agent.send('Delete the old reports.');
@@ -197,7 +197,7 @@ of `resumeAfterApproval()` (see [the executor API](./executor-api.md)) and
 returns the same `AgentRun`.
 
 ```ts
-import { AgentExecutor, streamResumeAfterApproval } from '@lousho/build-ai-agent/executor';
+import { AgentExecutor, streamResumeAfterApproval } from 'lousho/executor';
 
 const paused = await AgentExecutor.execute({ agent, input, provider, toolRegistry, approvalStore });
 const run = streamResumeAfterApproval({ id: paused.approvalId!, approved: true }, approvalStore, toolRegistry, provider);
@@ -231,7 +231,7 @@ for approval is reported once, by the top-level `approval.requested` (which
 carries the sub-agent's call).
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const researcher = createAgent({ provider, instructions: 'You research.', description: 'Finds sources' });
 const lead = createAgent({ provider, instructions: 'You coordinate.', subagents: { researcher } });
@@ -272,7 +272,7 @@ step was running) and `run.done` (`'aborted'`), and `result` resolves with
 `finishReason: 'aborted'`.
 
 ```ts
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const run = agent.stream('Write a long story');
@@ -290,7 +290,7 @@ To add input to a run that is still going, or to redirect it, see [Queued input 
 ## Example: terminal
 
 ```ts
-import { createAgent, defineTool } from '@lousho/build-ai-agent';
+import { createAgent, defineTool } from 'lousho';
 import { z } from 'zod';
 
 const getWeather = defineTool({
@@ -329,7 +329,7 @@ saved even when the client leaves (see [Next.js](./nextjs.md#routes)).
 
 ```ts
 import { createServer } from 'node:http';
-import { createAgent } from '@lousho/build-ai-agent';
+import { createAgent } from 'lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 
@@ -372,7 +372,7 @@ with `{ sessionId, input }` streams `agent.session({ id }).stream(input)` as
 needs approval ends the stream with `approval.requested`:
 
 ```ts
-import { AgentExecutor } from '@lousho/build-ai-agent/executor';
+import { AgentExecutor } from 'lousho/executor';
 
 const run = AgentExecutor.stream({ agent, input, provider, toolRegistry, approvalStore });
 for await (const event of run) {

@@ -2,7 +2,7 @@
  * Evaluating one file of an agent directory at build time (cloudflare-worker
  * target, #298). `wrangler.toml` needs a `schedules/` file's cron expression
  * at scaffold time, but the file can be TypeScript and import
- * `@lousho/build-ai-agent`, so plain `import()` cannot load it: this bundles
+ * `lousho`, so plain `import()` cannot load it: this bundles
  * the file with esbuild (the same Worker-SDK mapping the real bundle gets)
  * and imports the result as a `data:` module.
  *
@@ -28,7 +28,7 @@ async function loadEsbuild(): Promise<typeof import('esbuild')> {
 /**
  * Bundles `file` (TypeScript or JavaScript, its own relative imports and
  * `node_modules` resolved) into one ES module and imports it, returning its
- * namespace. `@lousho/build-ai-agent` resolves to the Worker-safe subset
+ * namespace. `lousho` resolves to the Worker-safe subset
  * (src/deploy/workerSdk.ts) - the same names the final Worker bundle allows,
  * so a file that imports anything else fails here with the build's message.
  * Runs on Node, so `node:` imports inside the file work here even though the

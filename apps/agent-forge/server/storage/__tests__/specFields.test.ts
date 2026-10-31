@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AgentSpecV2 } from '@lousho/build-ai-agent';
+import type { AgentSpecV2 } from 'lousho';
 import { computeChangedFields } from '../../../shared/specFields';
 import type { SpecSnapshot } from '../../../shared/wireTypes';
 

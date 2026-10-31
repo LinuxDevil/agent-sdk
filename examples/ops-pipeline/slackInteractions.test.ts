@@ -6,9 +6,9 @@ import {
   createInMemoryApprovalStore,
   SlackInteractionPayload,
 } from './slackInteractions';
-import { ApprovalStore, ExecutionSnapshot, PendingApproval } from '@lousho/build-ai-agent';
-import { ToolRegistry } from '@lousho/build-ai-agent/executor';
-import { createMockProvider } from '@lousho/build-ai-agent';
+import { ApprovalStore, ExecutionSnapshot, PendingApproval } from 'lousho';
+import { ToolRegistry } from 'lousho/executor';
+import { createMockProvider } from 'lousho';
 
 describe('extractApprovalIdFromInteraction', () => {
   it('extracts the approvalId from a fix_it block_actions click', () => {

@@ -114,12 +114,12 @@ describe('runInit --yes', () => {
 
   it('writes a caret range of the SDK version, or a tarball with --sdk-path', async () => {
     await runInit(['plain', '--yes', '--no-install', '--no-git'], harness().environment);
-    expect(JSON.parse(read('plain', 'package.json')).dependencies['@lousho/build-ai-agent']).toBe('^1.0.0-alpha.8');
+    expect(JSON.parse(read('plain', 'package.json')).dependencies['lousho']).toBe('^1.0.0-alpha.8');
 
     const tarball = path.join(root, 'sdk-9.9.9.tgz');
     fs.writeFileSync(tarball, 'tgz');
     await runInit(['local', '--yes', '--no-install', '--no-git', '--sdk-path', tarball], harness().environment);
-    expect(JSON.parse(read('local', 'package.json')).dependencies['@lousho/build-ai-agent']).toBe('file:./sdk-9.9.9.tgz');
+    expect(JSON.parse(read('local', 'package.json')).dependencies['lousho']).toBe('file:./sdk-9.9.9.tgz');
     expect(fs.existsSync(path.join(root, 'local', 'sdk-9.9.9.tgz'))).toBe(true);
     // The vendored tarball is a local build, not source: it is git-ignored.
     expect(read('local', '.gitignore')).toMatch(/^sdk-9\.9\.9\.tgz$/m);
