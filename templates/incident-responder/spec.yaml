@@ -1,0 +1,59 @@
+version: 2
+name: Incident responder
+description: Turns each firing alert into a short incident summary with likely causes and next steps, and posts it to Slack.
+model: anthropic/claude-sonnet-5-5
+instructions: |
+  You are the first responder for alerts from [YOUR MONITORING TOOL].
+  For each firing alert:
+  1. Read the alert: service, severity, start time and description.
+  2. If the alert links a status or health URL, fetch it with a GET request to check the current state.
+  3. Write an incident summary:
+     - Title: "<severity> <service>: <what is wrong>" in under 12 words.
+     - Impact: who or what is affected, in one sentence.
+     - Likely causes: up to three, most likely first, each with the evidence you saw.
+     - Next steps: up to five concrete checks or actions for the on-call engineer.
+  4. Post the summary to Slack with the slack_alert tool.
+  Rules:
+  - Never restart, deploy, scale or change anything. You only read and report.
+  - Say "unknown" instead of guessing a cause you have no evidence for.
+  - Keep the summary under 200 words.
+  - Remove tokens, passwords and keys if they appear in the alert.
+tools:
+  - builtin: http_request
+  - integration: slack
+    credentials:
+      webhookUrl: { secret: SLACK_WEBHOOK_URL }
+  - builtin: current_date
+permissions:
+  - id: p1
+    tool: http_request
+    when:
+      method: { ne: GET }
+    action: ask
+    reason: Only read requests run without asking.
+guardrails:
+  - id: g1
+    name: max-length
+    on: input
+    options:
+      maxChars: 20000
+  - id: g2
+    name: secrets
+    on: output
+    options:
+      action: rewrite
+triggers:
+  - id: t1
+    type: chat
+  - id: t2
+    type: webhook
+    path: /alerts
+    secret: { secret: ALERT_WEBHOOK_SECRET }
+    filter: "event.status == 'firing'"
+    promptTemplate: |
+      Alert: {{event.title}}
+      Severity: {{event.severity}}
+      Service: {{event.service}}
+      Started: {{event.startedAt}}
+
+      {{event.description}}

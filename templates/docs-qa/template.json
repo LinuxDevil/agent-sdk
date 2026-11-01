@@ -1,0 +1,1 @@
+{ "id": "docs-qa", "title": "Docs Q and A", "description": "Answers questions about your documentation in chat or Slack and links the pages it used.", "category": "knowledge", "tags": ["docs", "q-and-a", "slack"], "requires": ["provider_key"] }

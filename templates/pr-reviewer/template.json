@@ -1,0 +1,1 @@
+{ "id": "pr-reviewer", "title": "Pull request reviewer", "description": "Reviews each new or updated pull request and posts one review comment after you approve it.", "category": "engineering", "tags": ["github", "code-review"], "requires": ["provider_key", "secret"] }
