@@ -6,8 +6,10 @@
  * so the two can evolve together without every component knowing the HTTP
  * details.
  */
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import type {
+  AgentListItem,
+  AgentRecord,
   AgentRunStatusPayload,
   CatalogGuardrail,
   CatalogKit,
@@ -109,24 +111,47 @@ class RuntimeClient implements AgentApi {
     return body as T;
   }
 
-  /** The saved agents in the studio's `.lousho/agents/`. */
+  /** The saved agents in the studio's `.lousho/agents/` (the v1 list - `?view=legacy` until the canvas moves to v2). */
   async listAgents(): Promise<AgentStoreEntry[]> {
-    return this.request('/agents', { method: 'GET' });
+    return this.request('/agents?view=legacy', { method: 'GET' });
   }
 
-  /** One saved agent's spec, or undefined when there is none. */
+  /** One saved agent's v1 spec (the legacy view), or undefined when there is none. */
   async loadAgent(agentId: string): Promise<AgentSpec | undefined> {
     try {
-      return await this.request<AgentSpec>(`/agents/${encodeURIComponent(agentId)}`, { method: 'GET' });
+      return await this.request<AgentSpec>(`/agents/${encodeURIComponent(agentId)}?view=legacy`, { method: 'GET' });
     } catch (error) {
       if (error instanceof RuntimeApiError && error.status === 404) return undefined;
       throw error;
     }
   }
 
-  /** Writes `.lousho/agents/<id>.yaml`. */
+  /** Writes `.lousho/agents/<id>.yaml` from a v1 spec (the server merges it onto the stored v2 spec). */
   async saveAgent(agentId: string, spec: AgentSpec): Promise<void> {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'PUT', body: JSON.stringify(spec) });
+  }
+
+  /** The Agents list's rows: one `AgentListItem` per saved spec (`GET /agents`, the v2 shape). */
+  async listAgentItems(): Promise<AgentListItem[]> {
+    return this.request('/agents', { method: 'GET' });
+  }
+
+  /** One agent's `AgentRecord` - spec v2 plus meta, layout and the latest version - or undefined on a 404. */
+  async getAgentRecord(agentId: string): Promise<AgentRecord | undefined> {
+    try {
+      return await this.request<AgentRecord>(`/agents/${encodeURIComponent(agentId)}`, { method: 'GET' });
+    } catch (error) {
+      if (error instanceof RuntimeApiError && error.status === 404) return undefined;
+      throw error;
+    }
+  }
+
+  /** Saves an AgentSpecV2 working copy (`PUT /agents/:id` with a `{ spec }` body). */
+  async saveAgentSpec(agentId: string, spec: AgentSpecV2): Promise<void> {
+    await this.request(`/agents/${encodeURIComponent(agentId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ spec }),
+    });
   }
 
   async deleteAgent(agentId: string): Promise<void> {

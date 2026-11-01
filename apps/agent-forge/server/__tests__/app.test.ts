@@ -115,11 +115,11 @@ describe('HTTP API', () => {
     expect(status.body.code).toBe('LOUSHO_AGENT_ID_INVALID');
   });
 
-  it('PUT then GET round-trips an AgentSpec', async () => {
+  it('PUT then GET ?view=legacy round-trips an AgentSpec', async () => {
     const put = await request(app).put('/agents/foo').send(SPEC);
     expect(put.status).toBe(204);
 
-    const get = await request(app).get('/agents/foo');
+    const get = await request(app).get('/agents/foo?view=legacy');
     expect(get.status).toBe(200);
     expect(get.body.name).toBe('test-agent');
   });

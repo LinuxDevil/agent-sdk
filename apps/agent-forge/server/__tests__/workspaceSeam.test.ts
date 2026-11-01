@@ -118,7 +118,9 @@ describe('workspace seam', () => {
     };
     const app = createApp({ workspace, baseDir });
 
-    const list = await request(app).get('/agents');
+    // `?view=legacy` is the view the context's agentStore facade answers;
+    // plain `/agents` is the v2 AgentListItem list over repo (empty here).
+    const list = await request(app).get('/agents?view=legacy');
     expect(list.status).toBe(200);
     expect(list.body).toEqual(entries);
 
