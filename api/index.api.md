@@ -935,6 +935,17 @@ export interface BuiltinProviderConfigs {
 }
 
 // @public
+export interface BuiltinToolInfo {
+    description: string;
+    inputJsonSchema: Record<string, unknown>;
+    mutating: boolean;
+    name: string;
+    needsCredentials: string[];
+    optionsJsonSchema: Record<string, unknown> | null;
+    toolNames: string[];
+}
+
+// @public
 export interface CalledToolOptions {
     args?: Record<string, unknown>;
     subagent?: string;
@@ -2986,6 +2997,16 @@ export interface GroupDecision {
 }
 
 // @public
+export interface GuardrailCatalogEntry {
+    canRewrite: boolean;
+    canRunInParallel: boolean;
+    description: string;
+    name: SpecGuardrailName;
+    on: GuardrailSide[];
+    optionsJsonSchema: Record<string, unknown>;
+}
+
+// @public
 export class GuardrailError extends SDKError {
     constructor(guardrail: GuardrailTrip);
     // (undocumented)
@@ -3568,7 +3589,22 @@ export const LegacyAttr: {
 export function listAdapters(): string[];
 
 // @public
+export function listBuiltinTools(): BuiltinToolInfo[];
+
+// @public
 export function listCheckpoints(checkpoints: Iterable<readonly [string, Checkpoint]>, options?: CheckpointListOptions): CheckpointListEntry[];
+
+// @public
+export function listGuardrails(): GuardrailCatalogEntry[];
+
+// @public
+export function listModels(options?: ListModelsOptions): ModelCatalogEntry[];
+
+// @public
+export interface ListModelsOptions {
+    env?: Readonly<Record<string, string | undefined>>;
+    provider?: string;
+}
 
 // @public
 export function listRegisteredModels(): ModelInfo[];
@@ -3578,6 +3614,9 @@ export function listRemoteTools(client: McpClientLike, options?: {
     logger?: Logger;
     server?: string;
 }): Promise<RawMcpTool[]>;
+
+// @public
+export function listTriggerTypes(): TriggerTypeInfo[];
 
 // @public
 interface LLMCallNode extends NodeRunOptions {
@@ -4327,6 +4366,23 @@ export interface MockProviderConfig extends LLMProviderConfig {
     responses?: string[];
     // (undocumented)
     simulateError?: boolean;
+}
+
+// @public
+export interface ModelCapabilities {
+    hostedTools: string[];
+    reasoning: boolean;
+    structuredOutput: boolean;
+    tools: boolean;
+    vision: boolean;
+}
+
+// @public
+export interface ModelCatalogEntry extends Omit<ModelInfo, 'id'> {
+    available: boolean;
+    capabilities: ModelCapabilities;
+    id: string;
+    modelId: string;
 }
 
 // @public
@@ -7556,6 +7612,15 @@ type TriggerSpec = {
     on: 'done' | 'error' | 'any';
     promptTemplate: string;
 };
+
+// @public
+export interface TriggerTypeInfo {
+    description: string;
+    fieldsJsonSchema: Record<string, unknown>;
+    runsUnder: ReadonlyArray<'dev' | 'worker' | 'studio'>;
+    title: string;
+    type: TriggerSpec['type'];
+}
 
 // @public
 export function twoPhaseStrategy(options: SummarizeStrategyOptions): CompactionStrategy;

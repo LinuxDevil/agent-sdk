@@ -96,6 +96,8 @@ describe('studio token gate (path variants)', () => {
     ['GET', '/AGENTS'],
     ['GET', '/Runs/compare?a=x&b=y'],
     ['GET', '/WORKSPACE'],
+    ['GET', '/catalog/tools'],
+    ['GET', '/CATALOG/models'],
     // trailing and doubled slashes
     ['POST', '/playground/run/'],
     ['POST', '//playground/run'],
@@ -143,6 +145,18 @@ describe('studio token gate (path variants)', () => {
     // Reaches the playground handler (a validation error, not the gate).
     const run = await request(app).post('/playground/run').set(STUDIO_TOKEN_HEADER, TOKEN).send({});
     expect(run.status).toBe(400);
+    // Reaches a real catalog handler, not the SPA fallback.
+    const catalog = await request(app).get('/catalog/tools').set(STUDIO_TOKEN_HEADER, TOKEN);
+    expect(catalog.status).toBe(200);
+    expect(catalog.headers['content-type']).toMatch(/application\/json/);
+  });
+
+  it('GET /catalog is never answered with index.html in prod mode', async () => {
+    // No route owns `/catalog` itself, and the SPA fallback excludes the
+    // prefix - the request 404s instead of serving the client shell.
+    const res = await request(app).get('/catalog').set(STUDIO_TOKEN_HEADER, TOKEN);
+    expect(res.status).toBe(404);
+    expect(res.text).not.toContain('<title>forge</title>');
   });
 
   it('/health and the static client load without the token', async () => {

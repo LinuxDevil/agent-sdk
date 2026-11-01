@@ -10,7 +10,17 @@
  * defines the wire shape of the status/events the server reports back to
  * the app over `GET /agents/:id/status` and `WS /agents/:id/stream`.
  */
-import type { AgentEventUsage, AgentSpecV2, CheckpointStatus, TrajectoryComparison, TrajectoryStep } from 'lousho';
+import type {
+  AgentEventUsage,
+  AgentSpecV2,
+  CheckpointStatus,
+  TrajectoryComparison,
+  TrajectoryStep,
+  listBuiltinTools,
+  listGuardrails,
+  listModels,
+  listTriggerTypes,
+} from 'lousho';
 import type { WorkspaceRef } from './workspace';
 
 /**
@@ -500,4 +510,37 @@ export interface SettleDraftRequest {
   draftId?: string;
   /** Reviewer note recorded on the settled draft. */
   note?: string;
+}
+
+/**
+ * `GET /catalog/*` rows - the SDK catalogs, so picker picklists always show
+ * what this SDK actually supports. The row shapes are derived from the SDK
+ * functions themselves (`ReturnType`) rather than re-declared, so they can
+ * never drift from what the SDK reports; `import type` keeps the SDK out of
+ * the browser bundle.
+ */
+
+/** `GET /catalog/models` row: the SDK's `listModels` entry - `available` is additionally true server-side when Studio holds a stored key for the provider. */
+export type CatalogModel = ReturnType<typeof listModels>[number];
+
+/** `GET /catalog/tools` row: one `{ builtin }` tool from `listBuiltinTools`. */
+export type CatalogTool = ReturnType<typeof listBuiltinTools>[number];
+
+/** `GET /catalog/guardrails` row: one starter-set guardrail from `listGuardrails`. */
+export type CatalogGuardrail = ReturnType<typeof listGuardrails>[number];
+
+/** `GET /catalog/triggers` row: one trigger type from `listTriggerTypes`. */
+export type CatalogTriggerType = ReturnType<typeof listTriggerTypes>[number];
+
+/** `GET /catalog/skills` row: a registry-index item of `type: 'skill'`, referenced by a spec's `{ registry: name }` ref. */
+export interface CatalogSkill {
+  name: string;
+  description: string;
+  ref: { registry: string };
+}
+
+/** `GET /catalog/kits` row: a registry-index item of `type: 'kit'` (a whole agent directory). */
+export interface CatalogKit {
+  name: string;
+  description: string;
 }

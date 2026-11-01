@@ -11,7 +11,9 @@ import { schemaToJsonSchema } from '../utils/zodCompat';
 
 /** One {@link listGuardrails} entry: a starter-set guardrail and the JSON Schema of its options. */
 export interface GuardrailCatalogEntry {
+  /** The `guardrails[].name` value a spec writes. */
   name: SpecGuardrailName;
+  /** One sentence: what the guardrail checks, for the picker's list row. */
   description: string;
   /** Every side a built-in can run on; a spec picks with `on` (default input and output). */
   on: GuardrailSide[];

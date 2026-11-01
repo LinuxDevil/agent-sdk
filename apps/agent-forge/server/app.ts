@@ -23,6 +23,9 @@
  *   POST /observe/api/v1/scores      -> proxied too (the proxy's write allowlist: human feedback scores)
  *   POST /observe/api/v1/evaluators/:id/test -> a judge rule's dry run here, a code rule forwarded (judge.ts)
  *   POST /playground/run             -> body: PlaygroundRunRequest; streams SSE PlaygroundEvents (playground.ts)
+ *   GET  /catalog/models[?provider]  -> ModelCatalogEntry[] (available also counts Studio-stored keys)
+ *   GET  /catalog/tools|guardrails|triggers -> the SDK catalogs (listBuiltinTools/listGuardrails/listTriggerTypes)
+ *   GET  /catalog/skills|kits        -> the registry index's skill/kit items (routes/catalogRoutes.ts)
  *
  * `WS /agents/:id/stream` is wired separately in wsServer.ts (attached to
  * the same underlying http.Server, since `ws` needs the raw HTTP upgrade
@@ -78,6 +81,7 @@ import { AgentRepo, InvalidSpecError } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
 import { VersionStore } from './storage/versionStore';
 import { registerDraftRoutes } from './routes/draftRoutes';
+import { registerCatalogRoutes } from './routes/catalogRoutes';
 
 interface CreateAppBaseOptions {
   /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
@@ -136,7 +140,7 @@ type CreateAppWorkspaceOptions =
 export type CreateAppOptions = CreateAppBaseOptions & CreateAppWorkspaceOptions;
 
 /** Path prefixes of the API (everything except `/health` and the static client). */
-const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe', '/playground'];
+const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe', '/playground', '/catalog'];
 
 /** The only methods served without the token, and only off the API (`/health`, the static client). */
 const PUBLIC_METHODS = new Set(['GET', 'HEAD']);
@@ -689,7 +693,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/observe|\/playground).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/observe|\/playground|\/catalog).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -784,6 +788,10 @@ export function createApp(options: CreateAppOptions): Express {
   registerProfileRoutes(app, settings);
   registerDeployRoutes(app);
   registerPlaygroundRoute(app, { secretsStore: secrets, baseDir, ...(playgroundObserve ? { observe: playgroundObserve } : {}) });
+  // The SDK catalogs + registry index the pickers and the Author read
+  // (routes/catalogRoutes.ts) - a Studio-global route family, mounted on
+  // every workspace's app like the settings routes are.
+  registerCatalogRoutes(app, { secretsStore: secrets });
   // The observe panels' read path: `/observe/**` -> the `lousho observe`
   // daemon (see observeProxy.ts), plus its small write allowlist (feedback
   // scores; bodies come from the express.json above) - before the SPA
