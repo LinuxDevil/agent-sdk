@@ -5441,7 +5441,7 @@ npx lousho dev agent.yaml                  # a spec file
 npx lousho dev ./my-agent                  # an agent directory
 npx lousho dev src/agent.ts                # a TypeScript (or JavaScript) module
 npx lousho dev agent.yaml --port 4000 --host 0.0.0.0
-npx lousho dev ./my-agent --no-schedules   # do not fire the directory's cron schedules
+npx lousho dev ./my-agent --no-schedules   # do not fire cron schedules or a spec's cron triggers
 ```
 
 For an agent directory, `channels/` are mounted under `/channels` and
@@ -6847,7 +6847,7 @@ validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 | `provider.model` | `string`   | yes      | Model id every call uses (the provider's configured model; an agent's own `settings.model` would override it). |
 | `tools`          | `string[]` | no       | Built-in tool names (see below).                       |
 | `policy`         | `AgentSpecPolicy` | no | Approvals, guardrails, limits and more, enforced when the spec becomes an agent (see below). |
-| `triggers`       | `AgentSpecTrigger[]` | no | What runs the agent on its own — cron schedules (`{ type: 'cron', cron, input, name?, timezone? }`); see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) and [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#cron-expressions). |
+| `triggers`       | `AgentSpecTrigger[]` | no | What runs the agent on its own — cron schedules (`{ type: 'cron', cron, input, name?, timezone? }`), which `lousho dev` starts like a directory's schedules; see [Schedules](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/schedules.md) and [Triggers](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/triggers.md#cron-expressions). |
 | `mcpServers`     | `Record<string, McpServerSpec>` | no | MCP servers the agent uses, keyed by name (see below). |
 
 A missing or invalid field fails with an error naming the exact field, e.g.
@@ -17710,6 +17710,21 @@ you develop, and a hot reload stops the old schedules before starting the new
 ones. Starting is the default so that dev behaves like the deployed server;
 because firing crons (and spending model calls) while you edit is often
 unwanted, `--no-schedules` mounts the channels but starts no schedule.
+
+A spec file's cron `triggers` start the same way (a v2 spec shown; v1's
+`{ type: 'cron', cron, input, name? }` works too), and `--no-schedules` starts
+none of them either:
+
+```yaml
+triggers:
+  - id: daily-report          # the schedule's name; v1 uses name: and input:
+    type: cron
+    cron: "0 9 * * *"
+    prompt: Write the daily report.
+```
+
+Trigger kinds `lousho dev` does not run — `webhook`, `channel` and `agent` —
+are logged once per load (Agent Forge runs them).
 
 ## On Cloudflare Workers
 

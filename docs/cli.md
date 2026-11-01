@@ -84,7 +84,7 @@ npx lousho dev agent.yaml                  # a spec file
 npx lousho dev ./my-agent                  # an agent directory
 npx lousho dev src/agent.ts                # a TypeScript (or JavaScript) module
 npx lousho dev agent.yaml --port 4000 --host 0.0.0.0
-npx lousho dev ./my-agent --no-schedules   # do not fire the directory's cron schedules
+npx lousho dev ./my-agent --no-schedules   # do not fire cron schedules or a spec's cron triggers
 ```
 
 For an agent directory, `channels/` are mounted under `/channels` and

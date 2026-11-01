@@ -99,6 +99,17 @@ describe('specSchedules', () => {
     expect(() => specSchedules([{ type: 'cron', name: 'y', cron: '* * * * *' }])).toThrow(/trigger 'y'.*'input'/);
     expect(() => specSchedules([{ type: 'cron', name: 'z', cron: '61 * * * *', input: 'hi' }])).toThrow(/trigger 'z'/);
   });
+
+  it("uses a v2 trigger's id as the schedule name and keeps its sharedSession", () => {
+    const schedules = specSchedules([
+      { id: 'daily', type: 'cron', cron: '0 9 * * *', prompt: 'Report.', sharedSession: true },
+      { id: 'also-id', type: 'cron', name: 'wins', cron: '0 9 * * *', prompt: 'Report.' },
+    ]);
+    expect(schedules.map((s) => [s.name, s.sharedSession])).toEqual([
+      ['daily', true],
+      ['wins', undefined],
+    ]);
+  });
 });
 
 describe('handleWorkerScheduled', () => {

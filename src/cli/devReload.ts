@@ -19,7 +19,12 @@ import { startSchedules, type RunningSchedules, type StartSchedulesOptions } fro
 import { explainImportError, forgetCommonJsModules, withFreshImports } from '../agentDir/importModule';
 import { memoryStore } from '../storage/agentStore';
 import { loadSpec } from '../spec/loadSpec';
+import { parseSpecData, readSpecFile } from '../spec/specFile';
 import { specToAgent } from '../spec/specToAgent';
+import { loadSpecV2 } from '../spec/v2/loadSpec';
+import { triggersFromSpec } from '../spec/v2/resolve/triggers';
+import { specV2ToAgent } from '../spec/v2/specToAgent';
+import { specSchedules } from '../schedules/specSchedules';
 
 export type DevTargetKind = 'spec' | 'dir' | 'module';
 
@@ -186,9 +191,30 @@ async function loadDirTarget(dir: string, overrides: CreateAgentConfig): Promise
   return { agent: createAgent(config), schedules, channels };
 }
 
+/**
+ * A spec target. The version comes from the raw data before either loader
+ * runs (`loadSpec` stays v1): a v2 spec compiles through specV2ToAgent and a
+ * v1 spec takes its unchanged specToAgent path. Both start their `cron`
+ * triggers as schedules; the kinds this process does not run (webhook,
+ * channel, agent — Studio's trigger host does) are named in the log once per
+ * load, so a reload repeats the line.
+ */
+async function loadSpecTarget(file: string, overrides: CreateAgentConfig): Promise<LoadedTarget> {
+  const data = parseSpecData(readSpecFile(file), path.extname(file).toLowerCase(), file);
+  if ((data as { version?: unknown } | null)?.version === 2) {
+    const spec = loadSpecV2(file);
+    const agent = await specV2ToAgent(spec, { baseDir: path.dirname(path.resolve(file)), exporter: overrides.exporter });
+    const { schedules, notStarted } = triggersFromSpec(spec.triggers);
+    for (const trigger of notStarted) log(`trigger '${trigger.id}' (${trigger.type}) is not run by lousho dev; Studio runs it`);
+    return { agent, schedules, channels: [] };
+  }
+  const spec = loadSpec(file);
+  return { agent: specToAgent(spec, { exporter: overrides.exporter }), schedules: specSchedules(spec.triggers), channels: [] };
+}
+
 async function loadDevTarget(target: DevTarget, options: DevOptions): Promise<LoadedTarget> {
   const overrides = options.overrides ?? {};
-  if (target.kind === 'spec') return { agent: specToAgent(loadSpec(target.path), { exporter: overrides.exporter }), schedules: [], channels: [] };
+  if (target.kind === 'spec') return loadSpecTarget(target.path, overrides);
   const token = `${Date.now()}-${loads++}`;
   const loaded = await withFreshImports(token, async () =>
     target.kind === 'dir'

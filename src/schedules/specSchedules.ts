@@ -18,8 +18,9 @@ function requiredFields(trigger: AgentSpecTrigger, name: string): { cron: string
 
 function toSchedule(trigger: AgentSpecTrigger, name: string): DefinedSchedule {
   const fields = requiredFields(trigger, name);
+  const sharedSession = trigger.sharedSession === true ? { sharedSession: true } : {};
   try {
-    return defineSchedule({ name, ...fields, timezone: text(trigger.timezone) });
+    return defineSchedule({ name, ...fields, timezone: text(trigger.timezone), ...sharedSession });
   } catch (error) {
     return invalidTrigger(name, error instanceof SDKError ? error.detail : String(error), error);
   }
@@ -28,14 +29,17 @@ function toSchedule(trigger: AgentSpecTrigger, name: string): DefinedSchedule {
 /**
  * The schedules of an AgentSpec's `{ type: 'cron' }` triggers:
  * `{ type: 'cron', cron: '0 9 * * MON', input: 'Weekly report.', name?, timezone? }`
- * (`prompt` is accepted for `input`). A trigger without a valid `cron` or
- * `input` throws a `LOUSHO_SCHEDULE_INVALID` SDKError naming it.
+ * (`prompt` is accepted for `input`). AgentSpec v2 cron triggers work too:
+ * `{ id: 'weekly', type: 'cron', cron: '0 9 * * MON', prompt: 'Weekly report.', timezone?, sharedSession? }` —
+ * `id` names the schedule when `name` is absent and `sharedSession: true` is
+ * passed through. A trigger without a valid `cron` or `input`/`prompt` throws
+ * a `LOUSHO_SCHEDULE_INVALID` SDKError naming it.
  */
 export function specSchedules(triggers: readonly AgentSpecTrigger[] | undefined): DefinedSchedule[] {
   return (triggers ?? [])
     .filter((trigger) => trigger.type === 'cron')
     .map((trigger, index) => {
-      const name = text(trigger.name) ?? `cron-${index + 1}`;
+      const name = text(trigger.name) ?? text(trigger.id) ?? `cron-${index + 1}`;
       return toSchedule(trigger, name);
     });
 }
