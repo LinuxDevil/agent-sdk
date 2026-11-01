@@ -2452,7 +2452,6 @@ type StandardResult<Output> = {
 
 // @public
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
-    // (undocumented)
     readonly '~standard': {
         readonly version: 1;
         readonly vendor: string;

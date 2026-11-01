@@ -27,11 +27,21 @@ type StandardResult<Output> = { readonly value: Output; readonly issues?: undefi
  * Schema can be derived (see {@link schemaToJsonSchema}).
  */
 export interface StandardSchemaV1<Input = unknown, Output = Input> {
+  /** The Standard Schema protocol object every compliant schema carries. */
   readonly '~standard': {
+    /** The spec version; always `1`. */
     readonly version: 1;
+    /** The schema library's name (e.g. 'zod', 'lousho-json-schema'). */
     readonly vendor: string;
+    /** Validates `value`, resolving to `{ value }` on success or `{ issues }` on failure. */
     readonly validate: (value: unknown) => StandardResult<Output> | Promise<StandardResult<Output>>;
-    readonly types?: { readonly input: Input; readonly output: Output } | undefined;
+    /** Phantom types carrying the schema's input and output types; absent at run time. */
+    readonly types?: {
+      /** The type `validate` accepts. */
+      readonly input: Input;
+      /** The type `validate` resolves with. */
+      readonly output: Output;
+    } | undefined;
   };
 }
 

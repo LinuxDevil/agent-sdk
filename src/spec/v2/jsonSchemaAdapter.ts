@@ -27,9 +27,13 @@ function toStandardIssue(issue: SchemaIssue): { message: string; path: (string |
  * so `schemaToJsonSchema()` hands providers the author's exact schema.
  */
 export function jsonSchemaToStandardSchema(schema: Record<string, unknown>): StandardSchemaV1<unknown, unknown> & {
+  /** The Standard Schema protocol object, extended with a `jsonSchema` renderer. */
   readonly '~standard': StandardSchemaV1['~standard'] & {
+    /** Renders the author's JSON Schema itself (a deep copy) for either direction. */
     readonly jsonSchema: {
+      /** The input JSON Schema: `schema` as written (the `target` option is ignored). */
       input(options?: { target?: string }): Record<string, unknown>;
+      /** The output JSON Schema: the same as the input for this adapter. */
       output(options?: { target?: string }): Record<string, unknown>;
     };
   };
