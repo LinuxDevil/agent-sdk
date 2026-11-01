@@ -10,10 +10,10 @@
  * `withAgentLock(id)` and reconciles external edits first, so a hand-edited
  * `<id>.yaml` is preserved as a `baseline` version before it is overwritten.
  *
- * `POST /agents` creates a blank agent or a copy (`{ from: 'blank' |
- * { copyOf } }`; `{ template }` is `LOUSHO_TEMPLATE_UNAVAILABLE` until
- * template creation lands), writing spec + meta (+ layout, for a copy)
- * and the version-1 `create` capture inside the new agent's lock.
+ * `POST /agents` creates a blank agent, one from a shipped template or a
+ * copy (`{ from: 'blank' | { template } | { copyOf } }`), writing spec +
+ * meta (+ layout, for a copy) and the version-1 `create` capture inside
+ * the new agent's lock.
  * `PATCH /agents/:id/meta` toggles `enabled` and stores normalised
  * labels without writing a version; `PUT /agents/:id/layout` stores the
  * canvas layout after `parseCanvasLayout` clears it.
@@ -25,9 +25,11 @@
  * keys. A v2 spec sent without the `{ spec }` wrapper is NOT a v1 body and
  * gets `LOUSHO_BODY_INVALID`.
  *
- * Stores come from `workspaceOf(req)` (the workspace seam) - there are no
- * deps to close over. `toListItem`/`lastRunOf`/`countsOf`/`toRecord` take a
- * `WorkspaceContext`, never `req`, so a later ticket can lift them verbatim.
+ * Per-workspace stores come from `workspaceOf(req)` (the workspace
+ * seam); the only dep is the Studio-global TemplateCatalog the
+ * `{ template }` create branch reads. `toListItem`/`lastRunOf`/
+ * `countsOf`/`toRecord` take a `WorkspaceContext`, never `req`, so a
+ * later ticket can lift them verbatim.
  */
 import type { Express, Response } from 'express';
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
@@ -40,12 +42,14 @@ import type {
   AgentRecord,
   CanvasLayout,
   PatchAgentMetaRequest,
+  VersionSource,
 } from '../../shared/wireTypes';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { defaultMeta, InvalidSpecError } from '../storage/agentRepo';
 import { copyAgentId, slugAgentId, uniqueAgentId } from '../storage/agentIds';
 import { withAgentLock } from '../storage/atomic';
 import { mergeLegacySave } from '../storage/legacySpec';
+import { TEMPLATE_ID_RE, type TemplateCatalog } from '../templates/templateCatalog';
 import { parseCanvasLayout } from './layoutValidation';
 import { listAgentTraces } from '../traceStore';
 import type { WorkspaceContext } from '../workspace/context';
@@ -134,7 +138,7 @@ function parsePutBody(body: unknown): { kind: 'v2'; spec: AgentSpecV2 } | { kind
 /** A validated `POST /agents` body: which of the three `from` shapes, plus the optional display name. */
 type ParsedCreateBody =
   | { kind: 'blank'; name?: string }
-  | { kind: 'template' }
+  | { kind: 'template'; template: string; name?: string }
   | { kind: 'copy'; copyOf: string; name?: string };
 
 /**
@@ -149,7 +153,7 @@ function parseCreateBody(body: unknown): ParsedCreateBody | string {
   const from = body.from;
   if (from === 'blank') return { kind: 'blank', name };
   if (isObject(from)) {
-    if (typeof from.template === 'string') return { kind: 'template' };
+    if (typeof from.template === 'string') return { kind: 'template', template: from.template, name };
     if (typeof from.copyOf === 'string') return { kind: 'copy', copyOf: from.copyOf, name };
   }
   return "'from' must be 'blank', { template: string } or { copyOf: string }";
@@ -170,13 +174,14 @@ async function writeNewAgent(
   id: string,
   spec: AgentSpecV2,
   meta: AgentMeta,
-  layout: CanvasLayout | undefined
+  layout: CanvasLayout | undefined,
+  source: VersionSource
 ): Promise<AgentRecord> {
   await withAgentLock(id, async () => {
     await ws.repo.writeSpec(id, spec);
     await ws.repo.writeMeta(id, meta);
     if (layout !== undefined) await ws.repo.writeLayout(id, layout);
-    await ws.versions.capture(id, { kind: 'create', source: 'editor' });
+    await ws.versions.capture(id, { kind: 'create', source });
   });
   const record = await toRecord(ws, id);
   if (record === undefined) throw new Error(`Agent '${id}' vanished right after creation`);
@@ -197,7 +202,7 @@ async function createBlankAgent(ws: WorkspaceContext, name: string | undefined):
   };
   const meta: AgentMeta = { ...defaultMeta(new Date().toISOString()), createdFrom: { kind: 'blank' } };
   const id = uniqueAgentId(ws.repo, slugAgentId(name ?? 'untitled-agent'));
-  return writeNewAgent(ws, id, spec, meta, undefined);
+  return writeNewAgent(ws, id, spec, meta, undefined, 'editor');
 }
 
 /**
@@ -222,7 +227,35 @@ async function createAgentCopy(
   };
   const layout = await ws.repo.readLayout(copyOf);
   const id = copyAgentId(ws.repo, copyOf);
-  return writeNewAgent(ws, id, spec, meta, layout);
+  return writeNewAgent(ws, id, spec, meta, layout, 'copy');
+}
+
+/**
+ * The template `POST /agents`: the template's spec renamed when `name` is
+ * given (else its own name), its tags normalised into labels (capped to
+ * the label limits), enabled `createdFrom: { kind: 'template', ref }`
+ * meta and a `source: 'template'` version 1. The id is the slug of the
+ * name (or the template id), deduped like every create. `undefined` when
+ * the template id names no valid template.
+ */
+async function createAgentFromTemplate(
+  ws: WorkspaceContext,
+  catalog: TemplateCatalog,
+  templateId: string,
+  name: string | undefined
+): Promise<AgentRecord | undefined> {
+  const detail = await catalog.get(templateId);
+  if (detail === undefined) return undefined;
+  const spec: AgentSpecV2 = { ...detail.spec, name: name ?? detail.spec.name };
+  const meta: AgentMeta = {
+    ...defaultMeta(new Date().toISOString()),
+    labels: normalizeLabels(detail.summary.tags)
+      .filter((label) => label.length <= MAX_LABEL_LENGTH)
+      .slice(0, MAX_LABELS),
+    createdFrom: { kind: 'template', ref: templateId },
+  };
+  const id = uniqueAgentId(ws.repo, slugAgentId(name ?? templateId));
+  return writeNewAgent(ws, id, spec, meta, undefined, 'template');
 }
 
 /** A validated `PATCH /agents/:id/meta` body, or the 400 message: at least one of `enabled`/`labels`, correctly typed. */
@@ -239,12 +272,19 @@ function parseMetaBody(body: unknown): PatchAgentMetaRequest | string {
   return { enabled: enabled as boolean | undefined, labels: labels as string[] | undefined };
 }
 
+/** Deps for {@link registerAgentRoutes} - Studio-global services only; per-workspace stores still come from `workspaceOf(req)`. */
+export interface AgentRouteDeps {
+  /** The app's one TemplateCatalog - the `{ template }` create branch reads through it (the templates folder ships in the SDK package). */
+  templates: TemplateCatalog;
+}
+
 /**
- * Registers the agent routes. No deps: handlers read `repo`,
- * `versions`, `runs` and `agentStore` off `workspaceOf(req)`, so a second
- * workspace is a second context, not a second registration.
+ * Registers the agent routes. Handlers read `repo`, `versions`, `runs`
+ * and `agentStore` off `workspaceOf(req)`, so a second workspace is a
+ * second context, not a second registration; `deps` carries only
+ * Studio-global services (the template catalog).
  */
-export function registerAgentRoutes(app: Express): void {
+export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
   // The Agents list. `?view=legacy` keeps the old AgentStoreEntry[] shape
   // for the v1 canvas; anything else (or no view) answers AgentListItem[].
   app.get(
@@ -269,10 +309,10 @@ export function registerAgentRoutes(app: Express): void {
     })
   );
 
-  // Create an agent: blank spec or copy of an existing one. Both write
-  // spec + meta (+ layout for a copy) and capture version 1 inside the
-  // new agent's lock, answering the same AgentRecord GET returns.
-  // `{ template }` is a 400 until template creation lands.
+  // Create an agent: a blank spec, one built from a shipped template, or
+  // a copy of an existing one. All three write spec + meta (+ layout for
+  // a copy) and capture version 1 inside the new agent's lock, answering
+  // the same AgentRecord GET returns.
   app.post(
     '/agents',
     asyncRoute(async (req, res) => {
@@ -281,12 +321,21 @@ export function registerAgentRoutes(app: Express): void {
         sendError(res, 400, parsed, 'LOUSHO_BODY_INVALID');
         return;
       }
-      if (parsed.kind === 'template') {
-        sendError(res, 400, 'Creating from a template is not available yet.', 'LOUSHO_TEMPLATE_UNAVAILABLE');
+      if (parsed.kind === 'template' && !TEMPLATE_ID_RE.test(parsed.template)) {
+        sendError(res, 400, 'Invalid template id', 'LOUSHO_TEMPLATE_ID_INVALID');
         return;
       }
       const ws = workspaceOf(req);
       try {
+        if (parsed.kind === 'template') {
+          const record = await createAgentFromTemplate(ws, deps.templates, parsed.template, parsed.name);
+          if (record === undefined) {
+            sendError(res, 404, `No template '${parsed.template}'`, 'LOUSHO_TEMPLATE_NOT_FOUND');
+            return;
+          }
+          res.status(201).json(record);
+          return;
+        }
         if (parsed.kind === 'copy') {
           const record = await createAgentCopy(ws, parsed.copyOf, parsed.name);
           if (record === undefined) {

@@ -44,6 +44,8 @@ import type {
   SpecChange,
   StreamMessage,
   SpanEvent,
+  TemplateDetail,
+  TemplateSummary,
   TraceDetailPayload,
   TraceSummaryPayload,
   VersionListItem,
@@ -532,6 +534,26 @@ class RuntimeClient implements AgentApi {
   async probeMcp(server: McpServerSpecV2): Promise<McpProbeResponse> {
     const body: McpProbeRequest = { server };
     return this.request('/catalog/mcp/probe', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  // -------------------------------------------------------------------
+  // `GET /templates*` - the SDK's shipped templates the Templates screen
+  // (A10) and the New-agent "From template" menu (A04) read.
+  // -------------------------------------------------------------------
+
+  /** Every shipped template's summary (sorted by category then title). */
+  async listTemplates(): Promise<TemplateSummary[]> {
+    return this.request('/templates', { method: 'GET' });
+  }
+
+  /** One template's detail - summary, spec v2 and README; undefined on a 404. */
+  async getTemplate(id: string): Promise<TemplateDetail | undefined> {
+    try {
+      return await this.request<TemplateDetail>(`/templates/${encodeURIComponent(id)}`, { method: 'GET' });
+    } catch (error) {
+      if (error instanceof RuntimeApiError && error.status === 404) return undefined;
+      throw error;
+    }
   }
 
   /**

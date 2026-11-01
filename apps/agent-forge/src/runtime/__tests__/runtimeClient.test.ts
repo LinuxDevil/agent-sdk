@@ -426,3 +426,40 @@ describe('RuntimeClient workspace methods', () => {
     expect(init.method).toBe('DELETE');
   });
 });
+
+describe('RuntimeClient template methods', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+
+  /** The last fetch call's [path, init]. */
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it('listTemplates GETs /templates', async () => {
+    const summary = { id: 'pr-reviewer', title: 'Pull request reviewer' };
+    const fetchMock = vi.fn(async () => jsonResponse(200, [summary]));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listTemplates()).resolves.toEqual([summary]);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/templates');
+    expect(init.method).toBe('GET');
+  });
+
+  it('getTemplate GETs /templates/:id (encoded) and resolves undefined on a 404', async () => {
+    const detail = { summary: { id: 'pr-reviewer' }, spec: { version: 2 }, readme: '# hi' };
+    const fetchMock = vi.fn(async () => jsonResponse(200, detail));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.getTemplate('pr-reviewer')).resolves.toEqual(detail);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/templates/pr-reviewer');
+    expect(init.method).toBe('GET');
+
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(404, { error: "No template 'ghost'" })));
+    await expect(client.getTemplate('ghost')).resolves.toBeUndefined();
+  });
+});

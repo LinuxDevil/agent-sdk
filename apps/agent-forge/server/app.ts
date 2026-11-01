@@ -4,7 +4,9 @@
  * Routes:
  *   GET  /health                     -> 200 'ok'
  *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> AgentStoreEntry[]
- *   POST /agents                     -> create blank/copy (body: CreateAgentRequest), 201 AgentRecord
+ *   POST /agents                     -> create blank/template/copy (body: CreateAgentRequest), 201 AgentRecord
+ *   GET  /templates                  -> TemplateSummary[] - the SDK's shipped templates (templates/templateCatalog.ts)
+ *   GET  /templates/:id              -> TemplateDetail (summary + spec v2 + README) | 400/404
  *   GET  /agents/:id                 -> AgentRecord | 404; ?view=legacy -> v1 AgentSpec
  *   PUT  /agents/:id                 -> save the spec v2 working copy (body: { spec } or a bare v1 AgentSpec), 204
  *   PATCH /agents/:id/meta           -> toggle enabled / set labels (body: PatchAgentMetaRequest), 200 AgentMeta
@@ -116,6 +118,7 @@ import { registerAuthorSettingsRoutes } from './author/settings';
 import { AuthorTurnRunner } from './author/turnRunner';
 import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './author/prompt/index';
 import { registerSecretRoutes } from './routes/secretRoutes';
+import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 
 interface CreateAppBaseOptions {
   /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
@@ -167,6 +170,13 @@ interface CreateAppBaseOptions {
   judge?: JudgeFn;
   /** The `connectMcp` `POST /catalog/mcp/probe` uses (tests); default the SDK's own (routes/mcpProbe.ts). */
   mcpConnect?: typeof connectMcp;
+  /**
+   * The app's one TemplateCatalog - Studio-global (the templates folder
+   * ships in the SDK package), shared between `GET /templates*` and the
+   * `{ template }` branch of `POST /agents`. Defaults to the SDK's own
+   * `templates/` folder (tests pass one over a temp dir).
+   */
+  templateCatalog?: TemplateCatalog;
 }
 
 /**
@@ -197,6 +207,7 @@ const API_PREFIXES = [
   '/playground',
   '/catalog',
   '/assistant',
+  '/templates',
 ];
 
 /** The only methods served without the token, and only off the API (`/health`, the static client). */
@@ -697,7 +708,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -779,6 +790,9 @@ export function createApp(options: CreateAppOptions): Express {
       turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
     });
   const workspace = defaultWorkspaceContext(options);
+  // One catalog for both the `/templates` routes and the `POST /agents`
+  // template branch - Studio-global state, not per-workspace.
+  const templates = options.templateCatalog ?? new TemplateCatalog();
 
   const app = express();
   // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`
@@ -828,7 +842,7 @@ export function createApp(options: CreateAppOptions): Express {
   // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).
-  registerAgentRoutes(app);
+  registerAgentRoutes(app, { templates });
   // Draft routes: get/create/withdraw/approve/reject the per-agent pending
   // ChangeDraft (server/routes/draftRoutes.ts - stores come from
   // workspaceOf(req), the workspace seam).
@@ -871,6 +885,10 @@ export function createApp(options: CreateAppOptions): Express {
   // The Author's own settings (author/settings.ts): which model its turns
   // run on and whether a key for it exists.
   registerAuthorSettingsRoutes(app, { settings, secrets });
+  // The SDK's shipped templates - Studio-global like the catalog routes
+  // (templates/templateCatalog.ts), feeding the Templates screen and the
+  // `{ template }` branch of `POST /agents` above.
+  registerTemplateRoutes(app, templates);
   // The observe panels' read path: `/observe/**` -> the `lousho observe`
   // daemon (see observeProxy.ts), plus its small write allowlist (feedback
   // scores; bodies come from the express.json above) - before the SPA

@@ -532,11 +532,44 @@ export interface AgentRecord {
 }
 
 /**
- * `POST /agents`'s `from`: a blank spec, a template id (creation from a
- * template is not available yet - the route answers
- * `LOUSHO_TEMPLATE_UNAVAILABLE`), or a copy of another agent's id.
+ * `POST /agents`'s `from`: a blank spec, a shipped SDK template's id
+ * (`GET /templates` lists them), or a copy of another agent's id.
  */
 export type CreateAgentFrom = 'blank' | { template: string } | { copyOf: string };
+
+/**
+ * A requirement kind a template's `template.json` `requires` list may name
+ * (PLAN §8.5 `Requirement['kind']`): what the created agent will need
+ * before it can run. This union stands in for the full `Requirement` type
+ * until AA13 defines it - AA13 must import this type rather than redefine
+ * it.
+ */
+export type RequirementKind = 'provider_key' | 'secret' | 'mcp' | 'tool' | 'model';
+
+/**
+ * One row of `GET /templates` (the Templates screen's card grid): the
+ * display fields of `templates/<id>/template.json` - everything the card
+ * needs without loading the spec.
+ */
+export interface TemplateSummary {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  tags: string[];
+  requires: RequirementKind[];
+}
+
+/**
+ * `GET /templates/:id` (the template detail sheet and the `{ template }`
+ * create branch): the summary plus the parsed spec v2 and the README text
+ * ('' when the template ships no `README.md`).
+ */
+export interface TemplateDetail {
+  summary: TemplateSummary;
+  spec: AgentSpecV2;
+  readme: string;
+}
 
 /**
  * `POST /agents` body: what to create, plus an optional display name
