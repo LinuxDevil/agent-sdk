@@ -52,7 +52,7 @@ function parseCreateDraft(body: unknown): CreateDraftRequest | string {
   if (!isObject(body.patch) || Object.keys(body.patch).length === 0) {
     return "'patch' must be an object with at least one spec field";
   }
-  const badKey = Object.keys(body.patch).find((key) => !SPEC_FIELD_ORDER.includes(key));
+  const badKey = Object.keys(body.patch).find((key) => !(SPEC_FIELD_ORDER as readonly string[]).includes(key));
   if (badKey !== undefined) return `'patch.${badKey}' is not a draftable field`;
   if (!DRAFT_ORIGINS.includes(body.origin as DraftOrigin)) {
     return "'origin' must be 'author', 'suggestion' or 'manual'";

@@ -44,6 +44,7 @@
     "@types/react-dom": "^18.3.1",
     "@types/supertest": "^6.0.3",
     "@types/ws": "^8.18.1",
+    "diff": "^8.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^25.0.1",
     "lucide-react": "^1.63.0",

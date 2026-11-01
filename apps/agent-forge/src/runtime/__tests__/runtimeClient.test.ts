@@ -131,6 +131,76 @@ describe('RuntimeClient draft methods', () => {
   });
 });
 
+describe('RuntimeClient version methods', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+  const ITEM = { version: 2, kind: 'update', source: 'editor', specHash: 'sha256:x' };
+
+  /** The last fetch call's [path, init]. */
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it('listVersions GETs /agents/:id/versions', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, [ITEM]));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listVersions('a1')).resolves.toEqual([ITEM]);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/versions');
+    expect(init.method).toBe('GET');
+  });
+
+  it('getVersion GETs /agents/:id/versions/:n', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { ...ITEM, snapshot: { spec: {}, labels: [] } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.getVersion('a1', 3);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/versions/3');
+    expect(init.method).toBe('GET');
+  });
+
+  it('diffVersion GETs /versions/:n/diff, adding ?against= only when given', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.diffVersion('a1', 2);
+    expect(lastCall(fetchMock)[0]).toBe('/agents/a1/versions/2/diff');
+    await client.diffVersion('a1', 2, 1);
+    expect(lastCall(fetchMock)[0]).toBe('/agents/a1/versions/2/diff?against=1');
+  });
+
+  it('restoreVersion POSTs /versions/:n/restore', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(201, { ...ITEM, kind: 'restore' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.restoreVersion('a1', 1)).resolves.toMatchObject({ kind: 'restore' });
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/versions/1/restore');
+    expect(init.method).toBe('POST');
+  });
+
+  it('saveVersion POSTs /versions and reports created from the status: 201 vs 200', async () => {
+    let fetchMock = vi.fn(async () => jsonResponse(201, ITEM));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.saveVersion('a1')).resolves.toEqual({ item: ITEM, created: true });
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/versions');
+    expect(init.method).toBe('POST');
+
+    fetchMock = vi.fn(async () => jsonResponse(200, ITEM));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.saveVersion('a1')).resolves.toEqual({ item: ITEM, created: false });
+  });
+
+  it('version calls reject with the server message on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(404, { error: "No version 9 of 'a1'" })));
+    await expect(client.getVersion('a1', 9)).rejects.toMatchObject({ status: 404 });
+    await expect(client.saveVersion('a1')).rejects.toMatchObject({ status: 404 });
+  });
+});
+
 describe('RuntimeClient named-secret methods', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
