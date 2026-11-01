@@ -131,6 +131,63 @@ describe('RuntimeClient draft methods', () => {
   });
 });
 
+describe('RuntimeClient named-secret methods', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+  const STATUS = { name: 'GITHUB_TOKEN', hasValue: true, masked: '••••••••c123', updatedAt: '2026-01-01T00:00:00Z' };
+
+  /** The last fetch call's [path, init]. */
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it('listSecrets GETs /settings/secrets', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, [STATUS]));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listSecrets()).resolves.toEqual([STATUS]);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/settings/secrets');
+    expect(init.method).toBe('GET');
+  });
+
+  it('getSecretStatus GETs /settings/secrets/:name, encoding the name', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, STATUS));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.getSecretStatus('GITHUB_TOKEN')).resolves.toEqual(STATUS);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/settings/secrets/GITHUB_TOKEN');
+    expect(init.method).toBe('GET');
+  });
+
+  it('setSecret PUTs { value } to /settings/secrets/:name', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, STATUS));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.setSecret('GITHUB_TOKEN', 'ghp_abc123')).resolves.toEqual(STATUS);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/settings/secrets/GITHUB_TOKEN');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ value: 'ghp_abc123' });
+  });
+
+  it('removeSecret DELETEs /settings/secrets/:name', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.removeSecret('GITHUB_TOKEN')).resolves.toBeUndefined();
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/settings/secrets/GITHUB_TOKEN');
+    expect(init.method).toBe('DELETE');
+  });
+
+  it('secret calls reject with the server message on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(400, { error: 'bad name' })));
+    await expect(client.getSecretStatus('1BAD')).rejects.toMatchObject({ message: 'bad name', status: 400 });
+  });
+});
+
 describe('RuntimeClient catalog methods', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

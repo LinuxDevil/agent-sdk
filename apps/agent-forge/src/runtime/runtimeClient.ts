@@ -27,6 +27,7 @@ import type {
   ProviderKeyStatus,
   RunComparisonPayload,
   RunHistoryPayload,
+  SecretStatus,
   SettingsFile,
   SettingsProfile,
   SettleDraftRequest,
@@ -300,6 +301,35 @@ class RuntimeClient implements AgentApi {
   /** Removes `provider`'s stored key, if any. */
   async removeProviderKey(provider: string): Promise<void> {
     await this.request(`/settings/providers/${encodeURIComponent(provider)}`, { method: 'DELETE' });
+  }
+
+  // -------------------------------------------------------------------
+  // `/settings/secrets` - named secrets (the values `{ secret: '<name>' }`
+  // spec refs resolve to). Only masked statuses cross the wire, like
+  // provider keys.
+  // -------------------------------------------------------------------
+
+  /** Masked status of every named secret, sorted by name. */
+  async listSecrets(): Promise<SecretStatus[]> {
+    return this.request('/settings/secrets', { method: 'GET' });
+  }
+
+  /** One named secret's masked status (`hasValue: false` when unset). */
+  async getSecretStatus(name: string): Promise<SecretStatus> {
+    return this.request(`/settings/secrets/${encodeURIComponent(name)}`, { method: 'GET' });
+  }
+
+  /** Stores (or replaces) the named secret's value. Resolves with the masked status - never the value. */
+  async setSecret(name: string, value: string): Promise<SecretStatus> {
+    return this.request(`/settings/secrets/${encodeURIComponent(name)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    });
+  }
+
+  /** Removes the named secret, if any. */
+  async removeSecret(name: string): Promise<void> {
+    await this.request(`/settings/secrets/${encodeURIComponent(name)}`, { method: 'DELETE' });
   }
 
   /** Every settings profile + which one is active. */

@@ -23,6 +23,8 @@
  *   POST /observe/api/v1/scores      -> proxied too (the proxy's write allowlist: human feedback scores)
  *   POST /observe/api/v1/evaluators/:id/test -> a judge rule's dry run here, a code rule forwarded (judge.ts)
  *   POST /playground/run             -> body: PlaygroundRunRequest; streams SSE PlaygroundEvents (playground.ts)
+ *   GET  /settings/secrets           -> SecretStatus[] (masked; routes/secretRoutes.ts)
+ *   GET/PUT/DELETE /settings/secrets/:name -> masked SecretStatus | 204 (values are never echoed)
  *   GET  /catalog/models[?provider]  -> ModelCatalogEntry[] (available also counts Studio-stored keys)
  *   GET  /catalog/tools|guardrails|triggers -> the SDK catalogs (listBuiltinTools/listGuardrails/listTriggerTypes)
  *   GET  /catalog/skills|kits        -> the registry index's skill/kit items (routes/catalogRoutes.ts)
@@ -86,6 +88,7 @@ import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
 import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
+import { registerSecretRoutes } from './routes/secretRoutes';
 
 interface CreateAppBaseOptions {
   /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
@@ -792,6 +795,9 @@ export function createApp(options: CreateAppOptions): Express {
   registerTimeTravelRoutes(app);
   registerTraceRoutes(app);
   registerProviderKeyRoutes(app, secrets);
+  // Named secrets (`/settings/secrets`) - Studio-global like the provider
+  // keys, sharing the app's one store (routes/secretRoutes.ts).
+  registerSecretRoutes(app, secrets);
   registerProfileRoutes(app, settings);
   registerDeployRoutes(app);
   registerPlaygroundRoute(app, { secretsStore: secrets, baseDir, ...(playgroundObserve ? { observe: playgroundObserve } : {}) });
