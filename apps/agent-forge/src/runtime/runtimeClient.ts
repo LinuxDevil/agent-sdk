@@ -8,6 +8,7 @@
  */
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import type {
+  AddWorkspaceRequest,
   AgentListItem,
   AgentRecord,
   AgentRunStatusPayload,
@@ -44,6 +45,8 @@ import type {
   VersionListItem,
   VersionRecord,
   WorkspaceInfo,
+  WorkspaceList,
+  WorkspaceListItem,
 } from '../../shared/wireTypes';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
 import type { AgentStoreEntry } from '../persistence/AgentStore';
@@ -244,6 +247,32 @@ class RuntimeClient implements AgentApi {
   /** The workspace the studio serves (`baseDir` is its root; `workspace` is the full ref for addressing it by id). */
   async workspace(): Promise<WorkspaceInfo> {
     return this.request('/workspace', { method: 'GET' });
+  }
+
+  // -------------------------------------------------------------------
+  // `/workspaces` - the workspace registry (server/workspace/workspaceRoutes.ts).
+  // Read by the switcher, the Settings card and the aggregate agent list.
+  // -------------------------------------------------------------------
+
+  /** Every registered workspace plus live `available`/`agentCount` facts; `defaultId` is the launch workspace. */
+  async listWorkspaces(): Promise<WorkspaceList> {
+    return this.request('/workspaces', { method: 'GET' });
+  }
+
+  /**
+   * "Add workspace → folder path": registers `root` as a workspace. The
+   * folder path goes in the POST body, never the URL (it can name a
+   * user's home directory). Rejects with the server's `{ error, code }`
+   * on a 400 (bad/missing/not a folder) or 409 (already added).
+   */
+  async addWorkspace(root: string): Promise<WorkspaceListItem> {
+    const body: AddWorkspaceRequest = { root };
+    return this.request('/workspaces', { method: 'POST', body: JSON.stringify(body) });
+  }
+
+  /** Removes `id` from the registry - the folder on disk is never touched; the launch workspace always 409s. */
+  async removeWorkspace(id: string): Promise<void> {
+    await this.request(`/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
   async run(agentId: string, input: string, spec: AgentSpec): Promise<AgentRunStatusPayload> {

@@ -13,6 +13,8 @@
  *   GET  /agents/:id/versions/:n      -> VersionRecord; GET .../versions/:n/diff?against=:m -> SpecChange[]
  *   POST /agents/:id/versions/:n/restore -> writes a new kind:'restore' version over the working copy
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
+ *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
+ *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
@@ -81,6 +83,8 @@ import { chatTriggersFor, singleWorkspace, type WorkspaceContext } from './works
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
 import { configureStudioHome } from './workspace/studioPaths';
 import { workspaceRefFor } from './workspace/workspaceId';
+import { WorkspaceRegistry } from './workspace/workspaceRegistry';
+import { registerWorkspaceRegistryRoutes } from './workspace/workspaceRoutes';
 import {
   DEFAULT_TRACE_LIMIT,
   MAX_TRACE_LIMIT,
@@ -126,6 +130,8 @@ interface CreateAppBaseOptions {
   settingsStore?: SettingsStore;
   /** Defaults to `new AuthorSessionStore(studioPaths().sessions)` when omitted. */
   sessions?: AuthorSessionStore;
+  /** The `/workspaces` routes' store. Defaults to `new WorkspaceRegistry(studioPaths().workspaces)` when omitted. */
+  workspaceRegistry?: WorkspaceRegistry;
   /**
    * The app's one AuthorTurnRunner (turns are in-flight memory, so tests
    * pass their own to control the provider seam); built over the same
@@ -178,7 +184,17 @@ type CreateAppWorkspaceOptions =
 export type CreateAppOptions = CreateAppBaseOptions & CreateAppWorkspaceOptions;
 
 /** Path prefixes of the API (everything except `/health` and the static client). */
-const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe', '/playground', '/catalog', '/assistant'];
+const API_PREFIXES = [
+  '/agents',
+  '/runs',
+  '/settings',
+  '/workspace',
+  '/workspaces',
+  '/observe',
+  '/playground',
+  '/catalog',
+  '/assistant',
+];
 
 /** The only methods served without the token, and only off the API (`/health`, the static client). */
 const PUBLIC_METHODS = new Set(['GET', 'HEAD']);
@@ -678,7 +694,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/observe|\/playground|\/catalog|\/assistant).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -744,6 +760,7 @@ export function createApp(options: CreateAppOptions): Express {
   const secrets = options.secretsStore ?? new SecretsStore(paths);
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
+  const workspaceRegistry = options.workspaceRegistry ?? new WorkspaceRegistry(paths.workspaces);
   // The Author's system prompt is byte-stable, so it is rendered once here
   // (fixed sections + the sorted catalog preamble) rather than per turn.
   const authorPrompt = buildAuthorSystemPrompt(authorPromptCatalogs());
@@ -817,6 +834,11 @@ export function createApp(options: CreateAppOptions): Express {
   // (server/routes/versionRoutes.ts - stores come from workspaceOf(req)).
   registerVersionRoutes(app);
   registerWorkspaceRoute(app);
+  // The workspace registry's routes (`GET/POST /workspaces`,
+  // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:
+  // the launch workspace's id is this app's `defaultId` and the one entry
+  // DELETE refuses (workspace/workspaceRoutes.ts).
+  registerWorkspaceRegistryRoutes(app, { registry: workspaceRegistry, launchId: workspace.ref.id });
   registerRunRoutes(app);
   registerChatRoutes(app);
   registerDebugRoutes(app);

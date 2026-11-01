@@ -373,3 +373,56 @@ describe('RuntimeClient catalog methods', () => {
     });
   });
 });
+
+describe('RuntimeClient workspace methods', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+  const ITEM = {
+    id: 'proj-abc123',
+    name: 'proj',
+    root: '/home/me/proj',
+    addedAt: '2026-01-01T00:00:00.000Z',
+    lastOpenedAt: '2026-01-01T00:00:00.000Z',
+    isLaunch: false,
+    available: true,
+    agentCount: 2,
+  };
+
+  /** The last fetch call's [path, init]. */
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it('listWorkspaces GETs /workspaces', async () => {
+    const list = { defaultId: 'launch-def456', workspaces: [ITEM] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, list));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listWorkspaces()).resolves.toEqual(list);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspaces');
+    expect(init.method).toBe('GET');
+  });
+
+  it('addWorkspace POSTs the folder path in the body (never in the URL)', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(201, ITEM));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.addWorkspace('/home/me/proj')).resolves.toEqual(ITEM);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspaces');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ root: '/home/me/proj' });
+  });
+
+  it('removeWorkspace DELETEs /workspaces/:id', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.removeWorkspace('proj-abc123')).resolves.toBeUndefined();
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspaces/proj-abc123');
+    expect(init.method).toBe('DELETE');
+  });
+});
