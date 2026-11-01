@@ -52,7 +52,16 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
-import { ConfigurationError, SDKError, type AgentSpec, type ForkPatch } from 'lousho';
+import {
+  ConfigurationError,
+  SDKError,
+  listBuiltinTools,
+  listGuardrails,
+  listModels,
+  listTriggerTypes,
+  type AgentSpec,
+  type ForkPatch,
+} from 'lousho';
 import type { AgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,
@@ -94,6 +103,7 @@ import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
 import { AuthorTurnRunner } from './author/turnRunner';
+import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './author/prompt/index';
 import { registerSecretRoutes } from './routes/secretRoutes';
 
 interface CreateAppBaseOptions {
@@ -116,7 +126,7 @@ interface CreateAppBaseOptions {
    * The app's one AuthorTurnRunner (turns are in-flight memory, so tests
    * pass their own to control the provider seam); built over the same
    * sessions/settings/secrets stores when omitted, with the temporary
-   * no-tools/no-context stand-ins until AA05/AA06 merge.
+   * no-tools/no-context stand-ins until AA06 merges.
    */
   authorRunner?: AuthorTurnRunner;
   /**
@@ -740,6 +750,38 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
   };
 }
 
+/**
+ * The D09 catalog functions (`/catalog/*` reads the same SDK calls)
+ * projected onto the prompt's env-free {@link AuthorPromptCatalogs} shape:
+ * a model's `available` flag and everything else that depends on keys or
+ * the environment stays out of the byte-stable system prompt.
+ */
+function authorPromptCatalogs(): AuthorPromptCatalogs {
+  return {
+    models: listModels().map((model) => ({
+      id: model.id,
+      capabilities: {
+        tools: model.capabilities.tools,
+        vision: model.capabilities.vision,
+        reasoning: model.capabilities.reasoning,
+        structuredOutput: model.capabilities.structuredOutput,
+      },
+    })),
+    tools: listBuiltinTools().map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      needsCredentials: tool.needsCredentials,
+      mutating: tool.mutating,
+    })),
+    guardrails: listGuardrails().map((guardrail) => ({
+      name: guardrail.name,
+      description: guardrail.description,
+      on: [...guardrail.on],
+    })),
+    triggers: listTriggerTypes().map((trigger) => ({ type: trigger.type, description: trigger.description })),
+  };
+}
+
 export function createApp(options: CreateAppOptions): Express {
   const { baseDir, staticDir, access, playgroundObserve, judge } = options;
   // The Studio home is process-wide and configured once, here, before any
@@ -749,14 +791,17 @@ export function createApp(options: CreateAppOptions): Express {
   const secrets = options.secretsStore ?? new SecretsStore(paths);
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
+  // The Author's system prompt is byte-stable, so it is rendered once here
+  // (fixed sections + the sorted catalog preamble) rather than per turn.
+  const authorPrompt = buildAuthorSystemPrompt(authorPromptCatalogs());
   const authorRunner =
     options.authorRunner ??
     new AuthorTurnRunner({
       sessions,
       settings,
       secrets,
-      // Stand-ins until AA05 (the real prompt) and AA06 (buildAuthorTools) merge.
-      systemPrompt: () => 'You are the lousho Agent Author.',
+      systemPrompt: () => authorPrompt,
+      // Stand-ins until AA06 (buildAuthorTools + real turnContextInput) merges.
       buildTools: () => [],
       turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
     });
