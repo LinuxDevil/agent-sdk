@@ -97,3 +97,42 @@ export const AUTHOR_SESSION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** A session's title until the first user text gives it a real one. */
 export const DEFAULT_SESSION_TITLE = 'New chat';
+
+/**
+ * Every event one Author turn produces, in order. `AuthorTurnRunner`
+ * emits them on its `'event'` channel as `(sessionId, event)`; the
+ * WebSocket transport forwards them verbatim. `seq` is per-turn monotone
+ * (1 = `turn.started`) so a client that resumes mid-turn can drop
+ * duplicates it already rendered. `requestId` ties every event to the
+ * `chat.send` the client sent.
+ */
+export type AuthorServerEvent =
+  | { type: 'turn.started'; requestId: string; seq: number }
+  | { type: 'text.delta'; requestId: string; seq: number; text: string }
+  | { type: 'tool.call'; requestId: string; seq: number; toolCallId: string; name: string; input: unknown }
+  | { type: 'tool.result'; requestId: string; seq: number; toolCallId: string; name: string; output: unknown; state: 'done' | 'error' }
+  | { type: 'tool.pending'; requestId: string; seq: number; toolCallId: string; name: string; input: unknown }
+  | { type: 'turn.finished'; requestId: string; seq: number; finishReason: string }
+  | { type: 'turn.error'; requestId: string; seq: number; message: string; code?: string };
+
+/**
+ * The Agent Author's model choices (the Settings "Agent Author" card):
+ * `model` runs the chat turns, `reviewModel` the draft-review pass -
+ * both `provider/model` ids. `reviewEnabled` gates the review pass.
+ */
+export interface AuthorSettings {
+  model: string;
+  reviewModel: string;
+  reviewEnabled: boolean;
+}
+
+/**
+ * `GET`/`PUT /settings/author`'s response: the effective settings plus
+ * whether the configured Author model can run right now (`ready`) and,
+ * when it cannot, which provider the missing key belongs to
+ * (`missingKeyFor`) so the client can point at the right Settings field.
+ */
+export interface AuthorSettingsPayload extends AuthorSettings {
+  ready: boolean;
+  missingKeyFor?: string;
+}

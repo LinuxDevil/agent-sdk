@@ -16,6 +16,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SettingsFile, SettingsProfile } from '../shared/wireTypes';
+import type { AuthorSettings } from '../shared/authorWire';
 import type { StudioPaths } from './workspace/studioPaths';
 
 const DEFAULT_PROFILES: SettingsProfile[] = [
@@ -136,5 +137,23 @@ export class SettingsStore {
     const result: SettingsFile = { ...data, activeProfileId: id };
     this.save(result);
     return result;
+  }
+
+  /** The stored Author settings patch (`{}` when none); `readAuthorSettings` merges the defaults under it. */
+  getAuthor(): Partial<AuthorSettings> {
+    return this.load().author ?? {};
+  }
+
+  /**
+   * Merges `patch` into the stored `author` object, leaving the profiles
+   * and every other settings.json key untouched. `undefined` values are
+   * dropped so a sparse PUT body can't clear a field.
+   */
+  setAuthor(patch: Partial<AuthorSettings>): Partial<AuthorSettings> {
+    const data = this.load();
+    const clean = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+    data.author = { ...data.author, ...clean };
+    this.save(data);
+    return data.author;
   }
 }

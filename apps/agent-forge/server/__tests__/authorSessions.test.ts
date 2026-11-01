@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
+import { mockModel } from 'lousho/testing';
 import { createApp } from '../app';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { RunManager } from '../runRegistry';
@@ -10,7 +11,11 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { workspaceIdFor } from '../workspace/workspaceId';
-import type { AuthorSession, AuthorSessionSummary } from '../../shared/authorWire';
+import { AuthorSessionStore } from '../author/sessionStore';
+import { AuthorTurnRunner } from '../author/turnRunner';
+import { SecretsStore } from '../secretsStore';
+import { SettingsStore } from '../settingsStore';
+import type { AuthorServerEvent, AuthorSession, AuthorSessionSummary } from '../../shared/authorWire';
 
 /**
  * The Author session routes (`/assistant/sessions`) behind the studio
@@ -140,6 +145,52 @@ describe('author session routes', () => {
     const again = await authed(request(app).delete(`/assistant/sessions/${session.id}`));
     expect(again.status).toBe(404);
     expect(again.body).toEqual({ error: 'Chat not found.', code: 'NOT_FOUND' });
+  });
+
+  it('DELETE /assistant/sessions/:id -> 409 BUSY while a reply is running in that chat', async () => {
+    // An app wired with a real runner whose provider stalls, so the turn is
+    // still in flight when the delete arrives.
+    const sessions = new AuthorSessionStore(path.join(baseDir, '.lousho', 'assistant', 'sessions'));
+    const settings = new SettingsStore(baseDir);
+    const secrets = new SecretsStore(baseDir);
+    const model = mockModel([{ text: 'slow', delayMs: 120 }]);
+    const runner = new AuthorTurnRunner({
+      sessions,
+      settings,
+      secrets,
+      systemPrompt: () => 'You are the lousho Agent Author.',
+      buildTools: () => [],
+      turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
+      providerFor: () => model,
+    });
+    const agentStore = createFsAgentStore(baseDir);
+    const runManager = new RunManager({
+      baseDir,
+      checkpointStore: new FileCheckpointStore(baseDir),
+      approvalStore: new FileApprovalStore(baseDir),
+      loadSpec: (id) => agentStore.load(id),
+      saveSpec: (id, spec) => agentStore.save(id, spec),
+    });
+    const busyApp = createApp({ agentStore, runManager, baseDir, staticDir, access: { token: TOKEN }, sessions, authorRunner: runner });
+
+    const created = await request(busyApp).post('/assistant/sessions').set(STUDIO_TOKEN_HEADER, TOKEN).send({});
+    expect(created.status).toBe(201);
+    const chat = created.body as AuthorSession;
+    const turnEnd = new Promise<AuthorServerEvent>((resolve) => {
+      runner.on('event', (_sid, ev) => {
+        if (ev.type === 'turn.finished' || ev.type === 'turn.error') resolve(ev);
+      });
+    });
+    const started = await runner.start(chat.id, { requestId: 'req-busy-aa02b', text: 'go' });
+    expect(started.ok).toBe(true);
+
+    const del = await request(busyApp).delete(`/assistant/sessions/${chat.id}`).set(STUDIO_TOKEN_HEADER, TOKEN);
+    expect(del.status).toBe(409);
+    expect(del.body).toEqual({ error: 'Stop the reply before deleting this chat.', code: 'BUSY' });
+    expect(fs.existsSync(path.join(sessionsDir(), `${chat.id}.json`))).toBe(true);
+
+    runner.stop(chat.id, 'req-busy-aa02b');
+    await turnEnd;
   });
 
   it('requires the studio token (401 without it) on every verb', async () => {

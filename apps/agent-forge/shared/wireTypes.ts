@@ -22,6 +22,7 @@ import type {
   listTriggerTypes,
 } from 'lousho';
 import type { WorkspaceRef } from './workspace';
+import type { AuthorSettings } from './authorWire';
 
 /**
  * Status pill states the app's agent list / topbar render (as in the
@@ -278,6 +279,8 @@ export interface SettingsProfile {
 export interface SettingsFile {
   activeProfileId: string;
   profiles: SettingsProfile[];
+  /** Stored partial overrides for the Agent Author's model choices; `readAuthorSettings` merges the defaults under them. */
+  author?: Partial<AuthorSettings>;
 }
 
 /** R2: `POST /agents/:id/deploy`'s result - the shelled-out `lousho build` child process's outcome. */
