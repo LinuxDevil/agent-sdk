@@ -26,6 +26,8 @@
  *   GET  /catalog/models[?provider]  -> ModelCatalogEntry[] (available also counts Studio-stored keys)
  *   GET  /catalog/tools|guardrails|triggers -> the SDK catalogs (listBuiltinTools/listGuardrails/listTriggerTypes)
  *   GET  /catalog/skills|kits        -> the registry index's skill/kit items (routes/catalogRoutes.ts)
+ *   POST/GET /assistant/sessions · GET/DELETE /assistant/sessions/:id
+ *                                      -> Agent Author chat sessions, Studio-global (author/routes.ts)
  *
  * `WS /agents/:id/stream` is wired separately in wsServer.ts (attached to
  * the same underlying http.Server, since `ws` needs the raw HTTP upgrade
@@ -82,6 +84,8 @@ import { DraftStore } from './storage/draftStore';
 import { VersionStore } from './storage/versionStore';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
+import { AuthorSessionStore } from './author/sessionStore';
+import { registerAuthorRoutes } from './author/routes';
 
 interface CreateAppBaseOptions {
   /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
@@ -97,6 +101,8 @@ interface CreateAppBaseOptions {
   secretsStore?: SecretsStore;
   /** Defaults to `new SettingsStore(studioPaths())` when omitted. */
   settingsStore?: SettingsStore;
+  /** Defaults to `new AuthorSessionStore(studioPaths().sessions)` when omitted. */
+  sessions?: AuthorSessionStore;
   /**
    * Directory holding the pre-built Agent Forge client (the
    * output of `vite build`, normally `apps/agent-forge/dist`). When set and
@@ -140,7 +146,7 @@ type CreateAppWorkspaceOptions =
 export type CreateAppOptions = CreateAppBaseOptions & CreateAppWorkspaceOptions;
 
 /** Path prefixes of the API (everything except `/health` and the static client). */
-const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe', '/playground', '/catalog'];
+const API_PREFIXES = ['/agents', '/runs', '/settings', '/workspace', '/observe', '/playground', '/catalog', '/assistant'];
 
 /** The only methods served without the token, and only off the API (`/health`, the static client). */
 const PUBLIC_METHODS = new Set(['GET', 'HEAD']);
@@ -693,7 +699,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/observe|\/playground|\/catalog).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/observe|\/playground|\/catalog|\/assistant).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -726,6 +732,7 @@ export function createApp(options: CreateAppOptions): Express {
   const paths = configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
   const secrets = options.secretsStore ?? new SecretsStore(paths);
   const settings = options.settingsStore ?? new SettingsStore(paths);
+  const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
   const workspace = defaultWorkspaceContext(options);
 
   const app = express();
@@ -792,6 +799,9 @@ export function createApp(options: CreateAppOptions): Express {
   // (routes/catalogRoutes.ts) - a Studio-global route family, mounted on
   // every workspace's app like the settings routes are.
   registerCatalogRoutes(app, { secretsStore: secrets });
+  // Agent Author chat sessions (Studio-global files under
+  // studioPaths().sessions; each session records which workspace it edits).
+  registerAuthorRoutes(app, { sessions });
   // The observe panels' read path: `/observe/**` -> the `lousho observe`
   // daemon (see observeProxy.ts), plus its small write allowlist (feedback
   // scores; bodies come from the express.json above) - before the SPA
