@@ -162,6 +162,21 @@ ones. Starting is the default so that dev behaves like the deployed server;
 because firing crons (and spending model calls) while you edit is often
 unwanted, `--no-schedules` mounts the channels but starts no schedule.
 
+A spec file's cron `triggers` start the same way (a v2 spec shown; v1's
+`{ type: 'cron', cron, input, name? }` works too), and `--no-schedules` starts
+none of them either:
+
+```yaml
+triggers:
+  - id: daily-report          # the schedule's name; v1 uses name: and input:
+    type: cron
+    cron: "0 9 * * *"
+    prompt: Write the daily report.
+```
+
+Trigger kinds `lousho dev` does not run — `webhook`, `channel` and `agent` —
+are logged once per load (Agent Forge runs them).
+
 ## On Cloudflare Workers
 
 A Worker has no long-lived process, so no timers: Cloudflare calls the Worker's
