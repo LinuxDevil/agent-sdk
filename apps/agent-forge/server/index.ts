@@ -18,7 +18,7 @@ import { startJudgeLoop, type JudgeLoopOptions } from './judge';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
 import { createWorkspaceContext } from './workspace/context';
 import { configureStudioHome, studioPaths } from './workspace/studioPaths';
-import { workspaceRefFor } from './workspace/workspaceId';
+import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -106,7 +106,12 @@ export async function startStudioServer(
   const secretsStore = new SecretsStore(paths);
   const settingsStore = new SettingsStore(paths);
 
-  const workspace = createWorkspaceContext(workspaceRefFor(baseDir), {
+  // The launch folder is added to the workspace registry on every start
+  // (`ensure` keeps one entry and bumps lastOpenedAt on a restart) and
+  // its stored ref is the launch context's identity.
+  const registry = new WorkspaceRegistry(paths.workspaces);
+  const launchRef = await registry.ensure(baseDir);
+  const workspace = createWorkspaceContext(launchRef, {
     secretsStore,
     settingsStore,
     observe: options.observe !== false,
@@ -115,7 +120,16 @@ export async function startStudioServer(
   const token = options.token ?? (process.env[STUDIO_TOKEN_ENV] || mintStudioToken());
   const allowedOrigins = (process.env[STUDIO_ALLOWED_ORIGINS_ENV] ?? '').split(',').filter(Boolean);
   const access = { token, allowedHosts: allowedHostsFor(host), allowedOrigins };
-  const app = createApp({ workspace, baseDir, studioHome: paths.home, secretsStore, settingsStore, staticDir, access });
+  const app = createApp({
+    workspace,
+    baseDir,
+    studioHome: paths.home,
+    secretsStore,
+    settingsStore,
+    workspaceRegistry: registry,
+    staticDir,
+    access,
+  });
   const server = http.createServer(app);
   attachWebSocketServer(server, workspace.runs, access);
 

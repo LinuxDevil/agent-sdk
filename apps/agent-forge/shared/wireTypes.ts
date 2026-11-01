@@ -340,6 +340,36 @@ export interface WorkspaceInfo {
   workspace: WorkspaceRef;
 }
 
+/**
+ * One row of `GET /workspaces`: the registry's `WorkspaceRef` plus the
+ * per-request facts the route computes (`isLaunch` is a per-process fact,
+ * `available`/`agentCount` come from the folder's current state - none of
+ * them is stored in `workspaces.json`).
+ */
+export interface WorkspaceListItem extends WorkspaceRef {
+  /** The folder Studio was started in this session. It cannot be removed while Studio runs. */
+  isLaunch: boolean;
+  /** false when `root` no longer exists or is not a directory (moved, unmounted). */
+  available: boolean;
+  /** `.lousho/agents/*.yaml` count; 0 when unavailable. */
+  agentCount: number;
+}
+
+/**
+ * `GET /workspaces`'s response: every registered workspace, sorted by name
+ * (case-insensitive), then id; `defaultId` is the launch workspace's id -
+ * the workspace requests with no `x-lousho-workspace`/`?ws=` resolve to.
+ */
+export interface WorkspaceList {
+  defaultId: string;
+  workspaces: WorkspaceListItem[];
+}
+
+/** `POST /workspaces`'s body: the folder path goes in the body, never in a URL (it can name a user's home directory). */
+export interface AddWorkspaceRequest {
+  root: string;
+}
+
 /** One `POST /playground/run` message (server/playground.ts; the Playground screen's editor rows). */
 export interface PlaygroundMessage {
   role: 'system' | 'user' | 'assistant';
