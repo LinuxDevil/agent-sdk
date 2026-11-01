@@ -130,3 +130,49 @@ describe('RuntimeClient draft methods', () => {
     });
   });
 });
+
+describe('RuntimeClient catalog methods', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+
+  /** The last fetch call's [path, init]. */
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it.each([
+    ['catalogTools', '/catalog/tools', () => client.catalogTools()],
+    ['catalogGuardrails', '/catalog/guardrails', () => client.catalogGuardrails()],
+    ['catalogTriggers', '/catalog/triggers', () => client.catalogTriggers()],
+    ['catalogSkills', '/catalog/skills', () => client.catalogSkills()],
+    ['catalogKits', '/catalog/kits', () => client.catalogKits()],
+  ])('%s GETs %s', async (_name, path, call) => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(call()).resolves.toEqual([]);
+    const [calledPath, init] = lastCall(fetchMock);
+    expect(calledPath).toBe(path);
+    expect(init.method).toBe('GET');
+  });
+
+  it('catalogModels GETs /catalog/models, adding ?provider= only when given', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.catalogModels();
+    expect(lastCall(fetchMock)[0]).toBe('/catalog/models');
+    await client.catalogModels('anthropic');
+    expect(lastCall(fetchMock)[0]).toBe('/catalog/models?provider=anthropic');
+  });
+
+  it('catalog calls reject with the server message on a non-ok response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(400, { error: "'provider' must be a non-empty string" })));
+    await expect(client.catalogModels('')).rejects.toMatchObject({
+      message: "'provider' must be a non-empty string",
+      status: 400,
+    });
+  });
+});

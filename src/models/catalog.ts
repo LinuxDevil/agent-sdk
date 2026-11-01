@@ -37,6 +37,7 @@ export interface ModelCatalogEntry extends Omit<ModelInfo, 'id'> {
   id: string;
   /** The bare model id the provider is called with. */
   modelId: string;
+  /** What the model can do (tools, vision, reasoning, structured output, hosted tools) - the picker's capability column. */
   capabilities: ModelCapabilities;
   /** The provider's env key is set (or the provider needs none, like ollama). */
   available: boolean;

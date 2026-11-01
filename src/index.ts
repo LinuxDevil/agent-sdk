@@ -113,6 +113,14 @@ export { serveAcp, type ServeAcpOptions } from './acp/serveAcp';
 // Declarative agent spec file format
 export * from './spec';
 
+// Catalog listings for builder UIs (Studio's `GET /catalog/*` routes and the
+// Author's pickers): the S06/S07/S11/S22a catalogs, re-exported by name from
+// the package root so consumers never deep-import src/**.
+export { listBuiltinTools, type BuiltinToolInfo } from './tools/catalog';
+export { listModels, type ListModelsOptions, type ModelCapabilities, type ModelCatalogEntry } from './models/catalog';
+export { listGuardrails, type GuardrailCatalogEntry } from './execution/guardrailCatalog';
+export { listTriggerTypes, type TriggerTypeInfo } from './spec/v2/triggerCatalog';
+
 // Deployment adapter registry. Only the interface + registry are
 // exported here; the built-in adapters (node-server, cloudflare-worker,
 // docker) are wired up by the `lousho build` CLI (src/cli/build.ts).

@@ -33,6 +33,8 @@ export default defineConfig({
       '/observe': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
       // The playground's SSE run endpoint.
       '/playground': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
+      // The SDK catalogs + registry index (models, tools, guardrails, triggers, skills, kits).
+      '/catalog': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
     },
   },
   test: {

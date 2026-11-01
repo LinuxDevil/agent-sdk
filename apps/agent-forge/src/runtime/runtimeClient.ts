@@ -9,6 +9,12 @@
 import type { AgentSpec } from 'lousho';
 import type {
   AgentRunStatusPayload,
+  CatalogGuardrail,
+  CatalogKit,
+  CatalogModel,
+  CatalogSkill,
+  CatalogTool,
+  CatalogTriggerType,
   ChangeDraft,
   ChatSessionMeta,
   ChatSessionRecord,
@@ -317,6 +323,42 @@ class RuntimeClient implements AgentApi {
   /** R2: deploy-target names this app's Settings dropdown offers - see server/deployRunner.ts's DEPLOY_ADAPTERS. */
   async listDeployAdapters(): Promise<string[]> {
     return this.request('/settings/deploy-adapters', { method: 'GET' });
+  }
+
+  // -------------------------------------------------------------------
+  // `GET /catalog/*` - the SDK catalogs + registry index the pickers and
+  // the Author read (server/routes/catalogRoutes.ts).
+  // -------------------------------------------------------------------
+
+  /** The model catalog, optionally filtered to one provider; `available` counts Studio-stored keys server-side. */
+  async catalogModels(provider?: string): Promise<CatalogModel[]> {
+    const query = provider === undefined ? '' : `?${new URLSearchParams({ provider })}`;
+    return this.request(`/catalog/models${query}`, { method: 'GET' });
+  }
+
+  /** The SDK's `{ builtin }` tool catalog. */
+  async catalogTools(): Promise<CatalogTool[]> {
+    return this.request('/catalog/tools', { method: 'GET' });
+  }
+
+  /** The SDK's starter-set guardrail catalog. */
+  async catalogGuardrails(): Promise<CatalogGuardrail[]> {
+    return this.request('/catalog/guardrails', { method: 'GET' });
+  }
+
+  /** The SDK's trigger-type catalog. */
+  async catalogTriggers(): Promise<CatalogTriggerType[]> {
+    return this.request('/catalog/triggers', { method: 'GET' });
+  }
+
+  /** The registry index's skills, as `{ registry: name }` refs. */
+  async catalogSkills(): Promise<CatalogSkill[]> {
+    return this.request('/catalog/skills', { method: 'GET' });
+  }
+
+  /** The registry index's kits (whole agent directories). */
+  async catalogKits(): Promise<CatalogKit[]> {
+    return this.request('/catalog/kits', { method: 'GET' });
   }
 
   /**
