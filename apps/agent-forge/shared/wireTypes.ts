@@ -603,3 +603,28 @@ export interface CatalogKit {
   name: string;
   description: string;
 }
+
+/**
+ * One `mcpServers` entry as a v2 spec writes it - the v1 entry shape with
+ * `SecretRef` (`{ env }`/`{ secret }`) allowed where secrets go. Derived
+ * from `AgentSpecV2` so it can never drift from the spec type.
+ */
+export type McpServerSpecV2 = NonNullable<AgentSpecV2['mcpServers']>[string];
+
+/** `POST /catalog/mcp/probe`'s body: the one server to connect and list. */
+export interface McpProbeRequest {
+  server: McpServerSpecV2;
+}
+
+/** One tool a probe found, `name` without the route's `probe__` namespace. */
+export interface McpProbeTool {
+  name: string;
+  description: string;
+}
+
+/**
+ * `POST /catalog/mcp/probe`'s answer: the tools the server advertised, or
+ * why it could not be reached (connection failures are `ok: false` in a
+ * 200, never HTTP errors).
+ */
+export type McpProbeResponse = { ok: true; tools: McpProbeTool[] } | { ok: false; error: string };

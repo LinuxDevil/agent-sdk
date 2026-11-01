@@ -24,6 +24,9 @@ import type {
   DeployResult,
   ForkRunRequest,
   ForkRunResponse,
+  McpProbeRequest,
+  McpProbeResponse,
+  McpServerSpecV2,
   ProviderKeyStatus,
   RunComparisonPayload,
   RunHistoryPayload,
@@ -436,6 +439,17 @@ class RuntimeClient implements AgentApi {
   /** The registry index's kits (whole agent directories). */
   async catalogKits(): Promise<CatalogKit[]> {
     return this.request('/catalog/kits', { method: 'GET' });
+  }
+
+  /**
+   * Probes one MCP server: connects it (secrets resolved server-side),
+   * lists its tools and disconnects. A failure to connect comes back as
+   * `{ ok: false, error }`, not a thrown error.
+   */
+  // fallow-ignore-next-line unused-class-member -- consumed by C07's MCP-node Probe button and AA06's probeMcpServer tool
+  async probeMcp(server: McpServerSpecV2): Promise<McpProbeResponse> {
+    const body: McpProbeRequest = { server };
+    return this.request('/catalog/mcp/probe', { method: 'POST', body: JSON.stringify(body) });
   }
 
   /**
