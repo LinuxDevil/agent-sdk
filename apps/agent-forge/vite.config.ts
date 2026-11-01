@@ -45,6 +45,8 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // The SDK's shipped templates (list + detail).
+      '/templates': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
     },
   },
   test: {
