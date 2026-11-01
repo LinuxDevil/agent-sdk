@@ -3,12 +3,14 @@ import type { ModelInfo } from './registry';
 /**
  * Built-in model table. A dated snapshot, not a live price list.
  *
- * Retrieved 2026-10-01. Sources (provider-published):
+ * Retrieved 2026-10-29. Sources (provider-published):
  *  - OpenAI: https://developers.openai.com/api/docs/pricing and
  *    https://developers.openai.com/api/docs/models/<model> (standard tier,
  *    short-context prices; context window and max output from each model page)
  *  - Anthropic: https://platform.claude.com/docs/en/docs/about-claude/models/overview
- *    ("128K" max output read as 128000, "1M" context as 1000000)
+ *    ("128K" max output read as 128000, "1M" context as 1000000).
+ *    claude-haiku-5-5 prices are its ≤100,000-token-prompt tier; longer
+ *    prompts bill more (https://platform.claude.com/docs/en/models/haiku-5-5/overview).
  *  - Ollama: https://ollama.com/library/<model> (context window only; local
  *    models have no per-token price, so prices are left undefined)
  *
@@ -41,6 +43,7 @@ export const BUILT_IN_MODELS: readonly ModelInfo[] = [
   { id: 'claude-sonnet-5-5', provider: 'anthropic', contextWindow: 1000000, maxOutputTokens: 128000, inputCostPerMTok: 2, outputCostPerMTok: 10, cachedInputCostPerMTok: 0.2, cacheWriteCostPerMTok: 2.5 },
   { id: 'claude-sonnet-4-6', provider: 'anthropic', contextWindow: 1000000, maxOutputTokens: 128000, inputCostPerMTok: 3, outputCostPerMTok: 15, cachedInputCostPerMTok: 0.3, cacheWriteCostPerMTok: 3.75 },
   { id: 'claude-sonnet-4-5', provider: 'anthropic', contextWindow: 200000, maxOutputTokens: 64000, inputCostPerMTok: 3, outputCostPerMTok: 15, cachedInputCostPerMTok: 0.3, cacheWriteCostPerMTok: 3.75 },
+  { id: 'claude-haiku-5-5', provider: 'anthropic', contextWindow: 1000000, maxOutputTokens: 128000, inputCostPerMTok: 0.1, outputCostPerMTok: 0.5, cachedInputCostPerMTok: 0.01, cacheWriteCostPerMTok: 0.125 },
   { id: 'claude-haiku-4-5', provider: 'anthropic', contextWindow: 200000, maxOutputTokens: 64000, inputCostPerMTok: 1, outputCostPerMTok: 5, cachedInputCostPerMTok: 0.1, cacheWriteCostPerMTok: 1.25 },
   { id: 'llama3', provider: 'ollama', contextWindow: 8192 },
   { id: 'llama3.1', provider: 'ollama', contextWindow: 131072 },

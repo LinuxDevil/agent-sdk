@@ -3571,6 +3571,9 @@ export function listAdapters(): string[];
 export function listCheckpoints(checkpoints: Iterable<readonly [string, Checkpoint]>, options?: CheckpointListOptions): CheckpointListEntry[];
 
 // @public
+export function listRegisteredModels(): ModelInfo[];
+
+// @public
 export function listRemoteTools(client: McpClientLike, options?: {
     logger?: Logger;
     server?: string;

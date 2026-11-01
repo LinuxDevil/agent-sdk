@@ -53,6 +53,15 @@ const REASONING_MODELS: Record<string, RegExp> = {
   ollama: /deepseek-r1|qwen3|gpt-oss|magistral/,
 };
 
+/**
+ * Whether `modelId` of `provider` is in a family known to accept `reasoning`
+ * options - the same test the SDK applies before sending them (bypassed only
+ * by `force`). Unknown providers and ids return `false`.
+ */
+export function supportsReasoning(provider: string, modelId: string): boolean {
+  return REASONING_MODELS[provider]?.test(modelId) ?? false;
+}
+
 /** Anthropic thinking budget per effort, in tokens (1024 is Anthropic's minimum). */
 const THINKING_BUDGETS: Record<Effort, number> = { minimal: 1024, low: 2048, medium: 8192, high: 24576 };
 
