@@ -1,6 +1,7 @@
 /**
- * Agent routes - `GET /agents`, `GET /agents/:id`, `PUT /agents/:id` and
- * `DELETE /agents/:id` (the Agents list's and detail header's API).
+ * Agent routes - `GET /agents`, `POST /agents`, `GET /agents/:id`,
+ * `PUT /agents/:id`, `PATCH /agents/:id/meta`, `PUT /agents/:id/layout`
+ * and `DELETE /agents/:id` (the Agents list's and detail header's API).
  *
  * `GET /agents` answers `AgentListItem[]` (spec summary + meta + counts +
  * `lastRun`) and `GET /agents/:id` the full `AgentRecord` (spec v2, meta,
@@ -8,6 +9,14 @@
  * and writes the v2 working copy; every write runs inside
  * `withAgentLock(id)` and reconciles external edits first, so a hand-edited
  * `<id>.yaml` is preserved as a `baseline` version before it is overwritten.
+ *
+ * `POST /agents` creates a blank agent or a copy (`{ from: 'blank' |
+ * { copyOf } }`; `{ template }` is `LOUSHO_TEMPLATE_UNAVAILABLE` until
+ * template creation lands), writing spec + meta (+ layout, for a copy)
+ * and the version-1 `create` capture inside the new agent's lock.
+ * `PATCH /agents/:id/meta` toggles `enabled` and stores normalised
+ * labels without writing a version; `PUT /agents/:id/layout` stores the
+ * canvas layout after `parseCanvasLayout` clears it.
  *
  * The v1 canvas keeps working until C02 through the `?view=legacy` bridge:
  * the two GETs answer the old `AgentStoreEntry[]`/`AgentSpec` shapes (the
@@ -22,11 +31,22 @@
  */
 import type { Express, Response } from 'express';
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
-import type { AgentLastRun, AgentListItem, AgentRecord } from '../../shared/wireTypes';
+import { isValidAgentId } from '../../shared/agentId';
+import { labelsProblem, MAX_LABEL_LENGTH, MAX_LABELS, normalizeLabels } from '../../shared/labels';
+import type {
+  AgentLastRun,
+  AgentListItem,
+  AgentMeta,
+  AgentRecord,
+  CanvasLayout,
+  PatchAgentMetaRequest,
+} from '../../shared/wireTypes';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
-import { InvalidSpecError } from '../storage/agentRepo';
+import { defaultMeta, InvalidSpecError } from '../storage/agentRepo';
+import { copyAgentId, slugAgentId, uniqueAgentId } from '../storage/agentIds';
 import { withAgentLock } from '../storage/atomic';
 import { mergeLegacySave } from '../storage/legacySpec';
+import { parseCanvasLayout } from './layoutValidation';
 import { listAgentTraces } from '../traceStore';
 import type { WorkspaceContext } from '../workspace/context';
 import { workspaceOf } from '../workspace/middleware';
@@ -111,8 +131,116 @@ function parsePutBody(body: unknown): { kind: 'v2'; spec: AgentSpecV2 } | { kind
   return undefined;
 }
 
+/** A validated `POST /agents` body: which of the three `from` shapes, plus the optional display name. */
+type ParsedCreateBody =
+  | { kind: 'blank'; name?: string }
+  | { kind: 'template' }
+  | { kind: 'copy'; copyOf: string; name?: string };
+
 /**
- * Registers the four agent routes. No deps: handlers read `repo`,
+ * A validated `POST /agents` body, or the 400 message: `from` must be
+ * `'blank'`, `{ template: string }` or `{ copyOf: string }`; `name`, when
+ * given, a string.
+ */
+function parseCreateBody(body: unknown): ParsedCreateBody | string {
+  if (!isObject(body)) return 'Request body must be an object';
+  if (body.name !== undefined && typeof body.name !== 'string') return "'name' must be a string";
+  const name = body.name as string | undefined;
+  const from = body.from;
+  if (from === 'blank') return { kind: 'blank', name };
+  if (isObject(from)) {
+    if (typeof from.template === 'string') return { kind: 'template' };
+    if (typeof from.copyOf === 'string') return { kind: 'copy', copyOf: from.copyOf, name };
+  }
+  return "'from' must be 'blank', { template: string } or { copyOf: string }";
+}
+
+/** `text` clamped to the spec-name cap (64 chars) - keeps `'<name> copy'` a valid spec name. */
+function cut64(text: string): string {
+  return text.slice(0, 64);
+}
+
+/**
+ * The spec + meta (+ layout) write and the version-1 `create` capture a
+ * new agent gets, all inside `withAgentLock(newId)` - then the same
+ * `AgentRecord` `GET /agents/:id` answers.
+ */
+async function writeNewAgent(
+  ws: WorkspaceContext,
+  id: string,
+  spec: AgentSpecV2,
+  meta: AgentMeta,
+  layout: CanvasLayout | undefined
+): Promise<AgentRecord> {
+  await withAgentLock(id, async () => {
+    await ws.repo.writeSpec(id, spec);
+    await ws.repo.writeMeta(id, meta);
+    if (layout !== undefined) await ws.repo.writeLayout(id, layout);
+    await ws.versions.capture(id, { kind: 'create', source: 'editor' });
+  });
+  const record = await toRecord(ws, id);
+  if (record === undefined) throw new Error(`Agent '${id}' vanished right after creation`);
+  return record;
+}
+
+/**
+ * The blank `POST /agents`: the default spec under a slug of the name
+ * (`uniqueAgentId` skips ids whose spec OR sidecar dir exists), enabled
+ * `createdFrom: { kind: 'blank' }` meta.
+ */
+async function createBlankAgent(ws: WorkspaceContext, name: string | undefined): Promise<AgentRecord> {
+  const spec: AgentSpecV2 = {
+    version: 2,
+    name: name ?? 'Untitled agent',
+    model: 'mock/mock-1',
+    instructions: 'You are a helpful agent.',
+  };
+  const meta: AgentMeta = { ...defaultMeta(new Date().toISOString()), createdFrom: { kind: 'blank' } };
+  const id = uniqueAgentId(ws.repo, slugAgentId(name ?? 'untitled-agent'));
+  return writeNewAgent(ws, id, spec, meta, undefined);
+}
+
+/**
+ * The copy `POST /agents`: the source spec renamed `'<name> copy'` (or
+ * `name`), labels and layout copied, enabled `createdFrom: { kind:
+ * 'copy', ref }` meta, `publishedVersion: null` - the copy is never born
+ * published. `undefined` when `copyOf` names no saved agent.
+ */
+async function createAgentCopy(
+  ws: WorkspaceContext,
+  copyOf: string,
+  name: string | undefined
+): Promise<AgentRecord | undefined> {
+  if (!isValidAgentId(copyOf)) return undefined;
+  const source = await ws.repo.readSpec(copyOf);
+  if (source === undefined) return undefined;
+  const spec: AgentSpecV2 = { ...source, name: name ?? cut64(`${source.name} copy`) };
+  const meta: AgentMeta = {
+    ...defaultMeta(new Date().toISOString()),
+    labels: (await ws.repo.readMeta(copyOf)).labels,
+    createdFrom: { kind: 'copy', ref: copyOf },
+  };
+  const layout = await ws.repo.readLayout(copyOf);
+  const id = copyAgentId(ws.repo, copyOf);
+  return writeNewAgent(ws, id, spec, meta, layout);
+}
+
+/** A validated `PATCH /agents/:id/meta` body, or the 400 message: at least one of `enabled`/`labels`, correctly typed. */
+function parseMetaBody(body: unknown): PatchAgentMetaRequest | string {
+  if (!isObject(body)) return 'Request body must be an object';
+  const { enabled, labels } = body;
+  if (enabled === undefined && labels === undefined) {
+    return "Request body must include 'enabled' or 'labels'";
+  }
+  if (enabled !== undefined && typeof enabled !== 'boolean') return "'enabled' must be a boolean";
+  if (labels !== undefined && (!Array.isArray(labels) || !labels.every((label) => typeof label === 'string'))) {
+    return "'labels' must be a string array";
+  }
+  return { enabled: enabled as boolean | undefined, labels: labels as string[] | undefined };
+}
+
+/**
+ * Registers the agent routes. No deps: handlers read `repo`,
  * `versions`, `runs` and `agentStore` off `workspaceOf(req)`, so a second
  * workspace is a second context, not a second registration.
  */
@@ -138,6 +266,44 @@ export function registerAgentRoutes(app: Express): void {
         })
       );
       res.json(items.filter((item): item is AgentListItem => item !== undefined));
+    })
+  );
+
+  // Create an agent: blank spec or copy of an existing one. Both write
+  // spec + meta (+ layout for a copy) and capture version 1 inside the
+  // new agent's lock, answering the same AgentRecord GET returns.
+  // `{ template }` is a 400 until template creation lands.
+  app.post(
+    '/agents',
+    asyncRoute(async (req, res) => {
+      const parsed = parseCreateBody(req.body);
+      if (typeof parsed === 'string') {
+        sendError(res, 400, parsed, 'LOUSHO_BODY_INVALID');
+        return;
+      }
+      if (parsed.kind === 'template') {
+        sendError(res, 400, 'Creating from a template is not available yet.', 'LOUSHO_TEMPLATE_UNAVAILABLE');
+        return;
+      }
+      const ws = workspaceOf(req);
+      try {
+        if (parsed.kind === 'copy') {
+          const record = await createAgentCopy(ws, parsed.copyOf, parsed.name);
+          if (record === undefined) {
+            sendError(res, 404, `No saved agent '${parsed.copyOf}'`, 'LOUSHO_AGENT_NOT_FOUND');
+            return;
+          }
+          res.status(201).json(record);
+          return;
+        }
+        res.status(201).json(await createBlankAgent(ws, parsed.name));
+      } catch (error) {
+        if (error instanceof InvalidSpecError) {
+          sendError(res, 400, error.message, error.code, { issues: error.issues });
+          return;
+        }
+        throw error;
+      }
     })
   );
 
@@ -195,6 +361,78 @@ export function registerAgentRoutes(app: Express): void {
         }
         throw error;
       }
+      res.status(204).end();
+    })
+  );
+
+  // The enable switch and the label set. Labels are normalised (trim,
+  // lowercase, dedupe) before the caps are checked; disabling stamps
+  // disabledAt/'manual' and enabling clears the disable fields and the
+  // failure streak. Meta changes never write a version (Contract B).
+  app.patch(
+    '/agents/:id/meta',
+    asyncRoute(async (req, res) => {
+      const parsed = parseMetaBody(req.body);
+      if (typeof parsed === 'string') {
+        sendError(res, 400, parsed, 'LOUSHO_BODY_INVALID');
+        return;
+      }
+      const labels = parsed.labels === undefined ? undefined : normalizeLabels(parsed.labels);
+      if (labels !== undefined) {
+        const problem = labelsProblem(labels);
+        if (problem !== undefined) {
+          sendError(res, 400, problem, 'LOUSHO_LABELS_INVALID', {
+            maxLabels: MAX_LABELS,
+            maxLength: MAX_LABEL_LENGTH,
+          });
+          return;
+        }
+      }
+      const ws = workspaceOf(req);
+      const id = paramId(req);
+      await withAgentLock(id, async () => {
+        if (!ws.repo.exists(id)) {
+          sendAgentNotFound(res, id);
+          return;
+        }
+        const now = new Date().toISOString();
+        const meta = await ws.repo.readMeta(id);
+        const next: AgentMeta = { ...meta, updatedAt: now };
+        if (parsed.enabled !== undefined) {
+          next.enabled = parsed.enabled;
+          if (parsed.enabled) {
+            next.disabledAt = null;
+            next.disabledReason = null;
+            next.failureStreak = 0;
+          } else {
+            next.disabledAt = now;
+            next.disabledReason = 'manual';
+          }
+        }
+        if (labels !== undefined) next.labels = labels;
+        await ws.repo.writeMeta(id, next);
+        res.json(next);
+      });
+    })
+  );
+
+  // The canvas positions, validated by parseCanvasLayout first so a bad
+  // body is a 400 naming the field rather than a corrupt layout.json.
+  app.put(
+    '/agents/:id/layout',
+    asyncRoute(async (req, res) => {
+      const layout = parseCanvasLayout(req.body);
+      if (typeof layout === 'string') {
+        sendError(res, 400, layout, 'LOUSHO_LAYOUT_INVALID');
+        return;
+      }
+      const ws = workspaceOf(req);
+      const id = paramId(req);
+      if (!ws.repo.exists(id)) {
+        sendAgentNotFound(res, id);
+        return;
+      }
+      await withAgentLock(id, () => ws.repo.writeLayout(id, layout));
       res.status(204).end();
     })
   );

@@ -502,6 +502,32 @@ export interface AgentRecord {
 }
 
 /**
+ * `POST /agents`'s `from`: a blank spec, a template id (creation from a
+ * template is not available yet - the route answers
+ * `LOUSHO_TEMPLATE_UNAVAILABLE`), or a copy of another agent's id.
+ */
+export type CreateAgentFrom = 'blank' | { template: string } | { copyOf: string };
+
+/**
+ * `POST /agents` body: what to create, plus an optional display name
+ * (`spec.name`; blank defaults to 'Untitled agent', copy to '<name> copy').
+ */
+export interface CreateAgentRequest {
+  from: CreateAgentFrom;
+  name?: string;
+}
+
+/**
+ * `PATCH /agents/:id/meta` body: the enable toggle and/or the label set -
+ * at least one key is required (an empty patch is `LOUSHO_BODY_INVALID`).
+ * Meta changes never write a version.
+ */
+export interface PatchAgentMetaRequest {
+  enabled?: boolean;
+  labels?: string[];
+}
+
+/**
  * One row of an instructions line diff: 'add'/'del' changed lines,
  * 'context' lines kept around a change, 'gap' a run of unchanged lines
  * collapsed to a count. What `SpecChange.lines` carries for an

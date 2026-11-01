@@ -9,8 +9,10 @@
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import type {
   AgentListItem,
+  AgentMeta,
   AgentRecord,
   AgentRunStatusPayload,
+  CanvasLayout,
   CatalogGuardrail,
   CatalogKit,
   CatalogModel,
@@ -21,6 +23,7 @@ import type {
   ChatSessionMeta,
   ChatSessionRecord,
   ChatStatePayload,
+  CreateAgentRequest,
   CreateDraftRequest,
   DebugStatePayload,
   DeployResult,
@@ -29,6 +32,7 @@ import type {
   McpProbeRequest,
   McpProbeResponse,
   McpServerSpecV2,
+  PatchAgentMetaRequest,
   ProviderKeyStatus,
   RunComparisonPayload,
   RunHistoryPayload,
@@ -154,6 +158,30 @@ class RuntimeClient implements AgentApi {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, {
       method: 'PUT',
       body: JSON.stringify({ spec }),
+    });
+  }
+
+  /** Creates a blank agent or a copy (`POST /agents`) and answers its record. Named `createAgentRecord` so it never reads as the SDK's `createAgent` function. */
+  // fallow-ignore-next-line unused-class-member -- the new-agent menu and Duplicate call it once those UI tickets land
+  async createAgentRecord(request: CreateAgentRequest): Promise<AgentRecord> {
+    return this.request('/agents', { method: 'POST', body: JSON.stringify(request) });
+  }
+
+  /** Toggles `enabled` and/or stores the label set (`PATCH /agents/:id/meta`); answers the updated meta. */
+  // fallow-ignore-next-line unused-class-member -- the enable switch and label editor call it once those UI tickets land
+  async patchAgentMeta(agentId: string, patch: PatchAgentMetaRequest): Promise<AgentMeta> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/meta`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  /** Stores the canvas layout (`PUT /agents/:id/layout`) - node positions, notes and viewport. */
+  // fallow-ignore-next-line unused-class-member -- the v2 canvas's position persistence calls it once that ticket lands
+  async saveLayout(agentId: string, layout: CanvasLayout): Promise<void> {
+    await this.request(`/agents/${encodeURIComponent(agentId)}/layout`, {
+      method: 'PUT',
+      body: JSON.stringify(layout),
     });
   }
 

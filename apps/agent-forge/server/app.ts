@@ -4,8 +4,11 @@
  * Routes:
  *   GET  /health                     -> 200 'ok'
  *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> AgentStoreEntry[]
+ *   POST /agents                     -> create blank/copy (body: CreateAgentRequest), 201 AgentRecord
  *   GET  /agents/:id                 -> AgentRecord | 404; ?view=legacy -> v1 AgentSpec
  *   PUT  /agents/:id                 -> save the spec v2 working copy (body: { spec } or a bare v1 AgentSpec), 204
+ *   PATCH /agents/:id/meta           -> toggle enabled / set labels (body: PatchAgentMetaRequest), 200 AgentMeta
+ *   PUT  /agents/:id/layout          -> save the canvas layout (body: CanvasLayout), 204
  *   DELETE /agents/:id               -> remove the saved spec, 204
  *   GET/POST/DELETE /agents/:id/draft -> the pending ChangeDraft (routes/draftRoutes.ts)
  *   POST /agents/:id/draft/approve · /reject -> settle the pending draft

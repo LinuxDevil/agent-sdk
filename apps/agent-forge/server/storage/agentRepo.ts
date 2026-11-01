@@ -76,9 +76,11 @@ export function flattenSpecIssues(issues: readonly SpecSchemaIssue[]): { path: s
 
 /**
  * The default `meta.json` content for an agent that has none yet: enabled,
- * no disable history, no streak, no labels, unpublished.
+ * no disable history, no streak, no labels, unpublished. Exported so the
+ * create route can stamp a new agent's meta from it before layering
+ * `createdFrom` (and labels, for a copy) on.
  */
-function defaultMeta(now: string): AgentMeta {
+export function defaultMeta(now: string): AgentMeta {
   return {
     schemaVersion: 1,
     enabled: true,
