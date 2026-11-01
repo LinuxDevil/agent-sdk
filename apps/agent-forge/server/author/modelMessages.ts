@@ -106,7 +106,6 @@ function assistantToMessages(parts: AuthorAssistantMessage['parts']): Message[] 
  * byte-identical to what the model saw), else `text`. A `uiEvent` message
  * becomes its `[UI event]` rendering instead.
  */
-// fallow-ignore-next-line unused-export -- used by toModelMessages and by the AA02b turn runner
 export function userMessageText(message: AuthorUserMessage): string {
   if (message.uiEvent !== undefined) return uiEventText(message.uiEvent);
   return message.turnContext === undefined ? message.text : `${message.turnContext}\n\n${message.text}`;
@@ -118,7 +117,6 @@ export function userMessageText(message: AuthorUserMessage): string {
  * id. Never carries a secret value - the saved-secret copy tells the model
  * the `SecretRef` to cite instead.
  */
-// fallow-ignore-next-line unused-export -- used by userMessageText and by the AA02b turn runner
 export function uiEventText(event: AuthorUiEvent, names?: { agentName?: string }): string {
   switch (event.kind) {
     case 'save': {
@@ -143,7 +141,6 @@ export function uiEventText(event: AuthorUiEvent, names?: { agentName?: string }
  * assistant message with no parts is skipped; user messages and uiEvents
  * map one-to-one to `{ role: 'user' }`.
  */
-// fallow-ignore-next-line unused-export -- consumed by the AA02b turn runner
 export function toModelMessages(transcript: readonly AuthorMessage[]): Message[] {
   const messages: Message[] = [];
   for (const message of transcript) {

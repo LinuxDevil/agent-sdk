@@ -15,7 +15,9 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { randomBytes } from 'node:crypto';
 import type { SettingsFile, SettingsProfile } from '../shared/wireTypes';
+import type { AuthorSettings } from '../shared/authorWire';
 import type { StudioPaths } from './workspace/studioPaths';
 
 const DEFAULT_PROFILES: SettingsProfile[] = [
@@ -84,9 +86,28 @@ export class SettingsStore {
     }
   }
 
+  /**
+   * Writes via `<file>.<8 hex>.tmp` + rename - the repo's atomic-write rule:
+   * a reader polling settings.json only ever sees the old complete file or
+   * the new one, never a torn write. `storage/atomic`'s async
+   * `writeFileAtomic` isn't usable here because this store's API is
+   * synchronous (the profile/author routes call it without `await`), so
+   * this is the same scheme with `fs` sync calls.
+   */
   private save(data: SettingsFile): void {
     this.ensureDir();
-    fs.writeFileSync(this.file, JSON.stringify(data, null, 2), 'utf8');
+    const tmpPath = `${this.file}.${randomBytes(4).toString('hex')}.tmp`;
+    fs.writeFileSync(tmpPath, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
+    try {
+      fs.renameSync(tmpPath, this.file);
+    } catch (error) {
+      try {
+        fs.rmSync(tmpPath, { force: true });
+      } catch {
+        // Best-effort cleanup: the rename error is what the caller needs.
+      }
+      throw error;
+    }
   }
 
   /** All profiles + which id is active. */
@@ -136,5 +157,23 @@ export class SettingsStore {
     const result: SettingsFile = { ...data, activeProfileId: id };
     this.save(result);
     return result;
+  }
+
+  /** The stored Author settings patch (`{}` when none); `readAuthorSettings` merges the defaults under it. */
+  getAuthor(): Partial<AuthorSettings> {
+    return this.load().author ?? {};
+  }
+
+  /**
+   * Merges `patch` into the stored `author` object, leaving the profiles
+   * and every other settings.json key untouched. `undefined` values are
+   * dropped so a sparse PUT body can't clear a field.
+   */
+  setAuthor(patch: Partial<AuthorSettings>): Partial<AuthorSettings> {
+    const data = this.load();
+    const clean = Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+    data.author = { ...data.author, ...clean };
+    this.save(data);
+    return data.author;
   }
 }

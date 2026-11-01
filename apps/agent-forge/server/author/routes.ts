@@ -19,6 +19,7 @@ import { isValidAgentId } from '../../shared/agentId';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { workspaceOf } from '../workspace/middleware';
 import type { AuthorSessionStore } from './sessionStore';
+import type { AuthorTurnRunner } from './turnRunner';
 
 /** The exact 400 copy a malformed `focus` gets (Contract C's session rows). */
 const INVALID_FOCUS_MESSAGE = 'focus must be { mode: "create" } or { mode: "edit", agentId }.';
@@ -57,8 +58,14 @@ function sessionIdParam(req: Request, res: Response): string | undefined {
  * Registers the four session routes. `deps.sessions` is the app's single
  * `AuthorSessionStore` (sessions are Studio-global); the workspace the
  * session belongs to still comes from `workspaceOf(req)` on create.
+ * `deps.runner` (the app's AuthorTurnRunner) makes DELETE refuse while a
+ * reply is running in that chat - deleting the file mid-turn would lose
+ * the in-flight assistant message.
  */
-export function registerAuthorRoutes(app: Express, deps: { sessions: AuthorSessionStore }): void {
+export function registerAuthorRoutes(
+  app: Express,
+  deps: { sessions: AuthorSessionStore; runner?: Pick<AuthorTurnRunner, 'running'> }
+): void {
   // Create a chat: 201 AuthorSession stamped with the request workspace's id.
   app.post(
     '/assistant/sessions',
@@ -96,12 +103,17 @@ export function registerAuthorRoutes(app: Express, deps: { sessions: AuthorSessi
     })
   );
 
-  // Delete the session file: 204, or 404 when there was nothing to remove.
+  // Delete the session file: 204, 409 while a reply is running in the
+  // chat, or 404 when there was nothing to remove.
   app.delete(
     '/assistant/sessions/:id',
     asyncRoute(async (req, res) => {
       const id = sessionIdParam(req, res);
       if (id === undefined) return;
+      if (deps.runner?.running(id) !== undefined) {
+        sendError(res, 409, 'Stop the reply before deleting this chat.', 'BUSY');
+        return;
+      }
       if (!(await deps.sessions.remove(id))) {
         sendError(res, 404, 'Chat not found.', 'NOT_FOUND');
         return;

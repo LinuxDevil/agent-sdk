@@ -88,6 +88,8 @@ import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
 import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
+import { registerAuthorSettingsRoutes } from './author/settings';
+import { AuthorTurnRunner } from './author/turnRunner';
 import { registerSecretRoutes } from './routes/secretRoutes';
 
 interface CreateAppBaseOptions {
@@ -106,6 +108,13 @@ interface CreateAppBaseOptions {
   settingsStore?: SettingsStore;
   /** Defaults to `new AuthorSessionStore(studioPaths().sessions)` when omitted. */
   sessions?: AuthorSessionStore;
+  /**
+   * The app's one AuthorTurnRunner (turns are in-flight memory, so tests
+   * pass their own to control the provider seam); built over the same
+   * sessions/settings/secrets stores when omitted, with the temporary
+   * no-tools/no-context stand-ins until AA05/AA06 merge.
+   */
+  authorRunner?: AuthorTurnRunner;
   /**
    * Directory holding the pre-built Agent Forge client (the
    * output of `vite build`, normally `apps/agent-forge/dist`). When set and
@@ -736,6 +745,17 @@ export function createApp(options: CreateAppOptions): Express {
   const secrets = options.secretsStore ?? new SecretsStore(paths);
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
+  const authorRunner =
+    options.authorRunner ??
+    new AuthorTurnRunner({
+      sessions,
+      settings,
+      secrets,
+      // Stand-ins until AA05 (the real prompt) and AA06 (buildAuthorTools) merge.
+      systemPrompt: () => 'You are the lousho Agent Author.',
+      buildTools: () => [],
+      turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
+    });
   const workspace = defaultWorkspaceContext(options);
 
   const app = express();
@@ -807,7 +827,10 @@ export function createApp(options: CreateAppOptions): Express {
   registerCatalogRoutes(app, { secretsStore: secrets });
   // Agent Author chat sessions (Studio-global files under
   // studioPaths().sessions; each session records which workspace it edits).
-  registerAuthorRoutes(app, { sessions });
+  registerAuthorRoutes(app, { sessions, runner: authorRunner });
+  // The Author's own settings (author/settings.ts): which model its turns
+  // run on and whether a key for it exists.
+  registerAuthorSettingsRoutes(app, { settings, secrets });
   // The observe panels' read path: `/observe/**` -> the `lousho observe`
   // daemon (see observeProxy.ts), plus its small write allowlist (feedback
   // scores; bodies come from the express.json above) - before the SPA
