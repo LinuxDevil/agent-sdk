@@ -453,6 +453,55 @@ export interface VersionRecord extends VersionListItem {
 }
 
 /**
+ * The most recent activity an `AgentListItem` reports on `GET /agents`: the
+ * live run's status while one is not `idle`, else the newest persisted
+ * trace's outcome (`done`, or `error` when the run failed).
+ */
+export interface AgentLastRun {
+  status: RunStatus;
+  /** ISO time of the status update (live run) or the trace's end (persisted run). */
+  at: string;
+  traceId?: string;
+}
+
+/**
+ * One row of `GET /agents` (the Agents list, A02): everything the card needs
+ * without loading the full record - identity fields from the spec, state from
+ * `meta.json`, a `counts` summary for the chips, and `lastRun` when the agent
+ * has ever run.
+ */
+export interface AgentListItem {
+  id: string;
+  name: string;
+  /** `spec.description`, `''` when the spec has none. */
+  description: string;
+  model: string;
+  enabled: boolean;
+  labels: string[];
+  /** Spec file mtime - what the list sorts and displays as "last edited". */
+  updatedAt: string;
+  publishedVersion: number | null;
+  lastRun?: AgentLastRun;
+  /** Section sizes the card chips render (A03). */
+  counts: { tools: number; mcpServers: number; subagents: number; triggers: number };
+}
+
+/**
+ * `GET /agents/:id` (v2): the working copy plus its `meta.json`/`layout.json`
+ * sidecars and the newest version number - the detail header's (A05) and
+ * Author's (AA06) one-read view of an agent.
+ */
+export interface AgentRecord {
+  id: string;
+  spec: AgentSpecV2;
+  meta: AgentMeta;
+  layout: CanvasLayout;
+  updatedAt: string;
+  /** Newest version number, `null` when the agent has no versions yet. */
+  latestVersion: number | null;
+}
+
+/**
  * One row of an instructions line diff: 'add'/'del' changed lines,
  * 'context' lines kept around a change, 'gap' a run of unchanged lines
  * collapsed to a count. What `SpecChange.lines` carries for an

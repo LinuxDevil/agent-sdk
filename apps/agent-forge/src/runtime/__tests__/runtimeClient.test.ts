@@ -201,6 +201,76 @@ describe('RuntimeClient version methods', () => {
   });
 });
 
+describe('RuntimeClient agent methods', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+
+  /** The last fetch call's [path, init]. */
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it('listAgents GETs /agents?view=legacy (the v1 canvas still reads the legacy view)', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listAgents()).resolves.toEqual([]);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents?view=legacy');
+    expect(init.method).toBe('GET');
+  });
+
+  it('loadAgent GETs /agents/:id?view=legacy and resolves undefined on a 404', async () => {
+    const spec = { name: 'a1', prompt: 'hi', provider: { type: 'mock', model: 'mock-1' } };
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, spec)));
+    await expect(client.loadAgent('a1')).resolves.toEqual(spec);
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(404, { error: "No saved agent 'a1'" })));
+    await expect(client.loadAgent('a1')).resolves.toBeUndefined();
+  });
+
+  it('saveAgent PUTs the bare v1 spec to /agents/:id', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const spec = { name: 'a1', prompt: 'hi', provider: { type: 'mock', model: 'mock-1' } };
+    await client.saveAgent('a1', spec as never);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual(spec);
+  });
+
+  it('listAgentItems GETs /agents', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listAgentItems()).resolves.toEqual([]);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents');
+    expect(init.method).toBe('GET');
+  });
+
+  it('getAgentRecord GETs /agents/:id and resolves undefined on a 404', async () => {
+    const record = { id: 'a1', spec: { version: 2 }, latestVersion: 3 };
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, record)));
+    await expect(client.getAgentRecord('a1')).resolves.toEqual(record);
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(404, { error: "No saved agent 'a1'" })));
+    await expect(client.getAgentRecord('a1')).resolves.toBeUndefined();
+  });
+
+  it('saveAgentSpec PUTs { spec } to /agents/:id', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const spec = { version: 2, name: 'a1', model: 'mock/mock-1', instructions: 'hi' };
+    await client.saveAgentSpec('a1', spec as never);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ spec });
+  });
+});
+
 describe('RuntimeClient named-secret methods', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

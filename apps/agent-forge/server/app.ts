@@ -3,9 +3,9 @@
  *
  * Routes:
  *   GET  /health                     -> 200 'ok'
- *   GET  /agents                     -> AgentStoreEntry[] (saved agent specs on disk)
- *   GET  /agents/:id                 -> AgentSpec | 404
- *   PUT  /agents/:id                 -> save an AgentSpec to disk (body: AgentSpec)
+ *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> AgentStoreEntry[]
+ *   GET  /agents/:id                 -> AgentRecord | 404; ?view=legacy -> v1 AgentSpec
+ *   PUT  /agents/:id                 -> save the spec v2 working copy (body: { spec } or a bare v1 AgentSpec), 204
  *   DELETE /agents/:id               -> remove the saved spec, 204
  *   GET/POST/DELETE /agents/:id/draft -> the pending ChangeDraft (routes/draftRoutes.ts)
  *   POST /agents/:id/draft/approve · /reject -> settle the pending draft
@@ -93,9 +93,10 @@ import { registerObserveProxy } from './observeProxy';
 import { registerPlaygroundRoute, type PlaygroundOptions } from './playground';
 import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
-import { AgentRepo, InvalidSpecError } from './storage/agentRepo';
+import { AgentRepo } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
 import { VersionStore } from './storage/versionStore';
+import { registerAgentRoutes } from './routes/agentRoutes';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
@@ -225,59 +226,6 @@ function respondWithMappedError(res: Response, error: unknown, mappings: [ErrorC
   const match = mappings.find(([errorClass]) => error instanceof errorClass);
   if (!match) throw error;
   res.status(match[1]).json({ error: (error as Error).message });
-}
-
-/** Saved-agent CRUD: list, load, save - all on the request's workspace (`workspaceOf(req).agentStore`). */
-function registerAgentRoutes(app: Express): void {
-  app.get(
-    '/agents',
-    asyncRoute(async (req, res) => {
-      res.json(await workspaceOf(req).agentStore.list());
-    })
-  );
-
-  app.get(
-    '/agents/:id',
-    asyncRoute(async (req, res) => {
-      const spec = await workspaceOf(req).agentStore.load(paramId(req));
-      if (!spec) {
-        res.status(404).json({ error: `No saved agent '${paramId(req)}'` });
-        return;
-      }
-      res.json(spec);
-    })
-  );
-
-  app.put(
-    '/agents/:id',
-    asyncRoute(async (req, res) => {
-      // The facade's save() takes the agent lock itself around the
-      // read-modify-write - wrapping here too would re-enter it.
-      const spec = req.body as AgentSpec;
-      if (!spec || typeof spec !== 'object' || !spec.name || !spec.prompt || !spec.provider) {
-        res.status(400).json({ error: 'Request body must be a valid AgentSpec' });
-        return;
-      }
-      try {
-        await workspaceOf(req).agentStore.save(paramId(req), spec);
-      } catch (error) {
-        if (error instanceof InvalidSpecError) {
-          sendError(res, 400, error.message, error.code, { issues: error.issues });
-          return;
-        }
-        throw error;
-      }
-      res.status(204).end();
-    })
-  );
-
-  app.delete(
-    '/agents/:id',
-    asyncRoute(async (req, res) => {
-      await workspaceOf(req).agentStore.remove(paramId(req));
-      res.status(204).end();
-    })
-  );
 }
 
 /**
@@ -852,6 +800,9 @@ export function createApp(options: CreateAppOptions): Express {
     next();
   });
 
+  // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
+  // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
+  // from workspaceOf(req), the workspace seam).
   registerAgentRoutes(app);
   // Draft routes: get/create/withdraw/approve/reject the per-agent pending
   // ChangeDraft (server/routes/draftRoutes.ts - stores come from
