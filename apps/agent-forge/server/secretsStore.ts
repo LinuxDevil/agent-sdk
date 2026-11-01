@@ -44,7 +44,7 @@
 import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { ProviderKeyStatus } from '../shared/wireTypes';
+import type { ProviderKeyStatus, SecretStatus } from '../shared/wireTypes';
 import type { StudioPaths } from './workspace/studioPaths';
 
 /** Providers this app manages stored keys for - matches `src/providers/` real (non-mock) provider types that take a plain API key (not `ollama`, which uses a base URL instead - see `PROVIDER_ENV_TABLE` in `src/providers/resolveProvider.ts`). */
@@ -61,11 +61,32 @@ export function isSecretProvider(value: string): value is SecretProvider {
   return (SECRET_PROVIDERS as readonly string[]).includes(value);
 }
 
+/**
+ * A named secret's name is env-var-like: a letter or underscore first,
+ * then letters, digits and underscores, at most 64 chars - the same
+ * charset a spec author would use for the `{ env }` form, so a stored
+ * `GITHUB_TOKEN` reads naturally next to `{ env: 'GITHUB_TOKEN' }`.
+ */
+export const SECRET_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+
+/** The largest secret value the store accepts (16 KiB of UTF-8 text). */
+export const MAX_SECRET_VALUE_LENGTH = 16_384;
+
 interface EncryptedRecord {
   iv: string;
   tag: string;
   ciphertext: string;
 }
+
+/**
+ * The on-disk shape of `secrets.json`: the two provider-key records at
+ * top level (unchanged since the file was introduced) plus `named`, a
+ * map of named-secret records each stamped with the `updatedAt`
+ * `SecretStatus` reports. Older files without `named` read as `{}`.
+ */
+type SecretsFile = Partial<Record<SecretProvider, EncryptedRecord>> & {
+  named?: Record<string, EncryptedRecord & { updatedAt: string }>;
+};
 
 /** `••••••••<last 4>` (or all-dots for a key too short to safely reveal 4 chars of). Never called with, or able to leak, more than the last 4 characters. */
 export function maskKey(key: string): string {
@@ -120,7 +141,7 @@ export class SecretsStore {
     return key;
   }
 
-  private loadRecords(): Partial<Record<SecretProvider, EncryptedRecord>> {
+  private loadRecords(): SecretsFile {
     if (!fs.existsSync(this.secretsFile)) return {};
     try {
       const parsed = JSON.parse(fs.readFileSync(this.secretsFile, 'utf8'));
@@ -130,10 +151,44 @@ export class SecretsStore {
     }
   }
 
-  private saveRecords(records: Partial<Record<SecretProvider, EncryptedRecord>>): void {
+  private saveRecords(records: SecretsFile): void {
     this.ensureDir();
     fs.writeFileSync(this.secretsFile, JSON.stringify(records, null, 2), 'utf8');
     this.chmodBestEffort(this.secretsFile);
+  }
+
+  /** AES-256-GCM under the store's key, fresh IV per call - the one encryption path provider keys and named secrets share. */
+  private encrypt(value: string): EncryptedRecord {
+    const encryptionKey = this.loadOrCreateEncryptionKey();
+    const iv = crypto.randomBytes(12);
+    const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
+    const ciphertext = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return {
+      iv: iv.toString('base64'),
+      tag: tag.toString('base64'),
+      ciphertext: ciphertext.toString('base64'),
+    };
+  }
+
+  /**
+   * The plaintext behind `record`, or `undefined` when it fails to
+   * decrypt (a hand-edited/corrupted file, or a different secrets.key) -
+   * callers treat that the same as "no value stored".
+   */
+  private decrypt(record: EncryptedRecord): string | undefined {
+    try {
+      const encryptionKey = this.loadOrCreateEncryptionKey();
+      const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, Buffer.from(record.iv, 'base64'));
+      decipher.setAuthTag(Buffer.from(record.tag, 'base64'));
+      const plaintext = Buffer.concat([
+        decipher.update(Buffer.from(record.ciphertext, 'base64')),
+        decipher.final(),
+      ]);
+      return plaintext.toString('utf8');
+    } catch {
+      return undefined;
+    }
   }
 
   /** Encrypts and stores `apiKey` for `provider`, replacing any existing key. */
@@ -141,18 +196,8 @@ export class SecretsStore {
     if (typeof apiKey !== 'string' || !apiKey.trim()) {
       throw new Error('apiKey must be a non-empty string');
     }
-    const encryptionKey = this.loadOrCreateEncryptionKey();
-    const iv = crypto.randomBytes(12);
-    const cipher = crypto.createCipheriv('aes-256-gcm', encryptionKey, iv);
-    const ciphertext = Buffer.concat([cipher.update(apiKey, 'utf8'), cipher.final()]);
-    const tag = cipher.getAuthTag();
-
     const records = this.loadRecords();
-    records[provider] = {
-      iv: iv.toString('base64'),
-      tag: tag.toString('base64'),
-      ciphertext: ciphertext.toString('base64'),
-    };
+    records[provider] = this.encrypt(apiKey);
     this.saveRecords(records);
   }
 
@@ -174,18 +219,7 @@ export class SecretsStore {
   getKey(provider: SecretProvider): string | undefined {
     const record = this.loadRecords()[provider];
     if (!record) return undefined;
-    try {
-      const encryptionKey = this.loadOrCreateEncryptionKey();
-      const decipher = crypto.createDecipheriv('aes-256-gcm', encryptionKey, Buffer.from(record.iv, 'base64'));
-      decipher.setAuthTag(Buffer.from(record.tag, 'base64'));
-      const plaintext = Buffer.concat([
-        decipher.update(Buffer.from(record.ciphertext, 'base64')),
-        decipher.final(),
-      ]);
-      return plaintext.toString('utf8');
-    } catch {
-      return undefined;
-    }
+    return this.decrypt(record);
   }
 
   /** Masked status for every managed provider, plus whether its env var is set (never its value) - safe to return from a GET route. */
@@ -196,5 +230,79 @@ export class SecretsStore {
       const key = hasKey ? this.getKey(provider) : undefined;
       return { provider, hasKey: hasKey && !!key, masked: key ? maskKey(key) : null, envKey: !!process.env[PROVIDER_KEY_ENV[provider]] };
     });
+  }
+
+  // -------------------------------------------------------------------
+  // Named secrets: `secrets.json`'s `named` map. These are the values a
+  // spec's `{ secret: '<name>' }` refs resolve to (the run host calls
+  // `getSecret` as its `resolveSecret`) - arbitrary secrets like
+  // GITHUB_TOKEN or SLACK_BOT_TOKEN, kept under the same encryption as
+  // the provider keys but listed/managed separately so `/settings/providers`
+  // is unchanged.
+  // -------------------------------------------------------------------
+
+  /**
+   * Encrypts and stores `value` under `name`, replacing any existing
+   * secret, and returns its masked status. Throws on a name that fails
+   * `SECRET_NAME_RE` or a value that isn't a 1..MAX_SECRET_VALUE_LENGTH
+   * string of non-whitespace - the route maps those to 400s; the errors
+   * name the secret, never the value.
+   */
+  setSecret(name: string, value: string): SecretStatus {
+    if (!SECRET_NAME_RE.test(name)) {
+      throw new Error(`Invalid secret name '${name}'`);
+    }
+    if (typeof value !== 'string' || value.length === 0 || value.length > MAX_SECRET_VALUE_LENGTH || !value.trim()) {
+      throw new Error(`Invalid value for secret '${name}'`);
+    }
+    const updatedAt = new Date().toISOString();
+    const records = this.loadRecords();
+    records.named = { ...records.named, [name]: { ...this.encrypt(value), updatedAt } };
+    this.saveRecords(records);
+    return { name, hasValue: true, masked: maskKey(value), updatedAt };
+  }
+
+  /**
+   * Decrypts and returns the real value stored under `name`, or
+   * `undefined` when none is (or it fails to decrypt). Server-internal
+   * only - the `{ secret }` ref resolver's read path; route handlers must
+   * NEVER put this into a response body, use `secretStatus()`/`listSecrets()`.
+   */
+  getSecret(name: string): string | undefined {
+    const record = this.loadRecords().named?.[name];
+    if (!record) return undefined;
+    return this.decrypt(record);
+  }
+
+  /** Removes the secret stored under `name`. No-ops when none is stored. */
+  removeSecret(name: string): void {
+    const records = this.loadRecords();
+    if (records.named && name in records.named) {
+      delete records.named[name];
+      this.saveRecords(records);
+    }
+  }
+
+  /**
+   * `name`'s masked status: `hasValue: false` with `null`s when nothing
+   * is stored (or the record no longer decrypts - a tampered ciphertext
+   * reads the same as absent). Safe to return from a GET route.
+   */
+  secretStatus(name: string): SecretStatus {
+    const record = this.loadRecords().named?.[name];
+    if (!record) return { name, hasValue: false, masked: null, updatedAt: null };
+    const value = this.decrypt(record);
+    return { name, hasValue: value !== undefined, masked: value !== undefined ? maskKey(value) : null, updatedAt: record.updatedAt };
+  }
+
+  /** Masked status of every stored named secret, sorted by name - safe to return from a GET route. */
+  listSecrets(): SecretStatus[] {
+    const named = this.loadRecords().named ?? {};
+    return Object.keys(named)
+      .sort()
+      .map((name) => {
+        const value = this.decrypt(named[name]);
+        return { name, hasValue: value !== undefined, masked: value !== undefined ? maskKey(value) : null, updatedAt: named[name].updatedAt };
+      });
   }
 }

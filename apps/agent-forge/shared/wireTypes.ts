@@ -235,6 +235,22 @@ export interface ProviderKeyStatus {
 }
 
 /**
+ * Masked status of one named secret in Studio's secrets store
+ * (`/settings/secrets`, `server/secretsStore.ts`). Named secrets are the
+ * values `{ secret: '<name>' }` spec refs resolve to (SDK
+ * `resolveSecretRef`). Never carries the value itself - `masked` is the
+ * last-4 display form, `hasValue`/`updatedAt` describe the record.
+ */
+export interface SecretStatus {
+  name: string;
+  hasValue: boolean;
+  /** Last-4-visible masked form for display, e.g. '••••••••c123'. `null` when no value is stored. Never the real value. */
+  masked: string | null;
+  /** ISO time of the last write; `null` when no value is stored. */
+  updatedAt: string | null;
+}
+
+/**
  * The hardcoded 5s hook-sandbox timeout, now configurable per profile
  * (see hookSandbox.ts's `HookSandboxOptions.timeoutMs`). The sandbox
  * BACKEND stays NoopSandbox-only: `src/security/sandboxCore.ts` (the only
