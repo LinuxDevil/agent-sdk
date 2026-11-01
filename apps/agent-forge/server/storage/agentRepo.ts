@@ -66,6 +66,15 @@ function issueDotPath(path: SpecSchemaIssue['path']): string {
 }
 
 /**
+ * A `safeParse` issue list flattened to `{ path, message }` rows - the
+ * `details.issues` shape the routes report (spec writes, draft validation,
+ * version restore).
+ */
+export function flattenSpecIssues(issues: readonly SpecSchemaIssue[]): { path: string; message: string }[] {
+  return issues.map((issue) => ({ path: issueDotPath(issue.path), message: issue.message }));
+}
+
+/**
  * The default `meta.json` content for an agent that has none yet: enabled,
  * no disable history, no streak, no labels, unpublished.
  */
@@ -193,9 +202,7 @@ export class AgentRepo {
     } else if (result.error.issues.every(isPendingSectionIssue)) {
       doc = spec;
     } else {
-      throw new InvalidSpecError(
-        result.error.issues.map((issue) => ({ path: issueDotPath(issue.path), message: issue.message }))
-      );
+      throw new InvalidSpecError(flattenSpecIssues(result.error.issues));
     }
     await writeFileAtomic(this.specPath(id), stringifyYaml(doc));
     await writeJsonAtomic(this.workingPath(id), {

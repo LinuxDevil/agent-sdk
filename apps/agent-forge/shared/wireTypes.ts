@@ -453,6 +453,46 @@ export interface VersionRecord extends VersionListItem {
 }
 
 /**
+ * One row of an instructions line diff: 'add'/'del' changed lines,
+ * 'context' lines kept around a change, 'gap' a run of unchanged lines
+ * collapsed to a count. What `SpecChange.lines` carries for an
+ * instructions edit (server/diff/specChange.ts).
+ */
+export type LineDiff =
+  | { kind: 'add' | 'del' | 'context'; text: string }
+  | { kind: 'gap'; count: number };
+
+/** The grouping the diff view renders a `SpecChange` under. */
+export type SpecSection =
+  | 'Identity'
+  | 'Model'
+  | 'Instructions'
+  | 'Tools'
+  | 'Knowledge'
+  | 'Safety'
+  | 'Triggers'
+  | 'Flow';
+
+/**
+ * One human-readable change between two spec snapshots: a plain field's
+ * add/remove/edit, or one item of a keyed list (`tools[web-fetch]`).
+ * `lines` carries the line diff only for an instructions string edit.
+ * Computed server-side by `diffSpecs` (server/diff/specChange.ts).
+ */
+export interface SpecChange {
+  /** The spec field, or `field[key]` for one item of a keyed list ('model' | 'tools[web-fetch]' | 'mcpServers[github]' | 'labels' ...). */
+  field: string;
+  /** Display name ('Model' | 'Tool: web-fetch' ...). */
+  label: string;
+  /** The diff view's section this change groups under. */
+  section: SpecSection;
+  op: 'add' | 'remove' | 'edit';
+  before?: unknown;
+  after?: unknown;
+  lines?: LineDiff[];
+}
+
+/**
  * Where a change draft came from: the Author ('author'), a suggestion
  * pass ('suggestion') or a hand-made API call ('manual').
  */

@@ -31,10 +31,13 @@ import type {
   SettingsFile,
   SettingsProfile,
   SettleDraftRequest,
+  SpecChange,
   StreamMessage,
   SpanEvent,
   TraceDetailPayload,
   TraceSummaryPayload,
+  VersionListItem,
+  VersionRecord,
   WorkspaceInfo,
 } from '../../shared/wireTypes';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
@@ -164,6 +167,50 @@ class RuntimeClient implements AgentApi {
       method: 'POST',
       body: JSON.stringify(request ?? {}),
     });
+  }
+
+  // -------------------------------------------------------------------
+  // `/agents/:id/versions` - the version history (Versions tab + the
+  // explicit Save). See server/routes/versionRoutes.ts.
+  // -------------------------------------------------------------------
+
+  /** The agent's version list, newest first (empty when it has none). */
+  async listVersions(agentId: string): Promise<VersionListItem[]> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/versions`, { method: 'GET' });
+  }
+
+  /** One version's full record (item + restorable snapshot); 404 when absent. */
+  async getVersion(agentId: string, n: number): Promise<VersionRecord> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/versions/${n}`, { method: 'GET' });
+  }
+
+  /** The changes version `n` introduces over `against` (or over the version below it). */
+  async diffVersion(agentId: string, n: number, against?: number): Promise<SpecChange[]> {
+    const query = against === undefined ? '' : `?${new URLSearchParams({ against: String(against) })}`;
+    return this.request(`/agents/${encodeURIComponent(agentId)}/versions/${n}/diff${query}`, { method: 'GET' });
+  }
+
+  /** Restores version `n` as a new `kind: 'restore'` version (the working copy and labels go back; `meta.enabled` is untouched). */
+  async restoreVersion(agentId: string, n: number): Promise<VersionListItem> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/versions/${n}/restore`, { method: 'POST' });
+  }
+
+  /**
+   * Explicit "Save version" of the working copy. `created` is the server's
+   * status: 201 when a version was written, 200 when the working copy
+   * already equals the latest version (a no-op answering with that item).
+   */
+  async saveVersion(agentId: string): Promise<{ item: VersionListItem; created: boolean }> {
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/versions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source: 'editor' }),
+    });
+    const body = (await res.json().catch(() => undefined)) as (VersionListItem & { error?: string }) | undefined;
+    if (!res.ok || body === undefined) {
+      throw apiError(body, `Save version of '${agentId}' failed with ${res.status}`, res.status);
+    }
+    return { item: body, created: res.status === 201 };
   }
 
   /** The workspace the studio serves (`baseDir` is its root; `workspace` is the full ref for addressing it by id). */

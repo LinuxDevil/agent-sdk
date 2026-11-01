@@ -9,6 +9,9 @@
  *   DELETE /agents/:id               -> remove the saved spec, 204
  *   GET/POST/DELETE /agents/:id/draft -> the pending ChangeDraft (routes/draftRoutes.ts)
  *   POST /agents/:id/draft/approve · /reject -> settle the pending draft
+ *   GET/POST /agents/:id/versions     -> VersionListItem[] newest first · explicit save (routes/versionRoutes.ts)
+ *   GET  /agents/:id/versions/:n      -> VersionRecord; GET .../versions/:n/diff?against=:m -> SpecChange[]
+ *   POST /agents/:id/versions/:n/restore -> writes a new kind:'restore' version over the working copy
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
@@ -85,6 +88,7 @@ import { AgentRepo, InvalidSpecError } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
 import { VersionStore } from './storage/versionStore';
 import { registerDraftRoutes } from './routes/draftRoutes';
+import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
 import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
@@ -808,6 +812,9 @@ export function createApp(options: CreateAppOptions): Express {
   // ChangeDraft (server/routes/draftRoutes.ts - stores come from
   // workspaceOf(req), the workspace seam).
   registerDraftRoutes(app);
+  // Version history: list/get/diff/restore and the explicit "Save version"
+  // (server/routes/versionRoutes.ts - stores come from workspaceOf(req)).
+  registerVersionRoutes(app);
   registerWorkspaceRoute(app);
   registerRunRoutes(app);
   registerChatRoutes(app);
