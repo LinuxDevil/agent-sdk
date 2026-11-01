@@ -22,6 +22,7 @@ import {
   type ToolDescriptor,
 } from 'lousho';
 import type {
+  AuthorAssistantMessage,
   AuthorFocus,
   AuthorMessage,
   AuthorSession,
@@ -143,7 +144,6 @@ export class AuthorTurnRunner extends EventEmitter {
   }
 
   /** The running turn's requestId for `sessionId`, when one is in flight. */
-  // fallow-ignore-next-line unused-class-member -- called through Pick<AuthorTurnRunner, 'running'> in author/routes.ts (DELETE 409)
   running(sessionId: string): { requestId: string } | undefined {
     const slot = this.slots.get(sessionId);
     return slot === undefined ? undefined : { requestId: slot.requestId };
@@ -174,12 +174,7 @@ export class AuthorTurnRunner extends EventEmitter {
       return fail('BUSY', 'A reply is already running in this chat. Wait for it to finish, then send again.');
     }
     const slot = this.reserve(sessionId, req.requestId);
-    const prepared = await this.prepare(sessionId, req.focus, { kind: 'send', text: req.text });
-    if (!prepared.ok) {
-      this.release(sessionId, slot);
-      return prepared.result;
-    }
-    return this.beginTurn(sessionId, slot, prepared.prepared);
+    return this.prepareOrRelease(sessionId, slot, req.focus, { kind: 'send', text: req.text });
   }
 
   /**
@@ -193,7 +188,27 @@ export class AuthorTurnRunner extends EventEmitter {
     }
     const requestId = `req_${randomUUID().replace(/-/g, '')}`;
     const slot = this.reserve(sessionId, requestId);
-    const prepared = await this.prepare(sessionId, undefined, { kind: 'continuation' });
+    return this.prepareOrRelease(sessionId, slot, undefined, { kind: 'continuation' });
+  }
+
+  /**
+   * `prepare` under the slot contract: releases the session's slot on a
+   * thrown error or a refused start, so an early exit (e.g. a failing
+   * session update) never leaves the chat permanently BUSY.
+   */
+  private async prepareOrRelease(
+    sessionId: string,
+    slot: TurnSlot,
+    focus: AuthorFocus | undefined,
+    mode: { kind: 'send'; text: string } | { kind: 'continuation' }
+  ): Promise<AuthorStartResult> {
+    let prepared: { ok: true; prepared: PreparedTurn } | { ok: false; result: AuthorStartResult };
+    try {
+      prepared = await this.prepare(sessionId, focus, mode);
+    } catch (error) {
+      this.release(sessionId, slot);
+      throw error;
+    }
     if (!prepared.ok) {
       this.release(sessionId, slot);
       return prepared.result;
@@ -436,28 +451,64 @@ export class AuthorTurnRunner extends EventEmitter {
     ctx: RunContext,
     failed: { message: string; code?: string } | undefined
   ): Promise<void> {
-    const finishReason = ctx.slot.stopped
-      ? 'stopped'
-      : ctx.slot.inputCapHit
-        ? 'tool_input_cap'
-        : failed !== undefined
-          ? 'error'
-          : (ctx.finishReason ?? 'aborted');
+    const finishReason = this.finishReason(ctx, failed);
     const message = ctx.builder.message({
       id: `m_${randomUUID()}`,
       at: this.now().toISOString(),
       requestId: ctx.slot.requestId,
       finishReason,
     });
-    if (message.parts.length > 0) {
-      try {
-        await this.deps.sessions.update(sessionId, (s) => ({ ...s, transcript: [...s.transcript, message] }));
-      } catch (error) {
-        if (!(error instanceof AuthorSessionNotFoundError)) throw error;
-        // The chat file was deleted mid-turn; nothing to persist into.
-      }
-    }
+    const persistError = await this.persistAssistant(sessionId, message);
     this.release(sessionId, ctx.slot);
+    this.emitOutcome(sessionId, ctx, finishReason, failed, persistError);
+  }
+
+  /** The reason the turn reports: an explicit override, else the run's own finishReason. */
+  private finishReason(ctx: RunContext, failed: { message: string; code?: string } | undefined): string {
+    if (ctx.slot.stopped) return 'stopped';
+    if (ctx.slot.inputCapHit) return 'tool_input_cap';
+    if (failed !== undefined) return 'error';
+    // 'aborted' covers a run that ended without run.done and without one of
+    // our own overrides (the controller aborted for a reason other than
+    // stop()/the input cap).
+    return ctx.finishReason ?? 'aborted';
+  }
+
+  /**
+   * Appends the assistant message to the transcript (skipped when the turn
+   * produced no parts) and returns the save's error message, or `undefined`.
+   * A failed save is reported, never rethrown: a throw would escape into the
+   * unawaited `runTurn` promise and leave the session permanently BUSY with
+   * no turn event. `AuthorSessionNotFoundError` means the chat file was
+   * deleted mid-turn - there is simply nothing to persist into.
+   */
+  private async persistAssistant(sessionId: string, message: AuthorAssistantMessage): Promise<string | undefined> {
+    if (message.parts.length === 0) return undefined;
+    try {
+      await this.deps.sessions.update(sessionId, (s) => ({ ...s, transcript: [...s.transcript, message] }));
+      return undefined;
+    } catch (error) {
+      if (error instanceof AuthorSessionNotFoundError) return undefined;
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  /** The terminal event: `turn.error` for a stream or persist failure, else `turn.finished`. */
+  private emitOutcome(
+    sessionId: string,
+    ctx: RunContext,
+    finishReason: string,
+    failed: { message: string; code?: string } | undefined,
+    persistError: string | undefined
+  ): void {
+    if (persistError !== undefined) {
+      this.push(sessionId, ctx, {
+        type: 'turn.error',
+        requestId: ctx.slot.requestId,
+        message: `The Author's reply could not be saved: ${persistError}. Try sending your message again.`,
+      });
+      return;
+    }
     if (failed !== undefined) {
       this.push(sessionId, ctx, {
         type: 'turn.error',

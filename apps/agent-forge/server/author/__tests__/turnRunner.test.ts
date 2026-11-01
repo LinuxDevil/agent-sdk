@@ -329,6 +329,38 @@ describe('AuthorTurnRunner', () => {
     expect(result).toEqual({ ok: false, code: 'NOT_FOUND', message: 'Chat not found.' });
   });
 
+  it('a failing session persist frees the slot and emits turn.error (never a stuck BUSY)', async () => {
+    // The user-message append (update #1) succeeds; the assistant-message
+    // persist (update #2) throws a transient fs error.
+    let updateCalls = 0;
+    const originalUpdate = store.update.bind(store);
+    store.update = ((id: string, fn: (s: AuthorSession) => AuthorSession) => {
+      updateCalls += 1;
+      if (updateCalls >= 2) return Promise.reject(new Error('disk full'));
+      return originalUpdate(id, fn);
+    }) as typeof store.update;
+
+    const model = mockModel(['Hi']);
+    const runner = makeRunner(model);
+    const { events, turnEnd } = collect(runner);
+
+    const started = await runner.start(session.id, { requestId, text: 'say hi' });
+    expect(started.ok).toBe(true);
+    const ended = await turnEnd;
+
+    expect(ended).toMatchObject({ type: 'turn.error' });
+    const turnError = events.find((e) => e.type === 'turn.error');
+    expect(turnError).toMatchObject({
+      type: 'turn.error',
+      message: "The Author's reply could not be saved: disk full. Try sending your message again.",
+    });
+    // The slot was released: the session is not stuck BUSY.
+    expect(runner.running(session.id)).toBeUndefined();
+    // The user message was persisted; the assistant reply is simply gone.
+    const stored = await store.get(session.id);
+    expect(stored?.transcript).toHaveLength(1);
+  });
+
   it('continueAfterUiEvent runs a turn over the stored uiEvent user message', async () => {
     await store.update(session.id, (s) => ({
       ...s,
