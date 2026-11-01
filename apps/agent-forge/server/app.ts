@@ -31,6 +31,7 @@
  *   GET  /catalog/models[?provider]  -> ModelCatalogEntry[] (available also counts Studio-stored keys)
  *   GET  /catalog/tools|guardrails|triggers -> the SDK catalogs (listBuiltinTools/listGuardrails/listTriggerTypes)
  *   GET  /catalog/skills|kits        -> the registry index's skill/kit items (routes/catalogRoutes.ts)
+ *   POST /catalog/mcp/probe          -> connect one McpServerSpecV2 and list its tools (routes/mcpProbe.ts)
  *   POST/GET /assistant/sessions · GET/DELETE /assistant/sessions/:id
  *                                      -> Agent Author chat sessions, Studio-global (author/routes.ts)
  *
@@ -62,6 +63,7 @@ import {
   type AgentSpec,
   type ForkPatch,
 } from 'lousho';
+import type { connectMcp } from 'lousho/mcp';
 import type { AgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,
@@ -100,6 +102,7 @@ import { registerAgentRoutes } from './routes/agentRoutes';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
+import { registerMcpProbeRoute } from './routes/mcpProbe';
 import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
@@ -153,6 +156,8 @@ interface CreateAppBaseOptions {
   playgroundObserve?: PlaygroundOptions['observe'];
   /** The judge `POST /observe/api/v1/evaluators/:id/test` runs for a judge rule (tests); default the real model call (judge.ts). */
   judge?: JudgeFn;
+  /** The `connectMcp` `POST /catalog/mcp/probe` uses (tests); default the SDK's own (routes/mcpProbe.ts). */
+  mcpConnect?: typeof connectMcp;
 }
 
 /**
@@ -828,6 +833,13 @@ export function createApp(options: CreateAppOptions): Express {
   // (routes/catalogRoutes.ts) - a Studio-global route family, mounted on
   // every workspace's app like the settings routes are.
   registerCatalogRoutes(app, { secretsStore: secrets });
+  // The MCP node's Probe button: connect/list/close one server under a 10 s
+  // deadline (routes/mcpProbe.ts). Secret refs resolve through the same
+  // store Settings writes - names may appear in errors, values never do.
+  registerMcpProbeRoute(app, {
+    resolveSecret: (name) => secrets.getSecret(name),
+    ...(options.mcpConnect ? { connect: options.mcpConnect } : {}),
+  });
   // Agent Author chat sessions (Studio-global files under
   // studioPaths().sessions; each session records which workspace it edits).
   registerAuthorRoutes(app, { sessions, runner: authorRunner });
