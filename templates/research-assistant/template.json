@@ -1,0 +1,1 @@
+{ "id": "research-assistant", "title": "Research assistant", "description": "Answers a research question by reading web pages and citing every source it used.", "category": "research", "tags": ["research", "web"], "requires": ["provider_key"] }

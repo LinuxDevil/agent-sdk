@@ -1,0 +1,1 @@
+{ "id": "incident-responder", "title": "Incident responder", "description": "Turns each firing alert into a short incident summary with likely causes and next steps, and posts it to Slack.", "category": "operations", "tags": ["incidents", "alerts", "slack"], "requires": ["provider_key", "secret"] }

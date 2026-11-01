@@ -289,6 +289,7 @@
     "!src/**/__cassettes__",
     "bin",
     "registry/dist",
+    "templates",
     "apps/agent-forge/package.json",
     "apps/agent-forge/dist",
     "apps/agent-forge/dist-server",

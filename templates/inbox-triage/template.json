@@ -1,0 +1,1 @@
+{ "id": "inbox-triage", "title": "Inbox triage", "description": "Labels each incoming email, remembers what needs a reply, and emails you a short digest every weekday morning.", "category": "productivity", "tags": ["email", "triage", "schedule"], "requires": ["provider_key", "secret"] }

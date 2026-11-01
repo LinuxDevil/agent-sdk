@@ -1,0 +1,1 @@
+{ "id": "support-triage", "title": "Support triage", "description": "Sorts each new support ticket by type and urgency and drafts a first reply for a person to send.", "category": "support", "tags": ["support", "triage", "email"], "requires": ["provider_key"] }
