@@ -127,6 +127,10 @@ describe('POST /agents', () => {
       expect(second.status).toBe(201);
       expect(second.body.id).toBe('a-copy-2');
 
+      const versions = await listVersions('a-copy');
+      expect(versions).toHaveLength(1);
+      expect(versions[0]).toMatchObject({ version: 1, kind: 'create', source: 'copy' });
+
       const source = (await request(app()).get('/agents/a')).body as AgentRecord;
       expect(source.spec.name).toBe('a');
       expect(source.meta.labels).toEqual(['ops', 'billing']);

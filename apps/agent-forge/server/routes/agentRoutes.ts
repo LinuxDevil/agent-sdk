@@ -227,7 +227,7 @@ async function createAgentCopy(
   };
   const layout = await ws.repo.readLayout(copyOf);
   const id = copyAgentId(ws.repo, copyOf);
-  return writeNewAgent(ws, id, spec, meta, layout, 'editor');
+  return writeNewAgent(ws, id, spec, meta, layout, 'copy');
 }
 
 /**
