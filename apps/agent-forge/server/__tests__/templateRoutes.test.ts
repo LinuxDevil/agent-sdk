@@ -14,6 +14,8 @@ import { RunManager } from '../runRegistry';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
+import { newTestHost } from './testHost';
 import type { AgentStore } from '../../src/persistence/AgentStore';
 import { sdkRootDir } from '../sdkRoot';
 import { TemplateCatalog } from '../templates/templateCatalog';
@@ -69,13 +71,15 @@ describe('/templates routes', () => {
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-d17-ws-'));
     templatesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-d17-tpl-'));
-    agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    agentStore = createFsAgentStore(baseDir, repo);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     catalog = new TemplateCatalog(templatesDir);
 
