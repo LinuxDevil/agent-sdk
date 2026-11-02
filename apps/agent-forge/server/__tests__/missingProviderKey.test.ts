@@ -6,10 +6,12 @@ import request from 'supertest';
 import type { AgentSpec } from 'lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { SecretsStore } from '../secretsStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 
 const OPENAI_SPEC: AgentSpec = {
   name: 'needs-key',
@@ -30,14 +32,16 @@ describe('a real provider with no key', () => {
   beforeEach(() => {
     delete process.env.OPENAI_API_KEY;
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dui-f4-'));
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     const secretsStore = new SecretsStore(baseDir);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir, secretsStore),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
       secretsStore,
     });
     app = createApp({ agentStore, runManager, baseDir, secretsStore });

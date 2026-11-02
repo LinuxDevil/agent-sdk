@@ -7,9 +7,11 @@ import { mockModel } from 'lousho/testing';
 import { createApp } from '../app';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import { workspaceIdFor } from '../workspace/workspaceId';
 import { AuthorSessionStore } from '../author/sessionStore';
 import { AuthorTurnRunner } from '../author/turnRunner';
@@ -35,13 +37,15 @@ describe('author session routes', () => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-aa01-routes-'));
     staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-aa01-static-'));
     fs.writeFileSync(path.join(staticDir, 'index.html'), INDEX_SENTINEL);
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     const runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     app = createApp({ agentStore, runManager, baseDir, staticDir, access: { token: TOKEN } });
   });
@@ -163,13 +167,15 @@ describe('author session routes', () => {
       turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
       providerFor: () => model,
     });
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     const runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     const busyApp = createApp({ agentStore, runManager, baseDir, staticDir, access: { token: TOKEN }, sessions, authorRunner: runner });
 

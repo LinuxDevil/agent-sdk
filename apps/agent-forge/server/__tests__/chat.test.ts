@@ -3,18 +3,21 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import request from 'supertest';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpecV2 } from 'lousho';
 import { createApp } from '../app';
 import { RunManager, AlreadyRunningError, ApprovalPendingError } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 
-const SPEC: AgentSpec = {
+const SPEC: AgentSpecV2 = {
+  version: 2,
   name: 'test-agent',
-  prompt: 'You are a helpful agent.',
-  provider: { type: 'mock', model: 'mock-1' },
-  tools: ['current-date'],
+  model: 'mock/mock-1',
+  instructions: 'You are a helpful agent.',
+  tools: [{ builtin: 'current_date' }],
 };
 
 function waitForStatus(
@@ -52,6 +55,7 @@ describe('chat transport (RunManager)', () => {
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
+      host: newTestHost(baseDir),
       loadSpec: async () => undefined,
       saveSpec: async () => {},
     });
@@ -106,7 +110,7 @@ describe('chat transport (RunManager)', () => {
   });
 
   it('continues the same conversation across two sendMessage() calls instead of starting fresh', async () => {
-    await runManager.sendMessage('agent-chat-2', 'please use current-date', SPEC);
+    await runManager.sendMessage('agent-chat-2', 'please use current_date', SPEC);
     await waitForStatus(runManager, 'agent-chat-2', (s) => s.status === 'done');
     const afterFirst = runManager.chatState('agent-chat-2').messages;
     expect(afterFirst.length).toBeGreaterThanOrEqual(3); // user + tool-call assistant + tool result (+ maybe final assistant)
@@ -124,7 +128,7 @@ describe('chat transport (RunManager)', () => {
   });
 
   it('rejects sendMessage() while a run is already in flight', async () => {
-    await runManager.sendMessage('agent-chat-3', 'please use current-date', SPEC);
+    await runManager.sendMessage('agent-chat-3', 'please use current_date', SPEC);
     await expect(runManager.sendMessage('agent-chat-3', 'again', SPEC)).rejects.toBeInstanceOf(AlreadyRunningError);
     await waitForStatus(runManager, 'agent-chat-3', (s) => s.status === 'done');
   });
@@ -180,6 +184,7 @@ describe('chat transport (RunManager)', () => {
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
+      host: newTestHost(baseDir),
       loadSpec: async () => undefined,
       saveSpec: async () => {},
     });
@@ -195,13 +200,15 @@ describe('chat transport (HTTP routes)', () => {
 
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-p-chat-app-test-'));
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     app = createApp({ agentStore, runManager, baseDir });
   });

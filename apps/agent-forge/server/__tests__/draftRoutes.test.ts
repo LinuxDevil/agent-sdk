@@ -6,11 +6,12 @@ import request from 'supertest';
 import type { AgentSpec } from 'lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
-import type { AgentStore } from '../../src/persistence/AgentStore';
 import { AgentRepo } from '../storage/agentRepo';
+import type { AgentStore } from '../../src/persistence/AgentStore';
 import { DraftStore } from '../storage/draftStore';
 import type { ChangeDraft } from '../../shared/wireTypes';
 
@@ -40,8 +41,9 @@ describe('draft routes', () => {
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     repo = new AgentRepo(baseDir);
   });

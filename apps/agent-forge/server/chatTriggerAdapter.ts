@@ -40,7 +40,7 @@
  * if ever actually called, rather than silently no-op-ing; `trigger()` is
  * the real, per-request entrypoint `app.ts` uses.
  */
-import type { AgentSpec, ExecutionResult } from 'lousho';
+import type { AgentSpecV2, ExecutionResult } from 'lousho';
 import type { RunnableAgent, TriggerAdapter, TriggerContext, TriggerHandle } from 'lousho/triggers';
 import type { RunManager } from './runRegistry';
 
@@ -54,7 +54,7 @@ export class ChatTriggerAdapter implements TriggerAdapter {
    * (app.ts). Delegates straight to `RunManager.sendMessage()`, unchanged;
    * see this class's doc comment for why.
    */
-  public async trigger(agentId: string, message: string, spec?: AgentSpec): Promise<void> {
+  public async trigger(agentId: string, message: string, spec?: AgentSpecV2): Promise<void> {
     return this.runManager.sendMessage(agentId, message, spec);
   }
 

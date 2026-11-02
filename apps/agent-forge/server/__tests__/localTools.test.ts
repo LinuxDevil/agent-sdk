@@ -12,16 +12,18 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpecV2 } from 'lousho';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 
-const GATED_SPEC: AgentSpec = {
+const GATED_SPEC: AgentSpecV2 = {
+  version: 2,
   name: 'gated-test-agent',
-  prompt: 'You are a helpful agent.',
-  provider: { type: 'mock', model: 'mock-1' },
-  tools: ['demo-approval'],
+  model: 'mock/mock-1',
+  instructions: 'You are a helpful agent.',
+  tools: [{ registry: 'demo-approval' }],
 };
 
 function waitForStatus(
@@ -59,6 +61,7 @@ describe("buildAgentFromSpec's local 'demo-approval' tool", () => {
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
+      host: newTestHost(baseDir),
       loadSpec: async () => undefined,
       saveSpec: async () => {},
     });

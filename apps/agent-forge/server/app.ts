@@ -59,6 +59,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import {
+  agentSpecV2Schema,
   ConfigurationError,
   SDKError,
   listBuiltinTools,
@@ -66,6 +67,7 @@ import {
   listModels,
   listTriggerTypes,
   type AgentSpec,
+  type AgentSpecV2,
   type ForkPatch,
 } from 'lousho';
 import type { connectMcp } from 'lousho/mcp';
@@ -105,6 +107,10 @@ import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { AgentRepo } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
 import { VersionStore } from './storage/versionStore';
+import { mergeLegacySave } from './storage/legacySpec';
+import { FileCheckpointStore } from './checkpointStore';
+import { FileApprovalStore } from './approvalStore';
+import { InProcessAgentHost } from './host/inProcessAgentHost';
 import { registerAgentRoutes } from './routes/agentRoutes';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
@@ -264,19 +270,50 @@ function registerWorkspaceRoute(app: Express): void {
   });
 }
 
+/**
+ * A run/message body's `spec` field as the AgentSpecV2 RunManager takes:
+ * a v1 object (`typeof spec.prompt === 'string'`) merges onto the stored
+ * v2 spec (`mergeLegacySave`, preserving v2-only keys); any other present
+ * value must validate as `{ version: 2 }` (`{ error }` back for the
+ * caller's 400); absent stays absent.
+ */
+async function resolveBodySpec(
+  ws: WorkspaceContext,
+  agentId: string,
+  raw: unknown
+): Promise<{ spec?: AgentSpecV2; error?: string }> {
+  if (raw === undefined) return {};
+  if (typeof raw === 'object' && raw !== null && typeof (raw as { prompt?: unknown }).prompt === 'string') {
+    return { spec: mergeLegacySave(await ws.repo.readSpec(agentId), raw as AgentSpec) };
+  }
+  const parsed = agentSpecV2Schema.safeParse(raw);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    const path = (issue.path ?? []).join('.');
+    return { error: `Invalid spec: '${path || '(root)'}': ${issue.message}` };
+  }
+  return { spec: parsed.data as AgentSpecV2 };
+}
+
 /** Run lifecycle: start, stop, status, and resolving a pending tool approval (all on `workspaceOf(req).runs`). */
 function registerRunRoutes(app: Express): void {
   app.post(
     '/agents/:id/run',
     asyncRoute(async (req, res) => {
-      const { spec, input } = req.body as { spec?: AgentSpec; input?: string };
+      const { spec, input } = req.body as { spec?: unknown; input?: string };
       if (typeof input !== 'string' || !input) {
         res.status(400).json({ error: "Request body must include a non-empty 'input' string" });
         return;
       }
       try {
-        const runs = workspaceOf(req).runs;
-        await runs.run(paramId(req), input, spec);
+        const ws = workspaceOf(req);
+        const resolved = await resolveBodySpec(ws, paramId(req), spec);
+        if (resolved.error !== undefined) {
+          sendError(res, 400, resolved.error, 'LOUSHO_SPEC_INVALID');
+          return;
+        }
+        const runs = ws.runs;
+        await runs.run(paramId(req), input, resolved.spec);
         res.status(202).json(runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [
@@ -468,15 +505,20 @@ function registerChatRoutes(app: Express): void {
   app.post(
     '/agents/:id/message',
     asyncRoute(async (req, res) => {
-      const { message, spec } = req.body as { message?: string; spec?: AgentSpec };
+      const { message, spec } = req.body as { message?: string; spec?: unknown };
       if (typeof message !== 'string' || !message) {
         res.status(400).json({ error: "Request body must include a non-empty 'message' string" });
         return;
       }
       try {
         const ws = workspaceOf(req);
+        const resolved = await resolveBodySpec(ws, paramId(req), spec);
+        if (resolved.error !== undefined) {
+          sendError(res, 400, resolved.error, 'LOUSHO_SPEC_INVALID');
+          return;
+        }
         const chatTrigger = ws.chatTriggers.get('chat') as ChatTriggerAdapter;
-        await chatTrigger.trigger(paramId(req), message, spec);
+        await chatTrigger.trigger(paramId(req), message, resolved.spec);
         res.status(202).json(ws.runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [
@@ -717,6 +759,15 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
     agentStore: options.agentStore,
     versions: new VersionStore(repo),
     drafts: new DraftStore(repo),
+    // The legacy pair's RunManager carries its own host; this one exists to
+    // satisfy the context shape (nothing reads ws.host yet - catalog/steer
+    // routes are later tickets).
+    host: new InProcessAgentHost({
+      baseDir: options.baseDir,
+      checkpointStore: new FileCheckpointStore(options.baseDir),
+      approvalStore: new FileApprovalStore(options.baseDir),
+      secretsStore: options.secretsStore,
+    }),
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
   };

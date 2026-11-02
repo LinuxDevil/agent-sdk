@@ -11,11 +11,12 @@ import request from 'supertest';
 import type { AgentSpecV2 } from 'lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
-import type { AgentStore } from '../../src/persistence/AgentStore';
 import { AgentRepo } from '../storage/agentRepo';
+import type { AgentStore } from '../../src/persistence/AgentStore';
 import type { AgentRecord, VersionListItem } from '../../shared/wireTypes';
 
 const V2_SPEC: AgentSpecV2 = {
@@ -42,12 +43,14 @@ describe('POST /agents', () => {
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-d06b-create-'));
     agentStore = createFsAgentStore(baseDir);
+    repo = new AgentRepo(baseDir);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     repo = new AgentRepo(baseDir);
   });
@@ -189,12 +192,14 @@ describe('PUT /agents/:id/layout', () => {
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-d06b-layout-'));
     agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
   });
 

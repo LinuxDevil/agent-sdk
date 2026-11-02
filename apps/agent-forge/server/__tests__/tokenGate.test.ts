@@ -9,9 +9,11 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 
 /**
  * Express 5 routes case-insensitively by default while the token gate used to
@@ -40,13 +42,15 @@ describe('studio token gate (path variants)', () => {
     staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gate-static-'));
     fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><title>forge</title>');
     fs.writeFileSync(path.join(staticDir, 'app.js'), 'console.log(1)');
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     const runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     app = createApp({ agentStore, runManager, baseDir, staticDir, access: { token: TOKEN } });
     server = app.listen(0, '127.0.0.1');

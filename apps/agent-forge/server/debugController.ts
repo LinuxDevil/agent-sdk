@@ -29,7 +29,7 @@
  * only supported on `llm` and `tool` nodes, matching this app's graph model
  * (graph/types.ts) - see the epic report for the full breakdown.
  */
-import type { GenerateOptions, Message, ToolCall } from 'lousho';
+import type { AgentHook, Message } from 'lousho';
 
 export type DebugBoundary = 'before' | 'after';
 
@@ -75,11 +75,6 @@ export interface DebugStateSnapshot {
  * of "stuck until the server process is restarted".
  */
 const DEFAULT_PAUSE_TIMEOUT_MS = 15 * 60 * 1000;
-
-export type DebugHooks = Pick<
-  import('lousho/executor').ExecuteOptions,
-  'onLLMRequest' | 'onLLMResponse' | 'onToolCall' | 'onToolResult'
->;
 
 /**
  * One debug session per live run. Breakpoints can be updated mid-run (the
@@ -142,23 +137,38 @@ export class DebugSession {
     };
   }
 
-  hooks(): DebugHooks {
-    return {
-      onLLMRequest: async (request: GenerateOptions) => {
-        this.lastMessages = request.messages;
-        await this.maybePause('llm', 'before');
+  /**
+   * The debugger as one `AgentHook` ('studio-debugger') for
+   * `createAgent({ hooks })` runs (RunManager's agent path - passed as
+   * `HostRunInput.extraHooks` to the AgentHost). Same pause semantics as
+   * the old `AgentExecutor.execute()` lifecycle-callback wiring:
+   * `preGenerate`/`postGenerate` map to the `llm` node's before/after
+   * boundaries (postGenerate also counts a step) and
+   * `preToolCall`/`postToolCall` to a tool node's before/after, keyed by
+   * `ctx.toolName`. `lastMessages` comes from `preGenerate`'s
+   * `ctx.request.messages` (a preGenerate-only carryover: nothing else in
+   * the hook context exposes the outgoing message array).
+   */
+  agentHooks(): AgentHook[] {
+    return [
+      {
+        name: 'studio-debugger',
+        preGenerate: async (ctx) => {
+          if (ctx.request?.messages !== undefined) this.lastMessages = ctx.request.messages;
+          await this.maybePause('llm', 'before');
+        },
+        postGenerate: async () => {
+          this.stepCount += 1;
+          await this.maybePause('llm', 'after');
+        },
+        preToolCall: async (ctx) => {
+          await this.maybePause(ctx.toolName, 'before');
+        },
+        postToolCall: async (ctx) => {
+          await this.maybePause(ctx.toolName, 'after');
+        },
       },
-      onLLMResponse: async () => {
-        this.stepCount += 1;
-        await this.maybePause('llm', 'after');
-      },
-      onToolCall: async (toolCall: ToolCall) => {
-        await this.maybePause(toolCall.function.name, 'before');
-      },
-      onToolResult: async (toolCall: ToolCall) => {
-        await this.maybePause(toolCall.function.name, 'after');
-      },
-    };
+    ];
   }
 
   private release(timedOut = false): void {
