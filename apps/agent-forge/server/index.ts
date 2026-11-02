@@ -11,6 +11,8 @@ import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createApp } from './app';
 import { attachWebSocketServer } from './wsServer';
+import { attachEventsWebSocket } from './events/eventsWs';
+import { createUpgradeRouter, type UpgradeRouter } from './ws/upgradeRouter';
 import { RunManager } from './runRegistry';
 import { SecretsStore } from './secretsStore';
 import { SettingsStore } from './settingsStore';
@@ -24,6 +26,12 @@ export interface StudioServerHandle {
   server: http.Server;
   port: number;
   runManager: RunManager;
+  /**
+   * The server's one WS upgrade router (ws/upgradeRouter.ts): `/agents/:id/stream`
+   * and `/events` are already registered; later WS endpoints (the Author
+   * stream) call `upgradeRouter.register(...)` on it.
+   */
+  upgradeRouter: UpgradeRouter;
   /** The per-launch token every API/WebSocket request must carry. */
   token: string;
   /** The URL to open: the studio's own origin with `?token=` appended. */
@@ -141,9 +149,14 @@ export async function startStudioServer(
     staticDir,
     docsDir: resolveDocsDir(moduleDir),
     access,
+    eventBus: workspace.events,
   });
   const server = http.createServer(app);
-  attachWebSocketServer(server, workspace.runs, access);
+  // One upgrade listener for every WS endpoint: the shared Host/Origin/
+  // token gate runs in the router, then the first registered route wins.
+  const upgradeRouter = createUpgradeRouter(server, access);
+  attachWebSocketServer(upgradeRouter, workspace.runs);
+  attachEventsWebSocket(upgradeRouter, workspace.events);
 
   await listen(server, port, host);
   const judgeOption = options.judge ?? (options.observe === false ? false : {});
@@ -155,6 +168,7 @@ export async function startStudioServer(
     server,
     port: boundPort,
     runManager: workspace.runs,
+    upgradeRouter,
     token,
     url: `http://${urlHost}:${boundPort}/?token=${encodeURIComponent(token)}`,
     close: () => {

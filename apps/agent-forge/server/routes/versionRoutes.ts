@@ -100,6 +100,8 @@ export function registerVersionRoutes(app: Express): void {
         const latest = await ws.versions.latest(id);
         const item = await ws.versions.capture(id, { kind: latest ? 'update' : 'create', source: 'editor' });
         res.status(item === null ? 200 : 201).json(item ?? latest);
+        // A no-op save writes nothing, so it publishes nothing.
+        if (item !== null) ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'version' });
       });
     })
   );
@@ -191,6 +193,7 @@ export function registerVersionRoutes(app: Express): void {
           restoredFromVersion: n,
         });
         res.status(201).json(item);
+        ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'restore' });
       });
     })
   );

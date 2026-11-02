@@ -42,9 +42,10 @@
  *   POST/GET /assistant/sessions · GET/DELETE /assistant/sessions/:id
  *                                      -> Agent Author chat sessions, Studio-global (author/routes.ts)
  *
- * `WS /agents/:id/stream` is wired separately in wsServer.ts (attached to
- * the same underlying http.Server, since `ws` needs the raw HTTP upgrade
- * event rather than an Express route).
+ * `WS /agents/:id/stream` and `WS /events` are wired separately
+ * (wsServer.ts, events/eventsWs.ts - both registered on the one
+ * `UpgradeRouter` attached to the same underlying http.Server, since `ws`
+ * needs the raw HTTP upgrade event rather than an Express route).
  *
  * Every route reads its workspace from workspaceOf(req) (header
  * x-lousho-workspace or ?ws=, else the launch folder).
@@ -109,6 +110,7 @@ import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { AgentRepo } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
 import { VersionStore } from './storage/versionStore';
+import { StudioEventBus } from './events/eventBus';
 import { mergeLegacySave } from './storage/legacySpec';
 import { FileCheckpointStore } from './checkpointStore';
 import { FileApprovalStore } from './approvalStore';
@@ -180,6 +182,14 @@ interface CreateAppBaseOptions {
   /** The `connectMcp` `POST /catalog/mcp/probe` uses (tests); default the SDK's own (routes/mcpProbe.ts). */
   mcpConnect?: typeof connectMcp;
   /**
+   * The `StudioEventBus` the default workspace context publishes
+   * `StudioEvent`s on - what `workspaceOf(req).events` answers and
+   * `WS /events` fans out. A test seam: `startStudioServer` passes the
+   * launch context's own bus; a test injects one to spy on published
+   * events. Defaults to the context's own `new StudioEventBus()`.
+   */
+  eventBus?: StudioEventBus;
+  /**
    * The app's one TemplateCatalog - Studio-global (the templates folder
    * ships in the SDK package), shared between `GET /templates*` and the
    * `{ template }` branch of `POST /agents`. Defaults to the SDK's own
@@ -224,6 +234,7 @@ const API_PREFIXES = [
   '/catalog',
   '/assistant',
   '/templates',
+  '/events',
 ];
 
 /** The only methods served without the token, and only off the API (`/health`, the static client). */
@@ -760,7 +771,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -772,7 +783,18 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * `workspace`: the launch folder's ref around those two stores.
  */
 function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
-  if (options.workspace) return options.workspace;
+  const workspace = options.workspace ?? legacyWorkspaceContext(options);
+  // `eventBus` is a test seam: it sets the default context's bus - the
+  // one `workspaceOf(req).events` publishes on and `WS /events` reads.
+  return options.eventBus === undefined ? workspace : { ...workspace, events: options.eventBus };
+}
+
+/**
+ * The context synthesized when the caller passed the legacy
+ * `{agentStore, runManager}` pair instead of a ready-built `workspace`:
+ * the launch folder's ref around those two stores.
+ */
+function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefined }): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
   return {
     ref: workspaceRefFor(options.baseDir),
@@ -791,6 +813,7 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
     }),
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
+    events: new StudioEventBus(),
   };
 }
 

@@ -17,6 +17,7 @@ import { WORKSPACE_ID_RE } from '../../shared/workspace';
 import { workspaceIdFor, workspaceRefFor } from '../workspace/workspaceId';
 import { DraftStore } from '../storage/draftStore';
 import { VersionStore } from '../storage/versionStore';
+import { StudioEventBus } from '../events/eventBus';
 import type { WorkspaceContext } from '../workspace/context';
 
 const SPEC: AgentSpec = {
@@ -119,6 +120,7 @@ describe('workspace seam', () => {
       host: newTestHost(baseDir),
       runs: { status } as unknown as RunManager,
       chatTriggers: new TriggerRegistry(),
+      events: new StudioEventBus(),
     };
     const app = createApp({ workspace, baseDir });
 

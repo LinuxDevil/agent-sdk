@@ -186,6 +186,7 @@ export function registerDraftRoutes(app: Express): void {
           baseSpecHash: specHash(spec),
         });
         res.status(201).json(draft);
+        ws.events.publish({ type: 'draft.changed', agentId: id, draftId: draft.id, status: draft.status });
       });
     })
   );
@@ -199,6 +200,7 @@ export function registerDraftRoutes(app: Express): void {
       try {
         const settled = await withAgentLock(id, () => ws.drafts.settle(id, 'withdrawn'));
         res.json(settled);
+        ws.events.publish({ type: 'draft.changed', agentId: id, draftId: settled.id, status: settled.status });
       } catch (error) {
         sendDraftStoreError(res, error);
       }
@@ -243,6 +245,8 @@ export function registerDraftRoutes(app: Express): void {
           await ws.versions.capture(id, { kind: 'update', source: 'draft' });
           const settled = await ws.drafts.settle(id, 'approved', { draftId: cur.id, note: parsed.note });
           res.json(settled);
+          ws.events.publish({ type: 'draft.changed', agentId: id, draftId: settled.id, status: settled.status });
+          ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'draft' });
         });
       } catch (error) {
         sendDraftStoreError(res, error);
@@ -266,6 +270,7 @@ export function registerDraftRoutes(app: Express): void {
           const cur = await pendingDraft(ws, id, parsed.draftId);
           const settled = await ws.drafts.settle(id, 'rejected', { draftId: cur.id, note: parsed.note });
           res.json(settled);
+          ws.events.publish({ type: 'draft.changed', agentId: id, draftId: settled.id, status: settled.status });
         });
       } catch (error) {
         sendDraftStoreError(res, error);

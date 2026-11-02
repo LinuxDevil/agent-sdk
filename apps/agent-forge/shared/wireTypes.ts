@@ -222,6 +222,21 @@ export type StreamMessage =
   | { type: 'debug'; payload: DebugStatePayload }
   | { type: 'chat'; payload: ChatStatePayload };
 
+/**
+ * One `WS /events` push - Studio-wide lifecycle notifications every open
+ * tab receives, so the agents list (and later the summaries, drafts,
+ * suggestions and inbox badge) refreshes on change rather than polling.
+ * `agent.changed` fires whenever an agent's spec/meta/draft state is
+ * written, `reason` saying which write caused it. Events carry ids and
+ * names only - never secret values.
+ */
+export type StudioEvent =
+  | { type: 'agent.changed'; agentId: string; reason: 'save' | 'version' | 'meta' | 'draft' | 'restore' | 'import' }
+  | { type: 'version.summary'; agentId: string; version: number; summary: string }
+  | { type: 'draft.changed'; agentId: string; draftId: string; status: ChangeDraft['status'] }
+  | { type: 'suggestion.new'; agentId: string; suggestionId: string }
+  | { type: 'inbox.count'; count: number };
+
 /** Masked provider key status. Never carries a real key. */
 export interface ProviderKeyStatus {
   provider: 'openai' | 'anthropic';
