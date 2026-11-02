@@ -134,6 +134,21 @@ export interface AuthorToolFailure {
   [extra: string]: unknown;
 }
 
+/** The exact pathname the Author chat's WebSocket lives on (`WS /assistant/stream?session=<id>`). */
+export const AUTHOR_STREAM_PATH = '/assistant/stream';
+
+/**
+ * Everything a client may send on `WS /assistant/stream`. `chat.send`
+ * starts a turn (the `requestId` ties its events back to this send),
+ * `chat.stop` ends the running turn early, and `chat.resume` is AA04's
+ * reattach - the AA03 transport answers it (like any unreadable or
+ * unknown frame) with a `BAD_MESSAGE` `turn.error`.
+ */
+export type AuthorClientMessage =
+  | { type: 'chat.send'; requestId: string; text: string; focus?: AuthorFocus }
+  | { type: 'chat.stop'; requestId: string }
+  | { type: 'chat.resume'; requestId: string };
+
 /**
  * Every event one Author turn produces, in order. `AuthorTurnRunner`
  * emits them on its `'event'` channel as `(sessionId, event)`; the
