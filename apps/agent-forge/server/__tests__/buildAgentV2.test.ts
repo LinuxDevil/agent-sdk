@@ -13,9 +13,9 @@ import * as os from 'node:os';
 import {
   createAgentConfigOf,
   type AgentEvent,
-  type AgentHook,
   type AgentSpecV2,
 } from 'lousho';
+type Global = { __hookOrder?: string[] };
 import { buildRunnableAgent, scopedApprovalStore, type RunWiring } from '../buildAgentV2';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
@@ -136,31 +136,60 @@ describe('buildRunnableAgent', () => {
   });
 
   it('extraHooks run after the spec\'s own hooks', async () => {
-    const order: string[] = [];
-    const record = (name: string): AgentHook => ({
-      name,
-      preGenerate: () => {
-        order.push(name);
-      },
-    });
+    const orderKey = '__hookOrder';
     const spec: AgentSpecV2 = {
       ...BASE,
       hooks: [{ id: 'spec-hook', file: 'spec-hook.js' }],
     };
     // A `{ file }` hook resolves under <baseDir>/.lousho/agents - write one
-    // there so the file-hook path is exercised without a sandbox.
+    // there. Both hooks append to ONE shared order so the assertion proves
+    // sequence, not merely that each ran.
     const hooksDir = path.join(baseDir, '.lousho', 'agents');
     fs.mkdirSync(hooksDir, { recursive: true });
     fs.writeFileSync(
       path.join(hooksDir, 'spec-hook.js'),
-      'module.exports = { name: "spec-hook", preGenerate: () => { globalThis.__specHookRan = true; } };\n'
+      `module.exports = { name: "spec-hook", preGenerate: () => { (globalThis.${orderKey} ??= []).push('spec-hook'); } };\n`
     );
     const { wiring } = noopWiring();
-    wiring.extraHooks = [record('extra-hook')];
+    wiring.extraHooks = [
+      {
+        name: 'extra-hook',
+        preGenerate: () => {
+          ((globalThis as Global).__hookOrder ??= []).push('extra-hook');
+        },
+      },
+    ];
     const built = await buildRunnableAgent(spec, 'hook-agent', deps(), wiring);
     await built.agent.send('hi');
-    expect((globalThis as { __specHookRan?: boolean }).__specHookRan).toBe(true);
-    expect(order).toEqual(['extra-hook']);
+    expect((globalThis as Global).__hookOrder).toEqual(['spec-hook', 'extra-hook']);
+  });
+
+  it('instructionsByFamily is picked against the REAL spec.model (the stored-key compile path cannot substitute the model string)', async () => {
+    const secretsStore = new SecretsStore(baseDir);
+    secretsStore.setKey('anthropic', 'sk-ant-test');
+    // 'claude' applies to anthropic/claude-* models; 'openai' must not leak
+    // in, and a stand-in model would have lost the tail entirely.
+    const spec: AgentSpecV2 = {
+      ...BASE,
+      model: 'anthropic/claude-haiku-5-5',
+      instructions: 'BASE.',
+      instructionsByFamily: { claude: 'CLAUDE-TAIL.', openai: 'OPENAI-TAIL.' } as AgentSpecV2['instructionsByFamily'],
+    };
+    const built = await buildRunnableAgent(spec, 'fam-agent', { ...deps(), secretsStore }, noopWiring().wiring);
+    const instructions = createAgentConfigOf(built.agent)?.instructions;
+    expect(instructions).toContain('CLAUDE-TAIL.');
+    expect(instructions).not.toContain('OPENAI-TAIL.');
+
+    // And a mock model picks the 'mock' family, not a real-provider tail.
+    const mockSpec: AgentSpecV2 = {
+      ...BASE,
+      instructions: 'BASE.',
+      instructionsByFamily: { mock: 'MOCK-TAIL.', claude: 'WRONG-TAIL.' } as AgentSpecV2['instructionsByFamily'],
+    };
+    const mockBuilt = await buildRunnableAgent(mockSpec, 'fam-mock', deps(), noopWiring().wiring);
+    const mockInstructions = createAgentConfigOf(mockBuilt.agent)?.instructions;
+    expect(mockInstructions).toContain('MOCK-TAIL.');
+    expect(mockInstructions).not.toContain('WRONG-TAIL.');
   });
 
   it('a spec\'s demo-approval ref joins the compiled tools (the Studio local tool)', async () => {

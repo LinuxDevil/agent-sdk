@@ -1,12 +1,17 @@
 /**
- * In-memory registry mapping agent IDs to live `AgentExecutor.execute()`
- * invocations, tracked by `sessionId`. One `RunEntry` per agent ID -
- * only one live run per agent at a time, matching the app's Run/Stop/Debug
- * buttons which operate on "the currently loaded agent".
+ * In-memory registry mapping agent IDs to live runs, tracked by
+ * `sessionId`. One `RunEntry` per agent ID - only one live run per agent
+ * at a time, matching the app's Run/Stop/Debug buttons which operate on
+ * "the currently loaded agent".
  *
  * This is the piece that actually wires start/stop/status and
- * durable-execution resume + approval-gate pause/resume together on top
- * of the SDK's public execution API.
+ * durable-execution resume + approval-gate pause/resume together. The
+ * agent path speaks only to the workspace's `AgentHost`
+ * (host/agentHost.ts): `host.start()` begins a run, `host.abort()` stops
+ * it, `host.resolveApproval()` resumes a paused one, and every event,
+ * span and settle arrives on the launch's `onEvent` (see `onHostEvent`).
+ * Flow specs (`spec.flow`) are the one exception: they keep the legacy
+ * in-process `FlowExecutor` path until flows are spec-v2 (startFlowRun).
  */
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -94,8 +99,6 @@ interface RunEntry {
   hostRunId?: string;
   /** Which execution path owns the in-flight run: 'agent' (AgentHost) or 'flow' (in-process FlowExecutor). */
   kind?: 'agent' | 'flow';
-  /** The run's trace exporter, kept so a late 'span' HostEvent still lands in this run's trace (see onHostEvent). */
-  exporter?: TraceExporter;
   /** Live step-through debug session for this agent's in-flight run, if any. */
   debugSession?: DebugSession;
   /**
@@ -479,18 +482,18 @@ export class RunManager extends EventEmitter {
    *   valid next step; free-text chat can't resolve a pending tool call.
    * - Otherwise (idle/stopped/error, i.e. no run currently owns this
    *   agent's conversation): if this agent has ANY prior chat messages,
-   *   the new message CONTINUES that exact conversation - the real
-   *   `Message[]` AgentExecutor last produced (stripped of the id/timestamp
-   *   fields this file adds for the UI) plus the new user turn, passed as
-   *   `input` with `skipSystemPromptInjection: true` so AgentExecutor
-   *   doesn't inject a second system message ahead of the one already in
-   *   that history. A genuinely new agent (no prior chat) passes the plain
-   *   string instead, so AgentExecutor's normal buildMessages() path builds
-   *   the system+user turn from scratch exactly like a Topbar "Run" click.
+   *   the new message CONTINUES that exact conversation - the run's
+   *   `Message[]` minus the id/timestamp fields this file adds for the UI,
+   *   and minus its 'system' entry (createAgent injects the system prompt
+   *   itself, so there is exactly one system message in the continued
+   *   history) plus the new user turn, passed as `input` to `host.start()`.
+   *   A genuinely new agent (no prior chat) passes the plain string
+   *   instead, so the normal message build runs exactly like a Topbar
+   *   "Run" click.
    *
    * The checkpoint under this agent's sessionId already holds that same
-   * history; AgentExecutor.execute() recognises the re-sent prefix
-   * and appends only the new user turn - after a Stop mid-flight, once the
+   * history; the durable run recognises the re-sent prefix and appends
+   * only the new user turn - after a Stop mid-flight, once the
    * interrupted turn's pending tool results are recorded.
    */
   async sendMessage(agentId: string, text: string, spec?: AgentSpecV2): Promise<void> {
@@ -614,7 +617,6 @@ export class RunManager extends EventEmitter {
         debugSession,
         hostRunId: runId,
         kind: 'agent',
-        exporter,
       },
       existing
     );
@@ -700,7 +702,6 @@ export class RunManager extends EventEmitter {
         debugSession,
         hostRunId: undefined,
         kind: 'flow',
-        exporter: undefined,
       },
       existing
     );

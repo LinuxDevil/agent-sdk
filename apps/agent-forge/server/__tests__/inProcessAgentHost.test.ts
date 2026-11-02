@@ -129,6 +129,48 @@ describe('InProcessAgentHost', () => {
       HostRunNotActiveError
     );
   });
+
+  it('steer returns the steer id and a steer.joined HostEvent arrives when it lands', async () => {
+    // The delay hook keeps the run live long enough for steer() to land
+    // while it is mid-generate (a completed run would be
+    // HostRunNotActiveError instead).
+    const { runId } = await host.start(
+      input({
+        input: 'hi',
+        extraHooks: [
+          { name: 'window', preGenerate: () => new Promise((r) => setTimeout(r, 60)) },
+        ],
+      })
+    );
+    const result = await host.steer(runId, 'also remember this');
+    expect(result.id).toBeTruthy();
+    const start = Date.now();
+    while (!events.some((e) => e.type === 'steer.joined' && e.steerId === result.id)) {
+      if (Date.now() - start > 3000) throw new Error('timed out waiting for steer.joined');
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    await settled();
+  });
+
+  it('answerQuestion resumes a paused run (spec v2 cannot name the ask_question builtin, so the pause is an ask-permission one; streamAnswer resolves it as approved with the answer as the note)', async () => {
+    const { runId } = await host.start(input({ spec: GATED, input: 'please use current_date' }));
+    const finals = await settled();
+    if (finals[0].type !== 'settled') throw new Error('expected settled');
+    expect(finals[0].result.finishReason).toBe('awaiting-approval');
+
+    await host.answerQuestion(runId, finals[0].result.approvalId!, 'the answer is 42');
+    const all = await settled(2);
+    if (all[1].type !== 'settled') throw new Error('expected settled');
+    expect(all[1].result.finishReason).not.toBe('awaiting-approval');
+  });
+
+  it('catalog returns the SDK\'s tool/model/guardrail/trigger lists', async () => {
+    const catalog = await host.catalog();
+    expect(catalog.tools.length).toBeGreaterThan(0);
+    expect(catalog.models.length).toBeGreaterThan(0);
+    expect(catalog.guardrails.length).toBeGreaterThan(0);
+    expect(catalog.triggers.length).toBeGreaterThan(0);
+  });
 });
 
 describe('RunManager on a FakeAgentHost', () => {
