@@ -24,6 +24,7 @@ import { VersionStore } from '../storage/versionStore';
 import { ChatTriggerAdapter } from '../chatTriggerAdapter';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
+import { StudioEventBus } from '../events/eventBus';
 import { InProcessAgentHost } from '../host/inProcessAgentHost';
 import type { AgentHost } from '../host/agentHost';
 import { RunManager } from '../runRegistry';
@@ -46,6 +47,12 @@ export interface WorkspaceContext {
   runs: RunManager;
   /** `'chat'` → `ChatTriggerAdapter(runs)`; `POST /agents/:id/message` goes through it (chatTriggerAdapter.ts). */
   chatTriggers: TriggerRegistry;
+  /**
+   * This workspace's Studio event bus (events/eventBus.ts): write routes
+   * publish `StudioEvent`s here, `WS /events` fans them out to that
+   * workspace's tabs. Per workspace, like the stores.
+   */
+  events: StudioEventBus;
 }
 
 /**
@@ -139,5 +146,6 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     host,
     runs,
     chatTriggers: chatTriggersFor(runs),
+    events: new StudioEventBus(),
   };
 }

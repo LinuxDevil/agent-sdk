@@ -44,6 +44,7 @@ import type {
   SpecChange,
   StreamMessage,
   SpanEvent,
+  StudioEvent,
   TemplateDetail,
   TemplateSummary,
   TraceDetailPayload,
@@ -599,6 +600,36 @@ class RuntimeClient implements AgentApi {
     if (onError) ws.addEventListener('error', onError);
     // Tell the caller when the stream opens, and when it drops
     // for any reason other than the caller's own unsubscribe.
+    if (connection?.onOpen) ws.addEventListener('open', connection.onOpen);
+    ws.addEventListener('close', () => {
+      if (!closedByCaller) connection?.onLost?.();
+    });
+    return () => {
+      closedByCaller = true;
+      ws.close();
+    };
+  }
+
+  /**
+   * Subscribes to `WS /events`, the Studio-wide event bus (the server's
+   * per-workspace `StudioEventBus` fanned out to every tab). Returns an
+   * unsubscribe function. Like `subscribe()`, reconnects are the caller's
+   * job (`connection.onLost`) - `useStudioEvents` is that caller.
+   */
+  subscribeEvents(
+    onEvent: (event: StudioEvent) => void,
+    connection?: StreamConnectionHandlers
+  ): () => void {
+    const query = this.token ? `?${new URLSearchParams({ token: this.token })}` : '';
+    const ws = new WebSocket(`${this.wsBaseUrl()}/events${query}`);
+    let closedByCaller = false;
+    ws.addEventListener('message', (event) => {
+      try {
+        onEvent(JSON.parse(event.data as string) as StudioEvent);
+      } catch {
+        // Ignore malformed frames rather than crashing the UI over one bad message.
+      }
+    });
     if (connection?.onOpen) ws.addEventListener('open', connection.onOpen);
     ws.addEventListener('close', () => {
       if (!closedByCaller) connection?.onLost?.();

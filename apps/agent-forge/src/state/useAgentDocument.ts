@@ -6,8 +6,12 @@ import { specToGraph } from '../graph/specToGraph';
 import type { AgentGraphSpec } from '../graph/types';
 import { graphFromTemplate, type TemplateId } from '../canvas/templates';
 import { agentIdProblem } from '../../shared/agentId';
+import type { StudioEvent } from '../../shared/wireTypes';
+import { useStudioEvents } from './useStudioEvents';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
+/** How long `agent.changed` events collect before the agents list re-fetches - a burst (rename = save+delete) is one refresh. */
+const AGENTS_REFRESH_DEBOUNCE_MS = 300;
 
 const DEFAULT_SPEC: AgentSpec = {
   name: 'untitled-agent',
@@ -160,6 +164,34 @@ async function deleteSavedAgent(
 }
 
 /**
+ * The `WS /events` handler `useAgentDocument` subscribes: an `agent.changed`
+ * (any workspace write - another tab's save, a version capture, a draft
+ * approval) re-fetches the agents list, debounced so a burst of writes is
+ * one `refreshAgents()`. Other event types are for the later summary,
+ * draft, suggestion and inbox consumers.
+ */
+function useAgentChangedRefresh(refreshAgents: () => Promise<void>): (event: StudioEvent) => void {
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
+      if (timer.current !== undefined) clearTimeout(timer.current);
+    },
+    []
+  );
+  return useCallback(
+    (event: StudioEvent) => {
+      if (event.type !== 'agent.changed') return;
+      if (timer.current !== undefined) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        timer.current = undefined;
+        void refreshAgents();
+      }, AGENTS_REFRESH_DEBOUNCE_MS);
+    },
+    [refreshAgents]
+  );
+}
+
+/**
  * The saved-agent list and its refresh; on mount it loads the list and opens
  * the first saved agent (`initialId` when it is saved).
  */
@@ -273,6 +305,8 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
   const lastValidSpec = useRef<AgentSpec>(DEFAULT_SPEC);
   const doc: DocumentSetters = { setAgentId, setGraphState, lastValidSpec, setSelectedNodeId, setDirty };
   const { agents, setAgents, refreshAgents, agentsLoaded } = useAgentList(store, initialId ?? agentId, doc);
+  // `WS /events`: another tab's write refreshes this tab's agents list.
+  useStudioEvents(useAgentChangedRefresh(refreshAgents));
 
   const spec = useMemo(() => {
     const derived = deriveSpec(graph, lastValidSpec.current);

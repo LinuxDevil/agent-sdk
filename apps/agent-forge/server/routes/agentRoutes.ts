@@ -334,6 +334,7 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
             return;
           }
           res.status(201).json(record);
+          ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
           return;
         }
         if (parsed.kind === 'copy') {
@@ -343,9 +344,12 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
             return;
           }
           res.status(201).json(record);
+          ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
           return;
         }
-        res.status(201).json(await createBlankAgent(ws, parsed.name));
+        const record = await createBlankAgent(ws, parsed.name);
+        res.status(201).json(record);
+        ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
       } catch (error) {
         if (error instanceof InvalidSpecError) {
           sendError(res, 400, error.message, error.code, { issues: error.issues });
@@ -411,6 +415,7 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         throw error;
       }
       res.status(204).end();
+      ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'save' });
     })
   );
 
@@ -461,6 +466,7 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         if (labels !== undefined) next.labels = labels;
         await ws.repo.writeMeta(id, next);
         res.json(next);
+        ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'meta' });
       });
     })
   );
@@ -489,8 +495,11 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
   app.delete(
     '/agents/:id',
     asyncRoute(async (req, res) => {
-      await workspaceOf(req).repo.remove(paramId(req));
+      const ws = workspaceOf(req);
+      const id = paramId(req);
+      await ws.repo.remove(id);
       res.status(204).end();
+      ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'save' });
     })
   );
 }

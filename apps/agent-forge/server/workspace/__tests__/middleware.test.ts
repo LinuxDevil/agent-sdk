@@ -7,6 +7,7 @@ import type { AgentStore } from '../../../src/persistence/AgentStore';
 import type { RunManager } from '../../runRegistry';
 import { AgentRepo } from '../../storage/agentRepo';
 import { DraftStore } from '../../storage/draftStore';
+import { StudioEventBus } from '../../events/eventBus';
 import type { AgentHost } from '../../host/agentHost';
 import { VersionStore } from '../../storage/versionStore';
 import { singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from '../context';
@@ -30,6 +31,7 @@ function ctx(id: string): WorkspaceContext {
     host: {} as AgentHost,
     runs: {} as RunManager,
     chatTriggers: new TriggerRegistry(),
+    events: new StudioEventBus(),
   };
 }
 

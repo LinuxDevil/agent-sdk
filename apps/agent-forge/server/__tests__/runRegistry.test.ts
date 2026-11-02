@@ -9,6 +9,7 @@ import { upgradeSpec, type AgentSpecV2 } from 'lousho';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
 import { attachWebSocketServer } from '../wsServer';
+import { createUpgradeRouter } from '../ws/upgradeRouter';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { graphToSpec } from '../../src/graph/graphToSpec';
@@ -129,7 +130,7 @@ describe('RunManager', () => {
 
   it('streams each model step over the WebSocket: several text.delta, one text.done per step', async () => {
     const server = http.createServer();
-    const wss = attachWebSocketServer(server, runManager);
+    const wss = attachWebSocketServer(createUpgradeRouter(server), runManager);
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const { port } = server.address() as AddressInfo;
     const ws = new WebSocket(`ws://127.0.0.1:${port}/agents/agent-ws/stream`);
