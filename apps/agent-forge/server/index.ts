@@ -89,6 +89,17 @@ function resolveStaticDir(staticDir: string | false | undefined, moduleDir: stri
   return staticDir ?? path.join(moduleDir, '..', 'dist');
 }
 
+/**
+ * The bundled SDK docs folder `searchDocs` reads: three levels above this
+ * file's dir lands on the package root (server/ and dist-server/ are both
+ * at apps/agent-forge/<x>, same resolution as the default staticDir).
+ * `docs/*.md` ships in the package's `files`; a missing folder makes
+ * `searchDocs` answer UNAVAILABLE rather than fail.
+ */
+function resolveDocsDir(moduleDir: string): string {
+  return path.join(moduleDir, '..', '..', '..', 'docs');
+}
+
 export async function startStudioServer(
   options: StartStudioServerOptions = {}
 ): Promise<StudioServerHandle> {
@@ -128,6 +139,7 @@ export async function startStudioServer(
     settingsStore,
     workspaceRegistry: registry,
     staticDir,
+    docsDir: resolveDocsDir(moduleDir),
     access,
   });
   const server = http.createServer(app);

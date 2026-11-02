@@ -44,11 +44,17 @@ export interface CatalogRouteDeps {
   registryIndexPath?: string;
 }
 
-/** One `registry/dist/index.json` item that passed the string-fields filter. */
-interface RegistryItem {
+/**
+ * One `registry/dist/index.json` item that passed the string-fields
+ * filter. `command`/`url` are the (optional) fields an item of
+ * `type: 'mcp'` would carry; the index has none today.
+ */
+export interface RegistryItem {
   name: string;
   type: string;
   description: string;
+  command?: string;
+  url?: string;
 }
 
 function isRegistryItem(value: unknown): value is RegistryItem {
@@ -58,11 +64,13 @@ function isRegistryItem(value: unknown): value is RegistryItem {
 }
 
 /**
- * The registry index parsed once per registration: `[]` plus one
- * `console.warn` on a missing/unparsable file or a non-array `items` -
- * Studio must work without it.
+ * The registry index parsed once: `[]` plus one `console.warn` on a
+ * missing/unparsable file or a non-array `items` - Studio must work
+ * without it. Shared with the Author's catalog service
+ * (author/tools/catalogService.ts), which reads skills, kits and any
+ * `type: 'mcp'` entries from the same index.
  */
-async function readRegistryIndex(indexPath: string): Promise<RegistryItem[]> {
+export async function readRegistryIndex(indexPath: string): Promise<RegistryItem[]> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(await fs.promises.readFile(indexPath, 'utf8'));
@@ -78,6 +86,21 @@ async function readRegistryIndex(indexPath: string): Promise<RegistryItem[]> {
     return [];
   }
   return items.filter(isRegistryItem);
+}
+
+/**
+ * `models` with each entry's `available` additionally true when Studio
+ * holds a stored key for its provider (the D09 rule) - shared with the
+ * Author's catalog service (author/tools/catalogService.ts) so the
+ * route and the `listModels` tool report availability identically.
+ */
+export function withStoredKeyAvailability(models: CatalogModel[], secretsStore: SecretsStore): CatalogModel[] {
+  return models.map((model) => ({
+    ...model,
+    available:
+      model.available ||
+      (isSecretProvider(model.provider) && secretsStore.getKey(model.provider) !== undefined),
+  }));
 }
 
 /** The `?provider=` filter for `/catalog/models`, or the 400 message when present but empty (or not a single string). */
@@ -104,13 +127,7 @@ export function registerCatalogRoutes(app: Express, deps: CatalogRouteDeps): voi
       sendError(res, 400, parsed.error, 'LOUSHO_QUERY_INVALID');
       return;
     }
-    const models: CatalogModel[] = listModels(parsed.provider === undefined ? {} : { provider: parsed.provider }).map((model) => ({
-      ...model,
-      available:
-        model.available ||
-        (isSecretProvider(model.provider) && deps.secretsStore.getKey(model.provider) !== undefined),
-    }));
-    res.json(models);
+    res.json(withStoredKeyAvailability(listModels(parsed.provider === undefined ? {} : { provider: parsed.provider }), deps.secretsStore));
   });
 
   app.get('/catalog/tools', (_req, res) => {

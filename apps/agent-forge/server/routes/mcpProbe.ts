@@ -185,13 +185,59 @@ function listProbeTools(conn: McpConnections): McpProbeTool[] {
 }
 
 /**
+ * One probe's outcome: the server's tools, or why it could not be
+ * reached. `timedOut` splits the 10-second deadline from every other
+ * failure so the Author's `probeMcpServer` tool can answer `TIMEOUT`
+ * instead of `MCP_PROBE_FAILED`; the route drops it (the wire type
+ * `McpProbeResponse` carries no flags).
+ */
+export type McpProbeResult =
+  | { ok: true; tools: McpProbeTool[] }
+  | { ok: false; error: string; timedOut?: boolean };
+
+/**
+ * The probe itself, callable: resolves `server`'s secret refs, drops
+ * its `tools`/`optional` filter fields, connects under the deadline,
+ * lists the tools and closes. `server` must already be a valid spec v2
+ * `mcpServers` entry (the route validates before calling; the Author
+ * tool's input schema does). A thrown unexpected error propagates -
+ * only ref misses, connect failures and the deadline become results.
+ */
+export async function probeMcpServer(server: McpServerSpecV2, deps: McpProbeDeps): Promise<McpProbeResult> {
+  const connect = deps.connect ?? connectMcp;
+  const timeoutMs = deps.timeoutMs ?? MCP_PROBE_TIMEOUT_MS;
+  let resolved: Record<string, unknown>;
+  try {
+    resolved = await resolveRefs(server, deps);
+  } catch (error) {
+    if (!(error instanceof ProbeRefMissing)) throw error;
+    return { ok: false, error: error.message };
+  }
+  // Connect, list, disconnect - all inside one call. A connect that
+  // outlives the deadline is still closed once it finally lands.
+  const pending = Promise.resolve().then(() => connect({ probe: probeSpec(resolved) }, { lazy: false, onError: 'throw' }));
+  let conn: McpConnections;
+  try {
+    conn = await withTimeout(pending, timeoutMs);
+  } catch (error) {
+    if (error instanceof ProbeTimeoutError) void pending.then((open) => open.close()).catch(() => {});
+    return error instanceof ProbeTimeoutError
+      ? { ok: false, timedOut: true, error: `The server did not answer within ${MCP_PROBE_TIMEOUT_MS / 1000} seconds.` }
+      : { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+  try {
+    return { ok: true, tools: listProbeTools(conn) };
+  } finally {
+    await conn.close().catch(() => {});
+  }
+}
+
+/**
  * Registers `POST /catalog/mcp/probe`. `deps.resolveSecret` is the secrets
  * store's `getSecret` (Studio-global state wired at createApp time, like
  * the other catalog routes); `connect`/`timeoutMs` exist for tests.
  */
 export function registerMcpProbeRoute(app: Express, deps: McpProbeDeps): void {
-  const connect = deps.connect ?? connectMcp;
-  const timeoutMs = deps.timeoutMs ?? MCP_PROBE_TIMEOUT_MS;
   app.post(
     '/catalog/mcp/probe',
     asyncRoute(async (req, res) => {
@@ -212,34 +258,9 @@ export function registerMcpProbeRoute(app: Express, deps: McpProbeDeps): void {
         );
         return;
       }
-      let resolved: Record<string, unknown>;
-      try {
-        resolved = await resolveRefs(body.server as McpServerSpecV2, deps);
-      } catch (error) {
-        if (!(error instanceof ProbeRefMissing)) throw error;
-        res.json({ ok: false, error: error.message } satisfies McpProbeResponse);
-        return;
-      }
-      // Connect, list, disconnect - all inside one request. A connect that
-      // outlives the deadline is still closed once it finally lands.
-      const pending = Promise.resolve().then(() => connect({ probe: probeSpec(resolved) }, { lazy: false, onError: 'throw' }));
-      let conn: McpConnections;
-      try {
-        conn = await withTimeout(pending, timeoutMs);
-      } catch (error) {
-        const response: McpProbeResponse =
-          error instanceof ProbeTimeoutError
-            ? { ok: false, error: `The server did not answer within ${MCP_PROBE_TIMEOUT_MS / 1000} seconds.` }
-            : { ok: false, error: error instanceof Error ? error.message : String(error) };
-        if (error instanceof ProbeTimeoutError) void pending.then((open) => open.close()).catch(() => {});
-        res.json(response);
-        return;
-      }
-      try {
-        res.json({ ok: true, tools: listProbeTools(conn) } satisfies McpProbeResponse);
-      } finally {
-        await conn.close().catch(() => {});
-      }
+      const result = await probeMcpServer(body.server as McpServerSpecV2, deps);
+      const response: McpProbeResponse = result.ok ? { ok: true, tools: result.tools } : { ok: false, error: result.error };
+      res.json(response);
     })
   );
 }
