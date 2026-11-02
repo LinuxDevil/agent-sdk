@@ -13,9 +13,11 @@ import { randomUUID } from 'node:crypto';
 import { fanOutExporters, fileTraceExporter, type ObserveExporterOptions } from 'lousho/traces';
 import { agentTraceDir } from './traceStore';
 import { observeReporting, withoutCapturedContent, type ObserveReporting } from './observeReporting';
-import { AgentExecutor, ToolRegistry, resumeAfterApproval } from 'lousho/executor';
+import { AgentExecutor } from 'lousho/executor';
 import {
   type AgentEvent,
+  type AgentInput,
+  type AgentSpecV2,
   type CheckpointStore,
   type Span,
   type TraceExporter,
@@ -24,13 +26,14 @@ import {
   emptyRunUsage,
   compareTrajectories,
   getCheckpointHistory,
-  type AgentSpec,
   type CheckpointHistoryEntry,
   type ForkPatch,
   type TrajectoryComparison,
 } from 'lousho';
 import { FlowExecutor, type AgentFlow } from 'lousho/flows';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
+import { toLegacySpec } from './storage/legacySpec';
+import { HostRunNotActiveError, type AgentHost, type HostEvent, type HostRunResult } from './host/agentHost';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
 import { DebugSession, type BreakpointKey } from './debugController';
@@ -65,8 +68,8 @@ interface RunEntry {
   reason?: 'awaiting_approval';
   pendingApproval?: AgentRunStatusPayload['pendingApproval'];
   resultText?: string;
-  /** Full ExecutionResult (messages/toolCalls/usage/steps/finishReason) for the Output tab's JSON tree. */
-  result?: ExecutionResult;
+  /** The settled run's result (messages/toolCalls/usage/steps/finishReason) for the Output tab's JSON tree. */
+  result?: HostRunResult;
   updatedAt: string;
   /**
    * The AgentSpec this agent id was last run() with. approve() needs a spec
@@ -77,11 +80,22 @@ interface RunEntry {
    * cache is unnecessary since this is already in memory for the lifetime of
    * the process.
    */
-  lastSpec?: AgentSpec;
+  lastSpec?: AgentSpecV2;
   /** `<provider>/<model>` the last run actually used, for the Topbar's env pill. */
   provider?: string;
   /** Root span id of the latest run (its trace id), for the top bar's "Open trace" link. */
   traceId?: string;
+  /**
+   * The AgentHost run id of the in-flight agent-path run (approve() resolves and
+   * stop() aborts through it). Set while the run is live or paused; cleared when
+   * it settles not-awaiting-approval, fails, or is aborted. Flow runs have none
+   * (they never reach an AgentHost).
+   */
+  hostRunId?: string;
+  /** Which execution path owns the in-flight run: 'agent' (AgentHost) or 'flow' (in-process FlowExecutor). */
+  kind?: 'agent' | 'flow';
+  /** The run's trace exporter, kept so a late 'span' HostEvent still lands in this run's trace (see onHostEvent). */
+  exporter?: TraceExporter;
   /** Live step-through debug session for this agent's in-flight run, if any. */
   debugSession?: DebugSession;
   /**
@@ -112,11 +126,18 @@ export interface RunManagerOptions {
   /**
    * Fallback spec loader used when run() is called without an explicit
    * `spec` (e.g. a restarted server resuming via /status polling) - backed
-   * by the app's AgentStore, fsAgentStore, reading `.lousho/agents/<id>.yaml`.
+   * by the workspace's AgentRepo, reading `.lousho/agents/<id>.yaml`.
    */
-  loadSpec: (agentId: string) => Promise<AgentSpec | undefined>;
-  /** Persists a run's spec to disk (fsAgentStore.save) so it survives a server restart. */
-  saveSpec?: (agentId: string, spec: AgentSpec) => Promise<void>;
+  loadSpec: (agentId: string) => Promise<AgentSpecV2 | undefined>;
+  /** Persists a run's spec to disk (AgentRepo.writeSpec, under the agent lock) so it survives a server restart. */
+  saveSpec?: (agentId: string, spec: AgentSpecV2) => Promise<void>;
+  /**
+   * The host the agent path runs through (AgentHost, host/agentHost.ts):
+   * `InProcessAgentHost` in the studio; a bridge host for a workspace with
+   * its own SDK. Required - RunManager never compiles or streams a spec
+   * itself.
+   */
+  host: AgentHost;
   /** Chat transcript persistence. Defaults to `new FileChatStore(baseDir)` when omitted. */
   chatStore?: FileChatStore;
   /** Stored provider keys - see buildAgent.ts's resolveProviderForSpec(). Omitted (e.g. in older tests) means every real provider type falls back to mock, same as no keys configured. */
@@ -153,7 +174,7 @@ export class ApprovalPendingError extends Error {}
  * ever runs this app against an older/vendored SDK build that predates
  * the fix.
  */
-function authoritativeMessages(result: ExecutionResult): Message[] {
+function authoritativeMessages(result: HostRunResult): Message[] {
   const last = result.messages[result.messages.length - 1];
   const alreadyEndsWithText = last?.role === 'assistant' && last.content === result.text;
   return result.text && !alreadyEndsWithText
@@ -433,7 +454,7 @@ export class RunManager extends EventEmitter {
    * it re-sends the message the interrupted run started from; after a
    * finished run it continues the conversation.
    */
-  async run(agentId: string, input: string, spec?: AgentSpec): Promise<void> {
+  async run(agentId: string, input: string, spec?: AgentSpecV2): Promise<void> {
     const existing = this.entries.get(agentId);
     if (existing && existing.status === 'running') {
       throw new AlreadyRunningError(`Agent '${agentId}' is already running`);
@@ -472,7 +493,7 @@ export class RunManager extends EventEmitter {
    * and appends only the new user turn - after a Stop mid-flight, once the
    * interrupted turn's pending tool results are recorded.
    */
-  async sendMessage(agentId: string, text: string, spec?: AgentSpec): Promise<void> {
+  async sendMessage(agentId: string, text: string, spec?: AgentSpecV2): Promise<void> {
     const existing = this.entries.get(agentId) ?? this.freshEntry(agentId);
     if (existing.status === 'running') {
       throw new AlreadyRunningError(`Agent '${agentId}' is already running`);
@@ -489,11 +510,14 @@ export class RunManager extends EventEmitter {
     const withUser = this.setEntry(agentId, { messages: [...priorMessages, userMessage] }, existing);
     this.emitChat(agentId, withUser);
 
-    const input: string | Message[] =
-      priorMessages.length > 0 ? [...priorMessages.map(toSdkMessage), toSdkMessage(userMessage)] : text;
+    // A continued chat passes the prior messages WITHOUT their 'system'
+    // entry plus the new user message - createAgent injects the system
+    // prompt itself, so there is exactly one system message in the result.
+    const prior = priorMessages.map(toSdkMessage).filter((m) => m.role !== 'system');
+    const input: AgentInput = prior.length > 0 ? [...prior, toSdkMessage(userMessage)] : text;
 
     try {
-      await this.launch(agentId, input, spec, { skipSystemPromptInjection: priorMessages.length > 0 });
+      await this.launch(agentId, input, spec, {});
     } catch (error) {
       // The run never started (no spec, provider not configured): take the user's message back out of the transcript so a
       // retry after fixing it doesn't send it twice.
@@ -506,9 +530,9 @@ export class RunManager extends EventEmitter {
   /** Picks the spec to run: the supplied one (persisted if a saveSpec hook exists), else the last-run one, else the saved one. */
   private async resolveLaunchSpec(
     agentId: string,
-    spec: AgentSpec | undefined,
+    spec: AgentSpecV2 | undefined,
     existing: RunEntry | undefined
-  ): Promise<AgentSpec> {
+  ): Promise<AgentSpecV2> {
     const resolvedSpec = spec ?? existing?.lastSpec ?? (await this.opts.loadSpec(agentId));
     if (!resolvedSpec) {
       throw new AgentNotFoundError(`No agent spec for id '${agentId}' (none supplied and none saved)`);
@@ -520,41 +544,146 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * Shared run-kickoff for both run() and sendMessage() - builds the
-   * agent/provider/toolRegistry, flips status to 'running', and fires off
-   * the AgentExecutor.execute() call, wiring its settle/failure back into
-   * this registry's status/chat broadcasts exactly like the original run()
-   * did (see that method's doc comment above, still accurate for the
-   * sessionId=agentId / checkpoint-resume semantics this shares).
+   * Shared run-kickoff for both run() and sendMessage() - resolves the
+   * spec, then dispatches: a spec with a `flow` goes to the in-process
+   * FlowExecutor path (startFlowRun); every other spec goes through the
+   * workspace's AgentHost (startAgentRun - see host/agentHost.ts for why
+   * RunManager never compiles or streams a spec itself).
    */
   private async launch(
     agentId: string,
-    input: string | Message[],
-    spec?: AgentSpec,
-    options: { skipSystemPromptInjection?: boolean; runInput?: string } = {}
+    input: AgentInput,
+    spec?: AgentSpecV2,
+    options: { runInput?: string } = {}
   ): Promise<void> {
     const existing = this.entries.get(agentId);
     const resolvedSpec = await this.resolveLaunchSpec(agentId, spec, existing);
+    const legacySpec = toLegacySpec(resolvedSpec);
+    const flow = extractFlowFromSpec(legacySpec);
+    if (flow) {
+      return this.startFlowRun(agentId, flow, resolvedSpec, legacySpec, existing, options);
+    }
+    return this.startAgentRun(agentId, input, resolvedSpec, existing, options);
+  }
 
-    // Build the agent/provider/toolRegistry BEFORE flipping status to
-    // 'running' - resolveSpecProvider()/resolveSpecTool() (inside
-    // buildAgentFromSpec) throw synchronously for a bad provider type or
-    // unknown tool name, and if that happened after setEntry('running') the
-    // entry would be stuck reporting 'running' forever (the .catch() chain
-    // that would otherwise flip it to 'error' is never reached, since the
-    // throw happens before AgentExecutor.execute() is even called).
-    const { agent, provider, toolRegistry, hooks, sandbox } = buildAgentFromSpec(
-      resolvedSpec,
+  /**
+   * The agent path: `host.start()` compiles the spec and begins the run -
+   * awaited BEFORE `setEntry('running')`, since a spec that cannot be
+   * built (bad provider, missing key, unresolved tool ref) rejects before
+   * any event and must never leave a stuck 'running'. Everything after
+   * that (events, spans, the settle) arrives on `onHostEvent`.
+   */
+  private async startAgentRun(
+    agentId: string,
+    input: AgentInput,
+    resolvedSpec: AgentSpecV2,
+    existing: RunEntry | undefined,
+    options: { runInput?: string }
+  ): Promise<void> {
+    const sessionId = agentId;
+    const debugSession = this.makeDebugSession(agentId);
+    const exporter = this.makeTraceExporter(agentId);
+    // The launch's own run id, filled in once host.start() resolves, so a
+    // late event of a REPLACED run (a settled after a new launch) can be
+    // told apart by comparing the entry's hostRunId - see onHostEvent.
+    const live = { runId: undefined as string | undefined, exporter };
+    const { runId, modelLabel } = await this.opts.host.start({
       agentId,
-      undefined,
-      { secretsStore: this.opts.secretsStore, hookTimeoutMs: this.opts.settingsStore?.activeProfile().hookTimeoutMs }
+      spec: resolvedSpec,
+      sessionId,
+      input,
+      captureContent: this.captureContentFor(agentId),
+      extraHooks: debugSession.agentHooks(),
+      onEvent: (event) => this.onHostEvent(agentId, event, live),
+    });
+    live.runId = runId;
+    this.setEntry(
+      agentId,
+      {
+        status: 'running',
+        sessionId,
+        controller: undefined,
+        error: undefined,
+        reason: undefined,
+        pendingApproval: undefined,
+        resultText: undefined,
+        traceId: undefined,
+        runInput: options.runInput,
+        lastSpec: resolvedSpec,
+        provider: modelLabel,
+        debugSession,
+        hostRunId: runId,
+        kind: 'agent',
+        exporter,
+      },
+      existing
     );
+  }
 
+  /** One HostEvent of a launch: forwarded to the same status/chat/log/span broadcasts the SDK used to drive directly. */
+  private onHostEvent(agentId: string, event: HostEvent, live: { runId: string | undefined; exporter: TraceExporter }): void {
+    // A run id that is no longer on the entry (a late steer.joined, or a
+    // settled that landed after a newer launch) is dropped - except while
+    // the launch is still inside host.start() (runId not yet assigned).
+    const entry = this.entries.get(agentId);
+    if (live.runId !== undefined && entry?.hostRunId !== live.runId) return;
+    switch (event.type) {
+      case 'agent':
+        this.emitEvent(agentId, event.event);
+        return;
+      case 'span':
+        if (event.phase === 'start') live.exporter.onSpanStart?.(event.span);
+        else live.exporter.onSpanEnd?.(event.span);
+        return;
+      case 'settled':
+        void this.handleRunSettled(agentId, event.result);
+        return;
+      case 'failed':
+        this.handleRunFailed(agentId, Object.assign(new Error(event.error.message), event.error));
+        return;
+      case 'steer.joined':
+        return; // no-op until the steer route (T05)
+    }
+  }
+
+  /**
+   * Runs a branching graph's compiled `AgentFlow` through
+   * `FlowExecutor.execute()` instead of the AgentHost agent path
+   * (`spec.flow` is a pending section - flows keep the legacy
+   * buildAgentFromSpec wiring until S21). The spec is built BEFORE
+   * `setEntry('running')` for the same reason as startAgentRun.
+   *
+   * Known, DELIBERATE gaps vs. the agent path (see this ticket's
+   * report for the full writeup - not silently papered over):
+   *  - No checkpointStore/approvalStore: `FlowExecutor` has no
+   *    pause/resume or human-in-the-loop-approval primitive at all, so a
+   *    branching run cannot pause for approval and Stop-then-Run cannot
+   *    resume it from a mid-flight checkpoint the way a flat-spec run can -
+   *    it always runs to completion or failure in one call.
+   *  - No hooks/sandbox-gated tool calls beyond `requiresSandbox` itself:
+   *    `FlowExecutor.executeToolCall()` does route through the same
+   *    `executeToolWithSandboxGuard()` seam, but there is no `hooks`
+   *    parameter at all, so pre/post hooks attached to a node never
+   *    fire on a branching run.
+   *  - Debug console: logs only, not trace spans or step-debugger
+   *    breakpoints - see `toFlowLogEntries()`'s doc comment in logEntries.ts.
+   */
+  private async startFlowRun(
+    agentId: string,
+    flow: AgentFlow,
+    resolvedSpec: AgentSpecV2,
+    legacySpec: import('lousho').AgentSpec,
+    existing: RunEntry | undefined,
+    options: { runInput?: string }
+  ): Promise<void> {
+    const { agent, provider, toolRegistry, sandbox } = buildAgentFromSpec(legacySpec, agentId, undefined, {
+      secretsStore: this.opts.secretsStore,
+      hookTimeoutMs: this.opts.settingsStore?.activeProfile().hookTimeoutMs,
+    });
     const sessionId = agentId;
     const controller = new AbortController();
     const debugSession = this.makeDebugSession(agentId);
-
-    const entry = this.setEntry(
+    this.setEntry(
       agentId,
       {
         status: 'running',
@@ -567,91 +696,25 @@ export class RunManager extends EventEmitter {
         traceId: undefined,
         runInput: options.runInput,
         lastSpec: resolvedSpec,
-        provider: `${provider.name}/${resolvedSpec.provider.model}`,
+        provider: `${provider.name}/${legacySpec.provider.model}`,
         debugSession,
+        hostRunId: undefined,
+        kind: 'flow',
+        exporter: undefined,
       },
       existing
     );
 
-    const abortableProvider = withAbortSignal(provider, controller.signal);
-
-    // A graph containing a `router` node compiles (graphToSpec.ts)
-    // to a real branching `AgentFlow` stashed under `spec.policy.flow`
-    // rather than being runnable through the flat AgentSpec/AgentExecutor
-    // path at all (there's no router/branch concept in `AgentConfig`). Every
-    // OTHER agent - which is every existing template/example, and every
-    // agent this app could build before this ticket - has no such field and
-    // takes the exact same `AgentExecutor.execute()` path it always has,
-    // completely unchanged below.
-    const flow = extractFlowFromSpec(resolvedSpec);
-    if (flow) {
-      this.runFlow(agentId, flow, { agent, provider: abortableProvider, toolRegistry, sandbox });
-      void entry;
-      return;
-    }
-
-    AgentExecutor.execute({
-      agent,
-      input,
-      provider: abortableProvider,
-      toolRegistry,
-      sessionId,
-      checkpointStore: this.opts.checkpointStore,
-      approvalStore: this.opts.approvalStore,
-      onAgentEvent: (event) => this.emitEvent(agentId, event),
-      exporter: this.makeTraceExporter(agentId),
-      captureContent: this.captureContentFor(agentId),
-      skipSystemPromptInjection: options.skipSystemPromptInjection,
-      // Hooks compiled from this agent's graph (spec.policy.hooks)
-      // and the SandboxAdapter they (and any requiresSandbox tool) run
-      // through - see buildAgentFromSpec()/compileHooks.ts.
-      hooks,
-      sandbox,
-      ...debugSession.hooks(),
-    })
-      .then((result) => this.handleRunSettled(agentId, result))
-      .catch((error: unknown) => this.handleRunFailed(agentId, error));
-
-    void entry; // status already broadcast by setEntry() above
-  }
-
-  /**
-   * Runs a branching graph's compiled `AgentFlow` through
-   * `FlowExecutor.execute()` instead of `AgentExecutor.execute()`.
-   *
-   * Known, DELIBERATE gaps vs. the flat-spec path (see this ticket's
-   * report for the full writeup - not silently papered over):
-   *  - No checkpointStore/approvalStore: `FlowExecutor` has no
-   *    pause/resume or human-in-the-loop-approval primitive at all, so a
-   *    branching run cannot pause for approval and Stop-then-Run cannot
-   *    resume it from a mid-flight checkpoint the way a flat-spec run can -
-   *    it always runs to completion or failure in one call.
-   *  - No abort support: `FlowExecutor.execute()` takes no
-   *    AbortSignal/controller, so `stop()`'s `controller.abort()` cannot
-   *    actually interrupt an in-flight flow step the way
-   *    `abortableProvider.ts` does for the flat-spec path; the Stop button
-   *    only prevents a NOT-yet-started flow from starting.
-   *  - No hooks/sandbox-gated tool calls beyond `requiresSandbox` itself:
-   *    `FlowExecutor.executeToolCall()` does route through the same
-   *    `executeToolWithSandboxGuard()` seam, but there is no `hooks`
-   *    parameter at all, so pre/post hooks attached to a node never
-   *    fire on a branching run.
-   *  - Debug console: logs only, not trace spans or step-debugger
-   *    breakpoints - see `toFlowLogEntries()`'s doc comment in logEntries.ts.
-   */
-  private runFlow(
-    agentId: string,
-    flow: AgentFlow,
-    deps: {
-      agent: import('lousho').AgentConfig;
-      provider: import('lousho').LLMProvider;
-      toolRegistry?: ToolRegistry;
-      sandbox: import('lousho').SandboxAdapter;
-    }
-  ): void {
     FlowExecutor.execute(
       flow,
-      { agent: deps.agent, provider: deps.provider, toolRegistry: deps.toolRegistry, variables: {}, sandbox: deps.sandbox },
+      {
+        agent,
+        provider: withAbortSignal(provider, controller.signal),
+        toolRegistry,
+        variables: {},
+        sandbox,
+        signal: controller.signal,
+      },
       (event) => {
         for (const log of toFlowLogEntries(agentId, event)) {
           this.emit('log', agentId, log);
@@ -683,8 +746,8 @@ export class RunManager extends EventEmitter {
       .catch((error: unknown) => this.handleRunFailed(agentId, error));
   }
 
-  /** Shared success-path handling for both run() and approve()'s follow-up execute() call. */
-  private async handleRunSettled(agentId: string, result: ExecutionResult): Promise<void> {
+  /** Shared success-path handling: a host run's 'settled' event, or the FlowExecutor path's forged result. */
+  private async handleRunSettled(agentId: string, result: HostRunResult): Promise<void> {
     // Reconcile the chat transcript against the real, authoritative
     // ExecutionResult.messages - see chatReconcile.ts's doc comment for why
     // this (rather than building the transcript incrementally from
@@ -706,15 +769,16 @@ export class RunManager extends EventEmitter {
     // finished or is paused for approval - "the final OR paused
     // ExecutionResult" per the epic brief.
     if (result.finishReason === 'awaiting-approval' && result.approvalId) {
-      const record = await this.opts.approvalStore.peek(agentId, result.approvalId);
+      // The host already read the pause it filed through the scoped store
+      // and passed it on the settled result - no second store read here.
       const next = this.setEntry(agentId, {
         status: 'paused',
         reason: 'awaiting_approval',
         pendingApproval: {
           approvalId: result.approvalId,
-          toolName: record?.pending.toolName ?? 'unknown',
-          args: record?.pending.args ?? {},
-          createdAt: record?.pending.createdAt ?? new Date().toISOString(),
+          toolName: result.pendingApproval?.toolName ?? 'unknown',
+          args: result.pendingApproval?.args ?? {},
+          createdAt: result.pendingApproval?.createdAt ?? new Date().toISOString(),
         },
         result,
         messages: reconciledMessages,
@@ -723,47 +787,57 @@ export class RunManager extends EventEmitter {
       return;
     }
     const next = this.setEntry(agentId, {
-      status: 'done',
+      status: result.finishReason === 'aborted' ? 'stopped' : 'done',
       resultText: result.text,
       result,
       controller: undefined,
+      hostRunId: undefined,
       messages: reconciledMessages,
     });
     this.emitChat(agentId, next);
   }
 
-  /** Shared failure-path handling for both run() and approve()'s follow-up execute() call. */
+  /** Shared failure-path handling: a host run's 'failed' event, or a flow/execute() rejection. */
   private handleRunFailed(agentId: string, error: unknown): void {
     if (error instanceof RunAbortedError) {
       // User-initiated stop() - a deliberate terminal state, not an error.
-      this.setEntry(agentId, { status: 'stopped', controller: undefined });
+      this.setEntry(agentId, { status: 'stopped', controller: undefined, hostRunId: undefined });
       return;
     }
     this.setEntry(agentId, {
       status: 'error',
       error: (error as Error)?.message ?? String(error),
       controller: undefined,
+      hostRunId: undefined,
     });
   }
 
   /**
-   * Requests cancellation of the in-flight run for `agentId` (see
-   * abortableProvider.ts for exactly what this can and can't interrupt).
+   * Requests cancellation of the in-flight run for `agentId`: the agent
+   * path aborts through the AgentHost (its run resolves
+   * `finishReason: 'aborted'`, which handleRunSettled maps to 'stopped'),
+   * the flow path aborts its controller (RunAbortedError → 'stopped').
    * No-ops (rather than throwing) if the agent isn't currently running -
    * Stop is safe to click on an already-stopped/idle agent.
    */
   stop(agentId: string): void {
     const entry = this.entries.get(agentId);
-    if (!entry || entry.status !== 'running' || !entry.controller) {
+    if (!entry || entry.status !== 'running') {
       return;
     }
-    entry.controller.abort();
+    if (entry.kind === 'agent') {
+      if (entry.hostRunId !== undefined) void this.opts.host.abort(entry.hostRunId, 'user');
+      return;
+    }
+    entry.controller?.abort();
   }
 
   /**
-   * Resolves a pending approval (the human-in-the-loop round trip) via the
-   * SDK's public `resumeAfterApproval()`, then continues broadcasting
-   * status/events for the resumed run exactly like run() does.
+   * Resolves a pending approval (the human-in-the-loop round trip) through
+   * the AgentHost (`resolveApproval` → `approvals.streamResolve`), then
+   * continues broadcasting status/events for the resumed run exactly like
+   * run() does - the resumed run's events and settle arrive on the launch's
+   * `onEvent`, dispatched by `onHostEvent`.
    */
   async approve(agentId: string, approvalId: string, approved: boolean, note?: string): Promise<void> {
     const entry = this.entries.get(agentId);
@@ -772,45 +846,27 @@ export class RunManager extends EventEmitter {
         `Agent '${agentId}' has no pending approval '${approvalId}' to resolve`
       );
     }
+    const hostRunId = entry.hostRunId;
+    if (entry.kind !== 'agent' || hostRunId === undefined) {
+      throw new NoActiveRunError(`Agent '${agentId}' has no live run to resolve approval '${approvalId}' on`);
+    }
 
-    const spec = entry.lastSpec ?? (await this.opts.loadSpec(agentId));
-    if (!spec) throw new AgentNotFoundError(`No saved agent spec for id '${agentId}'`);
-    const { provider, toolRegistry, hooks, sandbox } = buildAgentFromSpec(spec, agentId, undefined, {
-      secretsStore: this.opts.secretsStore,
-      hookTimeoutMs: this.opts.settingsStore?.activeProfile().hookTimeoutMs,
-    });
-
-    const controller = new AbortController();
-    const debugSession = this.makeDebugSession(agentId);
+    try {
+      await this.opts.host.resolveApproval(hostRunId, approvalId, { approved, note });
+    } catch (error) {
+      if (error instanceof HostRunNotActiveError) {
+        throw new NoActiveRunError(`Agent '${agentId}' has no pending approval '${approvalId}' to resolve`);
+      }
+      throw error;
+    }
+    // The resumed run keeps the launch's hostRunId and debug session (its
+    // extraHooks are the launch's own - breakpoints set mid-run still
+    // apply, exactly like before).
     this.setEntry(agentId, {
       status: 'running',
       reason: undefined,
       pendingApproval: undefined,
-      controller,
-      debugSession,
     });
-
-    resumeAfterApproval(
-      { id: approvalId, approved, note },
-      this.opts.approvalStore,
-      toolRegistry ?? new ToolRegistry(),
-      withAbortSignal(provider, controller.signal),
-      {
-        onAgentEvent: (event) => this.emitEvent(agentId, event),
-        exporter: this.makeTraceExporter(agentId),
-        captureContent: this.captureContentFor(agentId),
-        // Hooks must fire on the deferred, post-approval tool
-        // execution path too (see resume.ts in the core SDK) - not just
-        // the initial run() - so the same compiled hooks/sandbox are
-        // threaded through here.
-        hooks,
-        sandbox,
-        ...debugSession.hooks(),
-      },
-      this.opts.checkpointStore
-    )
-      .then((result) => this.handleRunSettled(agentId, result))
-      .catch((error: unknown) => this.handleRunFailed(agentId, error));
   }
 
   /**

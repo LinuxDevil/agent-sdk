@@ -12,9 +12,11 @@ import { registerMcpProbeRoute } from '../routes/mcpProbe';
 import { SecretsStore } from '../secretsStore';
 import { sdkRootDir } from '../sdkRoot';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import type { McpServerSpecV2 } from '../../shared/wireTypes';
 
 /**
@@ -65,12 +67,14 @@ describe('POST /catalog/mcp/probe', () => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-mcp-probe-'));
     secretsStore = new SecretsStore(baseDir);
     agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
   });
 

@@ -5,7 +5,7 @@ describe('DebugSession', () => {
   it('does not pause when no breakpoint matches and no step is armed', async () => {
     const onChange = vi.fn();
     const session = new DebugSession([], onChange);
-    await session.hooks().onLLMRequest?.({ model: 'x', messages: [] });
+    await session.agentHooks()[0].preGenerate?.({ messages: [], request: { model: 'x', messages: [] } });
     expect(onChange).not.toHaveBeenCalled();
     expect(session.snapshot().paused).toBe(false);
   });
@@ -14,7 +14,10 @@ describe('DebugSession', () => {
     const states: boolean[] = [];
     const session = new DebugSession([llmBreakpointKey('before')], (s) => states.push(s.paused));
 
-    const hookPromise = session.hooks().onLLMRequest?.({ model: 'x', messages: [{ role: 'user', content: 'hi' } as any] });
+    const hookPromise = session.agentHooks()[0].preGenerate?.({
+      messages: [],
+      request: { model: 'x', messages: [{ role: 'user', content: 'hi' } as any] },
+    });
 
     // Give the pause a tick to take effect before asserting/continuing.
     await new Promise((r) => setTimeout(r, 10));
@@ -30,9 +33,7 @@ describe('DebugSession', () => {
 
   it('pauses on tool:<name>:after breakpoints keyed by the tool call name', async () => {
     const session = new DebugSession([toolBreakpointKey('current-date', 'after')], () => {});
-    const toolCall = { id: '1', type: 'function' as const, function: { name: 'current-date', arguments: '{}' } };
-
-    const hookPromise = session.hooks().onToolResult?.(toolCall, undefined, 5);
+    const hookPromise = session.agentHooks()[0].postToolCall?.({ toolName: 'current-date', toolCallId: 'c1', args: {}, toolCall: { id: 'c1', type: 'function', function: { name: 'current-date', arguments: '{}' } }, messages: [] }, {} as any);
     await new Promise((r) => setTimeout(r, 10));
     expect(session.snapshot().paused).toBe(true);
     session.continue();
@@ -42,14 +43,14 @@ describe('DebugSession', () => {
   it('step() arms a one-shot pause at the next hook boundary regardless of breakpoints', async () => {
     const session = new DebugSession([], () => {});
     session.step();
-    const hookPromise = session.hooks().onLLMRequest?.({ model: 'x', messages: [] });
+    const hookPromise = session.agentHooks()[0].preGenerate?.({ messages: [], request: { model: 'x', messages: [] } });
     await new Promise((r) => setTimeout(r, 10));
     expect(session.snapshot().paused).toBe(true);
     session.continue();
     await hookPromise;
 
     // Step is one-shot: the next hook call does NOT pause again.
-    const secondPromise = session.hooks().onLLMResponse?.({} as any, 1, {} as any);
+    const secondPromise = session.agentHooks()[0].postGenerate?.({ messages: [], request: { model: 'x', messages: [] } }, {} as any);
     await secondPromise;
     expect(session.snapshot().paused).toBe(false);
   });
@@ -64,7 +65,7 @@ describe('DebugSession', () => {
 
   it('step() while already paused releases the current pause instead of stacking', async () => {
     const session = new DebugSession([llmBreakpointKey('before')], () => {});
-    const hookPromise = session.hooks().onLLMRequest?.({ model: 'x', messages: [] });
+    const hookPromise = session.agentHooks()[0].preGenerate?.({ messages: [], request: { model: 'x', messages: [] } });
     await new Promise((r) => setTimeout(r, 10));
     expect(session.snapshot().paused).toBe(true);
     session.step();
@@ -79,7 +80,7 @@ describe('DebugSession', () => {
     // staying paused forever with no way to resume it.
     const session = new DebugSession([llmBreakpointKey('before')], (s) => states.push({ paused: s.paused, autoResumed: s.autoResumed }), 15);
 
-    const hookPromise = session.hooks().onLLMRequest?.({ model: 'x', messages: [] });
+    const hookPromise = session.agentHooks()[0].preGenerate?.({ messages: [], request: { model: 'x', messages: [] } });
     await new Promise((r) => setTimeout(r, 10));
     expect(session.snapshot().paused).toBe(true);
 
@@ -91,7 +92,7 @@ describe('DebugSession', () => {
 
   it('pauseTimeoutMs: 0 disables the safety net (pause never auto-resumes on its own)', async () => {
     const session = new DebugSession([llmBreakpointKey('before')], () => {}, 0);
-    const hookPromise = session.hooks().onLLMRequest?.({ model: 'x', messages: [] });
+    const hookPromise = session.agentHooks()[0].preGenerate?.({ messages: [], request: { model: 'x', messages: [] } });
     await new Promise((r) => setTimeout(r, 30));
     expect(session.snapshot().paused).toBe(true);
     session.continue();

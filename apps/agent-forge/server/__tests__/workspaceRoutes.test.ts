@@ -7,9 +7,11 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import type { WorkspaceList, WorkspaceListItem } from '../../shared/wireTypes';
 import { workspaceIdFor } from '../workspace/workspaceId';
 import { WorkspaceRegistry } from '../workspace/workspaceRegistry';
@@ -52,13 +54,15 @@ describe('/workspaces routes', () => {
     studioHome = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-w01-home-'));
     staticDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-w01-static-'));
     fs.writeFileSync(path.join(staticDir, 'index.html'), '<!doctype html><title>forge</title>');
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     const runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     registry = new WorkspaceRegistry(path.join(studioHome, 'workspaces.json'));
     launchId = (await registry.ensure(baseDir)).id;

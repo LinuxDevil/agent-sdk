@@ -49,7 +49,13 @@ import { PROVIDER_KEY_ENV, isSecretProvider, type SecretsStore } from './secrets
  * own built-in tools: it exists to make that flow demonstrable/testable in
  * the app, not as a tool anyone would want in a real deployed agent.
  */
-const LOCAL_TOOLS: Record<string, ToolDescriptor> = {
+/**
+ * Studio-local tools a spec may name in addition to the SDK's built-ins.
+ * Exported so `buildAgentV2.ts` can hand them to the spec-v2 compiler's
+ * `createAgent({ tools })` record (the SDK's `SpecHost` has no `localTools`
+ * field - see buildAgentV2.ts's doc comment).
+ */
+export const LOCAL_TOOLS: Record<string, ToolDescriptor> = {
   'demo-approval': {
     displayName: 'Demo approval-gated tool',
     tool: {
@@ -144,6 +150,26 @@ function resolveProviderForSpec(type: string, model: string, secretsStore?: Secr
   return resolveSpecProvider(type, model);
 }
 
+/**
+ * 'provider/model' → the stored-key-aware provider: the `model` string a
+ * spec v2 writes (`spec.model`, e.g. 'openai/gpt-4o-mini') split at the
+ * FIRST '/' into provider type and model id ('openrouter/anthropic/x'
+ * keeps 'anthropic/x' as the model - same rule as specV2ToAgent's own
+ * split), then the exact `resolveProviderForSpec()` logic above. A real
+ * provider type with no stored key and no env var throws
+ * `LOUSHO_PROVIDER_MISSING_API_KEY`.
+ *
+ * Exists separately from `resolveProviderForSpec` because spec v2 carries
+ * the provider as one `'type/model'` string instead of v1's
+ * `provider: { type, model }` pair - `buildRunnableAgent` (buildAgentV2.ts)
+ * calls this to override the provider the SDK's compiler derives, so a
+ * Studio run uses the keys saved in Settings > Provider keys, not only the
+ * process environment.
+ */
+export function resolveProviderForModel(model: string, secretsStore?: SecretsStore): LLMProvider {
+  const slash = model.indexOf('/');
+  return resolveProviderForSpec(model.slice(0, slash), model.slice(slash + 1), secretsStore);
+}
 
 export interface BuildAgentFromSpecOptions {
   /** Stored provider keys, checked before env vars. */
