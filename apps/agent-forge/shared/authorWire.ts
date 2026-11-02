@@ -99,6 +99,42 @@ export const AUTHOR_SESSION_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 export const DEFAULT_SESSION_TITLE = 'New chat';
 
 /**
+ * Every failure code an Author tool may return (PLAN §8.3). The union is
+ * the whole P5 contract up front - AA06's read tools use a few of them,
+ * later tickets (propose, save, secrets, runs) use the rest, and nobody
+ * extends it silently: a new refusal mode is a plan change, not a code
+ * change.
+ */
+export type AuthorFailureCode =
+  | 'INVALID_INPUT' | 'AGENT_NOT_FOUND' | 'NOT_FOUND' | 'UNAVAILABLE' | 'TIMEOUT' | 'MCP_PROBE_FAILED'
+  | 'DRAFT_INVALID' | 'UNKNOWN_MODEL' | 'UNKNOWN_TOOL' | 'UNKNOWN_GUARDRAIL' | 'UNKNOWN_TRIGGER_TYPE' | 'UNKNOWN_AGENT_REF'
+  | 'EDITS_AND_INSTRUCTIONS' | 'ANCHOR_NOT_FOUND' | 'ANCHOR_AMBIGUOUS' | 'ANCHOR_OVERLAP' | 'INSTRUCTIONS_IN_FILE' | 'EMPTY_PATCH'
+  | 'DRAFT_REVIEW'
+  | 'UNANSWERED' | 'NO_PROPOSAL' | 'ALREADY_SAVED' | 'UNKNOWN_PROPOSAL' | 'STALE_PROPOSAL' | 'WRONG_AGENT'
+  | 'AMBIGUOUS_PROPOSAL' | 'INVALID_STORED_PROPOSAL' | 'BASE_CHANGED' | 'AGENT_GONE' | 'WRITE_FAILED' | 'BUSY'
+  | 'SECRET_EXISTS' | 'DECLINED' | 'RUN_BUSY' | 'RUN_FAILED' | 'TRACE_NOT_FOUND';
+
+/**
+ * The failure every Author tool returns instead of throwing (research
+ * §4: "failures are returned, never thrown"). `error` is model-facing -
+ * precisely what went wrong; `userMessage` is person-facing - plain
+ * words, no tool names or ids; `next` tells the model what to do now.
+ * Extra keys carry failure-specific detail (a patch failure's anchors, a
+ * save failure's latest proposal id).
+ */
+export interface AuthorToolFailure {
+  ok: false;
+  code: AuthorFailureCode;
+  /** For the model: what went wrong, precisely. */
+  error: string;
+  /** For the person: plain words, no tool names or ids. */
+  userMessage: string;
+  /** For the model: what to do now. */
+  next?: string;
+  [extra: string]: unknown;
+}
+
+/**
  * Every event one Author turn produces, in order. `AuthorTurnRunner`
  * emits them on its `'event'` channel as `(sessionId, event)`; the
  * WebSocket transport forwards them verbatim. `seq` is per-turn monotone

@@ -86,7 +86,7 @@ import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
 import type { ForkRunRequest, ForkRunResponse, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
-import { chatTriggersFor, singleWorkspace, type WorkspaceContext } from './workspace/context';
+import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
 import { configureStudioHome } from './workspace/studioPaths';
 import { workspaceRefFor } from './workspace/workspaceId';
@@ -117,14 +117,17 @@ import { registerAgentRoutes } from './routes/agentRoutes';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
-import { registerMcpProbeRoute } from './routes/mcpProbe';
+import { probeMcpServer, registerMcpProbeRoute } from './routes/mcpProbe';
 import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
-import { AuthorTurnRunner } from './author/turnRunner';
+import { AuthorTurnRunner, type AuthorTurn } from './author/turnRunner';
 import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './author/prompt/index';
+import { buildAuthorTools, type AuthorToolDeps } from './author/tools/index';
+import { createAuthorCatalogService } from './author/tools/catalogService';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
+import { sdkRootDir } from './sdkRoot';
 
 interface CreateAppBaseOptions {
   /** The folder Studio was launched in - the default workspace's root, and nothing more: per-agent code reads `workspaceOf(req).ref.root`, never this field directly. */
@@ -183,6 +186,13 @@ interface CreateAppBaseOptions {
    * `templates/` folder (tests pass one over a temp dir).
    */
   templateCatalog?: TemplateCatalog;
+  /**
+   * The bundled SDK docs folder the Author's `searchDocs` tool indexes
+   * (`<package root>/docs`, resolved in server/index.ts the same way
+   * `staticDir` is). Defaults to `<sdkRoot>/docs` (sdkRoot.ts); a
+   * missing folder makes `searchDocs` answer `UNAVAILABLE`, not fail.
+   */
+  docsDir?: string;
 }
 
 /**
@@ -826,6 +836,36 @@ export function createApp(options: CreateAppOptions): Express {
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
   const workspaceRegistry = options.workspaceRegistry ?? new WorkspaceRegistry(paths.workspaces);
+  const workspace = defaultWorkspaceContext(options);
+  // One resolver for the middleware below and the Author tools' per-call
+  // workspace lookup (PLAN 19.3 - until W02a it resolves the launch
+  // context whatever id comes in).
+  const workspaceResolver: WorkspaceResolver = singleWorkspace(workspace);
+  // One catalog for both the `/templates` routes and the `POST /agents`
+  // template branch - Studio-global state, not per-workspace.
+  const templates = options.templateCatalog ?? new TemplateCatalog();
+  const docsDir = options.docsDir ?? path.join(sdkRootDir(), 'docs');
+  const probeDeps = {
+    resolveSecret: (name: string) => secrets.getSecret(name),
+    ...(options.mcpConnect ? { connect: options.mcpConnect } : {}),
+  };
+  // The Author tools' global deps; `workspace` is bound per turn below,
+  // resolved from the session's recorded workspaceId through the app's
+  // resolver (the PLAN 19.3 seam - never a closed-over store).
+  const authorToolDeps: Omit<AuthorToolDeps, 'workspace'> = {
+    catalog: createAuthorCatalogService({ secretsStore: secrets }),
+    templates,
+    probeMcp: (server) => probeMcpServer(server, probeDeps),
+    docsDir,
+  };
+  const workspaceForTurn = async (turn: AuthorTurn): Promise<WorkspaceContext> => {
+    const session = await sessions.get(turn.sessionId);
+    const ctx = await workspaceResolver.resolve(session?.workspaceId);
+    if (ctx === undefined) {
+      throw new Error(`Workspace '${session?.workspaceId ?? 'unknown'}' is not available.`);
+    }
+    return ctx;
+  };
   // The Author's system prompt is byte-stable, so it is rendered once here
   // (fixed sections + the sorted catalog preamble) rather than per turn.
   const authorPrompt = buildAuthorSystemPrompt(authorPromptCatalogs());
@@ -836,14 +876,11 @@ export function createApp(options: CreateAppOptions): Express {
       settings,
       secrets,
       systemPrompt: () => authorPrompt,
-      // Stand-ins until AA06 (buildAuthorTools + real turnContextInput) merges.
-      buildTools: () => [],
+      buildTools: (turn) =>
+        buildAuthorTools(turn, { ...authorToolDeps, workspace: () => workspaceForTurn(turn) }),
+      // Stand-in until AA07 lands the real turnContextInput.
       turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
     });
-  const workspace = defaultWorkspaceContext(options);
-  // One catalog for both the `/templates` routes and the `POST /agents`
-  // template branch - Studio-global state, not per-workspace.
-  const templates = options.templateCatalog ?? new TemplateCatalog();
 
   const app = express();
   // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`
@@ -871,7 +908,7 @@ export function createApp(options: CreateAppOptions): Express {
   // read their per-workspace stores from workspaceOf(req), never a
   // closed-over singleton. Studio serves exactly one workspace today -
   // the launch folder - so this changes nothing user-visible.
-  app.use(workspaceMiddleware(singleWorkspace(workspace)));
+  app.use(workspaceMiddleware(workspaceResolver));
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
 
@@ -926,10 +963,7 @@ export function createApp(options: CreateAppOptions): Express {
   // The MCP node's Probe button: connect/list/close one server under a 10 s
   // deadline (routes/mcpProbe.ts). Secret refs resolve through the same
   // store Settings writes - names may appear in errors, values never do.
-  registerMcpProbeRoute(app, {
-    resolveSecret: (name) => secrets.getSecret(name),
-    ...(options.mcpConnect ? { connect: options.mcpConnect } : {}),
-  });
+  registerMcpProbeRoute(app, probeDeps);
   // Agent Author chat sessions (Studio-global files under
   // studioPaths().sessions; each session records which workspace it edits).
   registerAuthorRoutes(app, { sessions, runner: authorRunner });
