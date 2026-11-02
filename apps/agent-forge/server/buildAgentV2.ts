@@ -48,7 +48,7 @@ import {
 import type { AgentFlow } from 'lousho/flows';
 import { LOCAL_TOOLS, resolveProviderForModel } from './buildAgent';
 import type { FileApprovalStore } from './approvalStore';
-import type { SecretsStore } from './secretsStore';
+import { isSecretProvider, PROVIDER_KEY_ENV, type SecretsStore } from './secretsStore';
 
 /**
  * What a Studio workspace hands `buildRunnableAgent`: the workspace root
@@ -165,13 +165,36 @@ export async function buildRunnableAgent(
   };
 
   const { spec: compilable, localTools } = splitLocalTools(spec);
-  // The compiler resolves `spec.model` itself, env-only: a real provider
-  // would throw the SDK's `LOUSHO_PROVIDER_MISSING_API_KEY` before Studio's
-  // stored keys ever get a look. Compile with a stand-in model instead and
-  // restore the real provider+model onto the config below (a provider
-  // INSTANCE wins over `model` in createAgent's resolveModelSource).
-  const { config } = await compileSpec({ ...compilable, model: 'mock/spec-v2' }, host);
+  // Resolve Studio's provider FIRST: this throws the actionable
+  // `LOUSHO_PROVIDER_MISSING_API_KEY` before the compile does anything.
   const provider = resolveProviderForModel(spec.model, deps.secretsStore);
+  // Studio's stored keys are invisible to the SDK's env-only provider
+  // resolution inside compileSpec, so the stored key is seeded into its
+  // env var just for the compile (restored in finally). The REAL
+  // `spec.model` must stay on the spec being compiled: the compiler reads
+  // it for more than the provider - e.g. `instructionsByFamily` (a spec
+  // whose model is 'anthropic/claude-x' gets the 'claude' tail; a
+  // stand-in model would drop or mis-pick it).
+  const providerType = spec.model.slice(0, spec.model.indexOf('/')).toLowerCase();
+  let envVar: string | undefined;
+  let seeded = false;
+  if (isSecretProvider(providerType)) {
+    envVar = PROVIDER_KEY_ENV[providerType];
+    const stored = process.env[envVar] === undefined ? deps.secretsStore?.getKey(providerType) : undefined;
+    if (stored !== undefined) {
+      process.env[envVar] = stored;
+      seeded = true;
+    }
+  }
+  let config;
+  try {
+    ({ config } = await compileSpec(compilable, host));
+  } finally {
+    if (seeded && envVar !== undefined) delete process.env[envVar];
+  }
+  // The compiled provider is Studio's (stored keys over env); `model` keeps
+  // the spec's string for reporting/fallbacks (a provider INSTANCE wins
+  // over `model` in createAgent's resolveModelSource).
   config.provider = provider;
   config.model = spec.model;
   if (Object.keys(localTools).length > 0) {
