@@ -9,6 +9,12 @@
  * module instead of re-declaring them.
  */
 
+// The readiness row AA13's `computeRequirements` returns and the Author's
+// proposal cards carry: defined next to `RequirementKind` in wireTypes.ts
+// (where `AgentRecord.requirements` reads it), re-exported here so Author
+// code has one import site per the PLAN §8.5 contract.
+export type { Requirement } from './wireTypes';
+
 /** What the Author is working on this session. */
 export type AuthorFocus = { mode: 'create' } | { mode: 'edit'; agentId: string };
 

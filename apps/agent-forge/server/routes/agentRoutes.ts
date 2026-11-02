@@ -44,7 +44,9 @@ import type {
   PatchAgentMetaRequest,
   VersionSource,
 } from '../../shared/wireTypes';
+import { computeRequirements, requirementDeps } from '../author/requirements';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
+import type { SecretsStore } from '../secretsStore';
 import { defaultMeta, InvalidSpecError } from '../storage/agentRepo';
 import { copyAgentId, slugAgentId, uniqueAgentId } from '../storage/agentIds';
 import { withAgentLock } from '../storage/atomic';
@@ -276,6 +278,8 @@ function parseMetaBody(body: unknown): PatchAgentMetaRequest | string {
 export interface AgentRouteDeps {
   /** The app's one TemplateCatalog - the `{ template }` create branch reads through it (the templates folder ships in the SDK package). */
   templates: TemplateCatalog;
+  /** The app's one SecretsStore - the readiness checks (`GET .../requirements` and `AgentRecord.requirements`) read stored keys and named secrets through it. */
+  secrets: SecretsStore;
 }
 
 /**
@@ -379,7 +383,27 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         sendAgentNotFound(res, id);
         return;
       }
-      res.json(record);
+      // The readiness list (AA13): built per request from this workspace's
+      // root and the Studio-global secrets store - advisory, never blocks.
+      const requirements = await computeRequirements(record.spec, requirementDeps(ws.ref.root, deps.secrets));
+      res.json({ ...record, requirements });
+    })
+  );
+
+  // The spec's readiness rows on their own (PLAN §8.5): the same list
+  // `GET /agents/:id` embeds on `record.requirements`. Deps are built per
+  // call so `fileExists` resolves under this request's workspace root.
+  app.get(
+    '/agents/:id/requirements',
+    asyncRoute(async (req, res) => {
+      const ws = workspaceOf(req);
+      const id = paramId(req);
+      const spec = await ws.repo.readSpec(id);
+      if (spec === undefined) {
+        res.status(404).json({ error: 'Agent not found.' });
+        return;
+      }
+      res.json(await computeRequirements(spec, requirementDeps(ws.ref.root, deps.secrets)));
     })
   );
 

@@ -7,7 +7,8 @@
  *   POST /agents                     -> create blank/template/copy (body: CreateAgentRequest), 201 AgentRecord
  *   GET  /templates                  -> TemplateSummary[] - the SDK's shipped templates (templates/templateCatalog.ts)
  *   GET  /templates/:id              -> TemplateDetail (summary + spec v2 + README) | 400/404
- *   GET  /agents/:id                 -> AgentRecord | 404; ?view=legacy -> v1 AgentSpec
+ *   GET  /agents/:id                 -> AgentRecord (+ requirements) | 404; ?view=legacy -> v1 AgentSpec
+ *   GET  /agents/:id/requirements    -> Requirement[] readiness rows of the spec | 404 (routes/agentRoutes.ts)
  *   PUT  /agents/:id                 -> save the spec v2 working copy (body: { spec } or a bare v1 AgentSpec), 204
  *   PATCH /agents/:id/meta           -> toggle enabled / set labels (body: PatchAgentMetaRequest), 200 AgentMeta
  *   PUT  /agents/:id/layout          -> save the canvas layout (body: CanvasLayout), 204
@@ -953,7 +954,7 @@ export function createApp(options: CreateAppOptions): Express {
   // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).
-  registerAgentRoutes(app, { templates });
+  registerAgentRoutes(app, { templates, secrets });
   // Draft routes: get/create/withdraw/approve/reject the per-agent pending
   // ChangeDraft (server/routes/draftRoutes.ts - stores come from
   // workspaceOf(req), the workspace seam).
