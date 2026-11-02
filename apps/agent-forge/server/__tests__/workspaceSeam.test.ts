@@ -7,13 +7,14 @@ import type { AgentSpec } from 'lousho';
 import { TriggerRegistry } from 'lousho/triggers';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import type { AgentStore, AgentStoreEntry } from '../../src/persistence/AgentStore';
 import { WORKSPACE_ID_RE } from '../../shared/workspace';
 import { workspaceIdFor, workspaceRefFor } from '../workspace/workspaceId';
-import { AgentRepo } from '../storage/agentRepo';
 import { DraftStore } from '../storage/draftStore';
 import { VersionStore } from '../storage/versionStore';
 import type { WorkspaceContext } from '../workspace/context';
@@ -39,12 +40,14 @@ describe('workspace seam', () => {
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-w00-seam-'));
     agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
   });
 
@@ -113,6 +116,7 @@ describe('workspace seam', () => {
       },
       versions: new VersionStore(repo),
       drafts: new DraftStore(repo),
+      host: newTestHost(baseDir),
       runs: { status } as unknown as RunManager,
       chatTriggers: new TriggerRegistry(),
     };

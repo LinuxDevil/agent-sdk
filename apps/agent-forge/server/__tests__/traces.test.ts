@@ -11,9 +11,11 @@ import { listTraces } from 'lousho/traces';
 import type { AgentSpec } from 'lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import type { AgentRunStatusPayload, TraceDetailPayload, TraceSummaryPayload } from '../../shared/wireTypes';
 
 const SPEC: AgentSpec = {
@@ -43,13 +45,15 @@ describe('trace history routes', () => {
 
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-m5b-test-'));
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     app = createApp({ agentStore, runManager, baseDir });
   });

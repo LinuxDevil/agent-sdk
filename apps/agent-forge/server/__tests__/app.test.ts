@@ -6,9 +6,11 @@ import request from 'supertest';
 import type { AgentSpec } from 'lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 
 const SPEC: AgentSpec = {
   name: 'test-agent',
@@ -54,13 +56,15 @@ describe('HTTP API', () => {
 
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-n-app-test-'));
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     app = createApp({ agentStore, runManager, baseDir });
   });
@@ -231,13 +235,15 @@ describe('settings/secrets HTTP routes', () => {
     delete process.env.OPENAI_API_KEY;
     delete process.env.ANTHROPIC_API_KEY;
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-r-app-test-'));
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     const runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     app = createApp({ agentStore, runManager, baseDir });
   });

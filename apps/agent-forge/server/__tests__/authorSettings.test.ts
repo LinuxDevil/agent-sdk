@@ -6,9 +6,11 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import { SecretsStore } from '../secretsStore';
 import type { AuthorSettingsPayload } from '../../shared/authorWire';
 import type { SettingsFile } from '../../shared/wireTypes';
@@ -29,13 +31,15 @@ describe('author settings routes', () => {
 
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-aa02b-settings-'));
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     const runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     app = createApp({ agentStore, runManager, baseDir, access: { token: TOKEN } });
     for (const key of ENV_KEYS) {

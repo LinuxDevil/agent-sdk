@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { ConfigurationError, type AgentSpec } from 'lousho';
-import { buildAgentFromSpec } from './buildAgent';
+import { buildAgentFromSpec, resolveProviderForModel } from './buildAgent';
 import { SecretsStore } from './secretsStore';
 
 const BASE_SPEC: AgentSpec = {
@@ -89,6 +89,21 @@ describe('buildAgentFromSpec - provider resolution', () => {
   it('still throws for a genuinely unrecognized provider type (a real config error, not a missing key)', () => {
     const spec: AgentSpec = { ...BASE_SPEC, provider: { type: 'definitely-not-a-real-provider', model: 'x' } };
     expect(() => buildAgentFromSpec(spec, 'agent-bad-provider', undefined, { secretsStore })).toThrow();
+  });
+
+  it('resolveProviderForModel: splits a model string at the first slash and resolves mock', () => {
+    expect(resolveProviderForModel('mock/mock-1').name).toBe('mock');
+  });
+
+  it("resolveProviderForModel: a real provider with neither stored key nor env throws LOUSHO_PROVIDER_MISSING_API_KEY", () => {
+    try {
+      resolveProviderForModel('anthropic/claude-haiku-5-5', secretsStore);
+      expect.unreachable();
+    } catch (error) {
+      expect((error as ConfigurationError).code).toBe('LOUSHO_PROVIDER_MISSING_API_KEY');
+    }
+    secretsStore.setKey('anthropic', 'sk-ant-test');
+    expect(resolveProviderForModel('anthropic/claude-haiku-5-5', secretsStore).name).toBe('anthropic');
   });
 
   it('threads a configured hook timeout through to the compiled hook registry without throwing', () => {

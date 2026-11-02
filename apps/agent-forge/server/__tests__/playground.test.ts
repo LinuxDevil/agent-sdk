@@ -8,10 +8,12 @@ import { LLMProviderRegistry, createMockProvider, type AgentEvent } from 'lousho
 import request from 'supertest';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { SecretsStore } from '../secretsStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import { pumpRunEvents, substituteVariables, type PlaygroundEvent, type SseStream } from '../playground';
 
 type Ingested = { type: string; data: Record<string, unknown> };
@@ -60,14 +62,16 @@ describe('POST /playground/run', () => {
         headers: { 'content-type': 'application/json' },
       });
     }) as typeof fetch;
-    const agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
     const secretsStore = new SecretsStore(baseDir);
     const runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
       secretsStore,
     });
     app = createApp({

@@ -17,10 +17,12 @@ import { ingestBatch, listScores } from '../../../../src/observe/store';
 import { createApp } from '../app';
 import { judgePrompt, parseJudgeReply, startJudgeLoop, type JudgeFn, type JudgeLoop, type JudgeLoopOptions } from '../judge';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { SecretsStore } from '../secretsStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 
 const T0 = 1_700_000_000_000;
 
@@ -235,13 +237,15 @@ describe('judge loop and test-on-trace', () => {
 
   describe('POST /observe/api/v1/evaluators/:id/test', () => {
     const appWith = (judge: JudgeFn) => {
-      const agentStore = createFsAgentStore(baseDir);
+      const repo = new AgentRepo(baseDir);
+    const agentStore = createFsAgentStore(baseDir, repo);
       const runManager = new RunManager({
         baseDir,
         checkpointStore: new FileCheckpointStore(baseDir),
         approvalStore: new FileApprovalStore(baseDir),
-        loadSpec: (id) => agentStore.load(id),
-        saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+        loadSpec: (id) => repo.readSpec(id),
+        saveSpec: (id, spec) => repo.writeSpec(id, spec),
       });
       return createApp({ agentStore, runManager, baseDir, judge });
     };

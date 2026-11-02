@@ -18,11 +18,14 @@ import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
 import type { AgentStore } from '../../src/persistence/AgentStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
+import { withAgentLock } from '../storage/atomic';
 import { DraftStore } from '../storage/draftStore';
 import { VersionStore } from '../storage/versionStore';
 import { ChatTriggerAdapter } from '../chatTriggerAdapter';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
+import { InProcessAgentHost } from '../host/inProcessAgentHost';
+import type { AgentHost } from '../host/agentHost';
 import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
@@ -38,6 +41,8 @@ export interface WorkspaceContext {
   versions: VersionStore;
   /** Pending + settled change drafts under `<id>/drafts/` (storage/draftStore.ts). */
   drafts: DraftStore;
+  /** The host this workspace's agent runs execute through (InProcessAgentHost on Studio's SDK; a bridge host when the project has its own). */
+  host: AgentHost;
   runs: RunManager;
   /** `'chat'` → `ChatTriggerAdapter(runs)`; `POST /agents/:id/message` goes through it (chatTriggerAdapter.ts). */
   chatTriggers: TriggerRegistry;
@@ -95,12 +100,31 @@ export function chatTriggersFor(runs: RunManager): TriggerRegistry {
 export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceServices): WorkspaceContext {
   const repo = new AgentRepo(ref.root);
   const agentStore = createFsAgentStore(ref.root, repo);
+  const versions = new VersionStore(repo);
+  // One checkpoint/approval store pair per workspace, shared by the run
+  // manager (history/compare/fork) and the agent host (the run's own
+  // checkpoints and approval pauses).
+  const checkpointStore = new FileCheckpointStore(ref.root);
+  const approvalStore = new FileApprovalStore(ref.root);
+  const host = new InProcessAgentHost({
+    baseDir: ref.root,
+    checkpointStore,
+    approvalStore,
+    secretsStore: services.secretsStore,
+  });
   const runs = new RunManager({
     baseDir: ref.root,
-    checkpointStore: new FileCheckpointStore(ref.root),
-    approvalStore: new FileApprovalStore(ref.root),
-    loadSpec: (agentId) => agentStore.load(agentId),
-    saveSpec: (agentId, spec) => agentStore.save(agentId, spec),
+    checkpointStore,
+    approvalStore,
+    host,
+    loadSpec: (agentId) => repo.readSpec(agentId),
+    // A run-supplied spec becomes the working copy: baselined first if the
+    // yaml changed on disk, written under the per-agent lock.
+    saveSpec: (agentId, spec) =>
+      withAgentLock(agentId, async () => {
+        await versions.reconcileExternalEdit(agentId);
+        await repo.writeSpec(agentId, spec);
+      }),
     secretsStore: services.secretsStore,
     settingsStore: services.settingsStore,
     // Builder runs report to the observe daemon, so "Open trace" resolves.
@@ -110,8 +134,9 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     ref,
     repo,
     agentStore,
-    versions: new VersionStore(repo),
+    versions,
     drafts: new DraftStore(repo),
+    host,
     runs,
     chatTriggers: chatTriggersFor(runs),
   };

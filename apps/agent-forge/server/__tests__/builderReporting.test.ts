@@ -8,18 +8,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpecV2 } from 'lousho';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { agentTraceDir } from '../traceStore';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 
 type Ingested = { type: string; data: Record<string, unknown> };
 
-const SPEC: AgentSpec = {
+const SPEC: AgentSpecV2 = {
+  version: 2,
   name: 'builder-agent',
-  prompt: 'You are a helpful agent.',
-  provider: { type: 'mock', model: 'mock-1' },
+  model: 'mock/mock-1',
+  instructions: 'You are a helpful agent.',
 };
 
 function waitForDone(runManager: RunManager, agentId: string): Promise<{ status: string; traceId?: string }> {
@@ -43,6 +45,7 @@ describe('builder run reporting', () => {
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
+      host: newTestHost(baseDir),
       loadSpec: async () => undefined,
       ...(observe ? { observe } : {}),
     });

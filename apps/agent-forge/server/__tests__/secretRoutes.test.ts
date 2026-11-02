@@ -6,10 +6,12 @@ import request from 'supertest';
 import { createApp } from '../app';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { SecretsStore } from '../secretsStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
+import { AgentRepo } from '../storage/agentRepo';
 import type { AgentStore } from '../../src/persistence/AgentStore';
 
 const TOKEN = 'secret-routes-token-0123456789';
@@ -38,12 +40,14 @@ describe('secret routes', () => {
   beforeEach(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-d13-secrets-'));
     agentStore = createFsAgentStore(baseDir);
+    const repo = new AgentRepo(baseDir);
     runManager = new RunManager({
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     secrets = new SecretsStore(baseDir);
   });

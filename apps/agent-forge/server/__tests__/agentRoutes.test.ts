@@ -13,11 +13,12 @@ import { parse as parseYaml } from 'yaml';
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
+import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
-import type { AgentStore } from '../../src/persistence/AgentStore';
 import { AgentRepo } from '../storage/agentRepo';
+import type { AgentStore } from '../../src/persistence/AgentStore';
 import type { AgentListItem, AgentRecord } from '../../shared/wireTypes';
 
 const V1_SPEC: AgentSpec = {
@@ -47,8 +48,9 @@ describe('agent routes v2', () => {
       baseDir,
       checkpointStore: new FileCheckpointStore(baseDir),
       approvalStore: new FileApprovalStore(baseDir),
-      loadSpec: (id) => agentStore.load(id),
-      saveSpec: (id, spec) => agentStore.save(id, spec),
+      host: newTestHost(baseDir),
+      loadSpec: (id) => repo.readSpec(id),
+      saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
     repo = new AgentRepo(baseDir);
   });
