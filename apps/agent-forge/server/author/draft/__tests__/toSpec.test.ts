@@ -60,6 +60,15 @@ describe('draftToSpec', () => {
     }
   });
 
+  it("does not mutate the draft's triggers list when appending the chat trigger", () => {
+    const triggers: AuthorDraft['triggers'] = [{ id: 't1', type: 'cron', cron: '0 9 * * 1', prompt: 'Weekly sweep.' }];
+    const draft: AuthorDraft = { ...DRAFT, triggers };
+    const result = draftToSpec(draft);
+    expect(result.ok).toBe(true);
+    expect(draft.triggers).toBe(triggers);
+    expect(draft.triggers).toEqual([{ id: 't1', type: 'cron', cron: '0 9 * * 1', prompt: 'Weekly sweep.' }]);
+  });
+
   it('reports issues as path: message with [n] array indexes', () => {
     const result = draftToSpec({
       ...DRAFT,
@@ -123,6 +132,15 @@ describe('applyAuthorPatch', () => {
     if (result.ok) {
       expect(result.spec.triggers?.[result.spec.triggers.length - 1]).toEqual({ id: 't2', type: 'chat' });
     }
+  });
+
+  it("does not mutate the base's triggers list when appending the chat trigger", () => {
+    const triggers: AgentSpecV2['triggers'] = [{ id: 't1', type: 'cron', cron: '0 9 * * 1', prompt: 'Sweep.' }];
+    const base: AgentSpecV2 = { ...BASE, triggers };
+    const result = applyAuthorPatch(base, {});
+    expect(result.ok).toBe(true);
+    expect(base.triggers).toBe(triggers);
+    expect(base.triggers).toEqual([{ id: 't1', type: 'cron', cron: '0 9 * * 1', prompt: 'Sweep.' }]);
   });
 
   it('reports spec issues with [n] paths', () => {

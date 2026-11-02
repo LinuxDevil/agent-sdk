@@ -57,10 +57,12 @@ function validateSpec(candidate: unknown): SpecBuildResult {
 
 /**
  * Every agent keeps a chat trigger: when `spec.triggers` is a list without
- * a `type: 'chat'` entry, appends `{ id: 't<n>', type: 'chat' }` where `n`
- * is the first `t` id not taken; an absent `triggers` becomes just the
- * chat trigger. A `triggers` that is not a list is left alone - the
- * schema reports it.
+ * a `type: 'chat'` entry, replaces it with a copy ending in
+ * `{ id: 't<n>', type: 'chat' }` where `n` is the first `t` id not taken
+ * (a copy, not a push - `spec` is a shallow spread of the caller's draft
+ * or base spec, so pushing would write into their `triggers` array);
+ * an absent `triggers` becomes just the chat trigger. A `triggers` that
+ * is not a list is left alone - the schema reports it.
  */
 function ensureChatTrigger(spec: Record<string, unknown>): void {
   const triggers = spec.triggers;
@@ -78,7 +80,7 @@ function ensureChatTrigger(spec: Record<string, unknown>): void {
   );
   let n = 1;
   while (usedIds.has(`t${n}`)) n += 1;
-  triggers.push({ id: `t${n}`, type: 'chat' });
+  spec.triggers = [...triggers, { id: `t${n}`, type: 'chat' }];
 }
 
 /**
