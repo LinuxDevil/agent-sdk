@@ -544,6 +544,12 @@ export interface AgentRecord {
   updatedAt: string;
   /** Newest version number, `null` when the agent has no versions yet. */
   latestVersion: number | null;
+  /**
+   * The spec's readiness rows (`computeRequirements`, AA13): what the agent
+   * needs before it can run. The header's readiness chips and the Author's
+   * proposal cards read this; it is advisory only and never blocks a save.
+   */
+  requirements?: Requirement[];
 }
 
 /**
@@ -560,6 +566,24 @@ export type CreateAgentFrom = 'blank' | { template: string } | { copyOf: string 
  * it.
  */
 export type RequirementKind = 'provider_key' | 'secret' | 'mcp' | 'tool' | 'model';
+
+/**
+ * One readiness row `computeRequirements` returns (AA13, PLAN §8.5) - on
+ * `GET /agents/:id/requirements`, on `AgentRecord.requirements` and on the
+ * Author's proposal cards. `id` is exact and dedupe-stable
+ * (`provider:<p>`, `model:<id>`, `secret:<NAME>`, `env:<VAR>`, `mcp:<key>`,
+ * `tool:<name>`, `file:<path>`, `registry:<name>`); `status` is `ok`,
+ * `missing` or `unknown`; `label` names the thing, never a secret value;
+ * `fix` is the action that makes the row `ok` where one exists. Rows sort
+ * `missing`, then `unknown`, then `ok`, then by `id`.
+ */
+export interface Requirement {
+  id: string;
+  kind: RequirementKind;
+  status: 'ok' | 'missing' | 'unknown';
+  label: string;
+  fix?: { action: 'add_secret' | 'open_settings' | 'probe'; target: string };
+}
 
 /**
  * One row of `GET /templates` (the Templates screen's card grid): the
