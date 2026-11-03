@@ -66,10 +66,6 @@ import {
   agentSpecV2Schema,
   ConfigurationError,
   SDKError,
-  listBuiltinTools,
-  listGuardrails,
-  listModels,
-  listTriggerTypes,
   type AgentSpec,
   type AgentSpecV2,
   type ForkPatch,
@@ -120,14 +116,12 @@ import { registerAgentRoutes } from './routes/agentRoutes';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
-import { probeMcpServer, registerMcpProbeRoute } from './routes/mcpProbe';
+import { registerMcpProbeRoute } from './routes/mcpProbe';
 import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
-import { AuthorTurnRunner, type AuthorTurn } from './author/turnRunner';
-import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './author/prompt/index';
-import { buildAuthorTools, type AuthorToolDeps } from './author/tools/index';
-import { createAuthorCatalogService } from './author/tools/catalogService';
+import { AuthorTurnRunner } from './author/turnRunner';
+import { createAuthorRunner } from './author/wiring';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { sdkRootDir } from './sdkRoot';
@@ -152,9 +146,10 @@ interface CreateAppBaseOptions {
   workspaceRegistry?: WorkspaceRegistry;
   /**
    * The app's one AuthorTurnRunner (turns are in-flight memory, so tests
-   * pass their own to control the provider seam); built over the same
-   * sessions/settings/secrets stores when omitted, with the temporary
-   * no-tools/no-context stand-ins until AA06 merges.
+   * pass their own to control the provider seam); defaults to
+   * `createAuthorRunner` (author/wiring.ts) over the same
+   * sessions/settings/secrets stores. `startStudioServer` always passes
+   * one so `WS /assistant/stream` and the REST routes share it.
    */
   authorRunner?: AuthorTurnRunner;
   /**
@@ -818,38 +813,6 @@ function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefi
   };
 }
 
-/**
- * The D09 catalog functions (`/catalog/*` reads the same SDK calls)
- * projected onto the prompt's env-free {@link AuthorPromptCatalogs} shape:
- * a model's `available` flag and everything else that depends on keys or
- * the environment stays out of the byte-stable system prompt.
- */
-function authorPromptCatalogs(): AuthorPromptCatalogs {
-  return {
-    models: listModels().map((model) => ({
-      id: model.id,
-      capabilities: {
-        tools: model.capabilities.tools,
-        vision: model.capabilities.vision,
-        reasoning: model.capabilities.reasoning,
-        structuredOutput: model.capabilities.structuredOutput,
-      },
-    })),
-    tools: listBuiltinTools().map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      needsCredentials: tool.needsCredentials,
-      mutating: tool.mutating,
-    })),
-    guardrails: listGuardrails().map((guardrail) => ({
-      name: guardrail.name,
-      description: guardrail.description,
-      on: [...guardrail.on],
-    })),
-    triggers: listTriggerTypes().map((trigger) => ({ type: trigger.type, description: trigger.description })),
-  };
-}
-
 export function createApp(options: CreateAppOptions): Express {
   const { baseDir, staticDir, access, playgroundObserve, judge } = options;
   // The Studio home is process-wide and configured once, here, before any
@@ -873,37 +836,21 @@ export function createApp(options: CreateAppOptions): Express {
     resolveSecret: (name: string) => secrets.getSecret(name),
     ...(options.mcpConnect ? { connect: options.mcpConnect } : {}),
   };
-  // The Author tools' global deps; `workspace` is bound per turn below,
-  // resolved from the session's recorded workspaceId through the app's
-  // resolver (the PLAN 19.3 seam - never a closed-over store).
-  const authorToolDeps: Omit<AuthorToolDeps, 'workspace'> = {
-    catalog: createAuthorCatalogService({ secretsStore: secrets }),
-    templates,
-    probeMcp: (server) => probeMcpServer(server, probeDeps),
-    docsDir,
-  };
-  const workspaceForTurn = async (turn: AuthorTurn): Promise<WorkspaceContext> => {
-    const session = await sessions.get(turn.sessionId);
-    const ctx = await workspaceResolver.resolve(session?.workspaceId);
-    if (ctx === undefined) {
-      throw new Error(`Workspace '${session?.workspaceId ?? 'unknown'}' is not available.`);
-    }
-    return ctx;
-  };
-  // The Author's system prompt is byte-stable, so it is rendered once here
-  // (fixed sections + the sorted catalog preamble) rather than per turn.
-  const authorPrompt = buildAuthorSystemPrompt(authorPromptCatalogs());
+  // The app's one AuthorTurnRunner (author/wiring.ts holds the real
+  // prompt + tool surface): the same instance the `/assistant/stream`
+  // upgrade handler and the DELETE route's BUSY check share, so tests
+  // inject theirs through `options.authorRunner` rather than racing a
+  // second set of turn slots.
   const authorRunner =
     options.authorRunner ??
-    new AuthorTurnRunner({
+    createAuthorRunner({
       sessions,
       settings,
       secrets,
-      systemPrompt: () => authorPrompt,
-      buildTools: (turn) =>
-        buildAuthorTools(turn, { ...authorToolDeps, workspace: () => workspaceForTurn(turn) }),
-      // Stand-in until AA07 lands the real turnContextInput.
-      turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
+      templates,
+      docsDir,
+      workspaceResolver,
+      ...(options.mcpConnect ? { mcpConnect: options.mcpConnect } : {}),
     });
 
   const app = express();

@@ -18,9 +18,15 @@ import { SecretsStore } from './secretsStore';
 import { SettingsStore } from './settingsStore';
 import { startJudgeLoop, type JudgeLoopOptions } from './judge';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
-import { createWorkspaceContext } from './workspace/context';
+import { createWorkspaceContext, singleWorkspace } from './workspace/context';
 import { configureStudioHome, studioPaths } from './workspace/studioPaths';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
+import { AUTHOR_STREAM_PATH } from '../shared/authorWire';
+import { AuthorSessionStore } from './author/sessionStore';
+import { createAuthorUpgradeHandler } from './author/authorStream';
+import { AuthorTurnRunner } from './author/turnRunner';
+import { createAuthorRunner } from './author/wiring';
+import { TemplateCatalog } from './templates/templateCatalog';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -77,6 +83,14 @@ export interface StartStudioServerOptions {
    * turns it off (the e2e server does).
    */
   judge?: false | Partial<Omit<JudgeLoopOptions, 'secretsStore'>>;
+  /**
+   * The app's one AuthorTurnRunner, shared by the `/assistant/*` REST
+   * routes and `WS /assistant/stream`. Test seam (a runner with the
+   * `providerFor` seam on `mockModel`); defaults to the real key-backed
+   * runner `createAuthorRunner` builds - like `createApp`'s `authorRunner`
+   * option, which this is passed straight through to.
+   */
+  authorRunner?: AuthorTurnRunner;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -139,6 +153,25 @@ export async function startStudioServer(
   const token = options.token ?? (process.env[STUDIO_TOKEN_ENV] || mintStudioToken());
   const allowedOrigins = (process.env[STUDIO_ALLOWED_ORIGINS_ENV] ?? '').split(',').filter(Boolean);
   const access = { token, allowedHosts: allowedHostsFor(host), allowedOrigins };
+  const docsDir = resolveDocsDir(moduleDir);
+  // The Author's session store, template catalog and turn runner are built
+  // here - not inside createApp - because `WS /assistant/stream` needs the
+  // same instances the REST routes use: the runner's turn slots are what
+  // the one-running-turn-per-session rule and the DELETE 409 hang on, and
+  // the session store is what the stream's `?session=` existence check
+  // reads. Both are handed to createApp so it uses these, not fresh ones.
+  const authorSessions = new AuthorSessionStore(paths.sessions);
+  const templateCatalog = new TemplateCatalog();
+  const authorRunner =
+    options.authorRunner ??
+    createAuthorRunner({
+      sessions: authorSessions,
+      settings: settingsStore,
+      secrets: secretsStore,
+      templates: templateCatalog,
+      docsDir,
+      workspaceResolver: singleWorkspace(workspace),
+    });
   const app = createApp({
     workspace,
     baseDir,
@@ -147,9 +180,12 @@ export async function startStudioServer(
     settingsStore,
     workspaceRegistry: registry,
     staticDir,
-    docsDir: resolveDocsDir(moduleDir),
+    docsDir,
     access,
     eventBus: workspace.events,
+    sessions: authorSessions,
+    authorRunner,
+    templateCatalog,
   });
   const server = http.createServer(app);
   // One upgrade listener for every WS endpoint: the shared Host/Origin/
@@ -157,6 +193,10 @@ export async function startStudioServer(
   const upgradeRouter = createUpgradeRouter(server, access);
   attachWebSocketServer(upgradeRouter, workspace.runs);
   attachEventsWebSocket(upgradeRouter, workspace.events);
+  upgradeRouter.register(
+    AUTHOR_STREAM_PATH,
+    createAuthorUpgradeHandler({ runner: authorRunner, sessions: authorSessions })
+  );
 
   await listen(server, port, host);
   const judgeOption = options.judge ?? (options.observe === false ? false : {});

@@ -56,6 +56,13 @@ import type {
   WorkspaceListItem,
 } from '../../shared/wireTypes';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
+import {
+  AUTHOR_STREAM_PATH,
+  type AuthorFocus,
+  type AuthorSession,
+  type AuthorSessionSummary,
+  type AuthorSettingsPayload,
+} from '../../shared/authorWire';
 import type { AgentStoreEntry } from '../persistence/AgentStore';
 import type { AgentApi } from '../persistence/HttpAgentStore';
 
@@ -608,6 +615,52 @@ class RuntimeClient implements AgentApi {
       closedByCaller = true;
       ws.close();
     };
+  }
+
+  // -------------------------------------------------------------------
+  // `/assistant/*` - the Agent Author's chat sessions, settings and live
+  // turn stream (server/author/**). The panel (AA15) talks only through
+  // these.
+  // -------------------------------------------------------------------
+
+  /** Starts an Author chat (`POST /assistant/sessions`); `focus` omitted defaults server-side to "new agent". */
+  // fallow-ignore-next-line unused-class-member -- the Author panel's New-chat flow calls it once AA15 lands
+  async createAuthorSession(focus?: AuthorFocus): Promise<AuthorSession> {
+    return this.request('/assistant/sessions', { method: 'POST', body: JSON.stringify({ focus }) });
+  }
+
+  /** The chat history list (`GET /assistant/sessions`), newest first. */
+  // fallow-ignore-next-line unused-class-member -- the Author panel's history list calls it once AA15 lands
+  async listAuthorSessions(): Promise<AuthorSessionSummary[]> {
+    return this.request('/assistant/sessions', { method: 'GET' });
+  }
+
+  /** One Author chat with its transcript (`GET /assistant/sessions/:id`); rejects on 404. */
+  // fallow-ignore-next-line unused-class-member -- the Author panel calls it once AA15 lands
+  async getAuthorSession(id: string): Promise<AuthorSession> {
+    return this.request(`/assistant/sessions/${encodeURIComponent(id)}`, { method: 'GET' });
+  }
+
+  /** Deletes an Author chat (`DELETE /assistant/sessions/:id`); rejects on 404/409. */
+  // fallow-ignore-next-line unused-class-member -- the Author panel calls it once AA15 lands
+  async deleteAuthorSession(id: string): Promise<void> {
+    await this.request(`/assistant/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  /** The Author's model choices plus `ready`/`missingKeyFor` (`GET /settings/author`). */
+  // fallow-ignore-next-line unused-class-member -- the Author panel's setup card calls it once AA15 lands
+  async getAuthorSettings(): Promise<AuthorSettingsPayload> {
+    return this.request('/settings/author', { method: 'GET' });
+  }
+
+  /**
+   * `WS /assistant/stream?session=<id>&token=<token>` - the raw socket
+   * `connectAuthorStream` (src/author/authorStream.ts) wraps with reconnects.
+   */
+  openAuthorSocket(sessionId: string): WebSocket {
+    const query = new URLSearchParams({ session: sessionId });
+    if (this.token) query.set('token', this.token);
+    return new WebSocket(`${this.wsBaseUrl()}${AUTHOR_STREAM_PATH}?${query}`);
   }
 
   /**
