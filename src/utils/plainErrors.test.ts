@@ -46,6 +46,11 @@ const ALLOWED: Array<{ file: string; message: string; reason: string }> = [
     message: '`telegram file download failed:',
     reason: 'a string literal that becomes generated-project source; a scaffolded app must not import SDK internals such as SDKError',
   },
+  {
+    file: 'spec/generators/typescript.ts',
+    message: '\\`handoff target',
+    reason: 'a string literal that becomes generated-module source; a generated spec module must not import SDK internals such as SDKError',
+  },
 ];
 
 function sourceFiles(dir: string): string[] {
