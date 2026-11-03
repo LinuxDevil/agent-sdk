@@ -42,6 +42,8 @@ function deps(docsDir: string): AuthorToolDeps {
     templates: { list: async () => [] },
     probeMcp: async () => ({ ok: true, tools: [] }),
     docsDir,
+    reviewDraft: async () => ({ pass: true }),
+    requirements: async () => [],
   };
 }
 
