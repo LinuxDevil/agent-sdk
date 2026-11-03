@@ -937,7 +937,7 @@ export function createApp(options: CreateAppOptions): Express {
   registerMcpProbeRoute(app, probeDeps);
   // Agent Author chat sessions (Studio-global files under
   // studioPaths().sessions; each session records which workspace it edits).
-  registerAuthorRoutes(app, { sessions, runner: authorRunner, workspaceResolver });
+  registerAuthorRoutes(app, { sessions, runner: authorRunner, workspaceResolver, secrets });
   // The Author's own settings (author/settings.ts): which model its turns
   // run on and whether a key for it exists.
   registerAuthorSettingsRoutes(app, { settings, secrets });
