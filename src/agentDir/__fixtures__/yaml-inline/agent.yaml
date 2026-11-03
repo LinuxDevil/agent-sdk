@@ -1,3 +1,4 @@
 description: Instructions live in the config, no other files
 instructions: You are the YAML fixture agent.
+model: openai/gpt-4o-mini
 maxSteps: 2
