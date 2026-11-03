@@ -215,7 +215,7 @@ export async function specV2ToAgent(spec: AgentSpecV2, host: SpecHost): Promise<
   let compileHost = host;
   let nodeIds: NodeIdIndex | undefined;
   if (host.exporter !== undefined && !isNodeIdExporter(host.exporter)) {
-    nodeIds = { toolNodeByName: {}, mcpServers: {}, handoffByToolName: {}, memorySlots: {}, subagents: {} };
+    nodeIds = { toolNodeByName: {}, mcpServers: {}, handoffByToolName: {}, memorySlots: {}, guardrailByName: {}, subagents: {} };
     compileHost = { ...host, exporter: nodeIdExporter(host.exporter, nodeIds) };
   }
   const compiled = await compileSpec(parsed, compileHost);
