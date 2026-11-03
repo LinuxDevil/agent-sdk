@@ -69,7 +69,15 @@ invoke_agent {agent name}          INTERNAL
   chat {model}                     CLIENT     one per provider.generate() call
   execute_tool {tool name}         INTERNAL   one per tool call
     guardrail {guardrail name}     INTERNAL   one per tool guardrail check
+  handoff {target agent}           INTERNAL   zero-length marker, one per honored handoff
+  approval.wait {tool name}        INTERNAL   zero-length marker, one per paused approval
 ```
+
+`handoff` and `approval.wait` are marker spans: `startTime === endTime`, so a
+consumer can mark the handoff target as the run's active node (`lousho.handoff.from`
+/ `lousho.handoff.to`) and a paused call's tool node as waiting
+(`lousho.approval.id` / `lousho.approval.kind` / `lousho.approval.expires_at`)
+without holding a span open across the wait.
 
 Each `send()` / `stream()` call is a trace of its own unless you parent it.
 To put several runs in one trace, pass a span id of yours as `parentSpanId`;

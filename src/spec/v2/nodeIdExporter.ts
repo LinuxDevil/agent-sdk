@@ -10,7 +10,7 @@
  * Only node ids ever land on spans — never spec values or secrets.
  * Node-side by use (the compiler is the only caller); no `node:*` imports.
  */
-import { FlowAttr, FLOW_NODE_SPAN_NAME, GUARDRAIL_SPAN_NAME, GenAiAttr, GenAiOperation, SdkAttr } from '../../execution/semconv';
+import { APPROVAL_WAIT_SPAN_NAME, FlowAttr, FLOW_NODE_SPAN_NAME, GUARDRAIL_SPAN_NAME, GenAiAttr, GenAiOperation, HANDOFF_SPAN_NAME, SdkAttr } from '../../execution/semconv';
 import type { Span, TraceExporter } from '../../execution/tracing';
 import type { HandoffSpec } from './handoffs';
 import { specNodeIds } from './nodeIds';
@@ -94,6 +94,10 @@ interface SpanScope {
   agentNode: string;
   /** The index this scope's spans resolve tool names against. */
   index: NodeIdIndex;
+  /** The `handoff:<to>` node id a `handoff` marker switched this run to (S20c); its `chat` spans stamp it from then on. */
+  activeNode?: string;
+  /** Set on the entries `invoke_agent` spans open — the only entries a `handoff` marker may switch. */
+  forRun?: boolean;
 }
 
 /** A rule's answer: the `lousho.node.id` value to stamp (none stamps nothing) and the scope the span's children get. */
@@ -109,15 +113,19 @@ type NodeIdRule = (span: Span, parent: SpanScope) => RuleHit | undefined;
 const invokeAgentRule: NodeIdRule = (span, parent) => {
   if (span.attributes[GenAiAttr.OPERATION_NAME] !== GenAiOperation.INVOKE_AGENT) return undefined;
   const sub = span.attributes[SdkAttr.SUBAGENT_NAME];
-  if (typeof sub !== 'string') return { nodeId: parent.agentNode };
+  if (typeof sub !== 'string') {
+    // Every run gets its own scope entry, so a `handoff` marker switches this run's
+    // later `chat` spans without touching another run resolving through the same parent.
+    return { nodeId: parent.agentNode, entry: { scope: parent.scope, agentNode: parent.agentNode, index: parent.index, forRun: true } };
+  }
   const agentNode = `${parent.scope}sub:${sub}`;
   // A sub-agent with no index of its own (remote, or not spec-compiled) still stamps `sub:<n>`; its tools resolve none.
-  return { nodeId: agentNode, entry: { scope: `${agentNode}/`, agentNode, index: parent.index.subagents[sub] ?? EMPTY_INDEX } };
+  return { nodeId: agentNode, entry: { scope: `${agentNode}/`, agentNode, index: parent.index.subagents[sub] ?? EMPTY_INDEX, forRun: true } };
 };
 
-/** `chat`: the enclosing agent's node id. */
+/** `chat`: the node the run is on — its agent's, or the handoff target's once a `handoff` marker switched it. */
 const chatRule: NodeIdRule = (span, parent) =>
-  span.attributes[GenAiAttr.OPERATION_NAME] === GenAiOperation.CHAT ? { nodeId: parent.agentNode } : undefined;
+  span.attributes[GenAiAttr.OPERATION_NAME] === GenAiOperation.CHAT ? { nodeId: parent.activeNode ?? parent.agentNode } : undefined;
 
 /** `remember_x`/`recall_x`/`forget_x` memory tools name their slot. */
 const MEMORY_TOOL_NAME = /^(?:remember|recall|forget)_(.+)$/;
@@ -158,6 +166,25 @@ const guardrailRule: NodeIdRule = (span, parent) => {
   return nodeId === undefined ? undefined : { nodeId: parent.scope + nodeId };
 };
 
+/** `handoff <to>` (S20c): `<scope>handoff:<to>` — and the run's active node from then on. */
+const handoffRule: NodeIdRule = (span, parent) => {
+  if (!span.name.startsWith(`${HANDOFF_SPAN_NAME} `)) return undefined;
+  const to = span.attributes[SdkAttr.HANDOFF_TO];
+  if (typeof to !== 'string') return undefined;
+  const nodeId = `${parent.scope}handoff:${to}`;
+  // Only a run's own entry may be switched (an unparented marker sees the shared root).
+  if (parent.forRun) parent.activeNode = nodeId;
+  return { nodeId };
+};
+
+/** `approval.wait <tool>` (S20c): the node id `execute_tool <tool>` would get under the same scope. */
+const approvalWaitRule: NodeIdRule = (span, parent) => {
+  if (!span.name.startsWith(`${APPROVAL_WAIT_SPAN_NAME} `)) return undefined;
+  const name = toolNameOf(span);
+  const nodeId = name === undefined ? undefined : toolNodeId(name, parent.index);
+  return nodeId === undefined ? undefined : { nodeId: parent.scope + nodeId };
+};
+
 /** `flow.node <type>` with `lousho.flow.node.id`: the step's `flow:<id>`. */
 const flowNodeRule: NodeIdRule = (span) => {
   if (span.name !== FLOW_NODE_SPAN_NAME && !span.name.startsWith(`${FLOW_NODE_SPAN_NAME} `)) return undefined;
@@ -165,8 +192,8 @@ const flowNodeRule: NodeIdRule = (span) => {
   return typeof step === 'string' ? { nodeId: `flow:${step}` } : undefined;
 };
 
-/** The S20a mapping table, first hit wins; anything else gets no `lousho.node.id` (S20c extends it). */
-const RULES: readonly NodeIdRule[] = [invokeAgentRule, chatRule, toolRule, guardrailRule, flowNodeRule];
+/** The S20a mapping table, first hit wins; anything else gets no `lousho.node.id`. */
+const RULES: readonly NodeIdRule[] = [invokeAgentRule, chatRule, toolRule, guardrailRule, handoffRule, approvalWaitRule, flowNodeRule];
 
 /** The index of a sub-agent compiled outside the spec pipeline (its spans stamp but resolve no members). */
 const EMPTY_INDEX: NodeIdIndex = { toolNodeByName: {}, mcpServers: {}, handoffByToolName: {}, memorySlots: {}, guardrailByName: {}, subagents: {} };
