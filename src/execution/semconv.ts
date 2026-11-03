@@ -138,6 +138,8 @@ export const SdkAttr = {
   SUBAGENT_DEPTH: 'lousho.subagent.depth',
   /** On a sub-agent's `invoke_agent` span, the `task` call's taskId. */
   TASK_ID: 'lousho.task.id',
+  /** On spans of an agent built from a spec: the builder node id (`agent`, `tool:web_fetch`, `sub:research`, `flow:s1`, …). */
+  NODE_ID: 'lousho.node.id',
 } as const;
 
 /**
