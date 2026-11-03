@@ -214,9 +214,12 @@ export async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hoo
     if (ruled?.rejection) {
       return { toolCall, args: hookedArgs, requiresApproval: false, rejection: ruled.rejection };
     }
-    // Tool guardrails run on calls that were not denied; a block throws GuardrailError.
+    // Tool guardrails run on calls that were not denied; a block throws GuardrailError. A check's span is a child of this call's span.
     const args = ctx.scope
-      ? await checkToolGuardrails(ctx.scope.runtime, { toolName: toolCall.function.name, args: hookedArgs, messages: ctx.messages })
+      ? await checkToolGuardrails(
+          { ...ctx.scope.runtime, guardrailParentSpanId: ctx.scope.spanId },
+          { toolName: toolCall.function.name, args: hookedArgs, messages: ctx.messages }
+        )
       : hookedArgs;
     // Follow-up: an `allow` / `ask` rule replaces the tool's own ask, not its deny.
     const own = await checkNeedsApproval(toolCall, ctx, args);
