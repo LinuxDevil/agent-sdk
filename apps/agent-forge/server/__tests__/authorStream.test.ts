@@ -3,7 +3,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { WebSocket } from 'ws';
-import { mockModel, type MockModel } from 'lousho/testing';
+import { mockModel } from 'lousho/testing';
+import type { LLMProvider, StreamChunk } from 'lousho';
 import { startStudioServer, type StudioServerHandle } from '../index';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { AuthorSessionStore } from '../author/sessionStore';
@@ -16,6 +17,67 @@ import type { AuthorServerEvent, AuthorSession } from '../../shared/authorWire';
 const TOKEN = 'author-stream-token-0123456';
 const REQ_A = 'req-aa03-0001';
 const REQ_B = 'req-aa03-0002';
+const REQ_RESUME = 'req-aa04-0001';
+
+/** A promise the test resolves by hand (the gated model's stream pauses on it). */
+function deferred(): { promise: Promise<void>; release: () => void } {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, release };
+}
+
+/**
+ * A provider whose one stream emits `first` deltas, waits on `gateA`,
+ * emits `second` deltas (resolving `emittedSecond` once the last was
+ * yielded), waits on `gateB`, then emits `last` and finishes. Lets the
+ * test park a turn mid-flight, drop the client, and resume against the
+ * replay buffer while the model is still "typing".
+ */
+function gatedModel(script: {
+  first: string[];
+  second: string[];
+  last: string[];
+  gateA: Promise<void>;
+  gateB: Promise<void>;
+}): { provider: LLMProvider; emittedSecond: Promise<void> } {
+  let markSecond!: () => void;
+  const emittedSecond = new Promise<void>((resolve) => {
+    markSecond = resolve;
+  });
+  const full = [...script.first, ...script.second, ...script.last].join('');
+  const provider: LLMProvider = {
+    name: 'gated-mock',
+    defaultModel: 'gated-model',
+    generate: () => Promise.reject(new Error('generate() is not used by the Author')),
+    stream: () => {
+      const fullStream = (async function* (): AsyncGenerator<StreamChunk> {
+        for (const text of script.first) yield { type: 'text-delta', textDelta: text };
+        await script.gateA;
+        for (const text of script.second) yield { type: 'text-delta', textDelta: text };
+        markSecond();
+        await script.gateB;
+        for (const text of script.last) yield { type: 'text-delta', textDelta: text };
+        yield { type: 'finish', finishReason: 'stop' };
+      })();
+      return Promise.resolve({
+        fullStream,
+        textStream: (async function* () {
+          yield full;
+        })(),
+        text: Promise.resolve(full),
+        usage: Promise.resolve(undefined),
+        finishReason: Promise.resolve('stop'),
+        toolCalls: Promise.resolve([]),
+      });
+    },
+    supportsTools: () => true,
+    supportsStreaming: () => true,
+    getModels: () => Promise.resolve(['gated-model']),
+  };
+  return { provider, emittedSecond };
+}
 
 /**
  * `WS /assistant/stream` end to end: a real `startStudioServer` with the
@@ -26,16 +88,17 @@ const REQ_B = 'req-aa03-0002';
 describe('WS /assistant/stream (startStudioServer)', () => {
   let baseDir: string;
   let handle: StudioServerHandle;
-  let model: MockModel;
+  let model: LLMProvider;
   let origin: string;
   let session: AuthorSession;
   let otherSession: AuthorSession;
+  let runner: AuthorTurnRunner;
 
   beforeAll(async () => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-aa03-'));
     const home = path.join(baseDir, '.lousho');
     model = mockModel(['Hi']);
-    const runner = new AuthorTurnRunner({
+    runner = new AuthorTurnRunner({
       sessions: new AuthorSessionStore(studioPathsFor(home).sessions),
       settings: new SettingsStore(home),
       secrets: new SecretsStore(home),
@@ -230,11 +293,17 @@ describe('WS /assistant/stream (startStudioServer)', () => {
         message: 'Studio could not read that message.',
         code: 'BAD_MESSAGE',
       });
-      // chat.resume is AA04's reattach: AA03 answers it like any unknown frame,
-      // echoing the requestId it carried.
+      // chat.resume for a requestId the replay buffer never saw answers
+      // UNKNOWN_REQUEST on this socket only (seq 0, per-socket reply).
       a.ws.send(JSON.stringify({ type: 'chat.resume', requestId: 'req-resume-01' }));
       const resume = await waitForEvent(a.events, (e) => e.type === 'turn.error' && e.requestId === 'req-resume-01');
-      expect(resume).toMatchObject({ type: 'turn.error', requestId: 'req-resume-01', seq: 0, code: 'BAD_MESSAGE' });
+      expect(resume).toEqual({
+        type: 'turn.error',
+        requestId: 'req-resume-01',
+        seq: 0,
+        message: 'This reply is no longer available. Showing the saved chat.',
+        code: 'UNKNOWN_REQUEST',
+      });
       // A structurally wrong message with a requestId echoes it too.
       a.ws.send(JSON.stringify({ type: 'chat.send', requestId: 'req-nope-0001' }));
       const noText = await waitForEvent(a.events, (e) => e.type === 'turn.error' && e.requestId === 'req-nope-0001');
@@ -244,6 +313,85 @@ describe('WS /assistant/stream (startStudioServer)', () => {
     } finally {
       a.ws.close();
       b.ws.close();
+    }
+  });
+
+  it('chat.resume mid-turn replays seq > afterSeq, then the live tail, with no duplicates', async () => {
+    const gateA = deferred();
+    const gateB = deferred();
+    const gated = gatedModel({ first: ['aa', 'bb'], second: ['cc', 'dd'], last: ['ee'], gateA: gateA.promise, gateB: gateB.promise });
+    model = gated.provider;
+    const a = await connect(session.id);
+    let b: StreamClient | undefined;
+    try {
+      chatSend(a.ws, REQ_RESUME, 'talk');
+      // seq 1 turn.started, seqs 2-3 the two first-stage deltas.
+      await waitForEvent(a.events, (e) => e.seq === 3);
+      a.ws.close();
+      // The turn keeps running with no subscribers: two more deltas land
+      // in the replay buffer, then the model parks on gateB. Wait on the
+      // runner's own emit for seq 5 (recorded before the buffer replays).
+      gateA.release();
+      await new Promise<void>((resolve, reject) => {
+        const deadline = setTimeout(() => reject(new Error('seq 5 never emitted')), 5000);
+        const check = (_s: string, e: AuthorServerEvent) => {
+          if (e.requestId === REQ_RESUME && e.seq === 5) {
+            runner.off('event', check);
+            clearTimeout(deadline);
+            resolve();
+          }
+        };
+        runner.on('event', check);
+      });
+      await gated.emittedSecond;
+      // While it runs, the session record reports the in-flight requestId.
+      const record = (await (
+        await fetch(`${origin}/assistant/sessions/${session.id}`, { headers: { [STUDIO_TOKEN_HEADER]: TOKEN } })
+      ).json()) as { runningRequestId: string | null };
+      expect(record.runningRequestId).toBe(REQ_RESUME);
+
+      // The dropped client reconnects and resumes from its last seq.
+      b = await connect(session.id);
+      b.ws.send(JSON.stringify({ type: 'chat.resume', requestId: REQ_RESUME, afterSeq: 3 }));
+      // The replayed buffer tail: seqs 4-5 only.
+      await waitForEvent(b.events, (e) => e.seq === 5);
+      expect(b.events.map((e) => e.seq)).toEqual([4, 5]);
+      // gateB releases the live tail: delta seq 6, turn.finished seq 7.
+      gateB.release();
+      await waitForEvent(b.events, (e) => e.type === 'turn.finished');
+      expect(b.events.map((e) => e.seq)).toEqual([4, 5, 6, 7]);
+      expect(b.events.slice(0, 3).every((e) => e.type === 'text.delta')).toBe(true);
+      expect(b.events[3]).toMatchObject({ type: 'turn.finished', requestId: REQ_RESUME, finishReason: 'stop' });
+    } finally {
+      gateA.release();
+      gateB.release();
+      a.ws.close();
+      b?.ws.close();
+    }
+  });
+
+  it('chat.resume after the turn settled sends only the terminal event', async () => {
+    model = mockModel(['quick reply']);
+    const a = await connect(session.id);
+    let b: StreamClient | undefined;
+    try {
+      chatSend(a.ws, REQ_A, 'hi');
+      const end = await waitForEvent(a.events, (e) => e.type === 'turn.finished');
+      // The reconnect happens after the turn settled: the resume answer
+      // is the terminal event alone - never the turn's deltas again.
+      b = await connect(session.id);
+      b.ws.send(JSON.stringify({ type: 'chat.resume', requestId: REQ_A, afterSeq: 0 }));
+      await waitForEvent(b.events, (e) => e.type === 'turn.finished' || e.type === 'turn.error');
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(b.events).toEqual([end]);
+      // And the session record reports no running reply.
+      const record = (await (
+        await fetch(`${origin}/assistant/sessions/${session.id}`, { headers: { [STUDIO_TOKEN_HEADER]: TOKEN } })
+      ).json()) as { runningRequestId: string | null };
+      expect(record.runningRequestId).toBeNull();
+    } finally {
+      a.ws.close();
+      b?.ws.close();
     }
   });
 });

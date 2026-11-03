@@ -17,7 +17,6 @@ import { runtimeClient } from '../runtime/runtimeClient';
 export type AuthorStreamState = 'connecting' | 'open' | 'reconnecting' | 'closed';
 
 /** The stream's callbacks: events verbatim, state on transitions, `onOpen` after each successful (re)connect. */
-// fallow-ignore-next-line unused-export -- the Author chat hook (AA15a) implements it
 export interface AuthorStreamHandlers {
   onEvent(event: AuthorServerEvent): void;
   onState(state: AuthorStreamState): void;
@@ -26,7 +25,6 @@ export interface AuthorStreamHandlers {
 }
 
 /** The handle `connectAuthorStream` returns: write client messages, or end the stream for good. */
-// fallow-ignore-next-line unused-export -- the Author chat hook (AA15a) holds it
 export interface AuthorStream {
   /** JSON-sends `message` when the socket is open; `false` (nothing sent) otherwise. */
   send(message: AuthorClientMessage): boolean;
@@ -46,7 +44,6 @@ const SESSION_NOT_FOUND_CLOSE = 4404;
  * `options.open` is the socket seam (tests pass a fake; the default is
  * `runtimeClient.openAuthorSocket`, which adds the `?token=`).
  */
-// fallow-ignore-next-line unused-export -- the Author chat hook (AA15a) connects through it
 export function connectAuthorStream(
   sessionId: string,
   handlers: AuthorStreamHandlers,
@@ -129,7 +126,6 @@ export function connectAuthorStream(
 }
 
 /** A fresh `chat.send`/`chat.stop` `requestId` (the runner's charset, no dashes). */
-// fallow-ignore-next-line unused-export -- the Author chat hook (AA15a) stamps requestIds with it
 export function newRequestId(): string {
   return `r_${crypto.randomUUID().replace(/-/g, '')}`;
 }

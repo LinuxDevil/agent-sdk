@@ -60,6 +60,7 @@ import {
   AUTHOR_STREAM_PATH,
   type AuthorFocus,
   type AuthorSession,
+  type AuthorSessionRecord,
   type AuthorSessionSummary,
   type AuthorSettingsPayload,
 } from '../../shared/authorWire';
@@ -635,9 +636,13 @@ class RuntimeClient implements AgentApi {
     return this.request('/assistant/sessions', { method: 'GET' });
   }
 
-  /** One Author chat with its transcript (`GET /assistant/sessions/:id`); rejects on 404. */
+  /**
+   * One Author chat with its transcript (`GET /assistant/sessions/:id`);
+   * rejects on 404. `runningRequestId` names the in-flight reply's
+   * requestId, when one is running (the reattach decision).
+   */
   // fallow-ignore-next-line unused-class-member -- the Author panel calls it once AA15 lands
-  async getAuthorSession(id: string): Promise<AuthorSession> {
+  async getAuthorSession(id: string): Promise<AuthorSessionRecord> {
     return this.request(`/assistant/sessions/${encodeURIComponent(id)}`, { method: 'GET' });
   }
 

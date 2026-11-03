@@ -88,6 +88,16 @@ export interface AuthorSession {
   createdAgentIds: string[];
 }
 
+/**
+ * `GET /assistant/sessions/:id`'s response: the stored session plus the
+ * requestId of its running turn, when one is in flight (from
+ * `AuthorTurnRunner.running`). A client that (re)opens a chat uses it to
+ * decide whether to send `chat.resume` for the in-flight reply.
+ */
+export interface AuthorSessionRecord extends AuthorSession {
+  runningRequestId: string | null;
+}
+
 /** The `GET /assistant/sessions` row: a session without its transcript. */
 export interface AuthorSessionSummary {
   id: string;
@@ -153,14 +163,17 @@ export const AUTHOR_STREAM_PATH = '/assistant/stream';
 /**
  * Everything a client may send on `WS /assistant/stream`. `chat.send`
  * starts a turn (the `requestId` ties its events back to this send),
- * `chat.stop` ends the running turn early, and `chat.resume` is AA04's
- * reattach - the AA03 transport answers it (like any unreadable or
- * unknown frame) with a `BAD_MESSAGE` `turn.error`.
+ * `chat.stop` ends the running turn early, and `chat.resume` reattaches a
+ * dropped client to its turn: `afterSeq` is the last seq the client
+ * applied (omitted = replay everything still buffered). The server
+ * answers from the replay buffer - the missed events while the turn
+ * still runs, only the terminal event once it settled, or an
+ * `UNKNOWN_REQUEST` `turn.error` for a requestId it never saw.
  */
 export type AuthorClientMessage =
   | { type: 'chat.send'; requestId: string; text: string; focus?: AuthorFocus }
   | { type: 'chat.stop'; requestId: string }
-  | { type: 'chat.resume'; requestId: string };
+  | { type: 'chat.resume'; requestId: string; afterSeq?: number };
 
 /** Whether a proposal card creates a new agent or updates an existing one. */
 export type ProposalKind = 'create' | 'update';

@@ -116,11 +116,12 @@ describe('author session routes', () => {
     expect('transcript' in list[0]).toBe(false);
   });
 
-  it('GET /assistant/sessions/:id returns the session; an unknown id -> 404 NOT_FOUND', async () => {
+  it('GET /assistant/sessions/:id returns the session record; an unknown id -> 404 NOT_FOUND', async () => {
     const session = await createSession();
     const res = await authed(request(app).get(`/assistant/sessions/${session.id}`));
     expect(res.status).toBe(200);
-    expect(res.body).toEqual(session);
+    // The record is the stored session plus the running turn's requestId (none here).
+    expect(res.body).toEqual({ ...session, runningRequestId: null });
 
     const missing = await authed(request(app).get('/assistant/sessions/as_0000000000000000'));
     expect(missing.status).toBe(404);
