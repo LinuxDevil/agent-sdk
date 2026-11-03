@@ -23,6 +23,7 @@ import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './prompt/ind
 import { buildAuthorTools, type AuthorToolDeps } from './tools/index';
 import { createAuthorCatalogService } from './tools/catalogService';
 import { passReview } from './proposal/review';
+import { openProposalCards } from './proposal/gate';
 import { computeRequirements, requirementDeps } from './requirements';
 
 /**
@@ -117,8 +118,14 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
         requirements: async (spec) =>
           computeRequirements(spec, requirementDeps((await workspaceForTurn(turn)).ref.root, deps.secrets)),
       }),
-    // Stand-in until AA07 lands the real turnContextInput.
-    turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
+    // The transcript is the proposal store: AA10a's scan lists the still-open
+    // cards (named after each card's spec.name) for the context block. The
+    // focused agent's summary lands with the update-side tickets.
+    turnContextInput: async (s, now) => ({
+      focus: s.focus,
+      openProposals: openProposalCards(s.transcript),
+      now,
+    }),
     ...(deps.providerFor ? { providerFor: deps.providerFor } : {}),
   });
 }
