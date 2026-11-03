@@ -109,15 +109,15 @@ function failure(value: unknown): AuthorToolFailure {
 }
 
 describe('buildAuthorTools', () => {
-  it('returns the 14 tools sorted by name, every one in AUTHOR_TOOL_NAMES', () => {
+  it('returns the 15 tools sorted by name, every one in AUTHOR_TOOL_NAMES', () => {
     const built = buildAuthorTools(TURN, fakeDeps());
     const names = built.map(nameOf);
-    expect(names).toHaveLength(14);
+    expect(names).toHaveLength(15);
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
     for (const name of names) {
       expect(AUTHOR_TOOL_NAMES as readonly string[]).toContain(name);
     }
-    expect(AUTHOR_TOOL_FACTORIES).toHaveLength(14);
+    expect(AUTHOR_TOOL_FACTORIES).toHaveLength(15);
   });
 
   it('builds the same list for different turns (the tool surface never changes mid-session)', () => {
