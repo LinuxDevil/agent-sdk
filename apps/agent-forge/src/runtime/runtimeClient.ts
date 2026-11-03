@@ -59,6 +59,7 @@ import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
 import {
   AUTHOR_STREAM_PATH,
   type AuthorFocus,
+  type AuthorSaveResponse,
   type AuthorSession,
   type AuthorSessionRecord,
   type AuthorSessionSummary,
@@ -76,15 +77,23 @@ interface RuntimeClientOptions {
   token?: string;
 }
 
-/** Builds the error for a non-ok response: the server's `{ error }` message when present, else `fallback`. */
-function apiError(body: { error?: string } | undefined, fallback: string, status: number): RuntimeApiError {
-  return new RuntimeApiError(body?.error || fallback, status);
+/** Builds the error for a non-ok response: the server's `{ error }` message when present, else `fallback`, keeping `code` and `details`. */
+function apiError(
+  body: { error?: string; code?: string; details?: unknown } | undefined,
+  fallback: string,
+  status: number
+): RuntimeApiError {
+  return new RuntimeApiError(body?.error || fallback, status, body?.code, body?.details);
 }
 
 export class RuntimeApiError extends Error {
   constructor(
     message: string,
-    public readonly status: number
+    public readonly status: number,
+    /** The server's `{ code }` when it sent one (e.g. 'STALE_PROPOSAL'). */
+    public readonly code?: string,
+    /** The server's `{ details }` payload when it sent one (e.g. `{ latestProposalId }`). */
+    public readonly details?: unknown
   ) {
     super(message);
   }
@@ -650,6 +659,21 @@ class RuntimeClient implements AgentApi {
   // fallow-ignore-next-line unused-class-member -- the Author panel calls it once AA15 lands
   async deleteAuthorSession(id: string): Promise<void> {
     await this.request(`/assistant/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  /**
+   * The proposal card's Apply button (`POST /assistant/sessions/:id/save`):
+   * writes exactly the stored card's spec and answers the save result plus
+   * the appended `uiEvent` user message. Rejects with a `RuntimeApiError`
+   * whose `code`/`details` carry the refusal (`STALE_PROPOSAL` +
+   * `details.latestProposalId`, `ALREADY_SAVED`, `BUSY`, ...).
+   */
+  // fallow-ignore-next-line unused-class-member -- the card's Apply button calls it once AA16 lands
+  async saveProposal(sessionId: string, proposalId: string): Promise<AuthorSaveResponse> {
+    return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/save`, {
+      method: 'POST',
+      body: JSON.stringify({ proposalId }),
+    });
   }
 
   /** The Author's model choices plus `ready`/`missingKeyFor` (`GET /settings/author`). */

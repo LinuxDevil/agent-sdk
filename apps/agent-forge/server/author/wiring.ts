@@ -95,6 +95,7 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
     probeMcp: (server) => probeMcpServer(server, probeDeps),
     docsDir: deps.docsDir,
     reviewDraft: passReview,
+    sessions: deps.sessions,
   };
   const workspaceForTurn = async (turn: AuthorTurn): Promise<WorkspaceContext> => {
     const session = await deps.sessions.get(turn.sessionId);

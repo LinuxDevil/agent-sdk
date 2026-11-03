@@ -6,6 +6,7 @@ import { buildAuthorTools, type AuthorToolDeps } from '../index';
 import type { AuthorTurn } from '../../turnRunner';
 import type { AuthorToolFailure } from '../../../../shared/authorWire';
 import type { WorkspaceContext } from '../../../workspace/context';
+import { AuthorSessionStore } from '../../sessionStore';
 
 /**
  * searchDocs + the docsIndex it reads: `__fixtures__/docs` holds two
@@ -44,6 +45,7 @@ function deps(docsDir: string): AuthorToolDeps {
     docsDir,
     reviewDraft: async () => ({ pass: true }),
     requirements: async () => [],
+    sessions: new AuthorSessionStore('/unused-sessions'),
   };
 }
 

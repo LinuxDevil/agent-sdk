@@ -179,6 +179,22 @@ export type AuthorClientMessage =
 export type ProposalKind = 'create' | 'update';
 
 /**
+ * `POST /assistant/sessions/:id/save`'s 200 body (the card's Apply
+ * button): the saved agent's id, version, name and enabled state, plus
+ * the `uiEvent` user message the route appended to the transcript - the
+ * client renders it so its local transcript matches the stored one.
+ */
+export interface AuthorSaveResponse {
+  ok: true;
+  agentId: string;
+  version: number;
+  name: string;
+  enabled: boolean;
+  /** The user message appended to the transcript (`uiEvent: { kind: 'save', ... }`). */
+  message: AuthorUserMessage;
+}
+
+/**
  * The `ok: true` output of `proposeAgent`/`proposeAgentUpdate` - the card
  * the Author panel renders (PLAN §8.3). `proposalId` is the propose call's
  * `toolCallId`: the transcript is the proposal store, so nothing is

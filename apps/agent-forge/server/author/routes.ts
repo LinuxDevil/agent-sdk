@@ -13,11 +13,23 @@
  * Turns, the WebSocket stream, saves and secrets are later tickets; this
  * is the persisted-session CRUD they all build on.
  */
+import { randomUUID } from 'node:crypto';
 import type { Express, Request, Response } from 'express';
-import { AUTHOR_SESSION_ID_RE, type AuthorFocus, type AuthorSessionRecord } from '../../shared/authorWire';
+import {
+  AUTHOR_SESSION_ID_RE,
+  type AuthorFocus,
+  type AuthorSaveResponse,
+  type AuthorSessionRecord,
+  type AuthorToolFailure,
+  type AuthorUserMessage,
+} from '../../shared/authorWire';
 import { isValidAgentId } from '../../shared/agentId';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { workspaceOf } from '../workspace/middleware';
+import type { WorkspaceResolver } from '../workspace/context';
+import { identityOfProposal, resolveStoredProposal } from './proposal/gate';
+import { agentGoneFailure, unknownProposalFailure } from './proposal/failures';
+import { requestTextFor, writeProposal } from './proposal/save';
 import type { AuthorSessionStore } from './sessionStore';
 import type { AuthorTurnRunner } from './turnRunner';
 
@@ -55,6 +67,32 @@ function sessionIdParam(req: Request, res: Response): string | undefined {
 }
 
 /**
+ * The `proposalId` a `POST .../save` body carries, or `undefined` once the
+ * 400 was sent: a string of 1-200 chars, copied verbatim off the card.
+ */
+function proposalIdOf(body: unknown, res: Response): string | undefined {
+  const proposalId =
+    typeof body === 'object' && body !== null ? (body as { proposalId?: unknown }).proposalId : undefined;
+  if (typeof proposalId !== 'string' || proposalId.length === 0 || proposalId.length > 200) {
+    sendError(res, 400, 'Request body must be { proposalId: string } (1-200 characters).', 'INVALID_INPUT');
+    return undefined;
+  }
+  return proposalId;
+}
+
+/**
+ * A failed save's HTTP answer: the person-facing `userMessage` and the
+ * failure `code` (`latestProposalId` travels as `details` so the client
+ * can point at the newer card). A `WRITE_FAILED` is a server fault - 500;
+ * every refusal is a 400.
+ */
+function sendSaveFailure(res: Response, failure: AuthorToolFailure): void {
+  const details =
+    typeof failure.latestProposalId === 'string' ? { latestProposalId: failure.latestProposalId } : undefined;
+  sendError(res, failure.code === 'WRITE_FAILED' ? 500 : 400, failure.userMessage, failure.code, details);
+}
+
+/**
  * Registers the four session routes. `deps.sessions` is the app's single
  * `AuthorSessionStore` (sessions are Studio-global); the workspace the
  * session belongs to still comes from `workspaceOf(req)` on create.
@@ -65,8 +103,23 @@ function sessionIdParam(req: Request, res: Response): string | undefined {
  */
 export function registerAuthorRoutes(
   app: Express,
-  deps: { sessions: AuthorSessionStore; runner?: Pick<AuthorTurnRunner, 'running'> }
+  deps: {
+    sessions: AuthorSessionStore;
+    runner?: Pick<AuthorTurnRunner, 'running'>;
+    /**
+     * The app's workspace resolver (PLAN §19.3): `POST .../save` resolves
+     * the stored `session.workspaceId` through it to reach the agent
+     * stores - never the request's workspace header.
+     */
+    workspaceResolver: WorkspaceResolver;
+  }
 ): void {
+  /**
+   * Session ids with an Apply save in flight: a second Apply while the
+   * first still writes is a 409, same as a running reply (the click is
+   * the confirmation, and one confirmation buys one save).
+   */
+  const savesInFlight = new Set<string>();
   // Create a chat: 201 AuthorSession stamped with the request workspace's id.
   app.post(
     '/assistant/sessions',
@@ -126,6 +179,81 @@ export function registerAuthorRoutes(
         return;
       }
       res.status(204).end();
+    })
+  );
+
+  // The card's Apply button (PLAN §8.3): writes exactly the stored card's
+  // spec through the same `writeProposal` the save tools use - the click
+  // is the confirmation, so the model's blocking gate does not apply -
+  // then appends a `uiEvent: save` user message the model reads as
+  // "[UI event] User applied proposal <id>" next turn.
+  app.post(
+    '/assistant/sessions/:id/save',
+    asyncRoute(async (req, res) => {
+      const id = sessionIdParam(req, res);
+      if (id === undefined) return;
+      const proposalId = proposalIdOf(req.body, res);
+      if (proposalId === undefined) return;
+      const session = await deps.sessions.get(id);
+      if (session === undefined) {
+        sendError(res, 404, 'Chat not found.', 'NOT_FOUND');
+        return;
+      }
+      if (deps.runner?.running(id) !== undefined || savesInFlight.has(id)) {
+        sendError(res, 409, 'Wait for the Author to finish replying, then apply.', 'BUSY');
+        return;
+      }
+      savesInFlight.add(id);
+      try {
+        const identity = identityOfProposal(session.transcript, proposalId);
+        if (identity === null) {
+          const failure = unknownProposalFailure('create', proposalId);
+          sendError(res, 400, failure.userMessage, failure.code);
+          return;
+        }
+        const ws = await deps.workspaceResolver.resolve(session.workspaceId);
+        if (ws === undefined) {
+          const failure = agentGoneFailure(identity.kind === 'update' ? identity.agentId : session.workspaceId);
+          sendSaveFailure(res, failure);
+          return;
+        }
+        const resolved = resolveStoredProposal(session.transcript, identity, proposalId);
+        if (!resolved.ok) {
+          sendSaveFailure(res, resolved);
+          return;
+        }
+        const result = await writeProposal(identity, resolved.output, {
+          sessionId: id,
+          requestText: requestTextFor(session.transcript, proposalId),
+          agents: ws.repo,
+          versions: ws.versions,
+          sessions: deps.sessions,
+          bus: ws.events,
+        });
+        if (!result.ok) {
+          sendSaveFailure(res, result);
+          return;
+        }
+        const message: AuthorUserMessage = {
+          id: `m_${randomUUID()}`,
+          role: 'user',
+          text: '',
+          at: new Date().toISOString(),
+          uiEvent: { kind: 'save', proposalId, agentId: result.agentId, version: result.version },
+        };
+        await deps.sessions.update(id, (s) => ({ ...s, transcript: [...s.transcript, message] }));
+        const body: AuthorSaveResponse = {
+          ok: true,
+          agentId: result.agentId,
+          version: result.version,
+          name: result.name,
+          enabled: result.enabled,
+          message,
+        };
+        res.status(200).json(body);
+      } finally {
+        savesInFlight.delete(id);
+      }
     })
   );
 }

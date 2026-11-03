@@ -12,6 +12,7 @@ import { specHash } from '../../../storage/specHash';
 import { applyAuthorPatch } from '../../draft/toSpec';
 import { proposalTurnState } from '../../proposal/turnState';
 import { passReview } from '../../proposal/review';
+import { AuthorSessionStore } from '../../sessionStore';
 import type {
   AuthorAssistantMessage,
   AuthorMessage,
@@ -80,6 +81,7 @@ function fakeDeps(repo: AgentRepo, over: Partial<AuthorToolDeps> = {}): AuthorTo
     docsDir: '/nonexistent-docs',
     reviewDraft: passReview,
     requirements: async () => [],
+    sessions: new AuthorSessionStore('/unused-sessions'),
     ...over,
   };
 }

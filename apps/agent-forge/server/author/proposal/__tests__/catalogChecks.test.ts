@@ -5,6 +5,7 @@ import type { AuthorTurn } from '../../turnRunner';
 import type { WorkspaceContext } from '../../../workspace/context';
 import type { AgentRepo } from '../../../storage/agentRepo';
 import type { AuthorToolFailure } from '../../../../shared/authorWire';
+import { AuthorSessionStore } from '../../sessionStore';
 import { checkCatalogs, loadCatalogFacts, type CatalogFacts } from '../catalogChecks';
 
 /**
@@ -173,6 +174,7 @@ describe('loadCatalogFacts', () => {
       docsDir: '/nonexistent-docs',
       reviewDraft: async () => ({ pass: true }),
       requirements: async () => [],
+      sessions: new AuthorSessionStore('/unused-sessions'),
     };
   }
 

@@ -45,8 +45,13 @@ function flattenPath(issue: SpecSchemaIssue): string {
   return path === '' ? '(root)' : path;
 }
 
-/** `agentSpecV2Schema.safeParse` of a candidate spec as a {@link SpecBuildResult}. */
-function validateSpec(candidate: unknown): SpecBuildResult {
+/**
+ * `agentSpecV2Schema.safeParse` of a candidate spec as a
+ * {@link SpecBuildResult}. Exported for the save path (proposal/save.ts),
+ * which re-validates a stored card's spec with today's schema the same
+ * way a draft is validated at propose time.
+ */
+export function validateSpec(candidate: unknown): SpecBuildResult {
   const parsed = agentSpecV2Schema.safeParse(candidate);
   if (parsed.success) return { ok: true, spec: parsed.data };
   return {
