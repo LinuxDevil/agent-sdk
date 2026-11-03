@@ -622,6 +622,9 @@ export function appendToRing<T>(ring: readonly T[], entry: T, limit: number): T[
 export const APPROVAL_EXPIRED_REASON = "approval expired";
 
 // @public
+export const APPROVAL_WAIT_SPAN_NAME = "approval.wait";
+
+// @public
 export interface ApprovalAccessRequest {
     approval: PendingApproval;
     principal: Principal | undefined;
@@ -3123,6 +3126,9 @@ export interface Handoff {
 
 // @public
 export function handoff(target: SimpleAgent, options?: HandoffOptions): Handoff;
+
+// @public
+export const HANDOFF_SPAN_NAME = "handoff";
 
 // @public
 export interface HandoffEvent extends AgentEventBase<'handoff'> {
@@ -6121,6 +6127,11 @@ export const SdkAttr: {
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
     readonly TASK_ID: "lousho.task.id";
     readonly NODE_ID: "lousho.node.id";
+    readonly HANDOFF_FROM: "lousho.handoff.from";
+    readonly HANDOFF_TO: "lousho.handoff.to";
+    readonly APPROVAL_ID: "lousho.approval.id";
+    readonly APPROVAL_KIND: "lousho.approval.kind";
+    readonly APPROVAL_EXPIRES_AT: "lousho.approval.expires_at";
 };
 
 // @public

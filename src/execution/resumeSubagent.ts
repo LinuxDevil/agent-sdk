@@ -16,6 +16,7 @@ import type { ExecuteOptions, ExecutionResult } from './AgentExecutor';
 import type { RunUsage } from '../models/usage';
 import { mergeDelegatedUsage } from './runUsage';
 import { runEventsOf } from './agentRun';
+import { markApprovalWait } from './markSpan';
 import type { ResumeExecuteOptions } from './resume';
 import type { Principal } from '../auth/types';
 import {
@@ -105,7 +106,10 @@ export async function pauseAgain(ctx: ResumeContext, suspension: SubagentSuspens
   const records = approvalRecords(record);
   for (const entry of records) await ctx.approvalStore.save(entry.pending, entry.snapshot);
   // A streamed resume reports the new pause like a fresh run does.
-  for (const entry of records) runEventsOf(ctx.executeOptions as ExecuteOptions)?.approvalRequested(entry.pending);
+  for (const entry of records) {
+    runEventsOf(ctx.executeOptions as ExecuteOptions)?.approvalRequested(entry.pending);
+    markApprovalWait(ctx.executeOptions, entry.pending, ctx.runSpanId);
+  }
   return {
     text: '',
     messages,
