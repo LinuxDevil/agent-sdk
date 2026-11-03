@@ -4,9 +4,12 @@
  * One socket subscribes to one session's turns: the server forwards every
  * `AuthorServerEvent` the `AuthorTurnRunner` emits for that session (all
  * subscribers of the same session see the same frames), and accepts
- * `chat.send`/`chat.stop` frames back. `chat.resume` (AA04's reattach) and
- * any unreadable or unknown frame get a `BAD_MESSAGE` `turn.error` on the
- * sending socket only - one client's garbage never reaches the others.
+ * `chat.send`/`chat.stop`/`chat.resume` frames back. `chat.resume` is
+ * answered from the session's `ReplayBuffer` entry - the missed events of
+ * a running turn, the terminal event of a settled one, or an
+ * `UNKNOWN_REQUEST` `turn.error` - while any unreadable or unknown frame
+ * gets a `BAD_MESSAGE` `turn.error`. Both land on the sending socket only:
+ * one client's garbage never reaches the others.
  *
  * Registered on the server's one `UpgradeRouter` under
  * {@link AUTHOR_STREAM_PATH}, so the shared Host/Origin/token gate has
@@ -27,6 +30,7 @@ import { isValidAgentId } from '../../shared/agentId';
 import type { UpgradeHandler } from '../ws/upgradeRouter';
 import type { AuthorSessionStore } from './sessionStore';
 import type { AuthorTurnRunner } from './turnRunner';
+import { ReplayBuffer } from './replayBuffer';
 
 /**
  * The close code an unknown or malformed `session` id gets after the
@@ -39,9 +43,17 @@ const SESSION_NOT_FOUND_REASON = 'Chat not found';
 /** The BAD_MESSAGE `turn.error`'s text: one fixed sentence, never an echo of the frame. */
 const BAD_MESSAGE = 'Studio could not read that message.';
 
-/** What `chat.resume` (and every unknown frame) is answered with until AA04 lands it. */
+/** What `chat.resume` gets when the replay buffer holds no entry for the `requestId`. */
+const UNKNOWN_REQUEST = 'This reply is no longer available. Showing the saved chat.';
+
+/** What every unreadable or unknown frame is answered with (seq 0: a per-socket reply, not a turn event). */
 function badMessage(requestId: string): AuthorServerEvent {
   return { type: 'turn.error', requestId, seq: 0, message: BAD_MESSAGE, code: 'BAD_MESSAGE' };
+}
+
+/** The `chat.resume` answer for a `requestId` the buffer never saw (or whose settled entry expired). */
+function unknownRequest(requestId: string): AuthorServerEvent {
+  return { type: 'turn.error', requestId, seq: 0, message: UNKNOWN_REQUEST, code: 'UNKNOWN_REQUEST' };
 }
 
 function send(ws: WebSocket, event: AuthorServerEvent): void {
@@ -65,8 +77,7 @@ function parseFocus(value: unknown): { ok: true; focus?: AuthorFocus } | { ok: f
 /**
  * One raw text frame as a client message, or `undefined` when it isn't
  * strict JSON of a known shape (wrong `type`, missing `requestId`,
- * non-string `text`, malformed `focus`). `chat.resume` parses fine - it is
- * a known type - and the dispatch answers it BAD_MESSAGE until AA04.
+ * non-string `text`, malformed `focus`, malformed `afterSeq`).
  */
 function parseClientMessage(raw: string): AuthorClientMessage | undefined {
   let data: unknown;
@@ -82,7 +93,7 @@ function parseClientMessage(raw: string): AuthorClientMessage | undefined {
     case 'chat.stop':
       return { type: 'chat.stop', requestId: message.requestId };
     case 'chat.resume':
-      return { type: 'chat.resume', requestId: message.requestId };
+      return parseResume(message as { requestId: string; afterSeq?: unknown });
     case 'chat.send': {
       if (typeof message.text !== 'string') return undefined;
       const parsed = parseFocus(message.focus);
@@ -94,6 +105,20 @@ function parseClientMessage(raw: string): AuthorClientMessage | undefined {
     default:
       return undefined;
   }
+}
+
+/**
+ * A `chat.resume` frame with `requestId` already checked: `afterSeq` is
+ * optional but, when present, must be a non-negative integer (the last
+ * seq the client applied) - anything else is a BAD_MESSAGE like every
+ * other malformed field.
+ */
+function parseResume(message: { requestId: string; afterSeq?: unknown }): AuthorClientMessage | undefined {
+  if (message.afterSeq === undefined) return { type: 'chat.resume', requestId: message.requestId };
+  if (typeof message.afterSeq !== 'number' || !Number.isInteger(message.afterSeq) || message.afterSeq < 0) {
+    return undefined;
+  }
+  return { type: 'chat.resume', requestId: message.requestId, afterSeq: message.afterSeq };
 }
 
 /** Best-effort `requestId` out of a frame that failed to parse, so its BAD_MESSAGE still lands in the right chat bubble. */
@@ -126,6 +151,9 @@ export function createAuthorUpgradeHandler(deps: {
   sessions: AuthorSessionStore;
 }): UpgradeHandler {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
+  // The server's one replay buffer: every runner event lands here before
+  // it broadcasts, so a `chat.resume` always sees the turn's full tail.
+  const replay = new ReplayBuffer();
   // sessionId -> connected sockets: a turn's events fan out to every tab
   // watching that chat and to no one else.
   const subscribers = new Map<string, Set<WebSocket>>();
@@ -136,7 +164,10 @@ export function createAuthorUpgradeHandler(deps: {
     for (const ws of sockets) send(ws, event);
   }
 
-  deps.runner.on('event', (sessionId: string, event: AuthorServerEvent) => broadcast(sessionId, event));
+  deps.runner.on('event', (sessionId: string, event: AuthorServerEvent) => {
+    replay.record(sessionId, event);
+    broadcast(sessionId, event);
+  });
 
   /** `chat.send`: run the turn; a refused start is a `turn.error` (seq 0) on the sending socket only. */
   async function onChatSend(
@@ -170,6 +201,31 @@ export function createAuthorUpgradeHandler(deps: {
     }
   }
 
+  /**
+   * `chat.resume`: answer from the replay buffer on the asking socket
+   * only. `replay` sends the missed events in order (the socket is
+   * already subscribed, so live events simply follow); `settled` sends
+   * only the terminal event - a settled turn is never replayed (its card
+   * may have been saved since); `unknown` is the UNKNOWN_REQUEST
+   * `turn.error` the client reconciles from.
+   */
+  function onChatResume(
+    ws: WebSocket,
+    sessionId: string,
+    message: Extract<AuthorClientMessage, { type: 'chat.resume' }>
+  ): void {
+    const answer = replay.resume(sessionId, message.requestId, message.afterSeq ?? 0);
+    if (answer.kind === 'replay') {
+      for (const event of answer.events) send(ws, event);
+      return;
+    }
+    if (answer.kind === 'settled') {
+      send(ws, answer.final);
+      return;
+    }
+    send(ws, unknownRequest(message.requestId));
+  }
+
   /** One incoming text frame of an already-subscribed socket. */
   function onFrame(ws: WebSocket, sessionId: string, raw: string): void {
     const message = parseClientMessage(raw);
@@ -184,8 +240,13 @@ export function createAuthorUpgradeHandler(deps: {
       case 'chat.stop':
         deps.runner.stop(sessionId, message.requestId);
         return;
+      case 'chat.resume':
+        onChatResume(ws, sessionId, message);
+        return;
       default:
-        send(ws, badMessage(message.requestId));
+        // Unreachable over the current union; kept so a widened
+        // AuthorClientMessage type is a BAD_MESSAGE, not a silent drop.
+        send(ws, badMessage(requestIdIn(raw)));
     }
   }
 

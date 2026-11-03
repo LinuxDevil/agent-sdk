@@ -14,7 +14,7 @@
  * is the persisted-session CRUD they all build on.
  */
 import type { Express, Request, Response } from 'express';
-import { AUTHOR_SESSION_ID_RE, type AuthorFocus } from '../../shared/authorWire';
+import { AUTHOR_SESSION_ID_RE, type AuthorFocus, type AuthorSessionRecord } from '../../shared/authorWire';
 import { isValidAgentId } from '../../shared/agentId';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { workspaceOf } from '../workspace/middleware';
@@ -60,7 +60,8 @@ function sessionIdParam(req: Request, res: Response): string | undefined {
  * session belongs to still comes from `workspaceOf(req)` on create.
  * `deps.runner` (the app's AuthorTurnRunner) makes DELETE refuse while a
  * reply is running in that chat - deleting the file mid-turn would lose
- * the in-flight assistant message.
+ * the in-flight assistant message - and gives GET `/:id` its
+ * `runningRequestId` for the reattach decision.
  */
 export function registerAuthorRoutes(
   app: Express,
@@ -88,7 +89,9 @@ export function registerAuthorRoutes(
     })
   );
 
-  // One session with its transcript: 200 AuthorSession, 404 when unknown.
+  // One session with its transcript: 200 AuthorSessionRecord (the stored
+  // session plus the running turn's requestId, so a client that reopens
+  // the chat knows whether to send chat.resume), 404 when unknown.
   app.get(
     '/assistant/sessions/:id',
     asyncRoute(async (req, res) => {
@@ -99,7 +102,11 @@ export function registerAuthorRoutes(
         sendError(res, 404, 'Chat not found.', 'NOT_FOUND');
         return;
       }
-      res.json(session);
+      const record: AuthorSessionRecord = {
+        ...session,
+        runningRequestId: deps.runner?.running(id)?.requestId ?? null,
+      };
+      res.json(record);
     })
   );
 
