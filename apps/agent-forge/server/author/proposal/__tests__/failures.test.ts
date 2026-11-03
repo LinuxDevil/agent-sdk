@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { AuthorToolFailure } from '../../../../shared/authorWire';
 import {
+  agentGoneFailure,
   alreadySavedFailure,
   ambiguousProposalFailure,
+  baseChangedFailure,
+  invalidStoredProposalFailure,
   noProposalFailure,
   staleProposalFailure,
   unansweredFailure,
   unknownProposalFailure,
+  writeFailedFailure,
   wrongAgentFailure,
 } from '../failures';
 
@@ -31,6 +35,10 @@ const ALL: AuthorToolFailure[] = [
   wrongAgentFailure('call_u1', 'agent-a', 'agent-b'),
   ambiguousProposalFailure('create', 'call_p1'),
   ambiguousProposalFailure('update', 'call_p1'),
+  invalidStoredProposalFailure([{ path: 'model', message: 'Required' }]),
+  baseChangedFailure('agent-a'),
+  agentGoneFailure('agent-a'),
+  writeFailedFailure('disk full'),
 ];
 
 describe('save-gate failure copy', () => {
@@ -57,6 +65,12 @@ describe('save-gate failure copy', () => {
     expect(staleProposalFailure('call_p1', 'call_p2').code).toBe('STALE_PROPOSAL');
     expect(wrongAgentFailure('call_u1', 'agent-a', 'agent-b').code).toBe('WRONG_AGENT');
     expect(ambiguousProposalFailure('create', 'call_p1').code).toBe('AMBIGUOUS_PROPOSAL');
+    expect(invalidStoredProposalFailure([{ path: 'model', message: 'Required' }]).code).toBe(
+      'INVALID_STORED_PROPOSAL'
+    );
+    expect(baseChangedFailure('agent-a').code).toBe('BASE_CHANGED');
+    expect(agentGoneFailure('agent-a').code).toBe('AGENT_GONE');
+    expect(writeFailedFailure('disk full').code).toBe('WRITE_FAILED');
   });
 
   it('the model copy interpolates the proposal ids it names', () => {

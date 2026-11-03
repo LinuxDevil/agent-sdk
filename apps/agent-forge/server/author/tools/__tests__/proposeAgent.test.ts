@@ -11,6 +11,7 @@ import type { AgentRepo } from '../../../storage/agentRepo';
 import type { AuthorToolFailure, ProposalOutput } from '../../../../shared/authorWire';
 import { proposalTurnState } from '../../proposal/turnState';
 import { passReview } from '../../proposal/review';
+import { AuthorSessionStore } from '../../sessionStore';
 import { AUTHOR_TOOL_FACTORIES, buildAuthorTools } from '../index';
 import type { AuthorDraft } from '../../draft/schema';
 
@@ -64,6 +65,7 @@ function fakeDeps(over: Partial<AuthorToolDeps> = {}): AuthorToolDeps {
     docsDir: '/nonexistent-docs',
     reviewDraft: passReview,
     requirements: async () => [],
+    sessions: new AuthorSessionStore('/unused-sessions'),
     ...over,
   };
 }

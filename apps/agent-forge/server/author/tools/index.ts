@@ -29,6 +29,7 @@ import type {
 import type { McpProbeResult } from '../../routes/mcpProbe';
 import type { WorkspaceContext } from '../../workspace/context';
 import type { ReviewDraft } from '../proposal/review';
+import type { AuthorSessionStore } from '../sessionStore';
 import type { AuthorTurn } from '../turnRunner';
 import { readToolFactories } from './readTools';
 import { probeMcpServerTool } from './mcpProbeTool';
@@ -36,6 +37,7 @@ import { searchDocsTool } from './searchDocsTool';
 import { openPageTool } from './openPageTool';
 import { proposeAgentTool } from './proposeAgentTool';
 import { proposeAgentUpdateTool } from './proposeAgentUpdateTool';
+import { saveAgentTool, saveAgentUpdateTool } from './saveTools';
 
 /**
  * A registry-index item that names an MCP server (`type: 'mcp'`,
@@ -100,6 +102,12 @@ export interface AuthorToolDeps {
    * root). Advisory - the propose tools degrade a throwing dep to `[]`.
    */
   requirements: (spec: AgentSpecV2) => Promise<Requirement[]>;
+  /**
+   * The Studio-global Author session store (files under
+   * `studioPaths().sessions`): the save tools update
+   * `createdAgentIds` through it after a create lands (AA10b).
+   */
+  sessions: AuthorSessionStore;
 }
 
 /** Builds one tool for one turn - the factories close over `turn` (and `deps`). */
@@ -118,6 +126,8 @@ export const AUTHOR_TOOL_FACTORIES: readonly AuthorToolFactory[] = [
   openPageTool,
   proposeAgentTool,
   proposeAgentUpdateTool,
+  saveAgentTool,
+  saveAgentUpdateTool,
 ];
 
 /** The call name a `ToolDescriptor` carries (`defineTool`/loader results), else its display name. */

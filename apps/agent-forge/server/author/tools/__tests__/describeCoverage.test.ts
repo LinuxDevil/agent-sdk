@@ -5,6 +5,7 @@ import { buildAuthorTools, type AuthorToolDeps, type CatalogService } from '../i
 import type { WorkspaceContext } from '../../../workspace/context';
 import type { AgentRepo } from '../../../storage/agentRepo';
 import type { VersionStore } from '../../../storage/versionStore';
+import { AuthorSessionStore } from '../../sessionStore';
 
 /**
  * Every field of every Author tool's input schema carries a non-empty
@@ -50,6 +51,7 @@ const DEPS: AuthorToolDeps = {
   docsDir: '/nonexistent-docs',
   reviewDraft: async () => ({ pass: true }),
   requirements: async () => [],
+  sessions: new AuthorSessionStore('/unused-sessions'),
 };
 
 /** The zod internals the walk reads (zod 3 `_def` fields, structurally typed). */
