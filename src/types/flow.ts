@@ -157,6 +157,7 @@ export type RuntimeStep =
   | ExpressionEvaluatorNode
   | LLMCallNode
   | AgentStepNode
+  | ApprovalStepNode
   | ToolCallNode
   | SetVariableNode
   | ReturnNode
@@ -343,6 +344,33 @@ export interface AgentStepNode extends NodeRunOptions {
   /** Message sent to the agent; `{{var}}` placeholders are replaced. Default `'{{input}}'`. */
   input?: string;
   /** Variable that receives the agent's reply text. */
+  outputVariable?: string;
+}
+
+/**
+ * A human gate as its own node: pauses for a decision the context's
+ * `approve` callback makes (or, in a durable run, pauses with
+ * `status: 'awaiting-approval'` until `FlowExecutor.resume()` brings it) -
+ * exactly as a `toolCall` that needs approval does. The approver sees a call
+ * whose `toolName` is `'flow_approval'` (Studio's approval UIs key on it)
+ * and whose `args` are `{ message, stepId }` (`stepId` is `node.id`, or the
+ * node's place in the flow). Approved, the flow continues and `outputVariable`
+ * gets `true`; rejected - or `'defer'`, or no `approve` at all, in a run that
+ * is not durable - the step fails with `LOUSHO_FLOW_TOOL_DENIED`.
+ *
+ * @example
+ * ```ts
+ * const gate: EditorStep = { type: 'approval', id: 'ship-gate', message: 'Ship {{version}}?', outputVariable: 'approved' };
+ * ```
+ */
+export interface ApprovalStepNode extends NodeRunOptions {
+  /** A human gate; see the interface doc. */
+  type: 'approval';
+  /** The node's optional id, used as its `stepId` in the decision's args (see step ids in docs/flows.md). */
+  id?: string;
+  /** What the approver is asked; `{{var}}` placeholders are replaced. */
+  message: string;
+  /** Variable that receives `true` once approved. */
   outputVariable?: string;
 }
 
