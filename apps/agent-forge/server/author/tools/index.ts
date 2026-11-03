@@ -35,6 +35,7 @@ import { probeMcpServerTool } from './mcpProbeTool';
 import { searchDocsTool } from './searchDocsTool';
 import { openPageTool } from './openPageTool';
 import { proposeAgentTool } from './proposeAgentTool';
+import { proposeAgentUpdateTool } from './proposeAgentUpdateTool';
 
 /**
  * A registry-index item that names an MCP server (`type: 'mcp'`,
@@ -116,6 +117,7 @@ export const AUTHOR_TOOL_FACTORIES: readonly AuthorToolFactory[] = [
   searchDocsTool,
   openPageTool,
   proposeAgentTool,
+  proposeAgentUpdateTool,
 ];
 
 /** The call name a `ToolDescriptor` carries (`defineTool`/loader results), else its display name. */
