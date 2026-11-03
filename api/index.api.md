@@ -136,6 +136,15 @@ export interface AgentDirPermissionRule {
 }
 
 // @public
+export function agentDirToSpec(dir: string): Promise<AgentDirToSpecResult>;
+
+// @public
+export interface AgentDirToSpecResult {
+    dropped: DroppedField[];
+    spec: AgentSpecV2;
+}
+
+// @public
 export interface AgentDrift {
     instructions: boolean;
     model?: {
@@ -1971,6 +1980,12 @@ export interface DriftEntry {
 }
 
 // @public
+export interface DroppedField {
+    field: string;
+    reason: string;
+}
+
+// @public
 type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForEachNode | EvaluatorNode | BestOfAllNode | ToolNode | UIComponentNode | ConditionNode | LoopNode;
 
 // @public
@@ -2820,6 +2835,14 @@ export const GenAiOperation: {
     readonly EXECUTE_TOOL: "execute_tool";
     readonly INVOKE_WORKFLOW: "invoke_workflow";
 };
+
+// @public
+interface GeneratedFile {
+    // (undocumented)
+    content: string;
+    // (undocumented)
+    path: string;
+}
 
 // @public
 export interface GenerateHookContext extends HookContext {
@@ -6614,6 +6637,15 @@ export interface SpecSchema<T> extends SafeParser<T> {
 
 // @public
 export function specToAgent(spec: AgentSpec, options?: Pick<CreateAgentConfig, 'store' | 'exporter'>): SpecAgent;
+
+// @public
+export function specToAgentDir(spec: AgentSpecV2): SpecToAgentDirResult;
+
+// @public
+export interface SpecToAgentDirResult {
+    dropped: DroppedField[];
+    files: GeneratedFile[];
+}
 
 // @public
 export function specV2ToAgent(spec: AgentSpecV2, host: SpecHost): Promise<SpecAgentV2>;
