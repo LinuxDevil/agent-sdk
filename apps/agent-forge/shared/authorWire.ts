@@ -9,11 +9,18 @@
  * module instead of re-declaring them.
  */
 
+import type { AgentSpecV2 } from 'lousho';
+import type { Requirement, SpecChange } from './wireTypes';
+
 // The readiness row AA13's `computeRequirements` returns and the Author's
 // proposal cards carry: defined next to `RequirementKind` in wireTypes.ts
 // (where `AgentRecord.requirements` reads it), re-exported here so Author
 // code has one import site per the PLAN §8.5 contract.
 export type { Requirement } from './wireTypes';
+
+// The diff rows a proposal card for an UPDATE renders: D10's `diffSpecs`
+// output type, re-exported for the same one-import-site reason.
+export type { SpecChange } from './wireTypes';
 
 /** What the Author is working on this session. */
 export type AuthorFocus = { mode: 'create' } | { mode: 'edit'; agentId: string };
@@ -154,6 +161,45 @@ export type AuthorClientMessage =
   | { type: 'chat.send'; requestId: string; text: string; focus?: AuthorFocus }
   | { type: 'chat.stop'; requestId: string }
   | { type: 'chat.resume'; requestId: string };
+
+/** Whether a proposal card creates a new agent or updates an existing one. */
+export type ProposalKind = 'create' | 'update';
+
+/**
+ * The `ok: true` output of `proposeAgent`/`proposeAgentUpdate` - the card
+ * the Author panel renders (PLAN §8.3). `proposalId` is the propose call's
+ * `toolCallId`: the transcript is the proposal store, so nothing is
+ * written anywhere else. `spec` is exactly what a save would write;
+ * `changes` is the diff a card shows for an update (`[]` for a create,
+ * which shows the full config); `requirements` is the advisory readiness
+ * list. `carriedOver`/`carriedFields` report an update that folded an
+ * earlier unapplied card (AA09; always false/[] for creates),
+ * `baseSpecHash` pins the saved spec an update patched, and `enabled` is
+ * the agent's current switch state (`false` for creates: a new agent
+ * saves disabled).
+ */
+export interface ProposalOutput {
+  ok: true;
+  /** The propose call's `toolCallId` - the card's id in the transcript. */
+  proposalId: string;
+  kind: ProposalKind;
+  /** Set on updates only: the agent the patch applies to. */
+  agentId?: string;
+  /** The complete spec a save would write. */
+  spec: AgentSpecV2;
+  /** The update diff; `[]` for creates (the card shows the full config instead). */
+  changes: SpecChange[];
+  /** The spec's readiness rows (`computeRequirements`, AA13) - advisory, never a block. */
+  requirements: Requirement[];
+  /** Whether an earlier unapplied card for the same agent was folded in (AA09). */
+  carriedOver: boolean;
+  /** The fields an earlier folded card contributed (AA09); `[]` for creates. */
+  carriedFields: string[];
+  /** Updates: `specHash` of the saved spec the patch applied to; creates: `null`. */
+  baseSpecHash: string | null;
+  /** Creates: `false`; updates: the agent's `meta.enabled`. */
+  enabled: boolean;
+}
 
 /**
  * Every event one Author turn produces, in order. `AuthorTurnRunner`

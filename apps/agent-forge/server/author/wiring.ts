@@ -22,6 +22,8 @@ import type { AuthorSessionStore } from './sessionStore';
 import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './prompt/index';
 import { buildAuthorTools, type AuthorToolDeps } from './tools/index';
 import { createAuthorCatalogService } from './tools/catalogService';
+import { passReview } from './proposal/review';
+import { computeRequirements, requirementDeps } from './requirements';
 
 /**
  * The D09 catalog functions (`/catalog/*` reads the same SDK calls)
@@ -83,11 +85,15 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
     resolveSecret: (name: string) => deps.secrets.getSecret(name),
     ...(deps.mcpConnect ? { connect: deps.mcpConnect } : {}),
   };
-  const toolDeps: Omit<AuthorToolDeps, 'workspace'> = {
+  // `workspace` (and `requirements`, which reads under the workspace
+  // root) is bound per turn below. `reviewDraft` is AA12's seam;
+  // passReview is the always-approve default until it lands.
+  const toolDeps: Omit<AuthorToolDeps, 'workspace' | 'requirements'> = {
     catalog: createAuthorCatalogService({ secretsStore: deps.secrets }),
     templates: deps.templates,
     probeMcp: (server) => probeMcpServer(server, probeDeps),
     docsDir: deps.docsDir,
+    reviewDraft: passReview,
   };
   const workspaceForTurn = async (turn: AuthorTurn): Promise<WorkspaceContext> => {
     const session = await deps.sessions.get(turn.sessionId);
@@ -102,7 +108,15 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
     settings: deps.settings,
     secrets: deps.secrets,
     systemPrompt: () => authorPrompt,
-    buildTools: (turn) => buildAuthorTools(turn, { ...toolDeps, workspace: () => workspaceForTurn(turn) }),
+    buildTools: (turn) =>
+      buildAuthorTools(turn, {
+        ...toolDeps,
+        workspace: () => workspaceForTurn(turn),
+        // AA13's readiness rows, resolved against the session's workspace
+        // root per call (fileExist checks stay inside that root).
+        requirements: async (spec) =>
+          computeRequirements(spec, requirementDeps((await workspaceForTurn(turn)).ref.root, deps.secrets)),
+      }),
     // Stand-in until AA07 lands the real turnContextInput.
     turnContextInput: async (s, now) => ({ focus: s.focus, openProposals: [], now }),
     ...(deps.providerFor ? { providerFor: deps.providerFor } : {}),

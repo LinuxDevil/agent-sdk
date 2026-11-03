@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { AuthorTurn } from '../../turnRunner';
+import { authorDraftSchema, authorPatchSchema } from '../../draft/schema';
 import { buildAuthorTools, type AuthorToolDeps, type CatalogService } from '../index';
 import type { WorkspaceContext } from '../../../workspace/context';
 import type { AgentRepo } from '../../../storage/agentRepo';
@@ -12,7 +13,10 @@ import type { VersionStore } from '../../../storage/versionStore';
  * optionals/defaults/effects and descends objects, arrays, unions and
  * record value types; a field may put its description anywhere on its own
  * wrapper chain, but container children (elements, options, record
- * values) each need one too.
+ * values) each need one too. AA07's spec-derived draft/patch schemas are
+ * leaf boundaries: their per-key describes are pinned by
+ * draft/__tests__/schema.test.ts and their inner nodes are the SDK's own
+ * `agentSpecV2Schema`, which carries no describes by design.
  */
 
 const TURN: AuthorTurn = {
@@ -44,6 +48,8 @@ const DEPS: AuthorToolDeps = {
   templates: { list: async () => [] },
   probeMcp: async () => ({ ok: true, tools: [] }),
   docsDir: '/nonexistent-docs',
+  reviewDraft: async () => ({ pass: true }),
+  requirements: async () => [],
 };
 
 /** The zod internals the walk reads (zod 3 `_def` fields, structurally typed). */
@@ -114,11 +120,36 @@ function children(schema: ZodLike): [string, ZodLike][] {
   }
 }
 
+/**
+ * Whether `schema` unwraps to one of AA07's spec-derived draft/patch
+ * schemas. Those are leaf boundaries for this walk: their top-level keys
+ * all carry FIELD_DESCRIPTIONS (asserted by draft/__tests__/schema.test.ts)
+ * and their inner nodes are the SDK's `agentSpecV2Schema` itself, which
+ * ships no `.describe()`s - the propose tools' describe contract lives at
+ * the draft/patch field and its direct keys. Identity is by shape: a
+ * `.describe()` clone shares the same `_def.shape` result.
+ */
+function isSpecBoundary(schema: ZodLike): boolean {
+  let current: ZodLike | undefined = schema;
+  while (current !== undefined) {
+    const def = current._def;
+    if (def === undefined) return false;
+    if (def.typeName === 'ZodObject') {
+      const shape = def.shape?.();
+      return shape === authorDraftSchema.shape || shape === authorPatchSchema.shape;
+    }
+    current = wrapped(def);
+  }
+  return false;
+}
+
 function missingDescriptions(root: ZodLike): string[] {
   const missing: string[] = [];
   const walk = (schema: ZodLike, path: string, isRoot: boolean): void => {
     // The root input object needs no describe of its own; every other node does.
     if (!isRoot && !described(schema)) missing.push(path === '' ? '<root>' : path);
+    // Spec-derived draft/patch schemas are leaf boundaries (see isSpecBoundary).
+    if (isSpecBoundary(schema)) return;
     for (const [key, child] of children(schema)) {
       walk(child, path === '' ? key : `${path}.${key}`, false);
     }

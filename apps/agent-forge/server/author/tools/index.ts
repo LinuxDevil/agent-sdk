@@ -14,7 +14,8 @@
  * is D17's catalog, `probeMcp` is D11's probe as a function, and
  * `docsDir` is the bundled SDK docs folder `searchDocs` reads.
  */
-import type { ToolDescriptor } from 'lousho';
+import type { AgentSpecV2, ToolDescriptor } from 'lousho';
+import type { Requirement } from '../../../shared/authorWire';
 import type {
   CatalogGuardrail,
   CatalogKit,
@@ -27,11 +28,13 @@ import type {
 } from '../../../shared/wireTypes';
 import type { McpProbeResult } from '../../routes/mcpProbe';
 import type { WorkspaceContext } from '../../workspace/context';
+import type { ReviewDraft } from '../proposal/review';
 import type { AuthorTurn } from '../turnRunner';
 import { readToolFactories } from './readTools';
 import { probeMcpServerTool } from './mcpProbeTool';
 import { searchDocsTool } from './searchDocsTool';
 import { openPageTool } from './openPageTool';
+import { proposeAgentTool } from './proposeAgentTool';
 
 /**
  * A registry-index item that names an MCP server (`type: 'mcp'`,
@@ -84,6 +87,18 @@ export interface AuthorToolDeps {
   probeMcp: (server: McpServerSpecV2) => Promise<McpProbeResult>;
   /** The bundled SDK docs folder `searchDocs` indexes (`<package root>/docs`, resolved in server/index.ts). */
   docsDir: string;
+  /**
+   * The draft review a propose tool runs before showing its card (PLAN
+   * §8.4): AA12's review-model pass; `createApp` wires `passReview` (the
+   * always-approve default) until then.
+   */
+  reviewDraft: ReviewDraft;
+  /**
+   * The spec's readiness rows for the proposal card (AA13's
+   * `computeRequirements`, wired per turn to the session's workspace
+   * root). Advisory - the propose tools degrade a throwing dep to `[]`.
+   */
+  requirements: (spec: AgentSpecV2) => Promise<Requirement[]>;
 }
 
 /** Builds one tool for one turn - the factories close over `turn` (and `deps`). */
@@ -100,6 +115,7 @@ export const AUTHOR_TOOL_FACTORIES: readonly AuthorToolFactory[] = [
   probeMcpServerTool,
   searchDocsTool,
   openPageTool,
+  proposeAgentTool,
 ];
 
 /** The call name a `ToolDescriptor` carries (`defineTool`/loader results), else its display name. */
