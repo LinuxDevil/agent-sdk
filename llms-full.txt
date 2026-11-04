@@ -3026,7 +3026,7 @@ validated spec), `mcpServers` (resolved, secret refs expanded) and
 
 | Field | What it supplies |
 | ----- | ---------------- |
-| `baseDir` | Required. The directory `instructions.file` and `{ file }`, `{ dir }` and `{ ref }` refs resolve under - usually the spec file's own folder. |
+| `baseDir` | Required. The directory `instructions.file` and `{ file }`, `{ registry }` and `{ dir }` refs resolve under - usually the spec file's own folder. |
 | `env` | The environment `{ env }` refs read first. Default: the process env. |
 | `resolveSecret` | `(name) => value` for `{ secret }` refs; absent, they fail with `LOUSHO_SPEC_SECRET_MISSING`. |
 | `exporter` | The trace exporter the agent runs with; wrapped so spans carry `lousho.node.id`. |
