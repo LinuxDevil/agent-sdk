@@ -140,6 +140,7 @@ import {
   type HandoffGate,
   type ResolvedHandoff,
 } from './handoffRun';
+import { markApprovalWait, markHandoff } from './markSpan';
 
 export { PropagatingToolError } from './propagatingToolError';
 
@@ -1002,11 +1003,12 @@ export class AgentExecutor {
     options.metadata = state.metadata;
     await checkResumedAgent(options, state, tools);
     state.budget = budget;
-    // The new input is checked before anything else runs.
-    const blocked = await checkInputGuardrails(options, [state.messages, state.queuedInput]);
+    // The new input is checked before anything else runs. Guardrail check spans nest under the run's invoke_agent span.
+    const guarded = { ...options, guardrailParentSpanId: agentSpanId };
+    const blocked = await checkInputGuardrails(guarded, [state.messages, state.queuedInput]);
     if (blocked) return this.stopForGuardrail(options, state, blocked);
     // The `runInParallel` ones check the (possibly rewritten) input while the first model call runs.
-    state.inputCheck = startParallelInputGuardrails(options, [...state.messages, ...state.queuedInput]);
+    state.inputCheck = startParallelInputGuardrails(guarded, [...state.messages, ...state.queuedInput]);
 
     options.inputQueue?.listen((queued) => {
       runEventsOf(options)?.inputQueued(queued);
@@ -1138,7 +1140,7 @@ export class AgentExecutor {
     const { generated, measured } = generatedStep;
     const stepUsage = recordStep(state, measured);
     noteReasoning(state, generated.reasoning);
-    const text = await this.guardOutput(options, state, generated);
+    const text = await this.guardOutput(options, state, generated, agentSpanId);
     if (typeof text !== 'string') return text;
     if (text) {
       state.finalText = text;
@@ -1307,7 +1309,7 @@ export class AgentExecutor {
     // The provider already ran its hosted calls; they are counted, never run here.
     countHostedCalls(state.usage, generated.hostedToolCalls);
 
-    const text = await this.guardOutput(options, state, generated);
+    const text = await this.guardOutput(options, state, generated, agentSpanId);
     if (typeof text !== 'string') return text;
     // `functions.read_file` runs `read_file` when that is a known tool.
     const known = new Set([...tools.map((tool) => tool.function.name), ...(options.toolRegistry?.list() ?? [])]);
@@ -1370,10 +1372,11 @@ export class AgentExecutor {
   private static async guardOutput(
     options: ExecuteOptions,
     state: AgentRunState,
-    { text, toolCalls }: GenerateResult
+    { text, toolCalls }: GenerateResult,
+    agentSpanId: string
   ): Promise<string | ExecutionResult> {
     if (!text || (toolCalls?.length && !runEventsOf(options)?.iterated)) return text;
-    const checked = await checkOutputGuardrails(options, text, state.messages);
+    const checked = await checkOutputGuardrails({ ...options, guardrailParentSpanId: agentSpanId }, text, state.messages);
     return 'tripped' in checked ? this.stopForGuardrail(options, state, checked.tripped) : checked.text;
   }
 
@@ -1612,10 +1615,10 @@ export class AgentExecutor {
     // sub-agent that comes first in CALL order, so sort them back.
     const callOrder = new Map(toolCalls.map((call, index) => [call.id, index]));
     suspensions.sort((a, b) => (callOrder.get(a.toolCallId) ?? 0) - (callOrder.get(b.toolCallId) ?? 0));
-    const stopped = this.settleToolBatch(options, state, batch, suspensions, handoffCalls);
+    const stopped = this.settleToolBatch(options, state, batch, suspensions, handoffCalls, agentSpanId);
     // A steer cut the batch short (its calls, the handoff calls too, were cancelled).
     if (stopped || handoffCalls.length === 0 || batch.unrecorded.length > 0) return stopped;
-    return this.settleHandoffCalls(options, state, handoffCalls);
+    return this.settleHandoffCalls(options, state, handoffCalls, agentSpanId);
   }
 
   /**
@@ -1625,7 +1628,12 @@ export class AgentExecutor {
    * `ask`; the first cleared call switches the run to its target (taken by
    * the loop from `state.switched`).
    */
-  private static async settleHandoffCalls(options: ExecuteOptions, state: AgentRunState, handoffCalls: ToolCall[]): Promise<ExecutionResult | undefined> {
+  private static async settleHandoffCalls(
+    options: ExecuteOptions,
+    state: AgentRunState,
+    handoffCalls: ToolCall[],
+    agentSpanId: string
+  ): Promise<ExecutionResult | undefined> {
     let gate: HandoffGate;
     try {
       gate = await takeHandoffCalls(options, state, handoffCalls);
@@ -1636,7 +1644,7 @@ export class AgentExecutor {
     }
     if (gate.approval) {
       // Every other call of the turn already has its result; nothing waits behind the decision.
-      return this.pauseForApproval(options, state, [gate.approval], []);
+      return this.pauseForApproval(options, state, [gate.approval], [], undefined, agentSpanId);
     }
     const honored = gate.honored;
     if (!honored) {
@@ -1657,6 +1665,7 @@ export class AgentExecutor {
     // The honored call settles like a tool call: post hooks may replace the routing result the target reads.
     await settleHonoredHandoff(options, state.messages, honored, switched.marker);
     runEventsOf(options)?.handoff({ ...switched.marker, toolCallId: toolCall.id });
+    markHandoff(options.exporter, switched.marker, toolCall.id, agentSpanId);
     state.switched = { options: next, tools };
     await saveStepCheckpoint(next, state);
     return undefined;
@@ -1674,7 +1683,8 @@ export class AgentExecutor {
     state: AgentRunState,
     batch: ToolBatchResult,
     suspensions: SubagentSuspension[],
-    handoffCalls: ToolCall[]
+    handoffCalls: ToolCall[],
+    agentSpanId: string
   ): Promise<ExecutionResult> | undefined {
     if (options.signal?.aborted) {
       pushAbortedBatchResults(state, batch.unrecorded, undefined, options.maxToolResultChars);
@@ -1693,7 +1703,7 @@ export class AgentExecutor {
     // A tool that needs sign-in pauses the run first; it runs again once the user signed in.
     const signIn = batch.unrecorded.find((call) => call.outcome?.signIn);
     if (signIn) {
-      return this.pauseForSignIn(options, state, batch.unrecorded, signIn, suspensions, handoffCalls);
+      return this.pauseForSignIn(options, state, batch.unrecorded, signIn, suspensions, handoffCalls, agentSpanId);
     }
     const suspension = settleSuspensions(state.messages, suspensions, false);
     if (batch.approvals.length > 0) {
@@ -1701,7 +1711,7 @@ export class AgentExecutor {
       // a sub-agent of the step that paused too pauses the run once they are decided.
       const waiting = new Set(batch.approvals.map(({ toolCall }) => toolCall));
       const remaining = batch.unrecorded.filter((call) => !waiting.has(call.toolCall)).map((call) => call.toolCall);
-      return this.pauseForApproval(options, state, batch.approvals, [...remaining, ...handoffCalls], suspension);
+      return this.pauseForApproval(options, state, batch.approvals, [...remaining, ...handoffCalls], suspension, agentSpanId);
     }
     // What is left of a batch a steer stopped was not run.
     pushAbortedBatchResults(state, batch.unrecorded, 'the user steered the run to new input', options.maxToolResultChars);
@@ -1710,7 +1720,7 @@ export class AgentExecutor {
       const record = suspensionRecord(options, state, suspension);
       // A handoff call of the step is settled once the sub-agent's approval is decided.
       if (handoffCalls.length > 0) record.snapshot.remainingToolCalls = handoffCalls;
-      return this.savePause(options, state, record);
+      return this.savePause(options, state, record, agentSpanId);
     }
     return undefined;
   }
@@ -1901,7 +1911,8 @@ export class AgentExecutor {
     unrecorded: UnrecordedToolCall[],
     paused: UnrecordedToolCall,
     suspensions: SubagentSuspension[],
-    handoffCalls: ToolCall[]
+    handoffCalls: ToolCall[],
+    agentSpanId: string
   ): Promise<ExecutionResult> {
     // The step's handoff calls are settled after the decision, with the rest.
     const remaining: ToolCall[] = [...handoffCalls];
@@ -1917,7 +1928,7 @@ export class AgentExecutor {
     }
     // One pause per run: a sub-agent that paused meanwhile is dropped (its result says so).
     settleSuspensions(state.messages, suspensions, true);
-    return this.pauseForApproval(options, state, [{ toolCall: paused.toolCall, outcome: paused.outcome as ToolCallOutcome }], remaining);
+    return this.pauseForApproval(options, state, [{ toolCall: paused.toolCall, outcome: paused.outcome as ToolCallOutcome }], remaining, undefined, agentSpanId);
   }
 
   /**
@@ -1934,7 +1945,8 @@ export class AgentExecutor {
     state: AgentRunState,
     calls: Array<{ toolCall: ToolCall; outcome: ToolCallOutcome }>,
     remainingToolCalls: ToolCall[],
-    heldSubagent?: SubagentSuspension
+    heldSubagent: SubagentSuspension | undefined,
+    agentSpanId: string
   ): Promise<ExecutionResult> {
     const { agent, approvalStore, sessionId, principal } = options;
     if (!approvalStore) {
@@ -1986,7 +1998,7 @@ export class AgentExecutor {
       ...(group.length > 1 && { approvalGroup: group.map((pending) => ({ pending })) }),
       ...(heldSubagent && { heldSubagent }),
     };
-    return this.savePause(options, state, { pending: group[0], snapshot });
+    return this.savePause(options, state, { pending: group[0], snapshot }, agentSpanId);
   }
 
   /**
@@ -1998,7 +2010,8 @@ export class AgentExecutor {
   private static async savePause(
     options: ExecuteOptions,
     state: AgentRunState,
-    record: { pending: PendingApproval; snapshot: ExecutionSnapshot }
+    record: { pending: PendingApproval; snapshot: ExecutionSnapshot },
+    agentSpanId: string
   ): Promise<ExecutionResult> {
     const { approvalStore } = options;
     const records = approvalRecords(record);
@@ -2013,7 +2026,10 @@ export class AgentExecutor {
       }
     }
     await saveStepCheckpoint(options, state, 'awaiting-approval', ids, describeApproval(records[0].pending).kind);
-    for (const entry of records) runEventsOf(options)?.approvalRequested(entry.pending);
+    for (const entry of records) {
+      runEventsOf(options)?.approvalRequested(entry.pending);
+      markApprovalWait(options, entry.pending, agentSpanId);
+    }
 
     return {
       ...toExecutionResult(state, '', 'awaiting-approval'),

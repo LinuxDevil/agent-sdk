@@ -9,6 +9,7 @@
     "src/utils/index.ts",
     "src/tools/mcp/index.ts",
     "src/types/index.ts",
+    "src/spec/v2/index.ts",
     "src/testing/index.ts",
     "src/execution/otel.ts",
     "src/execution/hooks.ts",

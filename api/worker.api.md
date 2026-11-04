@@ -152,17 +152,12 @@ interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
-    // (undocumented)
     description?: string;
     flow?: EditorStep;
-    // (undocumented)
     id?: string;
-    // (undocumented)
     inputs?: FlowInputVariable[];
-    // (undocumented)
     name: string;
 }
 
@@ -239,17 +234,13 @@ interface AgentSettings {
     model?: string;
 }
 
-// @public (undocumented)
+// @public
 export interface AgentSpec {
     mcpServers?: Record<string, McpServerSpec>;
-    // (undocumented)
     name: string;
     policy?: AgentSpecPolicy;
-    // (undocumented)
     prompt: string;
-    // (undocumented)
     provider: AgentSpecProvider;
-    // (undocumented)
     tools?: string[];
     triggers?: AgentSpecTrigger[];
 }

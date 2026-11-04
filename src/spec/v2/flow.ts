@@ -20,7 +20,9 @@ type StepPath = (string | number)[];
  * problems to node badges by the step id they sit on.
  */
 export interface FlowProblem {
+  /** The spec-root-relative path of the offending value, e.g. `['flow', 'flow', 'steps', 2, 'agent']`. */
   path: StepPath;
+  /** What is wrong with it. */
   message: string;
   /** true → parseAgentSpecV2 reports LOUSHO_SPEC_UNSUPPORTED; false → LOUSHO_SPEC_INVALID. */
   unsupported: boolean;

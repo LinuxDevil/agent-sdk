@@ -141,10 +141,15 @@ export interface McpHttpServerSpec {
  */
 export type McpServerSpec = McpStdioServerSpec | McpHttpServerSpec;
 
+/** The v1 agent spec shape (a `.yaml`/`.json` agent file); v2 specs use `AgentSpecV2` (`lousho/spec`). */
 export interface AgentSpec {
+  /** Agent name. */
   name: string;
+  /** The system prompt. */
   prompt: string;
+  /** The model as `{ type: provider, model }`. */
   provider: AgentSpecProvider;
+  /** Tool names the agent gets. */
   tools?: string[];
   /**
    * Optional (backward-compatible with original
@@ -340,4 +345,5 @@ export const agentSpecProviderSchema = providerSchema as unknown as SpecSchema<A
 export const agentSpecPolicySchema = policySchema as unknown as SpecSchema<AgentSpecPolicy>;
 export const agentSpecTriggerSchema = triggerSchema as unknown as SpecSchema<AgentSpecTrigger>;
 export const mcpServerSpecSchema = mcpServerSchema as unknown as SpecSchema<McpServerSpec>;
+/** The v1 agent spec schema (zod): what `loadSpec()` and `lousho/spec`'s `agentSpecSchema` validate against. */
 export const agentSpecSchema = specSchema as unknown as SpecObjectSchema<AgentSpec>;

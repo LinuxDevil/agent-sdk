@@ -35,12 +35,19 @@ describe('example imports', () => {
 
   it('tsconfig.json maps exactly the package exports to their sources', () => {
     const { config } = ts.readConfigFile(path.join(REPO_ROOT, 'tsconfig.json'), ts.sys.readFile);
-    const expected: Record<string, string[]> = Object.fromEntries(
-      Object.entries<{ require: { types: string } }>(pkg.exports).map(([subpath, entry]) => [
-        subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
-        [entry.require.types.replace(/^\.\/dist\//, './src/').replace(/\.d\.ts$/, '.ts')],
-      ])
-    );
+    // dist/<name> -> src/<name> derivation does not hold for `lousho/spec`:
+    // src/spec/index.ts is already the v1 spec barrel, so the browser-safe
+    // entry lives at src/spec/v2/index.ts while still building dist/spec/.
+    const SOURCE_OVERRIDES: Record<string, string[]> = { 'lousho/spec': ['./src/spec/v2/index.ts'] };
+    const expected: Record<string, string[]> = {
+      ...Object.fromEntries(
+        Object.entries<{ require: { types: string } }>(pkg.exports).map(([subpath, entry]) => [
+          subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
+          [entry.require.types.replace(/^\.\/dist\//, './src/').replace(/\.d\.ts$/, '.ts')],
+        ])
+      ),
+      ...SOURCE_OVERRIDES,
+    };
     expect(config.compilerOptions.paths).toEqual(expected);
     for (const [target] of Object.values(expected)) expect(fs.existsSync(path.join(REPO_ROOT, target))).toBe(true);
   });
