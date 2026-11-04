@@ -39,11 +39,11 @@ export function harnessVersion(agent: Pick<BenchmarkAgent, 'instructions' | 'too
 
 const AGENT_ERRORS = new Set(['LOUSHO_RUN_NO_PROGRESS']);
 
-async function attempt(agent: BenchmarkAgent, task: BenchmarkTask, options: BenchmarkOptions, model: string, repeat: number): Promise<BenchmarkRun> {
-  const hooks = options.hooks ?? [];
+function newRow(agent: BenchmarkAgent, task: BenchmarkTask, options: BenchmarkOptions, model: string, repeat: number): { row: BenchmarkRun; instructions: string } {
   const instructions = agent.instructions + (options.instructionSuffix ?? '');
+  const hookNames = (options.hooks ?? []).map((hook) => hook.name);
   const row: BenchmarkRun = {
-    harness: harnessVersion({ instructions, tools: agent.tools }, hooks.map((hook) => hook.name)),
+    harness: harnessVersion({ instructions, tools: agent.tools }, hookNames),
     agent: agent.name,
     task: task.id,
     taskInput: task.input,
@@ -54,6 +54,18 @@ async function attempt(agent: BenchmarkAgent, task: BenchmarkTask, options: Benc
     toolRuns: 0,
     tokens: 0,
   };
+  return { row, instructions };
+}
+
+function recordError(row: BenchmarkRun, error: unknown): void {
+  const { code, usage } = error as { code?: string; usage?: { totalTokens?: number } };
+  row.ended = code ?? (error instanceof Error ? error.name : 'error');
+  row.tokens = usage?.totalTokens ?? 0;
+  row.outcome = code !== undefined && AGENT_ERRORS.has(code) ? 'failed' : 'unknown';
+}
+
+async function attempt(agent: BenchmarkAgent, task: BenchmarkTask, options: BenchmarkOptions, model: string, repeat: number): Promise<BenchmarkRun> {
+  const { row, instructions } = newRow(agent, task, options, model, repeat);
   const counter: AgentHook = {
     name: 'benchmark-counter',
     postToolCall: () => {
@@ -67,7 +79,7 @@ async function attempt(agent: BenchmarkAgent, task: BenchmarkTask, options: Benc
     tools: agent.tools,
     maxSteps: options.maxSteps ?? 15,
     ...(options.retry === false && { retry: false as const }),
-    hooks: [counter, ...hooks],
+    hooks: [counter, ...(options.hooks ?? [])],
   });
   try {
     const result = await built.send(task.input);
@@ -76,30 +88,27 @@ async function attempt(agent: BenchmarkAgent, task: BenchmarkTask, options: Benc
     row.tokens = result.usage?.totalTokens ?? 0;
     row.outcome = task.check(result.text ?? '') ? 'passed' : 'failed';
   } catch (error) {
-    const { code, usage } = error as { code?: string; usage?: { totalTokens?: number } };
-    row.ended = code ?? (error instanceof Error ? error.name : 'error');
-    row.tokens = usage?.totalTokens ?? 0;
-    row.outcome = code !== undefined && AGENT_ERRORS.has(code) ? 'failed' : 'unknown';
+    recordError(row, error);
   }
   await built.close?.();
   return row;
 }
 
+function taskIds(agent: BenchmarkAgent, only: string | undefined): string[] {
+  return agent.tasks.map((task) => task.id).filter((id) => only === undefined || only === id);
+}
+
 export async function runBenchmark(options: BenchmarkOptions): Promise<BenchmarkRun[]> {
+  const plan = Array.from({ length: options.repeats }, (_, repeat) => repeat).flatMap((repeat) =>
+    options.models.flatMap((model) => options.agents.flatMap((build) => taskIds(build(), options.only).map((id) => ({ repeat, model, build, id }))))
+  );
   const rows: BenchmarkRun[] = [];
-  for (let repeat = 0; repeat < options.repeats; repeat += 1) {
-    for (const model of options.models) {
-      for (const build of options.agents) {
-        for (const { id } of build().tasks) {
-          if (options.only !== undefined && options.only !== id) continue;
-          const agent = build();
-          const task = agent.tasks.find((candidate) => candidate.id === id) as BenchmarkTask;
-          const row = await attempt(agent, task, options, model, repeat);
-          rows.push(row);
-          options.onRun?.(row);
-        }
-      }
-    }
+  for (const { repeat, model, build, id } of plan) {
+    const agent = build();
+    const task = agent.tasks.find((candidate) => candidate.id === id) as BenchmarkTask;
+    const row = await attempt(agent, task, options, model, repeat);
+    rows.push(row);
+    options.onRun?.(row);
   }
   return rows;
 }
