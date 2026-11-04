@@ -29,6 +29,10 @@ export interface RecoverOptions<TResult = unknown> {
   onError?: (error: unknown, run?: PendingRun) => void;
   /** Called with each run this loop finished, and its result. */
   onRecovered?: (run: PendingRun, result: TResult) => void;
+  /** Failed attempts in a row after which the loop stops resuming a run (default 10); `agent.resume()` can still run it. */
+  maxAttempts?: number;
+  /** Called once per loop for each run that reached `maxAttempts`. */
+  onQuarantined?: (run: PendingRun) => void;
 }
 
 /** The loop `agent.recover()` started. */
@@ -46,6 +50,14 @@ interface RecoveryTarget<TResult> {
 }
 
 const DEFAULT_INTERVAL_MS = 30_000;
+const DEFAULT_MAX_ATTEMPTS = 10;
+const MAX_BACKOFF_MS = 15 * 60_000;
+
+function backingOff(run: PendingRun, intervalMs: number): boolean {
+  if (!run.lastError || !run.attempts) return false;
+  const delayMs = Math.min(intervalMs * 2 ** (run.attempts - 1), MAX_BACKOFF_MS);
+  return Date.now() < Date.parse(run.lastError.at) + delayMs;
+}
 
 /** Errors a sweep expects: the run is someone else's right now, or it waits on a human. */
 function expected(error: unknown): boolean {
@@ -68,6 +80,11 @@ export function startRecovery<TResult>(target: RecoveryTarget<TResult>, options:
   if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
     throw new ConfigurationError(`agent.recover(): intervalMs must be a positive number of milliseconds, got ${intervalMs}.`, 'intervalMs');
   }
+  const maxAttempts = options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
+  if (!Number.isInteger(maxAttempts) || maxAttempts <= 0) {
+    throw new ConfigurationError(`agent.recover(): maxAttempts must be a positive whole number, got ${maxAttempts}.`, 'maxAttempts');
+  }
+  const quarantined = new Set<string>();
   const controller = new AbortController();
   const { signal } = controller;
   const outer = options.signal;
@@ -95,6 +112,18 @@ export function startRecovery<TResult>(target: RecoveryTarget<TResult>, options:
     inFlight.set(run.sessionId, task);
   };
 
+  const quarantine = (run: PendingRun): boolean => {
+    if (!run.lastError || (run.attempts ?? 0) < maxAttempts) {
+      quarantined.delete(run.sessionId);
+      return false;
+    }
+    if (!quarantined.has(run.sessionId)) {
+      quarantined.add(run.sessionId);
+      safely(options.onQuarantined, run);
+    }
+    return true;
+  };
+
   const sweep = async () => {
     let runs: PendingRun[];
     try {
@@ -107,6 +136,7 @@ export function startRecovery<TResult>(target: RecoveryTarget<TResult>, options:
       if (signal.aborted) return;
       // Paused on a human; failed for good (it would fail again: `agent.pending()` shows it); or this loop is on it.
       if (run.status !== 'in-progress' || run.lastError?.retryable === false || inFlight.has(run.sessionId)) continue;
+      if (quarantine(run) || backingOff(run, intervalMs)) continue;
       resume(run);
     }
   };

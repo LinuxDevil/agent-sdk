@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Install docs use the public npm packages again (`npm install lousho`, `npm create lousho`).
+- **Behavior change:** `agent.recover()` no longer resumes a failing run forever. It backs off exponentially from the last failure (up to 15 minutes) and stops after `maxAttempts` failures in a row (default 10), calling the new `onQuarantined(run)` once. `agent.resume()` still runs a quarantined run. Pass a larger `maxAttempts` to keep retrying longer.
 
 ## [1.0.0-alpha.31] - 2026-11-01
 

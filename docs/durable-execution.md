@@ -271,6 +271,13 @@ What a sweep does with each pending run:
   human decides it with `agent.approvals.resolve()`.
 - A run whose `lastError` has `retryable: false`: left alone, since it would
   fail the same way; `agent.pending()` still lists it.
+- A run that failed recently: skipped until its backoff passes, `intervalMs`
+  doubled for each failed attempt in a row, up to 15 minutes.
+- A run that failed `maxAttempts` times in a row (default 10): quarantined. The
+  loop stops resuming it and calls `onQuarantined(run)` once. `agent.pending()`
+  still lists it, and `agent.resume()` still runs it. Saving progress resets the
+  count. A failure that kills the process records no attempt, so it is not
+  counted.
 - A run still running in another process, or one whose crashed process's
   [run lease](#run-leases) has not expired yet: its resume is turned away
   with `LOUSHO_SESSION_BUSY` before anything runs, silently, and a later sweep
