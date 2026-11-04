@@ -60,6 +60,8 @@ export async function forkSession(options: ForkOptions): Promise<ForkResult> {
 
   const source = structuredClone(entry.checkpoint);
   delete source.approvalId;
+  delete source.lastError;
+  delete source.attempts;
   const checkpoint: Checkpoint = {
     ...source,
     sessionId: newSessionId,

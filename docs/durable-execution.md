@@ -277,7 +277,12 @@ What a sweep does with each pending run:
   loop stops resuming it and calls `onQuarantined(run)` once. `agent.pending()`
   still lists it, and `agent.resume()` still runs it. Saving progress resets the
   count. A failure that kills the process records no attempt, so it is not
-  counted.
+  counted. With `retryWithDiagnosis: true`, a run (not a session turn) first
+  gets one last try: a fork `<id>.heal`, resumed from the same step, with a note
+  saying why it failed. If the fork finishes, the original is deleted and
+  `onRecovered` reports the original's id. If it also reaches the cap, both are
+  quarantined. The note quotes the error as data and caps its length, because
+  the error can hold tool output. The store must keep a history.
 - A run still running in another process, or one whose crashed process's
   [run lease](#run-leases) has not expired yet: its resume is turned away
   with `LOUSHO_SESSION_BUSY` before anything runs, silently, and a later sweep

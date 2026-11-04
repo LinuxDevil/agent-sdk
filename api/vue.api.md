@@ -1239,6 +1239,7 @@ interface RecoverOptions<TResult = unknown> {
     onError?: (error: unknown, run?: PendingRun) => void;
     onQuarantined?: (run: PendingRun) => void;
     onRecovered?: (run: PendingRun, result: TResult) => void;
+    retryWithDiagnosis?: boolean;
     signal?: AbortSignal;
 }
 
