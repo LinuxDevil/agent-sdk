@@ -5,9 +5,11 @@
  * "not supported yet" issue. Browser-safe: no `node:*` imports.
  */
 import { z } from 'zod';
+import type { AgentFlow } from '../../types/flow';
 import { anyError, typeErrors } from '../../utils/zodCompat';
 import type { SpecObjectSchema } from '../schema';
 import { modelIdSchema, relativePathSchema } from './common';
+import { flowProblems, flowSpecSchema } from './flow';
 import { guardrailListSchema } from './guardrails';
 import { handoffListSchema } from './handoffs';
 import { hookListSchema } from './hooks';
@@ -19,7 +21,7 @@ import { skillRefListSchema } from './skills';
 import { subagentsSchemaOf, TOP_LEVEL_ONLY_KEYS } from './subagents';
 import { toolRefListSchema } from './tools';
 import { triggerListSchema } from './triggers';
-import { pendingField } from './unsupported';
+import { addUnsupportedIssue, pendingField } from './unsupported';
 import type { AgentSpecV2 } from './types';
 
 /** Agent `name`: 1-64 letters, digits, spaces, dots, dashes or underscores, starting with a letter or digit. */
@@ -85,11 +87,28 @@ export const agentSpecV2Shape = {
   output: outputSpecSchema.optional(),
   triggers: triggerListSchema.optional(),
   abortListeners: pendingField('abortListeners'),
-  flow: pendingField('flow'),
+  flow: flowSpecSchema.optional(),
   evals: pendingField('evals'),
 };
 
-const schema = z.object(agentSpecV2Shape).strict();
+/**
+ * `spec.flow`'s step rules run at the spec level — they need the spec's
+ * `subagents` keys, which a field schema cannot see. `unsupported` problems
+ * keep the "not supported yet" marker (LOUSHO_SPEC_UNSUPPORTED); the rest are
+ * plain custom issues (LOUSHO_SPEC_INVALID). Paths are already spec-rooted.
+ */
+function refineFlow(spec: { flow?: AgentFlow; subagents?: Record<string, unknown> }, ctx: z.RefinementCtx): void {
+  if (spec.flow === undefined) return;
+  const agentNames = Object.keys(spec.subagents ?? {});
+  for (const problem of flowProblems(spec.flow, { agentNames })) {
+    if (problem.unsupported) addUnsupportedIssue(ctx, problem.message, problem.path);
+    else ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem.message, path: problem.path });
+  }
+}
+
+const schema = z.object(agentSpecV2Shape).strict().superRefine(refineFlow);
+// `.superRefine` wraps the object in a ZodEffects under zod 3, dropping `.shape`; SpecObjectSchema promises one.
+if (!('shape' in schema)) Object.assign(schema, { shape: agentSpecV2Shape });
 
 /** The v2 schema as published: structural, so declarations do not depend on the installed zod major. */
 export const agentSpecV2Schema = schema as unknown as SpecObjectSchema<AgentSpecV2>;
