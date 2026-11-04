@@ -3,7 +3,7 @@
  * names, each one's options, and the entry's validation.
  */
 import { z } from 'zod';
-import { MODERATION_CATEGORIES, PII_TYPES } from '../execution/guardrailStarterSet';
+import { MODERATION_CATEGORIES, PII_TYPES } from '../execution/guardrailLists';
 import { closestMatch } from '../utils/closestMatch';
 import { anyError, issueMessage } from '../utils/zodCompat';
 

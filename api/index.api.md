@@ -246,17 +246,12 @@ export interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
-    // (undocumented)
     description?: string;
     flow?: EditorStep;
-    // (undocumented)
     id?: string;
-    // (undocumented)
     inputs?: FlowInputVariable[];
-    // (undocumented)
     name: string;
 }
 
@@ -336,17 +331,13 @@ export interface AgentSettings {
 // @public
 export type AgentSource = SimpleAgent | EvalTarget | (() => SimpleAgent | EvalTarget | Promise<SimpleAgent | EvalTarget>);
 
-// @public (undocumented)
+// @public
 export interface AgentSpec {
     mcpServers?: Record<string, McpServerSpec>;
-    // (undocumented)
     name: string;
     policy?: AgentSpecPolicy;
-    // (undocumented)
     prompt: string;
-    // (undocumented)
     provider: AgentSpecProvider;
-    // (undocumented)
     tools?: string[];
     triggers?: AgentSpecTrigger[];
 }
@@ -387,7 +378,7 @@ export interface AgentSpecProvider {
 // @public (undocumented)
 export const agentSpecProviderSchema: SpecSchema<AgentSpecProvider>;
 
-// @public (undocumented)
+// @public
 export const agentSpecSchema: SpecObjectSchema<AgentSpec>;
 
 // @public
@@ -3062,17 +3053,11 @@ type GuardrailSide = 'input' | 'output' | 'tools';
 
 // @public
 interface GuardrailSpec {
-    // (undocumented)
     id: string;
-    // (undocumented)
     name: SpecGuardrailName;
-    // (undocumented)
     on?: GuardrailSide | GuardrailSide[];
-    // (undocumented)
     onTripped?: 'block' | 'rewrite' | 'warn';
-    // (undocumented)
     options?: Record<string, unknown>;
-    // (undocumented)
     runInParallel?: boolean;
 }
 
@@ -4303,14 +4288,12 @@ interface MemorySpec {
     itemJsonSchema?: Record<string, unknown>;
     itemKey?: string | string[];
     name: string;
-    // (undocumented)
     provider: MemoryProviderSpec;
     recall?: {
         onSessionStart?: boolean;
         maxItems?: number;
         query?: 'last-input' | 'none';
     };
-    // (undocumented)
     scope: MemoryScopeSpec;
 }
 
@@ -4846,15 +4829,10 @@ export interface OpenApiOperationInfo {
 
 // @public
 interface OpenApiToolRefOptions {
-    // (undocumented)
     approval?: 'mutating' | 'always' | 'never';
-    // (undocumented)
     bearerToken?: SecretRef;
-    // (undocumented)
     exclude?: string[];
-    // (undocumented)
     include?: string[];
-    // (undocumented)
     url: string;
 }
 
@@ -5149,9 +5127,7 @@ export interface PermissionRule {
 // @public
 interface PermissionRuleSpec {
     action: 'allow' | 'deny' | 'ask' | 'auto';
-    // (undocumented)
     id: string;
-    // (undocumented)
     reason?: string;
     tool: string | string[];
     ttlMs?: number;

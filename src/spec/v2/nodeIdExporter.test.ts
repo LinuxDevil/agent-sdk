@@ -289,7 +289,6 @@ describe('specV2ToAgent integration', () => {
     expect(started.find((s) => s.name === 'execute_tool task')?.attributes[NODE_ID]).toBeUndefined();
   });
 
-<<<<<<< HEAD
   it('stamps the handoff marker handoff:billing and the run\'s later chat spans the same', async () => {
     leadScript = [{ toolCalls: [{ name: 'transfer_to_billing', args: { reason: 'charged twice' } }] }, 'done'];
     const { started, exporter } = recorder();
@@ -328,7 +327,8 @@ describe('specV2ToAgent integration', () => {
     const wait = started.find((s) => s.name === 'approval.wait web_fetch');
     expect(wait?.attributes[SdkAttr.APPROVAL_ID]).toBe(paused.approvalId);
     expect(wait?.attributes[NODE_ID]).toBe('tool:http_request');
-=======
+  });
+
   it('stamps guard:<id> on a spec guardrail’s check span', async () => {
     leadScript = ['done'];
     const { started, exporter } = recorder();
@@ -341,6 +341,5 @@ describe('specV2ToAgent integration', () => {
     const check = started.find((s) => s.name === 'guardrail g1');
     expect(check?.attributes[NODE_ID]).toBe('guard:g1');
     expect(check?.attributes[SdkAttr.GUARDRAIL_OUTCOME]).toBe('pass');
->>>>>>> origin/fb-s20b-guardrail-spans
   });
 });

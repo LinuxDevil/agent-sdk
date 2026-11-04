@@ -30,6 +30,7 @@
       "lousho/utils": ["./src/utils/index.ts"],
       "lousho/mcp": ["./src/tools/mcp/index.ts"],
       "lousho/types": ["./src/types/index.ts"],
+      "lousho/spec": ["./src/spec/v2/index.ts"],
       "lousho/testing": ["./src/testing/index.ts"],
       "lousho/otel": ["./src/execution/otel.ts"],
       "lousho/hooks": ["./src/execution/hooks.ts"],

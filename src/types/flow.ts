@@ -88,14 +88,19 @@ export interface FlowAgentDefinition {
  * Agent flow definition
  */
 export interface AgentFlow {
+  /** Optional flow id. */
   id?: string;
   /** The flow's identifier; a durable run is tied to it (`FlowExecutor.resume()` refuses another flow's run). */
   code: string;
+  /** Display name. */
   name: string;
+  /** What the flow does, in a sentence. */
   description?: string;
+  /** Input variables the caller supplies. */
   inputs?: FlowInputVariable[];
   /** The root node `FlowExecutor` runs. */
   flow?: EditorStep;
+  /** Agent definitions steps reference by name. */
   agents?: FlowAgentDefinition[];
 }
 
