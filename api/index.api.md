@@ -1613,6 +1613,9 @@ export function createLintCheck(repoPath: string, options?: CommandCheckOptions)
 export function createMockProvider(config?: MockProviderConfig): MockLLMProvider;
 
 // @public
+export function createOutputCheck(checks: OutputChecks): AgentHook;
+
+// @public
 export function createProgressGuard(options?: ProgressGuardOptions): AgentHook;
 
 // @public
@@ -4940,6 +4943,9 @@ export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
 export const OPERATION_DURATION_BUCKETS: number[];
 
 // @public
+export type OutputChecks = Readonly<Record<string, (args: Record<string, unknown>, result: unknown) => string | undefined | Promise<string | undefined>>>;
+
+// @public
 export interface OutputError {
     issues: ToolArgumentIssue[];
     kind: 'invalid' | 'truncated';
@@ -5553,6 +5559,7 @@ export interface RecoverOptions<TResult = unknown> {
     onError?: (error: unknown, run?: PendingRun) => void;
     onQuarantined?: (run: PendingRun) => void;
     onRecovered?: (run: PendingRun, result: TResult) => void;
+    retryWithDiagnosis?: boolean;
     signal?: AbortSignal;
 }
 

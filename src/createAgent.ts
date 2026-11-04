@@ -1321,7 +1321,7 @@ export function createAgent<TOutput extends StandardSchemaV1 = StandardSchemaV1>
     pending: () => listPendingRuns(checkpoints),
     recover(options) {
       assertListable(checkpoints, 'agent.recover()');
-      return startRecovery({ pending: () => listPendingRuns(checkpoints), resume: (id, { signal }) => simpleAgent.resume(id, { signal }) }, options);
+      return startRecovery({ pending: () => listPendingRuns(checkpoints), resume: (id, { signal }) => simpleAgent.resume(id, { signal }), fork: (id, forkOptions) => simpleAgent.fork(id, forkOptions), discard: (id) => Promise.resolve(checkpoints?.delete(id)) }, options);
     },
     approvals: approvals.approvals,
     oauth: createAgentOAuth(tokens, approvals.store, mcp.oauth),

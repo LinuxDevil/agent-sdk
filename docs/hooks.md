@@ -152,6 +152,42 @@ the span's error. The guard counts from the run's transcript, so a resumed run
 keeps its history. Calls in one batch aren't counted until the batch settles, and
 compaction can remove old calls from the count.
 
+### Check what a tool produced
+
+A successful write doesn't prove the output is usable. `createOutputCheck()` runs
+your check after a tool succeeds. If it returns a problem, or throws, the model
+sees it as `outputCheckFailed` on the result and can fix the output. The check
+is your code, so make it independent of what the model wrote.
+
+```ts
+import { createAgent, createOutputCheck, defineTool } from 'lousho';
+import { mockModel } from 'lousho/testing';
+import { z } from 'zod';
+
+const files = new Map<string, string>();
+const writeFile = defineTool({
+  name: 'write_file',
+  description: 'Write a file',
+  input: z.object({ path: z.string(), text: z.string() }),
+  async execute({ path, text }) {
+    files.set(path, text);
+    return { path };
+  },
+});
+
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'write_file', args: { path: 'report.md', text: '' } }] }, 'Done.']),
+  tools: [writeFile],
+  hooks: [
+    createOutputCheck({
+      write_file: (args) => (files.get(String(args.path)) ? undefined : `${String(args.path)} is empty`),
+    }),
+  ],
+});
+
+await agent.send('Write the report');
+```
+
 ### Deny a tool by name
 
 ```ts

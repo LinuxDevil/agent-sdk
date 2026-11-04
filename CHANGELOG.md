@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Install docs use the public npm packages again (`npm install lousho`, `npm create lousho`).
+- `agent.recover({ retryWithDiagnosis: true })` gives a run that reached `maxAttempts` one fork told why it failed, before quarantining it. `createOutputCheck()` is a new hook that runs your check after a tool succeeds and tells the model what it found. A fork no longer inherits `lastError` and `attempts` from its source.
 - **Behavior change:** `agent.recover()` no longer resumes a failing run forever. It backs off exponentially from the last failure (up to 15 minutes) and stops after `maxAttempts` failures in a row (default 10), calling the new `onQuarantined(run)` once. `agent.resume()` still runs a quarantined run. Pass a larger `maxAttempts` to keep retrying longer.
 - `createProgressGuard()`: an opt-in hook that adds advice to repeated tool failures, denies calls that keep returning the same result and tools that keep failing the same way, and stops the run with `LOUSHO_RUN_NO_PROGRESS` if denials continue. Actions stream as the new `heal.action` event; tool hooks get `ctx.emit`, and tool spans record `lousho.tool.replaced_by_hook`. See [Hooks](docs/hooks.md#stop-a-run-that-makes-no-progress).
 
