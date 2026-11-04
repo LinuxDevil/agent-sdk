@@ -103,7 +103,9 @@ without the CLI:
 Agent specs and run state are stored under `.lousho/` in the directory you
 ran `lousho studio` from (agent YAML files under `.lousho/agents/`,
 checkpoints and approvals alongside them) - the same `.lousho/` layout
-`lousho dev`/`lousho build` use.
+`lousho dev`/`lousho build` use. Those YAML files are
+[Agent spec v2](./agent-spec.md) documents, which that page explains field
+by field.
 
 The Agents screen's agent rail lists exactly the agents in that `.lousho/agents/`: a YAML
 file you add there shows up, and an agent you create in the studio is
