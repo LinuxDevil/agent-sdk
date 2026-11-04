@@ -5,7 +5,7 @@ import { listTraces, readTrace } from '../traces/readTraces';
 
 const MAX_TRACE_IDS = 5;
 const MAX_EXAMPLE_CHARS = 300;
-const GUARD_MARKER = '[progress-guard]';
+const GUARD_MARKERS = ['[progress-guard]', 'LOUSHO_RUN_NO_PROGRESS'];
 const LEAF_OPERATIONS = new Set(['execute_tool', 'chat']);
 const ALL_TRACES = Number.MAX_SAFE_INTEGER;
 
@@ -43,7 +43,7 @@ export interface FailureReport {
 }
 
 function classOf(error: string): FailureClass {
-  return error.includes(GUARD_MARKER) ? 'guard-denied' : classifyToolFailure({ message: error });
+  return GUARD_MARKERS.some((marker) => error.includes(marker)) ? 'guard-denied' : classifyToolFailure({ message: error });
 }
 
 export function groupFailures(samples: readonly FailureSample[]): FailureGroup[] {
@@ -98,8 +98,9 @@ function sampleFrom(fields: { agent: string; name: string; traceId: string; at: 
   if (typeof attrs.error !== 'string') return undefined;
   const operation = String(attrs['gen_ai.operation.name'] ?? '');
   const tool = attrs['gen_ai.tool.name'];
+  const agentName = attrs['gen_ai.agent.name'];
   return {
-    agent: fields.agent,
+    agent: typeof agentName === 'string' ? agentName : fields.agent,
     source: typeof tool === 'string' ? tool : fields.name,
     operation,
     error: attrs.error,

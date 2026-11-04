@@ -74,6 +74,8 @@ describe('groupFailures', () => {
   it('labels the guard own denials, and counts hints', () => {
     const [denied] = groupFailures([sample({ error: "hook 'progress-guard' denied: [progress-guard] 'lookup' was called 3 times" })]);
     expect(denied.failureClass).toBe('guard-denied');
+    const [stopped] = groupFailures([sample({ error: 'The run was stopped.\n[LOUSHO_RUN_NO_PROGRESS] Read the events.' })]);
+    expect(stopped.failureClass).toBe('guard-denied');
     const [hinted] = groupFailures([sample({ hinted: true }), sample({ traceId: 't2' })]);
     expect(hinted.hints).toBe(1);
   });
@@ -109,6 +111,13 @@ describe('failureReportFromDb', () => {
     const db = openDb(':memory:');
     ingestBatch(db, [failed('o1', 't1', 'request timed out', { 'lousho.tool.replaced_by_hook': 'progress-guard' })]);
     expect(failureReportFromDb(db, {}).groups[0].hints).toBe(1);
+    db.close();
+  });
+
+  it('names the agent from the span, falling back to its id', () => {
+    const db = openDb(':memory:');
+    ingestBatch(db, [failed('o1', 't1', 'boom', { 'gen_ai.agent.name': 'support-bot' }, { agent_id: 'uuid-1' }), failed('o2', 't2', 'bang', {}, { agent_id: 'uuid-2' })]);
+    expect(failureReportFromDb(db, {}).groups.map((g) => g.agent).sort()).toEqual(['support-bot', 'uuid-2']);
     db.close();
   });
 
