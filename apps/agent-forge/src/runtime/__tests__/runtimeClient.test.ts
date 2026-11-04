@@ -201,6 +201,66 @@ describe('RuntimeClient version methods', () => {
   });
 });
 
+describe('RuntimeClient suggestion methods', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+  const SUGGESTION = { kind: 'prompt_edit', id: 'sug-1', agentId: 'a1', status: 'open' };
+  const ITEM = { version: 3, kind: 'update', source: 'suggestion', specHash: 'sha256:y' };
+
+  /** The last fetch call's [path, init]. */
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it('listSuggestions GETs /agents/:id/suggestions', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, [SUGGESTION]));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listSuggestions('a1')).resolves.toEqual([SUGGESTION]);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/suggestions');
+    expect(init.method).toBe('GET');
+  });
+
+  it('applySuggestion POSTs /suggestions/:sid/apply and resolves the written version', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(201, ITEM));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.applySuggestion('a1', 'sug-1')).resolves.toEqual(ITEM);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/suggestions/sug-1/apply');
+    expect(init.method).toBe('POST');
+  });
+
+  it('dismissSuggestion POSTs /suggestions/:sid/dismiss and resolves undefined on a 204', async () => {
+    const fetchMock = vi.fn(async () => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.dismissSuggestion('a1', 'sug-1')).resolves.toBeUndefined();
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/suggestions/sug-1/dismiss');
+    expect(init.method).toBe('POST');
+  });
+
+  it('suggestion calls reject with the server message and code on a non-ok response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse(409, {
+          error: 'The instructions changed since this suggestion was made.',
+          code: 'LOUSHO_SUGGESTION_CONFLICT',
+        })
+      )
+    );
+    await expect(client.applySuggestion('a1', 'sug-1')).rejects.toMatchObject({
+      message: 'The instructions changed since this suggestion was made.',
+      status: 409,
+      code: 'LOUSHO_SUGGESTION_CONFLICT',
+    });
+  });
+});
+
 describe('RuntimeClient agent methods', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
