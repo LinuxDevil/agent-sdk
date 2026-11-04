@@ -8,6 +8,9 @@ const MAX_EXAMPLE_CHARS = 300;
 const GUARD_MARKERS = ['[progress-guard]', 'LOUSHO_RUN_NO_PROGRESS'];
 const LEAF_OPERATIONS = new Set(['execute_tool', 'chat']);
 const ALL_TRACES = Number.MAX_SAFE_INTEGER;
+const NO_ANSWER_REASONS = new Set(['max-steps', 'budget-exceeded']);
+const RATE_LIMIT = /rate.?limit|\b429\b/i;
+const NO_ANSWER_EXAMPLE = /^The run ended with .* and no answer$/;
 
 export interface FailureSample {
   agent: string;
@@ -19,7 +22,7 @@ export interface FailureSample {
   hinted?: boolean;
 }
 
-export type FailureClass = ToolFailureClass | 'guard-denied';
+export type FailureClass = ToolFailureClass | 'guard-denied' | 'rate-limit' | 'no-answer';
 
 export interface FailureGroup {
   agent: string;
@@ -38,11 +41,13 @@ export interface FailureGroup {
 }
 
 export interface FailureReport {
-  scanned: { traces: number; spans: number; failed: number };
+  scanned: { traces: number; spans: number; failed: number; noAnswer: number };
   groups: FailureGroup[];
 }
 
 function classOf(error: string): FailureClass {
+  if (NO_ANSWER_EXAMPLE.test(error)) return 'no-answer';
+  if (RATE_LIMIT.test(error)) return 'rate-limit';
   return GUARD_MARKERS.some((marker) => error.includes(marker)) ? 'guard-denied' : classifyToolFailure({ message: error });
 }
 
@@ -110,24 +115,41 @@ function sampleFrom(fields: { agent: string; name: string; traceId: string; at: 
   };
 }
 
+function noAnswerSample(fields: { agent: string; traceId: string; at: number; attrs: Record<string, unknown> }): FailureSample | undefined {
+  const reason = fields.attrs['lousho.run.finish_reason'];
+  if (typeof reason !== 'string' || !NO_ANSWER_REASONS.has(reason)) return undefined;
+  const name = fields.attrs['gen_ai.agent.name'];
+  return {
+    agent: typeof name === 'string' ? name : fields.agent,
+    source: 'run',
+    operation: 'invoke_agent',
+    error: `The run ended with ${reason} and no answer`,
+    traceId: fields.traceId,
+    at: fields.at,
+  };
+}
+
+function agentOf(row: Record<string, unknown>): string {
+  return String(row.agent_name ?? row.agent_id ?? 'unknown');
+}
+
 export function failureReportFromDb(db: SqlDatabase, filter: { since?: number; agent?: string }): FailureReport {
-  const where = ["kind IN ('tool', 'generation')", 'start >= ?', "(? = '' OR agent_id = ?)"].join(' AND ');
+  const filters = "o.start >= ? AND (? = '' OR o.agent_id = ?)";
   const args = [filter.since ?? 0, filter.agent ?? '', filter.agent ?? ''];
-  const counts = db.prepare(`SELECT COUNT(DISTINCT trace_id) AS traces, COUNT(*) AS spans FROM observations WHERE ${where}`).get(...args);
-  const rows = db.prepare(`SELECT agent_id, name, trace_id, start, attrs FROM observations WHERE ${where} AND status = 'error'`).all(...args);
-  const samples = rows.flatMap((row) => {
-    const sample = sampleFrom({
-      agent: String(row.agent_id ?? 'unknown'),
-      name: String(row.name ?? 'unknown'),
-      traceId: String(row.trace_id),
-      at: Number(row.start),
-      attrs: parsedAttrs(row.attrs),
-    });
+  const leaf = `o.kind IN ('tool', 'generation') AND ${filters}`;
+  const columns = 'o.agent_id, a.name AS agent_name, o.name, o.trace_id, o.start, o.attrs FROM observations o LEFT JOIN agents a ON a.agent_id = o.agent_id';
+  const counts = db.prepare(`SELECT COUNT(DISTINCT o.trace_id) AS traces, COUNT(*) AS spans FROM observations o WHERE ${leaf}`).get(...args);
+  const failed = db.prepare(`SELECT ${columns} WHERE ${leaf} AND o.status = 'error'`).all(...args).flatMap((row) => {
+    const sample = sampleFrom({ agent: agentOf(row), name: String(row.name ?? 'unknown'), traceId: String(row.trace_id), at: Number(row.start), attrs: parsedAttrs(row.attrs) });
+    return sample ? [sample] : [];
+  });
+  const noAnswer = db.prepare(`SELECT ${columns} WHERE o.kind = 'span' AND o.parent_obs_id IS NULL AND ${filters}`).all(...args).flatMap((row) => {
+    const sample = noAnswerSample({ agent: agentOf(row), traceId: String(row.trace_id), at: Number(row.start), attrs: parsedAttrs(row.attrs) });
     return sample ? [sample] : [];
   });
   return {
-    scanned: { traces: Number(counts?.traces ?? 0), spans: Number(counts?.spans ?? 0), failed: samples.length },
-    groups: groupFailures(samples),
+    scanned: { traces: Number(counts?.traces ?? 0), spans: Number(counts?.spans ?? 0), failed: failed.length, noAnswer: noAnswer.length },
+    groups: groupFailures([...noAnswer, ...failed]),
   };
 }
 
@@ -137,12 +159,19 @@ function leafSpans(spans: readonly Span[]): Span[] {
 
 export async function failureReportFromTraces(dirs: readonly string[]): Promise<FailureReport> {
   const samples: FailureSample[] = [];
+  const noAnswer: FailureSample[] = [];
   let traces = 0;
   let spans = 0;
   for (const dir of dirs) {
     for (const summary of await listTraces({ dir, limit: ALL_TRACES })) {
       traces += 1;
-      const leaves = leafSpans(await readTrace(summary.traceId, { dir }));
+      const all = await readTrace(summary.traceId, { dir });
+      const unanswered = all.filter((span) => span.parentId === undefined).flatMap((span) => {
+        const sample = noAnswerSample({ agent: summary.agent ?? 'unknown', traceId: summary.traceId, at: span.startTime, attrs: span.attributes });
+        return sample ? [sample] : [];
+      });
+      noAnswer.push(...unanswered);
+      const leaves = leafSpans(all);
       spans += leaves.length;
       for (const span of leaves) {
         if (span.status?.code !== 'error') continue;
@@ -157,12 +186,13 @@ export async function failureReportFromTraces(dirs: readonly string[]): Promise<
       }
     }
   }
-  return { scanned: { traces, spans, failed: samples.length }, groups: groupFailures(samples) };
+  return { scanned: { traces, spans, failed: samples.length, noAnswer: noAnswer.length }, groups: groupFailures([...noAnswer, ...samples]) };
 }
 
 export function formatFailureReport(report: FailureReport): string {
-  const { traces, spans, failed } = report.scanned;
-  const scanned = `Scanned ${traces} traces, ${spans} tool and model calls, ${failed} failed.`;
+  const { traces, spans, failed, noAnswer } = report.scanned;
+  const unanswered = noAnswer > 0 ? ` ${noAnswer} runs ended without an answer.` : '';
+  const scanned = `Scanned ${traces} traces, ${spans} tool and model calls, ${failed} failed.${unanswered}`;
   if (report.groups.length === 0) return `No failures found. ${scanned}`;
   const lines = report.groups.map((group) => {
     const tag = group.recurring ? 'RECURRING' : 'once';

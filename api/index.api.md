@@ -5347,6 +5347,7 @@ export interface ProgressGuardOptions {
     maxDenials?: number;
     maxFailures?: number;
     maxRepeats?: number;
+    maxSameResults?: number;
 }
 
 // @public

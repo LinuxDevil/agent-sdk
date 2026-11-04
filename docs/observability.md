@@ -832,7 +832,10 @@ and model calls by agent, source and error, with numbers and ids masked, and lis
 the most widespread first. A failure seen in two or more traces is marked
 `RECURRING`, with trace ids to open. Each has a class (bad input, timeout, missing
 capability, permission, unknown, or denied by `createProgressGuard()`), inferred
-from the error text, so check the example. Pass `--traces <dir>`, more than once
+from the error text, so check the example. A rate limit gets its own class, and a
+run that ended on `max-steps` or `budget-exceeded` is listed as `no-answer`, read
+from the run span's `lousho.run.finish_reason`, even if none of its calls failed.
+Traces recorded before that attribute existed can't show this. Pass `--traces <dir>`, more than once
 if needed, to read trace files instead of the database. It only reads.
 
 `lousho observe export [--since 7d] [--agent X] [--out file]` dumps traces as
