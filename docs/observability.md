@@ -125,6 +125,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
+| `lousho.run.finish_reason` | Why the run ended (`stop`, `max-steps`, `budget-exceeded`, ...), when it didn't throw |
 
 #### Summing token usage over spans
 
