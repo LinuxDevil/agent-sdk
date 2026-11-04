@@ -14,6 +14,8 @@ const appState = vi.hoisted(() => ({
   runAgent: async () => {},
   stopAgent: async () => {},
   save: async () => {},
+  saveVersion: async () => undefined,
+  latestVersion: null,
   setSpec: () => {},
   activeProfile: undefined,
   connected: true,
@@ -28,6 +30,7 @@ import { Screens, screenFor, useScreen } from '../routes';
 import { ROUTES } from '../routeTable';
 import { EvalsTabs } from '../evals/EvalsTabs';
 import { Topbar } from '../../components/Topbar';
+import { ToastProvider } from '../../ui/Toast';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -135,21 +138,21 @@ describe('useScreen', () => {
 describe('Topbar', () => {
   it('shows the Build controls on #/agents', () => {
     window.history.replaceState(null, '', '/?token=secret#/agents');
-    render(<Topbar />);
+    render(<ToastProvider><Topbar /></ToastProvider>);
     expect(buttonNames()).toEqual(expect.arrayContaining(['Run', 'Stop', 'Import', 'Export', 'Save', 'Debug']));
     expect(container.querySelector('.env-select')).not.toBeNull();
   });
 
   it("centres the LLM node's provider · model as the model badge, hidden when the graph has none", () => {
     window.history.replaceState(null, '', '/?token=secret#/agents');
-    render(<Topbar />);
+    render(<ToastProvider><Topbar /></ToastProvider>);
     expect(container.querySelector('.env-select')?.textContent).toBe('mock · echoMOCK');
     expect(container.querySelector('.crumbs')?.textContent).toBe('Agentsdemo');
     act(() => root?.unmount());
     const { graph } = appState;
     appState.graph = { nodes: [], edges: [] };
     try {
-      render(<Topbar />);
+      render(<ToastProvider><Topbar /></ToastProvider>);
       expect(container.querySelector('.env-select')).toBeNull();
       expect(buttonNames()).toEqual(expect.arrayContaining(['Run', 'Save']));
     } finally {
@@ -179,14 +182,14 @@ describe('Topbar', () => {
 
   it('drops the Build/Observe switch on #/agents', () => {
     window.history.replaceState(null, '', '/?token=secret#/agents');
-    render(<Topbar />);
+    render(<ToastProvider><Topbar /></ToastProvider>);
     expect(container.querySelector('[aria-label="Studio surface"]')).toBeNull();
     expect(buttonNames()).not.toContain('Observe');
   });
 
   it("maps the old 'Observe surface' shortcut to #/traces", () => {
     window.history.replaceState(null, '', '/?token=secret#/agents');
-    render(<Topbar narrow />);
+    render(<ToastProvider><Topbar narrow /></ToastProvider>);
     act(() => (container.querySelector('[aria-label="More actions"]') as HTMLButtonElement).click());
     const item = [...container.querySelectorAll('[role="menuitem"]')].find(
       (el) => el.textContent === 'Observe surface',

@@ -20,6 +20,7 @@ import { errorMessage } from './errorMessage';
 import { RunStatus, lastRunTraceId } from './RunStatus';
 import { ToolbarMoreMenu, type ToolbarMenuItem } from './ToolbarMoreMenu';
 import { navigate } from '../router/router';
+import { useSaveVersionAction } from '../screens/agents/useSaveVersionShortcut';
 
 /** A toolbar button's 16px leading icon. */
 function ToolIcon({ Icon }: { Icon: LucideIcon }) {
@@ -235,7 +236,9 @@ function PanelToggle({
 
 /** Stop/Run/Save/Import actions, surfacing a failed attempt as a message next to the buttons. */
 function useRunActions() {
-  const { runAgent, stopAgent, save, setSpec } = useAppState();
+  const { runAgent, stopAgent, setSpec } = useAppState();
+  // Save writes the working copy AND a version (the toast names which happened).
+  const saveVersionAction = useSaveVersionAction();
   const [actionError, setActionError] = useState<string | undefined>(undefined);
 
   async function attempt(action: () => Promise<unknown>) {
@@ -253,7 +256,7 @@ function useRunActions() {
   // rather than blocking Run on an empty prompt.
   const handleRun = () => attempt(() => runAgent('Run the agent.'));
   const handleStop = () => attempt(() => stopAgent());
-  const handleSave = () => attempt(() => save());
+  const handleSave = () => attempt(saveVersionAction);
   const handleImport = (file: File) =>
     attempt(async () => {
       try {
