@@ -204,6 +204,7 @@ offline with `npx vitest run scripts/buildACodingAgent.test.ts`.
 | [Upgrading to 1.0](docs/upgrading.md) | From `1.0.0-alpha.*`: moved imports, removed and renamed APIs, deprecations, what 1.0 promises |
 | [Quick Start](docs/quick-start.md) | Runnable, verified snippets: `createAgent()`, tools, streaming, sessions, approvals, offline tests, spec files |
 | [Configuration](docs/configuration.md) | Spec fields, the `mcpServers` field, provider env vars, retries and fallback, `createAgent()` options, budgets, project instructions |
+| [Agent spec v2](docs/agent-spec.md) | The YAML/JSON agent format Studio and the Author write: fields, refs, secrets, triggers, migration from v1 |
 | [MCP](docs/mcp.md) | Use MCP servers as tools (`mcpServers`, `connectMcp()`, `loadMcpTools()`), approval for MCP tools, serve an agent with `serveMcp()` / `lousho mcp` |
 | [Connectors](docs/connectors.md) | Connect to Google Docs, Slack, GitHub, Notion: the connector table, OAuth sign-in, approval for connector writes |
 | [OpenAPI tools](docs/openapi-tools.md) | `openApiTools()`: an OpenAPI 3.0 / 3.1 document becomes one tool per operation, with approval for mutating ones |
