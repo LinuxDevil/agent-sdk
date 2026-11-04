@@ -112,6 +112,18 @@ export function startRecovery<TResult>(target: RecoveryTarget<TResult>, options:
     inFlight.set(run.sessionId, task);
   };
 
+  const quarantine = (run: PendingRun): boolean => {
+    if (!run.lastError || (run.attempts ?? 0) < maxAttempts) {
+      quarantined.delete(run.sessionId);
+      return false;
+    }
+    if (!quarantined.has(run.sessionId)) {
+      quarantined.add(run.sessionId);
+      safely(options.onQuarantined, run);
+    }
+    return true;
+  };
+
   const sweep = async () => {
     let runs: PendingRun[];
     try {
@@ -124,15 +136,7 @@ export function startRecovery<TResult>(target: RecoveryTarget<TResult>, options:
       if (signal.aborted) return;
       // Paused on a human; failed for good (it would fail again: `agent.pending()` shows it); or this loop is on it.
       if (run.status !== 'in-progress' || run.lastError?.retryable === false || inFlight.has(run.sessionId)) continue;
-      if (run.lastError && (run.attempts ?? 0) >= maxAttempts) {
-        if (!quarantined.has(run.sessionId)) {
-          quarantined.add(run.sessionId);
-          safely(options.onQuarantined, run);
-        }
-        continue;
-      }
-      quarantined.delete(run.sessionId);
-      if (backingOff(run, intervalMs)) continue;
+      if (quarantine(run) || backingOff(run, intervalMs)) continue;
       resume(run);
     }
   };
