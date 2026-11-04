@@ -18,6 +18,9 @@
  *   GET/POST /agents/:id/versions     -> VersionListItem[] newest first · explicit save (routes/versionRoutes.ts)
  *   GET  /agents/:id/versions/:n      -> VersionRecord; GET .../versions/:n/diff?against=:m -> SpecChange[]
  *   POST /agents/:id/versions/:n/restore -> writes a new kind:'restore' version over the working copy
+ *   GET  /agents/:id/suggestions      -> PromptSuggestion[] - open first, then newest (routes/suggestionRoutes.ts)
+ *   POST /agents/:id/suggestions/:sid/apply -> hash-guarded instructions edit, 201 VersionListItem | 404/409
+ *   POST /agents/:id/suggestions/:sid/dismiss -> 204 | 404/409
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
@@ -124,6 +127,7 @@ import { registerAuthorSettingsRoutes } from './author/settings';
 import { AuthorTurnRunner } from './author/turnRunner';
 import { createAuthorRunner } from './author/wiring';
 import { registerSecretRoutes } from './routes/secretRoutes';
+import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { sdkRootDir } from './sdkRoot';
 
@@ -911,6 +915,10 @@ export function createApp(options: CreateAppOptions): Express {
   // Version history: list/get/diff/restore and the explicit "Save version"
   // (server/routes/versionRoutes.ts - stores come from workspaceOf(req)).
   registerVersionRoutes(app);
+  // Prompt suggestions: list, CAS-guarded apply and dismiss (server/
+  // routes/suggestionRoutes.ts - stores come from workspaceOf(req), the
+  // workspace seam, like drafts and versions).
+  registerSuggestionRoutes(app);
   registerWorkspaceRoute(app);
   // The workspace registry's routes (`GET/POST /workspaces`,
   // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:

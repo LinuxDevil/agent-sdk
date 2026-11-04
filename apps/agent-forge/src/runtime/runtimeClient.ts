@@ -34,6 +34,7 @@ import type {
   McpProbeResponse,
   McpServerSpecV2,
   PatchAgentMetaRequest,
+  PromptSuggestion,
   ProviderKeyStatus,
   RunComparisonPayload,
   RunHistoryPayload,
@@ -290,6 +291,38 @@ class RuntimeClient implements AgentApi {
       throw apiError(body, `Save version of '${agentId}' failed with ${res.status}`, res.status);
     }
     return { item: body, created: res.status === 201 };
+  }
+
+  // -------------------------------------------------------------------
+  // `/agents/:id/suggestions` - the prompt suggestions the Suggestions
+  // tab lists and settles. See server/routes/suggestionRoutes.ts.
+  // -------------------------------------------------------------------
+
+  /** The agent's prompt suggestions: open first, then newest. */
+  async listSuggestions(agentId: string): Promise<PromptSuggestion[]> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/suggestions`, { method: 'GET' });
+  }
+
+  /**
+   * Applies an open suggestion's anchored instructions edit and answers
+   * the `source: 'suggestion'` version it wrote. 409 (keeping the
+   * server's `code`) when it settled already, the instructions moved on
+   * (`LOUSHO_SUGGESTION_CONFLICT`) or live in a file
+   * (`LOUSHO_SUGGESTION_UNSUPPORTED`).
+   */
+  async applySuggestion(agentId: string, suggestionId: string): Promise<VersionListItem> {
+    return this.request(
+      `/agents/${encodeURIComponent(agentId)}/suggestions/${encodeURIComponent(suggestionId)}/apply`,
+      { method: 'POST' }
+    );
+  }
+
+  /** Dismisses an open suggestion - it stays in the list as `dismissed`. */
+  async dismissSuggestion(agentId: string, suggestionId: string): Promise<void> {
+    await this.request(
+      `/agents/${encodeURIComponent(agentId)}/suggestions/${encodeURIComponent(suggestionId)}/dismiss`,
+      { method: 'POST' }
+    );
   }
 
   /** The workspace the studio serves (`baseDir` is its root; `workspace` is the full ref for addressing it by id). */
