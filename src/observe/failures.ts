@@ -11,6 +11,8 @@ const ALL_TRACES = Number.MAX_SAFE_INTEGER;
 const NO_ANSWER_REASONS = new Set(['max-steps', 'budget-exceeded']);
 const RATE_LIMIT = /rate.?limit|\b429\b/i;
 const NO_ANSWER_EXAMPLE = /^The run ended with .* and no answer$/;
+const INTERRUPTED_EXAMPLE = "The run's process died before it finished";
+const DEFAULT_MIN_SCORE = 0.5;
 
 export interface FailureSample {
   agent: string;
@@ -22,7 +24,7 @@ export interface FailureSample {
   hinted?: boolean;
 }
 
-export type FailureClass = ToolFailureClass | 'guard-denied' | 'rate-limit' | 'no-answer';
+export type FailureClass = ToolFailureClass | 'guard-denied' | 'rate-limit' | 'no-answer' | 'interrupted' | 'low-score';
 
 export interface FailureGroup {
   agent: string;
@@ -41,11 +43,13 @@ export interface FailureGroup {
 }
 
 export interface FailureReport {
-  scanned: { traces: number; spans: number; failed: number; noAnswer: number };
+  scanned: { traces: number; spans: number; failed: number; noAnswer: number; interrupted: number; lowScores: number };
   groups: FailureGroup[];
 }
 
-function classOf(error: string): FailureClass {
+function classOf(error: string, operation: string): FailureClass {
+  if (operation === 'score') return 'low-score';
+  if (error === INTERRUPTED_EXAMPLE) return 'interrupted';
   if (NO_ANSWER_EXAMPLE.test(error)) return 'no-answer';
   if (RATE_LIMIT.test(error)) return 'rate-limit';
   return GUARD_MARKERS.some((marker) => error.includes(marker)) ? 'guard-denied' : classifyToolFailure({ message: error });
@@ -62,7 +66,7 @@ export function groupFailures(samples: readonly FailureSample[]): FailureGroup[]
         agent: sample.agent,
         source: sample.source,
         operation: sample.operation,
-        failureClass: classOf(sample.error),
+        failureClass: classOf(sample.error, sample.operation),
         signature,
         example: sample.error.slice(0, MAX_EXAMPLE_CHARS),
         count: 0,
@@ -133,23 +137,58 @@ function agentOf(row: Record<string, unknown>): string {
   return String(row.agent_name ?? row.agent_id ?? 'unknown');
 }
 
-export function failureReportFromDb(db: SqlDatabase, filter: { since?: number; agent?: string }): FailureReport {
+const FROM_OBSERVATIONS = 'FROM observations o LEFT JOIN agents a ON a.agent_id = o.agent_id';
+const OBSERVATION_COLUMNS = 'o.agent_id, a.name AS agent_name, o.name, o.trace_id, o.start, o.status, o.attrs';
+
+function rowFields(row: Record<string, unknown>) {
+  return { agent: agentOf(row), name: String(row.name ?? 'unknown'), traceId: String(row.trace_id), at: Number(row.start), attrs: parsedAttrs(row.attrs) };
+}
+
+function rootSample(row: Record<string, unknown>): FailureSample | undefined {
+  const fields = rowFields(row);
+  if (row.status !== 'interrupted') return noAnswerSample(fields);
+  const name = fields.attrs['gen_ai.agent.name'];
+  return { agent: typeof name === 'string' ? name : fields.agent, source: 'run', operation: 'invoke_agent', error: INTERRUPTED_EXAMPLE, traceId: fields.traceId, at: fields.at };
+}
+
+function lowScoreSamples(db: SqlDatabase, since: number, agent: string, minScore: number): FailureSample[] {
+  const rows = db
+    .prepare(
+      'SELECT s.name, s.value, s.trace_id, s.created_at, s.agent_id, a.name AS agent_name FROM scores s LEFT JOIN agents a ON a.agent_id = s.agent_id ' +
+        "WHERE s.value IS NOT NULL AND s.value < ? AND s.created_at >= ? AND (? = '' OR s.agent_id = ?)"
+    )
+    .all(minScore, since, agent, agent);
+  return rows.map((row) => ({
+    agent: agentOf(row),
+    source: `score ${String(row.name)}`,
+    operation: 'score',
+    error: `Score ${String(row.name)} was below ${minScore}`,
+    traceId: String(row.trace_id),
+    at: Number(row.created_at),
+  }));
+}
+
+export function failureReportFromDb(db: SqlDatabase, filter: { since?: number; agent?: string; minScore?: number }): FailureReport {
+  const since = filter.since ?? 0;
+  const agent = filter.agent ?? '';
   const filters = "o.start >= ? AND (? = '' OR o.agent_id = ?)";
-  const args = [filter.since ?? 0, filter.agent ?? '', filter.agent ?? ''];
+  const args = [since, agent, agent];
   const leaf = `o.kind IN ('tool', 'generation') AND ${filters}`;
-  const columns = 'o.agent_id, a.name AS agent_name, o.name, o.trace_id, o.start, o.attrs FROM observations o LEFT JOIN agents a ON a.agent_id = o.agent_id';
   const counts = db.prepare(`SELECT COUNT(DISTINCT o.trace_id) AS traces, COUNT(*) AS spans FROM observations o WHERE ${leaf}`).get(...args);
-  const failed = db.prepare(`SELECT ${columns} WHERE ${leaf} AND o.status = 'error'`).all(...args).flatMap((row) => {
-    const sample = sampleFrom({ agent: agentOf(row), name: String(row.name ?? 'unknown'), traceId: String(row.trace_id), at: Number(row.start), attrs: parsedAttrs(row.attrs) });
+  const failed = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${leaf} AND o.status = 'error'`).all(...args).flatMap((row) => {
+    const fields = rowFields(row);
+    const sample = sampleFrom(fields);
     return sample ? [sample] : [];
   });
-  const noAnswer = db.prepare(`SELECT ${columns} WHERE o.kind = 'span' AND o.parent_obs_id IS NULL AND ${filters}`).all(...args).flatMap((row) => {
-    const sample = noAnswerSample({ agent: agentOf(row), traceId: String(row.trace_id), at: Number(row.start), attrs: parsedAttrs(row.attrs) });
+  const roots = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE o.kind = 'span' AND o.parent_obs_id IS NULL AND ${filters}`).all(...args).flatMap((row) => {
+    const sample = rootSample(row);
     return sample ? [sample] : [];
   });
+  const lowScores = lowScoreSamples(db, since, agent, filter.minScore ?? DEFAULT_MIN_SCORE);
+  const interrupted = roots.filter((sample) => sample.error === INTERRUPTED_EXAMPLE).length;
   return {
-    scanned: { traces: Number(counts?.traces ?? 0), spans: Number(counts?.spans ?? 0), failed: failed.length, noAnswer: noAnswer.length },
-    groups: groupFailures([...noAnswer, ...failed]),
+    scanned: { traces: Number(counts?.traces ?? 0), spans: Number(counts?.spans ?? 0), failed: failed.length, noAnswer: roots.length - interrupted, interrupted, lowScores: lowScores.length },
+    groups: groupFailures([...roots, ...lowScores, ...failed]),
   };
 }
 
@@ -186,13 +225,17 @@ export async function failureReportFromTraces(dirs: readonly string[]): Promise<
       }
     }
   }
-  return { scanned: { traces, spans, failed: samples.length, noAnswer: noAnswer.length }, groups: groupFailures([...noAnswer, ...samples]) };
+  return { scanned: { traces, spans, failed: samples.length, noAnswer: noAnswer.length, interrupted: 0, lowScores: 0 }, groups: groupFailures([...noAnswer, ...samples]) };
 }
 
 export function formatFailureReport(report: FailureReport): string {
-  const { traces, spans, failed, noAnswer } = report.scanned;
-  const unanswered = noAnswer > 0 ? ` ${noAnswer} runs ended without an answer.` : '';
-  const scanned = `Scanned ${traces} traces, ${spans} tool and model calls, ${failed} failed.${unanswered}`;
+  const { traces, spans, failed, noAnswer, interrupted, lowScores } = report.scanned;
+  const extras = [
+    noAnswer > 0 ? `${noAnswer} runs ended without an answer.` : '',
+    interrupted > 0 ? `${interrupted} run${interrupted === 1 ? ' was' : 's were'} interrupted.` : '',
+    lowScores > 0 ? `${lowScores} low scores.` : '',
+  ].filter(Boolean);
+  const scanned = [`Scanned ${traces} traces, ${spans} tool and model calls, ${failed} failed.`, ...extras].join(' ');
   if (report.groups.length === 0) return `No failures found. ${scanned}`;
   const lines = report.groups.map((group) => {
     const tag = group.recurring ? 'RECURRING' : 'once';

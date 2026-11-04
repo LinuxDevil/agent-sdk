@@ -1618,6 +1618,7 @@ interface RecoverOptions<TResult = unknown> {
     intervalMs?: number;
     maxAttempts?: number;
     onError?: (error: unknown, run?: PendingRun) => void;
+    onOutage?: (paused: boolean) => void;
     onQuarantined?: (run: PendingRun) => void;
     onRecovered?: (run: PendingRun, result: TResult) => void;
     retryWithDiagnosis?: boolean;
