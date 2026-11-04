@@ -106,6 +106,8 @@ export interface SubagentInfo {
 
 /** Context passed to `AgentHook.preToolCall` / `postToolCall`. */
 export interface ToolCallHookContext extends HookContext {
+  /** Adds an event to the run's stream; absent when nothing listens, or on a resumed approval. */
+  emit?: (event: HookEventPayload) => void;
   toolCallId: string;
   toolName: string;
   /**
@@ -169,7 +171,7 @@ function outcomeKey<K extends string>(value: unknown, keys: readonly K[]): K | u
 }
 
 /** The stream events a hook may emit with `GenerateHookContext.emit`. */
-export type HookEventPayload = Extract<AgentEventPayload, { type: 'compaction.start' | 'compaction.done' }>;
+export type HookEventPayload = Extract<AgentEventPayload, { type: 'compaction.start' | 'compaction.done' | 'heal.action' }>;
 
 /** Context passed to `AgentHook.preGenerate` / `postGenerate`. */
 export interface GenerateHookContext extends HookContext {

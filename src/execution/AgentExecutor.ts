@@ -1835,6 +1835,7 @@ export class AgentExecutor {
             result: executed.result,
             error: executed.error,
             sandboxError: executed.sandboxError,
+            replacedByHook: executed.replacedByHook,
             latencyMs: Date.now() - toolCallStart,
           },
           { redactContent, captureContent: resolveCaptureContent(options.captureContent) }

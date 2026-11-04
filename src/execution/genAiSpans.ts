@@ -325,7 +325,7 @@ export function toolSpanInit(
 /** Records args/result (content), error and latency on an `execute_tool` span. */
 export function recordToolOutcome(
   span: Span,
-  outcome: { args: unknown; result: unknown; error?: string; sandboxError?: string; latencyMs: number },
+  outcome: { args: unknown; result: unknown; error?: string; sandboxError?: string; replacedByHook?: string; latencyMs: number },
   content: ContentOptions & { captureContent: boolean }
 ): void {
   const redact = contentRedactor(content);
@@ -337,6 +337,7 @@ export function recordToolOutcome(
       [LegacyAttr.ERROR]: outcome.error === undefined ? undefined : redact(outcome.error),
       // The sandbox boundary's failure kind ('timeout' | 'oom' | 'driver'), absent for the tool's own errors.
       [SandboxAttr.ERROR]: outcome.sandboxError,
+      'lousho.tool.replaced_by_hook': outcome.replacedByHook,
       [LegacyAttr.LATENCY_MS]: outcome.latencyMs,
       [ErrorAttr.TYPE]: outcome.error ? 'tool_error' : undefined,
       [GenAiAttr.TOOL_CALL_ARGUMENTS]: content.captureContent ? encodeContent(outcome.args, redact) : undefined,

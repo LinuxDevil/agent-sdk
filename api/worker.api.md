@@ -87,7 +87,7 @@ interface AgentErrorEvent extends AgentEventBase<'error'> {
 }
 
 // @public
-export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
+export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | HealActionEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
 // @public
 interface AgentEventBase<TType extends string> {
@@ -1367,6 +1367,7 @@ const ERROR_CODES: {
     readonly LOUSHO_OPERATION_TIMEOUT: "Raise the timeout or make the operation faster.";
     readonly LOUSHO_OUTPUT_INVALID: "Reserved: an invalid structured reply is reported as finishReason 'output-invalid', not thrown.";
     readonly LOUSHO_BUDGET_EXCEEDED: "Raise the limit named in the message, or use onExceeded: 'stop' (the default) to get finishReason 'budget-exceeded' instead of an error.";
+    readonly LOUSHO_RUN_NO_PROGRESS: "Read the heal.action events to see which calls were denied, then fix the agent or its tool before resuming.";
     readonly LOUSHO_AUTH_CONFIG_INVALID: "Fix the auth helper option named in the message (docs/auth.md lists what each helper needs).";
     readonly LOUSHO_GUARDRAIL_TRIPPED: "Look at `error.guardrail` for which guardrail blocked and why, or use onTripped: 'stop' (the default) to get finishReason 'guardrail' instead of an error.";
     readonly LOUSHO_TOKEN_KEY_MISSING: "Pass the store's tokenKey (32 random bytes as base64, from generateTokenKey()) or set LOUSHO_TOKEN_KEY before storing OAuth tokens.";
@@ -1807,6 +1808,14 @@ interface HandoffOptions {
 }
 
 // @public
+interface HealActionEvent extends AgentEventBase<'heal.action'> {
+    action: 'hint' | 'deny' | 'stop';
+    failure?: 'bad-input' | 'timeout' | 'missing-capability' | 'permission' | 'unknown';
+    reason: string;
+    toolName: string;
+}
+
+// @public
 interface HookContext {
     agentId?: string;
     agentName?: string;
@@ -1818,7 +1827,7 @@ interface HookContext {
 
 // @public
 type HookEventPayload = Extract<AgentEventPayload, {
-    type: 'compaction.start' | 'compaction.done';
+    type: 'compaction.start' | 'compaction.done' | 'heal.action';
 }>;
 
 // @public
@@ -3926,6 +3935,7 @@ interface ToolCall {
 // @public
 interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
+    emit?: (event: HookEventPayload) => void;
     principal?: Readonly<Principal>;
     resumedAfterApproval?: boolean;
     toolCall: ToolCall;
