@@ -827,6 +827,14 @@ same db.
 
 ### Export
 
+`lousho observe failures [--since 7d] [--agent X] [--json]` groups failed tool
+and model calls by agent, source and error, with numbers and ids masked, and lists
+the most widespread first. A failure seen in two or more traces is marked
+`RECURRING`, with trace ids to open. Each has a class (bad input, timeout, missing
+capability, permission, unknown, or denied by `createProgressGuard()`), inferred
+from the error text, so check the example. Pass `--traces <dir>`, more than once
+if needed, to read trace files instead of the database. It only reads.
+
 `lousho observe export [--since 7d] [--agent X] [--out file]` dumps traces as
 JSONL for offline analysis or another tool. Each line is one trace:
 `{ "trace": <trace row>, "observations": [...], "scores": [...] }`, the same

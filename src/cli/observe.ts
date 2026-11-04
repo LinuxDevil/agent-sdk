@@ -8,6 +8,7 @@
  *   lousho observe rebuild-rollups [--db path]
  *   lousho observe prune --older-than <N>d [--db path]
  *   lousho observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]
+ *   lousho observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--json] [--db path] [--traces dir]...
  *   lousho observe token create --project X [--db path]
  *
  * `start` runs in the foreground (like `lousho dev`). On EADDRINUSE it probes
@@ -35,6 +36,7 @@ import {
 import { createToken, hasTokens, listTraces, openDb, pruneBefore, rebuildRollups, traceDetail, type TraceFilter } from '../observe/store';
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import { OBSERVE_DEFAULT_PORT, OBSERVE_SERVICE } from '../observe/envelope';
+import { failureReportFromDb, failureReportFromTraces, formatFailureReport, type FailureReport } from '../observe/failures';
 import { VERSION } from '../version';
 import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 
@@ -45,6 +47,7 @@ const USAGE = `Usage: lousho observe <command> [options]
   observe rebuild-rollups [--db path]
   observe prune --older-than <N>d [--db path]
   observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]
+  observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--json] [--db path] [--traces dir]...
   observe token create --project X [--db path]`;
 
 const HELP = `${USAGE}
@@ -76,7 +79,7 @@ Options:
   --project X       'token create': the project the token is labeled for
   -h, --help        show this help`;
 
-type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'prune' | 'export' | 'token';
+type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'prune' | 'export' | 'failures' | 'token';
 
 const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
   start: {
@@ -116,6 +119,11 @@ const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
     command: 'observe export',
     usage: 'Usage: lousho observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]',
     options: { db: { type: 'string' }, since: { type: 'string' }, agent: { type: 'string' }, out: { type: 'string' } },
+  },
+  failures: {
+    command: 'observe failures',
+    usage: 'Usage: lousho observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--json] [--db path] [--traces dir]...',
+    options: { db: { type: 'string' }, since: { type: 'string' }, agent: { type: 'string' }, json: { type: 'boolean' }, traces: { type: 'string', multiple: true } },
   },
   token: {
     command: 'observe token',
@@ -489,6 +497,30 @@ async function runExport(args: string[]): Promise<number> {
   }
 }
 
+async function runFailures(args: string[]): Promise<number> {
+  const spec = SUB_SPECS.failures;
+  const { values, help } = parseCommand(spec, args);
+  if (help) {
+    console.log(HELP);
+    return 0;
+  }
+  const dirs = stringListValue(values.traces);
+  let report: FailureReport;
+  if (dirs.length > 0) {
+    report = await failureReportFromTraces(dirs);
+  } else {
+    const db = openDb(dbPathOf(values.db));
+    try {
+      const agent = stringValue(values.agent);
+      report = failureReportFromDb(db, { since: sinceMs(spec, values.since), agent: agent === undefined ? undefined : resolveAgent(spec, db, agent) });
+    } finally {
+      db.close();
+    }
+  }
+  console.log(values.json === true ? JSON.stringify(report, null, 2) : formatFailureReport(report));
+  return 0;
+}
+
 async function runToken(args: string[]): Promise<number> {
   const spec = SUB_SPECS.token;
   const { values, positionals, help } = parseCommand(spec, args);
@@ -539,6 +571,8 @@ export async function runObserve(rest: string[]): Promise<number> {
         return await runPrune(subArgs);
       case 'export':
         return await runExport(subArgs);
+      case 'failures':
+        return await runFailures(subArgs);
       case 'token':
         return await runToken(subArgs);
     }

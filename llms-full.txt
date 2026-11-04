@@ -5393,7 +5393,7 @@ lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
-lousho observe <start|status|stop|rebuild-rollups|prune|export|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
+lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
 lousho --version
 ```
@@ -5638,6 +5638,8 @@ npx lousho observe stop                         # <db>.pid + SIGTERM (checks the
 npx lousho observe rebuild-rollups              # recompute insight aggregates
 npx lousho observe prune --older-than 30d       # delete finished runs older than 30 days, then VACUUM
 npx lousho observe export --since 7d --out runs.jsonl # traces as JSONL, one per line
+npx lousho observe failures --since 7d          # recurring tool and model failures, by agent
+npx lousho observe failures --traces .lousho/traces --json # the same from trace files, no database
 npx lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
 
@@ -15276,6 +15278,14 @@ deleted, then runs `VACUUM`. It is safe while the daemon is running on the
 same db.
 
 ### Export
+
+`lousho observe failures [--since 7d] [--agent X] [--json]` groups failed tool
+and model calls by agent, source and error, with numbers and ids masked, and lists
+the most widespread first. A failure seen in two or more traces is marked
+`RECURRING`, with trace ids to open. Each has a class (bad input, timeout, missing
+capability, permission, unknown, or denied by `createProgressGuard()`), inferred
+from the error text, so check the example. Pass `--traces <dir>`, more than once
+if needed, to read trace files instead of the database. It only reads.
 
 `lousho observe export [--since 7d] [--agent X] [--out file]` dumps traces as
 JSONL for offline analysis or another tool. Each line is one trace:

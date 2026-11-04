@@ -63,8 +63,14 @@ function failureOf(content: string): ToolFailure | undefined {
   }
 }
 
-function signature(message: string): string {
-  return message.replace(/\d+/g, '#').trim().toLowerCase().slice(0, MAX_SIGNATURE_CHARS);
+/** A failure message with its ids and numbers masked, so two occurrences of one failure compare equal. */
+export function failureSignature(message: string): string {
+  return message
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '#')
+    .replace(/\d+/g, '#')
+    .trim()
+    .toLowerCase()
+    .slice(0, MAX_SIGNATURE_CHARS);
 }
 
 interface PastCall {
@@ -149,7 +155,7 @@ export function createProgressGuard(options: ProgressGuardOptions = {}): AgentHo
       const past = pastCalls(ctx.messages);
       const own = past.filter((call) => call.toolName === ctx.toolName && !isDenial(call));
       const failed = own.flatMap((call) => (call.failure ? [call.failure] : []));
-      const worst = mostRepeated(failed, (failure) => signature(failure.message));
+      const worst = mostRepeated(failed, (failure) => failureSignature(failure.message));
       if (worst && worst.count >= maxFailures) {
         const failure = classifyToolFailure(worst.item);
         return deny(ctx, past, `'${ctx.toolName}' failed ${worst.count} times with a ${failure} error: ${worst.item.message} ${ADVICE[failure]}${fallbackFor(ctx.toolName)}`, failure);
@@ -164,8 +170,8 @@ export function createProgressGuard(options: ProgressGuardOptions = {}): AgentHo
     },
     postToolCall(ctx, result: ToolCallHookResult) {
       if (!result.error || ignored.has(ctx.toolName) || result.error.includes(GUARD_MARKER)) return undefined;
-      const key = signature(result.error);
-      const seen = pastCalls(ctx.messages).some((call) => call.toolName === ctx.toolName && call.failure && signature(call.failure.message) === key);
+      const key = failureSignature(result.error);
+      const seen = pastCalls(ctx.messages).some((call) => call.toolName === ctx.toolName && call.failure && failureSignature(call.failure.message) === key);
       if (!seen) return undefined;
       const kind = (result.result as { kind?: unknown } | null)?.kind;
       const failure = classifyToolFailure({ message: result.error, ...(typeof kind === 'string' && { kind }) });
