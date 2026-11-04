@@ -2423,6 +2423,9 @@ interface ExpressionEvaluatorNode extends NodeRunOptions {
 }
 
 // @public
+export function failureSignature(message: string): string;
+
+// @public
 export interface FallbackInfo {
     // (undocumented)
     error: unknown;
