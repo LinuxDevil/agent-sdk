@@ -163,6 +163,16 @@
         "default": "./dist/deploy/worker.js"
       }
     },
+    "./improve": {
+      "import": {
+        "types": "./dist/improve/index.d.mts",
+        "default": "./dist/improve/index.mjs"
+      },
+      "require": {
+        "types": "./dist/improve/index.d.ts",
+        "default": "./dist/improve/index.js"
+      }
+    },
     "./traces": {
       "import": {
         "types": "./dist/traces/index.d.mts",

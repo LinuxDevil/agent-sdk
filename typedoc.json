@@ -16,6 +16,7 @@
     "src/auth/index.ts",
     "src/deploy/kv.ts",
     "src/deploy/worker.ts",
+    "src/improve/index.ts",
     "src/traces/index.ts",
     "src/triggers/index.ts",
     "src/react/index.ts",
