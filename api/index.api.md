@@ -3031,6 +3031,9 @@ export interface GroupDecision {
 }
 
 // @public
+export const GUARDRAIL_SPAN_NAME = "guardrail";
+
+// @public
 export interface GuardrailCatalogEntry {
     canRewrite: boolean;
     canRunInParallel: boolean;
@@ -6134,6 +6137,10 @@ export const SdkAttr: {
     readonly SUBAGENT_NAME: "lousho.subagent.name";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
     readonly TASK_ID: "lousho.task.id";
+    readonly GUARDRAIL_NAME: "lousho.guardrail.name";
+    readonly GUARDRAIL_KIND: "lousho.guardrail.kind";
+    readonly GUARDRAIL_OUTCOME: "lousho.guardrail.outcome";
+    readonly GUARDRAIL_PARALLEL: "lousho.guardrail.parallel";
     readonly NODE_ID: "lousho.node.id";
     readonly HANDOFF_FROM: "lousho.handoff.from";
     readonly HANDOFF_TO: "lousho.handoff.to";

@@ -10,7 +10,7 @@
  * Only node ids ever land on spans — never spec values or secrets.
  * Node-side by use (the compiler is the only caller); no `node:*` imports.
  */
-import { APPROVAL_WAIT_SPAN_NAME, FlowAttr, FLOW_NODE_SPAN_NAME, GenAiAttr, GenAiOperation, HANDOFF_SPAN_NAME, SdkAttr } from '../../execution/semconv';
+import { APPROVAL_WAIT_SPAN_NAME, FlowAttr, FLOW_NODE_SPAN_NAME, GUARDRAIL_SPAN_NAME, GenAiAttr, GenAiOperation, HANDOFF_SPAN_NAME, SdkAttr } from '../../execution/semconv';
 import type { Span, TraceExporter } from '../../execution/tracing';
 import type { HandoffSpec } from './handoffs';
 import { specNodeIds } from './nodeIds';
@@ -26,6 +26,8 @@ export interface NodeIdIndex {
   handoffByToolName: Record<string, string>;
   /** slot name → 'memory:<name>'. */
   memorySlots: Record<string, string>;
+  /** spec.guardrails entry id → 'guard:<id>' (S11 names each compiled guardrail by its entry id, so the trip name is the id). */
+  guardrailByName: Record<string, string>;
   /** inline subagent name → its own index. */
   subagents: Record<string, NodeIdIndex>;
 }
@@ -48,6 +50,7 @@ export function nodeIdIndexOf(
     mcpServers: nodes.mcp,
     handoffByToolName: {},
     memorySlots: {},
+    guardrailByName: {},
     subagents: subIndexes,
   };
   (spec.tools ?? []).forEach((_ref, i) => {
@@ -59,6 +62,7 @@ export function nodeIdIndexOf(
   for (const entry of spec.handoffs ?? []) {
     for (const name of handoffToolNames(spec, entry)) index.handoffByToolName[name] = `handoff:${entry.agent}`;
   }
+  for (const entry of spec.guardrails ?? []) index.guardrailByName[entry.id] = `guard:${entry.id}`;
   return index;
 }
 
@@ -173,6 +177,14 @@ const approvalWaitRule: NodeIdRule = (span, parent) => {
   return nodeId === undefined ? undefined : { nodeId: parent.scope + nodeId };
 };
 
+/** `guardrail <name>` (S20b): the spec guardrail the span is named after; an unknown name (code-built, inherited) stamps nothing. */
+const guardrailRule: NodeIdRule = (span, parent) => {
+  if (!span.name.startsWith(`${GUARDRAIL_SPAN_NAME} `)) return undefined;
+  const name = span.attributes[SdkAttr.GUARDRAIL_NAME];
+  const nodeId = typeof name === 'string' ? parent.index.guardrailByName[name] : undefined;
+  return nodeId === undefined ? undefined : { nodeId: parent.scope + nodeId };
+};
+
 /** `flow.node <type>` with `lousho.flow.node.id`: the step's `flow:<id>`. */
 const flowNodeRule: NodeIdRule = (span) => {
   if (span.name !== FLOW_NODE_SPAN_NAME && !span.name.startsWith(`${FLOW_NODE_SPAN_NAME} `)) return undefined;
@@ -180,11 +192,11 @@ const flowNodeRule: NodeIdRule = (span) => {
   return typeof step === 'string' ? { nodeId: `flow:${step}` } : undefined;
 };
 
-/** The S20a mapping table, first hit wins; anything else gets no `lousho.node.id` (S20b extends it). */
-const RULES: readonly NodeIdRule[] = [invokeAgentRule, chatRule, toolRule, handoffRule, approvalWaitRule, flowNodeRule];
+/** The S20a mapping table, first hit wins; anything else gets no `lousho.node.id` (S20b/S20c extend it). */
+const RULES: readonly NodeIdRule[] = [invokeAgentRule, chatRule, toolRule, handoffRule, approvalWaitRule, guardrailRule, flowNodeRule];
 
 /** The index of a sub-agent compiled outside the spec pipeline (its spans stamp but resolve no members). */
-const EMPTY_INDEX: NodeIdIndex = { toolNodeByName: {}, mcpServers: {}, handoffByToolName: {}, memorySlots: {}, subagents: {} };
+const EMPTY_INDEX: NodeIdIndex = { toolNodeByName: {}, mcpServers: {}, handoffByToolName: {}, memorySlots: {}, guardrailByName: {}, subagents: {} };
 
 /** Every exporter nodeIdExporter() returned, so isNodeIdExporter() needs no marker property. */
 const nodeIdExporters = new WeakSet<TraceExporter>();

@@ -138,6 +138,14 @@ export const SdkAttr = {
   SUBAGENT_DEPTH: 'lousho.subagent.depth',
   /** On a sub-agent's `invoke_agent` span, the `task` call's taskId. */
   TASK_ID: 'lousho.task.id',
+  /** On a `guardrail <name>` span: the `IoGuardrail.name` of the check that ran. */
+  GUARDRAIL_NAME: 'lousho.guardrail.name',
+  /** On a `guardrail <name>` span: which side it checked (`'input'`, `'output'` or `'tool'`). */
+  GUARDRAIL_KIND: 'lousho.guardrail.kind',
+  /** On a `guardrail <name>` span, set before it ends: `'pass'`, `'block'` or `'rewrite'`. */
+  GUARDRAIL_OUTCOME: 'lousho.guardrail.outcome',
+  /** On a `guardrail <name>` span of a `runInParallel` input check: `true`; absent otherwise. */
+  GUARDRAIL_PARALLEL: 'lousho.guardrail.parallel',
   /** On spans of an agent built from a spec: the builder node id (`agent`, `tool:web_fetch`, `sub:research`, `flow:s1`, …). */
   NODE_ID: 'lousho.node.id',
   /** On a `handoff <to>` marker span: the agent the run handed off from. */
@@ -151,6 +159,9 @@ export const SdkAttr = {
   /** On an `approval.wait <tool>` marker span: the pause's ISO deadline, when it has one. */
   APPROVAL_EXPIRES_AT: 'lousho.approval.expires_at',
 } as const;
+
+/** Span-name prefix for a guardrail check span (`guardrail <IoGuardrail.name>`). */
+export const GUARDRAIL_SPAN_NAME = 'guardrail';
 
 /**
  * The attribute names this SDK emitted before. They are still emitted

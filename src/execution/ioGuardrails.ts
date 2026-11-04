@@ -14,6 +14,9 @@ import { runEventsOf } from './agentRun';
 import { SDKError } from './errors';
 import { brandClass } from '../utils/brand';
 import { SECRET_PATTERNS } from './secretPatterns';
+import { GUARDRAIL_SPAN_NAME, GenAiAttr, SdkAttr } from './semconv';
+import { withSpan } from './tracing';
+import { contentRedactor } from './genAiSpans';
 
 /** What a guardrail checks: the new user input, the assistant text, or a tool call's arguments. */
 export type IoGuardrailKind = 'input' | 'output' | 'tool';
@@ -104,7 +107,47 @@ export class GuardrailError extends SDKError {
 brandClass(GuardrailError, 'GuardrailError');
 
 /** The run options guardrails read (a sub-agent's tool call sees the inherited ones). */
-type GuardrailRuntime = Pick<ExecuteOptions, 'guardrails' | 'signal'>;
+type GuardrailRuntime = Pick<ExecuteOptions, 'guardrails' | 'signal' | 'exporter' | 'redactContent'> & {
+  /** Span the guardrail spans nest under (the run's invoke_agent span, or the tool call's span). No span when absent. */
+  guardrailParentSpanId?: string;
+};
+
+/**
+ * One `guardrail.check(...)` call, wrapped in a `guardrail <name>` span
+ * under `options.guardrailParentSpanId` when the run is traced, called
+ * directly when there is no exporter or parent span (no span, no
+ * overhead). The span records the check's name, kind and outcome only —
+ * never the checked text or the trip `reason` (those may hold user data;
+ * trip info is already on the `guardrail.tripped` event). A check that
+ * throws ends the span with the error, which withSpan() records.
+ */
+function checkInSpan(
+  options: GuardrailRuntime,
+  guardrail: IoGuardrail,
+  ctx: Pick<IoGuardrailContext, 'kind' | 'toolName'>,
+  run: () => IoGuardrailResult | Promise<IoGuardrailResult>,
+  parallel = false
+): Promise<IoGuardrailResult> {
+  if (options.exporter === undefined || options.guardrailParentSpanId === undefined) return Promise.resolve(run());
+  return withSpan(
+    options.exporter,
+    `${GUARDRAIL_SPAN_NAME} ${guardrail.name}`,
+    {
+      [SdkAttr.GUARDRAIL_NAME]: guardrail.name,
+      [SdkAttr.GUARDRAIL_KIND]: ctx.kind,
+      ...(ctx.toolName !== undefined && { [GenAiAttr.TOOL_NAME]: ctx.toolName }),
+      ...(parallel && { [SdkAttr.GUARDRAIL_PARALLEL]: true }),
+    },
+    async (span) => {
+      const result = await run();
+      span.attributes[SdkAttr.GUARDRAIL_OUTCOME] = result.ok ? 'pass' : result.action === 'rewrite' ? 'rewrite' : 'block';
+      return result;
+    },
+    options.guardrailParentSpanId,
+    undefined,
+    contentRedactor({ redactContent: options.redactContent })
+  );
+}
 
 /** Runs `guardrails` in order: the first block trips; a rewrite changes the text the next one sees. */
 async function runChecks(
@@ -115,7 +158,7 @@ async function runChecks(
   let { text } = ctx;
   let rewritten = false;
   for (const guardrail of guardrails) {
-    const result = await guardrail.check({ ...ctx, text, signal: options.signal });
+    const result = await checkInSpan(options, guardrail, ctx, () => guardrail.check({ ...ctx, text, signal: options.signal }));
     if (result.ok) continue;
     const trip: GuardrailTrip = {
       name: guardrail.name,
@@ -220,7 +263,13 @@ export function startParallelInputGuardrails(options: GuardrailRuntime, messages
   const checks = entries.flatMap(({ message }) =>
     guardrails.map((guardrail) =>
       (async () => {
-        const result = await guardrail.check({ kind: 'input', text: textOf(message), messages: snapshot, signal });
+        const result = await checkInSpan(
+          options,
+          guardrail,
+          { kind: 'input' },
+          () => guardrail.check({ kind: 'input', text: textOf(message), messages: snapshot, signal }),
+          true
+        );
         if (result.ok) return;
         const reason = result.action === 'rewrite' ? `${PARALLEL_REWRITE_PREFIX}${result.reason}` : result.reason;
         settle({ trip: { name: guardrail.name, kind: 'input', reason, ...(result.info && { info: result.info }) } });
