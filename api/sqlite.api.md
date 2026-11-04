@@ -101,7 +101,6 @@ interface ApprovalStepNode extends NodeRunOptions {
     id?: string;
     message: string;
     outputVariable?: string;
-    // (undocumented)
     type: 'approval';
 }
 
