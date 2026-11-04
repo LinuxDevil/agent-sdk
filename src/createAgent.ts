@@ -911,7 +911,8 @@ export interface SimpleAgent<TObject = unknown> {
    * `intervalMs` (default 30 s) it lists `agent.pending()` and calls
    * `agent.resume()` on each `'in-progress'` run. Runs paused on an approval or
    * a question are left alone, and so are runs whose `lastError` is not
-   * retryable. A run still running elsewhere, or whose crashed process's run
+   * retryable. A failing run backs off and stops being resumed after
+   * `maxAttempts` failures in a row (default 10). A run still running elsewhere, or whose crashed process's run
    * lease has not expired yet, is skipped (its lease turns the resume away
    * before anything runs) and retried on a later sweep, so no run is resumed
    * twice at once and completed steps never run again

@@ -2013,7 +2013,9 @@ type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 // @public
 interface RecoverOptions<TResult = unknown> {
     intervalMs?: number;
+    maxAttempts?: number;
     onError?: (error: unknown, run?: PendingRun) => void;
+    onQuarantined?: (run: PendingRun) => void;
     onRecovered?: (run: PendingRun, result: TResult) => void;
     signal?: AbortSignal;
 }

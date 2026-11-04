@@ -14,7 +14,7 @@ import { fileStore } from './storage/fileStore';
 import { memoryStore } from './storage/agentStore';
 import { mockModel, type MockTurn } from './testing';
 import type { PendingRun } from './agentPending';
-import type { RunRecovery } from './agentRecover';
+import { startRecovery, type RecoverOptions, type RunRecovery } from './agentRecover';
 
 const calling = (name: string, id = `call_${name}`): MockTurn => ({ toolCalls: [{ name, id }] });
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -138,5 +138,69 @@ describe('agent.recover()', () => {
   it('throws without a listable checkpoint store, or with a bad interval', () => {
     expect(() => createAgent({ provider: mockModel(['x']) }).recover()).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE' }));
     expect(() => createAgent({ provider: mockModel(['x']), store: memoryStore() }).recover({ intervalMs: 0 })).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
+  });
+
+  it('stops resuming a run that keeps failing at maxAttempts, and reports it once', async () => {
+    const store = memoryStore();
+    const runs: Record<string, number> = {};
+    const turns = Array.from({ length: 20 }, (_, i) => calling('crash', `call_${i}`));
+    const agent = createAgent({ provider: mockModel(turns), tools: tools(runs, Infinity), store });
+    await expect(agent.send('crash', { sessionId: 'job-poison' })).rejects.toThrow('process died');
+    const onQuarantined = vi.fn();
+    const recovery = agent.recover({ intervalMs: 1, maxAttempts: 3, onQuarantined });
+    loops.push(recovery);
+    await vi.waitFor(() => expect(onQuarantined).toHaveBeenCalledTimes(1));
+    const crashes = runs.crash;
+    await sleep(60);
+    expect(runs.crash).toBe(crashes);
+    expect(crashes).toBe(3);
+    expect(onQuarantined).toHaveBeenCalledTimes(1);
+    expect(onQuarantined).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'job-poison', attempts: 3 }));
+    await recovery.stop();
+    expect((await agent.pending()).map((run) => run.sessionId)).toEqual(['job-poison']);
+  });
+
+  const interrupted: PendingRun = { sessionId: 'job', kind: 'run', checkpointId: 'job', status: 'in-progress', step: 1 };
+  const failing = (attempts: number, ageMs: number): PendingRun => ({
+    ...interrupted,
+    attempts,
+    lastError: { message: 'boom', retryable: true, at: new Date(Date.now() - ageMs).toISOString() },
+  });
+
+  async function sweepOnce(run: PendingRun, options: RecoverOptions<string>) {
+    const resume = vi.fn(async () => 'done');
+    const swept = vi.fn(async () => [run]);
+    const recovery = startRecovery({ pending: swept, resume }, { intervalMs: 1000, ...options });
+    await vi.waitFor(() => expect(swept).toHaveBeenCalled());
+    await sleep(5);
+    await recovery.stop();
+    return resume;
+  }
+
+  it('quarantines at 10 attempts by default', async () => {
+    const onQuarantined = vi.fn();
+    expect(await sweepOnce(failing(9, 3_600_000), {})).toHaveBeenCalledTimes(1);
+    expect(await sweepOnce(failing(10, 3_600_000), { onQuarantined })).not.toHaveBeenCalled();
+    expect(onQuarantined).toHaveBeenCalledTimes(1);
+  });
+
+  it('backs off exponentially from the last failure', async () => {
+    expect(await sweepOnce(failing(3, 3_000), {})).not.toHaveBeenCalled();
+    expect(await sweepOnce(failing(3, 5_000), {})).toHaveBeenCalledTimes(1);
+  });
+
+  it('caps the backoff at 15 minutes', async () => {
+    expect(await sweepOnce(failing(9, 15 * 60_000 + 1_000), { intervalMs: 60_000 })).toHaveBeenCalledTimes(1);
+  });
+
+  it('resumes a run a crash interrupted without waiting', async () => {
+    expect(await sweepOnce(interrupted, {})).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a maxAttempts that is not a positive whole number', () => {
+    const target = { pending: async () => [], resume: async () => null };
+    for (const maxAttempts of [0, -1, 1.5, Number.NaN]) {
+      expect(() => startRecovery(target, { maxAttempts })).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
+    }
   });
 });
