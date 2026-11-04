@@ -8,6 +8,9 @@ import { ThreadsScreen } from './threads/ThreadsScreen';
 import { PromptsScreen } from './prompts/PromptsScreen';
 import { HubScreen } from './hub/HubScreen';
 import { AgentsScreen } from './agents/AgentsScreen';
+import { AgentListScreen } from './agentList/AgentListScreen';
+import { AgentDetailRoute } from './agentDetail/AgentDetailRoute';
+import { agentRedirect } from './agents/agentTabs';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
@@ -25,17 +28,22 @@ export function screenFor(hash: string): ScreenId | null {
 }
 
 /**
- * The current screen. An empty hash or unknown route is replaced by `#/agents`
- * (only the hash changes, so a `?token=` from `lousho studio` survives) and
- * shows Agents meanwhile.
+ * The current screen. An agents URL `agentRedirect` rewrites (the legacy
+ * `#/agents/:id` builder URL, a tab that is unknown or not built yet) is
+ * replaced by its canvas URL - only the hash changes, so a `?token=` from
+ * `lousho studio` survives - and the builder shows meanwhile. An empty hash or
+ * unknown route is replaced by `#/agents` (the list) and shows it meanwhile.
  */
 export function useScreen(): ScreenId {
   const { path } = useRoute();
   const screen = screenFor(`#${path}`);
+  const redirect = agentRedirect(window.location.hash);
   useEffect(() => {
-    if (screen === null) navigate('/agents', { replace: true });
-  }, [screen]);
-  return screen ?? 'agents';
+    if (redirect !== null) navigate(redirect, { replace: true });
+    else if (screen === null) navigate('/agents', { replace: true });
+  }, [redirect, screen]);
+  if (redirect !== null) return 'agents';
+  return screen ?? 'agentList';
 }
 
 /** `#/traces/:traceId`: the trace id comes from the hash; a new id remounts the screen. */
@@ -61,6 +69,8 @@ function ScreenFrame({ children }: { children: ReactNode }) {
 
 /** The screens that render with no props, by id (Agents and Settings are handled in `Screens`). */
 const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
+  agentList: AgentListScreen,
+  agentDetail: AgentDetailRoute,
   traces: TracesScreen,
   trace: TraceRoute,
   monitoring: MonitoringScreen,

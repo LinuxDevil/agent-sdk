@@ -40,8 +40,9 @@ function useSidePanels() {
 }
 
 /**
- * `#/agents` and `#/agents/:id` - the builder: agent rail, canvas, Inspector and the run drawer,
- * under the Build toolbar. The hash names the open agent (see `useAgentRouteSync`).
+ * `#/agents/:id/canvas` - the builder: agent rail, canvas, Inspector and the run drawer,
+ * under the Build toolbar. (The legacy `#/agents/:id` redirects here; bare `#/agents`
+ * is the agents list.) The hash names the open agent (see `useAgentRouteSync`).
  * The docked Inspector collapses while nothing is selected (`useInspectorCollapsed`).
  */
 export function AgentsScreen() {
