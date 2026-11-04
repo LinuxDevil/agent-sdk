@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { IngestEvent } from './envelope';
 import { failureReportFromDb, failureReportFromTraces, formatFailureReport, groupFailures, type FailureSample } from './failures';
-import { ingestBatch, openDb } from './store';
+import { ingestBatch, interruptAgentWork, openDb } from './store';
 
 const T0 = 1_790_000_000_000;
 
@@ -92,7 +92,7 @@ describe('failureReportFromDb', () => {
       { type: 'observation', data: { obs_id: 'r1', trace_id: 't1', agent_id: 'support', kind: 'span', name: 'invoke_agent support', start: T0, end: T0 + 9, status: 'error', attrs: { 'gen_ai.operation.name': 'invoke_agent', error: 'request timed out' } } },
     ]);
     const report = failureReportFromDb(db, {});
-    expect(report.scanned).toEqual({ traces: 3, spans: 4, failed: 3, noAnswer: 0 });
+    expect(report.scanned).toEqual({ traces: 3, spans: 4, failed: 3, noAnswer: 0, interrupted: 0, lowScores: 0 });
     expect(report.groups.map((g) => [g.source, g.operation, g.count])).toEqual([
       ['lookup', 'execute_tool', 2],
       ['chat gpt', 'chat', 1],
@@ -144,6 +144,37 @@ describe('failureReportFromDb', () => {
     db.close();
   });
 
+  it('lists low scores, so a run with a wrong answer and no error still shows up', () => {
+    const db = openDb(':memory:');
+    const score = (id: string, trace: string, value: number | undefined): IngestEvent =>
+      ({ type: 'score', data: { score_id: id, trace_id: trace, name: 'accuracy', ...(value !== undefined && { value }), source: 'human', agent_id: 'uuid-1', ts: T0 } }) as IngestEvent;
+    ingestBatch(db, [{ type: 'agent.heartbeat', data: { agent_id: 'uuid-1', name: 'doc-qa', ts: T0 } } as IngestEvent, score('s1', 't1', 0), score('s2', 't2', 0.25), score('s3', 't3', 1), score('s4', 't4', undefined)]);
+    const report = failureReportFromDb(db, {});
+    expect(report.scanned.lowScores).toBe(2);
+    expect(report.groups[0]).toMatchObject({ agent: 'doc-qa', source: 'score accuracy', operation: 'score', failureClass: 'low-score', traces: 2, recurring: true });
+    expect(failureReportFromDb(db, { minScore: 0.1 }).scanned.lowScores).toBe(1);
+    db.close();
+  });
+
+  it('never counts a missing score as a low one, and honours the time filter', () => {
+    const db = openDb(':memory:');
+    ingestBatch(db, [{ type: 'score', data: { score_id: 's1', trace_id: 't1', name: 'accuracy', value: 0, source: 'human', ts: T0 } } as IngestEvent]);
+    expect(failureReportFromDb(db, { since: T0 + 1 }).scanned.lowScores).toBe(0);
+    db.close();
+  });
+
+  it('lists runs whose process died, so they are not read as the agent stopping', () => {
+    const db = openDb(':memory:');
+    ingestBatch(db, [
+      { type: 'observation', data: { obs_id: 'r1', trace_id: 't1', agent_id: 'a', kind: 'span', name: 'invoke_agent doc-qa', start: T0, attrs: { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'doc-qa' } } },
+    ]);
+    interruptAgentWork(db, 'a', T0 + 100);
+    const report = failureReportFromDb(db, {});
+    expect(report.scanned.interrupted).toBe(1);
+    expect(report.groups[0]).toMatchObject({ agent: 'doc-qa', source: 'run', failureClass: 'interrupted' });
+    db.close();
+  });
+
   it('survives attrs that are not valid JSON objects', () => {
     const db = openDb(':memory:');
     ingestBatch(db, [failed('o1', 't1', 'boom')]);
@@ -185,7 +216,7 @@ describe('failureReportFromTraces', () => {
     ];
     fs.writeFileSync(path.join(day, 'abc.jsonl'), lines.map((line) => JSON.stringify(line)).join('\n') + '\n');
     const report = await failureReportFromTraces([dir]);
-    expect(report.scanned).toEqual({ traces: 1, spans: 2, failed: 1, noAnswer: 0 });
+    expect(report.scanned).toEqual({ traces: 1, spans: 2, failed: 1, noAnswer: 0, interrupted: 0, lowScores: 0 });
     expect(report.groups[0]).toMatchObject({ agent: 'support', source: 'lookup', example: 'boom' });
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -193,17 +224,17 @@ describe('failureReportFromTraces', () => {
 
 describe('formatFailureReport', () => {
   it('says how many runs ended without an answer', () => {
-    expect(formatFailureReport({ scanned: { traces: 3, spans: 9, failed: 0, noAnswer: 2 }, groups: [] })).toContain('2 runs ended without an answer');
+    expect(formatFailureReport({ scanned: { traces: 3, spans: 9, failed: 0, noAnswer: 2, interrupted: 0, lowScores: 0 }, groups: [] })).toContain('2 runs ended without an answer');
   });
 
   it('says plainly when nothing failed, with what was scanned', () => {
-    const text = formatFailureReport({ scanned: { traces: 6, spans: 10, failed: 0, noAnswer: 0 }, groups: [] });
+    const text = formatFailureReport({ scanned: { traces: 6, spans: 10, failed: 0, noAnswer: 0, interrupted: 0, lowScores: 0 }, groups: [] });
     expect(text).toContain('No failures');
     expect(text).toContain('6 traces');
   });
 
   it('marks recurring failures and links their traces', () => {
-    const text = formatFailureReport({ scanned: { traces: 2, spans: 4, failed: 2, noAnswer: 0 }, groups: groupFailures([sample({ traceId: 't1' }), sample({ traceId: 't2' })]) });
+    const text = formatFailureReport({ scanned: { traces: 2, spans: 4, failed: 2, noAnswer: 0, interrupted: 0, lowScores: 0 }, groups: groupFailures([sample({ traceId: 't1' }), sample({ traceId: 't2' })]) });
     expect(text).toContain('RECURRING');
     expect(text).toContain('timeout');
     expect(text).toContain('t1');

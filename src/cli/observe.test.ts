@@ -76,6 +76,11 @@ describe('lousho observe', () => {
     expect(JSON.parse(logs.join('\n')).scanned.failed).toBe(1);
   });
 
+  it('failures rejects a --min-score that is not a number', async () => {
+    const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cli-failures-')), 'o.db');
+    expect(await runObserve(['failures', '--db', dbPath, '--min-score', 'high'])).toBe(2);
+  });
+
   it('failures reads trace directories without a database', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cli-traces-'));
     expect(await runObserve(['failures', '--traces', dir])).toBe(0);

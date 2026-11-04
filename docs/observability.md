@@ -836,7 +836,9 @@ capability, permission, unknown, or denied by `createProgressGuard()`), inferred
 from the error text, so check the example. A rate limit gets its own class, and a
 run that ended on `max-steps` or `budget-exceeded` is listed as `no-answer`, read
 from the run span's `lousho.run.finish_reason`, even if none of its calls failed.
-Traces recorded before that attribute existed can't show this. Pass `--traces <dir>`, more than once
+Traces recorded before that attribute existed can't show this. It also lists runs whose
+process died (`interrupted`), and scores below `--min-score` (default 0.5) as
+`low-score`, which catches a wrong answer with no error. A missing score isn't a low one. Pass `--traces <dir>`, more than once
 if needed, to read trace files instead of the database. It only reads.
 
 `lousho observe export [--since 7d] [--agent X] [--out file]` dumps traces as

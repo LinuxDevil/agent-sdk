@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { createAgent } from './createAgent';
 import { defineTool, type DefinedTool } from './tools/defineTool';
 import { PropagatingToolError } from './execution/AgentExecutor';
+import { CompactedLLMProviderError } from './execution/errors';
 import { fileStore } from './storage/fileStore';
 import { memoryStore } from './storage/agentStore';
 import { mockModel, type MockTurn } from './testing';
@@ -222,6 +223,102 @@ describe('agent.recover()', () => {
       await vi.waitFor(() => expect(onQuarantined).toHaveBeenCalledTimes(1));
       await recovery.stop();
       expect((await agent.pending()).map((run) => run.sessionId)).toEqual(['job']);
+    });
+  });
+
+  describe('during a provider outage', () => {
+    const outageError = () => new CompactedLLMProviderError({ error: 'overloaded', category: 'unknown', retryable: true, statusCode: 503 });
+    const runNamed = (sessionId: string, over: Partial<PendingRun> = {}): PendingRun => ({ sessionId, kind: 'run', checkpointId: sessionId, status: 'in-progress', step: 1, ...over });
+
+    it('pauses after 3 provider failures in a row, and reports it once', async () => {
+      const onOutage = vi.fn();
+      const resume = vi.fn(async () => {
+        throw outageError();
+      });
+      const runs = ['a', 'b', 'c', 'd', 'e'].map((id) => runNamed(id));
+      const recovery = startRecovery({ pending: async () => runs, resume }, { intervalMs: 1000, onOutage });
+      loops.push(recovery);
+      await vi.waitFor(() => expect(onOutage).toHaveBeenCalledWith(true));
+      const calls = resume.mock.calls.length;
+      await sleep(30);
+      expect(resume.mock.calls.length).toBe(calls);
+      expect(onOutage).toHaveBeenCalledTimes(1);
+      await recovery.stop();
+    });
+
+    it('probes with one run after the pause, and resumes the rest once it succeeds', async () => {
+      const onOutage = vi.fn();
+      let down = true;
+      const done = new Set<string>();
+      const resume = vi.fn(async (id: string) => {
+        if (down) throw outageError();
+        done.add(id);
+        return 'ok';
+      });
+      const runs = ['a', 'b', 'c', 'd'].map((id) => runNamed(id));
+      const recovery = startRecovery({ pending: async () => runs.filter((run) => !done.has(run.sessionId)), resume }, { intervalMs: 5, onOutage });
+      loops.push(recovery);
+      await vi.waitFor(() => expect(onOutage).toHaveBeenCalledWith(true));
+      const before = resume.mock.calls.length;
+      await vi.waitFor(() => expect(resume.mock.calls.length).toBeGreaterThan(before));
+      await sleep(1);
+      expect(resume.mock.calls.length).toBeLessThanOrEqual(before + 1);
+      down = false;
+      await vi.waitFor(() => expect(done.size).toBe(4));
+      expect(onOutage).toHaveBeenLastCalledWith(false);
+      await recovery.stop();
+    });
+
+    it('does not quarantine a run for provider failures while paused', async () => {
+      const onQuarantined = vi.fn();
+      const resume = vi.fn(async () => {
+        throw outageError();
+      });
+      const at = new Date(Date.now() - 3_600_000).toISOString();
+      const capped = runNamed('capped', { attempts: 10, lastError: { message: 'overloaded', category: 'unknown', retryable: true, at } });
+      const others = ['a', 'b', 'c'].map((id) => runNamed(id));
+      let list = others;
+      const recovery = startRecovery({ pending: async () => list, resume }, { intervalMs: 5, onQuarantined });
+      loops.push(recovery);
+      await vi.waitFor(() => expect(resume.mock.calls.length).toBeGreaterThanOrEqual(3));
+      list = [capped];
+      await sleep(40);
+      expect(onQuarantined).not.toHaveBeenCalled();
+      await recovery.stop();
+    });
+
+    it('still quarantines a run at the cap when the provider is healthy', async () => {
+      const onQuarantined = vi.fn();
+      const at = new Date(Date.now() - 3_600_000).toISOString();
+      const capped = runNamed('capped', { attempts: 10, lastError: { message: 'overloaded', category: 'unknown', retryable: true, at } });
+      const recovery = startRecovery({ pending: async () => [capped], resume: vi.fn(async () => 'ok') }, { intervalMs: 5, onQuarantined });
+      loops.push(recovery);
+      await vi.waitFor(() => expect(onQuarantined).toHaveBeenCalledTimes(1));
+      await recovery.stop();
+    });
+
+    it('is not triggered by tool or crash failures', async () => {
+      const onOutage = vi.fn();
+      const resume = vi.fn(async () => {
+        throw new Error('process died');
+      });
+      const recovery = startRecovery({ pending: async () => ['a', 'b', 'c', 'd'].map((id) => runNamed(id)), resume }, { intervalMs: 2, onOutage });
+      loops.push(recovery);
+      await vi.waitFor(() => expect(resume.mock.calls.length).toBeGreaterThan(8));
+      expect(onOutage).not.toHaveBeenCalled();
+      await recovery.stop();
+    });
+
+    it('treats an auth failure as not an outage, since waiting will not fix it', async () => {
+      const onOutage = vi.fn();
+      const resume = vi.fn(async () => {
+        throw new CompactedLLMProviderError({ error: 'bad key', category: 'auth-failure', retryable: false, statusCode: 401 });
+      });
+      const recovery = startRecovery({ pending: async () => ['a', 'b', 'c', 'd'].map((id) => runNamed(id)), resume }, { intervalMs: 2, onOutage });
+      loops.push(recovery);
+      await vi.waitFor(() => expect(resume.mock.calls.length).toBeGreaterThan(6));
+      expect(onOutage).not.toHaveBeenCalled();
+      await recovery.stop();
     });
   });
 

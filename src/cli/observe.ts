@@ -8,7 +8,7 @@
  *   lousho observe rebuild-rollups [--db path]
  *   lousho observe prune --older-than <N>d [--db path]
  *   lousho observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]
- *   lousho observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--json] [--db path] [--traces dir]...
+ *   lousho observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--min-score N] [--json] [--db path] [--traces dir]...
  *   lousho observe token create --project X [--db path]
  *
  * `start` runs in the foreground (like `lousho dev`). On EADDRINUSE it probes
@@ -47,7 +47,7 @@ const USAGE = `Usage: lousho observe <command> [options]
   observe rebuild-rollups [--db path]
   observe prune --older-than <N>d [--db path]
   observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]
-  observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--json] [--db path] [--traces dir]...
+  observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--min-score N] [--json] [--db path] [--traces dir]...
   observe token create --project X [--db path]`;
 
 const HELP = `${USAGE}
@@ -122,8 +122,8 @@ const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
   },
   failures: {
     command: 'observe failures',
-    usage: 'Usage: lousho observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--json] [--db path] [--traces dir]...',
-    options: { db: { type: 'string' }, since: { type: 'string' }, agent: { type: 'string' }, json: { type: 'boolean' }, traces: { type: 'string', multiple: true } },
+    usage: 'Usage: lousho observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--min-score N] [--json] [--db path] [--traces dir]...',
+    options: { db: { type: 'string' }, since: { type: 'string' }, agent: { type: 'string' }, json: { type: 'boolean' }, traces: { type: 'string', multiple: true }, 'min-score': { type: 'string' } },
   },
   token: {
     command: 'observe token',
@@ -505,6 +505,9 @@ async function runFailures(args: string[]): Promise<number> {
     return 0;
   }
   const dirs = stringListValue(values.traces);
+  const minScoreGiven = stringValue(values['min-score']);
+  const minScore = minScoreGiven === undefined ? undefined : Number(minScoreGiven);
+  if (minScore !== undefined && !Number.isFinite(minScore)) throw usageError(spec, `--min-score must be a number, got '${minScoreGiven}'.`);
   let report: FailureReport;
   if (dirs.length > 0) {
     report = await failureReportFromTraces(dirs);
@@ -512,7 +515,7 @@ async function runFailures(args: string[]): Promise<number> {
     const db = openDb(dbPathOf(values.db));
     try {
       const agent = stringValue(values.agent);
-      report = failureReportFromDb(db, { since: sinceMs(spec, values.since), agent: agent === undefined ? undefined : resolveAgent(spec, db, agent) });
+      report = failureReportFromDb(db, { since: sinceMs(spec, values.since), agent: agent === undefined ? undefined : resolveAgent(spec, db, agent), ...(minScore !== undefined && { minScore }) });
     } finally {
       db.close();
     }

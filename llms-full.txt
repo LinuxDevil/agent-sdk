@@ -8299,6 +8299,12 @@ What a sweep does with each pending run:
   `onRecovered` reports the original's id. If it also reaches the cap, both are
   quarantined. The note quotes the error as data and caps its length, because
   the error can hold tool output. The store must keep a history.
+- During a provider outage: after 3 provider failures in a row, across any runs,
+  the loop pauses and calls `onOutage(true)`. It then tries one run at a time, at
+  growing intervals of up to 15 minutes, and carries on as normal, calling
+  `onOutage(false)`, once one gets past the provider. Nothing is quarantined for
+  provider failures while it's paused, so an outage doesn't use up healthy runs'
+  attempts. A bad API key doesn't count as an outage, since waiting won't fix it.
 - A run still running in another process, or one whose crashed process's
   [run lease](#run-leases) has not expired yet: its resume is turned away
   with `LOUSHO_SESSION_BUSY` before anything runs, silently, and a later sweep
@@ -15291,7 +15297,9 @@ capability, permission, unknown, or denied by `createProgressGuard()`), inferred
 from the error text, so check the example. A rate limit gets its own class, and a
 run that ended on `max-steps` or `budget-exceeded` is listed as `no-answer`, read
 from the run span's `lousho.run.finish_reason`, even if none of its calls failed.
-Traces recorded before that attribute existed can't show this. Pass `--traces <dir>`, more than once
+Traces recorded before that attribute existed can't show this. It also lists runs whose
+process died (`interrupted`), and scores below `--min-score` (default 0.5) as
+`low-score`, which catches a wrong answer with no error. A missing score isn't a low one. Pass `--traces <dir>`, more than once
 if needed, to read trace files instead of the database. It only reads.
 
 `lousho observe export [--since 7d] [--agent X] [--out file]` dumps traces as
