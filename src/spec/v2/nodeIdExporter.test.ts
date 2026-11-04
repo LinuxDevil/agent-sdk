@@ -41,6 +41,7 @@ function index(): NodeIdIndex {
       mcpServers: { docs: { url: 'https://x.test/mcp' } },
       memory: [{ name: 'notes', scope: 'global', provider: { type: 'in-memory' } }],
       handoffs: [{ agent: 'billing' }],
+      guardrails: [{ id: 'g1', name: 'max-length', on: 'input' }],
     }),
     [['current_date'], ['web_fetch']],
     { research: nodeIdIndexOf(spec({ tools: [{ builtin: 'web_fetch' }] }), [['web_fetch']]) }
@@ -96,6 +97,25 @@ describe('nodeIdExporter span stamping', () => {
     expect(sub.attributes[NODE_ID]).toBe('sub:research');
     expect(chat.attributes[NODE_ID]).toBe('sub:research');
     expect(tool.attributes[NODE_ID]).toBe('sub:research/tool:web_fetch');
+  });
+
+  it('stamps guardrail spans with guard:<id> of the spec entry they are named after', () => {
+    const { exporter } = recorder();
+    const wrapped = nodeIdExporter(exporter, index());
+    const run = span('invoke_agent a', { [OP]: GenAiOperation.INVOKE_AGENT });
+    wrapped.onSpanStart(run);
+    // S11 names each compiled guardrail by its spec entry id, so the trip name is the id.
+    const check = span(
+      'guardrail g1',
+      { [SdkAttr.GUARDRAIL_NAME]: 'g1', [SdkAttr.GUARDRAIL_KIND]: 'input', [SdkAttr.GUARDRAIL_OUTCOME]: 'pass' },
+      run.id
+    );
+    wrapped.onSpanStart(check);
+    expect(check.attributes[NODE_ID]).toBe('guard:g1');
+    // A name the spec never declared (a code-built or inherited guardrail) gets no node id.
+    const custom = span('guardrail custom', { [SdkAttr.GUARDRAIL_NAME]: 'custom' }, run.id);
+    wrapped.onSpanStart(custom);
+    expect(custom.attributes[NODE_ID]).toBeUndefined();
   });
 
   it('stamps flow.node spans with flow:<step id>', () => {
@@ -269,6 +289,7 @@ describe('specV2ToAgent integration', () => {
     expect(started.find((s) => s.name === 'execute_tool task')?.attributes[NODE_ID]).toBeUndefined();
   });
 
+<<<<<<< HEAD
   it('stamps the handoff marker handoff:billing and the run\'s later chat spans the same', async () => {
     leadScript = [{ toolCalls: [{ name: 'transfer_to_billing', args: { reason: 'charged twice' } }] }, 'done'];
     const { started, exporter } = recorder();
@@ -307,5 +328,19 @@ describe('specV2ToAgent integration', () => {
     const wait = started.find((s) => s.name === 'approval.wait web_fetch');
     expect(wait?.attributes[SdkAttr.APPROVAL_ID]).toBe(paused.approvalId);
     expect(wait?.attributes[NODE_ID]).toBe('tool:http_request');
+=======
+  it('stamps guard:<id> on a spec guardrail’s check span', async () => {
+    leadScript = ['done'];
+    const { started, exporter } = recorder();
+    const agent = await specV2ToAgent(
+      spec({ guardrails: [{ id: 'g1', name: 'max-length', on: 'input', options: { maxChars: 100 } }] }),
+      host({ exporter })
+    );
+    await agent.send('hi');
+
+    const check = started.find((s) => s.name === 'guardrail g1');
+    expect(check?.attributes[NODE_ID]).toBe('guard:g1');
+    expect(check?.attributes[SdkAttr.GUARDRAIL_OUTCOME]).toBe('pass');
+>>>>>>> origin/fb-s20b-guardrail-spans
   });
 });
