@@ -12056,6 +12056,9 @@ getting anywhere. It's off unless you add it:
   tool for the run. Numbers in the message don't make an error different.
 - After `maxRepeats` identical calls returning the same result (default 3), it
   denies that call. A call whose result changes isn't repeating.
+- After `maxSameResults` calls to a tool return the same result (default 5), it
+  denies that tool, even when each call's arguments differ. This catches a model
+  rewording a search that keeps finding the same thing.
 - After `maxDenials` denials (default 3), the next denial stops the run with
   `LOUSHO_RUN_NO_PROGRESS`, which `agent.recover()` won't retry.
 
@@ -14577,6 +14580,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
+| `lousho.run.finish_reason` | Why the run ended (`stop`, `max-steps`, `budget-exceeded`, ...), when it didn't throw |
 
 #### Summing token usage over spans
 
@@ -15284,7 +15288,10 @@ and model calls by agent, source and error, with numbers and ids masked, and lis
 the most widespread first. A failure seen in two or more traces is marked
 `RECURRING`, with trace ids to open. Each has a class (bad input, timeout, missing
 capability, permission, unknown, or denied by `createProgressGuard()`), inferred
-from the error text, so check the example. Pass `--traces <dir>`, more than once
+from the error text, so check the example. A rate limit gets its own class, and a
+run that ended on `max-steps` or `budget-exceeded` is listed as `no-answer`, read
+from the run span's `lousho.run.finish_reason`, even if none of its calls failed.
+Traces recorded before that attribute existed can't show this. Pass `--traces <dir>`, more than once
 if needed, to read trace files instead of the database. It only reads.
 
 `lousho observe export [--since 7d] [--agent X] [--out file]` dumps traces as

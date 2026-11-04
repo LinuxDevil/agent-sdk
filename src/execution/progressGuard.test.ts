@@ -45,10 +45,23 @@ describe('createProgressGuard', () => {
     expect(runs()).toBe(6);
   });
 
-  it('allows the same result for different arguments', async () => {
-    const { agent, runs } = setup([...repeat((i) => call('lookup', { q: `q${i}` }, `c${i}`), 6), 'done'], () => 'same');
+  it('allows a few different calls that return the same result', async () => {
+    const { agent, runs } = setup([...repeat((i) => call('lookup', { q: `q${i}` }, `c${i}`), 4), 'done'], () => 'same');
     await agent.send('go');
-    expect(runs()).toBe(6);
+    expect(runs()).toBe(4);
+  });
+
+  it('denies a tool whose differently worded calls keep returning the same result', async () => {
+    const { agent, runs } = setup([...repeat((i) => call('lookup', { q: `q${i}` }, `c${i}`), 7), 'gave up'], () => 'same', { maxDenials: 5 });
+    const result = await agent.send('go');
+    expect(runs()).toBe(5);
+    expect(toolResults(result.messages).at(-1)).toMatch(/progress-guard.*same result/s);
+  });
+
+  it('honours maxSameResults', async () => {
+    const { agent, runs } = setup([...repeat((i) => call('lookup', { q: `q${i}` }, `c${i}`), 4), 'gave up'], () => 'same', { maxSameResults: 2 });
+    await agent.send('go');
+    expect(runs()).toBe(2);
   });
 
   it('stops the run with a typed error after maxDenials denials', async () => {
@@ -127,8 +140,22 @@ describe('createProgressGuard', () => {
     expect(marked).toHaveLength(1);
   });
 
+  it('records why the run ended on the run span', async () => {
+    const spans: Span[] = [];
+    const tool = defineTool({ name: 'lookup', description: 'Look', input: z.object({ q: z.string() }), execute: async () => 'x' });
+    const agent = createAgent({
+      provider: mockModel(repeat((i) => call('lookup', { q: `q${i}` }, `c${i}`), 3)),
+      tools: [tool],
+      maxSteps: 2,
+      exporter: { onSpanStart: () => undefined, onSpanEnd: (span: Span) => void spans.push(span) },
+    });
+    await agent.send('go');
+    const run = spans.find((span) => span.attributes['gen_ai.operation.name'] === 'invoke_agent');
+    expect(run?.attributes['lousho.run.finish_reason']).toBe('max-steps');
+  });
+
   it('rejects limits that are not positive whole numbers', () => {
-    for (const options of [{ maxRepeats: 0 }, { maxFailures: 1.5 }, { maxDenials: -1 }]) {
+    for (const options of [{ maxRepeats: 0 }, { maxFailures: 1.5 }, { maxDenials: -1 }, { maxSameResults: 0 }]) {
       expect(() => createProgressGuard(options)).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
     }
   });

@@ -92,7 +92,7 @@ describe('failureReportFromDb', () => {
       { type: 'observation', data: { obs_id: 'r1', trace_id: 't1', agent_id: 'support', kind: 'span', name: 'invoke_agent support', start: T0, end: T0 + 9, status: 'error', attrs: { 'gen_ai.operation.name': 'invoke_agent', error: 'request timed out' } } },
     ]);
     const report = failureReportFromDb(db, {});
-    expect(report.scanned).toEqual({ traces: 3, spans: 4, failed: 3 });
+    expect(report.scanned).toEqual({ traces: 3, spans: 4, failed: 3, noAnswer: 0 });
     expect(report.groups.map((g) => [g.source, g.operation, g.count])).toEqual([
       ['lookup', 'execute_tool', 2],
       ['chat gpt', 'chat', 1],
@@ -121,6 +121,29 @@ describe('failureReportFromDb', () => {
     db.close();
   });
 
+  it('names an agent from the registry when the span has no agent name', () => {
+    const db = openDb(':memory:');
+    ingestBatch(db, [
+      { type: 'agent.heartbeat', ts: T0, data: { agent_id: 'uuid-1', name: 'doc-qa' } } as IngestEvent,
+      failed('o1', 't1', 'boom', {}, { agent_id: 'uuid-1' }),
+    ]);
+    expect(failureReportFromDb(db, {}).groups[0].agent).toBe('doc-qa');
+    db.close();
+  });
+
+  it('lists runs that ended without an answer, even when no call failed', () => {
+    const db = openDb(':memory:');
+    const root = (id: string, reason: string): IngestEvent => ({
+      type: 'observation',
+      data: { obs_id: id, trace_id: id, agent_id: 'a', kind: 'span', name: 'invoke_agent doc-qa', start: T0, end: T0 + 9, status: 'ok', attrs: { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'doc-qa', 'lousho.run.finish_reason': reason } },
+    });
+    ingestBatch(db, [root('r1', 'max-steps'), root('r2', 'max-steps'), root('r3', 'budget-exceeded'), root('r4', 'stop')]);
+    const report = failureReportFromDb(db, {});
+    expect(report.scanned.noAnswer).toBe(3);
+    expect(report.groups[0]).toMatchObject({ agent: 'doc-qa', source: 'run', operation: 'invoke_agent', failureClass: 'no-answer', example: 'The run ended with max-steps and no answer', traces: 2, recurring: true });
+    db.close();
+  });
+
   it('survives attrs that are not valid JSON objects', () => {
     const db = openDb(':memory:');
     ingestBatch(db, [failed('o1', 't1', 'boom')]);
@@ -130,7 +153,26 @@ describe('failureReportFromDb', () => {
   });
 });
 
+describe('classes', () => {
+  it('names rate limits', () => {
+    expect(groupFailures([sample({ error: 'Rate limit exceeded: free-models-per-min.' })])[0].failureClass).toBe('rate-limit');
+    expect(groupFailures([sample({ error: 'HTTP 429' })])[0].failureClass).toBe('rate-limit');
+  });
+});
+
 describe('failureReportFromTraces', () => {
+  it('lists no-answer runs from trace files', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-failures-'));
+    const day = path.join(dir, '2026-11-01');
+    fs.mkdirSync(day);
+    const line = { v: 1, traceId: 'abc', id: 'abc', name: 'invoke_agent doc-qa', startTime: T0, endTime: T0 + 1, attributes: { 'gen_ai.operation.name': 'invoke_agent', 'gen_ai.agent.name': 'doc-qa', 'lousho.run.finish_reason': 'max-steps' } };
+    fs.writeFileSync(path.join(day, 'abc.jsonl'), `${JSON.stringify(line)}\n`);
+    const report = await failureReportFromTraces([dir]);
+    expect(report.scanned.noAnswer).toBe(1);
+    expect(report.groups[0]).toMatchObject({ failureClass: 'no-answer', agent: 'doc-qa' });
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   it('reads trace files from each directory', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-failures-'));
     const day = path.join(dir, '2026-11-01');
@@ -143,21 +185,25 @@ describe('failureReportFromTraces', () => {
     ];
     fs.writeFileSync(path.join(day, 'abc.jsonl'), lines.map((line) => JSON.stringify(line)).join('\n') + '\n');
     const report = await failureReportFromTraces([dir]);
-    expect(report.scanned).toEqual({ traces: 1, spans: 2, failed: 1 });
+    expect(report.scanned).toEqual({ traces: 1, spans: 2, failed: 1, noAnswer: 0 });
     expect(report.groups[0]).toMatchObject({ agent: 'support', source: 'lookup', example: 'boom' });
     fs.rmSync(dir, { recursive: true, force: true });
   });
 });
 
 describe('formatFailureReport', () => {
+  it('says how many runs ended without an answer', () => {
+    expect(formatFailureReport({ scanned: { traces: 3, spans: 9, failed: 0, noAnswer: 2 }, groups: [] })).toContain('2 runs ended without an answer');
+  });
+
   it('says plainly when nothing failed, with what was scanned', () => {
-    const text = formatFailureReport({ scanned: { traces: 6, spans: 10, failed: 0 }, groups: [] });
+    const text = formatFailureReport({ scanned: { traces: 6, spans: 10, failed: 0, noAnswer: 0 }, groups: [] });
     expect(text).toContain('No failures');
     expect(text).toContain('6 traces');
   });
 
   it('marks recurring failures and links their traces', () => {
-    const text = formatFailureReport({ scanned: { traces: 2, spans: 4, failed: 2 }, groups: groupFailures([sample({ traceId: 't1' }), sample({ traceId: 't2' })]) });
+    const text = formatFailureReport({ scanned: { traces: 2, spans: 4, failed: 2, noAnswer: 0 }, groups: groupFailures([sample({ traceId: 't1' }), sample({ traceId: 't2' })]) });
     expect(text).toContain('RECURRING');
     expect(text).toContain('timeout');
     expect(text).toContain('t1');

@@ -15,6 +15,8 @@ export type ToolFailureClass = 'bad-input' | 'timeout' | 'missing-capability' | 
 export interface ProgressGuardOptions {
   /** Identical calls returning the same result allowed before the call is denied (default 3). */
   maxRepeats?: number;
+  /** Calls to a tool returning the same result, whatever their arguments, allowed before the tool is denied (default 5). */
+  maxSameResults?: number;
   /** Failures of a tool with the same error allowed before the tool is denied for the run (default 3). */
   maxFailures?: number;
   /** Denials allowed before the next denial stops the run with `LOUSHO_RUN_NO_PROGRESS` (default 3). */
@@ -126,16 +128,26 @@ function mostRepeated<T>(items: readonly T[], keyOf: (item: T) => string): { ite
 
 /**
  * A hook that stops a run wasting its budget: it adds advice to a repeated tool failure, denies a call that
- * keeps returning the same result or a tool that keeps failing the same way, and stops the run if denials continue.
+ * keeps returning the same result, even when reworded, or a tool that keeps failing the same way, and stops the run if denials continue.
  */
 export function createProgressGuard(options: ProgressGuardOptions = {}): AgentHook {
   const maxRepeats = positiveWhole('maxRepeats', options.maxRepeats ?? 3);
+  const maxSameResults = positiveWhole('maxSameResults', options.maxSameResults ?? 5);
   const maxFailures = positiveWhole('maxFailures', options.maxFailures ?? 3);
   const maxDenials = positiveWhole('maxDenials', options.maxDenials ?? 3);
   const ignored = new Set(options.ignoreTools);
   const fallbackFor = (toolName: string) => {
     const fallback = options.fallbacks?.[toolName];
     return fallback ? ` Try '${fallback}' instead.` : '';
+  };
+
+  const repeatReason = (own: readonly PastCall[], args: string): string | undefined => {
+    const succeeded = own.filter((call) => !call.failure);
+    const identical = mostRepeated(succeeded.filter((call) => call.args === args), (call) => call.content);
+    if (identical && identical.count >= maxRepeats) return `was called ${identical.count} times with these arguments and returned the same result each time.`;
+    const same = mostRepeated(succeeded, (call) => call.content);
+    if (same && same.count >= maxSameResults) return `returned the same result ${same.count} times, even with different arguments.`;
+    return undefined;
   };
 
   const deny = (ctx: ToolCallHookContext, past: readonly PastCall[], reason: string, failure?: ToolFailureClass): PreToolCallOutcome => {
@@ -160,12 +172,8 @@ export function createProgressGuard(options: ProgressGuardOptions = {}): AgentHo
         const failure = classifyToolFailure(worst.item);
         return deny(ctx, past, `'${ctx.toolName}' failed ${worst.count} times with a ${failure} error: ${worst.item.message} ${ADVICE[failure]}${fallbackFor(ctx.toolName)}`, failure);
       }
-      const args = stableStringify(ctx.args);
-      const same = own.filter((call) => call.args === args && !call.failure);
-      const repeated = mostRepeated(same, (call) => call.content);
-      if (repeated && repeated.count >= maxRepeats) {
-        return deny(ctx, past, `'${ctx.toolName}' was called ${repeated.count} times with these arguments and returned the same result each time. Use that result or change the approach.${fallbackFor(ctx.toolName)}`);
-      }
+      const reason = repeatReason(own, stableStringify(ctx.args));
+      if (reason) return deny(ctx, past, `'${ctx.toolName}' ${reason} Use that result or change the approach.${fallbackFor(ctx.toolName)}`);
       return undefined;
     },
     postToolCall(ctx, result: ToolCallHookResult) {
