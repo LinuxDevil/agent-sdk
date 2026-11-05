@@ -98,6 +98,10 @@ describe('agents', () => {
     expect(task(2, 'contractor-meals')?.check('Your limit is $40 per day.')).toBe(true);
     expect(task(1, 'fx-total')?.check('The total is $2,130.')).toBe(true);
     expect(task(1, 'unique-signups')?.check('4 different people.')).toBe(true);
+    expect(task(1, 'unique-signups')?.check('**4 different people**. The file has 6 email entries.')).toBe(true);
+    expect(task(1, 'unique-signups')?.check('**6 different** people, or 4 if you ignore case.')).toBe(false);
+    expect(task(1, 'unique-signups')?.check('There are 6 people.')).toBe(false);
+    expect(task(0, 'partial-refund')?.input).toMatch(/unopened/i);
     expect(task(2, 'stale-doc')?.check('The limit is $75 per day.')).toBe(true);
   });
 

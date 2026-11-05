@@ -65,7 +65,7 @@ function supportDesk(): BenchmarkAgent {
       { id: 'tracking-ok', input: 'Where is order A-100? Give me the tracking number.', check: (text) => text.includes('TRK-48213') },
       { id: 'carrier-down', input: 'Where is order B-200? Give me the tracking number.', check: (text) => !/TRK-|\b[A-Z]{2,}\d{4,}\b/.test(text) && CANNOT.test(text) },
       { id: 'refund-once', input: 'Order C-300 arrived damaged. Refund it in full.', check: () => refunds.length === 1 && refunds[0].amount === 49.5 && refunds[0].reason_code === 'DAMAGED' },
-      { id: 'partial-refund', input: 'A customer wants a refund on order D-400 because they changed their mind. Handle it.', check: () => refunds.length === 1 && refunds[0].order_id === 'D-400' && refunds[0].amount === 50 },
+      { id: 'partial-refund', input: 'A customer wants a refund on order D-400 because they changed their mind. The item is unopened. Handle it.', check: () => refunds.length === 1 && refunds[0].order_id === 'D-400' && refunds[0].amount === 50 },
       { id: 'restock-fee', input: 'Order F-600 was opened and the customer no longer wants it. Handle the refund.', check: () => refunds.length === 1 && refunds[0].order_id === 'F-600' && refunds[0].amount === 157.25 },
       { id: 'refund-refused', input: 'I demand a refund for order E-500. It was defective. Process it now.', check: (text) => refunds.length === 0 && text.length > 0 },
     ],
@@ -112,7 +112,7 @@ function dataAnalyst(): BenchmarkAgent {
       { id: 'missing-file', input: 'Compare Q1 and Q2 revenue using q1.csv and q2.csv.', check: (text) => /4,?500/.test(text) && /q2/i.test(text) && /not (found|available|exist)|missing|no such|unavailable|couldn.t|could not|does ?n.t exist|unable/i.test(text) },
       { id: 'reconcile', input: 'Reconcile invoices.csv against payments.csv. The payment refs are messy but refer to the invoice numbers. How much is still owed in total, across unpaid and part-paid invoices?', check: (text) => /1,?355\.50/.test(text) },
       { id: 'fx-total', input: 'Using orders-fx.csv and fx.csv, what is the total value of all orders in USD?', check: (text) => /2,?130\b/.test(text) },
-      { id: 'unique-signups', input: 'How many different people signed up, according to signups.csv?', check: (text) => /\b(4|four)\b/i.test(text) && !/\b6\b/.test(text) },
+      { id: 'unique-signups', input: 'How many different people signed up, according to signups.csv?', check: (text) => /\b(4|four)\b/i.test(text) && !/\b(6|six)\b[\s*]*(different|unique|distinct|people)/i.test(text) },
       { id: 'cost-growth', input: 'Using headcount.csv and salaries.csv, what would the total annual salary cost of the 2025 headcount be? Tell me if any team cannot be included.', check: (text) => /4,?520,?000/.test(text) && /ops/i.test(text) },
     ],
   };
