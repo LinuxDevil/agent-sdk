@@ -53,7 +53,6 @@ const openPageListeners = new Set<OpenPageListener>();
  * live `openPage` `tool.result` can move the app - replayed results
  * never navigate (the provider suppresses firing during reattach).
  */
-// fallow-ignore-next-line unused-export -- AA15b's AuthorPanel subscribes its router navigate here
 export function onOpenPage(listener: OpenPageListener): () => void {
   openPageListeners.add(listener);
   return () => {
