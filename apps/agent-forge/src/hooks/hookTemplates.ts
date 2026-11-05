@@ -1,11 +1,12 @@
-import type { AgentNodeHookPhase, AgentNodeHookPoint } from '../graph/types';
+type HookTemplatePhase = 'pre' | 'post';
+type HookTemplatePoint = 'toolCall' | 'generate';
 
 /**
  * Starter hook templates for the Inspector "Hooks" section (`redact-pii`, `rate-limit`,
  * `inject-context`, `audit-log`). Each is an editable starting point - the
  * Inspector's CodeMirror editor lets a user change `code` freely after
  * dragging/adding one onto a node; `templateId` is kept on the resulting
- * `AgentNodeHookInstance` only as provenance (what it started from), not as
+ * the created hook only as provenance (what it started from), not as
  * a live link back to this list.
  *
  * `code` is the BODY of an async function invoked as `hook(ctx)` inside the
@@ -19,8 +20,8 @@ import type { AgentNodeHookPhase, AgentNodeHookPoint } from '../graph/types';
 export interface HookTemplate {
   id: string;
   name: string;
-  phase: AgentNodeHookPhase;
-  point: AgentNodeHookPoint;
+  phase: HookTemplatePhase;
+  point: HookTemplatePoint;
   /** Shown in the Inspector's hook-chip, e.g. "before llm.generate". */
   when: string;
   code: string;

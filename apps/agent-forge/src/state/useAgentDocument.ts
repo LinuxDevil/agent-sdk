@@ -1,30 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import type { AgentSpec } from 'lousho';
-import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';
-import { graphToSpec } from '../graph/graphToSpec';
-import { specToGraph } from '../graph/specToGraph';
-import type { AgentGraphSpec } from '../graph/types';
+import type { AgentSpecV2 } from 'lousho';
+import type { AgentStore } from '../persistence/AgentStore';
+import { graphToSpec, type GraphToSpecResult } from '../graph/v2/graphToSpec';
+import { specToGraph } from '../graph/v2/specToGraph';
+import { deriveEdges } from '../graph/v2/edges';
+import type { Graph, GraphEdge } from '../graph/v2/types';
 import { graphFromTemplate, type TemplateId } from '../canvas/templates';
 import { agentIdProblem } from '../../shared/agentId';
-import type { StudioEvent } from '../../shared/wireTypes';
+import type { CanvasLayout, StudioEvent } from '../../shared/wireTypes';
 import { useStudioEvents } from './useStudioEvents';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 /** How long `agent.changed` events collect before the agents list re-fetches - a burst (rename = save+delete) is one refresh. */
 const AGENTS_REFRESH_DEBOUNCE_MS = 300;
 
-const DEFAULT_SPEC: AgentSpec = {
+const DEFAULT_SPEC: AgentSpecV2 = {
+  version: 2,
   name: 'untitled-agent',
-  prompt: 'You are a helpful agent.',
-  provider: { type: 'mock', model: 'mock-1' },
+  model: 'mock/mock-1',
+  instructions: 'You are a helpful agent.',
 };
 
-function deriveSpec(graph: AgentGraphSpec, fallback: AgentSpec): AgentSpec {
+function deriveSpec(graph: Graph, fallback: GraphToSpecResult): GraphToSpecResult {
   try {
-    return graphToSpec(graph);
+    return graphToSpec(graph, fallback.spec);
   } catch {
-    // No llm node yet (e.g. mid-edit after deleting it) - keep the last
-    // spec that successfully derived rather than crashing the UI.
+    // graphToSpec throws only when the root agent is missing, which
+    // removeNode prevents - keep the last successful derive anyway rather
+    // than crashing the UI on a transient mid-edit graph.
     return fallback;
   }
 }
@@ -32,25 +35,48 @@ function deriveSpec(graph: AgentGraphSpec, fallback: AgentSpec): AgentSpec {
 interface AutosaveDeps {
   store: AgentStore;
   agentId: string;
-  spec: AgentSpec;
+  derived: GraphToSpecResult;
   dirty: boolean;
   setDirty: (dirty: boolean) => void;
   refreshAgents: () => Promise<void>;
+  /** Canonical JSON of the spec and layout last confirmed written (shared with the explicit `save()`). */
+  lastSavedJson: MutableRefObject<{ spec: string; layout: string }>;
+}
+
+/** The spec and layout writes a document needs to catch up, in canonical-JSON order (spec first). */
+function pendingSaves(store: AgentStore, agentId: string, derived: GraphToSpecResult, lastSaved: { spec: string; layout: string }): {
+  json: { spec: string; layout: string };
+  writes: Promise<void>[];
+} {
+  const json = { spec: JSON.stringify(derived.spec), layout: JSON.stringify(derived.layout) };
+  const writes: Promise<void>[] = [];
+  if (json.spec !== lastSaved.spec) writes.push(store.save(agentId, derived.spec));
+  if (json.layout !== lastSaved.layout) writes.push(store.saveLayout(agentId, derived.layout));
+  return { json, writes };
 }
 
 /**
  * Autosave: debounce writes so we're not hitting the server on every
- * node drag frame, but still persist without an explicit Save click. A
- * failed save leaves the document dirty (HttpAgentStore keeps a draft).
+ * node drag frame, but still persist without an explicit Save click. The
+ * spec and the layout are saved independently - a pure move changes only
+ * the layout's JSON, so `PUT /agents/:id/layout` fires without rewriting
+ * `<id>.yaml`. A failed save leaves the document dirty (HttpAgentStore
+ * keeps a draft).
  */
-function useAutosave({ store, agentId, spec, dirty, setDirty, refreshAgents }: AutosaveDeps): void {
+function useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, lastSavedJson }: AutosaveDeps): void {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     if (!dirty) return;
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
-      store.save(agentId, spec).then(
+      const { json, writes } = pendingSaves(store, agentId, derived, lastSavedJson.current);
+      if (writes.length === 0) {
+        setDirty(false);
+        return;
+      }
+      Promise.all(writes).then(
         () => {
+          lastSavedJson.current = json;
           setDirty(false);
           void refreshAgents();
         },
@@ -62,14 +88,15 @@ function useAutosave({ store, agentId, spec, dirty, setDirty, refreshAgents }: A
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [spec, dirty, store, agentId, refreshAgents]);
+  }, [derived, dirty, store, agentId, refreshAgents, lastSavedJson]);
 }
 
 /** The setters of the open document that loading, switching, renaming and deleting agents write. */
 interface DocumentSetters {
   setAgentId: (id: string) => void;
-  setGraphState: Dispatch<SetStateAction<AgentGraphSpec>>;
-  lastValidSpec: MutableRefObject<AgentSpec>;
+  setGraphState: Dispatch<SetStateAction<Graph>>;
+  lastDerived: MutableRefObject<GraphToSpecResult>;
+  lastSavedJson: MutableRefObject<{ spec: string; layout: string }>;
   setSelectedNodeId: (id: string | undefined) => void;
   setDirty: (dirty: boolean) => void;
 }
@@ -78,20 +105,29 @@ interface DocumentSetters {
  * Opens `nextSpec` / `nextGraph` as agent `id` with nothing selected - so the
  * Inspector stays collapsed and the canvas gets the width to show the whole
  * graph legibly (AgentsScreen.tsx); `keepSelection` leaves the selection as
- * it is (a rename), `clean` clears the dirty flag.
+ * it is (a rename), `clean` clears the dirty flag. Resets the derived-spec
+ * and last-saved-JSON refs so the freshly opened document never autosaves
+ * what it just read.
  */
 function showAgent(
   doc: DocumentSetters,
   id: string,
-  nextSpec: AgentSpec,
-  nextGraph: AgentGraphSpec,
+  nextSpec: AgentSpecV2,
+  nextGraph: Graph,
   { keepSelection = false, clean = true }: { keepSelection?: boolean; clean?: boolean } = {}
 ): void {
+  const derived = graphToSpec(nextGraph, nextSpec);
   doc.setAgentId(id);
   doc.setGraphState(nextGraph);
-  doc.lastValidSpec.current = nextSpec;
+  doc.lastDerived.current = derived;
+  doc.lastSavedJson.current = { spec: JSON.stringify(derived.spec), layout: JSON.stringify(derived.layout) };
   if (!keepSelection) doc.setSelectedNodeId(undefined);
   if (clean) doc.setDirty(false);
+}
+
+/** `specToGraph` of a loaded record: positions come from its `layout.json`. */
+function graphOfRecord(record: { spec: AgentSpecV2; layout: CanvasLayout }): Graph {
+  return specToGraph(record.spec, record.layout);
 }
 
 /**
@@ -103,10 +139,10 @@ async function loadInitialAgent(
   store: AgentStore,
   preferredId: string,
   isCancelled: () => boolean,
-  setAgents: (agents: AgentStoreEntry[]) => void,
+  setAgents: (agents: Awaited<ReturnType<AgentStore['list']>>) => void,
   doc: DocumentSetters
 ): Promise<void> {
-  let list: AgentStoreEntry[] = [];
+  let list: Awaited<ReturnType<AgentStore['list']>> = [];
   try {
     list = await store.list();
   } catch {
@@ -118,37 +154,47 @@ async function loadInitialAgent(
   if (!id) return;
   const loaded = await store.load(id).catch(() => undefined);
   if (isCancelled() || !loaded) return;
-  showAgent(doc, id, loaded, specToGraph(loaded), { clean: false });
+  showAgent(doc, id, loaded.spec, graphOfRecord(loaded), { clean: false });
 }
 
 /** What renaming or deleting a saved agent needs of the document. */
 interface AgentListContext {
   store: AgentStore;
-  agents: AgentStoreEntry[];
+  agents: Awaited<ReturnType<AgentStore['list']>>;
   agentId: string;
   refreshAgents: () => Promise<void>;
   doc: DocumentSetters;
 }
 
 /** Saves agent `fromId` (renamed) as `toId`, deletes the old file, and follows the rename when it is open. */
-async function renameSavedAgent({ store, agents, agentId, refreshAgents, doc }: AgentListContext, spec: AgentSpec, fromId: string, toId: string): Promise<void> {
+async function renameSavedAgent(
+  { store, agents, agentId, refreshAgents, doc }: AgentListContext,
+  derived: GraphToSpecResult,
+  fromId: string,
+  toId: string
+): Promise<void> {
   const problem = agentIdProblem(toId);
   if (problem) throw new Error(`Invalid agent name '${toId}': ${problem}`);
   if (toId === fromId) return;
   if (agents.some((entry) => entry.id === toId)) throw new Error(`An agent named '${toId}' already exists`);
-  const current = fromId === agentId ? spec : await store.load(fromId);
+  const current = fromId === agentId ? derived : await store.load(fromId);
   if (!current) throw new Error(`Agent '${fromId}' not found`);
-  const renamed: AgentSpec = { ...current, name: toId };
+  const renamed: AgentSpecV2 = { ...current.spec, name: toId };
   await store.save(toId, renamed);
+  // The rename keeps the layout: the new id inherits the old one's positions.
+  await store.saveLayout(toId, current.layout);
   await store.remove(fromId);
-  if (fromId === agentId) showAgent(doc, toId, renamed, specToGraph(renamed), { keepSelection: true });
+  if (fromId === agentId) {
+    const graph = specToGraph(renamed, current.layout);
+    showAgent(doc, toId, renamed, graph, { keepSelection: true });
+  }
   await refreshAgents();
 }
 
 /** Deletes saved agent `id`; deleting the open one opens the next, or a fresh default. */
 async function deleteSavedAgent(
   { store, agents, agentId, refreshAgents, doc }: AgentListContext,
-  setAgents: (agents: AgentStoreEntry[]) => void,
+  setAgents: (agents: Awaited<ReturnType<AgentStore['list']>>) => void,
   id: string
 ): Promise<void> {
   await store.remove(id);
@@ -157,8 +203,9 @@ async function deleteSavedAgent(
   if (id === agentId) {
     const nextId = remaining[0]?.id;
     const loaded = nextId ? await store.load(nextId).catch(() => undefined) : undefined;
-    const nextSpec = loaded ?? DEFAULT_SPEC;
-    showAgent(doc, loaded && nextId ? nextId : DEFAULT_SPEC.name, nextSpec, specToGraph(nextSpec));
+    const nextSpec = loaded?.spec ?? DEFAULT_SPEC;
+    const nextGraph = loaded ? graphOfRecord(loaded) : specToGraph(DEFAULT_SPEC);
+    showAgent(doc, loaded && nextId ? nextId : DEFAULT_SPEC.name, nextSpec, nextGraph);
   }
   await refreshAgents();
 }
@@ -196,7 +243,7 @@ function useAgentChangedRefresh(refreshAgents: () => Promise<void>): (event: Stu
  * the first saved agent (`initialId` when it is saved).
  */
 function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters) {
-  const [agents, setAgents] = useState<AgentStoreEntry[]>([]);
+  const [agents, setAgents] = useState<Awaited<ReturnType<AgentStore['list']>>>([]);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
 
   const refreshAgents = useCallback(async () => {
@@ -226,15 +273,19 @@ function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters
 
 /** `setGraph` / `setSpec`: edit the document's graph directly or through its derived spec, marking it dirty. */
 function useGraphEditors(doc: DocumentSetters) {
-  const { setGraphState, setDirty, setSelectedNodeId, lastValidSpec } = doc;
-  const setGraph = useCallback((updater: (graph: AgentGraphSpec) => AgentGraphSpec) => {
+  const { setGraphState, setDirty, setSelectedNodeId, lastDerived } = doc;
+  const setGraph = useCallback((updater: (graph: Graph) => Graph) => {
     setGraphState((prev) => updater(prev));
     setDirty(true);
   }, []);
 
   const setSpec = useCallback(
-    (updater: (spec: AgentSpec) => AgentSpec) => {
-      setGraphState((prev) => specToGraph(updater(deriveSpec(prev, lastValidSpec.current))));
+    (updater: (spec: AgentSpecV2) => AgentSpecV2) => {
+      setGraphState((prev) => {
+        const current = deriveSpec(prev, lastDerived.current);
+        // A whole-spec write keeps the current layout: positions survive an import.
+        return specToGraph(updater(current.spec), current.layout);
+      });
       setSelectedNodeId(undefined);
       setDirty(true);
     },
@@ -245,14 +296,19 @@ function useGraphEditors(doc: DocumentSetters) {
 }
 
 /** Switching to, creating, renaming and deleting saved agents. */
-function useAgentActions(context: AgentListContext, spec: AgentSpec, setAgents: (agents: AgentStoreEntry[]) => void) {
+function useAgentActions(
+  context: AgentListContext,
+  derived: GraphToSpecResult,
+  setAgents: (agents: Awaited<ReturnType<AgentStore['list']>>) => void
+) {
   const { store, agents, agentId, refreshAgents, doc } = context;
 
   const switchAgent = useCallback(
     async (id: string) => {
       const loaded = await store.load(id);
-      const nextSpec = loaded ?? DEFAULT_SPEC;
-      showAgent(doc, id, nextSpec, specToGraph(nextSpec));
+      const nextSpec = loaded?.spec ?? DEFAULT_SPEC;
+      const nextGraph = loaded ? graphOfRecord(loaded) : specToGraph(DEFAULT_SPEC);
+      showAgent(doc, id, nextSpec, nextGraph);
     },
     [store]
   );
@@ -264,22 +320,23 @@ function useAgentActions(context: AgentListContext, spec: AgentSpec, setAgents: 
       if (problem) throw new Error(`Invalid agent name '${id}': ${problem}`);
       // The agent is named what the user typed, not the template's name.
       const nextGraph = graphFromTemplate(template, id);
-      const nextSpec = graphToSpec(nextGraph);
-      await store.save(id, nextSpec);
-      showAgent(doc, id, nextSpec, nextGraph);
+      const next = graphToSpec(nextGraph);
+      await store.save(id, next.spec);
+      await store.saveLayout(id, next.layout);
+      showAgent(doc, id, next.spec, nextGraph);
       await refreshAgents();
     },
     [store, refreshAgents]
   );
 
   /**
-   * Renames a saved agent - saves its spec (renamed) under the
+   * Renames a saved agent - saves its spec and layout under the
    * new id, then deletes the old file. Chats, traces and checkpoints stay
    * under the old id in `.lousho/agents/`.
    */
   const renameAgent = useCallback(
-    (fromId: string, toId: string) => renameSavedAgent({ store, agents, agentId, refreshAgents, doc }, spec, fromId, toId),
-    [store, agents, agentId, spec, refreshAgents]
+    (fromId: string, toId: string) => renameSavedAgent({ store, agents, agentId, refreshAgents, doc }, derived, fromId, toId),
+    [store, agents, agentId, derived, refreshAgents]
   );
 
   /** Deletes a saved agent (`DELETE /agents/:id`); deleting the open one opens the next, or a fresh default. */
@@ -292,39 +349,51 @@ function useAgentActions(context: AgentListContext, spec: AgentSpec, setAgents: 
 }
 
 /**
- * The editable document for the currently-loaded agent: its id, canonical
- * graph, derived spec, dirty flag, selection, and the saved-agent list -
- * plus load/save/autosave and switching/creating agents. On mount it opens
+ * The editable document for the currently-loaded agent: its id, canvas
+ * `Graph` (graph v2), the spec/layout/nodeIdMap `graphToSpec` derives from
+ * it, dirty flag, selection, and the saved-agent list - plus
+ * load/save/autosave and switching/creating agents. On mount it opens
  * `initialId` when that agent is saved (the `#/agents/:id` of a reload).
  */
 export function useAgentDocument(store: AgentStore, initialId?: string) {
   const [agentId, setAgentId] = useState('untitled-agent');
-  const [graph, setGraphState] = useState<AgentGraphSpec>(() => specToGraph(DEFAULT_SPEC));
+  const [graph, setGraphState] = useState<Graph>(() => specToGraph(DEFAULT_SPEC));
   const [dirty, setDirty] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(undefined);
-  const lastValidSpec = useRef<AgentSpec>(DEFAULT_SPEC);
-  const doc: DocumentSetters = { setAgentId, setGraphState, lastValidSpec, setSelectedNodeId, setDirty };
+  const lastDerived = useRef<GraphToSpecResult>(graphToSpec(specToGraph(DEFAULT_SPEC), DEFAULT_SPEC));
+  // Canonical JSON of what the server is known to hold: autosave only writes what differs.
+  const lastSavedJson = useRef({ spec: JSON.stringify(lastDerived.current.spec), layout: JSON.stringify(lastDerived.current.layout) });
+  const doc: DocumentSetters = { setAgentId, setGraphState, lastDerived, lastSavedJson, setSelectedNodeId, setDirty };
   const { agents, setAgents, refreshAgents, agentsLoaded } = useAgentList(store, initialId ?? agentId, doc);
   // `WS /events`: another tab's write refreshes this tab's agents list.
   useStudioEvents(useAgentChangedRefresh(refreshAgents));
 
-  const spec = useMemo(() => {
-    const derived = deriveSpec(graph, lastValidSpec.current);
-    lastValidSpec.current = derived;
-    return derived;
+  const derived = useMemo(() => {
+    const next = deriveSpec(graph, lastDerived.current);
+    lastDerived.current = next;
+    return next;
   }, [graph]);
+  const spec = derived.spec;
+  const edges: GraphEdge[] = useMemo(() => deriveEdges(graph), [graph]);
 
   const save = useCallback(async () => {
-    await store.save(agentId, spec);
+    const json = { spec: JSON.stringify(derived.spec), layout: JSON.stringify(derived.layout) };
+    await store.save(agentId, derived.spec);
+    await store.saveLayout(agentId, derived.layout);
+    lastSavedJson.current = json;
     setDirty(false);
     await refreshAgents();
-  }, [store, agentId, spec, refreshAgents]);
+  }, [store, agentId, derived, refreshAgents]);
 
   const { setGraph, setSpec } = useGraphEditors(doc);
 
-  useAutosave({ store, agentId, spec, dirty, setDirty, refreshAgents });
+  useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, lastSavedJson });
 
-  const { switchAgent, createAgent, renameAgent, deleteAgent } = useAgentActions({ store, agents, agentId, refreshAgents, doc }, spec, setAgents);
+  const { switchAgent, createAgent, renameAgent, deleteAgent } = useAgentActions(
+    { store, agents, agentId, refreshAgents, doc },
+    derived,
+    setAgents
+  );
 
   return {
     renameAgent,
@@ -334,6 +403,8 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     setGraph,
     spec,
     setSpec,
+    edges,
+    nodeIdMap: derived.nodeIdMap,
     dirty,
     save,
     selectedNodeId,

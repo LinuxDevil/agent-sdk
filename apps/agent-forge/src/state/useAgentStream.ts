@@ -9,7 +9,7 @@ import type {
   SpanEvent,
   StreamMessage,
 } from '../../shared/wireTypes';
-import type { AgentStoreEntry } from '../persistence/AgentStore';
+import type { AgentListItem } from '../../shared/wireTypes';
 import { appendLog } from './logReducer';
 import { upsertSpan } from './spanReducer';
 import { applyChatState, emptyChatState } from './chatReducer';
@@ -33,7 +33,7 @@ function dispatchStreamMessage(handlers: StreamHandlers, message: StreamMessage)
  * rather than per-agent polling, which would need to pick a poll
  * interval that trades off staleness against request volume.
  */
-export function useAgentStatuses(agents: AgentStoreEntry[]): Record<string, AgentRunStatusPayload> {
+export function useAgentStatuses(agents: AgentListItem[]): Record<string, AgentRunStatusPayload> {
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentRunStatusPayload>>({});
 
   useEffect(() => {

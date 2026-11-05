@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpecV2 } from 'lousho';
 import { runtimeClient, RuntimeApiError } from '../runtime/runtimeClient';
 import type {
   AgentRunStatusPayload,
@@ -15,7 +15,7 @@ import type { ChatState } from './chatReducer';
 
 interface RunControlDeps {
   agentId: string;
-  spec: AgentSpec;
+  spec: AgentSpecV2;
   runStatus: AgentRunStatusPayload | undefined;
   setLogs: Dispatch<SetStateAction<LogEntry[]>>;
   setSpans: Dispatch<SetStateAction<SpanEvent[]>>;
@@ -78,7 +78,7 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
 interface ChatControlDeps {
   agentId: string;
   /** Sent with each message so chat runs the canvas as it is now. */
-  spec: AgentSpec;
+  spec: AgentSpecV2;
   setChat: Dispatch<SetStateAction<ChatState>>;
   setChatActionError: Dispatch<SetStateAction<string | undefined>>;
   setChatSessions: Dispatch<SetStateAction<ChatSessionMeta[]>>;

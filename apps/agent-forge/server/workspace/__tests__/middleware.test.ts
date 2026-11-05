@@ -3,7 +3,7 @@ import express from 'express';
 import request from 'supertest';
 import { TriggerRegistry } from 'lousho/triggers';
 import { ALL_WORKSPACES } from '../../../shared/workspace';
-import type { AgentStore } from '../../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../../src/persistence/AgentStore';
 import type { RunManager } from '../../runRegistry';
 import { AgentRepo } from '../../storage/agentRepo';
 import { DraftStore } from '../../storage/draftStore';
@@ -13,7 +13,7 @@ import { VersionStore } from '../../storage/versionStore';
 import { singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from '../context';
 import { requestedWorkspaceId, workspaceMiddleware, workspaceOf } from '../middleware';
 
-const emptyStore: AgentStore = {
+const emptyStore: LegacyAgentStore = {
   list: async () => [],
   load: async () => undefined,
   save: async () => {},

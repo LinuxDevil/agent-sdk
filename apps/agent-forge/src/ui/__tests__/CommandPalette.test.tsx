@@ -6,8 +6,8 @@ import { render } from './render';
 
 const appState = vi.hoisted(() => ({
   agents: [
-    { id: 'support-bot', spec: { name: 'Support Bot' } },
-    { id: 'researcher', spec: { name: '' } },
+    { id: 'support-bot', name: 'Support Bot' },
+    { id: 'researcher', name: '' },
   ],
   switchAgent: vi.fn<[string], Promise<void>>(() => Promise.resolve()),
 }));

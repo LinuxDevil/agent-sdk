@@ -3,7 +3,7 @@
  *
  * Routes:
  *   GET  /health                     -> 200 'ok'
- *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> AgentStoreEntry[]
+ *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> LegacyAgentStoreEntry[]
  *   POST /agents                     -> create blank/template/copy (body: CreateAgentRequest), 201 AgentRecord
  *   GET  /templates                  -> TemplateSummary[] - the SDK's shipped templates (templates/templateCatalog.ts)
  *   GET  /templates/:id              -> TemplateDetail (summary + spec v2 + README) | 400/404
@@ -71,7 +71,7 @@ import {
   type ForkPatch,
 } from 'lousho';
 import type { connectMcp } from 'lousho/mcp';
-import type { AgentStore } from '../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,
   AgentNotFoundError,
@@ -209,7 +209,7 @@ interface CreateAppBaseOptions {
  */
 type CreateAppWorkspaceOptions =
   | { workspace: WorkspaceContext; agentStore?: never; runManager?: never }
-  | { workspace?: undefined; agentStore: AgentStore; runManager: RunManager };
+  | { workspace?: undefined; agentStore: LegacyAgentStore; runManager: RunManager };
 
 /**
  * `createApp`'s options: the launch folder and Studio-global services,
