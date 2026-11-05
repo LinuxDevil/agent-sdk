@@ -788,6 +788,18 @@ export interface CatalogKit {
  */
 export type McpServerSpecV2 = NonNullable<AgentSpecV2['mcpServers']>[string];
 
+/** The webhook trigger variant - `SecretRef` is extracted from its `secret` field below. */
+type WebhookTriggerSpec = Extract<NonNullable<AgentSpecV2['triggers']>[number], { type: 'webhook' }>;
+
+/**
+ * A spec v2 secret reference: `{ env: 'NAME' }` reads the process env,
+ * `{ secret: 'name' }` reads Studio's secrets store - never a literal
+ * value. Extracted from the webhook trigger's `secret` field so it can
+ * never drift (the SDK keeps the `SecretRef` type itself private -
+ * server/routes/mcpProbe.ts mirrors it by hand as `ProbeSecretRef`).
+ */
+export type SecretRef = NonNullable<WebhookTriggerSpec['secret']>;
+
 /** `POST /catalog/mcp/probe`'s body: the one server to connect and list. */
 export interface McpProbeRequest {
   server: McpServerSpecV2;
