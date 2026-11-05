@@ -231,6 +231,33 @@ export interface ProposalOutput {
 }
 
 /**
+ * `requestSecret`'s result and the settled output `POST .../secret` stores
+ * on the card's tool part (AA14). `'pending'` keeps the card open (the
+ * runner emits `tool.pending` and stores the part `state: 'pending'`);
+ * `'exists'` means the name already holds a value so no card is needed;
+ * `'saved'` is written by the secret route after the value lands in the
+ * secrets store; `DECLINED` is what a skipped card stores. The value
+ * itself is never part of this union - it travels from the card's HTTP
+ * POST straight to the secrets store.
+ */
+export type RequestSecretOutput =
+  | { ok: true; name: string; status: 'pending' | 'exists' | 'saved' }
+  | { ok: false; code: 'DECLINED'; name: string; error: string; userMessage: string };
+
+/**
+ * `POST /assistant/sessions/:id/secret`'s body (AA14): which pending
+ * `requestSecret` card it answers, plus exactly one of `value` (the
+ * secret text, 1-8192 chars) or `declined: true` (the user skipped the
+ * card). `name` must equal the card's stored `input.name`.
+ */
+export interface AuthorSecretRequest {
+  toolCallId: string;
+  name: string;
+  value?: string;
+  declined?: boolean;
+}
+
+/**
  * Every event one Author turn produces, in order. `AuthorTurnRunner`
  * emits them on its `'event'` channel as `(sessionId, event)`; the
  * WebSocket transport forwards them verbatim. `seq` is per-turn monotone

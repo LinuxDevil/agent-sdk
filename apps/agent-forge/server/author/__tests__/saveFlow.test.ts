@@ -68,6 +68,7 @@ describe('Author save flow', () => {
       docsDir: '/nonexistent-docs',
       reviewDraft: passReview,
       requirements: async () => [],
+      secrets: { secretStatus: (name) => ({ name, hasValue: false, masked: null, updatedAt: null }) },
     };
     session = await store.create(undefined, 'ws-test');
   });
