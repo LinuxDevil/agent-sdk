@@ -24,6 +24,19 @@ const FIXTURE: Readonly<Record<string, string>> = {
   'src/cart.js': "const { round2 } = require('./round');\n\nexports.total = (items) => round2(items.reduce((sum, item) => sum + item.price * item.qty, 0));\n",
   'src/tax.js': "const { round2 } = require('./round');\n\nexports.tax = (amount) => round2(amount * 0.1);\n",
   'test/cart.test.js': `${TEST_HEAD}const { total } = require('../src/cart');\n\ntest('rounds a total to the nearest cent', () => assert.strictEqual(total([{ price: 1.339, qty: 2 }]), 2.68));\n`,
+  'docs/CONVENTIONS.md': '# Conventions\n\nThese apply to all code in src/.\n\n- Validation failures throw `ValidationError` from `src/errors.js`, with `field` set to the name of the invalid input.\n- Functions never change their arguments. Return a new value.\n- Concurrent helpers start no new work after the first failure.\n',
+  'src/errors.js': "class ValidationError extends Error {\n  constructor(field, message) {\n    super(message);\n    this.name = 'ValidationError';\n    this.field = field;\n  }\n}\n\nexports.ValidationError = ValidationError;\n",
+  'src/money.js': 'exports.roundCents = (n) => Math.floor(n * 100) / 100;\n',
+  'src/invoice.js': "const { roundCents } = require('./money');\n\nexports.invoiceTotal = (lines) => roundCents(lines.reduce((sum, line) => sum + line, 0));\n",
+  'src/fee.js': "const { roundCents } = require('./money');\n\nexports.platformFee = (amount) => roundCents(amount * 0.03);\n",
+  'test/invoice.test.js': `${TEST_HEAD}const { invoiceTotal } = require('../src/invoice');\n\ntest('rounds a total to the nearest cent', () => assert.strictEqual(invoiceTotal([1.339, 1.339]), 2.68));\n`,
+  'test/fee.test.js': `${TEST_HEAD}const { platformFee } = require('../src/fee');\n\ntest('fees always round down', () => assert.strictEqual(platformFee(92.9), 2.78));\n`,
+  'src/signup.js': 'exports.createAccount = ({ email }) => ({ email: email.trim().toLowerCase() });\n',
+  'test/signup.test.js': `${TEST_HEAD}const { createAccount } = require('../src/signup');\n\ntest('rejects a blank email', () => assert.throws(() => createAccount({ email: '  ' })));\n`,
+  'src/months.js': 'exports.addMonths = (date, n) => {\n  date.setUTCMonth(date.getUTCMonth() + n);\n  return date;\n};\n',
+  'test/months.test.js': `${TEST_HEAD}const { addMonths } = require('../src/months');\n\ntest('stays in the next month', () => assert.strictEqual(addMonths(new Date(Date.UTC(2025, 0, 31)), 1).toISOString().slice(0, 10), '2025-02-28'));\n`,
+  'src/pool.js': 'exports.mapLimit = async (items, limit, fn) => {\n  const out = [];\n  for (let i = 0; i < items.length; i += limit) out.push(...(await Promise.all(items.slice(i, i + limit).map(fn))));\n  return out;\n};\n',
+  'test/pool.test.js': `${TEST_HEAD}const { mapLimit } = require('../src/pool');\n\ntest('starts the next item as soon as a slot is free', async () => {\n  const done = [];\n  await mapLimit([60, 5, 5], 2, async (ms) => {\n    await new Promise((resolve) => setTimeout(resolve, ms));\n    done.push(ms);\n  });\n  assert.deepStrictEqual(done, [5, 5, 60]);\n});\n`,
 };
 
 interface CodingTask {
@@ -89,6 +102,34 @@ const TASKS: readonly CodingTask[] = [
     mayChange: ['src/round.js'],
     hidden: `${TEST_HEAD}const { total } = require('../src/cart');\nconst { tax } = require('../src/tax');\nconst { round2 } = require('../src/round');\n\ntest('hidden', () => {\n  assert.strictEqual(total([{ price: 1.339, qty: 2 }]), 2.68);\n  assert.strictEqual(tax(26.78), 2.68);\n  assert.strictEqual(round2(2.671), 2.67);\n});\n`,
     fix: { 'src/round.js': 'exports.round2 = (n) => Math.round(n * 100) / 100;\n' },
+  },
+  {
+    id: 'invoice-rounding',
+    input: 'test/invoice.test.js fails: invoice totals come out a cent low. Fix it.',
+    mayChange: ['src/money.js', 'src/invoice.js', 'src/fee.js'],
+    hidden: `${TEST_HEAD}const { invoiceTotal } = require('../src/invoice');\nconst { platformFee } = require('../src/fee');\n\ntest('hidden', () => {\n  assert.strictEqual(invoiceTotal([1.339, 1.339]), 2.68);\n  assert.strictEqual(invoiceTotal([2.671]), 2.67);\n  assert.strictEqual(platformFee(92.9), 2.78);\n  assert.strictEqual(platformFee(33.3), 0.99);\n});\n`,
+    fix: { 'src/invoice.js': 'exports.invoiceTotal = (lines) => Math.round(lines.reduce((sum, line) => sum + line, 0) * 100) / 100;\n' },
+  },
+  {
+    id: 'signup-conventions',
+    input: 'test/signup.test.js fails. Fix it.',
+    mayChange: ['src/signup.js'],
+    hidden: `${TEST_HEAD}const { createAccount } = require('../src/signup');\nconst { ValidationError } = require('../src/errors');\n\ntest('hidden', () => {\n  assert.throws(() => createAccount({ email: '  ' }), (error) => error instanceof ValidationError && error.field === 'email');\n  assert.deepStrictEqual(createAccount({ email: ' A@x.com ' }), { email: 'a@x.com' });\n});\n`,
+    fix: { 'src/signup.js': "const { ValidationError } = require('./errors');\n\nexports.createAccount = ({ email }) => {\n  const clean = email.trim().toLowerCase();\n  if (!clean) throw new ValidationError('email', 'Email is required.');\n  return { email: clean };\n};\n" },
+  },
+  {
+    id: 'add-months',
+    input: 'test/months.test.js fails: adding a month to 31 January skips February. Fix it.',
+    mayChange: ['src/months.js'],
+    hidden: `${TEST_HEAD}const { addMonths } = require('../src/months');\nconst iso = (date) => date.toISOString().slice(0, 10);\n\ntest('hidden', () => {\n  const start = new Date(Date.UTC(2025, 0, 31));\n  assert.strictEqual(iso(addMonths(start, 1)), '2025-02-28');\n  assert.strictEqual(iso(start), '2025-01-31');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2024, 0, 31)), 1)), '2024-02-29');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2025, 10, 30)), 3)), '2026-02-28');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2025, 2, 31)), -1)), '2025-02-28');\n});\n`,
+    fix: { 'src/months.js': 'exports.addMonths = (date, n) => {\n  const result = new Date(date.getTime());\n  const day = result.getUTCDate();\n  result.setUTCDate(1);\n  result.setUTCMonth(result.getUTCMonth() + n);\n  const last = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();\n  result.setUTCDate(Math.min(day, last));\n  return result;\n};\n' },
+  },
+  {
+    id: 'map-limit',
+    input: 'test/pool.test.js fails. mapLimit should run at most limit items at once and keep every slot busy. Fix it.',
+    mayChange: ['src/pool.js'],
+    hidden: `${TEST_HEAD}const { mapLimit } = require('../src/pool');\nconst wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n\ntest('hidden', async () => {\n  const done = [];\n  assert.deepStrictEqual(await mapLimit([60, 5, 5], 2, async (ms) => { await wait(ms); done.push(ms); return ms * 2; }), [120, 10, 10]);\n  assert.deepStrictEqual(done, [5, 5, 60]);\n  assert.deepStrictEqual(await mapLimit([], 2, async (x) => x), []);\n  let active = 0;\n  let peak = 0;\n  await mapLimit([5, 5, 5, 5, 5], 2, async (ms) => { active++; peak = Math.max(peak, active); await wait(ms); active--; });\n  assert.strictEqual(peak, 2);\n  const started = [];\n  await assert.rejects(mapLimit([1, 2, 3, 4], 1, async (x) => { started.push(x); if (x === 2) throw new Error('stop'); }), /stop/);\n  assert.deepStrictEqual(started, [1, 2]);\n});\n`,
+    fix: { 'src/pool.js': 'exports.mapLimit = async (items, limit, fn) => {\n  const out = new Array(items.length);\n  let next = 0;\n  let failed = false;\n  const worker = async () => {\n    while (next < items.length && !failed) {\n      const index = next++;\n      try {\n        out[index] = await fn(items[index], index);\n      } catch (error) {\n        failed = true;\n        throw error;\n      }\n    }\n  };\n  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));\n  return out;\n};\n' },
   },
 ];
 

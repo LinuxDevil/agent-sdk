@@ -1,7 +1,7 @@
 # heal-benchmark
 
 A repeatable way to tell whether a change to an agent's harness helped. It runs
-four agents through 24 tasks and reports each harness version's pass rate,
+four agents through 28 tasks and reports each harness version's pass rate,
 noise, tokens and tool calls.
 
 | Agent | What it tests |
@@ -9,7 +9,7 @@ noise, tokens and tool calls.
 | `support-desk` | A carrier outage, a refund that moves money, and a policy that sets the amount or refuses |
 | `data-analyst` | A broken tool, a missing file, messy references, currency conversion, and incomplete data |
 | `doc-qa` | A flaky service, a forbidden document, a stale document, and an answer spread over two documents |
-| `coding-agent` | Bugs in a small JavaScript project: shallow fixes, a root cause in another file, and edge cases only hidden tests check |
+| `coding-agent` | Bugs in a small JavaScript project: shallow fixes, a tempting fix that breaks another test, project conventions the task doesn't mention, and edge cases only hidden tests check |
 
 Every tool fault is planted, and each check is a deterministic test of the answer
 or of the tool calls made. `coding-agent` is scored by running hidden tests, and a
