@@ -93,8 +93,8 @@ export interface AuthorToolDeps {
   docsDir: string;
   /**
    * The draft review a propose tool runs before showing its card (PLAN
-   * §8.4): AA12's review-model pass; `createApp` wires `passReview` (the
-   * always-approve default) until then.
+   * §8.4): AA12's `createReviewDraft` judge pass; tests wire `passReview`
+   * (the always-approve double).
    */
   reviewDraft: ReviewDraft;
   /**
