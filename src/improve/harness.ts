@@ -62,16 +62,21 @@ function addedText(current: string, base: string): string {
     .join('\n');
 }
 
+function skillShapeErrors(name: string, skill: Harness['skills'][string]): string[] {
+  const errors: string[] = [];
+  if (!SKILL_NAME.test(name)) errors.push(`'${name}' is not a valid skill name: use lowercase letters, digits and hyphens.`);
+  if (!skill.description.trim()) errors.push(`Skill '${name}' needs a description.`);
+  if (!skill.content.trim()) errors.push(`Skill '${name}' needs content.`);
+  return errors;
+}
+
+function skillInjectionErrors(name: string, content: string, baseContent = ''): string[] {
+  const signals = promptInjectionSignals(addedText(content, baseContent));
+  return signals.length > 0 ? [`Skill '${name}' adds text that looks like prompt injection (${signals.join(', ')}).`] : [];
+}
+
 function skillErrors(harness: Harness, base: Harness): string[] {
-  return Object.entries(harness.skills).flatMap(([name, skill]) => {
-    const errors: string[] = [];
-    if (!SKILL_NAME.test(name)) errors.push(`'${name}' is not a valid skill name: use lowercase letters, digits and hyphens.`);
-    if (!skill.description.trim()) errors.push(`Skill '${name}' needs a description.`);
-    if (!skill.content.trim()) errors.push(`Skill '${name}' needs content.`);
-    const signals = promptInjectionSignals(addedText(skill.content, base.skills[name]?.content ?? ''));
-    if (signals.length > 0) errors.push(`Skill '${name}' adds text that looks like prompt injection (${signals.join(', ')}).`);
-    return errors;
-  });
+  return Object.entries(harness.skills).flatMap(([name, skill]) => [...skillShapeErrors(name, skill), ...skillInjectionErrors(name, skill.content, base.skills[name]?.content)]);
 }
 
 export function validateHarness(harness: Harness, base: Harness, limits: { maxAlwaysOnChars: number }): string[] {

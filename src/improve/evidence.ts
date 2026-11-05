@@ -34,6 +34,11 @@ function clipped(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}\n[cut by the renderer at ${max} characters; the agent saw the full text]`;
 }
 
+function callLines(message: Message): string[] {
+  if (message.role !== 'assistant') return [];
+  return (message.toolCalls ?? []).map((call) => `call ${call.function.name} ${call.function.arguments}`);
+}
+
 /** Renders a run's messages as text for the editors to read, with long tool results cut and marked as cut. */
 export function renderTranscript(messages: readonly Message[], options: { maxResultChars?: number } = {}): string {
   const max = options.maxResultChars ?? DEFAULT_MAX_RESULT_CHARS;
@@ -42,8 +47,7 @@ export function renderTranscript(messages: readonly Message[], options: { maxRes
     .flatMap((message) => {
       if (message.role === 'tool') return [`result ${message.toolName ?? ''}: ${clipped(textOf(message), max)}`];
       const text = textOf(message);
-      const calls = message.role === 'assistant' ? (message.toolCalls ?? []).map((call) => `call ${call.function.name} ${call.function.arguments}`) : [];
-      return [...(text ? [`${message.role}: ${text}`] : []), ...calls];
+      return [...(text ? [`${message.role}: ${text}`] : []), ...callLines(message)];
     })
     .join('\n');
 }
