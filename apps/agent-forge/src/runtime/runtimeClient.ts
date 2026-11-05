@@ -65,6 +65,7 @@ import {
   type AuthorSessionRecord,
   type AuthorSessionSummary,
   type AuthorSettingsPayload,
+  type SetEnabledOutput,
 } from '../../shared/authorWire';
 import type { AgentStoreEntry } from '../persistence/AgentStore';
 import type { AgentApi } from '../persistence/HttpAgentStore';
@@ -635,7 +636,6 @@ class RuntimeClient implements AgentApi {
   // -------------------------------------------------------------------
 
   /** Starts an Author chat (`POST /assistant/sessions`); `focus` omitted defaults server-side to "new agent". */
-  // fallow-ignore-next-line unused-class-member -- the Author panel's New-chat flow calls it once AA15 lands
   async createAuthorSession(focus?: AuthorFocus): Promise<AuthorSession> {
     return this.request('/assistant/sessions', { method: 'POST', body: JSON.stringify({ focus }) });
   }
@@ -651,7 +651,6 @@ class RuntimeClient implements AgentApi {
    * rejects on 404. `runningRequestId` names the in-flight reply's
    * requestId, when one is running (the reattach decision).
    */
-  // fallow-ignore-next-line unused-class-member -- the Author panel calls it once AA15 lands
   async getAuthorSession(id: string): Promise<AuthorSessionRecord> {
     return this.request(`/assistant/sessions/${encodeURIComponent(id)}`, { method: 'GET' });
   }
@@ -669,7 +668,6 @@ class RuntimeClient implements AgentApi {
    * whose `code`/`details` carry the refusal (`STALE_PROPOSAL` +
    * `details.latestProposalId`, `ALREADY_SAVED`, `BUSY`, ...).
    */
-  // fallow-ignore-next-line unused-class-member -- the card's Apply button calls it once AA16 lands
   async saveProposal(sessionId: string, proposalId: string): Promise<AuthorSaveResponse> {
     return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/save`, {
       method: 'POST',
@@ -685,7 +683,6 @@ class RuntimeClient implements AgentApi {
    * `RuntimeApiError` whose `code` carries the refusal (`NOT_PENDING`,
    * `BUSY`, `INVALID_INPUT`, `NOT_FOUND`).
    */
-  // fallow-ignore-next-line unused-class-member -- the SecretCard calls it once AA17 lands
   async submitAuthorSecret(sessionId: string, body: AuthorSecretRequest): Promise<void> {
     await this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/secret`, {
       method: 'POST',
@@ -693,8 +690,22 @@ class RuntimeClient implements AgentApi {
     });
   }
 
+  /**
+   * The SuccessCard's "Enable agent" button (`POST
+   * /assistant/sessions/:id/enable`): flips `meta.enabled` for an agent
+   * this chat created, without a model turn. Rejects with a
+   * `RuntimeApiError` on `WRONG_AGENT` (the chat did not create it),
+   * `AGENT_NOT_FOUND`, or a session 404.
+   */
+  async enableAuthorAgent(sessionId: string, agentId: string): Promise<SetEnabledOutput> {
+    return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/enable`, {
+      method: 'POST',
+      body: JSON.stringify({ agentId }),
+
+    });
+  }
+
   /** The Author's model choices plus `ready`/`missingKeyFor` (`GET /settings/author`). */
-  // fallow-ignore-next-line unused-class-member -- the Author panel's setup card calls it once AA15 lands
   async getAuthorSettings(): Promise<AuthorSettingsPayload> {
     return this.request('/settings/author', { method: 'GET' });
   }

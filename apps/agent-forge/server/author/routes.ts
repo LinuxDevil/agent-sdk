@@ -34,6 +34,8 @@ import type { WorkspaceResolver } from '../workspace/context';
 import { identityOfProposal, resolveStoredProposal } from './proposal/gate';
 import { agentGoneFailure, unknownProposalFailure } from './proposal/failures';
 import { requestTextFor, writeProposal } from './proposal/save';
+import { computeRequirements, requirementDeps } from './requirements';
+import { setAgentEnabledFor } from './tools/stateTools';
 import type { AuthorSessionStore } from './sessionStore';
 import type { AuthorTurnRunner } from './turnRunner';
 
@@ -159,6 +161,21 @@ function secretAnswer(body: unknown): { ok: true; value: string } | { ok: true; 
 }
 
 /**
+ * The `agentId` a `POST .../enable` body carries, or `undefined` once the
+ * 400 was sent: a valid agent id - the value reaches the filesystem, so
+ * the same rule the `/agents/:id` middleware enforces applies here.
+ */
+function enableAgentIdOf(body: unknown, res: Response): string | undefined {
+  const agentId =
+    typeof body === 'object' && body !== null ? (body as { agentId?: unknown }).agentId : undefined;
+  if (typeof agentId !== 'string' || !isValidAgentId(agentId)) {
+    sendError(res, 400, 'Request body must be { agentId: string } (a valid agent id).', 'INVALID_INPUT');
+    return undefined;
+  }
+  return agentId;
+}
+
+/**
  * A failed save's HTTP answer: the person-facing `userMessage` and the
  * failure `code` (`latestProposalId` travels as `details` so the client
  * can point at the newer card). A `WRITE_FAILED` is a server fault - 500;
@@ -185,16 +202,19 @@ export function registerAuthorRoutes(
     sessions: AuthorSessionStore;
     /**
      * The app's named-secrets store (D13): the `POST .../secret` card
-     * answer writes through its encrypted `setSecret` path. The value
+     * answer writes through its encrypted `setSecret` path (the value
      * never enters the transcript, the WS stream or a log line - only
-     * the outcome is persisted.
+     * the outcome is persisted), and `POST .../enable` reads stored
+     * provider keys and named secrets through it for the
+     * `missingRequirements` count (AA13's `requirementDeps`).
      */
     secrets: SecretsStore;
     runner?: Pick<AuthorTurnRunner, 'running' | 'continueAfterUiEvent'>;
     /**
-     * The app's workspace resolver (PLAN §19.3): `POST .../save` resolves
-     * the stored `session.workspaceId` through it to reach the agent
-     * stores - never the request's workspace header.
+     * The app's workspace resolver (PLAN §19.3): `POST .../save` and
+     * `POST .../enable` resolve the stored `session.workspaceId` through
+     * it to reach the agent stores - never the request's workspace
+     * header.
      */
     workspaceResolver: WorkspaceResolver;
   }
@@ -428,6 +448,46 @@ export function registerAuthorRoutes(
       // The 204 is already on the wire so the card can close; the
       // continuation turn streams over the session's WS.
       void deps.runner?.continueAfterUiEvent(id).catch(() => undefined);
+    })
+  );
+
+  // The SuccessCard's "Enable agent" button (research §1.8, PLAN §18's
+  // added route): the same `setAgentEnabledFor` write the
+  // `setAgentEnabled` tool performs, gated on `createdAgentIds` instead of
+  // the model - a chat can only switch on an agent it created. It appends
+  // nothing to the transcript and starts no turn, so no turn-state or
+  // busy checks apply; a vanished workspace answers like a missing agent.
+  app.post(
+    '/assistant/sessions/:id/enable',
+    asyncRoute(async (req, res) => {
+      const id = sessionIdParam(req, res);
+      if (id === undefined) return;
+      const agentId = enableAgentIdOf(req.body, res);
+      if (agentId === undefined) return;
+      const session = await deps.sessions.get(id);
+      if (session === undefined) {
+        sendError(res, 404, 'Chat not found.', 'NOT_FOUND');
+        return;
+      }
+      if (!session.createdAgentIds.includes(agentId)) {
+        sendError(res, 400, 'This chat did not create that agent.', 'WRONG_AGENT');
+        return;
+      }
+      const ws = await deps.workspaceResolver.resolve(session.workspaceId);
+      if (ws === undefined) {
+        sendError(res, 404, "That agent doesn't exist.", 'AGENT_NOT_FOUND');
+        return;
+      }
+      const result = await setAgentEnabledFor(agentId, true, {
+        agents: ws.repo,
+        bus: ws.events,
+        requirements: (spec) => computeRequirements(spec, requirementDeps(ws.ref.root, deps.secrets)),
+      });
+      if (!result.ok) {
+        sendError(res, result.code === 'AGENT_NOT_FOUND' ? 404 : 500, result.userMessage, result.code);
+        return;
+      }
+      res.status(200).json(result);
     })
   );
 }
