@@ -157,6 +157,21 @@ export interface AuthorToolFailure {
   [extra: string]: unknown;
 }
 
+/**
+ * Whether `output` is a `DRAFT_REVIEW` tool failure: the hidden bounce a
+ * propose call returns while the Author redrafts (PLAN §8.4). The panel
+ * renders nothing for these outputs (the review is internal), so the
+ * client checks this before showing a tool result.
+ */
+export function isDraftReviewFailure(output: unknown): boolean {
+  return (
+    typeof output === 'object' &&
+    output !== null &&
+    (output as { ok?: unknown }).ok === false &&
+    (output as { code?: unknown }).code === 'DRAFT_REVIEW'
+  );
+}
+
 /** The exact pathname the Author chat's WebSocket lives on (`WS /assistant/stream?session=<id>`). */
 export const AUTHOR_STREAM_PATH = '/assistant/stream';
 
