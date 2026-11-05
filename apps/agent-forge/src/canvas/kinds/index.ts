@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import { Box } from 'lucide-react';
 import type { NewNode } from '../../graph/v2/mutations';
 import type { Graph, NodeKind, NodeOfKind, Problem } from '../../graph/v2/types';
+import { AGENT_VIEW } from './agent';
 import { GenericFields } from './GenericFields';
 
 /** A kind tile's colour family: `kind-<tone>` in screens/agents/agents.css (also the MiniMap's node fill). */
@@ -88,7 +89,9 @@ export interface KindView<K extends NodeKind> {
  * contributed by the kind tickets (C03–C16). Starts empty — every kind
  * falls back to `viewFor`'s generic view until its ticket lands.
  */
-export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {};
+export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
+  agent: AGENT_VIEW,
+};
 
 /** The fallback `KindView`: bare kind tile, id-suffix title, no rows, both ports, the JSON `GenericFields`. */
 function GENERIC_VIEW<K extends NodeKind>(kind: K): KindView<K> {
