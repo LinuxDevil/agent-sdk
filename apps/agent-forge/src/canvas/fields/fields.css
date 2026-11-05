@@ -19,6 +19,20 @@
   color: var(--warning);
 }
 
+/* ModelPicker's free-text input next to its Retry button (catalog error). */
+.modelpicker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.modelpicker-row .input {
+  flex: 1;
+  min-width: 0;
+}
+.modelpicker-row .btn {
+  flex: none;
+}
+
 /* StringListField: chips wrap inline with the trailing input. */
 .stringlist {
   display: flex;
