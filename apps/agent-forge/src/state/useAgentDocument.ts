@@ -41,6 +41,8 @@ interface AutosaveDeps {
   refreshAgents: () => Promise<void>;
   /** Canonical JSON of the spec and layout last confirmed written (shared with the explicit `save()`). */
   lastSavedJson: MutableRefObject<{ spec: string; layout: string }>;
+  /** Canonical JSON of the LATEST derived document, refreshed on every render - a newer edit's JSON. */
+  latestJson: MutableRefObject<{ spec: string; layout: string }>;
 }
 
 /** The spec and layout writes a document needs to catch up, in canonical-JSON order (spec first). */
@@ -63,7 +65,7 @@ function pendingSaves(store: AgentStore, agentId: string, derived: GraphToSpecRe
  * `<id>.yaml`. A failed save leaves the document dirty (HttpAgentStore
  * keeps a draft).
  */
-function useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, lastSavedJson }: AutosaveDeps): void {
+function useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, lastSavedJson, latestJson }: AutosaveDeps): void {
   const autosaveTimer = useRef<ReturnType<typeof setTimeout>>();
   useEffect(() => {
     if (!dirty) return;
@@ -77,7 +79,13 @@ function useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, 
       Promise.all(writes).then(
         () => {
           lastSavedJson.current = json;
-          setDirty(false);
+          // Clear dirty only when no newer edit landed while the write was
+          // in flight: a stale write clearing dirty would cancel the newer
+          // edit's pending autosave (this effect re-runs on `dirty`) and
+          // silently lose it.
+          if (latestJson.current.spec === json.spec && latestJson.current.layout === json.layout) {
+            setDirty(false);
+          }
           void refreshAgents();
         },
         () => {
@@ -88,7 +96,7 @@ function useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, 
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
-  }, [derived, dirty, store, agentId, refreshAgents, lastSavedJson]);
+  }, [derived, dirty, store, agentId, refreshAgents, lastSavedJson, latestJson]);
 }
 
 /** The setters of the open document that loading, switching, renaming and deleting agents write. */
@@ -363,6 +371,9 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
   const lastDerived = useRef<GraphToSpecResult>(graphToSpec(specToGraph(DEFAULT_SPEC), DEFAULT_SPEC));
   // Canonical JSON of what the server is known to hold: autosave only writes what differs.
   const lastSavedJson = useRef({ spec: JSON.stringify(lastDerived.current.spec), layout: JSON.stringify(lastDerived.current.layout) });
+  // Canonical JSON of the document as currently derived; compared against an
+  // in-flight save's JSON so a stale write never clears a newer edit's dirty.
+  const latestJson = useRef(lastSavedJson.current);
   const doc: DocumentSetters = { setAgentId, setGraphState, lastDerived, lastSavedJson, setSelectedNodeId, setDirty };
   const { agents, setAgents, refreshAgents, agentsLoaded } = useAgentList(store, initialId ?? agentId, doc);
   // `WS /events`: another tab's write refreshes this tab's agents list.
@@ -371,6 +382,7 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
   const derived = useMemo(() => {
     const next = deriveSpec(graph, lastDerived.current);
     lastDerived.current = next;
+    latestJson.current = { spec: JSON.stringify(next.spec), layout: JSON.stringify(next.layout) };
     return next;
   }, [graph]);
   const spec = derived.spec;
@@ -381,13 +393,16 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     await store.save(agentId, derived.spec);
     await store.saveLayout(agentId, derived.layout);
     lastSavedJson.current = json;
-    setDirty(false);
+    // Same in-flight guard as autosave: keep dirty when a newer edit arrived during Save.
+    if (latestJson.current.spec === json.spec && latestJson.current.layout === json.layout) {
+      setDirty(false);
+    }
     await refreshAgents();
   }, [store, agentId, derived, refreshAgents]);
 
   const { setGraph, setSpec } = useGraphEditors(doc);
 
-  useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, lastSavedJson });
+  useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, lastSavedJson, latestJson });
 
   const { switchAgent, createAgent, renameAgent, deleteAgent } = useAgentActions(
     { store, agents, agentId, refreshAgents, doc },

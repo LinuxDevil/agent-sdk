@@ -6,7 +6,7 @@ import { ROOT_AGENT_ID } from '../graph/v2/types';
 
 /**
  * Each template card's kind icon: the kind its pipeline starts with, in that
- * kind's canvas tone (nodeKinds.ts's NODE_KINDS, `kind-<tone>` in agents.css).
+ * kind's canvas tone (the kind registry's KindTone, `kind-<tone>` in agents.css).
  */
 const TEMPLATE_ICONS: Record<TemplateId, { Icon: LucideIcon; tone: 'violet' | 'accent' }> = {
   blank: { Icon: Sparkles, tone: 'violet' },
