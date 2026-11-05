@@ -16,6 +16,7 @@ const { values } = parseArgs({
     repeats: { type: 'string', default: '3' },
     confirm: { type: 'string', default: '0' },
     'max-tokens': { type: 'string', default: '400000' },
+    'max-cost-increase': { type: 'string' },
     'always-propose': { type: 'boolean', default: false },
     'gap-ms': { type: 'string', default: '3000' },
     out: { type: 'string' },
@@ -73,6 +74,7 @@ async function main(): Promise<void> {
       editor: live ? { model: `openrouter/${values.editor}` } : { provider: scripted },
       repeats: Number(values.repeats),
       maxTokens: Number(values['max-tokens']),
+      ...(values['max-cost-increase'] === undefined ? {} : { maxCostIncrease: Number(values['max-cost-increase']) }),
       alwaysPropose: values['always-propose'],
       editorHooks: live ? [throttle] : [],
     });
