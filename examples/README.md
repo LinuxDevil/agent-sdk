@@ -45,7 +45,7 @@ The evaluator-optimizer pattern (CrewAI's writer/critic shape): a writer drafts,
 
 ## [heal-benchmark](./heal-benchmark)
 
-A repeatable benchmark for agent reliability: three agents with working tools and realistic faults, deterministic checks, and a scoreboard of pass rate, noise and cost for each harness version. Runs offline, or live with `OPENROUTER_API_KEY`.
+A repeatable benchmark for agent reliability: four agents with working tools and realistic faults, deterministic checks, and a scoreboard of pass rate, noise and cost for each harness version. Runs offline, or live with `OPENROUTER_API_KEY`.
 
 ## [hostinger-deploy](./hostinger-deploy)
 

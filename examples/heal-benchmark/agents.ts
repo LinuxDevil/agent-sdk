@@ -1,5 +1,6 @@
 import { defineTool, type DefinedTool } from 'lousho';
 import { z } from 'zod';
+import { codingAgent } from './codingAgent';
 
 export interface BenchmarkTask {
   id: string;
@@ -172,4 +173,4 @@ function docQa(): BenchmarkAgent {
   };
 }
 
-export const AGENTS: readonly (() => BenchmarkAgent)[] = [supportDesk, dataAnalyst, docQa];
+export const AGENTS: readonly (() => BenchmarkAgent)[] = [supportDesk, dataAnalyst, docQa, () => codingAgent()];

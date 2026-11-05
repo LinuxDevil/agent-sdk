@@ -1,7 +1,7 @@
 # heal-benchmark
 
 A repeatable way to tell whether a change to an agent's harness helped. It runs
-three agents through 19 tasks and reports each harness version's pass rate,
+four agents through 24 tasks and reports each harness version's pass rate,
 noise, tokens and tool calls.
 
 | Agent | What it tests |
@@ -9,10 +9,18 @@ noise, tokens and tool calls.
 | `support-desk` | A carrier outage, a refund that moves money, and a policy that sets the amount or refuses |
 | `data-analyst` | A broken tool, a missing file, messy references, currency conversion, and incomplete data |
 | `doc-qa` | A flaky service, a forbidden document, a stale document, and an answer spread over two documents |
+| `coding-agent` | Bugs in a small JavaScript project: shallow fixes, a root cause in another file, and edge cases only hidden tests check |
 
 Every tool fault is planted, and each check is a deterministic test of the answer
-or of the tool calls made. Treat these results as a signal, because your own
-agents may behave differently.
+or of the tool calls made. `coding-agent` is scored by running hidden tests, and a
+run fails if it edits a test or a file the task doesn't need. Treat these results
+as a signal, because your own agents may behave differently.
+
+`coding-agent` edits an in-memory copy of its project. Its tests, including any code
+the model wrote, run in a temporary directory with an empty environment, under
+Node's permission model. That blocks files outside the directory and child
+processes. Network access is blocked only on Node 25 or later, so run live
+benchmarks on Node 25 or in a sandbox of your own.
 
 ## Run it
 
