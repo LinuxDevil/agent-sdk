@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { graphFromTemplate } from '../templates';
-import { graphToSpec } from '../../graph/graphToSpec';
+import { graphToSpec } from '../../graph/v2/graphToSpec';
 
 describe('graphFromTemplate', () => {
   it('names the spec after the id typed in "New agent"', () => {
-    expect(graphToSpec(graphFromTemplate('support-bot', 'my-helper')).name).toBe('my-helper');
-    expect(graphToSpec(graphFromTemplate('blank', 'scratch')).name).toBe('scratch');
+    expect(graphToSpec(graphFromTemplate('support-bot', 'my-helper')).spec.name).toBe('my-helper');
+    expect(graphToSpec(graphFromTemplate('blank', 'scratch')).spec.name).toBe('scratch');
   });
 
   it("keeps the template's own name when none is given", () => {
-    expect(graphToSpec(graphFromTemplate('support-bot')).name).toBe('support-bot');
+    expect(graphToSpec(graphFromTemplate('support-bot')).spec.name).toBe('support-bot');
   });
 });

@@ -2,10 +2,11 @@ import { useEffect, useState } from 'react';
 import { LayoutTemplate, Plus, Sparkles, Zap, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { AGENT_TEMPLATES, graphFromTemplate, type TemplateId } from './templates';
+import { ROOT_AGENT_ID } from '../graph/v2/types';
 
 /**
  * Each template card's kind icon: the kind its pipeline starts with, in that
- * kind's canvas tone (nodeKinds.ts's NODE_KINDS, `kind-<tone>` in agents.css).
+ * kind's canvas tone (the kind registry's KindTone, `kind-<tone>` in agents.css).
  */
 const TEMPLATE_ICONS: Record<TemplateId, { Icon: LucideIcon; tone: 'violet' | 'accent' }> = {
   blank: { Icon: Sparkles, tone: 'violet' },
@@ -42,12 +43,14 @@ function useDragInProgress(): boolean {
 export function EmptyCanvas() {
   const { graph, spec, setGraph, setSelectedNodeId } = useAppState();
   const dragging = useDragInProgress();
-  if (graph.nodes.length > 0 || dragging) return null;
+  // "Empty" is the root agent node and nothing else (no capability nodes, no notes).
+  const onlyRoot = graph.nodes.every((n) => n.id === ROOT_AGENT_ID && n.kind === 'agent');
+  if (!onlyRoot || dragging) return null;
 
   function choose(id: TemplateId) {
     const next = graphFromTemplate(id, spec.name || undefined);
     setGraph(() => next);
-    setSelectedNodeId(next.nodes.find((n) => n.type === 'llm')?.id);
+    setSelectedNodeId(ROOT_AGENT_ID);
   }
 
   return (
@@ -64,7 +67,7 @@ export function EmptyCanvas() {
         </p>
         <button type="button" className="btn btn-primary canvas-empty-action" onClick={() => choose('blank')}>
           <Plus aria-hidden="true" />
-          Start with a blank graph
+          Start with a blank agent
         </button>
         <ul className="canvas-templates" aria-label="Templates">
           {AGENT_TEMPLATES.map((template) => {

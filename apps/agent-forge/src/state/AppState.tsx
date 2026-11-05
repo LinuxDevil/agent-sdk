@@ -1,11 +1,12 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpecV2 } from 'lousho';
 import { HttpAgentStore } from '../persistence/HttpAgentStore';
 import { runtimeClient } from '../runtime/runtimeClient';
-import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';
-import type { AgentGraphSpec } from '../graph/types';
+import type { AgentStore } from '../persistence/AgentStore';
+import type { Graph, GraphEdge } from '../graph/v2/types';
 import type { TemplateId } from '../canvas/templates';
+import type { AgentListItem } from '../../shared/wireTypes';
 import type {
   AgentRunStatusPayload,
   LogEntry,
@@ -33,18 +34,22 @@ interface AppState {
    * rename) goes through `setGraph`, never a ReactFlow-only, ephemeral
    * state that could drift from this.
    */
-  graph: AgentGraphSpec;
-  setGraph: (updater: (graph: AgentGraphSpec) => AgentGraphSpec) => void;
+  graph: Graph;
+  setGraph: (updater: (graph: Graph) => Graph) => void;
   /**
-   * Derived, read-mostly view of `graph` as the SDK's `AgentSpec` (via
-   * `graphToSpec()`), kept for components that predate the real canvas
+   * Derived, read-mostly view of `graph` as the SDK's `AgentSpecV2` (via
+   * `graphToSpec()`), kept for components that read the spec shape
    * (Topbar import/export, the drawer's Output tab) and for persistence.
    * Writing through `setSpec` replaces the whole graph via `specToGraph()`
    * - appropriate for "import a whole new spec file", not for incremental
    * node edits (use `setGraph` for those).
    */
-  spec: AgentSpec;
-  setSpec: (updater: (spec: AgentSpec) => AgentSpec) => void;
+  spec: AgentSpecV2;
+  setSpec: (updater: (spec: AgentSpecV2) => AgentSpecV2) => void;
+  /** The canvas's edges, derived from `graph` by `deriveEdges()` (edges are never stored). */
+  edges: GraphEdge[];
+  /** Graph node id → the id `specToGraph(spec)` gives it today, from the same `graphToSpec` call as `spec`. */
+  nodeIdMap: Record<string, string>;
   /** True when there are unsaved changes since the last successful `save()`. */
   dirty: boolean;
   save: () => Promise<void>;
@@ -55,7 +60,7 @@ interface AppState {
   drawerTab: DrawerTab;
   setDrawerTab: (tab: DrawerTab) => void;
   /** Every agent currently known to `store`, refreshed after save/create/switch. */
-  agents: AgentStoreEntry[];
+  agents: AgentListItem[];
   /** False until the first `agents` fetch (and opening the initial agent) has finished, failed included. */
   agentsLoaded: boolean;
   /** Loads a different agent's graph into the canvas - a full state swap, not a visual pan. */

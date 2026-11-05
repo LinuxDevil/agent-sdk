@@ -93,6 +93,7 @@ describe('agent.changed -> agents list refresh', () => {
       list: vi.fn(async () => []),
       load: vi.fn(async () => undefined),
       save: vi.fn(async () => {}),
+      saveLayout: vi.fn(async () => {}),
       remove: vi.fn(async () => {}),
     };
     render(<DocProbe store={store} />);

@@ -71,6 +71,7 @@
         "listAgents",
         "loadAgent",
         "saveAgent",
+        "saveLayout",
         "deleteAgent",
         "workspace"
       ]

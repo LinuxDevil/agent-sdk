@@ -4,6 +4,12 @@ import { render } from '../../ui/__tests__/render';
 
 const appState = vi.hoisted(() => ({
   approveAgent: vi.fn(async () => {}),
+  railTab: 'agents',
+  setRailTab: vi.fn(),
+  graph: { version: 2, nodes: [], emptySections: [], unplaced: [] },
+  setGraph: vi.fn(),
+  selectedNodeId: undefined,
+  setSelectedNodeId: vi.fn(),
   sendChatMessage: vi.fn(async () => {}),
   drawerTab: 'chat',
   setDrawerTab: vi.fn(),
@@ -171,5 +177,66 @@ describe('ToolbarMoreMenu', () => {
     });
     expect(container.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(button);
+  });
+});
+
+describe('NodesTab palette', () => {
+  const fakeView = {
+    label: 'Tool',
+    tone: 'info',
+    Icon: (() => null) as never,
+    title: () => 'http',
+    rows: () => [],
+    ports: { in: true, out: true },
+    Fields: (() => null) as never,
+    palette: [
+      {
+        id: 'tool',
+        group: 'Capabilities',
+        label: 'Tool call',
+        description: 'Runs a tool',
+        kind: 'tool',
+        create: () => ({ kind: 'tool', data: { item: { builtin: 'new' } } }),
+      },
+    ],
+  } as const;
+
+  it('shows the hint while KIND_VIEWS has no registered views', async () => {
+    const { LeftRail } = await import('../LeftRail');
+    const { ReactFlowProvider } = await import('@xyflow/react');
+    appState.railTab = 'nodes';
+    const container = render(
+      <ReactFlowProvider>
+        <LeftRail />
+      </ReactFlowProvider>,
+    );
+    expect(container.querySelector('.hint')?.textContent).toBe('Node types arrive with the next updates.');
+    appState.railTab = 'agents';
+  });
+
+  it('renders palette entries grouped by PaletteGroup and drags the entry id', async () => {
+    const { LeftRail } = await import('../LeftRail');
+    const { KIND_VIEWS } = await import('../../canvas/kinds');
+    const { ReactFlowProvider } = await import('@xyflow/react');
+    KIND_VIEWS.tool = fakeView as never;
+    try {
+      appState.railTab = 'nodes';
+      const container = render(
+        <ReactFlowProvider>
+          <LeftRail />
+        </ReactFlowProvider>,
+      );
+      expect([...container.querySelectorAll('.palette-group .rail-section-title')].map((g) => g.textContent)).toEqual(['Capabilities']);
+      const item = container.querySelector('.node-palette-item') as HTMLElement;
+      expect(item.getAttribute('aria-label')).toBe('Tool call');
+      const dataTransfer = { setData: vi.fn(), effectAllowed: '' };
+      const event = new Event('dragstart', { bubbles: true });
+      Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+      act(() => item.dispatchEvent(event));
+      expect(dataTransfer.setData).toHaveBeenCalledWith('application/agent-forge-node-type', 'tool');
+    } finally {
+      delete KIND_VIEWS.tool;
+      appState.railTab = 'agents';
+    }
   });
 });

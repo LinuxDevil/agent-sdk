@@ -15,7 +15,7 @@
  */
 import { TriggerRegistry } from 'lousho/triggers';
 import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
 import { withAgentLock } from '../storage/atomic';
@@ -37,7 +37,7 @@ export interface WorkspaceContext {
   /** This workspace's `.lousho/agents` storage: the spec v2 working copies and their meta/layout/working sidecars. */
   repo: AgentRepo;
   /** v1 facade over `repo` (fsAgentStore) - what the still-v1 routes and RunManager use. */
-  agentStore: AgentStore;
+  agentStore: LegacyAgentStore;
   /** Append-only version history under `<id>/versions/` - captures and the external-edit baseline live here (storage/versionStore.ts). */
   versions: VersionStore;
   /** Pending + settled change drafts under `<id>/drafts/` (storage/draftStore.ts). */

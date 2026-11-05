@@ -131,13 +131,13 @@ test('the Output node is drawn once and the minimap shows the graph', async ({ p
   await createAgent(page, id);
 
   // Node cards: the LLM node shows its provider/model chip and an idle status before any run.
-  const llm = page.locator('[data-node-type="llm"]');
+  const llm = page.locator('[data-node-kind="agent"]');
   await expect(llm.locator('.node-model')).toHaveText('mock/mock-1');
   await expect(llm.locator('.status-pill')).toHaveText('idle');
 
   // React Flow's built-in `output` type used to add its own border/padding box around ours.
   await expect(page.locator('.react-flow__node-output')).toHaveCount(0);
-  const output = page.locator('.react-flow__node:has([data-node-type="output"])');
+  const output = page.locator('.react-flow__node:has([data-node-kind="output"])');
   await expect(output).toHaveCount(1);
   const wrapper = await output.evaluate((el) => {
     const s = getComputedStyle(el);

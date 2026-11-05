@@ -26,34 +26,35 @@ import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
 import { NODE_TYPES, flowNodeType, miniMapNodeClassName, type AgentNodeData } from '../canvas/AgentNode';
 import {
-  addHookToNode,
   addNode,
   connectNodes,
   duplicateNode,
   moveNode,
-  removeEdge,
+  ownerForNewNode,
   removeNode,
-  renameNode,
-} from '../canvas/graphMutations';
+} from '../graph/v2/mutations';
+import { canConnect } from '../graph/v2/connectionRules';
+import { orderedNodes } from '../graph/v2/order';
+import { toolNodeName } from '../graph/v2/nodeIds';
+import type { Graph, GraphEdge, GraphNode, ToolNodeData } from '../graph/v2/types';
+import { ROOT_AGENT_ID } from '../graph/v2/types';
+import { KIND_VIEWS, type PaletteEntry } from '../canvas/kinds';
 import { autoLayout } from '../canvas/layout';
 import { EmptyCanvas } from '../canvas/EmptyCanvas';
 import { nodeRunStatuses, type NodeRunStatus } from '../canvas/nodeStatus';
-import { isEdgeTypeAllowed } from '../graph/connectionRules';
-import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
-import { pickHookTemplate } from '../canvas/paletteActions';
+import { PALETTE_DRAG_MIME } from '../canvas/dnd';
 import { useAgentEdgeSelection, useFitOnLoad } from '../canvas/canvasResets';
-import type { AgentGraphNode, AgentGraphNodeType, AgentGraphSpec, AgentNodeHookPhase } from '../graph/types';
 
 type SetGraph = ReturnType<typeof useAppState>['setGraph'];
 type SetSelectedNodeId = ReturnType<typeof useAppState>['setSelectedNodeId'];
 
-function breakpointKeyForNode(n: AgentGraphSpec['nodes'][number]): string | undefined {
-  if (n.type === 'llm') return 'llm:before';
-  if (n.type === 'tool') return `tool:${n.data.toolName}:before`;
+function breakpointKeyForNode(n: GraphNode): string | undefined {
+  if (n.kind === 'agent' && n.id === ROOT_AGENT_ID) return 'llm:before';
+  if (n.kind === 'tool') return `tool:${toolNodeName((n.data as ToolNodeData).item)}:before`;
   return undefined;
 }
 
-function hasBreakpointOn(n: AgentGraphNode, breakpoints: string[]): boolean {
+function hasBreakpointOn(n: GraphNode, breakpoints: string[]): boolean {
   const key = breakpointKeyForNode(n);
   return !!key && breakpoints.includes(key);
 }
@@ -82,28 +83,52 @@ export function applyDimensionChanges(prev: MeasuredSizes, changes: NodeChange[]
 /** What each card shows beyond its own graph node: selection, highlight, breakpoints and run status. */
 interface NodeDecor {
   selectedNodeId: string | undefined;
-  onRename: (id: string, label: string) => void;
   highlightedNodeId: string | undefined;
   breakpoints: string[];
   statuses: Record<string, NodeRunStatus>;
 }
 
-function toRfNodes(graph: AgentGraphSpec, decor: NodeDecor, measured: MeasuredSizes = {}): Node<AgentNodeData>[] {
-  const { selectedNodeId, onRename, highlightedNodeId, breakpoints, statuses } = decor;
-  // An agent's tools are all its tool nodes (graphToSpec.ts's flat `tools` list).
-  const toolCount = graph.nodes.filter((n) => n.type === 'tool').length;
-  return graph.nodes.map((n) => ({
+/** True when an `owner`-chain ancestor of `node` is a collapsed agent group. */
+function hasCollapsedAncestor(graph: Graph, node: GraphNode): boolean {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  let owner = node.owner;
+  while (owner !== null) {
+    const ownerNode = byId.get(owner);
+    if (ownerNode === undefined) return false;
+    if (ownerNode.kind === 'agent' && ownerNode.collapsed === true) return true;
+    owner = ownerNode.owner;
+  }
+  return false;
+}
+
+/**
+ * The graph's nodes in React-Flow order: parents before children
+ * (sub-flows require it) — `orderedNodes` already walks an inline agent
+ * before its children; notes and any node outside the canonical walk are
+ * appended (they have no parent).
+ */
+function canvasNodeOrder(graph: Graph): GraphNode[] {
+  const ordered = orderedNodes(graph);
+  const seen = new Set(ordered.map((n) => n.id));
+  return [...ordered, ...graph.nodes.filter((n) => !seen.has(n.id) && n.proposed !== 'remove')];
+}
+
+function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<AgentNodeData>[] {
+  const { selectedNodeId, highlightedNodeId, breakpoints, statuses } = decor;
+  return canvasNodeOrder(graph).map((n) => ({
     id: n.id,
-    type: flowNodeType(n.type),
+    type: flowNodeType(n.kind),
+    // React Flow sub-flows: children of an inline agent sit inside its
+    // group (group rendering polish is C04's).
+    parentId: n.owner !== null && n.owner !== ROOT_AGENT_ID ? n.owner : undefined,
     position: n.position,
     selected: n.id === selectedNodeId,
+    hidden: hasCollapsedAncestor(graph, n),
     measured: measured[n.id],
     data: {
       graphNode: n,
-      onRename,
       highlighted: n.id === highlightedNodeId,
       hasBreakpoint: hasBreakpointOn(n, breakpoints),
-      toolCount: n.type === 'llm' ? toolCount : undefined,
       status: statuses[n.id],
     },
   }));
@@ -155,17 +180,18 @@ const MIN_ZOOM = 0.2;
  * but not deletable on their own (as before): removing a node still drops its edges.
  */
 export function toRfEdges(
-  graph: AgentGraphSpec,
+  edges: GraphEdge[],
   statuses: Record<string, NodeRunStatus> = {},
   selectedEdgeId?: string
 ): Edge[] {
-  return graph.edges.map((e) => {
+  return edges.map((e) => {
     const running = statuses[e.source] === 'running';
     return {
       id: e.id,
       source: e.source,
       target: e.target,
       type: 'gapped',
+      label: e.label,
       selected: e.id === selectedEdgeId,
       deletable: false,
       animated: running,
@@ -176,7 +202,7 @@ export function toRfEdges(
 }
 
 /** Apply every ReactFlow position change that carries a position to the graph. */
-function applyPositionChanges(graph: AgentGraphSpec, changes: NodeChange[]): AgentGraphSpec {
+function applyPositionChanges(graph: Graph, changes: NodeChange[]): Graph {
   let next = graph;
   for (const change of changes) {
     if (change.type === 'position' && change.position) {
@@ -190,21 +216,6 @@ function applyPositionChanges(graph: AgentGraphSpec, changes: NodeChange[]): Age
 function lastSelectionChange(changes: NodeChange[]): { id: string; selected: boolean } | undefined {
   const selectChange = [...changes].reverse().find((c) => c.type === 'select');
   return selectChange && selectChange.type === 'select' ? selectChange : undefined;
-}
-
-/**
- * Which `AgentGraphNode` (by id) the pointer is currently over,
- * found by walking up the real DOM from `document.elementFromPoint()` to
- * the nearest element carrying AgentNode.tsx's `data-node-id` attribute.
- * Native HTML5 drag-and-drop only gives `onDrop` a client point, not
- * "which React node is under it" - ReactFlow doesn't expose that as a
- * hit-test API - so this reads it straight from the rendered DOM, the
- * same way a browser's own elementFromPoint-based drop targeting works.
- */
-function nodeIdAtPoint(clientX: number, clientY: number): string | undefined {
-  const el = document.elementFromPoint(clientX, clientY);
-  const nodeEl = el?.closest<HTMLElement>('[data-node-id]');
-  return nodeEl?.dataset.nodeId;
 }
 
 /** Auto-clearing "connection rejected" banner message. */
@@ -245,17 +256,18 @@ function useGraphEditHandlers(
 
   const onEdgesChange = useCallback(
     (changes: EdgeChange[]) => {
+      // Edges are derived from node data, never stored: only selection is
+      // tracked (deletion is refused - `deletable: false` - and rewiring
+      // goes through `connectNodes`, not edge removal).
       const select = [...changes].reverse().find((c) => c.type === 'select');
       if (select && select.type === 'select') setSelectedEdgeId(select.selected ? select.id : undefined);
-      const removed = changes.filter((c) => c.type === 'remove');
-      if (removed.length === 0) return;
-      setGraph((g) => removed.reduce((acc, c) => (c.type === 'remove' ? removeEdge(acc, c.id) : acc), g));
     },
-    [setGraph, setSelectedEdgeId]
+    [setSelectedEdgeId]
   );
 
   const onNodesDelete = useCallback(
     (deleted: Node[]) => {
+      // removeNode refuses the root agent silently.
       setGraph((g) => deleted.reduce((acc, n) => removeNode(acc, n.id), g));
       if (deleted.some((n) => n.id === selectedNodeId)) setSelectedNodeId(undefined);
     },
@@ -266,7 +278,7 @@ function useGraphEditHandlers(
 }
 
 /** Edge creation: `onConnect` commits (or flashes the rejection), `isValidConnection` gates dragging. */
-function useConnectionHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: (reason: string) => void) {
+function useConnectionHandlers(graph: Graph, setGraph: SetGraph, flashError: (reason: string) => void) {
   const onConnect = useCallback(
     (connection: Connection) => {
       if (!connection.source || !connection.target) return;
@@ -289,7 +301,7 @@ function useConnectionHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashE
       const source = graph.nodes.find((n) => n.id === connection.source);
       const target = graph.nodes.find((n) => n.id === connection.target);
       if (!source || !target) return false;
-      return isEdgeTypeAllowed(source.type, target.type);
+      return canConnect(source, target).ok;
     },
     [graph]
   );
@@ -297,48 +309,45 @@ function useConnectionHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashE
   return { onConnect, isValidConnection };
 }
 
-/** Palette/hook drag-and-drop onto the canvas. */
-function useDropHandlers(graph: AgentGraphSpec, setGraph: SetGraph, flashError: (reason: string) => void) {
+/** Every `PaletteEntry` across the registered kind views, for the drop lookup. */
+function paletteEntry(id: string): PaletteEntry | undefined {
+  return Object.values(KIND_VIEWS)
+    .flatMap((view) => view?.palette ?? [])
+    .find((entry) => entry.id === id);
+}
+
+/** Palette drag-and-drop onto the canvas. */
+function useDropHandlers(
+  setGraph: SetGraph,
+  selectedNodeId: string | undefined,
+  setSelectedNodeId: SetSelectedNodeId
+) {
   const { screenToFlowPosition } = useReactFlow();
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
-    if (!e.dataTransfer.types.includes(PALETTE_DRAG_MIME) && !e.dataTransfer.types.includes(HOOK_DRAG_MIME)) return;
+    if (!e.dataTransfer.types.includes(PALETTE_DRAG_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const dropHook = useCallback(
-    (e: DragEvent<HTMLDivElement>, hookPhase: AgentNodeHookPhase) => {
-      e.preventDefault();
-      const targetNodeId = nodeIdAtPoint(e.clientX, e.clientY);
-      const targetNode = graph.nodes.find((n) => n.id === targetNodeId);
-      if (!targetNode || (targetNode.type !== 'llm' && targetNode.type !== 'tool')) {
-        flashError('Drop a hook onto an LLM or tool node to attach it');
-        return;
-      }
-      const template = pickHookTemplate(targetNode.type, hookPhase);
-      setGraph((g) => addHookToNode(g, targetNode.id, template));
-    },
-    [graph, setGraph, flashError]
-  );
-
-  const dropPaletteNode = useCallback(
-    (e: DragEvent<HTMLDivElement>, nodeType: AgentGraphNodeType) => {
-      e.preventDefault();
-      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
-      setGraph((g) => addNode(g, nodeType, position));
-    },
-    [screenToFlowPosition, setGraph]
-  );
-
   const onDrop = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
-      const hookPhase = e.dataTransfer.getData(HOOK_DRAG_MIME) as AgentNodeHookPhase | '';
-      if (hookPhase) return dropHook(e, hookPhase);
-      const nodeType = e.dataTransfer.getData(PALETTE_DRAG_MIME) as AgentGraphNodeType | '';
-      if (nodeType) dropPaletteNode(e, nodeType);
+      const entryId = e.dataTransfer.getData(PALETTE_DRAG_MIME);
+      if (!entryId) return;
+      e.preventDefault();
+      const entry = paletteEntry(entryId);
+      if (!entry) return;
+      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      let addedId: string | undefined;
+      setGraph((g) => {
+        const owner = ownerForNewNode(g, entry.kind, selectedNodeId);
+        const result = addNode(g, entry.create(g, owner), position, owner);
+        addedId = result.nodeId;
+        return result.graph;
+      });
+      if (addedId) setSelectedNodeId(addedId);
     },
-    [dropHook, dropPaletteNode]
+    [screenToFlowPosition, setGraph, selectedNodeId, setSelectedNodeId]
   );
 
   return { onDragOver, onDrop };
@@ -397,7 +406,7 @@ function useFitViewOnResize() {
 }
 
 /** The first fit when an agent opens or an empty canvas is filled (canvas/canvasResets.ts), with legible sizing. */
-function useFitViewOnLoad(agentId: string, graph: AgentGraphSpec, measured: MeasuredSizes): boolean {
+function useFitViewOnLoad(agentId: string, graph: Graph, measured: MeasuredSizes): boolean {
   const fitLegibly = useLegibleFit();
   const allMeasured = graph.nodes.length > 0 && graph.nodes.every((n) => measured[n.id]);
   return useFitOnLoad(agentId, graph.nodes.length, allMeasured, fitLegibly);
@@ -469,13 +478,13 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
 
   const handleDuplicate = useCallback(() => {
     if (!selectedNodeId) return;
-    setGraph((g) => duplicateNode(g, selectedNodeId));
+    setGraph((g) => duplicateNode(g, selectedNodeId).graph);
   }, [selectedNodeId, setGraph]);
 
   // Ctrl/Cmd+D duplicates the selected node - a discoverable shortcut
   // alongside the toolbar button, matching common canvas-editor conventions.
-  // Not while typing in a field (the Inspector, chat, the hook
-  // editor) - there the keystroke belongs to the field.
+  // Not while typing in a field (the Inspector, chat) -
+  // there the keystroke belongs to the field.
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd' && !isEditableTarget(e.target)) {
@@ -595,41 +604,45 @@ function CanvasNavigator() {
 }
 
 /**
+ * The React Flow nodes and edges derived from `graph` and the run/debug/selection
+ * state, plus the measured-size and selected-edge state they depend on.
+ */
+function useCanvasElements() {
+  const {
+    agentId,
+    graph,
+    edges: graphEdges,
+    nodeIdMap,
+    setGraph,
+    selectedNodeId,
+    setSelectedNodeId,
+    highlightedNodeId,
+    debugState,
+    spans,
+    runStatus,
+  } = useAppState();
+
+  const breakpoints = debugState?.breakpoints ?? [];
+  const breakpointsKey = breakpoints.join(',');
+  const [measured, setMeasured] = useState<MeasuredSizes>({});
+  const statuses = useMemo(() => nodeRunStatuses(graph, spans, runStatus, nodeIdMap), [graph, spans, runStatus, nodeIdMap]);
+  const nodes = useMemo(
+    () => toRfNodes(graph, { selectedNodeId, highlightedNodeId, breakpoints, statuses }, measured),
+    [graph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, measured]
+  );
+  const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
+  const edges = useMemo(() => toRfEdges(graphEdges, statuses, selectedEdgeId), [graphEdges, statuses, selectedEdgeId]);
+
+  return { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId };
+}
+
+/**
  * Real ReactFlow canvas. `AppState.graph` is the single source
  * of truth: every handler below reads it and, on a real mutation, calls
  * `setGraph()` - ReactFlow's `nodes`/`edges` props are recomputed from
  * `graph` on every render rather than kept in separate ReactFlow-owned
  * state, so there is nowhere for the two to drift apart.
  */
-/**
- * The React Flow nodes and edges derived from `graph` and the run/debug/selection
- * state, plus the measured-size and selected-edge state they depend on.
- */
-function useCanvasElements() {
-  const { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, highlightedNodeId, debugState, spans, runStatus } =
-    useAppState();
-
-  const onRename = useCallback(
-    (nodeId: string, label: string) => {
-      setGraph((g) => renameNode(g, nodeId, label));
-    },
-    [setGraph]
-  );
-
-  const breakpoints = debugState?.breakpoints ?? [];
-  const breakpointsKey = breakpoints.join(',');
-  const [measured, setMeasured] = useState<MeasuredSizes>({});
-  const statuses = useMemo(() => nodeRunStatuses(graph, spans, runStatus), [graph, spans, runStatus]);
-  const nodes = useMemo(
-    () => toRfNodes(graph, { selectedNodeId, onRename, highlightedNodeId, breakpoints, statuses }, measured),
-    [graph, selectedNodeId, onRename, highlightedNodeId, breakpointsKey, statuses, measured]
-  );
-  const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
-  const edges = useMemo(() => toRfEdges(graph, statuses, selectedEdgeId), [graph, statuses, selectedEdgeId]);
-
-  return { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId };
-}
-
 function CanvasInner(inspectorToggle: InspectorToggleProps) {
   const { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId } =
     useCanvasElements();
@@ -637,7 +650,7 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
 
   const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId);
   const { onConnect, isValidConnection } = useConnectionHandlers(graph, setGraph, flashError);
-  const { onDragOver, onDrop } = useDropHandlers(graph, setGraph, flashError);
+  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId);
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
   useFitViewOnResize();
   useKeepSelectionInView(selectedNodeId);

@@ -1,10 +1,10 @@
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentGraphSpec } from '../../graph/types';
+import type { Graph } from '../../graph/v2/types';
 
 const appState = vi.hoisted(() => ({
-  graph: { version: 1, nodes: [], edges: [] } as AgentGraphSpec,
-  spec: { name: 'my-agent', prompt: '', provider: { type: 'mock', model: 'mock-1' } },
+  graph: { version: 2, nodes: [], emptySections: [], unplaced: [] } as unknown as Graph,
+  spec: { version: 2, name: 'my-agent', model: 'mock/mock-1', instructions: '' },
   setGraph: vi.fn(),
   setSelectedNodeId: vi.fn(),
   switchAgent: vi.fn(),
@@ -14,17 +14,20 @@ vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 import { render } from '../../ui/__tests__/render';
 import { EmptyCanvas } from '../EmptyCanvas';
 import { AGENT_TEMPLATES } from '../templates';
-import { specToGraph } from '../../graph/specToGraph';
+import { specToGraph } from '../../graph/v2/specToGraph';
+
+const rootOnly = (): Graph =>
+  specToGraph({ version: 2, name: 'my-agent', model: 'mock/mock-1', instructions: '' });
 
 beforeEach(() => {
-  appState.graph = { version: 1, nodes: [], edges: [] };
+  appState.graph = rootOnly();
   appState.setGraph.mockReset();
   appState.setSelectedNodeId.mockReset();
   appState.switchAgent.mockReset();
 });
 
 describe('EmptyCanvas', () => {
-  it('lists every template, by name and description, when the graph has no nodes', () => {
+  it('lists every template, by name and description, when the graph is just the root agent', () => {
     const container = render(<EmptyCanvas />);
     for (const template of AGENT_TEMPLATES) {
       const button = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes(template.name));
@@ -44,8 +47,14 @@ describe('EmptyCanvas', () => {
     expect(container.querySelector('.canvas-empty')).not.toBeNull();
   });
 
-  it('renders nothing once the canvas has a node', () => {
-    appState.graph = specToGraph(appState.spec);
+  it('renders nothing once the canvas has a capability node', () => {
+    appState.graph = specToGraph({
+      version: 2,
+      name: 'my-agent',
+      model: 'mock/mock-1',
+      instructions: '',
+      tools: [{ builtin: 'http' }],
+    });
     const container = render(<EmptyCanvas />);
     expect(container.innerHTML).toBe('');
   });
@@ -55,22 +64,22 @@ describe('EmptyCanvas', () => {
     const supportBot = [...container.querySelectorAll('button')].find((b) => b.textContent?.includes('Support bot'))!;
     act(() => supportBot.click());
     expect(appState.setGraph).toHaveBeenCalledTimes(1);
-    const next = appState.setGraph.mock.calls[0][0](appState.graph) as AgentGraphSpec;
-    expect(next.nodes.map((n) => n.type).sort()).toEqual(['llm', 'output', 'tool', 'trigger']);
-    const llm = next.nodes.find((n) => n.type === 'llm');
-    expect(llm?.type === 'llm' && llm.data.name).toBe('my-agent');
-    expect(appState.setSelectedNodeId).toHaveBeenCalledWith(llm?.id);
+    const next = appState.setGraph.mock.calls[0][0](appState.graph) as Graph;
+    expect(next.nodes.map((n) => n.kind).sort()).toEqual(['agent', 'tool', 'trigger']);
+    const agent = next.nodes.find((n) => n.id === 'agent');
+    expect(agent?.kind === 'agent' && agent.data.fields.name).toBe('my-agent');
+    expect(appState.setSelectedNodeId).toHaveBeenCalledWith('agent');
     expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 
-  it('has a primary action that starts the blank graph', () => {
+  it('has a primary action that starts the blank agent', () => {
     const container = render(<EmptyCanvas />);
     const primary = container.querySelector('.canvas-empty-action') as HTMLButtonElement;
     expect(primary.classList.contains('btn-primary')).toBe(true);
-    expect(primary.textContent).toBe('Start with a blank graph');
+    expect(primary.textContent).toBe('Start with a blank agent');
     act(() => primary.click());
-    const next = appState.setGraph.mock.calls[0][0](appState.graph) as AgentGraphSpec;
-    expect(next.nodes.some((n) => n.type === 'llm')).toBe(true);
-    expect(next.nodes.some((n) => n.type === 'tool')).toBe(false);
+    const next = appState.setGraph.mock.calls[0][0](appState.graph) as Graph;
+    expect(next.nodes.some((n) => n.kind === 'agent')).toBe(true);
+    expect(next.nodes.some((n) => n.kind === 'tool')).toBe(false);
   });
 });
