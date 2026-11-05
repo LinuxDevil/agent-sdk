@@ -112,15 +112,26 @@ function failure(value: unknown): AuthorToolFailure {
 }
 
 describe('buildAuthorTools', () => {
+<<<<<<< HEAD
   it('returns the 18 tools sorted by name, every one in AUTHOR_TOOL_NAMES', () => {
     const built = buildAuthorTools(TURN, fakeDeps());
     const names = built.map(nameOf);
     expect(names).toHaveLength(18);
+=======
+  it('returns the 19 tools sorted by name, every one in AUTHOR_TOOL_NAMES', () => {
+    const built = buildAuthorTools(TURN, fakeDeps());
+    const names = built.map(nameOf);
+    expect(names).toHaveLength(19);
+>>>>>>> origin/fb-aa11-discard
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
     for (const name of names) {
       expect(AUTHOR_TOOL_NAMES as readonly string[]).toContain(name);
     }
+<<<<<<< HEAD
     expect(AUTHOR_TOOL_FACTORIES).toHaveLength(18);
+=======
+    expect(AUTHOR_TOOL_FACTORIES).toHaveLength(19);
+>>>>>>> origin/fb-aa11-discard
   });
 
   it('builds the same list for different turns (the tool surface never changes mid-session)', () => {
