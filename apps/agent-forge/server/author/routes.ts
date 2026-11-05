@@ -31,7 +31,6 @@ import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import type { SecretsStore } from '../secretsStore';
 import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceResolver } from '../workspace/context';
-import type { SecretsStore } from '../secretsStore';
 import { identityOfProposal, resolveStoredProposal } from './proposal/gate';
 import { agentGoneFailure, unknownProposalFailure } from './proposal/failures';
 import { requestTextFor, writeProposal } from './proposal/save';
@@ -203,9 +202,11 @@ export function registerAuthorRoutes(
     sessions: AuthorSessionStore;
     /**
      * The app's named-secrets store (D13): the `POST .../secret` card
-     * answer writes through its encrypted `setSecret` path. The value
+     * answer writes through its encrypted `setSecret` path (the value
      * never enters the transcript, the WS stream or a log line - only
-     * the outcome is persisted.
+     * the outcome is persisted), and `POST .../enable` reads stored
+     * provider keys and named secrets through it for the
+     * `missingRequirements` count (AA13's `requirementDeps`).
      */
     secrets: SecretsStore;
     runner?: Pick<AuthorTurnRunner, 'running' | 'continueAfterUiEvent'>;
@@ -216,12 +217,6 @@ export function registerAuthorRoutes(
      * header.
      */
     workspaceResolver: WorkspaceResolver;
-    /**
-     * The Studio-global secrets store: `POST .../enable` reports the
-     * agent's `missingRequirements` count, which reads stored provider
-     * keys and named secrets through it (AA13's `requirementDeps`).
-     */
-    secrets: SecretsStore;
   }
 ): void {
   /**
@@ -367,7 +362,6 @@ export function registerAuthorRoutes(
     })
   );
 
-<<<<<<< HEAD
   // The SecretCard's submit (AA14): the value goes straight to the
   // encrypted secrets store, the pending requestSecret part settles to
   // 'done' with only the outcome, a `uiEvent: 'secret'` user message is
@@ -378,27 +372,11 @@ export function registerAuthorRoutes(
     asyncRoute(async (req, res) => {
       const id = sessionIdParam(req, res);
       if (id === undefined) return;
-=======
-  // The SuccessCard's "Enable agent" button (research §1.8, PLAN §18's
-  // added route): the same `setAgentEnabledFor` write the
-  // `setAgentEnabled` tool performs, gated on `createdAgentIds` instead of
-  // the model - a chat can only switch on an agent it created. It appends
-  // nothing to the transcript and starts no turn, so no turn-state or
-  // busy checks apply; a vanished workspace answers like a missing agent.
-  app.post(
-    '/assistant/sessions/:id/enable',
-    asyncRoute(async (req, res) => {
-      const id = sessionIdParam(req, res);
-      if (id === undefined) return;
-      const agentId = enableAgentIdOf(req.body, res);
-      if (agentId === undefined) return;
->>>>>>> origin/fb-aa11-discard
       const session = await deps.sessions.get(id);
       if (session === undefined) {
         sendError(res, 404, 'Chat not found.', 'NOT_FOUND');
         return;
       }
-<<<<<<< HEAD
       if (deps.runner?.running(id) !== undefined) {
         sendError(res, 409, 'Wait for the Author to finish replying, then try again.', 'BUSY');
         return;
@@ -470,7 +448,27 @@ export function registerAuthorRoutes(
       // The 204 is already on the wire so the card can close; the
       // continuation turn streams over the session's WS.
       void deps.runner?.continueAfterUiEvent(id).catch(() => undefined);
-=======
+    })
+  );
+
+  // The SuccessCard's "Enable agent" button (research §1.8, PLAN §18's
+  // added route): the same `setAgentEnabledFor` write the
+  // `setAgentEnabled` tool performs, gated on `createdAgentIds` instead of
+  // the model - a chat can only switch on an agent it created. It appends
+  // nothing to the transcript and starts no turn, so no turn-state or
+  // busy checks apply; a vanished workspace answers like a missing agent.
+  app.post(
+    '/assistant/sessions/:id/enable',
+    asyncRoute(async (req, res) => {
+      const id = sessionIdParam(req, res);
+      if (id === undefined) return;
+      const agentId = enableAgentIdOf(req.body, res);
+      if (agentId === undefined) return;
+      const session = await deps.sessions.get(id);
+      if (session === undefined) {
+        sendError(res, 404, 'Chat not found.', 'NOT_FOUND');
+        return;
+      }
       if (!session.createdAgentIds.includes(agentId)) {
         sendError(res, 400, 'This chat did not create that agent.', 'WRONG_AGENT');
         return;
@@ -490,7 +488,6 @@ export function registerAuthorRoutes(
         return;
       }
       res.status(200).json(result);
->>>>>>> origin/fb-aa11-discard
     })
   );
 }
