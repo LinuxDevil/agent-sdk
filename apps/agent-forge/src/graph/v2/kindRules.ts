@@ -6,6 +6,7 @@
  * never grow per-kind branches.
  */
 import { agentRules } from './kinds/agent';
+import { subagentRules } from './kinds/subagent';
 import type { Graph, GraphNode, NodeKind, NodeOfKind, Problem } from './types';
 
 /** The result of a user-drawn edge: a new graph, or a refusal with a user-facing reason. */
@@ -38,4 +39,5 @@ export const KIND_RULES: { [K in NodeKind]?: KindRules<K> } = {
   get agent() {
     return agentRules;
   },
+  subagent: subagentRules,
 };

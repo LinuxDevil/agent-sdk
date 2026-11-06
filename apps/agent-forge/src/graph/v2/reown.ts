@@ -25,6 +25,20 @@ function absolutePosition(graph: Graph, node: GraphNode): GraphPosition {
 const GROUP_ENTRY_POSITION: GraphPosition = { x: 24, y: 48 };
 
 /**
+ * An absolute flow position as the `position` a node owned by `ownerId`
+ * should store: unchanged for the root agent and ownerless nodes,
+ * group-relative inside an inline agent's group. Drop and palette-add
+ * callers convert their absolute drop point through this.
+ */
+export function positionFor(graph: Graph, absolute: GraphPosition, ownerId: string | null): GraphPosition {
+  if (ownerId === null || ownerId === ROOT_AGENT_ID) return absolute;
+  const owner = graph.nodes.find((n) => n.id === ownerId);
+  if (owner === undefined) return absolute;
+  const base = absolutePosition(graph, owner);
+  return { x: absolute.x - base.x, y: absolute.y - base.y };
+}
+
+/**
  * Moves a capability node to another agent. The node keeps its id
  * (`nodeIdMap` rekeys it at save). Entering a group moves it to
  * `{x:24,y:48}` inside the group; leaving a group restores its absolute

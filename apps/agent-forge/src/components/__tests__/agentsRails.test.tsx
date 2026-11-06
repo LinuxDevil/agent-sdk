@@ -203,15 +203,24 @@ describe('NodesTab palette', () => {
 
   it('shows the hint while KIND_VIEWS has no registered views', async () => {
     const { LeftRail } = await import('../LeftRail');
+    const { KIND_VIEWS } = await import('../../canvas/kinds');
     const { ReactFlowProvider } = await import('@xyflow/react');
-    appState.railTab = 'nodes';
-    const container = render(
-      <ReactFlowProvider>
-        <LeftRail />
-      </ReactFlowProvider>,
-    );
-    expect(container.querySelector('.hint')?.textContent).toBe('Node types arrive with the next updates.');
-    appState.railTab = 'agents';
+    // Registered kind views now ship palette entries (C03/C04); stash them
+    // so the empty-palette hint can still be exercised.
+    const saved = { ...KIND_VIEWS };
+    for (const key of Object.keys(KIND_VIEWS)) delete KIND_VIEWS[key as keyof typeof KIND_VIEWS];
+    try {
+      appState.railTab = 'nodes';
+      const container = render(
+        <ReactFlowProvider>
+          <LeftRail />
+        </ReactFlowProvider>,
+      );
+      expect(container.querySelector('.hint')?.textContent).toBe('Node types arrive with the next updates.');
+    } finally {
+      Object.assign(KIND_VIEWS, saved);
+      appState.railTab = 'agents';
+    }
   });
 
   it('renders palette entries grouped by PaletteGroup and drags the entry id', async () => {
@@ -226,9 +235,15 @@ describe('NodesTab palette', () => {
           <LeftRail />
         </ReactFlowProvider>,
       );
-      expect([...container.querySelectorAll('.palette-group .rail-section-title')].map((g) => g.textContent)).toEqual(['Capabilities']);
-      const item = container.querySelector('.node-palette-item') as HTMLElement;
-      expect(item.getAttribute('aria-label')).toBe('Tool call');
+      // The registered views contribute the Agents group (C04); the fake view adds Capabilities.
+      expect([...container.querySelectorAll('.palette-group .rail-section-title')].map((g) => g.textContent)).toEqual([
+        'Agents',
+        'Capabilities',
+      ]);
+      const item = [...container.querySelectorAll<HTMLElement>('.node-palette-item')].find(
+        (el) => el.getAttribute('aria-label') === 'Tool call',
+      )!;
+      expect(item).toBeDefined();
       const dataTransfer = { setData: vi.fn(), effectAllowed: '' };
       const event = new Event('dragstart', { bubbles: true });
       Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
