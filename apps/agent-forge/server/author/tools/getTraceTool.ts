@@ -11,6 +11,7 @@
 import { defineTool } from 'lousho';
 import { z } from 'zod';
 import { isValidTraceId, readAgentTrace } from '../../traceStore';
+import { isValidAgentId } from '../../../shared/agentId';
 import type { SpanEvent } from '../../../shared/wireTypes';
 import type { AuthorToolFailure } from '../../../shared/authorWire';
 import type { AuthorToolFactory } from './index';
@@ -53,6 +54,16 @@ export const getTraceTool: AuthorToolFactory = (_turn, deps) =>
             `Trace id "${traceId}" is not a valid trace id.`,
             'That is not a trace id.',
             'Use the traceId from a runDraft result or one the user gave you.'
+          );
+        }
+        // agentId becomes a filesystem path segment in agentTraceDir - same
+        // validation every :id route applies before it can reach path.join.
+        if (agentId !== undefined && !isValidAgentId(agentId)) {
+          return toolFailure(
+            'INVALID_INPUT',
+            `Agent id "${agentId}" is not a valid agent id.`,
+            'That is not an agent id.',
+            'Call listAgents and copy an id from it.'
           );
         }
         const workspace = await deps.workspace();

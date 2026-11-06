@@ -269,4 +269,15 @@ describe('getTrace', () => {
     const out = (await call(tool(deps(root, repo)), { traceId: '../../etc/passwd' })) as AuthorToolFailure;
     expect(out).toMatchObject({ ok: false, code: 'INVALID_INPUT' });
   });
+
+  it('a traversal-looking agent id is INVALID_INPUT before it can reach a path', async () => {
+    const { root, repo } = await workspaceWithTrace('agent-a', 'trace-abc123');
+    for (const agentId of ['../../outside', 'a..b', 'has space']) {
+      const out = (await call(tool(deps(root, repo)), {
+        traceId: 'trace-abc123',
+        agentId,
+      })) as AuthorToolFailure;
+      expect(out).toMatchObject({ ok: false, code: 'INVALID_INPUT' });
+    }
+  });
 });

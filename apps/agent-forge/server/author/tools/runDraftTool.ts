@@ -149,20 +149,6 @@ function runStartFailure(agentId: string, error: unknown): AuthorToolFailure {
   );
 }
 
-/**
- * Stops a run paused on a tool approval. `RunManager.stop()` only aborts
- * `running` entries, so the pause is first released by rejecting the
- * pending approval (the entry flips back to 'running'), then stopped -
- * the settled-aborted run lands on `stopped` like any other stop.
- */
-async function stopPausedRun(runManager: RunManager, agentId: string, paused: AgentRunStatusPayload): Promise<void> {
-  const approvalId = paused.pendingApproval?.approvalId;
-  if (approvalId !== undefined) {
-    await runManager.approve(agentId, approvalId, false, 'Test run stopped.').catch(() => {});
-  }
-  runManager.stop(agentId);
-}
-
 /** The `ok: true` envelope every runDraft path returns. */
 function runDraftOutput(
   agentId: string,
@@ -203,6 +189,10 @@ export const runDraftTool: AuthorToolFactory = (turn, deps) =>
         if (current.status === 'running' || current.status === 'paused') {
           return runBusyFailure(agentId);
         }
+        // An already-aborted turn starts no run at all (there is nothing to stop).
+        if (turn.signal.aborted) {
+          return runDraftOutput(agentId, 'stopped', runManager.status(agentId), 0, []);
+        }
         // Subscribe before run() so a run that settles inside the call is not missed.
         const wait = waitForTerminalStatus(runManager, agentId, {
           timeoutMs: RUN_DRAFT_TIMEOUT_MS,
@@ -223,7 +213,8 @@ export const runDraftTool: AuthorToolFactory = (turn, deps) =>
         }
         const final = outcome.status;
         if (final.status === 'paused' && final.reason === 'awaiting_approval') {
-          await stopPausedRun(runManager, agentId, final);
+          // stop() discards the pending approval and marks the run stopped.
+          runManager.stop(agentId);
           const toolName = final.pendingApproval?.toolName ?? 'unknown';
           return runDraftOutput(agentId, 'awaiting_approval', final, durationMs, [
             `Waiting for approval of ${toolName}; the test run was stopped.`,

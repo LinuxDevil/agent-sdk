@@ -818,12 +818,32 @@ export class RunManager extends EventEmitter {
    * path aborts through the AgentHost (its run resolves
    * `finishReason: 'aborted'`, which handleRunSettled maps to 'stopped'),
    * the flow path aborts its controller (RunAbortedError → 'stopped').
+   * A PAUSED run has no live execution to signal: its `host.abort()`
+   * discards the pending approval files and emits no event, so this also
+   * marks the entry 'stopped' directly - a paused agent must never be
+   * stuck waiting for a settle that never comes.
    * No-ops (rather than throwing) if the agent isn't currently running -
    * Stop is safe to click on an already-stopped/idle agent.
    */
   stop(agentId: string): void {
     const entry = this.entries.get(agentId);
-    if (!entry || entry.status !== 'running') {
+    if (!entry) {
+      return;
+    }
+    if (entry.status === 'paused') {
+      if (entry.kind === 'agent' && entry.hostRunId !== undefined) {
+        void this.opts.host.abort(entry.hostRunId, 'user');
+      }
+      this.setEntry(agentId, {
+        status: 'stopped',
+        reason: undefined,
+        pendingApproval: undefined,
+        controller: undefined,
+        hostRunId: undefined,
+      });
+      return;
+    }
+    if (entry.status !== 'running') {
       return;
     }
     if (entry.kind === 'agent') {
