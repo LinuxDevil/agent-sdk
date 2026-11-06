@@ -42,7 +42,6 @@ export type IntegrationName = 'github' | 'jira' | 'slack' | 'email';
  * SecretRef; {@link refineIntegration} reports every key that is missing or
  * unknown by name.
  */
-// fallow-ignore-next-line unused-export -- consumed by later spec v2 consumers (S06 tool catalog, Studio integration forms)
 export const INTEGRATION_CREDENTIALS = {
   github: { required: ['token', 'owner', 'repo'], optional: [] },
   jira: { required: ['baseUrl', 'email', 'apiToken'], optional: [] },
@@ -54,7 +53,6 @@ export const INTEGRATION_CREDENTIALS = {
  * The credential keys that hold a secret. A literal string there is refused:
  * the value would land in git and in spec exports, so it must be a SecretRef.
  */
-// fallow-ignore-next-line unused-export -- consumed by later spec v2 consumers (S06 tool catalog, Studio integration forms)
 export const SECRET_CREDENTIALS: Record<IntegrationName, readonly string[]> = {
   github: ['token'],
   jira: ['apiToken'],

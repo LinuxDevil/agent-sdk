@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { issueMessage, typeErrors, type SchemaIssue } from '../../utils/zodCompat';
 
 /** What {@link specIdSchema} accepts. */
-// fallow-ignore-next-line unused-export -- consumed by later spec v2 section schemas (ids in error messages)
 export const SPEC_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 /** Id of a list entry (guardrail, permission, hook, trigger, ...); canvas node ids are built from it. */

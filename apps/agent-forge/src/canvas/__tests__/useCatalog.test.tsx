@@ -86,6 +86,20 @@ describe('useCatalog', () => {
     expect(container.querySelector('.probe')!.textContent).toBe('offline');
   });
 
+  it('refetches a mounted hook when refreshCatalog runs (the Retry path)', async () => {
+    const spy = vi.spyOn(runtimeClient, 'catalogModels').mockRejectedValue(new Error('offline'));
+    container = render(<Probe />);
+    await flush();
+    expect(container.querySelector('.probe')!.textContent).toBe('offline');
+
+    spy.mockResolvedValue(MODELS);
+    act(() => refreshCatalog('models'));
+    expect(container.querySelector('.probe')!.textContent).toBe('loading');
+    await flush();
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('.probe')!.textContent).toBe('data:1');
+  });
+
   it('refetches on the next mount after refreshCatalog', async () => {
     const spy = vi.spyOn(runtimeClient, 'catalogModels').mockResolvedValue(MODELS);
     container = render(<Probe />);

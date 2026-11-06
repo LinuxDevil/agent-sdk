@@ -2,7 +2,7 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../ui/__tests__/render';
 import { specToGraph } from '../../graph/v2/specToGraph';
-import type { Graph, ToolNodeData } from '../../graph/v2/types';
+import type { Graph, SkillNodeData } from '../../graph/v2/types';
 
 const appState = vi.hoisted(() => ({
   graph: { version: 2, nodes: [], emptySections: [], unplaced: [] } as unknown as Graph,
@@ -22,12 +22,12 @@ const baseGraph = (): Graph =>
     name: 'bot',
     model: 'mock/mock-1',
     instructions: 'p',
-    tools: [{ builtin: 'http' }],
-  });
+    skills: [{ dir: 'skills/review' }],
+  } as Parameters<typeof specToGraph>[0]);
 
 beforeEach(() => {
   appState.graph = baseGraph();
-  appState.selectedNodeId = 'tool:http';
+  appState.selectedNodeId = 'skill:review';
   appState.setGraph.mockReset();
 });
 
@@ -47,20 +47,20 @@ function editJson(container: HTMLElement, value: string) {
 describe('generic Inspector', () => {
   it('shows the selected node header and the JSON editor seeded with its item', () => {
     const container = render(<Inspector />);
-    expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (tool)');
-    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('http');
+    expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (skill)');
+    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('review');
     const textarea = container.querySelector('#node-json') as HTMLTextAreaElement;
-    expect(JSON.parse(textarea.value)).toEqual({ builtin: 'http' });
+    expect(JSON.parse(textarea.value)).toEqual({ dir: 'skills/review' });
     expect(container.textContent).toContain('This node has no form yet.');
   });
 
   it('a valid JSON edit on blur calls setGraph and changes the node data', () => {
     const container = render(<Inspector />);
-    editJson(container, '{ "builtin": "fetch" }');
+    editJson(container, '{ "dir": "skills/other" }');
     expect(appState.setGraph).toHaveBeenCalledTimes(1);
     const next = appState.setGraph.mock.calls[0][0](appState.graph) as Graph;
-    const tool = next.nodes.find((n) => n.id === 'tool:http')!;
-    expect((tool.data as ToolNodeData).item).toEqual({ builtin: 'fetch' });
+    const skill = next.nodes.find((n) => n.id === 'skill:review')!;
+    expect((skill.data as SkillNodeData).item).toEqual({ dir: 'skills/other' });
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 

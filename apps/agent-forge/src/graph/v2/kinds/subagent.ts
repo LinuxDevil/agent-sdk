@@ -6,9 +6,9 @@
  * kinds.
  */
 import { uniqueName } from '../nodeIds';
-import { subagentEntryKey, subagentSiblingKeys } from '../order';
+import { ownerSpecPrefix, subagentSiblingKeys } from '../order';
 import type { KindRules } from '../kindRules';
-import type { Graph, GraphNode, NodeOfKind, Problem } from '../types';
+import type { Graph, NodeOfKind, Problem } from '../types';
 
 /**
  * The `subagents` record-key rule the Inspector and the validator share.
@@ -17,24 +17,9 @@ import type { Graph, GraphNode, NodeOfKind, Problem } from '../types';
  */
 export const SUBAGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
-/** `''` for a root-owned subagent, else the owner agent's `subagents.<key>.inline` chain plus a trailing `.`. */
-function ownerPrefix(node: NodeOfKind<'subagent'>, graph: Graph): string {
-  const segments: string[] = [];
-  let ownerId: string | null = node.owner;
-  while (ownerId !== null) {
-    const owner: GraphNode | undefined = graph.nodes.find((n) => n.id === ownerId);
-    // The root agent contributes no segment — only inline agents do.
-    if (owner === undefined || owner.kind !== 'agent' || owner.owner === null) break;
-    const key: string | undefined = subagentEntryKey(owner);
-    segments.unshift(`subagents.${key ?? ''}.inline`);
-    ownerId = owner.owner;
-  }
-  return segments.length === 0 ? '' : `${segments.join('.')}.`;
-}
-
 /** The node's spec path: `<owner prefix>subagents.<key>`. */
 function subagentSpecPath(node: NodeOfKind<'subagent'>, graph: Graph): string {
-  return `${ownerPrefix(node, graph)}subagents.${node.data.key}`;
+  return `${ownerSpecPrefix(node.owner, graph)}subagents.${node.data.key}`;
 }
 
 /**
