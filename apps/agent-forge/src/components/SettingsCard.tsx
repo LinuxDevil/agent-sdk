@@ -7,15 +7,21 @@ export function SettingsCard({
   Icon,
   title,
   description,
+  status,
+  id,
   children,
 }: {
   Icon: LucideIcon;
   title: string;
   description: string;
+  /** Right-hand end of the card header: a status pill and/or small actions (e.g. the Agent Author's Ready pill). */
+  status?: ReactNode;
+  /** Section element id, for same-page scroll targets (`settings-provider-keys`). */
+  id?: string;
   children: ReactNode;
 }) {
   return (
-    <section className="settings-card" aria-label={title}>
+    <section className="settings-card" aria-label={title} id={id}>
       <div className="settings-card-head">
         <span className="settings-card-icon" aria-hidden="true">
           <Icon size={16} strokeWidth={1.75} />
@@ -24,6 +30,7 @@ export function SettingsCard({
           <span className="settings-card-title">{title}</span>
           <span className="settings-card-desc">{description}</span>
         </span>
+        {status != null && <span className="settings-card-status">{status}</span>}
       </div>
       {children}
     </section>

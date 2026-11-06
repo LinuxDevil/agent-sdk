@@ -16,6 +16,13 @@ vi.mock('../../runtime/runtimeClient', () => ({
     listProviderKeys: async () => keys.list,
     listSettingsProfiles: async () => ({ activeProfileId: 'local', profiles: [] }),
     listDeployAdapters: async () => ['node-server'],
+    getAuthorSettings: async () => ({
+      model: 'anthropic/claude-sonnet-5-5',
+      reviewModel: 'anthropic/claude-haiku-5-5',
+      reviewEnabled: true,
+      ready: true,
+    }),
+    catalogModels: async () => [],
   },
 }));
 vi.mock('../../shell/DaemonStatus', () => ({
@@ -56,11 +63,12 @@ describe('SettingsPanel', () => {
     expect(sectionNames(host)).toEqual(['Provider keys', 'Settings profile', 'Deploy target']);
   });
 
-  it('the routed screen adds Appearance, Collector and Keyboard shortcuts', async () => {
+  it('the routed screen adds Appearance, Agent Author, Collector and Keyboard shortcuts', async () => {
     const host = await mount('screen');
     expect(sectionNames(host)).toEqual([
       'Appearance',
       'Provider keys',
+      'Agent Author',
       'Settings profile',
       'Deploy target',
       'Collector',
