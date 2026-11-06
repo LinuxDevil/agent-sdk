@@ -36,6 +36,13 @@ const SPEC: AgentSpecV2 = {
   instructions: 'You are a helpful agent.',
 };
 
+/** A gated spec whose tool call pauses the run awaiting approval (same shape as inProcessAgentHost.test.ts's GATED). */
+const GATED: AgentSpecV2 = {
+  ...SPEC,
+  tools: [{ builtin: 'current_date' }],
+  permissions: [{ id: 'p1', tool: 'current_date', action: 'ask' }],
+};
+
 const dirs: string[] = [];
 
 afterEach(() => {
@@ -90,11 +97,11 @@ async function call(t: ToolDescriptor, args: Record<string, unknown>): Promise<u
 }
 
 /** A real RunManager on a temp workspace with `agent-a` saved (mock provider). */
-async function realWorkspace(): Promise<{ root: string; repo: AgentRepo; runs: RunManager }> {
+async function realWorkspace(spec: AgentSpecV2 = SPEC, agentId = 'agent-a'): Promise<{ root: string; repo: AgentRepo; runs: RunManager }> {
   const root = mkdtempSync(path.join(tmpdir(), 'aa20-run-'));
   dirs.push(root);
   const repo = new AgentRepo(root);
-  await repo.writeSpec('agent-a', SPEC);
+  await repo.writeSpec(agentId, spec);
   const runs = new RunManager({
     baseDir: root,
     checkpointStore: new FileCheckpointStore(root),
@@ -212,8 +219,36 @@ describe('runDraft', () => {
     const out = (await call(tool(turn(), fakeDeps(runs)), { agentId: 'agent-a', input: 'charge me' })) as RunDraftOutput;
     expect(out).toMatchObject({ ok: true, status: 'awaiting_approval' });
     expect(out.errors).toEqual(['Waiting for approval of charge_card; the test run was stopped.']);
-    expect(runs.approve).toHaveBeenCalledWith('agent-a', 'ap-1', false, expect.any(String));
     expect(runs.stop).toHaveBeenCalledWith('agent-a');
+  });
+
+  it('a real run paused for approval is stopped - the entry cannot stay permanently paused', async () => {
+    const { root, repo, runs } = await realWorkspace(GATED, 'gated');
+    const ctx = context({ ref: { root } as never, repo, runs });
+    const out = (await call(tool(turn(), deps(ctx)), {
+      agentId: 'gated',
+      input: 'please use current_date',
+    })) as RunDraftOutput;
+    expect(out).toMatchObject({ ok: true, status: 'awaiting_approval' });
+    expect(out.errors[0]).toContain('current_date');
+    // The paused run is really gone: the entry is stopped and the next runDraft is not RUN_BUSY.
+    expect(runs.status('gated').status).toBe('stopped');
+    const again = (await call(tool(turn(), deps(ctx)), { agentId: 'gated', input: 'hi' })) as RunDraftOutput;
+    expect(again.ok).toBe(true);
+    expect(again.status).not.toBe('awaiting_approval');
+  });
+
+  it('an already-aborted turn starts no run and reports stopped', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const runs = new FakeRuns();
+    const out = (await call(tool(turn(controller.signal), fakeDeps(runs)), {
+      agentId: 'agent-a',
+      input: 'hi',
+    })) as RunDraftOutput;
+    expect(out).toMatchObject({ ok: true, status: 'stopped', traceId: null });
+    expect(runs.run).not.toHaveBeenCalled();
+    expect(runs.stop).not.toHaveBeenCalled();
   });
 
   it('a run ending in error reports error with the run error, and a long result is clipped', async () => {
