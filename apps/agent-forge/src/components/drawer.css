@@ -515,6 +515,27 @@
   font-size: 12px;
   color: var(--text-muted);
 }
+/* Right-hand end of a card header (a status pill, a small action). */
+.settings-card-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  padding-left: var(--space-3);
+}
+/* A Field inside a setting row wraps only the control (its label is visually
+   hidden - the row's own label is the visible one) - collapse its margins. */
+.setting-row-control > .field {
+  margin-bottom: 0;
+}
+.setting-row-control > .field > .field-label {
+  margin-bottom: 0;
+}
+.setting-row-control > .field > .select {
+  min-width: 240px;
+  width: auto;
+}
 .settings-card > .settings-key:last-of-type {
   margin-bottom: 0;
 }

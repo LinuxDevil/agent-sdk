@@ -66,6 +66,7 @@ import {
   type AuthorSession,
   type AuthorSessionRecord,
   type AuthorSessionSummary,
+  type AuthorSettings,
   type AuthorSettingsPayload,
   type SetEnabledOutput,
 } from '../../shared/authorWire';
@@ -724,6 +725,17 @@ class RuntimeClient implements AgentApi {
   /** The Author's model choices plus `ready`/`missingKeyFor` (`GET /settings/author`). */
   async getAuthorSettings(): Promise<AuthorSettingsPayload> {
     return this.request('/settings/author', { method: 'GET' });
+  }
+
+  /**
+   * Patches the Author's model choices (`PUT /settings/author`) and
+   * answers the effective settings - the response also recomputes
+   * `ready`/`missingKeyFor`, so a model swap can flip the SetupCard.
+   * Rejects with the server's `{ error }` (400 `INVALID_INPUT` for a
+   * `model` that is not `provider/model`).
+   */
+  async saveAuthorSettings(patch: Partial<AuthorSettings>): Promise<AuthorSettingsPayload> {
+    return this.request('/settings/author', { method: 'PUT', body: JSON.stringify(patch) });
   }
 
   /**

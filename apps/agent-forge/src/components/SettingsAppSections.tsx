@@ -11,6 +11,7 @@ import {
   type Density,
   type ThemeChoice,
 } from '../shell/theme';
+import { AuthorSettingsCard } from './AuthorSettingsCard';
 import { SettingRow, SettingsCard, TonePill } from './SettingsCard';
 import '../ui/filterBar.css';
 
@@ -126,6 +127,15 @@ export function CollectorSection() {
       </SettingRow>
     </SettingsCard>
   );
+}
+
+/**
+ * The Agent Author's model choices (author model, review model, review on/off).
+ * A screen-only section: it sits under Provider keys because that is where its
+ * "Add key" button sends you, and the builder drawer's Settings tab does not show it.
+ */
+export function AgentAuthorSection() {
+  return <AuthorSettingsCard />;
 }
 
 /** Every Studio shortcut, from the same list as the `?` sheet. */
