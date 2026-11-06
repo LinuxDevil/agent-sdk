@@ -25,6 +25,10 @@ export interface ChoiceFieldProps<T extends string> {
   unsetLabel?: string;
   /** Muted help under the control. */
   help?: ReactNode;
+  /** Danger text under the control; marks it `aria-invalid`. */
+  error?: string;
+  /** Draws the required marker on the label. */
+  required?: boolean;
 }
 
 /** The select's internal value for `undefined` (option values are their 1-based index). */
@@ -43,6 +47,8 @@ export function ChoiceField<T extends string>({
   allowUnset = false,
   unsetLabel = 'Default',
   help,
+  error,
+  required = false,
 }: ChoiceFieldProps<T>): JSX.Element {
   const selected = value === undefined ? UNSET : String(options.findIndex((option) => option.value === value) + 1);
   const selectOptions = [
@@ -56,7 +62,7 @@ export function ChoiceField<T extends string>({
   };
 
   return (
-    <Field id={id} label={label} hint={help}>
+    <Field id={id} label={label} hint={help} error={error} required={required}>
       <Select options={selectOptions} value={selected} onChange={onSelect} />
     </Field>
   );

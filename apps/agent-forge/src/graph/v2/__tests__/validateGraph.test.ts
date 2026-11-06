@@ -14,7 +14,7 @@ model: anthropic/claude-sonnet-5-5
 instructions: Triage tickets.
 tools:
   - builtin: http
-  - builtin: http
+  - builtin: web-fetch
     approval: always
 mcpServers:
   github: { command: npx, args: [-y, '@modelcontextprotocol/server-github'] }
@@ -74,10 +74,10 @@ describe('validateGraph: core checks', () => {
   });
 
   it('reports two nodes sharing an id', () => {
-    const g = specToGraph(minimalSpec({ tools: [{ builtin: 'http' }] }));
+    const g = specToGraph(minimalSpec({ skills: [{ dir: 'skills/review' }] }));
     const dup: Graph = { ...g, nodes: [...g.nodes, { ...g.nodes[1] }] };
     expect(validateGraph(dup)).toStrictEqual([
-      error('tool:http', "Two nodes share the id 'tool:http'"),
+      error('skill:review', "Two nodes share the id 'skill:review'"),
     ]);
   });
 

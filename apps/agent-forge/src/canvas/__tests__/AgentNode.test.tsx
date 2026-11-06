@@ -11,7 +11,8 @@ const graph = specToGraph({
   model: 'openai/gpt-4o-mini',
   instructions: 'p',
   tools: [{ builtin: 'http' }],
-});
+  skills: [{ dir: 'skills/review' }],
+} as Parameters<typeof specToGraph>[0]);
 const nodeOf = (kind: GraphNode['kind']) => graph.nodes.find((n) => n.kind === kind)!;
 
 /** The `agent` node of a spec built just for this test (fields as given). */
@@ -37,6 +38,48 @@ function renderCard(graphNode: GraphNode, extra: Partial<CanvasNodeData> = {}): 
   return container.querySelector('.rf-node') as HTMLElement;
 }
 
+describe('tool card (KindView)', () => {
+  const toolNodeOf = (item: unknown) =>
+    specToGraph({
+      version: 2,
+      name: 'a',
+      model: 'mock/mock-1',
+      instructions: 'x',
+      tools: [item],
+    } as Parameters<typeof specToGraph>[0]).nodes.find((n) => n.kind === 'tool')!;
+
+  const rowText = (card: HTMLElement, key: string) =>
+    [...card.querySelectorAll('.node-row')].find((r) => r.firstElementChild?.textContent === key)
+      ?.querySelector('code')?.textContent;
+
+  it('titles the card by the tool name and chips it by form', () => {
+    const card = renderCard(toolNodeOf({ builtin: 'web_fetch' }));
+    expect(card.querySelector('.rf-node-title')?.textContent).toBe('web_fetch');
+    expect(card.querySelector('.node-chip')?.textContent).toBe('built-in');
+    expect(card.querySelector('.node-kind')?.classList.contains('kind-info')).toBe(true);
+  });
+
+  it('shows the approval and on-demand rows', () => {
+    const card = renderCard(toolNodeOf({ builtin: 'web_fetch', approval: 'always', deferLoading: true }));
+    expect(rowText(card, 'approval')).toBe('always ask');
+    expect(rowText(card, 'loading')).toBe('on demand');
+  });
+
+  it('shows the registry version and the OpenAPI host rows', () => {
+    const registry = renderCard(toolNodeOf({ registry: 'github-issues', version: '1.2.0' }));
+    expect(registry.querySelector('.node-chip')?.textContent).toBe('registry');
+    expect(rowText(registry, 'version')).toBe('1.2.0');
+    const openapi = renderCard(toolNodeOf({ openapi: { url: 'https://api.example.com/openapi.json' } }));
+    expect(rowText(openapi, 'host')).toBe('api.example.com');
+  });
+
+  it('titles an id-carrying tool by its id', () => {
+    const card = renderCard(toolNodeOf({ builtin: 'web_fetch', id: 'fetch-docs' }));
+    expect(card.querySelector('.rf-node-title')?.textContent).toBe('fetch-docs');
+    expect(card.querySelector('.node-chip')?.textContent).toBe('built-in');
+  });
+});
+
 describe('AgentNode card', () => {
   it('shows the agent name as title, its kind and the run status', () => {
     const card = renderCard(nodeOf('agent'), { status: 'running' });
@@ -46,7 +89,7 @@ describe('AgentNode card', () => {
     expect(card.querySelector('.status-pill')?.textContent).toBe('running');
   });
 
-  it('is idle by default and names a tool node by its spec name', () => {
+  it('is idle by default and names a capability node by its spec name', () => {
     const card = renderCard(nodeOf('tool'));
     expect(card.querySelector('.rf-node-title')?.textContent).toBe('http');
     expect(card.getAttribute('data-node-kind')).toBe('tool');
@@ -54,7 +97,7 @@ describe('AgentNode card', () => {
   });
 
   it('draws both ports and the neutral kind tile of the generic view', () => {
-    const card = renderCard(nodeOf('tool'), { status: 'done' });
+    const card = renderCard(nodeOf('skill'), { status: 'done' });
     expect(card.querySelector('.rf-port-in')).not.toBeNull();
     expect(card.querySelector('.rf-port-out')).not.toBeNull();
     expect(card.querySelector('.node-kind')?.classList.contains('kind-neutral')).toBe(true);
@@ -76,7 +119,7 @@ describe('AgentNode card', () => {
   });
 
   it('renders the generic card markup', () => {
-    const card = renderCard(nodeOf('tool'), { status: 'paused' });
+    const card = renderCard(nodeOf('skill'), { status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();
   });
 });

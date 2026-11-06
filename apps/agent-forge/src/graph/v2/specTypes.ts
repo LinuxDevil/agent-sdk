@@ -13,8 +13,16 @@ export type { AgentFlow } from 'lousho/flows';
 
 /** The agent spec the canvas edits, plus its subagent union. */
 export type { AgentSpecV2, SubagentSpec } from '../../../../../src/spec/v2/types';
-/** One `spec.tools` entry. */
-export type { ToolRef } from '../../../../../src/spec/v2/tools';
+/**
+ * One `spec.tools` entry, plus the SDK's own lists for the tool Inspector:
+ * the credential keys each integration takes (`INTEGRATION_CREDENTIALS`),
+ * the keys that must be `SecretRef`s (`SECRET_CREDENTIALS`) and the spec-id
+ * pattern a `ToolRef`'s `id` follows (`SPEC_ID_PATTERN`). Value exports
+ * alongside the type exports — the seam is the same.
+ */
+export type { ToolRef, IntegrationName, OpenApiToolRefOptions } from '../../../../../src/spec/v2/tools';
+export { INTEGRATION_CREDENTIALS, SECRET_CREDENTIALS } from '../../../../../src/spec/v2/tools';
+export { SPEC_ID_PATTERN } from '../../../../../src/spec/v2/common';
 /** A reference to an env var or a named Studio secret. */
 export type { SecretRef } from '../../../../../src/spec/v2/secrets';
 /** One `spec.skills` entry. */
