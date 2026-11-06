@@ -14,6 +14,7 @@ import { fireOpenPage } from '../authorEvents';
 import { initialAuthorChatState, type AuthorChatState } from '../authorChatReducer';
 import { render, rerender } from '../../ui/__tests__/render';
 import { installMemoryStorage } from '../../ui/__tests__/memoryStorage';
+import { ToastProvider } from '../../ui/Toast';
 import type { AuthorChat } from '../AuthorChatContext';
 import type {
   AuthorAssistantMessage,
@@ -84,9 +85,11 @@ function user(text: string, uiEvent?: AuthorUserMessage['uiEvent']): AuthorUserM
 function mount(chat: AuthorChat): HTMLDivElement {
   mocks.chat = chat;
   return render(
-    <AppShell dock={<AuthorPanel />}>
-      <p>screen</p>
-    </AppShell>
+    <ToastProvider>
+      <AppShell dock={<AuthorPanel />}>
+        <p>screen</p>
+      </AppShell>
+    </ToastProvider>
   );
 }
 
@@ -168,9 +171,12 @@ describe('AuthorPanel conversation', () => {
     const c = mount(chatWith({ messages }));
     expect(c.querySelector('.author-msg--user .author-bubble')?.textContent).toBe('Build me a triage agent');
     expect(c.querySelector('.author-text')?.textContent).toBe('Here is a draft.');
+    // The save uiEvent renders its SuccessCard (the propose part is gone, so
+    // the card falls back to update + the agent id); secret events keep the
+    // quiet event line.
+    expect(c.querySelector('.success-card-title')?.textContent).toBe('Updated “triage”');
     const events = [...c.querySelectorAll('.author-event')].map((e) => e.textContent);
     expect(events).toEqual([
-      'You applied the proposal · saved as version 3',
       'You saved JIRA_TOKEN',
       'You skipped SLACK_TOKEN',
     ]);

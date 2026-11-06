@@ -16,6 +16,8 @@ import { AuthorComposer } from './AuthorComposer';
 import { AuthorMessages } from './AuthorMessages';
 // Registers the proposeAgent/proposeAgentUpdate ProposalCard renderers.
 import './proposalRenderers';
+// Registers the saveAgent/saveAgentUpdate SuccessCard and save uiEvent renderers.
+import './successRenderers';
 
 /** Past this many px from the bottom, autoscroll leaves the user alone. */
 const SCROLL_PIN_PX = 80;

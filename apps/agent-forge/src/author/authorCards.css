@@ -1,0 +1,65 @@
+/*
+ * The small result cards the Author draws inside the conversation
+ * (SuccessCard now; secret/error/setup cards reuse the file later).
+ * Colours come only from theme.css tokens.
+ */
+.success-card {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius);
+  background: var(--success-soft);
+}
+.success-card-icon {
+  flex: none;
+  color: var(--success);
+}
+.success-card-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.success-card-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+.success-card-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+
+/* The "turned on but not runnable yet" warning after an enable. */
+.success-card-warn {
+  margin: 0;
+  color: var(--warning);
+  font-size: var(--fs-meta);
+}
+
+/* The requirement list: the readiness rows still missing. */
+.success-card-reqs {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+.success-card-reqs li + li {
+  margin-top: var(--space-1);
+}
+
+.success-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.success-card-on {
+  color: var(--success);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+}
