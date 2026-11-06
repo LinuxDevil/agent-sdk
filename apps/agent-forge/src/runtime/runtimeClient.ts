@@ -36,6 +36,7 @@ import type {
   PatchAgentMetaRequest,
   PromptSuggestion,
   ProviderKeyStatus,
+  Requirement,
   RunComparisonPayload,
   RunHistoryPayload,
   SecretStatus,
@@ -156,6 +157,11 @@ class RuntimeClient implements AgentApi {
       if (error instanceof RuntimeApiError && error.status === 404) return undefined;
       throw error;
     }
+  }
+
+  /** The agent's readiness rows on their own (`GET /agents/:id/requirements`) - the SuccessCard lists the still-missing ones after enabling. */
+  async getAgentRequirements(agentId: string): Promise<Requirement[]> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/requirements`, { method: 'GET' });
   }
 
   /** Writes `.lousho/agents/<id>.yaml` from a spec v2 working copy (`PUT /agents/:id` with a `{ spec }` body). */
