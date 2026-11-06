@@ -56,7 +56,7 @@ function FreeText({
 }: {
   value: string | undefined;
   catalogError: string | undefined;
-  onChange: (value: string | undefined) => void;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }): JSX.Element {
   return (
     <div className="modelpicker-row">

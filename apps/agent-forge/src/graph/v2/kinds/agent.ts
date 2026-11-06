@@ -5,8 +5,11 @@
  * `duplicateData` arrives with the subagent group ticket (C04).
  */
 import type { ConnectResult, KindRules } from '../kindRules';
+import { uniqueName } from '../nodeIds';
+import { subagentSiblingKeys } from '../order';
 import { reownNode } from '../reown';
 import type { AgentNodeData, Graph, GraphNode, NodeOfKind, Problem } from '../types';
+import { ROOT_AGENT_ID } from '../types';
 
 /** The spec `name` rule: 1-64 letters, digits, spaces, dots, dashes or underscores, starting with a letter or digit. */
 export const AGENT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,63}$/;
@@ -65,11 +68,54 @@ function validateAgent(node: NodeOfKind<'agent'>, graph: Graph): Problem[] {
   return problems;
 }
 
+/** How deep `node` sits in the inline-agent chain: an immediate subagent of the root is depth 1. */
+function inlineDepth(node: NodeOfKind<'agent'>, graph: Graph): number {
+  let depth = 0;
+  let current: NodeOfKind<'agent'> | undefined = node;
+  while (current !== undefined && current.owner !== null) {
+    depth += 1;
+    const parent: GraphNode | undefined = graph.nodes.find((n) => n.id === current!.owner);
+    current = parent !== undefined && parent.kind === 'agent' ? parent : undefined;
+  }
+  return depth;
+}
+
+/** The root agent's `maxSubagentDepth` (the SDK's runtime default is 1: sub-agents get no `task` tool). */
+function maxSubagentDepth(graph: Graph): number {
+  const root = graph.nodes.find((n) => n.id === ROOT_AGENT_ID && n.kind === 'agent');
+  const max = root === undefined ? undefined : (root.data as AgentNodeData).fields.maxSubagentDepth;
+  return typeof max === 'number' ? max : 1;
+}
+
+/** An inline agent deeper than the root's `maxSubagentDepth` can never run — warn, don't block. */
+function depthWarning(node: NodeOfKind<'agent'>, graph: Graph): Problem[] {
+  if (node.data.subagentKey === undefined) return [];
+  const max = maxSubagentDepth(graph);
+  if (inlineDepth(node, graph) <= max) return [];
+  return [
+    {
+      nodeId: node.id,
+      severity: 'warning',
+      message: `This subagent is deeper than the agent's max subagent depth (${max})`,
+      fieldPath: agentSpecPath(node, graph),
+    },
+  ];
+}
+
 /** `KindRules` for `agent`: `connectFrom` re-owns the target to the source agent. */
 export const agentRules: KindRules<'agent'> = {
-  validate: validateAgent,
+  validate: (node, graph) => [...validateAgent(node, graph), ...depthWarning(node, graph)],
   connectFrom: (source, target: GraphNode, graph: Graph): ConnectResult => ({
     ok: true,
     graph: reownNode(graph, target.id, source.id),
   }),
+  // Duplicating an inline agent copies the node only (never its children);
+  // its `subagents` record key still has to be unique among siblings.
+  duplicateData: (node, graph) =>
+    node.data.subagentKey === undefined
+      ? structuredClone(node.data)
+      : {
+          ...node.data,
+          subagentKey: uniqueName(`${node.data.subagentKey}-copy`, subagentSiblingKeys(graph, node.owner)),
+        },
 };

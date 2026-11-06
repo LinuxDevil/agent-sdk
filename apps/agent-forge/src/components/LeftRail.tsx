@@ -6,6 +6,7 @@ import { useAppState } from '../state/AppState';
 import { PALETTE_DRAG_MIME } from '../canvas/dnd';
 import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
 import { addNode, ownerForNewNode } from '../graph/v2/mutations';
+import { positionFor } from '../graph/v2/reown';
 import { viewportCentrePosition } from '../canvas/paletteActions';
 import { KIND_VIEWS, PALETTE_GROUP_ORDER, type KindTone, type PaletteEntry, type PaletteGroup } from '../canvas/kinds';
 import { viewFor } from '../canvas/kinds';
@@ -394,7 +395,8 @@ function usePaletteActions() {
     const { transform, width, height } = flow.getState();
     const position = viewportCentrePosition(transform, width, height);
     const owner = ownerForNewNode(graph, entry.kind, selectedNodeId);
-    const { graph: next, nodeId } = addNode(graph, entry.create(graph, owner), position, owner);
+    // A selected group owns the new node - its position must be group-relative.
+    const { graph: next, nodeId } = addNode(graph, entry.create(graph, owner), positionFor(graph, position, owner), owner);
     setGraph(() => next);
     setSelectedNodeId(nodeId);
     setNotice(`Added ${entry.label} to the canvas.`);

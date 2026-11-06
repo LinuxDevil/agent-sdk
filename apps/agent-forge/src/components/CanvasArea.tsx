@@ -24,20 +24,22 @@ import '@xyflow/react/dist/style.css';
 import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
-import { NODE_TYPES, flowNodeType, miniMapNodeClassName, type AgentNodeData } from '../canvas/AgentNode';
+import { GROUP_NODE_TYPE, NODE_TYPES, flowNodeType, miniMapNodeClassName, type CanvasNodeData } from '../canvas/AgentNode';
 import {
   addNode,
   connectNodes,
+  descendantsOf,
   duplicateNode,
   moveNode,
   ownerForNewNode,
   removeNode,
 } from '../graph/v2/mutations';
+import { positionFor } from '../graph/v2/reown';
 import { canConnect } from '../graph/v2/connectionRules';
 import { orderedNodes } from '../graph/v2/order';
 import { toolNodeName } from '../graph/v2/nodeIds';
 import type { Graph, GraphEdge, GraphNode, ToolNodeData } from '../graph/v2/types';
-import { ROOT_AGENT_ID } from '../graph/v2/types';
+import { ROOT_AGENT_ID, ROOT_ONLY_KINDS } from '../graph/v2/types';
 import { KIND_VIEWS, type PaletteEntry } from '../canvas/kinds';
 import { autoLayout } from '../canvas/layout';
 import { EmptyCanvas } from '../canvas/EmptyCanvas';
@@ -68,7 +70,7 @@ function hasBreakpointOn(n: GraphNode, breakpoints: string[]): boolean {
 type MeasuredSizes = Record<string, { width: number; height: number }>;
 
 /** Folds a batch of `dimensions` changes into the measured-size map (same object when nothing changed). */
-export function applyDimensionChanges(prev: MeasuredSizes, changes: NodeChange[]): MeasuredSizes {
+function applyDimensionChanges(prev: MeasuredSizes, changes: NodeChange[]): MeasuredSizes {
   let next = prev;
   for (const change of changes) {
     if (change.type !== 'dimensions' || !change.dimensions) continue;
@@ -113,25 +115,94 @@ function canvasNodeOrder(graph: Graph): GraphNode[] {
   return [...ordered, ...graph.nodes.filter((n) => !seen.has(n.id) && n.proposed !== 'remove')];
 }
 
-function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<AgentNodeData>[] {
+/** True for an inline subagent: the `agent` node that renders as a collapsible group. */
+function isGroupNode(node: GraphNode): boolean {
+  return node.kind === 'agent' && node.owner !== null;
+}
+
+/** How many nodes a collapsed group hides (its whole owner-chain subtree, minus the group itself). */
+function descendantCount(graph: Graph, groupId: string): number {
+  return descendantsOf(graph, groupId).size - 1;
+}
+
+/** An expanded group's minimum size and the padding kept around its children. */
+const GROUP_MIN_SIZE = { width: 280, height: 160 };
+const GROUP_PADDING = 24;
+/** A child's assumed size before React Flow measures it (matches `.rf-node`'s fixed card). */
+const ESTIMATED_NODE_SIZE = { width: 208, height: 80 };
+
+/** The owner-chain depth of a node (an immediate subagent of the root is 1) — used to size nested groups inside-out. */
+function ownerDepth(graph: Graph, node: GraphNode): number {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  let depth = 0;
+  let owner = node.owner;
+  while (owner !== null) {
+    depth += 1;
+    owner = byId.get(owner)?.owner ?? null;
+  }
+  return depth;
+}
+
+/**
+ * The `style` size of every expanded group: the bounds of its visible
+ * children (measured where React Flow has seen them, estimated otherwise —
+ * nested groups use their own computed size) plus GROUP_PADDING, never
+ * smaller than GROUP_MIN_SIZE. Computed deepest-first so a nested group's
+ * size is known when the outer group's bounds need it.
+ */
+function groupSizes(graph: Graph, measured: MeasuredSizes): Map<string, { width: number; height: number }> {
+  const groups = graph.nodes
+    .filter((node) => isGroupNode(node) && node.collapsed !== true)
+    .sort((a, b) => ownerDepth(graph, b) - ownerDepth(graph, a));
+  const sizes = new Map<string, { width: number; height: number }>();
+  for (const group of groups) {
+    let maxX = 0;
+    let maxY = 0;
+    for (const child of graph.nodes) {
+      if (child.owner !== group.id || hasCollapsedAncestor(graph, child)) continue;
+      const size = sizes.get(child.id) ?? measured[child.id] ?? ESTIMATED_NODE_SIZE;
+      maxX = Math.max(maxX, child.position.x + size.width);
+      maxY = Math.max(maxY, child.position.y + size.height);
+    }
+    sizes.set(group.id, {
+      width: Math.max(GROUP_MIN_SIZE.width, maxX + GROUP_PADDING),
+      height: Math.max(GROUP_MIN_SIZE.height, maxY + GROUP_PADDING),
+    });
+  }
+  return sizes;
+}
+
+/**
+ * The React Flow nodes for `graph`: parents before children (React Flow
+ * requires it), inline agents as `agent-group` nodes with a `style` size,
+ * children of a collapsed group `hidden` but still `parentId`'d (without
+ * the parent React Flow would re-lay them at absolute coordinates).
+ */
+export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<CanvasNodeData>[] {
   const { selectedNodeId, highlightedNodeId, breakpoints, statuses } = decor;
-  return canvasNodeOrder(graph).map((n) => ({
-    id: n.id,
-    type: flowNodeType(n.kind),
-    // React Flow sub-flows: children of an inline agent sit inside its
-    // group (group rendering polish is C04's).
-    parentId: n.owner !== null && n.owner !== ROOT_AGENT_ID ? n.owner : undefined,
-    position: n.position,
-    selected: n.id === selectedNodeId,
-    hidden: hasCollapsedAncestor(graph, n),
-    measured: measured[n.id],
-    data: {
-      graphNode: n,
-      highlighted: n.id === highlightedNodeId,
-      hasBreakpoint: hasBreakpointOn(n, breakpoints),
-      status: statuses[n.id],
-    },
-  }));
+  const sizes = groupSizes(graph, measured);
+  return canvasNodeOrder(graph).map((n) => {
+    const group = isGroupNode(n);
+    const size = group && n.collapsed !== true ? sizes.get(n.id) : undefined;
+    return {
+      id: n.id,
+      type: group ? GROUP_NODE_TYPE : flowNodeType(n.kind),
+      // React Flow sub-flows: children of an inline agent sit inside its group.
+      parentId: n.owner !== null && n.owner !== ROOT_AGENT_ID ? n.owner : undefined,
+      position: n.position,
+      selected: n.id === selectedNodeId,
+      hidden: hasCollapsedAncestor(graph, n),
+      measured: measured[n.id],
+      ...(size === undefined ? {} : { style: size }),
+      data: {
+        graphNode: n,
+        highlighted: n.id === highlightedNodeId,
+        hasBreakpoint: hasBreakpointOn(n, breakpoints),
+        status: statuses[n.id],
+        insideCount: group ? descendantCount(graph, n.id) : undefined,
+      },
+    };
+  });
 }
 
 /** How far short of the target port an edge stops, so its arrowhead never covers the port. */
@@ -179,10 +250,11 @@ const MIN_ZOOM = 0.2;
  * edge (`selectedEdgeId`) is drawn in the accent colour. Edges are selectable
  * but not deletable on their own (as before): removing a node still drops its edges.
  */
-export function toRfEdges(
+function toRfEdges(
   edges: GraphEdge[],
   statuses: Record<string, NodeRunStatus> = {},
-  selectedEdgeId?: string
+  selectedEdgeId?: string,
+  hiddenNodeIds?: ReadonlySet<string>
 ): Edge[] {
   return edges.map((e) => {
     const running = statuses[e.source] === 'running';
@@ -194,6 +266,9 @@ export function toRfEdges(
       label: e.label,
       selected: e.id === selectedEdgeId,
       deletable: false,
+      // React Flow draws an edge unless its own `hidden` flag is set - a
+      // collapsed group's children keep their edges out of view this way.
+      hidden: hiddenNodeIds === undefined ? false : hiddenNodeIds.has(e.source) || hiddenNodeIds.has(e.target),
       animated: running,
       className: running ? 'edge-running' : undefined,
       markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: running ? 'var(--accent)' : 'var(--text-faint)' },
@@ -316,6 +391,22 @@ function paletteEntry(id: string): PaletteEntry | undefined {
     .find((entry) => entry.id === id);
 }
 
+/**
+ * The innermost expanded inline-agent group under a client point, by DOM
+ * hit-test. An expanded group carries `.rf-group[data-node-kind="agent"]`;
+ * a collapsed one is a plain `.rf-node` card and the root agent's card is
+ * never `.rf-group`, so only expanded inline groups match.
+ * `elementsFromPoint` is topmost-first, which is the innermost match.
+ */
+function expandedGroupAtPoint(clientX: number, clientY: number): string | undefined {
+  for (const el of document.elementsFromPoint(clientX, clientY)) {
+    if (el instanceof HTMLElement && el.classList.contains('rf-group') && el.dataset.nodeKind === 'agent') {
+      return el.dataset.nodeId;
+    }
+  }
+  return undefined;
+}
+
 /** Palette drag-and-drop onto the canvas. */
 function useDropHandlers(
   setGraph: SetGraph,
@@ -338,10 +429,14 @@ function useDropHandlers(
       const entry = paletteEntry(entryId);
       if (!entry) return;
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
+      const groupId = expandedGroupAtPoint(e.clientX, e.clientY);
       let addedId: string | undefined;
       setGraph((g) => {
-        const owner = ownerForNewNode(g, entry.kind, selectedNodeId);
-        const result = addNode(g, entry.create(g, owner), position, owner);
+        let owner = ownerForNewNode(g, entry.kind, selectedNodeId);
+        // A drop inside an expanded group attaches to it; notes stay
+        // ownerless and root-only kinds stay on the root agent.
+        if (groupId !== undefined && owner !== null && !ROOT_ONLY_KINDS.has(entry.kind)) owner = groupId;
+        const result = addNode(g, entry.create(g, owner), positionFor(g, position, owner), owner);
         addedId = result.nodeId;
         return result.graph;
       });
@@ -631,7 +726,10 @@ function useCanvasElements() {
     [graph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, measured]
   );
   const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
-  const edges = useMemo(() => toRfEdges(graphEdges, statuses, selectedEdgeId), [graphEdges, statuses, selectedEdgeId]);
+  const edges = useMemo(() => {
+    const hiddenNodeIds = new Set(nodes.filter((n) => n.hidden).map((n) => n.id));
+    return toRfEdges(graphEdges, statuses, selectedEdgeId, hiddenNodeIds);
+  }, [graphEdges, statuses, selectedEdgeId, nodes]);
 
   return { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId };
 }

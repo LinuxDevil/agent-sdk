@@ -6,7 +6,7 @@
  * (`orderedNodes`) that `specToGraph`'s push order, `graphToSpec`'s
  * `nodeIdMap` and every consumer share.
  */
-import type { Graph, GraphNode, SectionKey } from './types';
+import type { AgentNodeData, Graph, GraphNode, SectionKey, SubagentNodeData } from './types';
 import { ROOT_AGENT_ID, SECTION_KIND, SECTION_ORDER } from './types';
 
 /** PLAN §3.1 declaration order. Emission order when there is no previousSpec. */
@@ -49,6 +49,29 @@ export function orderKeys<T extends Record<string, unknown>>(obj: T, previous?: 
 function isSectionNode(node: GraphNode, key: SectionKey): boolean {
   if (key === 'subagents') return node.kind === 'subagent' || node.kind === 'agent';
   return node.kind === SECTION_KIND[key];
+}
+
+/**
+ * The `subagents` record key a node stands for: `data.key` for a ref/remote
+ * `subagent` node, `data.subagentKey` for an inline `agent` node,
+ * `undefined` for anything else (and for the root agent).
+ */
+export function subagentEntryKey(node: GraphNode): string | undefined {
+  if (node.kind === 'subagent') return (node.data as SubagentNodeData).key;
+  if (node.kind === 'agent' && node.owner !== null) return (node.data as AgentNodeData).subagentKey;
+  return undefined;
+}
+
+/**
+ * The `subagents` record keys already taken under `ownerId` — the `taken`
+ * set for `uniqueName` when a palette entry or a duplicate names a new
+ * subagent (both ref/remote nodes and inline agents share the record).
+ */
+export function subagentSiblingKeys(graph: Graph, ownerId: string | null): string[] {
+  return graph.nodes
+    .filter((n) => n.owner === ownerId && n.proposed !== 'remove')
+    .map((n) => subagentEntryKey(n))
+    .filter((key): key is string => key !== undefined);
 }
 
 /**
