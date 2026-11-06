@@ -36,7 +36,7 @@ To add it to an existing project:
 npm install lousho ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 ```
 
-See [Installation](docs/installation.md#provider-packages) for other providers. `npx lousho doctor` checks your setup and prints a fix for anything missing.
+See [Installation](https://lousho.com/installation#provider-packages) for other providers. `npx lousho doctor` checks your setup and prints a fix for anything missing.
 
 ## Quickstart
 
@@ -74,24 +74,24 @@ my-agent/
 └── skills/             # Instructions loaded on demand
 ```
 
-Loading a folder runs its code, so only load ones you trust. See [Agent directories](docs/agent-directories.md).
+Loading a folder runs its code, so only load ones you trust. See [Agent directories](https://lousho.com/agent-directories).
 
 ## Features
 
-- **Evals you can run in CI**: `lousho eval` records a real run once, replays it with no network or API key, and reports when the tool-call trajectory drifts. [Evals](docs/evals.md)
-- **Approvals**: `needsApproval` pauses a run, and another request or process can resume it. [Approvals](docs/approvals.md)
-- **Durable execution**: `agent.resume()` finishes a crashed run without redoing finished tools, on memory, file, SQLite or Cloudflare KV stores. [Durable execution](docs/durable-execution.md)
-- **MCP**: connect to MCP servers, or serve your agent as one. [MCP](docs/mcp.md)
-- **Multi-agent**: [sub-agents](docs/sub-agents.md) that run in parallel, and [handoffs](docs/handoffs.md) to specialists.
-- **UI**: bindings for [React](docs/react.md), [Vue](docs/vue.md) and [Svelte](docs/svelte.md), plus [AI SDK `useChat`](docs/ai-sdk-ui.md) and [Next.js routes](docs/nextjs.md).
-- **Tracing**: OpenTelemetry GenAI spans and a local trace viewer. [Observability](docs/observability.md)
-- **Deployment**: `lousho build` targets a Node server, Docker or Cloudflare Workers. [Deployment](docs/deployment.md)
-- **Coding agents**: workspace tools, permission rules and starter kits from `lousho add`. [Build a coding agent](docs/build-a-coding-agent.md)
-- **Agent Forge**: `lousho studio` opens a local visual canvas, run debugger and chat. [Agent Forge](docs/agent-forge.md)
+- **Evals you can run in CI**: `lousho eval` records a real run once, replays it with no network or API key, and reports when the tool-call trajectory drifts. [Evals](https://lousho.com/evals)
+- **Approvals**: `needsApproval` pauses a run, and another request or process can resume it. [Approvals](https://lousho.com/approvals)
+- **Durable execution**: `agent.resume()` finishes a crashed run without redoing finished tools, on memory, file, SQLite or Cloudflare KV stores. [Durable execution](https://lousho.com/durable-execution)
+- **MCP**: connect to MCP servers, or serve your agent as one. [MCP](https://lousho.com/mcp-integration)
+- **Multi-agent**: [sub-agents](https://lousho.com/sub-agents) that run in parallel, and [handoffs](https://lousho.com/handoffs) to specialists.
+- **UI**: bindings for [React](https://lousho.com/react), [Vue](https://lousho.com/vue) and [Svelte](https://lousho.com/svelte), plus [AI SDK `useChat`](https://lousho.com/ai-sdk-ui) and [Next.js routes](https://lousho.com/nextjs).
+- **Tracing**: OpenTelemetry GenAI spans and a local trace viewer. [Observability](https://lousho.com/observability)
+- **Deployment**: `lousho build` targets a Node server, Docker or Cloudflare Workers. [Deployment](https://lousho.com/deployment)
+- **Coding agents**: workspace tools, permission rules and starter kits from `lousho add`. [Build a coding agent](https://lousho.com/build-a-coding-agent)
+- **Agent Forge**: `lousho studio` opens a local visual canvas, run debugger and chat. [Agent Forge](https://lousho.com/agent-forge)
 
 ## Documentation
 
-The full guides are at [lousho.com](https://lousho.com), in English and Arabic. Good places to start: [Quick Start](docs/quick-start.md), [Tools](docs/tools.md), [Providers](docs/providers.md), [CLI](docs/cli.md) and [Troubleshooting](docs/troubleshooting.md).
+The full guides are at [lousho.com](https://lousho.com), in English and Arabic. Good places to start: [Quick Start](https://lousho.com/quickstart), [Tools](https://lousho.com/tools), [Providers](https://lousho.com/providers), [CLI](https://lousho.com/cli) and [Troubleshooting](https://lousho.com/troubleshooting).
 
 Coding agents can read the docs from `node_modules/lousho/docs`, indexed by [`llms.txt`](llms.txt). The repo also has every page in one file, [`llms-full.txt`](llms-full.txt).
 
@@ -110,4 +110,4 @@ Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and 
 
 ## License
 
-MIT © [Lousho Team](LICENSE)
+MIT © [Ali Mohammad](LICENSE)
