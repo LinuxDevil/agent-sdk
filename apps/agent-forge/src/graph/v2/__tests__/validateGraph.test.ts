@@ -74,10 +74,14 @@ describe('validateGraph: core checks', () => {
   });
 
   it('reports two nodes sharing an id', () => {
-    const g = specToGraph(minimalSpec({ skills: [{ dir: 'skills/review' }] }));
+    const g = specToGraph(minimalSpec(), {
+      schemaVersion: 1,
+      nodes: {},
+      notes: [{ id: 'n1', x: 0, y: 0, text: 't' }],
+    });
     const dup: Graph = { ...g, nodes: [...g.nodes, { ...g.nodes[1] }] };
     expect(validateGraph(dup)).toStrictEqual([
-      error('skill:review', "Two nodes share the id 'skill:review'"),
+      error('note:n1', "Two nodes share the id 'note:n1'"),
     ]);
   });
 

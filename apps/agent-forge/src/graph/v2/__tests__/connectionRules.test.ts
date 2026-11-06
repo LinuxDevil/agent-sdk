@@ -121,6 +121,18 @@ describe('canConnect instance rules', () => {
     expect(canConnect(source, target)).toEqual({ ok: true });
   });
 
+  it('allows agent -> skill (the uses edge re-owns the skill)', () => {
+    const source = node('agent', { id: 'agent' });
+    const target = node('skill', { id: 'skill:tone', owner: 'other' });
+    expect(canConnect(source, target)).toEqual({ ok: true });
+  });
+
+  it('refuses skill -> tool (a skill is not an edge source)', () => {
+    const source = node('skill', { id: 'skill:tone', owner: 'agent' });
+    const target = node('tool', { id: 'tool:http', owner: 'agent' });
+    expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect skill → tool" });
+  });
+
   it('refuses mcp -> tool (an mcp node only sources permission edges)', () => {
     const source = node('mcp', { id: 'mcp:gh', owner: 'agent' });
     const target = node('tool', { id: 'tool:http', owner: 'agent' });
