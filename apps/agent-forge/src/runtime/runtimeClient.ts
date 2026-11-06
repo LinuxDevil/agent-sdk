@@ -35,6 +35,7 @@ import type {
   McpServerSpecV2,
   PatchAgentMetaRequest,
   ProviderKeyStatus,
+  Requirement,
   RunComparisonPayload,
   RunHistoryPayload,
   SecretStatus,
@@ -176,6 +177,11 @@ class RuntimeClient implements AgentApi {
       if (error instanceof RuntimeApiError && error.status === 404) return undefined;
       throw error;
     }
+  }
+
+  /** The agent's readiness rows on their own (`GET /agents/:id/requirements`) - the SuccessCard lists the still-missing ones after enabling. */
+  async getAgentRequirements(agentId: string): Promise<Requirement[]> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/requirements`, { method: 'GET' });
   }
 
   /** Saves an AgentSpecV2 working copy (`PUT /agents/:id` with a `{ spec }` body). */
@@ -550,7 +556,6 @@ class RuntimeClient implements AgentApi {
    * lists its tools and disconnects. A failure to connect comes back as
    * `{ ok: false, error }`, not a thrown error.
    */
-  // fallow-ignore-next-line unused-class-member -- consumed by C07's MCP-node Probe button and AA06's probeMcpServer tool
   async probeMcp(server: McpServerSpecV2): Promise<McpProbeResponse> {
     const body: McpProbeRequest = { server };
     return this.request('/catalog/mcp/probe', { method: 'POST', body: JSON.stringify(body) });
