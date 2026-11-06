@@ -34,6 +34,11 @@ function buildAgent(): BenchmarkAgent {
   return build();
 }
 
+function failedCheck(task: BenchmarkAgent['tasks'][number]): { failure?: string } {
+  const failure = task.failure?.();
+  return failure ? { failure } : {};
+}
+
 async function probe(harness: Harness, caseId: string): Promise<ProbeRun> {
   const spec = buildAgent();
   const task = spec.tasks.find((candidate) => candidate.id === caseId);
@@ -49,8 +54,7 @@ async function probe(harness: Harness, caseId: string): Promise<ProbeRun> {
   });
   try {
     const result = await agent.send(task.input);
-    const failure = task.failure?.();
-    return { passed: task.check(result.text ?? ''), transcript: renderTranscript(result.messages), tokens: result.usage?.totalTokens ?? 0, ended: result.finishReason, ...(failure && { failure }) };
+    return { passed: task.check(result.text ?? ''), transcript: renderTranscript(result.messages), tokens: result.usage?.totalTokens ?? 0, ended: result.finishReason, ...failedCheck(task) };
   } catch (error) {
     const { code, usage } = error as { code?: string; usage?: { totalTokens?: number } };
     return { passed: null, transcript: String(error), tokens: usage?.totalTokens ?? 0, ended: code ?? 'error' };
