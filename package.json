@@ -374,7 +374,8 @@
     "pack-smoke": "tsx scripts/pack-smoke.ts",
     "registry:build": "tsx scripts/build-registry.ts",
     "registry:check": "tsx scripts/build-registry.ts --check",
-    "registry-smoke": "tsx scripts/registrySmoke.ts"
+    "registry-smoke": "tsx scripts/registrySmoke.ts",
+    "prepare": "husky"
   },
   "keywords": [
     "typescript",
@@ -501,6 +502,7 @@
     "esbuild": "^0.25.12",
     "eslint": "^10.11.0",
     "fallow": "^3.31.0",
+    "husky": "^9.1.7",
     "prompts": "^2.4.2",
     "quickjs-emscripten": "^0.32.0",
     "react": "^18.3.1",
