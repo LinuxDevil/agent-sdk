@@ -209,6 +209,43 @@ describe('deriveEdges', () => {
     ]);
   });
 
+  it('draws a handsOff edge from a handoff to a same-owner inline subagent', () => {
+    const graph = graphOf([
+      ROOT,
+      node('agent', 'sub:r', 'agent', {
+        fields: { name: 'r', model: 'm', instructions: 'x', description: 'd' },
+        extra: {},
+        subagentKey: 'r',
+      }),
+      node('handoff', 'handoff:r', 'agent', { item: { agent: 'r' } }),
+    ]);
+    expect(deriveEdges(graph).map((e) => e.id)).toEqual([
+      'delegates:agent->sub:r',
+      'handsOff:agent->handoff:r',
+      'handsOff:handoff:r->sub:r',
+    ]);
+  });
+
+  it('does not draw the handoff edge to a subagent of another owner', () => {
+    const graph = graphOf([
+      ROOT,
+      node('agent', 'sub:r', 'agent', {
+        fields: { name: 'r', model: 'm', instructions: 'x', description: 'd' },
+        extra: {},
+        subagentKey: 'r',
+      }),
+      node('subagent', 'sub:r/sub:b', 'sub:r', { key: 'b', item: { ref: 'agents/b.yaml' } }),
+      node('handoff', 'handoff:b', 'agent', { item: { agent: 'b' } }),
+    ]);
+    const edges = deriveEdges(graph);
+    expect(edges.filter((e) => e.source === 'handoff:b')).toEqual([]);
+    expect(edges.map((e) => e.id)).toEqual([
+      'delegates:agent->sub:r',
+      'delegates:sub:r->sub:r/sub:b',
+      'handsOff:agent->handoff:b',
+    ]);
+  });
+
   it('draws no edges for flow and note nodes', () => {
     const graph = graphOf([
       ROOT,
