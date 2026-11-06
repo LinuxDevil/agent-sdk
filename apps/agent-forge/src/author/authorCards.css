@@ -1,7 +1,7 @@
 /*
  * The small result cards the Author draws inside the conversation
- * (SuccessCard now; secret/error/setup cards reuse the file later).
- * Colours come only from theme.css tokens.
+ * (success, secret, error and setup). Colours come only from theme.css
+ * tokens.
  */
 .success-card {
   display: flex;
@@ -62,4 +62,122 @@
   color: var(--success);
   font-size: var(--fs-meta);
   font-weight: 600;
+}
+
+/* --- SecretCard: the secure request form and its settled one-liners --- */
+.secret-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.secret-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+.secret-card-title svg {
+  color: var(--accent);
+}
+.secret-card-why {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+.secret-card-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+.secret-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.secret-card-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: var(--fs-meta);
+}
+
+/* The one-line outcomes a settled requestSecret part leaves behind. */
+.secret-card-done {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  color: var(--text);
+  font-size: var(--fs-meta);
+}
+.secret-card-done svg {
+  color: var(--success);
+}
+.secret-card-done--skipped {
+  color: var(--text-muted);
+}
+
+/* --- ErrorNote: the tinted one-line failure --- */
+.error-note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: var(--fs-meta);
+}
+.error-note svg {
+  flex: none;
+}
+.error-note span {
+  flex: 1;
+  min-width: 0;
+}
+.error-note .btn-ghost {
+  color: var(--danger);
+}
+
+/* --- SetupCard: the no-provider-key stand-in for the conversation --- */
+.setup-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: 24rem;
+  margin: var(--space-8) auto 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  text-align: center;
+}
+.setup-card-icon {
+  color: var(--accent);
+}
+.setup-card-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--text);
+}
+.setup-card-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+.setup-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }

@@ -5,8 +5,9 @@
  * resolve the card's name and readiness rows from the propose part the
  * save points at - for a tool part through `input.proposalId`, for the
  * event through `uiEvent.proposalId` - and derive "already on" from the
- * newest `setAgentEnabled` output in the transcript. A busy or failed
- * save part falls back to the quiet `ActivityLine` (`undefined`).
+ * newest `setAgentEnabled` output in the transcript. A busy part falls
+ * back to the quiet `ActivityLine` (`undefined`); a failed save draws an
+ * ErrorNote with the failure's `userMessage` (AA17).
  *
  * `AuthorPanel.tsx` imports this module once for its side effect: the
  * registrations at the bottom.
@@ -14,6 +15,7 @@
 import type { ReactNode } from 'react';
 import type { AuthorToolPart, AuthorUserMessage, ProposalKind } from '../../shared/authorWire';
 import type { AuthorChat } from './AuthorChatContext';
+import { ErrorNote } from './ErrorNote';
 import { SuccessCard, type SuccessCardProps } from './SuccessCard';
 import { findProposalOutput, lastEnabledOutput, saveOutputOf } from './savedProposal';
 import {
@@ -50,15 +52,24 @@ function successProps(
   };
 }
 
-/** An ok save part draws the card; busy or failed parts keep the activity line. */
+/**
+ * An ok save part draws the card; a busy part keeps the activity line and
+ * a failed one draws an ErrorNote with the failure's person-facing
+ * `userMessage` (AA17 - a failed save is a card, not a line).
+ */
 function renderSave(part: AuthorToolPart, ctx: ToolRenderContext): ReactNode | undefined {
   const saved = saveOutputOf(part);
-  if (saved === null) return undefined;
-  const input = part.input as { proposalId?: unknown } | undefined;
-  const proposalId = typeof input?.proposalId === 'string' ? input.proposalId : null;
-  const kind: ProposalKind = part.name === 'saveAgent' ? 'create' : 'update';
-  const props = successProps(ctx.chat, kind, saved, proposalId);
-  return <SuccessCard {...props} chat={ctx.chat} />;
+  if (saved !== null) {
+    const input = part.input as { proposalId?: unknown } | undefined;
+    const proposalId = typeof input?.proposalId === 'string' ? input.proposalId : null;
+    const kind: ProposalKind = part.name === 'saveAgent' ? 'create' : 'update';
+    const props = successProps(ctx.chat, kind, saved, proposalId);
+    return <SuccessCard {...props} chat={ctx.chat} />;
+  }
+  if (part.state === 'pending') return undefined;
+  const failure = part.output as { userMessage?: unknown } | undefined;
+  const message = typeof failure?.userMessage === 'string' ? failure.userMessage : "Couldn't save the agent.";
+  return <ErrorNote message={message} />;
 }
 
 /** A `save` uiEvent draws the same card the button save would have. */
