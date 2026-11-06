@@ -41,7 +41,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -am "chore(release): $VERSION"
+          git commit --no-verify -am "chore(release): $VERSION"
           git push origin main
       - name: Publish lousho
         run: npm publish --access public --tag latest
