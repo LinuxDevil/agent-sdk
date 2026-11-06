@@ -22,7 +22,7 @@ export type { AgentSpecV2, SubagentSpec } from '../../../../../src/spec/v2/types
  */
 export type { ToolRef, IntegrationName, OpenApiToolRefOptions } from '../../../../../src/spec/v2/tools';
 export { INTEGRATION_CREDENTIALS, SECRET_CREDENTIALS } from '../../../../../src/spec/v2/tools';
-export { SPEC_ID_PATTERN } from '../../../../../src/spec/v2/common';
+export { isSafeRelativePath, SPEC_ID_PATTERN } from '../../../../../src/spec/v2/common';
 /** A reference to an env var or a named Studio secret. */
 export type { SecretRef } from '../../../../../src/spec/v2/secrets';
 /** One `spec.skills` entry. */
@@ -34,6 +34,8 @@ export type { MemorySpec } from '../../../../../src/spec/v2/memory';
  * uses the shorter `McpServerSpec` everywhere, aliased once here.
  */
 export type { McpServerSpecV2 as McpServerSpec } from '../../../../../src/spec/v2/mcpServers';
+/** The `mcpServers` record-key pattern the SDK enforces (`^[A-Za-z0-9_-]{1,64}$`). */
+export { MCP_SERVER_NAME } from '../../../../../src/spec/v2/mcpServers';
 /** One `spec.handoffs` entry. */
 export type { HandoffSpec } from '../../../../../src/spec/v2/handoffs';
 /** One `spec.guardrails` entry. */

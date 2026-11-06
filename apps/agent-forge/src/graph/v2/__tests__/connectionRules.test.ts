@@ -115,6 +115,18 @@ describe('canConnect instance rules', () => {
     expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect handoff → agent" });
   });
 
+  it('allows agent -> mcp (the uses edge)', () => {
+    const source = node('agent', { id: 'agent' });
+    const target = node('mcp', { id: 'mcp:gh', owner: 'other' });
+    expect(canConnect(source, target)).toEqual({ ok: true });
+  });
+
+  it('refuses mcp -> tool (an mcp node only sources permission edges)', () => {
+    const source = node('mcp', { id: 'mcp:gh', owner: 'agent' });
+    const target = node('tool', { id: 'tool:http', owner: 'agent' });
+    expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect mcp → tool" });
+  });
+
   it('refuses tool -> agent (a tool is not an edge source)', () => {
     const source = node('tool', { id: 'tool:http', owner: 'agent' });
     const target = node('agent', { id: 'sub:research', owner: 'other' });
