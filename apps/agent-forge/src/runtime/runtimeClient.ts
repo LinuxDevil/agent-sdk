@@ -657,7 +657,6 @@ class RuntimeClient implements AgentApi {
   }
 
   /** The chat history list (`GET /assistant/sessions`), newest first. */
-  // fallow-ignore-next-line unused-class-member -- the Author panel's history list calls it once AA15 lands
   async listAuthorSessions(): Promise<AuthorSessionSummary[]> {
     return this.request('/assistant/sessions', { method: 'GET' });
   }
@@ -672,7 +671,6 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Deletes an Author chat (`DELETE /assistant/sessions/:id`); rejects on 404/409. */
-  // fallow-ignore-next-line unused-class-member -- the Author panel calls it once AA15 lands
   async deleteAuthorSession(id: string): Promise<void> {
     await this.request(`/assistant/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
