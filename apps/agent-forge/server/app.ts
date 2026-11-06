@@ -106,6 +106,7 @@ import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { AgentRepo } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
+import { createIdleVersioner, type IdleVersioner } from './storage/idleVersioner';
 import { VersionStore } from './storage/versionStore';
 import { StudioEventBus } from './events/eventBus';
 import { mergeLegacySave } from './storage/legacySpec';
@@ -185,6 +186,13 @@ interface CreateAppBaseOptions {
    * events. Defaults to the context's own `new StudioEventBus()`.
    */
   eventBus?: StudioEventBus;
+  /**
+   * The default workspace context's `IdleVersioner` - a test seam, like
+   * `eventBus`: inject one with a short `delayMs` (or a spy `capture`) to
+   * test the PUT/POST/DELETE wiring without waiting 60 s. Defaults to
+   * `createIdleVersioner(versions)` (storage/idleVersioner.ts).
+   */
+  idleVersioner?: IdleVersioner;
   /**
    * The app's one TemplateCatalog - Studio-global (the templates folder
    * ships in the SDK package), shared between `GET /templates*` and the
@@ -779,10 +787,14 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * `workspace`: the launch folder's ref around those two stores.
  */
 function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
-  const workspace = options.workspace ?? legacyWorkspaceContext(options);
+  let workspace = options.workspace ?? legacyWorkspaceContext(options);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
-  return options.eventBus === undefined ? workspace : { ...workspace, events: options.eventBus };
+  if (options.eventBus !== undefined) workspace = { ...workspace, events: options.eventBus };
+  // `idleVersioner` is a test seam too: it swaps the context's idle-version
+  // scheduler - the one `workspaceOf(req).idleVersioner` touches/cancels.
+  if (options.idleVersioner !== undefined) workspace = { ...workspace, idleVersioner: options.idleVersioner };
+  return workspace;
 }
 
 /**
@@ -792,12 +804,14 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
  */
 function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefined }): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
+  const versions = new VersionStore(repo);
   return {
     ref: workspaceRefFor(options.baseDir),
     repo,
     agentStore: options.agentStore,
-    versions: new VersionStore(repo),
+    versions,
     drafts: new DraftStore(repo),
+    idleVersioner: createIdleVersioner(versions),
     // The legacy pair's RunManager carries its own host; this one exists to
     // satisfy the context shape (nothing reads ws.host yet - catalog/steer
     // routes are later tickets).

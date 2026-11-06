@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AgentSpec } from 'lousho';
 import { HttpAgentStore } from '../persistence/HttpAgentStore';
@@ -14,6 +14,7 @@ import type {
   ChatSessionMeta,
   ChatSessionRecord,
   SettingsProfile,
+  VersionListItem,
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
 import { useAgentDocument } from './useAgentDocument';
@@ -48,6 +49,22 @@ interface AppState {
   /** True when there are unsaved changes since the last successful `save()`. */
   dirty: boolean;
   save: () => Promise<void>;
+  /**
+   * The explicit "Save version" (the Topbar's Save button and Ctrl/Cmd+S):
+   * `save()` (the working-copy PUT, same as autosave) then
+   * `POST /agents/:id/versions`. Resolves to the written item when a
+   * version was captured, `undefined` when the working copy already
+   * matched the latest version (the route's 200 no-op). Rejects on
+   * failure - the caller's error surface handles it.
+   */
+  saveVersion: () => Promise<VersionListItem | undefined>;
+  /**
+   * The version number the most recent `saveVersion()` reported - the
+   * `v<n>` of the "No changes since" toast (the server's 200 answer
+   * carries the latest item, so this is always current after a call).
+   * `null` before the first `saveVersion()`.
+   */
+  latestVersion: number | null;
   selectedNodeId: string | undefined;
   setSelectedNodeId: (nodeId: string | undefined) => void;
   railTab: RailTab;
@@ -156,7 +173,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // A reload of `#/agents/:id` reopens that agent.
   const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
   const doc = useAgentDocument(store, initialAgentId);
-  const { agentId, spec } = doc;
+  const { agentId, spec, save } = doc;
+  // A ref (not state) so a caller reading `latestVersion` after `await
+  // saveVersion()` sees the version that call just reported, not the one
+  // captured when its closure was created.
+  const latestVersionRef = useRef<number | null>(null);
+  const saveVersion = useCallback(async (): Promise<VersionListItem | undefined> => {
+    await save();
+    const { item, created } = await runtimeClient.saveVersion(agentId);
+    latestVersionRef.current = item.version;
+    return created ? item : undefined;
+  }, [save, agentId]);
   const agentStatuses = useAgentStatuses(doc.agents);
   const stream = useAgentStream(agentId);
   const run = useRunControls({ agentId, spec, ...stream });
@@ -166,6 +193,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const value: AppState = {
     store,
     ...doc,
+    saveVersion,
+    get latestVersion() {
+      return latestVersionRef.current;
+    },
     railTab,
     setRailTab,
     drawerTab,

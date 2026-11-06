@@ -74,8 +74,11 @@ function FocusChip({ focus, onClear }: { focus: AuthorFocus; onClear: () => void
  * Shift+Enter adds a line), the hint/send-stop bar and the error strip. A
  * refused send's text comes back through `restoreDraft`. Draft state is
  * local to the card - it is typing, not conversation state.
+ * `disabledReason` locks the whole composer (the History view's "Close
+ * history to keep chatting"): the textarea greys out with the reason and
+ * send is blocked the same way.
  */
-export function AuthorComposer({ chat }: { chat: AuthorChat }): JSX.Element {
+export function AuthorComposer({ chat, disabledReason }: { chat: AuthorChat; disabledReason?: string }): JSX.Element {
   const { state } = chat;
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -92,7 +95,7 @@ export function AuthorComposer({ chat }: { chat: AuthorChat }): JSX.Element {
     if (el.scrollHeight > 0) el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
   }
 
-  const reason = sendBlockReason(state, value);
+  const reason = disabledReason ?? sendBlockReason(state, value);
 
   function trySend(): void {
     const text = value.trim();
@@ -123,7 +126,8 @@ export function AuthorComposer({ chat }: { chat: AuthorChat }): JSX.Element {
         className="author-input"
         rows={1}
         maxLength={MAX_MESSAGE_CHARS}
-        disabled={state.setup?.ready === false}
+        disabled={disabledReason !== undefined || state.setup?.ready === false}
+        title={disabledReason}
         aria-label="Message the Agent Author"
         placeholder="Describe an agent or a change…"
         value={value}
