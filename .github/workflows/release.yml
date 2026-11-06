@@ -44,17 +44,18 @@ jobs:
           git commit -am "chore(release): $VERSION"
           git push origin main
       - name: Publish lousho
-        run: npm publish --access public --tag alpha
+        run: npm publish --access public --tag latest
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish create-lousho
-        run: npm publish -w create-lousho --access public --tag alpha
+        run: npm publish -w create-lousho --access public --tag latest
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Mirror to GitHub Packages
         run: node scripts/publish-github-packages.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TAG: latest
       - name: GitHub release
         run: gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --prerelease --generate-notes
         env:
