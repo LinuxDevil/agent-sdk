@@ -8,7 +8,7 @@
  * `agent → tool` edge takes the default re-own effect.
  */
 import { toolNodeName } from '../nodeIds';
-import { ownerSpecPrefix, sectionChildren } from '../order';
+import { arrayItemSpecPath, sectionChildren } from '../order';
 import { SECRET_CREDENTIALS, SPEC_ID_PATTERN } from '../specTypes';
 import type { KindRules } from '../kindRules';
 import type { Graph, NodeOfKind, Problem, ToolNodeData } from '../types';
@@ -46,13 +46,6 @@ export function fullUrlOk(url: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** The node's spec path: `<owner prefix>tools[<index>]`. */
-function toolSpecPath(node: NodeOfKind<'tool'>, graph: Graph): string {
-  const siblings = sectionChildren(graph, node.owner ?? '', 'tools');
-  const index = siblings.findIndex((n) => n.id === node.id);
-  return `${ownerSpecPrefix(node.owner, graph)}tools[${index === -1 ? 0 : index}]`;
 }
 
 /** The form's required-field errors, in the ticket's order. */
@@ -139,7 +132,7 @@ function secretProblems(node: NodeOfKind<'tool'>, path: string): Problem[] {
 /** `tool` kind rules: validation only — the connect effect is the default re-own attach. */
 export const toolRules: KindRules<'tool'> = {
   validate: (node, graph) => {
-    const path = toolSpecPath(node, graph);
+    const path = arrayItemSpecPath(graph, node, 'tools');
     return [
       ...formProblems(node, path),
       ...idProblems(node, path),

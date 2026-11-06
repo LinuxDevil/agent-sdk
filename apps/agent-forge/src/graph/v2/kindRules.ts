@@ -8,6 +8,7 @@
 import { agentRules } from './kinds/agent';
 import { handoffRules } from './kinds/handoff';
 import { mcpRules } from './kinds/mcp';
+import { skillRules } from './kinds/skill';
 import { subagentRules } from './kinds/subagent';
 import { toolRules } from './kinds/tool';
 import type { Graph, GraphNode, NodeKind, NodeOfKind, Problem } from './types';
@@ -46,4 +47,5 @@ export const KIND_RULES: { [K in NodeKind]?: KindRules<K> } = {
   tool: toolRules,
   handoff: handoffRules,
   mcp: mcpRules,
+  skill: skillRules,
 };
