@@ -5,7 +5,7 @@
  * shares one request per kind per page load. `refreshCatalog` drops the
  * cached entry so a Retry button can refetch.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { runtimeClient } from '../runtime/runtimeClient';
 import { errorMessage } from '../components/errorMessage';
 import type {
@@ -53,6 +53,12 @@ const fetchers: { [K in CatalogKind]: () => Promise<CatalogPayloads[K]> } = {
  */
 const catalogCache = new Map<CatalogKind, Promise<unknown>>();
 
+/** Per-kind fetch generation, bumped by {@link refreshCatalog} so mounted hooks refetch. */
+const versions = new Map<CatalogKind, number>();
+
+/** Mounted {@link useCatalog} listeners, poked by {@link refreshCatalog}. */
+const listeners = new Set<() => void>();
+
 function catalogPromise(kind: CatalogKind): Promise<unknown> {
   let promise = catalogCache.get(kind);
   if (promise === undefined) {
@@ -62,9 +68,25 @@ function catalogPromise(kind: CatalogKind): Promise<unknown> {
   return promise;
 }
 
-/** Drops `kind`'s cached entry so the next {@link useCatalog} call refetches (a Retry button's hook). */
+/** `kind`'s fetch generation — the `useSyncExternalStore` snapshot of {@link useCatalog}. */
+function catalogVersion(kind: CatalogKind): number {
+  return versions.get(kind) ?? 0;
+}
+
+/** Registers `notify` for every catalog refresh; answers the unsubscribe. */
+function subscribe(notify: () => void): () => void {
+  listeners.add(notify);
+  return () => listeners.delete(notify);
+}
+
+/**
+ * Drops `kind`'s cached entry and bumps its version so every mounted
+ * {@link useCatalog} of that kind refetches — a Retry button's hook.
+ */
 export function refreshCatalog(kind: CatalogKind): void {
   catalogCache.delete(kind);
+  versions.set(kind, catalogVersion(kind) + 1);
+  for (const listener of listeners) listener();
 }
 
 /**
@@ -78,6 +100,7 @@ export function useCatalog<K extends CatalogKind>(kind: K): CatalogState<Catalog
     error: undefined,
     loading: true,
   });
+  const version = useSyncExternalStore(subscribe, () => catalogVersion(kind));
   useEffect(() => {
     let alive = true;
     setState({ data: undefined, error: undefined, loading: true });
@@ -92,6 +115,6 @@ export function useCatalog<K extends CatalogKind>(kind: K): CatalogState<Catalog
     return () => {
       alive = false;
     };
-  }, [kind]);
+  }, [kind, version]);
   return state;
 }

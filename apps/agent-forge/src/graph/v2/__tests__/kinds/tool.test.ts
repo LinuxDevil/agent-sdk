@@ -176,6 +176,7 @@ describe('toolRules.validate', () => {
   it.each([
     ['token', 'github'],
     ['apiToken', 'jira'],
+    ['webhookUrl', 'slack'],
     ['apiKey', 'email'],
   ] as const)(
     'warns when the %s credential is a plain string',
