@@ -14,6 +14,8 @@ import { onOpenPage } from './authorEvents';
 import { useAuthorDock } from './authorDock';
 import { AuthorComposer } from './AuthorComposer';
 import { AuthorMessages } from './AuthorMessages';
+// Registers the proposeAgent/proposeAgentUpdate ProposalCard renderers.
+import './proposalRenderers';
 
 /** Past this many px from the bottom, autoscroll leaves the user alone. */
 const SCROLL_PIN_PX = 80;
