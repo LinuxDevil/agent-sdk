@@ -340,6 +340,29 @@ describe('palette create (C05 handoff entry)', () => {
   });
 });
 
+describe('palette create (C07 mcp entry)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const mcp = entries.find((e) => e.id === 'mcp');
+
+  it('registers the entry under the Capabilities group', () => {
+    expect(mcp).toBeDefined();
+    expect(mcp?.group).toBe('Capabilities');
+    expect(mcp?.kind).toBe('mcp');
+  });
+
+  it('creates the empty stdio item', () => {
+    expect(mcp!.create(g0, 'agent').data).toStrictEqual({ key: 'server', item: { command: '' } });
+  });
+
+  it('names two creates mcp:server and mcp:server-2', () => {
+    const first = addNode(g0, mcp!.create(g0, 'agent'), AT, 'agent');
+    expect(first.nodeId).toBe('mcp:server');
+    const second = addNode(first.graph, mcp!.create(first.graph, 'agent'), AT, 'agent');
+    expect(second.nodeId).toBe('mcp:server-2');
+  });
+});
+
 describe('reownNode', () => {
   const g = specToGraph(treeSpec());
 

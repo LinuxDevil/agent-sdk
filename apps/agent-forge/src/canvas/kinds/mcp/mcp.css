@@ -1,0 +1,41 @@
+/* The MCP Inspector's probed-tool list (src/canvas/kinds/mcp/McpToolList.tsx). */
+
+.mcp-tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.mcp-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mcp-tool:last-child {
+  border-bottom: none;
+}
+
+.mcp-tool-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mcp-tool-name {
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+}
+
+.mcp-tool-desc {
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
