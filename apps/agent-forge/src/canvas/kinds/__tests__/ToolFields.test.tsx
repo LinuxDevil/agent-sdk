@@ -1,12 +1,14 @@
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
 
 import { render as mount, rerender } from '../../../ui/__tests__/render';
 
 import { Inspector } from '../../../components/Inspector';
+import { NODE_TYPES, flowNodeType, type CanvasNodeData } from '../../AgentNode';
 import { specToGraph } from '../../../graph/v2/specToGraph';
 import type { AgentSpecV2 } from '../../../graph/v2/specTypes';
-import type { Graph, ToolNodeData } from '../../../graph/v2/types';
+import type { Graph, GraphNode, ToolNodeData } from '../../../graph/v2/types';
 import type { CatalogState } from '../../useCatalog';
 import type { AgentListItem, CatalogModel, CatalogTool } from '../../../../shared/wireTypes';
 
@@ -136,6 +138,19 @@ function useTool(tools: Record<string, unknown>[], nodeId: string) {
   app.graph = specToGraph(specOf(tools));
 }
 
+/** Mounts `node`'s NodeCard and answers its title — the far end of the "pick in the Inspector → card updates" path. */
+function cardTitle(node: GraphNode): string | undefined {
+  const Card = NODE_TYPES[flowNodeType(node.kind)];
+  const data: CanvasNodeData = { graphNode: node };
+  const props = { id: node.id, type: flowNodeType(node.kind), data, selected: false } as unknown as NodeProps;
+  const card = mount(
+    <ReactFlowProvider>
+      <Card {...props} />
+    </ReactFlowProvider>
+  );
+  return card.querySelector('.rf-node-title')?.textContent ?? undefined;
+}
+
 beforeEach(() => {
   app.selectedNodeId = 'tool:web_fetch';
   app.graph = specToGraph(specOf([{ builtin: 'web_fetch' }]));
@@ -169,6 +184,19 @@ describe('tool Inspector: Type switch', () => {
   });
 });
 
+describe('tool Inspector: catalog pick', () => {
+  it('writes the picked name as builtin and the card re-titles to it', () => {
+    renderInspector();
+    const option = [...container.querySelectorAll<HTMLElement>('[role="option"]')].find(
+      (o) => o.querySelector('.tool-option-name')?.textContent === 'http_request',
+    )!;
+    act(() => option.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    expect(item()).toStrictEqual({ builtin: 'http_request' });
+    const node = app.graph!.nodes.find((n) => n.id === 'tool:web_fetch')!;
+    expect(cardTitle(node)).toBe('http_request');
+  });
+});
+
 describe('tool Inspector: per-form fields', () => {
   it('writes the registry name and version', () => {
     useTool([{ registry: 'github-issues' }], 'tool:github-issues');
@@ -197,6 +225,37 @@ describe('tool Inspector: per-form fields', () => {
     const keys = [...container.querySelectorAll<HTMLInputElement>('.kv-row input[placeholder="Name"]')]
       .map((input) => input.value);
     expect(keys).toEqual(['token', 'owner', 'repo']);
+  });
+
+  it('shows only the real credential rows when the map is not empty', () => {
+    useTool([{ integration: 'github', credentials: { token: { env: 'GH_TOKEN' } } }], 'tool:github');
+    renderInspector();
+    const keys = [...container.querySelectorAll<HTMLInputElement>('.kv-row input[placeholder="Name"]')]
+      .map((input) => input.value);
+    expect(keys).toEqual(['token']);
+  });
+
+  it('writes only filled credential values to the spec, not the blank suggested rows', () => {
+    useTool([{ integration: 'github', credentials: {} }], 'tool:github');
+    renderInspector();
+    choose('node-tool-credentials-value-0-mode', 'env');
+    const input = container.querySelector<HTMLInputElement>('.kv-row input[placeholder="GITHUB_TOKEN"]')!;
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'GH_TOKEN');
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(item()).toStrictEqual({ integration: 'github', credentials: { token: { env: 'GH_TOKEN' } } });
+  });
+
+  it('keeps a removed suggested row removed', () => {
+    useTool([{ integration: 'github', credentials: {} }], 'tool:github');
+    renderInspector();
+    const remove = container.querySelector<HTMLButtonElement>('button[aria-label="Remove owner"]')!;
+    act(() => remove.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+    const keys = [...container.querySelectorAll<HTMLInputElement>('.kv-row input[placeholder="Name"]')]
+      .map((input) => input.value);
+    expect(keys).toEqual(['token', 'repo']);
+    expect(item()).toStrictEqual({ integration: 'github', credentials: {} });
   });
 
   it('writes the OpenAPI url and keeps the rest of the object', () => {

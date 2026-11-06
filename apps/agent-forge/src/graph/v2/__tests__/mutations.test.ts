@@ -286,7 +286,7 @@ describe('palette create (C04 subagent entries)', () => {
   });
 });
 
-describe('palette create (C05 tool entries)', () => {
+describe('palette create (C06 tool entries)', () => {
   const g0 = specToGraph(minimalSpec());
   const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
   const tool = entries.find((e) => e.id === 'tool');

@@ -78,6 +78,18 @@ describe('tool card (KindView)', () => {
     expect(card.querySelector('.rf-node-title')?.textContent).toBe('fetch-docs');
     expect(card.querySelector('.node-chip')?.textContent).toBe('built-in');
   });
+
+  it.each([
+    [{ file: 'tools/search.ts' }, 'search', 'file'],
+    [{ integration: 'github', credentials: { token: { env: 'GH_TOKEN' } } }, 'github', 'integration'],
+    [{ openapi: { url: 'https://api.example.com/openapi.json' } }, 'openapi', 'openapi'],
+    [{ hosted: 'web_search' }, 'web_search', 'hosted'],
+    [{ hub: true }, 'hub', 'hub'],
+  ])('titles and chips the card for %j', (item, title, chip) => {
+    const card = renderCard(toolNodeOf(item));
+    expect(card.querySelector('.rf-node-title')?.textContent).toBe(title);
+    expect(card.querySelector('.node-chip')?.textContent).toBe(chip);
+  });
 });
 
 describe('AgentNode card', () => {
