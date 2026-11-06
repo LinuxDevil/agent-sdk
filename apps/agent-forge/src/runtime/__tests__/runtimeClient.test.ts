@@ -463,3 +463,56 @@ describe('RuntimeClient template methods', () => {
     await expect(client.getTemplate('ghost')).resolves.toBeUndefined();
   });
 });
+
+describe('RuntimeClient author settings methods', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+  const PAYLOAD = {
+    model: 'anthropic/claude-sonnet-5-5',
+    reviewModel: 'anthropic/claude-haiku-5-5',
+    reviewEnabled: true,
+    ready: true,
+  };
+
+  /** The last fetch call's [path, init]. */
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it('getAuthorSettings GETs /settings/author', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, PAYLOAD));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.getAuthorSettings()).resolves.toEqual(PAYLOAD);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/settings/author');
+    expect(init.method).toBe('GET');
+  });
+
+  it('saveAuthorSettings PUTs only the patch fields to /settings/author', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { ...PAYLOAD, reviewEnabled: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.saveAuthorSettings({ reviewEnabled: false })).resolves.toMatchObject({
+      reviewEnabled: false,
+    });
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/settings/author');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ reviewEnabled: false });
+  });
+
+  it('saveAuthorSettings rejects with the server message on a non-ok response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse(400, { error: 'model must look like provider/model.', code: 'INVALID_INPUT' }))
+    );
+    await expect(client.saveAuthorSettings({ model: 'gpt-4.1' })).rejects.toMatchObject({
+      message: 'model must look like provider/model.',
+      status: 400,
+      code: 'INVALID_INPUT',
+    });
+  });
+});

@@ -4,7 +4,7 @@ import { useAppState } from '../state/AppState';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { DeployResult, ProviderKeyStatus, SettingsFile, SettingsProfile } from '../../shared/wireTypes';
 import { errorMessage } from './errorMessage';
-import { AppearanceSection, CollectorSection, ShortcutsSection } from './SettingsAppSections';
+import { AgentAuthorSection, AppearanceSection, CollectorSection, ShortcutsSection } from './SettingsAppSections';
 import { SettingsCard, TonePill } from './SettingsCard';
 
 type KeyedProviderId = 'openai' | 'anthropic';
@@ -197,7 +197,12 @@ function InlineError({ message }: { message: string | undefined }) {
 function ProviderKeysSection() {
   const { providers, keyDrafts, providerError, setDraft, saveKey, removeKey } = useProviderKeys();
   return (
-    <SettingsCard Icon={KeyRound} title="Provider keys" description="Stored on this machine; never shown in full.">
+    <SettingsCard
+      Icon={KeyRound}
+      title="Provider keys"
+      description="Stored on this machine; never shown in full."
+      id="settings-provider-keys"
+    >
       {KEYED_PROVIDERS.map(({ id, label, envVar }) => (
         <ProviderKeyField
           key={id}
@@ -395,7 +400,8 @@ function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
  *    agent's saved spec, with a simple stdout/stderr log panel.
  *
  * The screen adds the app-level ones: Appearance (theme, table density),
- * Collector and Keyboard shortcuts, in one left-aligned column.
+ * Agent Author (models + draft review), Collector and Keyboard shortcuts,
+ * in one left-aligned column.
  */
 export function SettingsPanel({ variant = 'drawer' }: { variant?: 'drawer' | 'screen' }) {
   const [deployAdapter, setDeployAdapter] = useState<string>('node-server');
@@ -406,6 +412,7 @@ export function SettingsPanel({ variant = 'drawer' }: { variant?: 'drawer' | 'sc
     <div className={screen ? 'settings-panel settings-panel-screen' : 'settings-panel'}>
       {screen && <AppearanceSection />}
       <ProviderKeysSection />
+      {screen && <AgentAuthorSection />}
       <ProfileSection profiles={profiles} />
       <DeploySection deployAdapter={deployAdapter} onAdapterChange={setDeployAdapter} />
       {screen && <CollectorSection />}
