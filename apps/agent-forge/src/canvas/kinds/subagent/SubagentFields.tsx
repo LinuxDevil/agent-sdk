@@ -59,7 +59,8 @@ function RefFields({ node, patch }: Pick<KindFieldsProps<'subagent'>, 'node' | '
           options={[...options, { value: OTHER_PATH, label: 'Other path…' }]}
           value={known ? ref : OTHER_PATH}
           onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-            if (event.target.value !== OTHER_PATH) patch({ ref: event.target.value });
+            // "Other path…" clears the ref so `known` goes false and the free-path input appears.
+            patch({ ref: event.target.value === OTHER_PATH ? '' : event.target.value });
           }}
         />
       </Field>

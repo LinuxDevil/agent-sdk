@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
-import { toRfNodes } from '../CanvasArea';
+import { toRfEdges, toRfNodes } from '../CanvasArea';
+import { deriveEdges } from '../../graph/v2/edges';
 import { setCollapsed } from '../../graph/v2/mutations';
 import { specToGraph } from '../../graph/v2/specToGraph';
 import type { AgentSpecV2 } from '../../graph/v2/specTypes';
@@ -55,6 +56,17 @@ describe('toRfNodes: subagent groups', () => {
     expect(group.hidden).toBeFalsy();
     expect(tool.hidden).toBe(true);
     expect(tool.parentId).toBe('sub:research');
+  });
+
+  it('hides the edges that touch a hidden child', () => {
+    const graph = setCollapsed(workedGraph(), 'sub:research', true);
+    const nodes = toRfNodes(graph, DECOR);
+    const hiddenIds = new Set(nodes.filter((n) => n.hidden).map((n) => n.id));
+    const edges = toRfEdges(deriveEdges(graph), {}, undefined, hiddenIds);
+    // The `uses` edge into the hidden tool is hidden; edges between visible nodes stay visible.
+    expect(edges.find((e) => e.id === 'uses:sub:research->sub:research/tool:web-fetch')!.hidden).toBe(true);
+    expect(edges.find((e) => e.id === 'delegates:agent->sub:research')!.hidden).toBe(false);
+    expect(edges.find((e) => e.id === 'delegates:agent->sub:billing')!.hidden).toBe(false);
   });
 
   it('shows the children again when expanded', () => {

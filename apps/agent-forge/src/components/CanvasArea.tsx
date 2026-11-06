@@ -250,7 +250,7 @@ const MIN_ZOOM = 0.2;
  * edge (`selectedEdgeId`) is drawn in the accent colour. Edges are selectable
  * but not deletable on their own (as before): removing a node still drops its edges.
  */
-function toRfEdges(
+export function toRfEdges(
   edges: GraphEdge[],
   statuses: Record<string, NodeRunStatus> = {},
   selectedEdgeId?: string,
