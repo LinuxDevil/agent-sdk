@@ -175,7 +175,8 @@ describe('authorChatReducer', () => {
       { type: 'turn.error', requestId: 'r_1', seq: 3, message: 'provider died', code: 'UNAVAILABLE' },
     ]);
     expect(state.active).toBeNull();
-    expect(state.error).toEqual({ message: 'provider died', code: 'UNAVAILABLE' });
+    // `retry` marks a mid-turn death: the panel offers "Try again" (resends the last user text).
+    expect(state.error).toEqual({ message: 'provider died', code: 'UNAVAILABLE', retry: true });
     const assistant = state.messages.at(-1) as AuthorAssistantMessage;
     expect(assistant.finishReason).toBe('error');
   });

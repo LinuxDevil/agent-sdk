@@ -26,6 +26,7 @@ function chatWith(over: Partial<AuthorChat> = {}, state: Partial<AuthorChatState
     apply: vi.fn(),
     enable: vi.fn(async () => ({ ok: true as const, agentId: 'a1', enabled: true, status: 'updated' as const, missingRequirements: 0 })),
     submitSecret: vi.fn(),
+    recheckSetup: vi.fn(),
     dismissError: vi.fn(),
     ...over,
   };

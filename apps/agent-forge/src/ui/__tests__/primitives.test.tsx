@@ -177,6 +177,61 @@ describe('Toast', () => {
     expect(toasts()).toHaveLength(0);
   });
 
+  it('shows a success toast with its tint class inside the polite region', () => {
+    vi.useFakeTimers();
+    renderToasts();
+    act(() => void api.show({ message: 'Agent updated', tone: 'success' }));
+    const toast = politeRegion().querySelector('.toast.toast-success') as HTMLElement;
+    expect(toast.querySelector('.toast-message')?.textContent).toBe('Agent updated');
+  });
+
+  it('keeps a warning toast polite with a muted description for 8 s', () => {
+    vi.useFakeTimers();
+    renderToasts();
+    act(() => void api.show({ message: 'Quota low', tone: 'warning', description: 'Two runs left today.' }));
+    const toast = politeRegion().querySelector('.toast.toast-warning') as HTMLElement;
+    expect(toast.getAttribute('role')).toBeNull();
+    expect(toast.querySelector('.toast-description')?.textContent).toBe('Two runs left today.');
+    act(() => void vi.advanceTimersByTime(7999));
+    expect(toasts()).toHaveLength(1);
+    act(() => void vi.advanceTimersByTime(1));
+    expect(toasts()).toHaveLength(0);
+  });
+
+  it('renders an error toast as an alert outside the polite region', () => {
+    vi.useFakeTimers();
+    renderToasts();
+    act(() => void api.show({ message: 'Boom', tone: 'error' }));
+    const alert = container.querySelector('.toast.toast-error[role="alert"]') as HTMLElement;
+    expect(politeRegion().contains(alert)).toBe(false);
+    act(() => void vi.advanceTimersByTime(60_000));
+    expect(toasts()).toHaveLength(1);
+  });
+
+  it('defaults to an info toast gone after 5 s', () => {
+    vi.useFakeTimers();
+    renderToasts();
+    act(() => void api.show({ message: 'Hi' }));
+    expect(politeRegion().querySelector('.toast.toast-info')).not.toBeNull();
+    act(() => void vi.advanceTimersByTime(5000));
+    expect(toasts()).toHaveLength(0);
+  });
+
+  it('renders exactly one decorative icon per tone', () => {
+    vi.useFakeTimers();
+    renderToasts();
+    act(() => {
+      api.show({ message: 'fyi' });
+      api.show({ message: 'done', tone: 'success' });
+      api.show({ message: 'low', tone: 'warning' });
+      api.show({ message: 'broke', tone: 'error' });
+    });
+    expect(toasts()).toHaveLength(4);
+    for (const toast of toasts()) {
+      expect(toast.querySelectorAll('svg.toast-icon[aria-hidden="true"]')).toHaveLength(1);
+    }
+  });
+
   it('keeps error toasts as alerts until dismissed', () => {
     vi.useFakeTimers();
     renderToasts();

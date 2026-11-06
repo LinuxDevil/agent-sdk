@@ -29,6 +29,7 @@ import type {
   AuthorFocus,
   AuthorSecretRequest,
   AuthorServerEvent,
+  AuthorSettingsPayload,
   AuthorUserMessage,
   SetEnabledOutput,
 } from '../../shared/authorWire';
@@ -36,6 +37,7 @@ import { connectAuthorStream, newRequestId, type AuthorStream } from './authorSt
 import {
   authorChatReducer,
   initialAuthorChatState,
+  type AuthorChatAction,
   type AuthorChatState,
 } from './authorChatReducer';
 import { fireAgentSaved, fireOpenPage } from './authorEvents';
@@ -78,6 +80,8 @@ export interface AuthorChat {
   enable(agentId: string): Promise<SetEnabledOutput | null>;
   /** The SecretCard's submit; `value: null` skips the card (`declined`). */
   submitSecret(toolCallId: string, name: string, value: string | null): Promise<void>;
+  /** The SetupCard's "Check again": re-reads `GET /settings/author` and dispatches its answer. */
+  recheckSetup(): void;
   dismissError(): void;
 }
 
@@ -103,6 +107,13 @@ function writeSessionId(id: string | null): void {
   } catch {
     // Storage denied: the chat works, it just won't reopen after a reload.
   }
+}
+
+/** The `setup` dispatch a `GET /settings/author` answer produces (`model` names what the card says runs). */
+function setupAction(settings: AuthorSettingsPayload): AuthorChatAction {
+  const action: Extract<AuthorChatAction, { type: 'setup' }> = { type: 'setup', ready: settings.ready, model: settings.model };
+  if (settings.missingKeyFor !== undefined) action.missingKeyFor = settings.missingKeyFor;
+  return action;
 }
 
 /** A `tool.result` counts as a save when the tool wrote an agent and reported `ok`. */
@@ -431,17 +442,23 @@ export function AuthorChatProvider({ children }: { children: ReactNode }): JSX.E
     dispatch({ type: 'secret.answered', toolCallId, outcome: value === null ? 'declined' : 'saved' });
   }
 
+  /** `GET /settings/author` → the `setup` state the SetupCard reads (`model` names what runs). */
+  async function recheckSettings(): Promise<void> {
+    try {
+      const settings = await runtimeClient.getAuthorSettings();
+      dispatch(setupAction(settings));
+    } catch {
+      // Settings unreachable: `setup` keeps its last answer.
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function bootstrap(): Promise<void> {
       try {
         const settings = await runtimeClient.getAuthorSettings();
         if (cancelled) return;
-        dispatch(
-          settings.missingKeyFor === undefined
-            ? { type: 'setup', ready: settings.ready }
-            : { type: 'setup', ready: settings.ready, missingKeyFor: settings.missingKeyFor }
-        );
+        dispatch(setupAction(settings));
       } catch {
         // Settings unreachable: `setup` stays null and no setup card shows.
       }
@@ -491,6 +508,9 @@ export function AuthorChatProvider({ children }: { children: ReactNode }): JSX.E
         return sessionId === null ? Promise.resolve(null) : runtimeClient.enableAuthorAgent(sessionId, agentId);
       },
       submitSecret: (toolCallId: string, name: string, value: string | null) => doSubmitSecret(toolCallId, name, value),
+      recheckSetup: () => {
+        void recheckSettings();
+      },
       dismissError: () => dispatch({ type: 'error.dismissed' }),
     }),
     // The actions read through refs; only `state` changes the value.

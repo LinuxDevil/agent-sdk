@@ -124,7 +124,7 @@ describe('AuthorChatProvider', () => {
     mount();
     await act(flush);
     expect(runtimeClient.getAuthorSettings).toHaveBeenCalled();
-    expect(chat.state.setup).toEqual({ ready: true });
+    expect(chat.state.setup).toEqual({ ready: true, model: 'mock/mock-1' });
     expect(chat.state.sessionId).toBeNull();
     expect(connectAuthorStream).not.toHaveBeenCalled();
   });
