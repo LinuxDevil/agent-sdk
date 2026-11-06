@@ -1,0 +1,61 @@
+name: Release
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions:
+  contents: write
+  packages: write
+jobs:
+  release:
+    if: github.event.pull_request.merged == true && !contains(github.event.pull_request.labels.*.name, 'norelease')
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --max-old-space-size=12288
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - name: Bump versions
+        run: |
+          npm version prerelease --preid=alpha --no-git-tag-version
+          node scripts/sync-version.mjs
+          npm version prerelease --preid=alpha --no-git-tag-version -w create-lousho
+          npm install --package-lock-only --ignore-scripts
+          VERSION=$(node -p "require('./package.json').version")
+          sed -i "s/^## \[Unreleased\]/&\n\n## [$VERSION] - $(date -u +%F)/" CHANGELOG.md
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - run: npm run build
+      - run: npm run api:update
+      - run: npm run build -w create-lousho
+      - name: Push version bump
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "chore(release): $VERSION"
+          git push origin main
+      - name: Publish lousho
+        run: npm publish --access public --tag alpha
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish create-lousho
+        run: npm publish -w create-lousho --access public --tag alpha
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Mirror to GitHub Packages
+        run: node scripts/publish-github-packages.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: GitHub release
+        run: gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --prerelease --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
