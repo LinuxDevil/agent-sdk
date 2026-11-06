@@ -24,6 +24,7 @@ import type {
   GraphNode,
   McpNodeData,
   NodeKind,
+  SkillNodeData,
   SubagentNodeData,
   ToolNodeData,
 } from '../types';
@@ -360,6 +361,34 @@ describe('palette create (C07 mcp entry)', () => {
     expect(first.nodeId).toBe('mcp:server');
     const second = addNode(first.graph, mcp!.create(first.graph, 'agent'), AT, 'agent');
     expect(second.nodeId).toBe('mcp:server-2');
+  });
+});
+
+describe('palette create (C08 skill entry)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const skill = entries.find((e) => e.id === 'skill');
+
+  it('registers the entry under the Capabilities group', () => {
+    expect(skill).toBeDefined();
+    expect(skill?.group).toBe('Capabilities');
+    expect(skill?.kind).toBe('skill');
+  });
+
+  it('creates the empty inline item named after the first free name', () => {
+    expect(skill!.create(g0, 'agent').data).toStrictEqual({
+      item: { inline: { name: 'skill', description: '', content: '' } },
+    });
+  });
+
+  it('names two creates skill and skill-2 with ids skill:skill and skill:skill-2', () => {
+    const first = addNode(g0, skill!.create(g0, 'agent'), AT, 'agent');
+    expect(first.nodeId).toBe('skill:skill');
+    const second = addNode(first.graph, skill!.create(first.graph, 'agent'), AT, 'agent');
+    expect(second.nodeId).toBe('skill:skill-2');
+    expect((nodeById(second.graph, 'skill:skill-2').data as SkillNodeData).item).toStrictEqual({
+      inline: { name: 'skill-2', description: '', content: '' },
+    });
   });
 });
 

@@ -9,7 +9,7 @@
  * clone keeps the copy's tool-name clash visible until the user picks
  * another target, which is intended.
  */
-import { ownerSpecPrefix, sectionChildren } from '../order';
+import { arrayItemSpecPath, sectionChildren } from '../order';
 import type { KindRules } from '../kindRules';
 import type { AgentNodeData, Graph, HandoffNodeData, NodeOfKind, Problem } from '../types';
 
@@ -22,13 +22,6 @@ export const HANDOFF_TOOL_NAME_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 /** Trim-empty is empty: `undefined`, non-strings and whitespace-only values all count as missing. */
 function blank(value: unknown): boolean {
   return typeof value !== 'string' || value.trim() === '';
-}
-
-/** The node's spec path: `<owner prefix>handoffs[<index>]`. */
-function handoffSpecPath(node: NodeOfKind<'handoff'>, graph: Graph): string {
-  const siblings = sectionChildren(graph, node.owner ?? '', 'handoffs');
-  const index = siblings.findIndex((n) => n.id === node.id);
-  return `${ownerSpecPrefix(node.owner, graph)}handoffs[${index === -1 ? 0 : index}]`;
 }
 
 /** The transfer tool's resolved name — `item.toolName` or the SDK's `transfer_to_<agent>` default. */
@@ -72,7 +65,7 @@ function validateHandoff(node: NodeOfKind<'handoff'>, graph: Graph): Problem[] {
       message: `Two handoffs use the tool name '${resolvedToolName(item)}'`,
     });
   }
-  const path = handoffSpecPath(node, graph);
+  const path = arrayItemSpecPath(graph, node, 'handoffs');
   return fails.map(({ field, message }) => ({
     nodeId: node.id,
     severity: 'error',
