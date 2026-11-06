@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
 import { render } from '../../ui/__tests__/render';
-import { NODE_TYPES, flowNodeType, type AgentNodeData } from '../AgentNode';
+import { NODE_TYPES, flowNodeType, type CanvasNodeData } from '../AgentNode';
 import { specToGraph } from '../../graph/v2/specToGraph';
 import type { GraphNode } from '../../graph/v2/types';
 
@@ -25,9 +25,9 @@ function agentOf(over: Record<string, unknown>): GraphNode {
   } as Parameters<typeof specToGraph>[0]).nodes[0];
 }
 
-function renderCard(graphNode: GraphNode, extra: Partial<AgentNodeData> = {}): HTMLElement {
+function renderCard(graphNode: GraphNode, extra: Partial<CanvasNodeData> = {}): HTMLElement {
   const Card = NODE_TYPES[flowNodeType(graphNode.kind)];
-  const data: AgentNodeData = { graphNode, ...extra };
+  const data: CanvasNodeData = { graphNode, ...extra };
   const props = { id: graphNode.id, type: flowNodeType(graphNode.kind), data, selected: false } as unknown as NodeProps;
   const container = render(
     <ReactFlowProvider>
@@ -64,7 +64,7 @@ describe('AgentNode card', () => {
 
   it('keeps running, selected, highlighted and breakpoint states together on one card', () => {
     const Card = NODE_TYPES[flowNodeType('agent')];
-    const data: AgentNodeData = { graphNode: nodeOf('agent'), status: 'running', hasBreakpoint: true, highlighted: true };
+    const data: CanvasNodeData = { graphNode: nodeOf('agent'), status: 'running', hasBreakpoint: true, highlighted: true };
     const props = { id: 'agent', type: flowNodeType('agent'), data, selected: true } as unknown as NodeProps;
     const container = render(
       <ReactFlowProvider>

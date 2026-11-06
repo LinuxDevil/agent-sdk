@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { CanvasLayout } from '../../../../shared/wireTypes';
+import { KIND_VIEWS } from '../../../canvas/kinds';
 import { graphToSpec } from '../graphToSpec';
 import {
   addNode,
@@ -221,6 +222,67 @@ describe('moveNode / setNodeData / setCollapsed', () => {
     expect(nodeById(g1, 'sub:r').collapsed).toBe(true);
     const r = graphToSpec(g1);
     expect(r.layout.nodes['sub:r'].collapsed).toBe(true);
+  });
+
+  it('round-trips collapsed through layout.json back onto the node', () => {
+    const g = specToGraph(
+      minimalSpec({
+        subagents: {
+          research: inlineAgent({ name: 'research' }),
+        },
+      }),
+    );
+    const r = graphToSpec(setCollapsed(g, 'sub:research', true));
+    expect(r.layout.nodes['sub:research']).toMatchObject({ collapsed: true });
+    const g2 = specToGraph(r.spec, r.layout);
+    expect(nodeById(g2, 'sub:research').collapsed).toBe(true);
+  });
+});
+
+describe('palette create (C04 subagent entries)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const inline = entries.find((e) => e.id === 'subagent-inline');
+  const ref = entries.find((e) => e.id === 'subagent-ref');
+  const remote = entries.find((e) => e.id === 'subagent-remote');
+
+  it('registers all three entries under the Agents group', () => {
+    for (const entry of [inline, ref, remote]) {
+      expect(entry).toBeDefined();
+      expect(entry?.group).toBe('Agents');
+    }
+    expect(inline?.kind).toBe('agent');
+    expect(ref?.kind).toBe('subagent');
+    expect(remote?.kind).toBe('subagent');
+  });
+
+  it('names the first subagent "helper" and the second "helper-2"', () => {
+    const first = inline!.create(g0, 'agent');
+    expect((first.data as AgentNodeData).subagentKey).toBe('helper');
+    const g1 = addNode(g0, first, AT, 'agent').graph;
+    const second = ref!.create(g1, 'agent');
+    expect((second.data as SubagentNodeData).key).toBe('helper-2');
+  });
+
+  it('names a remote subagent "remote"', () => {
+    expect((remote!.create(g0, 'agent').data as SubagentNodeData).key).toBe('remote');
+    expect((remote!.create(g0, 'agent').data as SubagentNodeData).item).toStrictEqual({
+      remote: { url: '', description: '' },
+    });
+  });
+
+  it('seeds the inline agent\'s fields from its key and the owner\'s model', () => {
+    const data = inline!.create(g0, 'agent').data as AgentNodeData;
+    expect(data.fields).toMatchObject({
+      name: 'helper',
+      description: '',
+      model: 'mock/mock-1',
+      instructions: '',
+    });
+    expect(data.extra).toStrictEqual({});
+    const added = addNode(g0, inline!.create(g0, 'agent'), AT, 'agent');
+    expect(added.nodeId).toBe('sub:helper');
+    expect(graphToSpec(added.graph).spec.subagents?.['helper']).toMatchObject({ inline: { name: 'helper' } });
   });
 });
 

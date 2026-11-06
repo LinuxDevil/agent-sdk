@@ -888,6 +888,37 @@ button.breakpoint-toggle {
   background: var(--accent);
 }
 
+/*
+ * Inline subagent group (AgentGroupNode.tsx): a container sized by
+ * toRfNodes to its children plus padding; the head carries the agent card's
+ * title row and the collapse toggle.
+ */
+.rf-group {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+.rf-group-head {
+  /* Same row layout as .rf-node-head; the group's children begin below it. */
+  border-bottom: 1px solid var(--border);
+}
+.canvas-wrap .rf-group.selected {
+  border-color: var(--accent);
+  box-shadow: var(--ring), var(--shadow-sm);
+}
+.rf-group-toggle {
+  flex: none;
+  margin-right: -4px;
+}
+.rf-group-toggle svg {
+  display: block;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .canvas-wrap .rf-node.running::after,
   .canvas-wrap .react-flow__edge.animated path {

@@ -85,6 +85,18 @@ describe('canConnect kind table', () => {
 });
 
 describe('canConnect instance rules', () => {
+  it('allows agent -> subagent (the delegates edge)', () => {
+    const source = node('agent', { id: 'agent' });
+    const target = node('subagent', { id: 'sub:billing', owner: 'other' });
+    expect(canConnect(source, target)).toEqual({ ok: true });
+  });
+
+  it('refuses subagent -> tool (subagents have no outgoing port)', () => {
+    const source = node('subagent', { id: 'sub:billing', owner: 'agent' });
+    const target = node('tool', { id: 'tool:x', owner: 'agent' });
+    expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect subagent → tool" });
+  });
+
   it('refuses a node connected to itself, before the kind table', () => {
     const tool = node('tool');
     expect(canConnect(tool, tool)).toEqual({ ok: false, reason: "Can't connect a node to itself" });

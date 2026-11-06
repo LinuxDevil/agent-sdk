@@ -8,7 +8,7 @@
  */
 import { graphToSpec } from './graphToSpec';
 import { KIND_RULES } from './kindRules';
-import { orderedNodes, sectionChildren, HANDLED_SECTIONS } from './order';
+import { orderedNodes, sectionChildren, subagentEntryKey, HANDLED_SECTIONS } from './order';
 import type {
   AgentNodeData,
   Graph,
@@ -154,12 +154,8 @@ function duplicateMcpKeys(graph: Graph, paths: Readonly<Record<string, string>>)
   );
 }
 
-/** The `subagents` record key a node stands for: `data.key` for refs, `data.subagentKey` for inline agents. */
-function subagentKey(node: GraphNode): string | undefined {
-  if (node.kind === 'subagent') return (node.data as SubagentNodeData).key;
-  if (node.kind === 'agent' && node.owner !== null) return (node.data as AgentNodeData).subagentKey;
-  return undefined;
-}
+/** The `subagents` record key a node stands for (`order.ts`'s `subagentEntryKey`). */
+const subagentKey = subagentEntryKey;
 
 /** Two `subagents` entries of one owner sharing a key would collapse into one record entry. */
 function duplicateSubagentKeys(graph: Graph, paths: Readonly<Record<string, string>>): Problem[] {
