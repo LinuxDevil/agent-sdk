@@ -94,7 +94,30 @@ describe('improveAgent', () => {
     const result = await improveAgent(options({ probe, maxCostIncrease: 0.2, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
     expect(result.outcome).toBe('keep-base');
     expect(result.reason).toMatch(/cost/i);
-    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 100 });
+    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 100, noise: 0 });
+  });
+
+  it('does not reject on cost when the rise is within the spread between runs', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      const fixed = harness.instructions.includes('forbidden');
+      if (caseId !== 'held-out') return run(fixed, 10);
+      return fixed ? run(true, repeat === 0 ? 20 : 100) : run(true, repeat === 0 ? 10 : 70);
+    };
+    const result = await improveAgent(options({ probe, maxCostIncrease: 0.2, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 40, final: 60, noise: 40 });
+  });
+
+  it('still rejects on cost when the rise is larger than the spread between runs', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      const fixed = harness.instructions.includes('forbidden');
+      if (caseId !== 'held-out') return run(fixed, 10);
+      return fixed ? run(true, repeat === 0 ? 90 : 110) : run(true, repeat === 0 ? 10 : 30);
+    };
+    const result = await improveAgent(options({ probe, maxCostIncrease: 0.2, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('keep-base');
+    expect(result.reason).toMatch(/cost/i);
+    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 20, final: 100, noise: 10 });
   });
 
   it('does not count a failing run as cheap, so a fix is not rejected for finishing the work', async () => {
@@ -105,7 +128,7 @@ describe('improveAgent', () => {
     };
     const result = await improveAgent(options({ probe, maxCostIncrease: 0.2, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
     expect(result.outcome).toBe('proposal');
-    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 11 });
+    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 11, noise: 0 });
   });
 
   it('says so when no case passed under both harnesses, instead of claiming cost was fine', async () => {

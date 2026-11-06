@@ -31,10 +31,12 @@ function assertOptions(options: ImproveOptions, repeats: number): void {
   if (overlap.length > 0) throw new ConfigurationError(`improveAgent: ${overlap.join(', ')} can't be both a case and held out.`, 'holdout');
 }
 
+const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
+
 function spread(values: readonly number[]): number {
   if (values.length < 2) return 0;
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length);
+  const middle = mean(values);
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - middle) ** 2, 0) / values.length);
 }
 
 function summarize(runs: readonly LabelledRun[]): ProbeSummary {
@@ -57,20 +59,23 @@ function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined):
   return summary.passRate === 1 && !alwaysPropose;
 }
 
-function meanPassingTokens(runs: readonly LabelledRun[], caseId: string): number | undefined {
-  const tokens = runs.filter((entry) => entry.caseId === caseId && entry.run.passed).map((entry) => entry.run.tokens);
-  return tokens.length === 0 ? undefined : tokens.reduce((sum, value) => sum + value, 0) / tokens.length;
-}
+const passingTokens = (runs: readonly LabelledRun[], caseId: string) => runs.filter((entry) => entry.caseId === caseId && entry.run.passed).map((entry) => entry.run.tokens);
 
 function costOnPassingCases(before: readonly LabelledRun[], after: readonly LabelledRun[]): CostComparison | undefined {
   const pairs = [...new Set(before.map(({ caseId }) => caseId))].flatMap((caseId) => {
-    const base = meanPassingTokens(before, caseId);
-    const final = meanPassingTokens(after, caseId);
-    return base === undefined || final === undefined ? [] : [{ base, final }];
+    const base = passingTokens(before, caseId);
+    const final = passingTokens(after, caseId);
+    if (base.length === 0 || final.length === 0) return [];
+    return [{ base: mean(base), final: mean(final), noise: Math.max(spread(base), spread(final)) }];
   });
   if (pairs.length === 0) return undefined;
-  const average = (pick: 'base' | 'final') => pairs.reduce((sum, pair) => sum + pair[pick], 0) / pairs.length;
-  return { cases: pairs.length, base: average('base'), final: average('final') };
+  return { cases: pairs.length, base: mean(pairs.map((pair) => pair.base)), final: mean(pairs.map((pair) => pair.final)), noise: mean(pairs.map((pair) => pair.noise)) };
+}
+
+function costFailure(cost: CostComparison, maxCostIncrease: number): string | undefined {
+  const rise = cost.final - cost.base;
+  if (cost.base <= 0 || rise <= cost.base * maxCostIncrease || rise <= cost.noise) return undefined;
+  return `The edit raised cost per passing run by more than ${Math.round(maxCostIncrease * 100)}% and more than noise (${Math.round(cost.base)} to ${Math.round(cost.final)} tokens, noise ${Math.round(cost.noise)}).`;
 }
 
 function gateFailure(base: ProbeSummary, final: ProbeSummary, holdout: { base: ProbeSummary; final: ProbeSummary } | undefined, cost: CostComparison | undefined, maxCostIncrease: number): string | undefined {
@@ -80,8 +85,7 @@ function gateFailure(base: ProbeSummary, final: ProbeSummary, holdout: { base: P
   if (holdout && holdout.base.passRate !== null && holdout.final.passRate !== null && holdout.final.passRate < holdout.base.passRate) {
     return `A held-out case got worse (${holdout.base.passRate.toFixed(2)} to ${holdout.final.passRate.toFixed(2)}).`;
   }
-  if (cost && cost.base > 0 && cost.final > cost.base * (1 + maxCostIncrease)) return `The edit raised cost per passing run by more than ${Math.round(maxCostIncrease * 100)}% (${Math.round(cost.base)} to ${Math.round(cost.final)} tokens).`;
-  return undefined;
+  return cost && costFailure(cost, maxCostIncrease);
 }
 
 const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.trim() ?? text.trim();

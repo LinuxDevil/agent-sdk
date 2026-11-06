@@ -57,7 +57,7 @@ export interface ImproveOptions {
   maxTokens?: number;
   /** Most characters of always-on instructions an edit may leave (default 8000). */
   maxAlwaysOnChars?: number;
-  /** The largest rise in tokens per passing run a result may cost, as a fraction, on cases that pass under both harnesses (default 0.2). */
+  /** The largest rise in tokens per passing run a result may cost, as a fraction, on cases that pass under both harnesses (default 0.2). A rise within measured noise isn't rejected. */
   maxCostIncrease?: number;
   /** Most steps per editor session (default 30). */
   maxEditorSteps?: number;
@@ -135,6 +135,8 @@ export interface ImproveResult {
     base: number;
     /** The composed harness. */
     final: number;
+    /** Average spread in tokens between runs of a case. A rise within this isn't rejected. */
+    noise: number;
   };
   /** What each editor did. */
   stages: ImproveStage[];

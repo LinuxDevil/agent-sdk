@@ -426,6 +426,7 @@ export interface ImproveResult {
         cases: number;
         base: number;
         final: number;
+        noise: number;
     };
     diff?: string;
     final?: ProbeSummary;
