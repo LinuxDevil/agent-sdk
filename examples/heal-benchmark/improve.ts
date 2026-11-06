@@ -49,7 +49,8 @@ async function probe(harness: Harness, caseId: string): Promise<ProbeRun> {
   });
   try {
     const result = await agent.send(task.input);
-    return { passed: task.check(result.text ?? ''), transcript: renderTranscript(result.messages), tokens: result.usage?.totalTokens ?? 0, ended: result.finishReason };
+    const failure = task.failure?.();
+    return { passed: task.check(result.text ?? ''), transcript: renderTranscript(result.messages), tokens: result.usage?.totalTokens ?? 0, ended: result.finishReason, ...(failure && { failure }) };
   } catch (error) {
     const { code, usage } = error as { code?: string; usage?: { totalTokens?: number } };
     return { passed: null, transcript: String(error), tokens: usage?.totalTokens ?? 0, ended: code ?? 'error' };

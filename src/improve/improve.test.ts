@@ -86,11 +86,39 @@ describe('improveAgent', () => {
     expect(result.reason).toMatch(/held-out/i);
   });
 
-  it('keeps the base when the edit makes runs much more expensive', async () => {
-    const probe: ImproveOptions['probe'] = async (harness) => (harness.instructions.includes('forbidden') ? run(true, 100) : run(false, 10));
+  it('keeps the base when the edit makes passing runs much more expensive', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      const fixed = harness.instructions.includes('forbidden');
+      return caseId === 'held-out' ? run(true, fixed ? 100 : 10) : run(fixed, 10);
+    };
     const result = await improveAgent(options({ probe, maxCostIncrease: 0.2, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
     expect(result.outcome).toBe('keep-base');
     expect(result.reason).toMatch(/cost/i);
+    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 100 });
+  });
+
+  it('does not count a failing run as cheap, so a fix is not rejected for finishing the work', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      const fixed = harness.instructions.includes('forbidden');
+      if (caseId === 'held-out') return run(true, fixed ? 11 : 10);
+      return fixed ? run(true, 1000) : run(false, 10);
+    };
+    const result = await improveAgent(options({ probe, maxCostIncrease: 0.2, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 11 });
+  });
+
+  it('says so when no case passed under both harnesses, instead of claiming cost was fine', async () => {
+    const probe: ImproveOptions['probe'] = async (harness) => (harness.instructions.includes('forbidden') ? run(true, 1000) : run(false, 10));
+    const result = await improveAgent(options({ probe, holdout: [], turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.costOnPassingCases).toBeUndefined();
+    expect(result.reason).toMatch(/cost could not be compared/i);
+  });
+
+  it('shows editors which check failed', () => {
+    const files = evidenceFiles({ harness: BASE, runs: [{ label: 'base', caseId: 'stuck', repeat: 0, run: { ...run(false), failure: 'follows project conventions' } }] });
+    expect(files['context/runs/base/stuck-0.md']).toContain('Failed check: follows project conventions.');
   });
 
   it('never shows held-out cases to an editor', async () => {

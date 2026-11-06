@@ -37,6 +37,24 @@ describe('codingAgent', () => {
     expect(taskOf('add-months', mutates).task.check('')).toBe(false);
   });
 
+  it('names the check a run failed, without giving away the fix', () => {
+    const everyRoundingUp = codingAgent({ 'src/money.js': 'exports.roundCents = (n) => Math.round(n * 100) / 100;\n' });
+    expect(taskOf('invoice-rounding', everyRoundingUp).task.failure?.()).toBe('other callers keep their behaviour');
+    const mutates = codingAgent({ 'src/months.js': 'exports.addMonths = (date, n) => {\n  const day = date.getUTCDate();\n  date.setUTCDate(1);\n  date.setUTCMonth(date.getUTCMonth() + n);\n  const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();\n  date.setUTCDate(Math.min(day, last));\n  return date;\n};\n' });
+    expect(taskOf('add-months', mutates).task.failure?.()).toBe('follows project conventions');
+    const plainError = codingAgent({ 'src/signup.js': "exports.createAccount = ({ email }) => {\n  if (!email.trim()) throw new Error('Email is required.');\n  return { email: email.trim().toLowerCase() };\n};\n" });
+    expect(taskOf('signup-conventions', plainError).task.failure?.()).toBe('follows project conventions');
+  });
+
+  it('names no failed check once the reference fix is written, and always names one otherwise', () => {
+    for (const [id, files] of Object.entries(FIXES)) expect(taskOf(id, codingAgent(files)).task.failure?.()).toBeUndefined();
+    for (const { id } of codingAgent().tasks) expect(taskOf(id).task.failure?.()).toBeTruthy();
+    const crashes = codingAgent({ 'src/money.js': 'syntax error here' });
+    expect(taskOf('invoice-rounding', crashes).task.failure?.()).toBeTruthy();
+    const extra = codingAgent({ ...FIXES['page-count'], 'src/dedupe.js': 'exports.dedupeBy = (items) => items;\n' });
+    expect(taskOf('page-count', extra).task.failure?.()).toBe('changed only the files this task allows');
+  });
+
   it('fails a run that edits a test, or a file the task should not touch', () => {
     const editedTest = codingAgent({ ...FIXES['page-count'], 'test/pages.test.js': "require('node:test')('x', () => {});\n" });
     expect(taskOf('page-count', editedTest).task.check('')).toBe(false);

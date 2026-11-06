@@ -3,7 +3,7 @@ const SHARED = `You are improving an AI agent's harness: its instructions and sk
 Your workspace has:
 - harness/instructions.md: the agent's instructions. They are in every run, so every word costs tokens.
 - harness/skills/<name>/SKILL.md: a skill, with frontmatter "name" and "description". It costs nothing until the agent loads it.
-- context/runs/: records of real runs, each marked passed or failed.
+- context/runs/: records of real runs, each marked passed or failed. A failed run may also name the check it missed. The agent didn't see that check.
 
 To change the harness, edit those files. Only harness/instructions.md and harness/skills/<name>/SKILL.md can change. Tools, permissions and limits can't be changed here, so don't write instructions that assume they can.
 
