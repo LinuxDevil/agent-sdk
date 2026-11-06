@@ -4,6 +4,7 @@ import type { NewNode } from '../../graph/v2/mutations';
 import type { Graph, NodeKind, NodeOfKind, Problem } from '../../graph/v2/types';
 import { AGENT_VIEW } from './agent';
 import { SUBAGENT_VIEW } from './subagent';
+import { TOOL_VIEW } from './tool';
 import { GenericFields } from './GenericFields';
 
 /** A kind tile's colour family: `kind-<tone>` in screens/agents/agents.css (also the MiniMap's node fill). */
@@ -93,6 +94,7 @@ export interface KindView<K extends NodeKind> {
 export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
   agent: AGENT_VIEW,
   subagent: SUBAGENT_VIEW,
+  tool: TOOL_VIEW,
 };
 
 /** The fallback `KindView`: bare kind tile, id-suffix title, no rows, both ports, the JSON `GenericFields`. */
