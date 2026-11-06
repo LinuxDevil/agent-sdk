@@ -3,6 +3,7 @@ import { Box } from 'lucide-react';
 import type { NewNode } from '../../graph/v2/mutations';
 import type { Graph, NodeKind, NodeOfKind, Problem } from '../../graph/v2/types';
 import { AGENT_VIEW } from './agent';
+import { HANDOFF_VIEW } from './handoff';
 import { SUBAGENT_VIEW } from './subagent';
 import { TOOL_VIEW } from './tool';
 import { GenericFields } from './GenericFields';
@@ -95,6 +96,7 @@ export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
   agent: AGENT_VIEW,
   subagent: SUBAGENT_VIEW,
   tool: TOOL_VIEW,
+  handoff: HANDOFF_VIEW,
 };
 
 /** The fallback `KindView`: bare kind tile, id-suffix title, no rows, both ports, the JSON `GenericFields`. */

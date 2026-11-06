@@ -5,12 +5,14 @@
  * for free.
  */
 import { toolNodeName } from './nodeIds';
+import { subagentEntryKey } from './order';
 import type {
   AbortNodeData,
   EdgeKind,
   Graph,
   GraphEdge,
   GraphNode,
+  HandoffNodeData,
   McpNodeData,
   NodeKind,
   PermissionNodeData,
@@ -88,11 +90,29 @@ function permissionEdges(node: GraphNode, nodes: GraphNode[]): GraphEdge[] {
   return sources.map((source) => edge('governs', source, node.id));
 }
 
+/**
+ * The handoff's second edge: `item.agent` naming a sibling `subagents`
+ * entry (a ref/remote `subagent` node or an inline `agent` node of the same
+ * owner) draws `handsOff` from the handoff to that node. The edge is
+ * derived from node data like every other — never stored.
+ */
+function handoffTargetEdges(node: GraphNode, nodes: GraphNode[]): GraphEdge[] {
+  const agent = (node.data as HandoffNodeData).item.agent;
+  if (agent === '') return [];
+  const target = nodes.find(
+    (other) => other.owner === node.owner && subagentEntryKey(other) === agent
+  );
+  return target === undefined ? [] : [edge('handsOff', node.id, target.id)];
+}
+
 /** The edges one node contributes — by the table in the conversion ticket. */
 function edgesFor(node: GraphNode, nodes: GraphNode[], ids: ReadonlySet<string>): GraphEdge[] {
   const ownerKind = node.kind === 'agent' ? 'delegates' : OWNER_EDGE_KIND[node.kind];
   if (ownerKind !== undefined) {
-    return node.owner === null ? [] : [edge(ownerKind, node.owner, node.id)];
+    if (node.owner === null) return [];
+    const edges = [edge(ownerKind, node.owner, node.id)];
+    if (node.kind === 'handoff') edges.push(...handoffTargetEdges(node, nodes));
+    return edges;
   }
   switch (node.kind) {
     case 'trigger':
