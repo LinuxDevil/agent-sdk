@@ -67,6 +67,7 @@ function chatWith(state: Partial<AuthorChatState> = {}): AuthorChat {
     apply: vi.fn(),
     enable: vi.fn(),
     submitSecret: vi.fn(),
+    recheckSetup: vi.fn(),
     dismissError: vi.fn(),
   };
 }
@@ -114,15 +115,23 @@ describe('save part renderers', () => {
     expect(c.querySelector('.success-card-hint')?.textContent).toBe('Saved as version 4.');
   });
 
-  it('a failed or busy save part keeps the quiet activity line', () => {
+  it('a failed save part draws an ErrorNote; a busy one keeps the quiet activity line', () => {
     const c = mount([
       assistant([
-        tool({ name: 'saveAgent', input: { proposalId: 'tc_prop' }, output: { ok: false, userMessage: 'Nope.' } }),
+        tool({ name: 'saveAgent', input: { proposalId: 'tc_prop' }, output: { ok: false, userMessage: 'The proposal is no longer current.' } }),
         tool({ name: 'saveAgent', input: { proposalId: 'tc_prop' }, state: 'pending' }),
       ]),
     ]);
     expect(c.querySelector('.success-card')).toBeNull();
-    expect(c.querySelectorAll('.author-activity').length).toBe(2);
+    expect(c.querySelector('.error-note')?.textContent).toBe('The proposal is no longer current.');
+    expect(c.querySelectorAll('.author-activity').length).toBe(1);
+  });
+
+  it('a failed save part without a userMessage falls back to the generic line', () => {
+    const c = mount([
+      assistant([tool({ name: 'saveAgentUpdate', input: { proposalId: 'tc_prop' }, state: 'error', output: { ok: false, code: 'WRITE_FAILED', error: 'x' } })]),
+    ]);
+    expect(c.querySelector('.error-note')?.textContent).toBe("Couldn't save the agent.");
   });
 
   it('a later ok setAgentEnabled part switches the card to On', () => {

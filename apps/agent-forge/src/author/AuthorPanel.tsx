@@ -9,15 +9,19 @@ import {
 import { ArrowUpRight, History, Sparkles, SquarePen, X } from 'lucide-react';
 import type { AuthorFocus } from '../../shared/authorWire';
 import { navigate } from '../router/router';
-import { useAuthorChat } from './AuthorChatContext';
+import { useAuthorChat, type AuthorChat } from './AuthorChatContext';
+import type { AuthorChatState } from './authorChatReducer';
 import { onOpenPage } from './authorEvents';
 import { useAuthorDock } from './authorDock';
 import { AuthorComposer } from './AuthorComposer';
 import { AuthorMessages } from './AuthorMessages';
+import { SetupCard } from './SetupCard';
 // Registers the proposeAgent/proposeAgentUpdate ProposalCard renderers.
 import './proposalRenderers';
 // Registers the saveAgent/saveAgentUpdate SuccessCard and save uiEvent renderers.
 import './successRenderers';
+// Registers the requestSecret SecretCard renderer.
+import './secretRenderers';
 
 /** Past this many px from the bottom, autoscroll leaves the user alone. */
 const SCROLL_PIN_PX = 80;
@@ -78,6 +82,26 @@ function usePinnedScroll(): { bodyRef: RefObject<HTMLDivElement>; onScroll(e: UI
 }
 
 /**
+ * The conversation area: the SetupCard when the configured Author model
+ * cannot run (PLAN 16.4 - never a mock fallback), the blank slate, or the
+ * message log plus the live turn.
+ */
+function AuthorBody({ state, chat }: { state: AuthorChatState; chat: AuthorChat }): JSX.Element {
+  if (state.setup?.ready === false) {
+    return (
+      <SetupCard
+        model={state.setup.model ?? 'the configured model'}
+        missingKeyFor={state.setup.missingKeyFor}
+        onRecheck={() => chat.recheckSetup()}
+      />
+    );
+  }
+  const empty = state.messages.length === 0 && (state.active === null || state.active.assistant.parts.length === 0);
+  if (empty) return <EmptyConversation focus={state.focus} onSuggest={(text) => chat.send(text)} />;
+  return <AuthorMessages messages={state.messages} active={state.active} chat={chat} />;
+}
+
+/**
  * The docked Agent Author panel: header (title, connection, actions), the
  * conversation log (blank slate or messages + live turn), and the
  * composer. State lives in `useAuthorChat` above the dock, so closing the
@@ -104,7 +128,6 @@ export function AuthorPanel(): JSX.Element {
   };
 
   const conn = state.connection === 'reconnecting' || state.connection === 'closed' ? state.connection : null;
-  const empty = state.messages.length === 0 && (state.active === null || state.active.assistant.parts.length === 0);
 
   return (
     <section className="author-panel" aria-label="Agent Author" onKeyDown={onKeyDown}>
@@ -150,11 +173,7 @@ export function AuthorPanel(): JSX.Element {
         </div>
       </header>
       <div ref={bodyRef} className="author-body" role="log" aria-live="polite" aria-label="Conversation" onScroll={onScroll}>
-        {empty ? (
-          <EmptyConversation focus={state.focus} onSuggest={(text) => chat.send(text)} />
-        ) : (
-          <AuthorMessages messages={state.messages} active={state.active} chat={chat} />
-        )}
+        <AuthorBody state={state} chat={chat} />
       </div>
       <AuthorComposer chat={chat} />
     </section>

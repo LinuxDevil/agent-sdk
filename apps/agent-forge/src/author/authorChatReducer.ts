@@ -50,11 +50,18 @@ export interface AuthorChatState {
   /** The streaming turn, or null between turns. */
   active: ActiveTurn | null;
   connection: 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed';
-  error: { message: string; code?: string } | null;
+  /**
+   * The note the ErrorNote strip shows. `retry` marks a mid-turn death
+   * (a seq->0 `turn.error`): the composer offers "Try again", resending
+   * the last user text. Send refusals (seq 0) and the reattach give-up
+   * leave it unset - the draft is already back in the composer or the
+   * note is informational only.
+   */
+  error: { message: string; code?: string; retry?: true } | null;
   /** Composer text to put back after a refused send. */
   restoreDraft: string | null;
   /** Whether the configured Author model can run (the setup card's input). */
-  setup: { ready: boolean; missingKeyFor?: string } | null;
+  setup: { ready: boolean; missingKeyFor?: string; model?: string } | null;
   /** The proposal save in flight (Apply is single-shot per click). */
   saving: { proposalId: string } | null;
   /** Save refusals by proposalId - the card that failed shows them. */
@@ -69,7 +76,7 @@ export type AuthorChatAction =
   | { type: 'server.event'; event: AuthorServerEvent }
   | { type: 'connection'; state: AuthorChatState['connection'] }
   | { type: 'transcript.reconciled'; record: AuthorSessionRecord }
-  | { type: 'setup'; ready: boolean; missingKeyFor?: string }
+  | { type: 'setup'; ready: boolean; missingKeyFor?: string; model?: string }
   | { type: 'save.started'; proposalId: string }
   | { type: 'save.succeeded'; message: AuthorUserMessage }
   | { type: 'save.failed'; proposalId: string; message: string; code?: string; latestProposalId?: string }
@@ -233,14 +240,19 @@ function onSendRefused(state: AuthorChatState, event: Extract<AuthorServerEvent,
     active: refusedActive ? null : state.active,
     restoreDraft: removed?.role === 'user' ? removed.text : state.restoreDraft,
     error,
-    setup: event.code === 'NO_PROVIDER_KEY' ? { ready: false } : state.setup,
+    // NO_PROVIDER_KEY flips the setup card on; the model/provider the
+    // bootstrap already reported stay so the card can still name them.
+    setup: event.code === 'NO_PROVIDER_KEY' ? { ...state.setup, ready: false } : state.setup,
   };
 }
 
 function onTurnError(state: AuthorChatState, event: Extract<AuthorServerEvent, { type: 'turn.error' }>): AuthorChatState {
   if (event.seq === 0) return onSendRefused(state, event);
   const settled = settleTurn(state, event, 'error');
-  const error = event.code === undefined ? { message: event.message } : { message: event.message, code: event.code };
+  const error =
+    event.code === undefined
+      ? { message: event.message, retry: true as const }
+      : { message: event.message, code: event.code, retry: true as const };
   return { ...settled, error };
 }
 
@@ -353,11 +365,12 @@ export function authorChatReducer(state: AuthorChatState, action: AuthorChatActi
       return { ...state, connection: action.state };
     case 'transcript.reconciled':
       return { ...state, ...recordSlice(state, action.record) };
-    case 'setup':
-      return {
-        ...state,
-        setup: action.missingKeyFor === undefined ? { ready: action.ready } : { ready: action.ready, missingKeyFor: action.missingKeyFor },
-      };
+    case 'setup': {
+      const setup: NonNullable<AuthorChatState['setup']> = { ready: action.ready };
+      if (action.missingKeyFor !== undefined) setup.missingKeyFor = action.missingKeyFor;
+      if (action.model !== undefined) setup.model = action.model;
+      return { ...state, setup };
+    }
     case 'save.started': {
       const saveErrors = { ...state.saveErrors };
       delete saveErrors[action.proposalId];

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as Reac
 import { ArrowUp, Square, X } from 'lucide-react';
 import type { AuthorChat } from './AuthorChatContext';
 import type { AuthorChatState } from './authorChatReducer';
-import type { AuthorFocus } from '../../shared/authorWire';
+import type { AuthorFocus, AuthorMessage } from '../../shared/authorWire';
+import { ErrorNote } from './ErrorNote';
 
 /** The textarea never grows past this; longer drafts scroll inside it. */
 const MAX_INPUT_HEIGHT = 160;
@@ -11,10 +12,40 @@ const MAX_MESSAGE_CHARS = 20_000;
 
 /** Why send is unavailable, in check order; `undefined` means it can send. */
 function sendBlockReason(state: AuthorChatState, text: string): string | undefined {
+  // A missing key is the deepest block - name it before the empty-text nudge.
+  if (state.setup?.ready === false) return 'Add an API key in Settings first';
   if (text.trim() === '') return 'Type a message first';
   if (state.connection === 'reconnecting' || state.connection === 'closed') return 'Reconnecting to Studio…';
-  if (state.setup?.ready === false) return 'Add an API key in Settings first';
   return undefined;
+}
+
+/** The last text the user actually sent (uiEvent rows carry none) - the "Try again" resend. */
+function lastUserText(messages: readonly AuthorMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i]!;
+    if (m.role === 'user' && m.uiEvent === undefined && m.text.trim() !== '') return m.text;
+  }
+  return undefined;
+}
+
+/**
+ * The ErrorNote's action for `state.error`: a mid-turn death (`retry`)
+ * offers "Try again", resending the last user text; send refusals and the
+ * reattach give-up get no action - the draft is already restored or the
+ * note is informational only.
+ */
+function retryAction(chat: AuthorChat): { label: string; onClick(): void } | undefined {
+  const error = chat.state.error;
+  if (error === null || error.retry !== true) return undefined;
+  const text = lastUserText(chat.state.messages);
+  if (text === undefined) return undefined;
+  return {
+    label: 'Try again',
+    onClick: () => {
+      chat.dismissError();
+      chat.send(text);
+    },
+  };
 }
 
 /** The "what am I working on" chip above the input: the session focus or "New agent". */
@@ -92,6 +123,7 @@ export function AuthorComposer({ chat }: { chat: AuthorChat }): JSX.Element {
         className="author-input"
         rows={1}
         maxLength={MAX_MESSAGE_CHARS}
+        disabled={state.setup?.ready === false}
         aria-label="Message the Agent Author"
         placeholder="Describe an agent or a change…"
         value={value}
@@ -114,8 +146,8 @@ export function AuthorComposer({ chat }: { chat: AuthorChat }): JSX.Element {
         )}
       </div>
       {state.error !== null && (
-        <div className="author-error" role="alert">
-          <span>{state.error.message}</span>
+        <div className="author-error">
+          <ErrorNote message={state.error.message} action={retryAction(chat)} />
           <button type="button" className="icon-btn" aria-label="Dismiss" onClick={() => chat.dismissError()}>
             <X size={16} strokeWidth={1.75} aria-hidden="true" />
           </button>
