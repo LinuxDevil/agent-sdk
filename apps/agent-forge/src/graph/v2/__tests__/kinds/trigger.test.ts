@@ -108,7 +108,7 @@ describe('triggerRules.validate', () => {
     ]);
   });
 
-  it.each(['0 9 * *', '0 9 * * * *', 'every morning', '0 9 * * $'])(
+  it.each(['0 9 * *', '0 9 * * * *', 'every morning', '0 9 * * $', '0 9 * * ?', '0 9 * . *'])(
     'rejects the cron expression %j',
     (cron) => {
       const graph = graphOf([{ id: 't1', type: 'cron', cron, prompt: 'go' }]);
