@@ -1,0 +1,3 @@
+{ "name": "enable-on-request", "turns": ["Create an agent that welcomes new members in our community chat with a short friendly message.", "Save it and turn it on."],
+  "expect": { "creates": true, "tools": ["proposeAgent", "saveAgent", "setAgentEnabled"],
+    "rubric": "After the user's request the assistant saves the agent and turns it on, reporting both in short status lines." } }

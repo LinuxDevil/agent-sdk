@@ -1,0 +1,3 @@
+{ "name": "unknown-tool", "turns": ["Create an agent that uses the quantum_teleport tool to move files between servers."],
+  "expect": { "mustNot": ["saveAgent"],
+    "rubric": "The assistant says there is no quantum_teleport tool in Studio's catalog and suggests a real alternative or asks how the user wants to proceed, without inventing the tool." } }

@@ -22,7 +22,7 @@ import type { AuthorSessionStore } from './sessionStore';
 import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './prompt/index';
 import { buildAuthorTools, type AuthorToolDeps } from './tools/index';
 import { createAuthorCatalogService } from './tools/catalogService';
-import { passReview } from './proposal/review';
+import { passReview, type ReviewDraft } from './proposal/review';
 import { openProposalCards } from './proposal/gate';
 import { computeRequirements, requirementDeps } from './requirements';
 
@@ -73,6 +73,8 @@ export interface CreateAuthorRunnerDeps {
   mcpConnect?: typeof connectMcp;
   /** Test seam: resolves the turn provider without the stored/env key lookup. */
   providerFor?: (model: string) => LLMProvider;
+  /** The draft review propose tools run before showing a card (PLAN §8.4); defaults to `passReview`. */
+  reviewDraft?: ReviewDraft;
 }
 
 /**
@@ -94,7 +96,7 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
     templates: deps.templates,
     probeMcp: (server) => probeMcpServer(server, probeDeps),
     docsDir: deps.docsDir,
-    reviewDraft: passReview,
+    reviewDraft: deps.reviewDraft ?? passReview,
     sessions: deps.sessions,
     secrets: deps.secrets,
   };
