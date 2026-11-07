@@ -4,14 +4,17 @@
  * name, a `.ts`/`.js` path inside the agent folder, integration
  * credentials, an OpenAPI document URL, a hosted tool name), the optional
  * `id` pattern, and warns on a duplicated tool name and on a secret
- * credential written as a plain string. No `connectFrom`: an incoming
- * `agent → tool` edge takes the default re-own effect.
+ * credential written as a plain string. `connectFrom` implements the
+ * `tool → permission` edge: it adds the tool's node name to the rule's
+ * `item.tool`. An incoming `agent → tool` edge takes the agent's own
+ * re-own effect.
  */
 import { toolNodeName } from '../nodeIds';
 import { arrayItemSpecPath, sectionChildren } from '../order';
 import { SECRET_CREDENTIALS, SPEC_ID_PATTERN } from '../specTypes';
-import type { KindRules } from '../kindRules';
-import type { Graph, NodeOfKind, Problem, ToolNodeData } from '../types';
+import type { ConnectResult, KindRules } from '../kindRules';
+import type { Graph, GraphNode, NodeOfKind, Problem, ToolNodeData } from '../types';
+import { addToolToRule } from './permission';
 
 /**
  * The `item.id` rule the Inspector and the validator share — the SDK's
@@ -129,7 +132,12 @@ function secretProblems(node: NodeOfKind<'tool'>, path: string): Problem[] {
     }));
 }
 
-/** `tool` kind rules: validation only — the connect effect is the default re-own attach. */
+/**
+ * `tool` kind rules: validation, plus the `tool → permission` connect
+ * effect — the only target `CONNECTION_RULES.tool` allows — which adds
+ * the tool's node name to the rule's `item.tool` via `addToolToRule`
+ * (an `agent → tool` edge is the agent's own `connectFrom`, not this one).
+ */
 export const toolRules: KindRules<'tool'> = {
   validate: (node, graph) => {
     const path = arrayItemSpecPath(graph, node, 'tools');
@@ -140,4 +148,8 @@ export const toolRules: KindRules<'tool'> = {
       ...secretProblems(node, path),
     ];
   },
+  connectFrom: (source, target: GraphNode, graph: Graph): ConnectResult =>
+    target.kind === 'permission'
+      ? addToolToRule(graph, target.id, toolNodeName(source.data.item))
+      : { ok: true, graph },
 };
