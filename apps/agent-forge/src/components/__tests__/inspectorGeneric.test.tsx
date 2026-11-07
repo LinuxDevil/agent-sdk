@@ -2,7 +2,7 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../ui/__tests__/render';
 import { specToGraph } from '../../graph/v2/specToGraph';
-import type { Graph, OutputNodeData } from '../../graph/v2/types';
+import type { AbortNodeData, Graph } from '../../graph/v2/types';
 
 const appState = vi.hoisted(() => ({
   graph: { version: 2, nodes: [], emptySections: [], unplaced: [] } as unknown as Graph,
@@ -22,12 +22,12 @@ const baseGraph = (): Graph =>
     name: 'bot',
     model: 'mock/mock-1',
     instructions: 'p',
-    output: { jsonSchema: { type: 'object' } },
+    abortListeners: [{ id: 'a1', triggerId: 't1', when: 'event.x', match: 'run.y', scope: 'both' }],
   } as Parameters<typeof specToGraph>[0]);
 
 beforeEach(() => {
   appState.graph = baseGraph();
-  appState.selectedNodeId = 'output';
+  appState.selectedNodeId = 'abort:a1';
   appState.setGraph.mockReset();
 });
 
@@ -47,10 +47,10 @@ function editJson(container: HTMLElement, value: string) {
 describe('generic Inspector', () => {
   it('shows the selected node header and the JSON editor seeded with its item', () => {
     const container = render(<Inspector />);
-    expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (output)');
-    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('output');
+    expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (abort)');
+    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('a1');
     const textarea = container.querySelector('#node-json') as HTMLTextAreaElement;
-    expect(JSON.parse(textarea.value)).toEqual({ jsonSchema: { type: 'object' } });
+    expect(JSON.parse(textarea.value)).toEqual({ id: 'a1', triggerId: 't1', when: 'event.x', match: 'run.y', scope: 'both' });
     expect(container.textContent).toContain('This node has no form yet.');
   });
 
@@ -59,8 +59,8 @@ describe('generic Inspector', () => {
     editJson(container, '{ "type": "string" }');
     expect(appState.setGraph).toHaveBeenCalledTimes(1);
     const next = appState.setGraph.mock.calls[0][0](appState.graph) as Graph;
-    const output = next.nodes.find((n) => n.id === 'output')!;
-    expect((output.data as OutputNodeData).item).toEqual({ type: 'string' });
+    const output = next.nodes.find((n) => n.id === 'abort:a1')!;
+    expect((output.data as AbortNodeData).item).toEqual({ type: 'string' });
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 

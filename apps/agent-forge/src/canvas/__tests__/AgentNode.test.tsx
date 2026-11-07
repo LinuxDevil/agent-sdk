@@ -13,7 +13,7 @@ const graph = specToGraph({
   tools: [{ builtin: 'http' }],
   skills: [{ dir: 'skills/review' }],
   guardrails: [{ id: 'g1', name: 'max-length', on: 'input' }],
-  output: { jsonSchema: { type: 'object' } },
+  abortListeners: [{ id: 'a1', triggerId: 't1', when: 'event.x', match: 'run.y', scope: 'both' }],
 } as Parameters<typeof specToGraph>[0]);
 const nodeOf = (kind: GraphNode['kind']) => graph.nodes.find((n) => n.kind === kind)!;
 
@@ -111,7 +111,7 @@ describe('AgentNode card', () => {
   });
 
   it('draws both ports and the neutral kind tile of the generic view', () => {
-    const card = renderCard(nodeOf('output'), { status: 'done' });
+    const card = renderCard(nodeOf('abort'), { status: 'done' });
     expect(card.querySelector('.rf-port-in')).not.toBeNull();
     expect(card.querySelector('.rf-port-out')).not.toBeNull();
     expect(card.querySelector('.node-kind')?.classList.contains('kind-neutral')).toBe(true);
@@ -133,7 +133,7 @@ describe('AgentNode card', () => {
   });
 
   it('renders the generic card markup', () => {
-    const card = renderCard(nodeOf('output'), { status: 'paused' });
+    const card = renderCard(nodeOf('abort'), { status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();
   });
 });
