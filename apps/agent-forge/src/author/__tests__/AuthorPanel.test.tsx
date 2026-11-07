@@ -51,6 +51,7 @@ function chatWith(over: Partial<AuthorChatState> = {}): AuthorChat {
     apply: vi.fn(),
     enable: vi.fn(),
     submitSecret: vi.fn(),
+    recheckSetup: vi.fn(),
     dismissError: vi.fn(),
   };
 }
@@ -307,15 +308,46 @@ describe('AuthorPanel composer', () => {
     expect(input(c).value).toBe('the refused message');
   });
 
-  it('shows a dismissible error strip', () => {
+  it('shows a dismissible error strip built on ErrorNote', () => {
     const chat = chatWith({ error: { message: "You're offline. Your message wasn't sent." } });
     const c = mount(chat);
-    const strip = c.querySelector('.author-error');
-    expect(strip?.getAttribute('role')).toBe('alert');
-    expect(strip?.textContent).toContain("You're offline. Your message wasn't sent.");
-    const dismiss = [...strip!.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Dismiss')!;
+    const note = c.querySelector('.author-error .error-note');
+    expect(note?.getAttribute('role')).toBe('alert');
+    expect(note?.textContent).toContain("You're offline. Your message wasn't sent.");
+    const dismiss = [...c.querySelectorAll<HTMLButtonElement>('.author-error button')].find(
+      (b) => b.getAttribute('aria-label') === 'Dismiss'
+    )!;
     act(() => dismiss.click());
     expect(chat.dismissError).toHaveBeenCalled();
+  });
+
+  it('offers Try again for a mid-turn error and resends the last user text', () => {
+    const chat = chatWith({
+      messages: [
+        user('', { kind: 'secret', toolCallId: 'tc_s', name: 'JIRA_TOKEN', outcome: 'saved' }),
+        user('Build me a triage agent'),
+        assistant([{ type: 'text', text: 'partial reply' }], 'error'),
+      ],
+      error: { message: 'The provider stopped replying.', code: 'UNAVAILABLE', retry: true },
+    });
+    const c = mount(chat);
+    const retry = [...c.querySelectorAll<HTMLButtonElement>('.error-note button')].find(
+      (b) => b.textContent === 'Try again'
+    )!;
+    act(() => retry.click());
+    expect(chat.dismissError).toHaveBeenCalled();
+    expect(chat.send).toHaveBeenCalledWith('Build me a triage agent');
+  });
+
+  it('shows no action for the reattach give-up note', () => {
+    const chat = chatWith({
+      error: {
+        message: 'Could not reconnect to this reply. Your chat is saved; reopen it from History to see the latest.',
+      },
+    });
+    const c = mount(chat);
+    expect(c.querySelector('.error-note')?.textContent).toContain('Could not reconnect');
+    expect(c.querySelector('.error-note button')).toBeNull();
   });
 });
 
