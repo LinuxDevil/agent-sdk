@@ -118,6 +118,8 @@ const TO = Date.now();
  */
 const FILTERS: Record<ScreenId, string> = {
   agents: '',
+  agentList: '',
+  agentDetail: '',
   playground: '?trace=e2e-trace&fromObs=e2e-obs',
   traces: `?agent=orders-bot&status=error&q=order&from=${FROM}&to=${TO}&sort=duration&order=desc`,
   trace: '?obs=e2e-obs',
@@ -227,13 +229,17 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
   },
 };
 CONTROLS['/hub/:namespace'] = CONTROLS['/hub'];
+// `/agents/:id` redirects to the canvas tab, and an unbuilt `/agents/:id/:tab`
+// does too - both land on the same builder view the crumbs check covers.
+CONTROLS['/agents/:id/canvas'] = CONTROLS['/agents/:id'];
+CONTROLS['/agents/:id/:tab'] = CONTROLS['/agents/:id'];
 
 /**
  * Routes with no filter controls of their own to re-check (the reload still
  * checks the hash and the screen). A route in neither CONTROLS nor here fails.
  */
 const NO_CONTROLS = new Set([
-  '/agents', // canonicalises to the open agent; nothing to filter
+  '/agents', // the agents list has no filters
   '/threads/:sessionId', // a thread's turns; the list's filters only ride along in the URL
   '/evals/queues/:id', // one queue's review pane; no URL-backed controls beyond the id
   '/prompts', // the registry list has no filters
@@ -256,7 +262,7 @@ const API = { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } };
 async function ensureSavedAgent(page: Page) {
   const ids = ((await (await page.request.get('/agents', API)).json()) as { id: string }[]).map((a) => a.id);
   if (ids.includes(SAVED_AGENT)) return;
-  await openApp(page);
+  await openApp(page, '/agents/untitled-agent/canvas');
   await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(SAVED_AGENT);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -275,15 +281,18 @@ for (const { pattern, screen, example } of ROUTES) {
     ).toBe(true);
     expect(controls !== undefined && NO_CONTROLS.has(pattern), `route ${pattern} is in both CONTROLS and NO_CONTROLS`).toBe(false);
 
-    if (screen === 'agents') await ensureSavedAgent(page);
+    if (screen === 'agents' || screen === 'agentDetail') await ensureSavedAgent(page);
     const hash = `#${example}${filters}`;
     await openApp(page, `${example}${filters}`);
     const main = page.getByRole('main');
     await controls?.(main, page);
     const before = await screenIdentity(page);
     const settled = new URL(page.url()).hash;
-    // Bare #/agents is replaced by the open agent's #/agents/:id (its canonical URL); every other URL stays as given.
-    if (pattern === '/agents') expect(settled).toMatch(/^#\/agents(\/[^/?]+)?$/);
+    // `/agents/:id` (the legacy builder URL) and an unbuilt `/agents/:id/:tab` redirect
+    // (replace) to the canvas tab; every other URL stays as given, filters kept.
+    if (pattern === '/agents/:id') expect(settled).toBe(`#${example}/canvas${filters}`);
+    else if (pattern === '/agents/:id/:tab')
+      expect(settled).toBe(`#${example.slice(0, example.lastIndexOf('/'))}/canvas${filters}`);
     else expect(settled).toBe(hash);
 
     await page.reload();

@@ -15,7 +15,20 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.app')).toBeVisible();
 });
 
+/**
+ * Open the builder on the unsaved default agent. A hash change (not a reload)
+ * keeps the already-open `untitled-agent` document, which is the only way the
+ * id resolves once other agents are saved - an unknown id falls back to the list.
+ */
+async function openBuilder(page: Page) {
+  await page.evaluate(() => {
+    window.location.hash = '/agents/untitled-agent/canvas';
+  });
+  await expect(page.locator('.canvas-wrap')).toBeVisible();
+}
+
 test('the page has landmarks, an h1 and a live run status', async ({ page }) => {
+  await openBuilder(page);
   await expect(page.getByRole('banner')).toHaveCount(1);
   await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
   await expect(page.getByRole('navigation', { name: 'Agents and node palette' })).toHaveCount(1);
@@ -33,6 +46,7 @@ test('the page has landmarks, an h1 and a live run status', async ({ page }) => 
 });
 
 test('drawer and rail tabs are tablists driven by the arrow keys', async ({ page }) => {
+  await openBuilder(page);
   const drawerTabs = page.getByRole('tablist', { name: 'Run panels' });
   await expect(drawerTabs.getByRole('tab')).toHaveCount(6);
   const chat = drawerTabs.getByRole('tab', { name: 'Chat' });
@@ -51,11 +65,13 @@ test('drawer and rail tabs are tablists driven by the arrow keys', async ({ page
 });
 
 test('chat controls are labelled', async ({ page }) => {
+  await openBuilder(page);
   await expect(page.getByRole('combobox', { name: 'Past conversations' })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
 });
 
 test('palette items add nodes from the keyboard; hook switch and toggles respond to Enter/Space', async ({ page }) => {
+  await openBuilder(page);
   const nodes = page.locator('.react-flow__node');
   const before = await nodes.count();
 
@@ -162,6 +178,14 @@ const ITEM_H1: Record<string, string> = {
 };
 for (const { label, path } of SCANS) {
   test(`${label} keeps the landmarks and passes axe`, async ({ page }) => {
+    // The agent routes land on the builder, which needs the id to be saved -
+    // an unknown one falls back to the list.
+    if (path.startsWith('/agents/')) {
+      await page.request.put('/agents/e2e-agent', {
+        headers: { 'x-lousho-studio-token': 'e2e-studio-token' },
+        data: { name: 'e2e-agent', prompt: 'You are a helpful agent.', provider: { type: 'mock', model: 'mock-1' } },
+      });
+    }
     await page.goto(`/?token=e2e-studio-token#${path}`);
     await expect(page.locator('.app')).toBeVisible();
     await page.waitForLoadState('networkidle');
@@ -171,9 +195,10 @@ for (const { label, path } of SCANS) {
     await expect(page.getByRole('navigation', { name: 'Primary' })).toHaveCount(1);
     const current = page.getByRole('navigation', { name: 'Primary' }).locator('[aria-current="page"]');
     await expect(current).toHaveCount(1);
-    // Agents keeps its visually hidden "Agent Forge" h1; every other screen's h1 is its PageHeader title (the nav
+    // The builder (`/agents/<id>` and its tabs, which land on canvas) keeps its visually hidden "Agent Forge"
+    // h1; `/agents` is the agents list whose h1 is the PageHeader title like every other screen's (the nav
     // label, or the item's name on an ITEM_H1 detail screen).
-    const h1 = path.startsWith('/agents') ? 'Agent Forge' : (ITEM_H1[label] ?? (await current.innerText()));
+    const h1 = path.startsWith('/agents/') ? 'Agent Forge' : (ITEM_H1[label] ?? (await current.innerText()));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(h1);
     await expectNoSeriousAxeViolations(page, path);
   });
