@@ -16,8 +16,8 @@ export interface ChoiceFieldProps<T extends string> {
   /** Field label text. */
   label: string;
   value: T | undefined;
-  /** Choices in order; each `value` is a `T`, each `label` its display text. */
-  options: { value: T; label: string }[];
+  /** Choices in order; each `value` is a `T`, each `label` its display text. `disabled` greys the option out and `title` says why. */
+  options: { value: T; label: string; disabled?: boolean; title?: string }[];
   onChange(value: T | undefined): void;
   /** Adds a first option that selects `undefined`. */
   allowUnset?: boolean;
@@ -53,7 +53,12 @@ export function ChoiceField<T extends string>({
   const selected = value === undefined ? UNSET : String(options.findIndex((option) => option.value === value) + 1);
   const selectOptions = [
     ...(allowUnset ? [{ value: UNSET, label: unsetLabel }] : []),
-    ...options.map((option, index) => ({ value: String(index + 1), label: option.label })),
+    ...options.map((option, index) => ({
+      value: String(index + 1),
+      label: option.label,
+      disabled: option.disabled,
+      title: option.title,
+    })),
   ];
 
   const onSelect = (event: ChangeEvent<HTMLSelectElement>) => {

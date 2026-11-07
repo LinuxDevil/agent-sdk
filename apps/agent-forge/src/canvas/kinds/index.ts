@@ -3,6 +3,7 @@ import { Box } from 'lucide-react';
 import type { NewNode } from '../../graph/v2/mutations';
 import type { Graph, NodeKind, NodeOfKind, Problem } from '../../graph/v2/types';
 import { AGENT_VIEW } from './agent';
+import { GUARDRAIL_VIEW } from './guardrail';
 import { HANDOFF_VIEW } from './handoff';
 import { HOOK_VIEW } from './hook';
 import { MCP_VIEW } from './mcp';
@@ -108,6 +109,7 @@ export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
   skill: SKILL_VIEW,
   memory: MEMORY_VIEW,
   trigger: TRIGGER_VIEW,
+  guardrail: GUARDRAIL_VIEW,
   permission: PERMISSION_VIEW,
   hook: HOOK_VIEW,
   note: NOTE_VIEW,

@@ -38,8 +38,13 @@ export type { McpServerSpecV2 as McpServerSpec } from '../../../../../src/spec/v
 export { MCP_SERVER_NAME } from '../../../../../src/spec/v2/mcpServers';
 /** One `spec.handoffs` entry. */
 export type { HandoffSpec } from '../../../../../src/spec/v2/handoffs';
-/** One `spec.guardrails` entry. */
+/**
+ * One `spec.guardrails` entry, plus the `guardrailSidesOf` helper the
+ * Inspector and the kind validator share to read `on` (a side or a side
+ * list; absent means input and output).
+ */
 export type { GuardrailSpec } from '../../../../../src/spec/v2/guardrails';
+export { guardrailSidesOf, REWRITABLE_GUARDRAILS } from '../../../../../src/spec/v2/guardrails';
 /** One `spec.permissions` entry. */
 export type { PermissionRuleSpec } from '../../../../../src/spec/v2/permissions';
 /** One `spec.hooks` entry, plus the `inline` member's shape for the hook Inspector. */

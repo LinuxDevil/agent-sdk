@@ -2,7 +2,7 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../ui/__tests__/render';
 import { specToGraph } from '../../graph/v2/specToGraph';
-import type { Graph, GuardrailNodeData } from '../../graph/v2/types';
+import type { Graph, OutputNodeData } from '../../graph/v2/types';
 
 const appState = vi.hoisted(() => ({
   graph: { version: 2, nodes: [], emptySections: [], unplaced: [] } as unknown as Graph,
@@ -22,12 +22,12 @@ const baseGraph = (): Graph =>
     name: 'bot',
     model: 'mock/mock-1',
     instructions: 'p',
-    guardrails: [{ id: 'g1', name: 'regex', on: 'input' }],
+    output: { jsonSchema: { type: 'object' } },
   } as Parameters<typeof specToGraph>[0]);
 
 beforeEach(() => {
   appState.graph = baseGraph();
-  appState.selectedNodeId = 'guard:g1';
+  appState.selectedNodeId = 'output';
   appState.setGraph.mockReset();
 });
 
@@ -47,20 +47,20 @@ function editJson(container: HTMLElement, value: string) {
 describe('generic Inspector', () => {
   it('shows the selected node header and the JSON editor seeded with its item', () => {
     const container = render(<Inspector />);
-    expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (guardrail)');
-    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('g1');
+    expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (output)');
+    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('output');
     const textarea = container.querySelector('#node-json') as HTMLTextAreaElement;
-    expect(JSON.parse(textarea.value)).toEqual({ id: 'g1', name: 'regex', on: 'input' });
+    expect(JSON.parse(textarea.value)).toEqual({ jsonSchema: { type: 'object' } });
     expect(container.textContent).toContain('This node has no form yet.');
   });
 
   it('a valid JSON edit on blur calls setGraph and changes the node data', () => {
     const container = render(<Inspector />);
-    editJson(container, '{ "id": "g2", "name": "other", "on": "output" }');
+    editJson(container, '{ "type": "string" }');
     expect(appState.setGraph).toHaveBeenCalledTimes(1);
     const next = appState.setGraph.mock.calls[0][0](appState.graph) as Graph;
-    const guard = next.nodes.find((n) => n.id === 'guard:g1')!;
-    expect((guard.data as GuardrailNodeData).item).toEqual({ id: 'g2', name: 'other', on: 'output' });
+    const output = next.nodes.find((n) => n.id === 'output')!;
+    expect((output.data as OutputNodeData).item).toEqual({ type: 'string' });
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 

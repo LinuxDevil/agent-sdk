@@ -6,6 +6,7 @@
  * never grow per-kind branches.
  */
 import { agentRules } from './kinds/agent';
+import { guardrailRules } from './kinds/guardrail';
 import { handoffRules } from './kinds/handoff';
 import { hookRules } from './kinds/hook';
 import { mcpRules } from './kinds/mcp';
@@ -54,6 +55,7 @@ export const KIND_RULES: { [K in NodeKind]?: KindRules<K> } = {
   skill: skillRules,
   memory: memoryRules,
   trigger: triggerRules,
+  guardrail: guardrailRules,
   permission: permissionRules,
   hook: hookRules,
 };
