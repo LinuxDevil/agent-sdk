@@ -776,6 +776,80 @@ export interface SettleDraftRequest {
 }
 
 /**
+ * The prompt-suggestion lifecycle: `open` while it waits in
+ * `.lousho/agents/<id>/suggestions/`, `applied` once its edit landed on
+ * the instructions, `dismissed` when the user rejected it, `conflict`
+ * when the instructions moved past its `expectedPromptHash`.
+ */
+export type SuggestionStatus = 'open' | 'applied' | 'dismissed' | 'conflict';
+
+/**
+ * One `.lousho/agents/<id>/suggestions/<id>.json` record the prompt
+ * optimizer pass writes: an anchored `oldText` → `newText` edit of the
+ * instructions. `oldText` occurs exactly once in the instructions and the
+ * edit is at most 15 changed lines. `expectedPromptHash` is the CAS key -
+ * apply only rewrites when the current instructions still hash to it and
+ * the rewrite hashes to `proposedPromptHash`.
+ */
+export interface PromptSuggestion {
+  kind: 'prompt_edit';
+  id: string;
+  agentId: string;
+  /** Trace the optimizer pass read to find this friction. */
+  sourceTraceId: string;
+  /** `promptHash(instructions)` when the suggestion was generated. */
+  expectedPromptHash: string;
+  /** `promptHash(instructions after the edit)` - verified on apply. */
+  proposedPromptHash: string;
+  oldText: string;
+  newText: string;
+  confidence: 'high' | 'low';
+  optimizationClass: string;
+  evidence: string;
+  expectedSaving: string;
+  risk: string;
+  validationPlan: string[];
+  status: SuggestionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One flagged sender-specific reference the portability check pass
+ * reported: the exact `quote`, where it sits in the spec, what it is,
+ * and the placeholder/edit the recipient should make.
+ */
+export interface PortabilityFinding {
+  location: 'instructions' | 'triggers' | 'tools' | 'mcpServers' | 'other';
+  kind: 'repository' | 'email_address' | 'slack_channel' | 'path' | 'url' | 'secret' | 'person' | 'other';
+  quote: string;
+  explanation: string;
+  suggestion: string;
+}
+
+/**
+ * One `.lousho/agents/<id>/suggestions/<id>.json` record the portability
+ * check pass writes on export/copy/import: the findings plus
+ * `adaptedInstructions` (the instructions rewritten with `[YOUR …]`
+ * placeholders, `null` when nothing needed adapting). Cached by
+ * `specHash` - re-run only when the spec changed.
+ */
+export interface PortabilityAnalysis {
+  kind: 'portability';
+  id: string;
+  agentId: string;
+  /** `specHash()` of the spec this analysis ran on - the cache key. */
+  specHash: string;
+  summary: string;
+  findings: PortabilityFinding[];
+  adaptedInstructions: string | null;
+  createdAt: string;
+}
+
+/** What a `suggestions/<id>.json` file holds - discriminated on `kind`. */
+export type StoredSuggestion = PromptSuggestion | PortabilityAnalysis;
+
+/**
  * `GET /catalog/*` rows - the SDK catalogs, so picker picklists always show
  * what this SDK actually supports. The row shapes are derived from the SDK
  * functions themselves (`ReturnType`) rather than re-declared, so they can

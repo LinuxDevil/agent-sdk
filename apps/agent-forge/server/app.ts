@@ -106,6 +106,7 @@ import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { AgentRepo } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
+import { SuggestionStore } from './storage/suggestionStore';
 import { VersionStore } from './storage/versionStore';
 import { StudioEventBus } from './events/eventBus';
 import { mergeLegacySave } from './storage/legacySpec';
@@ -798,6 +799,7 @@ function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefi
     agentStore: options.agentStore,
     versions: new VersionStore(repo),
     drafts: new DraftStore(repo),
+    suggestions: new SuggestionStore(repo),
     // The legacy pair's RunManager carries its own host; this one exists to
     // satisfy the context shape (nothing reads ws.host yet - catalog/steer
     // routes are later tickets).
