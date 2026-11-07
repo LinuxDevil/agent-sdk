@@ -180,6 +180,12 @@ describe('canConnect instance rules', () => {
     expect(canConnect(source, target)).toEqual({ ok: false, reason: 'Triggers always start the main agent' });
   });
 
+  it('allows trigger -> abort (the cancels edge)', () => {
+    const source = node('trigger', { id: 'trigger:t1' });
+    const target = node('abort', { id: 'abort:a1' });
+    expect(canConnect(source, target)).toEqual({ ok: true });
+  });
+
   it('refuses inline agent -> flow', () => {
     const source = node('agent', { id: 'sub:research' });
     const target = node('flow', { owner: 'other' });

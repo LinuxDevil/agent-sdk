@@ -44,8 +44,13 @@ export type { GuardrailSpec } from '../../../../../src/spec/v2/guardrails';
 export type { PermissionRuleSpec } from '../../../../../src/spec/v2/permissions';
 /** One `spec.hooks` entry. */
 export type { HookSpec } from '../../../../../src/spec/v2/hooks';
-/** One `spec.triggers` entry. */
-export type { TriggerSpec } from '../../../../../src/spec/v2/triggers';
+/**
+ * One `spec.triggers` entry, plus the channel union and the required
+ * `secrets` keys per channel kind (`CHANNEL_SECRET_KEYS`) — the SDK's own
+ * list, shared by the trigger Inspector's prefill and `triggerRules`.
+ */
+export type { TriggerSpec, ChannelKind } from '../../../../../src/spec/v2/triggers';
+export { CHANNEL_SECRET_KEYS } from '../../../../../src/spec/v2/triggers';
 
 /**
  * One `spec.abortListeners` entry — a trigger-correlated abort rule. The SDK
