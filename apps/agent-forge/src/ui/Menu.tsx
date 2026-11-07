@@ -7,7 +7,6 @@ import { moveMenuFocus, typeaheadMenuFocus } from './menuKeys';
 import { Kbd } from './Kbd';
 
 /** One actionable row of a {@link Menu}: a menuitem, or a menuitemcheckbox when `checked` is set. */
-// fallow-ignore-next-line unused-type -- contract surface: adopted by the overflow menus in A04/A12 and W05a.
 export interface MenuAction {
   id: string;
   label: string;
