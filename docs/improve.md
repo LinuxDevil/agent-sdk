@@ -49,13 +49,17 @@ console.log(result.outcome, result.reason);
    domain editor leaves anything that would help in any profession to the
    invariant editor.
 3. A composer merges what the runs support, or changes nothing.
-4. The result must beat the current harness by more than the spread between
-   repeats, without making a held-out case worse or raising tokens per passing
-   run by more than `maxCostIncrease`. Cost is compared only on cases that pass
-   under both harnesses, because a failing run can stop early and look cheap. A
-   rise within the spread between runs isn't rejected. If no case passed under
-   both, `reason` says cost could not be compared, so include a held-out case
-   that already passes.
+4. It runs the current harness again on fresh runs of your cases, so the gate
+   never compares against the unlucky runs that triggered editing. The probe
+   gets new repeat numbers for these runs, from `repeats` to `2 × repeats − 1`,
+   and they cost `repeats` extra runs per case, so allow for them in
+   `maxTokens`. The result must beat the fresh runs
+   by more than the spread between repeats, without making a held-out case worse
+   or raising tokens per passing run by more than `maxCostIncrease`. Cost is
+   compared only on cases that pass under both harnesses, because a failing run
+   can stop early and look cheap. A rise within the spread between runs isn't
+   rejected. If no case passed under both, `reason` says cost could not be
+   compared, so include a held-out case that already passes.
 
 A failed run looks fine to an editor when the agent never saw the check it
 missed. Return `failure` from `probe` to name that check. Name the requirement,

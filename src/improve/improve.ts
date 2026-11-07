@@ -94,7 +94,7 @@ class ImproveRun {
   readonly stages: ImproveStage[] = [];
   tokens = 0;
   candidates?: NonNullable<ImproveResult['candidates']>;
-  private readonly repeats: number;
+  readonly repeats: number;
   private readonly maxAlwaysOn: number;
 
   constructor(private readonly options: ImproveOptions) {
@@ -109,9 +109,9 @@ class ImproveRun {
     if (maxTokens !== undefined && this.tokens >= maxTokens) throw new StopRun('budget-exceeded', `Stopped at the ${maxTokens} token budget.`);
   }
 
-  async probe(harness: Harness, label: string, caseIds: readonly string[]): Promise<LabelledRun[]> {
+  async probe(harness: Harness, label: string, caseIds: readonly string[], firstRepeat = 0, count = this.repeats): Promise<LabelledRun[]> {
     const runs: LabelledRun[] = [];
-    for (let repeat = 0; repeat < this.repeats; repeat += 1) {
+    for (let repeat = firstRepeat; repeat < firstRepeat + count; repeat += 1) {
       for (const caseId of caseIds) {
         this.options.signal?.throwIfAborted();
         const run = await this.options.probe(harness, caseId, repeat);
@@ -190,16 +190,18 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
   return { composed };
 }
 
-async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness, baseRuns: readonly LabelledRun[]): Promise<Omit<ImproveResult, 'base' | 'stages' | 'spend'>> {
+async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness): Promise<Omit<ImproveResult, 'base' | 'stages' | 'spend'>> {
+  const freshBaseRuns = await run.probe(options.harness, 'fresh-base', options.cases, run.repeats);
   const holdoutIds = options.holdout ?? [];
   const finalRuns = await run.probe(composed, 'final', options.cases);
   const holdoutBaseRuns = await run.probe(options.harness, 'holdout-base', holdoutIds);
   const holdoutFinalRuns = await run.probe(composed, 'holdout-final', holdoutIds);
   const final = summarize(finalRuns);
   const holdout = holdoutIds.length === 0 ? undefined : { base: summarize(holdoutBaseRuns), final: summarize(holdoutFinalRuns) };
-  const cost = costOnPassingCases([...baseRuns, ...holdoutBaseRuns], [...finalRuns, ...holdoutFinalRuns]);
-  const failure = gateFailure(summarize(baseRuns), final, holdout, cost, options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE);
-  const shared = { final, ...(holdout && { holdout }), ...(cost && { costOnPassingCases: cost }) };
+  const freshBase = summarize(freshBaseRuns);
+  const cost = costOnPassingCases([...freshBaseRuns, ...holdoutBaseRuns], [...finalRuns, ...holdoutFinalRuns]);
+  const failure = gateFailure(freshBase, final, holdout, cost, options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE);
+  const shared = { freshBase, final, ...(holdout && { holdout }), ...(cost && { costOnPassingCases: cost }) };
   if (failure) return { outcome: 'keep-base', reason: failure, ...shared };
   const reason = `The edit beat the base by more than noise, with no held-out regression.${cost ? '' : ' Cost could not be compared, because no case passed under both harnesses.'}`;
   return { outcome: 'proposal', reason, harness: composed, diff: diffHarness(options.harness, composed), ...shared };
@@ -219,7 +221,7 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
     if (base.passRate === null) return finish({ outcome: 'outage', reason: 'No run could be scored, so there is nothing to learn from.' });
     if (needsNoEdit(base, options.alwaysPropose)) return finish({ outcome: 'no-failures', reason: 'Every case passed, so no editor ran.' });
     const { composed, result } = await runStages(run, options, baseRuns);
-    return finish(result ?? (await judge(run, options, composed, baseRuns)));
+    return finish(result ?? (await judge(run, options, composed)));
   } catch (error) {
     if (error instanceof StopRun) return finish({ outcome: error.outcome, reason: error.message });
     throw error;
