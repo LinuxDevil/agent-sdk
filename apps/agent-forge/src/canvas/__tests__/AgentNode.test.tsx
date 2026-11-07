@@ -14,7 +14,7 @@ const graph = specToGraph({
   skills: [{ dir: 'skills/review' }],
   guardrails: [{ id: 'g1', name: 'max-length', on: 'input' }],
   abortListeners: [{ id: 'a1', triggerId: 't1', when: 'event.x', match: 'run.y', scope: 'both' }],
-} as Parameters<typeof specToGraph>[0]);
+} as unknown as Parameters<typeof specToGraph>[0]);
 const nodeOf = (kind: GraphNode['kind']) => graph.nodes.find((n) => n.kind === kind)!;
 
 /** The `agent` node of a spec built just for this test (fields as given). */
@@ -178,7 +178,7 @@ describe('agent card (KindView)', () => {
       model: 'mock/mock-1',
       instructions: 'x',
       subagents: { research: { inline: { name: 'nope', description: 'd', model: 'mock/mock-1', instructions: 'x' } } },
-    } as Parameters<typeof specToGraph>[0]);
+    } as unknown as Parameters<typeof specToGraph>[0]);
     const sub = graph.nodes.find((n) => n.id === 'sub:research')!;
     const card = renderCard(sub);
     expect(card.querySelector('.rf-node-title')?.textContent).toBe('research');
