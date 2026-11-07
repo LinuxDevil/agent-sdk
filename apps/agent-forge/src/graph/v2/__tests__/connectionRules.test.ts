@@ -146,6 +146,18 @@ describe('canConnect instance rules', () => {
     expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect memory → agent" });
   });
 
+  it('allows agent -> guardrail (the guards edge re-owns the guardrail)', () => {
+    const source = node('agent', { id: 'agent' });
+    const target = node('guardrail', { id: 'guard:g1', owner: 'other' });
+    expect(canConnect(source, target)).toEqual({ ok: true });
+  });
+
+  it('refuses guardrail -> tool (a guardrail is not an edge source)', () => {
+    const source = node('guardrail', { id: 'guard:g1', owner: 'agent' });
+    const target = node('tool', { id: 'tool:http', owner: 'agent' });
+    expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect guardrail → tool" });
+  });
+
   it('refuses mcp -> tool (an mcp node only sources permission edges)', () => {
     const source = node('mcp', { id: 'mcp:gh', owner: 'agent' });
     const target = node('tool', { id: 'tool:http', owner: 'agent' });

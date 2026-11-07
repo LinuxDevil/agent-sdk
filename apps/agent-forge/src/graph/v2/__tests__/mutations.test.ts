@@ -22,6 +22,7 @@ import type {
   AgentNodeData,
   Graph,
   GraphNode,
+  GuardrailNodeData,
   McpNodeData,
   MemoryNodeData,
   NodeKind,
@@ -523,6 +524,36 @@ describe('palette create (C13 hook entry)', () => {
     expect(data.item.inline.name).toBe('audit-log');
     expect(data.item.inline.point).toBe('postToolCall');
     expect(data.item.inline.code).not.toBe('');
+  });
+});
+
+describe('palette create (C10 guardrail entry)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const guardrail = entries.find((e) => e.id === 'guardrail');
+
+  it('registers the entry under the Safety group', () => {
+    expect(guardrail).toBeDefined();
+    expect(guardrail?.group).toBe('Safety');
+    expect(guardrail?.kind).toBe('guardrail');
+  });
+
+  it('creates the default max-length item', () => {
+    expect(guardrail!.create(g0, 'agent').data).toStrictEqual({
+      item: { id: 'g1', name: 'max-length', on: ['input', 'output'] },
+    });
+  });
+
+  it('names two creates guard:g1 and guard:g2', () => {
+    const first = addNode(g0, guardrail!.create(g0, 'agent'), AT, 'agent');
+    expect(first.nodeId).toBe('guard:g1');
+    const second = addNode(first.graph, guardrail!.create(first.graph, 'agent'), AT, 'agent');
+    expect(second.nodeId).toBe('guard:g2');
+    expect((nodeById(second.graph, 'guard:g2').data as GuardrailNodeData).item).toStrictEqual({
+      id: 'g2',
+      name: 'max-length',
+      on: ['input', 'output'],
+    });
   });
 });
 
