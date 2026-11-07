@@ -10,8 +10,15 @@
 import { useId } from 'react';
 import { Plus } from 'lucide-react';
 import { Menu, type MenuAction, type MenuEntry } from '../../ui/Menu';
-import { useNewAgentActions, type NewAgentAction } from './newAgent';
+import { type NewAgentActions, type NewAgentAction, type NewAgentKind } from './newAgent';
 import './newAgent.css';
+
+/** The action of `kind`, found by kind rather than position so a reordered table cannot mislabel a row. */
+function actionOfKind(actions: NewAgentAction[], kind: NewAgentKind): NewAgentAction {
+  const action = actions.find((candidate) => candidate.kind === kind);
+  if (action === undefined) throw new Error(`useNewAgentActions: no '${kind}' action`);
+  return action;
+}
 
 /** Maps one start action onto a Menu row; a missing `run` renders it disabled with its reason. */
 function toMenuAction(action: NewAgentAction): MenuAction {
@@ -25,16 +32,16 @@ function toMenuAction(action: NewAgentAction): MenuAction {
   };
 }
 
-/** The header action: a primary "New agent" button with a caret opening the four start ways. */
-export function NewAgentMenu(): JSX.Element {
-  const { actions, creating } = useNewAgentActions();
-  const [blank, describe, template, importAction] = actions;
+/**
+ * The header action: a primary "New agent" button with a caret opening the four start ways.
+ * Takes the shared {@link NewAgentActions} state so its `creating` flag is the same one the
+ * empty state's start buttons see.
+ */
+export function NewAgentMenu({ actions, creating }: NewAgentActions): JSX.Element {
   const items: MenuEntry[] = [
-    toMenuAction(blank),
-    toMenuAction(describe),
-    toMenuAction(template),
+    ...(['blank', 'describe', 'template'] as const).map((kind) => toMenuAction(actionOfKind(actions, kind))),
     { id: 'separator-import', separator: true },
-    toMenuAction(importAction),
+    toMenuAction(actionOfKind(actions, 'import')),
   ];
   return (
     <Menu
@@ -87,9 +94,12 @@ function StartOption({ action }: { action: NewAgentAction }) {
   );
 }
 
-/** The empty state's "Ways to start" group: blank, describe and template as large buttons. */
-export function StartOptions(): JSX.Element {
-  const { actions } = useNewAgentActions();
+/**
+ * The empty state's "Ways to start" group: blank, describe and template as large buttons.
+ * Takes the shared {@link NewAgentActions} state (only `actions` is read) so a create started
+ * here disables the header menu's trigger too.
+ */
+export function StartOptions({ actions }: NewAgentActions): JSX.Element {
   return (
     <div className="start-options" role="group" aria-label="Ways to start">
       {actions

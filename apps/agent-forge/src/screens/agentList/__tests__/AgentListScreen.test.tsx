@@ -185,6 +185,39 @@ describe('AgentListScreen', () => {
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('meta is locked');
   });
 
+  it('shares one creating state between the header menu and the start options', async () => {
+    api.listAgents.mockResolvedValue([]);
+    let resolveCreate!: (record: AgentRecord) => void;
+    api.createAgentRecord.mockReturnValue(
+      new Promise<AgentRecord>((resolve) => {
+        resolveCreate = resolve;
+      })
+    );
+    const host = await mountAt();
+
+    // Start the create from the empty state's Blank button.
+    const blankOption = [...host.querySelectorAll<HTMLButtonElement>('button.start-option')].find(
+      (b) => b.querySelector('.start-option-title')?.textContent === 'Blank agent'
+    )!;
+    await act(async () => blankOption.click());
+    await flush();
+    expect(api.createAgentRecord).toHaveBeenCalledTimes(1);
+    expect(api.createAgentRecord).toHaveBeenCalledWith({ from: 'blank' });
+
+    // The header trigger and the start option both reflect the same in-flight create,
+    // so a second activation cannot issue a duplicate POST /agents.
+    const trigger = host.querySelector<HTMLButtonElement>('.menu-trigger')!;
+    expect(trigger.textContent).toContain('Creating…');
+    expect(trigger.disabled).toBe(true);
+    expect(blankOption.disabled).toBe(true);
+    expect(blankOption.getAttribute('title')).toBe('Creating an agent…');
+
+    await act(async () => resolveCreate({ id: 'untitled-1' } as AgentRecord));
+    await flush();
+    expect(api.createAgentRecord).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe('#/agents/untitled-1/canvas');
+  });
+
   it('creates a blank agent from the New agent menu and opens its canvas', async () => {
     const host = await mountAt();
     await act(async () => buttonNamed(host, 'New agent')!.click());

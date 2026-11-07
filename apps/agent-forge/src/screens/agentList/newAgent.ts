@@ -48,12 +48,20 @@ export function hasTemplatesRoute(routes: readonly RouteEntry[] = ROUTES): boole
   return routes.some((route) => route.pattern === '/templates');
 }
 
+/** What {@link useNewAgentActions} returns: the four start actions and whether a blank create is in flight. */
+export interface NewAgentActions {
+  actions: NewAgentAction[];
+  creating: boolean;
+}
+
 /**
  * The four start actions for the New agent menu and the empty state's start
  * buttons. `creating` is true while the blank create is in flight; failures
- * toast `error` with the server message.
+ * toast `error` with the server message. One instance must be shared by the
+ * header menu and the empty state (AgentListScreen owns it): two instances
+ * would each track `creating` separately and allow a duplicate POST /agents.
  */
-export function useNewAgentActions(): { actions: NewAgentAction[]; creating: boolean } {
+export function useNewAgentActions(): NewAgentActions {
   const toast = useToast();
   const [creating, setCreating] = useState(false);
   const templatesAvailable = hasTemplatesRoute();

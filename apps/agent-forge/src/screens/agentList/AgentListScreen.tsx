@@ -20,6 +20,7 @@ import { agentTabPath } from '../agents/agentTabs';
 import { AgentCard } from './AgentCard';
 import { filterAgents, labelOptions, useAgentListFilter, type AgentListFilter } from './agentListUrl';
 import { NewAgentMenu, StartOptions } from './NewAgentMenu';
+import { useNewAgentActions, type NewAgentActions } from './newAgent';
 import { useAgentList, type AgentListState } from './useAgentList';
 import './agentList.css';
 
@@ -106,13 +107,14 @@ interface ListBodyProps {
   list: AgentListState;
   items: AgentListItem[];
   visible: AgentListItem[];
+  newAgent: NewAgentActions;
   onClearFilters(): void;
   onOpen(id: string): void;
   onToggle(id: string, enabled: boolean): void;
 }
 
 /** Exactly one of: error card, loading grid, empty state, no-match state, card grid. */
-function AgentListBody({ list, items, visible, onClearFilters, onOpen, onToggle }: ListBodyProps) {
+function AgentListBody({ list, items, visible, newAgent, onClearFilters, onOpen, onToggle }: ListBodyProps) {
   if (list.error !== undefined && list.items === undefined) {
     return <ErrorCard error={list.error} onRetry={list.refresh} />;
   }
@@ -123,7 +125,7 @@ function AgentListBody({ list, items, visible, onClearFilters, onOpen, onToggle 
         icon={Bot}
         title="No agents yet"
         hint="Pick a way to start."
-        action={<StartOptions />}
+        action={<StartOptions {...newAgent} />}
       />
     );
   }
@@ -179,6 +181,10 @@ function useAgentListFacets(
 export function AgentListScreen() {
   const list = useAgentList();
   const [filter, setFilter] = useAgentListFilter();
+  // One instance shared by the header menu and the empty state's start buttons:
+  // a second useNewAgentActions would track `creating` separately and let a
+  // second blank create slip through while the first is in flight.
+  const newAgent = useNewAgentActions();
 
   const items = list.items ?? [];
   const visible = useMemo(() => filterAgents(items, filter), [items, filter]);
@@ -202,7 +208,7 @@ export function AgentListScreen() {
       <ScreenHeader
         title="Agents"
         description="Every agent in this workspace. Open one to edit it, test it and ship it."
-        actions={<NewAgentMenu />}
+        actions={<NewAgentMenu {...newAgent} />}
       />
       <div className="agent-list-screen">
         <FilterBar
@@ -218,6 +224,7 @@ export function AgentListScreen() {
           list={list}
           items={items}
           visible={visible}
+          newAgent={newAgent}
           onClearFilters={onClearFilters}
           onOpen={onOpen}
           onToggle={onToggle}

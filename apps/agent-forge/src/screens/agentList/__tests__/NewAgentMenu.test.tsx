@@ -14,10 +14,21 @@ const routesState = vi.hoisted(() => ({
 vi.mock('../../routeTable', () => ({ ROUTES: routesState.routes }));
 
 import type { AgentRecord } from '../../../../shared/wireTypes';
-import { hasTemplatesRoute } from '../newAgent';
+import { hasTemplatesRoute, useNewAgentActions } from '../newAgent';
 import { NewAgentMenu, StartOptions } from '../NewAgentMenu';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
+
+/** The components take the shared hook state as props; the screen owns the one instance. */
+function MenuHarness() {
+  const state = useNewAgentActions();
+  return <NewAgentMenu {...state} />;
+}
+
+function OptionsHarness() {
+  const state = useNewAgentActions();
+  return <StartOptions {...state} />;
+}
 
 async function flush() {
   for (let i = 0; i < 4; i++) {
@@ -58,7 +69,7 @@ beforeEach(() => {
 
 describe('NewAgentMenu', () => {
   it('shows a primary "New agent" trigger that opens the four ways plus a separator', async () => {
-    const host = mount(<NewAgentMenu />);
+    const host = mount(<MenuHarness />);
     const trigger = triggerOf(host);
     expect(trigger.textContent).toContain('New agent');
     expect(trigger.classList.contains('btn-primary')).toBe(true);
@@ -73,7 +84,7 @@ describe('NewAgentMenu', () => {
   });
 
   it('disables Describe with AI and Import with their reasons until AA19/L08 wire them', async () => {
-    const host = mount(<NewAgentMenu />);
+    const host = mount(<MenuHarness />);
     await openMenu(host);
 
     const describe = menuItem('Describe with AI')!;
@@ -93,7 +104,7 @@ describe('NewAgentMenu', () => {
   });
 
   it('disables From template until the route exists, then navigates to #/templates', async () => {
-    const host = mount(<NewAgentMenu />);
+    const host = mount(<MenuHarness />);
     await openMenu(host);
     const disabledTemplate = menuItem('From template')!;
     expect(disabledTemplate.getAttribute('aria-disabled')).toBe('true');
@@ -103,7 +114,7 @@ describe('NewAgentMenu', () => {
 
     // A10 registers the route: the menu item becomes runnable.
     routesState.routes.push({ pattern: '/templates', screen: 'templates', example: '/templates' });
-    const host2 = mount(<NewAgentMenu />);
+    const host2 = mount(<MenuHarness />);
     await openMenu(host2);
     const enabledTemplate = menuItem('From template')!;
     expect(enabledTemplate.getAttribute('aria-disabled')).toBeNull();
@@ -119,7 +130,7 @@ describe('NewAgentMenu', () => {
         resolveCreate = resolve;
       })
     );
-    const host = mount(<NewAgentMenu />);
+    const host = mount(<MenuHarness />);
     await openMenu(host);
     await act(async () => menuItem('Blank agent')!.click());
     await flush();
@@ -137,7 +148,7 @@ describe('NewAgentMenu', () => {
 
   it('toasts the server message and re-enables the trigger when the create fails', async () => {
     api.createAgentRecord.mockRejectedValue(new Error('Disk full'));
-    const host = mount(<NewAgentMenu />);
+    const host = mount(<MenuHarness />);
     await openMenu(host);
     await act(async () => menuItem('Blank agent')!.click());
     await flush();
@@ -151,7 +162,7 @@ describe('NewAgentMenu', () => {
 
 describe('StartOptions', () => {
   it('renders the three start buttons; disabled ones explain why; Blank creates', async () => {
-    const host = mount(<StartOptions />);
+    const host = mount(<OptionsHarness />);
     const group = host.querySelector('.start-options')!;
     expect(group.getAttribute('role')).toBe('group');
     expect(group.getAttribute('aria-label')).toBe('Ways to start');
