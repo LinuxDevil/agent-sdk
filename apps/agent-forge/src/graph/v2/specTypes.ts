@@ -42,8 +42,8 @@ export type { HandoffSpec } from '../../../../../src/spec/v2/handoffs';
 export type { GuardrailSpec } from '../../../../../src/spec/v2/guardrails';
 /** One `spec.permissions` entry. */
 export type { PermissionRuleSpec } from '../../../../../src/spec/v2/permissions';
-/** One `spec.hooks` entry. */
-export type { HookSpec } from '../../../../../src/spec/v2/hooks';
+/** One `spec.hooks` entry, plus the `inline` member's shape for the hook Inspector. */
+export type { HookSpec, InlineHookSpec } from '../../../../../src/spec/v2/hooks';
 /** One `spec.triggers` entry. */
 export type { TriggerSpec } from '../../../../../src/spec/v2/triggers';
 

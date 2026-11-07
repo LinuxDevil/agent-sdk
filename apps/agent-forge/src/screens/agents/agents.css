@@ -889,6 +889,42 @@ button.breakpoint-toggle {
 }
 
 /*
+ * Sticky note (canvas/NoteNode.tsx): a dashed --surface-2 card holding a
+ * layout-only comment - no ports, no status chrome. The text wraps as
+ * written (pre-wrap) and clamps after six lines so a long note cannot
+ * cover the canvas; an empty note shows the faint "Empty note" placeholder.
+ */
+.rf-note {
+  position: relative;
+  width: 208px;
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.canvas-wrap .rf-note.selected {
+  border-color: var(--accent);
+  border-style: solid;
+  box-shadow: var(--ring), var(--shadow-sm);
+}
+.rf-note .rf-note-empty {
+  color: var(--text-faint);
+}
+
+/*
  * Inline subagent group (AgentGroupNode.tsx): a container sized by
  * toRfNodes to its children plus padding; the head carries the agent card's
  * title row and the collapse toggle.
@@ -925,6 +961,7 @@ button.breakpoint-toggle {
     animation: none;
   }
   .rf-node,
+  .rf-note,
   .canvas-template,
   .canvas-wrap .rf-port.rf-port-in,
   .canvas-wrap .rf-port.rf-port-out {
