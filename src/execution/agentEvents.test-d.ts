@@ -165,6 +165,7 @@ describe('AgentEvent types', () => {
       | 'provider.fallback'
       | 'compaction.start'
       | 'compaction.done'
+      | 'heal.action'
       | 'context.cleared'
       | 'budget.exceeded'
       | 'input.queued'

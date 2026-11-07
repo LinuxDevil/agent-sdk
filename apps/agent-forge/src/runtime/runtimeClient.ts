@@ -60,10 +60,12 @@ import {
   AUTHOR_STREAM_PATH,
   type AuthorFocus,
   type AuthorSaveResponse,
+  type AuthorSecretRequest,
   type AuthorSession,
   type AuthorSessionRecord,
   type AuthorSessionSummary,
   type AuthorSettingsPayload,
+  type SetEnabledOutput,
 } from '../../shared/authorWire';
 import type { AgentStoreEntry } from '../persistence/AgentStore';
 import type { AgentApi } from '../persistence/HttpAgentStore';
@@ -673,6 +675,37 @@ class RuntimeClient implements AgentApi {
     return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/save`, {
       method: 'POST',
       body: JSON.stringify({ proposalId }),
+    });
+  }
+
+  /**
+   * The SecretCard's submit (`POST /assistant/sessions/:id/secret`,
+   * AA14): `body.value` goes straight to the secrets store server-side -
+   * it never enters the transcript, the WS stream, or anything this
+   * client receives back. Resolves on 204; rejects with a
+   * `RuntimeApiError` whose `code` carries the refusal (`NOT_PENDING`,
+   * `BUSY`, `INVALID_INPUT`, `NOT_FOUND`).
+   */
+  // fallow-ignore-next-line unused-class-member -- the SecretCard calls it once AA17 lands
+  async submitAuthorSecret(sessionId: string, body: AuthorSecretRequest): Promise<void> {
+    await this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/secret`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * The SuccessCard's "Enable agent" button (`POST
+   * /assistant/sessions/:id/enable`): flips `meta.enabled` for an agent
+   * this chat created, without a model turn. Rejects with a
+   * `RuntimeApiError` on `WRONG_AGENT` (the chat did not create it),
+   * `AGENT_NOT_FOUND`, or a session 404.
+   */
+  // fallow-ignore-next-line unused-class-member -- the SuccessCard calls it once AA17 lands
+  async enableAuthorAgent(sessionId: string, agentId: string): Promise<SetEnabledOutput> {
+    return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/enable`, {
+      method: 'POST',
+      body: JSON.stringify({ agentId }),
     });
   }
 

@@ -46,6 +46,7 @@ function deps(docsDir: string): AuthorToolDeps {
     reviewDraft: async () => ({ pass: true }),
     requirements: async () => [],
     sessions: new AuthorSessionStore('/unused-sessions'),
+    secrets: { secretStatus: (name) => ({ name, hasValue: false, masked: null, updatedAt: null }) },
   };
 }
 

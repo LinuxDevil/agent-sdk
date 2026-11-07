@@ -170,6 +170,28 @@ export interface AgentGraphSpec {
   version: 1;
   nodes: AgentGraphNode[];
   edges: AgentGraphEdge[];
+  /**
+   * `spec.policy.flow` as loaded, kept verbatim because specToGraph cannot
+   * rebuild a router graph from it. Written back by graphToSpec only while
+   * the graph has no router node; cleared by "Remove flow".
+   */
+  retainedFlow?: unknown;
+}
+
+/**
+ * Stable key identifying which node a serialized hook belongs to, used
+ * instead of the node's own `id` because `specToGraph()` always
+ * regenerates fresh node ids on every load (see the file header above) -
+ * an id-keyed hook would never re-attach after a round trip.
+ * `llm` is unique per graph; `tool` nodes are keyed by tool name, which is
+ * unique within the fixed-pipeline shape this app supports today.
+ * Lives in types.ts (with the node model it derives from) so
+ * `graphToSpec()` and `specToGraph()` can both use it without a circular
+ * import.
+ */
+export function hookNodeKey(node: AgentGraphNode): string {
+  if (node.type === 'tool') return `tool:${node.data.toolName}`;
+  return node.type;
 }
 
 export interface ValidationError {

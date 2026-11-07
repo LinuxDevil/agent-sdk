@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Install docs use the public npm packages again (`npm install lousho`, `npm create lousho`).
+- `lousho/improve` (experimental): `improveAgent()` proposes tested edits to an agent's instructions and skills, offline, gated against the current harness and held-out cases. It applies nothing. See [Improving an agent](docs/improve.md).
+- `agent.recover({ retryWithDiagnosis: true })` gives a run that reached `maxAttempts` one fork told why it failed, before quarantining it. `createOutputCheck()` is a new hook that runs your check after a tool succeeds and tells the model what it found. A fork no longer inherits `lastError` and `attempts` from its source.
+- **Behavior change:** `agent.recover()` no longer resumes a failing run forever. It backs off exponentially from the last failure (up to 15 minutes) and stops after `maxAttempts` failures in a row (default 10), calling the new `onQuarantined(run)` once. `agent.resume()` still runs a quarantined run. Pass a larger `maxAttempts` to keep retrying longer.
+- `lousho observe failures` also lists runs whose process died and scores below `--min-score` (default 0.5).
+- `agent.recover()` pauses during a provider outage instead of using up each run's attempts: after 3 provider failures in a row it stops resuming, probes with one run at growing intervals, and reports through the new `onOutage(paused)`.
+- `createProgressGuard()` gains `maxSameResults` (default 5), which denies a tool that keeps returning the same result even when its arguments differ. Run spans record `lousho.run.finish_reason`, and `lousho observe failures` lists runs that ended without an answer and names rate limits.
+- `lousho observe failures` lists recurring tool and model failures by agent, from the observe database or from trace files (`--traces`), each with a class and trace ids. See [Observability](docs/observability.md).
+- `createProgressGuard()`: an opt-in hook that adds advice to repeated tool failures, denies calls that keep returning the same result and tools that keep failing the same way, and stops the run with `LOUSHO_RUN_NO_PROGRESS` if denials continue. Actions stream as the new `heal.action` event; tool hooks get `ctx.emit`, and tool spans record `lousho.tool.replaced_by_hook`. See [Hooks](docs/hooks.md#stop-a-run-that-makes-no-progress).
 
 ## [1.0.0-alpha.31] - 2026-11-01
 

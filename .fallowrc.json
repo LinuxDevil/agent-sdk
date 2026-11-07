@@ -47,6 +47,7 @@
     "@ai-sdk/anthropic",
     "@ai-sdk/google",
     "@ai-sdk/openai",
+    "lousho",
     "ollama-ai-provider",
     "ollama-ai-provider-v2",
     "prompts"

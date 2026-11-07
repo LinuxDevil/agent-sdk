@@ -870,7 +870,11 @@ export class AgentExecutor {
         observed.exporter,
         init.name,
         init.attributes,
-        async (agentSpan) => this.runWithEnd(observed, agentSpan.id),
+        async (agentSpan) => {
+          const result = await this.runWithEnd(observed, agentSpan.id);
+          agentSpan.attributes = { ...agentSpan.attributes, 'lousho.run.finish_reason': result.finishReason };
+          return result;
+        },
         observed.parentSpanId,
         init.kind,
         contentRedactor(observed)
@@ -1845,6 +1849,7 @@ export class AgentExecutor {
             result: executed.result,
             error: executed.error,
             sandboxError: executed.sandboxError,
+            replacedByHook: executed.replacedByHook,
             latencyMs: Date.now() - toolCallStart,
           },
           { redactContent, captureContent: resolveCaptureContent(options.captureContent) }
