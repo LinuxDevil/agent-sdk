@@ -27,8 +27,8 @@ export { isSafeRelativePath, SPEC_ID_PATTERN } from '../../../../../src/spec/v2/
 export type { SecretRef } from '../../../../../src/spec/v2/secrets';
 /** One `spec.skills` entry. */
 export type { SkillRef } from '../../../../../src/spec/v2/skills';
-/** One `spec.memory` entry. */
-export type { MemorySpec } from '../../../../../src/spec/v2/memory';
+/** One `spec.memory` entry, plus its `scope`/`provider` union members for the Inspector's sub-forms. */
+export type { MemorySpec, MemoryScopeSpec, MemoryProviderSpec } from '../../../../../src/spec/v2/memory';
 /**
  * One `spec.mcpServers` value. The SDK names it `McpServerSpecV2`; the canvas
  * uses the shorter `McpServerSpec` everywhere, aliased once here.
