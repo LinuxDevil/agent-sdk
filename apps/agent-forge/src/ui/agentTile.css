@@ -1,0 +1,77 @@
+/*
+ * AgentTile: a rounded tile whose colour is picked by hashing the agent id
+ * (see AgentTile.tsx), so an agent reads as the same colour on the list, the
+ * detail header, the inbox and the Author cards. Each `agent-tone-*` class
+ * sets --tile-fg/--tile-bg from the theme tokens; the glyph is a non-text
+ * graphic (WCAG 1.4.11, 3:1), so these pairs are not in contrast.test.ts.
+ */
+.agent-tile {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  background: var(--tile-bg);
+  color: var(--tile-fg);
+  border-radius: var(--radius);
+  box-shadow: inset 0 0 0 1px transparent;
+  transition: box-shadow var(--dur-fast) var(--ease);
+}
+.agent-tile-sm {
+  width: 28px;
+  height: 28px;
+}
+.agent-tile-md {
+  width: 36px;
+  height: 36px;
+}
+.agent-tile-lg {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-lg);
+}
+.agent-tone-accent {
+  --tile-fg: var(--accent);
+  --tile-bg: var(--accent-soft);
+}
+.agent-tone-violet {
+  --tile-fg: var(--violet);
+  --tile-bg: var(--violet-soft);
+}
+.agent-tone-info {
+  --tile-fg: var(--info);
+  --tile-bg: var(--info-soft);
+}
+.agent-tone-danger {
+  --tile-fg: var(--danger);
+  --tile-bg: var(--danger-soft);
+}
+.agent-tone-success {
+  --tile-fg: var(--success);
+  --tile-bg: var(--success-soft);
+}
+.agent-tone-warning {
+  --tile-fg: var(--warning);
+  --tile-bg: var(--warning-soft);
+}
+.agent-tone-chart-4 {
+  --tile-fg: var(--chart-4);
+  --tile-bg: color-mix(in srgb, var(--chart-4) 14%, var(--surface));
+}
+.agent-tone-chart-2 {
+  --tile-fg: var(--chart-2);
+  --tile-bg: color-mix(in srgb, var(--chart-2) 14%, var(--surface));
+}
+.agent-tile-muted {
+  --tile-fg: var(--text-faint);
+  --tile-bg: var(--surface-2);
+}
+/* Hover ring: a card or row that contains a tile adds .agent-tile-host. */
+.agent-tile-host:hover .agent-tile,
+.agent-tile-host:focus-within .agent-tile {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tile-fg) 30%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-tile {
+    transition: none;
+  }
+}

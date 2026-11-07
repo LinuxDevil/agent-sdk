@@ -283,6 +283,12 @@ What a sweep does with each pending run:
   `onRecovered` reports the original's id. If it also reaches the cap, both are
   quarantined. The note quotes the error as data and caps its length, because
   the error can hold tool output. The store must keep a history.
+- During a provider outage: after 3 provider failures in a row, across any runs,
+  the loop pauses and calls `onOutage(true)`. It then tries one run at a time, at
+  growing intervals of up to 15 minutes, and carries on as normal, calling
+  `onOutage(false)`, once one gets past the provider. Nothing is quarantined for
+  provider failures while it's paused, so an outage doesn't use up healthy runs'
+  attempts. A bad API key doesn't count as an outage, since waiting won't fix it.
 - A run still running in another process, or one whose crashed process's
   [run lease](#run-leases) has not expired yet: its resume is turned away
   with `LOUSHO_SESSION_BUSY` before anything runs, silently, and a later sweep

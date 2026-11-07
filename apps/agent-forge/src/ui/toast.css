@@ -19,8 +19,43 @@
 .toast-error .toast-icon {
   color: var(--danger);
 }
+.toast-warning .toast-icon {
+  color: var(--warning);
+}
+/* each tone draws on its own tinted surface with a tinted border */
+.toast-info {
+  background: var(--info-soft);
+  border-color: var(--info-border);
+}
+.toast-success {
+  background: var(--success-soft);
+  border-color: var(--success-border);
+}
+.toast-warning {
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+}
+.toast-error {
+  background: var(--danger-soft);
+  border-color: var(--danger-border);
+}
+.toast-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+.toast-description {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-muted);
+}
 .toast-action {
   margin: -4px 0;
+}
+.toast-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
 }
 .toast-close {
   margin: -2px -2px -2px 0;

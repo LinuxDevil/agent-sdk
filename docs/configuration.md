@@ -2,6 +2,8 @@
 
 ## Agent spec files (`AgentSpec`)
 
+> This page describes spec version 1. New specs use [Agent spec v2](./agent-spec.md); `upgradeSpec()` converts a v1 spec.
+
 A declarative agent is a YAML (`.yaml`/`.yml`) or JSON (`.json`) file,
 validated with zod by `loadSpec()` (`src/spec/schema.ts`). It is the format
 `lousho dev` serves and `lousho build` deploys.

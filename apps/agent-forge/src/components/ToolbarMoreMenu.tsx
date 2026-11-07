@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Check, MoreHorizontal, type LucideIcon } from 'lucide-react';
+import { moveMenuFocus } from '../ui/menuKeys';
 
 /** One entry of the narrow builder toolbar's "More" menu; `checked` makes it a menuitemcheckbox. */
 export interface ToolbarMenuItem {
@@ -7,14 +8,6 @@ export interface ToolbarMenuItem {
   onSelect: () => void;
   checked?: boolean;
   Icon?: LucideIcon;
-}
-
-/** Arrow-key roving focus between the menu's items, wrapping at either end. */
-function focusSibling(menu: HTMLElement, key: 'ArrowDown' | 'ArrowUp') {
-  const entries = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]'));
-  const i = entries.indexOf(document.activeElement as HTMLElement);
-  const next = key === 'ArrowDown' ? (i + 1) % entries.length : (i - 1 + entries.length) % entries.length;
-  entries[next]?.focus();
 }
 
 /** Open state, outside-click dismissal and first-item focus for the menu. */
@@ -74,7 +67,7 @@ export function ToolbarMoreMenu({ items, children }: { items: ToolbarMenuItem[];
     }
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
     e.preventDefault();
-    focusSibling(e.currentTarget, e.key);
+    moveMenuFocus(e.currentTarget, e.key);
   }
 
   return (

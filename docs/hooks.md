@@ -117,6 +117,9 @@ getting anywhere. It's off unless you add it:
   tool for the run. Numbers in the message don't make an error different.
 - After `maxRepeats` identical calls returning the same result (default 3), it
   denies that call. A call whose result changes isn't repeating.
+- After `maxSameResults` calls to a tool return the same result (default 5), it
+  denies that tool, even when each call's arguments differ. This catches a model
+  rewording a search that keeps finding the same thing.
 - After `maxDenials` denials (default 3), the next denial stops the run with
   `LOUSHO_RUN_NO_PROGRESS`, which `agent.recover()` won't retry.
 

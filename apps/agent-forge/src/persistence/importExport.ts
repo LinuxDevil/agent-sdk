@@ -1,17 +1,9 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import type { AgentSpecV2 } from 'lousho';
-// NOTE (deviation, documented in the epic report): `agentSpecV2Schema` is a
-// VALUE import, not `import type`, so it ends up in this browser bundle.
-// The `lousho` package only exposes one bundled entry
-// point (its "." export) which eagerly imports Node-only/native deps
-// (dockerode, for the sandboxed tool executor) that break a Vite/browser
-// build. There's no narrower "./spec" export subpath to import just the
-// schema from. Importing the zod schema directly from the SDK's source
-// tree (still inside this monorepo, not a different package) avoids
-// pulling in the rest of the SDK's dependency graph. AgentSpecV2
-// above stays `import type`-only from the package
-// proper, which is erased at build time and has no such cost.
-import { agentSpecV2Schema } from '../../../../src/spec/v2/schema';
+import type { AgentSpecV2 } from 'lousho/spec';
+// `lousho/spec` is the SDK's browser-safe spec entry (schema, types and
+// pure helpers only, no Node-only deps), so this value import is safe in
+// the Vite/browser bundle where the package root is not.
+import { agentSpecV2Schema } from 'lousho/spec';
 
 export type ExportFormat = 'yaml' | 'json';
 

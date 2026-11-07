@@ -22,9 +22,17 @@ async function agentIds(page: Page): Promise<string[]> {
   return ((await res.json()) as { id: string }[]).map((a) => a.id);
 }
 
+/**
+ * A builder URL that survives the unknown-id fallback to `#/agents`: the first
+ * saved agent's canvas tab, or the unsaved default's when none are saved yet.
+ */
+async function builderHash(page: Page): Promise<string> {
+  return `#/agents/${(await agentIds(page))[0] ?? 'untitled-agent'}/canvas`;
+}
+
 test('a new agent is named what you typed; a finished run says done and labels its input', async ({ page }) => {
   const id = `ux-named-${Date.now()}`;
-  await page.goto(`/?token=${TOKEN}`);
+  await page.goto(`/?token=${TOKEN}${await builderHash(page)}`);
   await createAgent(page, id);
 
   const saved = await page.request.get(`/agents/${id}`, API);
@@ -45,7 +53,7 @@ test('a new agent is named what you typed; a finished run says done and labels i
 test('the live run status follows you off Agents: Prompts shows it in its header', async ({ page }) => {
   // A reachable (stubbed) daemon, so Prompts renders its own header rather than the daemon-down default.
   await stubObserve(page);
-  await page.goto(`/?token=${TOKEN}`);
+  await page.goto(`/?token=${TOKEN}${await builderHash(page)}`);
   await createAgent(page, `ux-live-${Date.now()}`);
   await page.getByRole('button', { name: 'Run', exact: true }).click();
   await expect(page.locator('.topbar [role="status"]')).toContainText('done', { timeout: 15_000 });
@@ -61,7 +69,7 @@ test('the live run status follows you off Agents: Prompts shows it in its header
 
 test("the drawer's Trace tab shows a finished run in the shared trace viewer", async ({ page }) => {
   const id = `ux-trace-${Date.now()}`;
-  await page.goto(`/?token=${TOKEN}`);
+  await page.goto(`/?token=${TOKEN}${await builderHash(page)}`);
   await createAgent(page, id);
 
   await page.getByRole('button', { name: 'Run', exact: true }).click();
@@ -84,7 +92,7 @@ test("the drawer's Trace tab shows a finished run in the shared trace viewer", a
 test('the open agent can be renamed and deleted from the rail', async ({ page }) => {
   const id = `ux-rename-${Date.now()}`;
   const renamed = `${id}-b`;
-  await page.goto(`/?token=${TOKEN}`);
+  await page.goto(`/?token=${TOKEN}${await builderHash(page)}`);
   await createAgent(page, id);
 
   const card = page.locator('.agent-card.selected');
@@ -127,7 +135,7 @@ test('a dropped connection to the studio server shows a banner until it reconnec
 
 test('the Output node is drawn once and the minimap shows the graph', async ({ page }) => {
   const id = `ux-minimap-${Date.now()}`;
-  await page.goto(`/?token=${TOKEN}`);
+  await page.goto(`/?token=${TOKEN}${await builderHash(page)}`);
   await createAgent(page, id);
 
   // Node cards: the LLM node shows its provider/model chip and an idle status before any run.
@@ -150,23 +158,25 @@ test('the Output node is drawn once and the minimap shows the graph', async ({ p
 });
 
 /**
- * Lands on `#/agents` with the session still authenticated: the redirect only
+ * Lands on `hash` with the session still authenticated: the redirect only
  * touches the hash, and studioToken.ts has moved `?token=` into sessionStorage.
- * Once the agent list loads, bare `#/agents` is renamed to the open agent's
- * `#/agents/:id` when one is saved (earlier tests save some), so the check
- * waits for that to settle and accepts either form instead of racing it.
+ * Bare `#/agents` is the agents list now, so the hash never rewrites itself.
  */
 async function expectLanded(page: Page, hash: string) {
   await page.waitForLoadState('networkidle');
-  const tail = hash === '#/agents' ? '#/agents(/[^/?#]+)?' : hash;
-  await expect(page).toHaveURL(new RegExp(`/${tail}$`));
+  await expect(page).toHaveURL(new RegExp(`/${hash}$`));
   expect(await page.evaluate(() => sessionStorage.getItem('lousho-studio-token'))).toBe(TOKEN);
   await expect(page.locator('.connection-banner')).toHaveCount(0);
 }
 
-test('a ?token= link lands on Agents; the Build toolbar stays on Agents', async ({ page }) => {
+test('a ?token= link lands on the agents list; the Build toolbar stays on the builder', async ({ page }) => {
   await page.goto(`/?token=${TOKEN}`);
   await expectLanded(page, '#/agents');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Agents');
+
+  // The builder keeps the Build controls and has no surface switch.
+  await page.goto(`/${await builderHash(page)}`);
+  await expectLanded(page, await builderHash(page));
   await expect(page.getByRole('button', { name: 'Run', exact: true })).toBeVisible();
   await expect(page.getByRole('group', { name: 'Studio surface' })).toHaveCount(0);
 

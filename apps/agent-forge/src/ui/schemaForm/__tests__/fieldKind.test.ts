@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { fieldKind, humanize } from '../fieldKind';
 import { resolveRef } from '../schemaPath';
 
-import { SCHEMA } from './fixture';
+import { SCHEMA, SPEC } from './fixture';
 
 describe('fieldKind', () => {
   it('picks the right kind for every fixture property', () => {
@@ -29,12 +29,25 @@ describe('fieldKind', () => {
     expect(fieldKind({ type: 'string', maxLength: 500 })).toBe('text');
   });
 
-  it('sends oneOf, object arrays, property-less objects and untyped shapes to json', () => {
-    expect(fieldKind({ oneOf: [{ type: 'string' }] })).toBe('json');
-    expect(fieldKind({ anyOf: [{ type: 'string' }, { type: 'number' }] })).toBe('json');
-    expect(fieldKind({ type: 'array', items: { type: 'object', properties: {} } })).toBe('json');
+  it('sends untyped shapes and bare objects to json', () => {
     expect(fieldKind({ type: 'object' })).toBe('json');
     expect(fieldKind({})).toBe('json');
+  });
+
+  it('picks variant for real unions, the inner kind for nullable ones', () => {
+    expect(fieldKind({ oneOf: [{ type: 'string' }, { type: 'number' }] })).toBe('variant');
+    expect(fieldKind({ anyOf: [{ type: 'string' }, { type: 'null' }] })).toBe('string');
+    const props = SPEC.properties!;
+    expect(fieldKind(props.nullableName!)).toBe('string');
+  });
+
+  it('picks objectArray for arrays of objects or variants, record for map objects', () => {
+    const props = SPEC.properties!;
+    expect(fieldKind(props.tools!)).toBe('objectArray');
+    expect(fieldKind(props.triggers!)).toBe('objectArray');
+    expect(fieldKind(props.instructionsByFamily!)).toBe('record');
+    expect(fieldKind({ type: 'array', items: { type: 'object', properties: {} } })).toBe('objectArray');
+    expect(fieldKind({ type: 'object', additionalProperties: true })).toBe('json');
   });
 });
 

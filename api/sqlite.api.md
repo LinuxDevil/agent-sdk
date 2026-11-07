@@ -40,17 +40,12 @@ interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
-    // (undocumented)
     description?: string;
     flow?: EditorStep;
-    // (undocumented)
     id?: string;
-    // (undocumented)
     inputs?: FlowInputVariable[];
-    // (undocumented)
     name: string;
 }
 
@@ -94,6 +89,14 @@ interface ApprovalSignIn {
     displayName?: string;
     provider: string;
     url: string;
+}
+
+// @public
+interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    type: 'approval';
 }
 
 // @public
@@ -749,7 +752,7 @@ interface ReturnNode extends NodeRunOptions {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
