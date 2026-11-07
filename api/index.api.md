@@ -246,17 +246,12 @@ export interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
-    // (undocumented)
     description?: string;
     flow?: EditorStep;
-    // (undocumented)
     id?: string;
-    // (undocumented)
     inputs?: FlowInputVariable[];
-    // (undocumented)
     name: string;
 }
 
@@ -336,17 +331,13 @@ export interface AgentSettings {
 // @public
 export type AgentSource = SimpleAgent | EvalTarget | (() => SimpleAgent | EvalTarget | Promise<SimpleAgent | EvalTarget>);
 
-// @public (undocumented)
+// @public
 export interface AgentSpec {
     mcpServers?: Record<string, McpServerSpec>;
-    // (undocumented)
     name: string;
     policy?: AgentSpecPolicy;
-    // (undocumented)
     prompt: string;
-    // (undocumented)
     provider: AgentSpecProvider;
-    // (undocumented)
     tools?: string[];
     triggers?: AgentSpecTrigger[];
 }
@@ -387,7 +378,7 @@ export interface AgentSpecProvider {
 // @public (undocumented)
 export const agentSpecProviderSchema: SpecSchema<AgentSpecProvider>;
 
-// @public (undocumented)
+// @public
 export const agentSpecSchema: SpecObjectSchema<AgentSpec>;
 
 // @public
@@ -411,7 +402,7 @@ export interface AgentSpecV2 {
     description?: string;
     evals?: never;
     fallbackModels?: string[];
-    flow?: never;
+    flow?: AgentFlow;
     guardrails?: GuardrailSpec[];
     handoffs?: HandoffSpec[];
     hooks?: HookSpec[];
@@ -622,6 +613,9 @@ export function appendToRing<T>(ring: readonly T[], entry: T, limit: number): T[
 export const APPROVAL_EXPIRED_REASON = "approval expired";
 
 // @public
+export const APPROVAL_WAIT_SPAN_NAME = "approval.wait";
+
+// @public
 export interface ApprovalAccessRequest {
     approval: PendingApproval;
     principal: Principal | undefined;
@@ -710,6 +704,14 @@ export interface ApprovalSignIn {
     displayName?: string;
     provider: string;
     url: string;
+}
+
+// @public
+interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    type: 'approval';
 }
 
 // @public
@@ -3036,6 +3038,9 @@ export interface GroupDecision {
 }
 
 // @public
+export const GUARDRAIL_SPAN_NAME = "guardrail";
+
+// @public
 export interface GuardrailCatalogEntry {
     canRewrite: boolean;
     canRunInParallel: boolean;
@@ -3064,17 +3069,11 @@ type GuardrailSide = 'input' | 'output' | 'tools';
 
 // @public
 interface GuardrailSpec {
-    // (undocumented)
     id: string;
-    // (undocumented)
     name: SpecGuardrailName;
-    // (undocumented)
     on?: GuardrailSide | GuardrailSide[];
-    // (undocumented)
     onTripped?: 'block' | 'rewrite' | 'warn';
-    // (undocumented)
     options?: Record<string, unknown>;
-    // (undocumented)
     runInParallel?: boolean;
 }
 
@@ -3139,6 +3138,9 @@ export interface Handoff {
 
 // @public
 export function handoff(target: SimpleAgent, options?: HandoffOptions): Handoff;
+
+// @public
+export const HANDOFF_SPAN_NAME = "handoff";
 
 // @public
 export interface HandoffEvent extends AgentEventBase<'handoff'> {
@@ -4310,14 +4312,12 @@ interface MemorySpec {
     itemJsonSchema?: Record<string, unknown>;
     itemKey?: string | string[];
     name: string;
-    // (undocumented)
     provider: MemoryProviderSpec;
     recall?: {
         onSessionStart?: boolean;
         maxItems?: number;
         query?: 'last-input' | 'none';
     };
-    // (undocumented)
     scope: MemoryScopeSpec;
 }
 
@@ -4853,15 +4853,10 @@ export interface OpenApiOperationInfo {
 
 // @public
 interface OpenApiToolRefOptions {
-    // (undocumented)
     approval?: 'mutating' | 'always' | 'never';
-    // (undocumented)
     bearerToken?: SecretRef;
-    // (undocumented)
     exclude?: string[];
-    // (undocumented)
     include?: string[];
-    // (undocumented)
     url: string;
 }
 
@@ -5159,9 +5154,7 @@ export interface PermissionRule {
 // @public
 interface PermissionRuleSpec {
     action: 'allow' | 'deny' | 'ask' | 'auto';
-    // (undocumented)
     id: string;
-    // (undocumented)
     reason?: string;
     tool: string | string[];
     ttlMs?: number;
@@ -5917,7 +5910,7 @@ export interface RunStartEvent extends AgentEventBase<'run.start'> {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 export interface RunUsage {
@@ -6161,6 +6154,16 @@ export const SdkAttr: {
     readonly SUBAGENT_NAME: "lousho.subagent.name";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
     readonly TASK_ID: "lousho.task.id";
+    readonly GUARDRAIL_NAME: "lousho.guardrail.name";
+    readonly GUARDRAIL_KIND: "lousho.guardrail.kind";
+    readonly GUARDRAIL_OUTCOME: "lousho.guardrail.outcome";
+    readonly GUARDRAIL_PARALLEL: "lousho.guardrail.parallel";
+    readonly NODE_ID: "lousho.node.id";
+    readonly HANDOFF_FROM: "lousho.handoff.from";
+    readonly HANDOFF_TO: "lousho.handoff.to";
+    readonly APPROVAL_ID: "lousho.approval.id";
+    readonly APPROVAL_KIND: "lousho.approval.kind";
+    readonly APPROVAL_EXPIRES_AT: "lousho.approval.expires_at";
 };
 
 // @public
@@ -7857,7 +7860,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.31";
+export const VERSION = "1.0.0-alpha.32";
 
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;

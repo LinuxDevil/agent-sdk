@@ -1,4 +1,4 @@
-import { schemaTypes } from './fieldKind';
+import { schemaTypes, unionBranches } from './fieldKind';
 import { pathKey, resolveRef } from './schemaPath';
 import type { JsonSchema, SchemaIssue, SchemaPath } from './types';
 
@@ -67,9 +67,11 @@ const LENGTH_CHECKS: ReadonlyArray<{
 
 /**
  * Validates `value` against `schema` (default: the root) in the draft-07
- * subset the form draws. `oneOf`/`anyOf` are not validated (U14); the server
- * re-validates with zod on save. An empty string counts as absent — missing
- * required keys report `Required.`.
+ * subset the form draws. For `oneOf`/`anyOf` a value matching no option
+ * yields `Doesn’t match any allowed shape.` at the union path (the options'
+ * inner issues are not reported); a value matching one option is re-checked
+ * against that option. The server re-validates with zod on save. An empty
+ * string counts as absent — missing required keys report `Required.`.
  */
 export function validateSchemaValue(
   root: JsonSchema,
@@ -102,6 +104,13 @@ function validateInto(
   if (ABSENT(value)) return;
   if (resolved.enum != null && !resolved.enum.some((v) => Object.is(v, value))) {
     issues.push(issue(path, 'Pick one of the listed values.'));
+  }
+  const union = unionBranches(resolved);
+  if (union != null) {
+    const hit = union.find((option) => validateSchemaValue(root, value, option, path).length === 0);
+    if (hit == null) issues.push(issue(path, 'Doesn’t match any allowed shape.'));
+    else validateInto(root, value, hit, path, issues);
+    return;
   }
   const types = schemaTypes(resolved.type);
   const match = types.find((t) => TYPE_MATCHES[t]?.(value) === true);

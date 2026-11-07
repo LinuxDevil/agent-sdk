@@ -10,12 +10,15 @@
 
 import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
+import { APPROVAL_TTL_RULE, isApprovalTtl } from './approvalTtl';
 import type { ToolDescriptor } from '../types';
 import type { HostedTool } from '../tools/hosted';
 import { SDKError } from '../utils/sdkError';
 import { ConfigurationError } from './errors';
 import type { Principal } from '../auth/types';
 import { closestMatch } from '../utils/closestMatch';
+
+export { APPROVAL_TTL_RULE, isApprovalTtl, MAX_APPROVAL_TTL_MS } from './approvalTtl';
 
 /** What a matching {@link PermissionRule} does with a tool call. */
 export type PermissionAction = 'allow' | 'deny' | 'ask';
@@ -294,21 +297,6 @@ export function allow(tools: PermissionToolMatcher): PermissionRule {
 export function deny(tools: PermissionToolMatcher, reason?: string): PermissionRule {
   return { tool: tools, action: 'deny', ...(reason !== undefined && { reason }) };
 }
-
-/**
- * The longest approval deadline (`approvalTtlMs`, an `ask` rule's `ttlMs`): 100
- * years. A longer one is a typo, not a deadline; leave it out for pauses that
- * never expire.
- */
-export const MAX_APPROVAL_TTL_MS = 100 * 365 * 24 * 60 * 60 * 1000;
-
-/** Whether `value` is a valid approval deadline: a positive number of milliseconds, at most {@link MAX_APPROVAL_TTL_MS}. */
-export function isApprovalTtl(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_APPROVAL_TTL_MS;
-}
-
-/** What a valid approval deadline is, for error messages: `... must be <this>, got ...`. */
-export const APPROVAL_TTL_RULE = `a positive number of milliseconds, at most 100 years (${MAX_APPROVAL_TTL_MS})`;
 
 /**
  * A rule that pauses the matching tools for approval, even when they do not

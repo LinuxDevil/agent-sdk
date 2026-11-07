@@ -1,0 +1,93 @@
+/* Inspector field kit (src/canvas/fields/*) — layout for the shared node-form controls. */
+
+/* SecretRefField: the kind select left of the name/value input. */
+.secretref-row {
+  display: flex;
+  gap: var(--space-2);
+}
+.secretref-row .select {
+  flex: none;
+  width: auto;
+}
+.secretref-row .input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The warning a SecretRefField shows in place of its help text in plain-text mode. */
+.field-warning {
+  color: var(--warning);
+}
+
+/* StringListField: chips wrap inline with the trailing input. */
+.stringlist {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.stringlist .input {
+  flex: 1 1 140px;
+  min-width: 0;
+  width: auto;
+}
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  margin-right: -4px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.chip-remove:hover:not(:disabled) {
+  color: var(--text);
+}
+.chip-remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* KeyValueField: one grid row per entry (key, value, remove), Add button below. */
+.kv-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.kv-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+}
+.kv-row .field {
+  margin-bottom: 0;
+}
+.kv-remove {
+  margin-top: 4px;
+}
+.kv-add {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+}
+
+/* OptionalNumberField's unit suffix. */
+.numfield-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.numfield-row .input {
+  flex: 1;
+  min-width: 0;
+}
+.field-unit {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}

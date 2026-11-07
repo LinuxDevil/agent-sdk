@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-alpha.32] - 2026-11-07
+
 - Install docs use the public npm packages again (`npm install lousho`, `npm create lousho`).
+- `lousho/improve` (experimental): `improveAgent()` proposes tested edits to an agent's instructions and skills, offline, gated against the current harness and held-out cases. It applies nothing. See [Improving an agent](docs/improve.md).
 - `agent.recover({ retryWithDiagnosis: true })` gives a run that reached `maxAttempts` one fork told why it failed, before quarantining it. `createOutputCheck()` is a new hook that runs your check after a tool succeeds and tells the model what it found. A fork no longer inherits `lastError` and `attempts` from its source.
 - **Behavior change:** `agent.recover()` no longer resumes a failing run forever. It backs off exponentially from the last failure (up to 15 minutes) and stops after `maxAttempts` failures in a row (default 10), calling the new `onQuarantined(run)` once. `agent.resume()` still runs a quarantined run. Pass a larger `maxAttempts` to keep retrying longer.
 - `lousho observe failures` also lists runs whose process died and scores below `--min-score` (default 0.5).

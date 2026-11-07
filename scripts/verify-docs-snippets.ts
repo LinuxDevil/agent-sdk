@@ -387,10 +387,15 @@ function allDocFiles(): string[] {
 /** tsconfig `paths` mapping each package.json export's types entry (dist/*.d.ts) to its src/*.ts source. */
 function sourcePaths(): Record<string, string[]> {
   const pkg = readJson(path.join(REPO_ROOT, 'package.json'));
+  // `lousho/spec` builds dist/spec/ from src/spec/v2/index.ts: src/spec/index.ts
+  // is already the v1 spec barrel, so the mechanical dist->src mapping misses it.
+  const SOURCE_OVERRIDES: Record<string, string[]> = { [`${pkg.name}/spec`]: ['src/spec/v2/index.ts'] };
   const paths: Record<string, string[]> = {};
   for (const [subpath, target] of Object.entries<{ require: { types: string } }>(pkg.exports)) {
     const specifier = subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`;
-    paths[specifier] = [target.require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts')];
+    paths[specifier] = SOURCE_OVERRIDES[specifier] ?? [
+      target.require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts'),
+    ];
   }
   return paths;
 }
