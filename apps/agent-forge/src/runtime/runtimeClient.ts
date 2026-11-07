@@ -60,6 +60,7 @@ import {
   AUTHOR_STREAM_PATH,
   type AuthorFocus,
   type AuthorSaveResponse,
+  type AuthorSecretRequest,
   type AuthorSession,
   type AuthorSessionRecord,
   type AuthorSessionSummary,
@@ -674,6 +675,22 @@ class RuntimeClient implements AgentApi {
     return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/save`, {
       method: 'POST',
       body: JSON.stringify({ proposalId }),
+    });
+  }
+
+  /**
+   * The SecretCard's submit (`POST /assistant/sessions/:id/secret`,
+   * AA14): `body.value` goes straight to the secrets store server-side -
+   * it never enters the transcript, the WS stream, or anything this
+   * client receives back. Resolves on 204; rejects with a
+   * `RuntimeApiError` whose `code` carries the refusal (`NOT_PENDING`,
+   * `BUSY`, `INVALID_INPUT`, `NOT_FOUND`).
+   */
+  // fallow-ignore-next-line unused-class-member -- the SecretCard calls it once AA17 lands
+  async submitAuthorSecret(sessionId: string, body: AuthorSecretRequest): Promise<void> {
+    await this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/secret`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     });
   }
 

@@ -27,6 +27,7 @@ import type {
   TemplateSummary,
 } from '../../../shared/wireTypes';
 import type { McpProbeResult } from '../../routes/mcpProbe';
+import type { SecretsStore } from '../../secretsStore';
 import type { WorkspaceContext } from '../../workspace/context';
 import type { ReviewDraft } from '../proposal/review';
 import type { AuthorSessionStore } from '../sessionStore';
@@ -38,6 +39,7 @@ import { openPageTool } from './openPageTool';
 import { proposeAgentTool } from './proposeAgentTool';
 import { proposeAgentUpdateTool } from './proposeAgentUpdateTool';
 import { saveAgentTool, saveAgentUpdateTool } from './saveTools';
+import { requestSecretTool } from './requestSecretTool';
 import { discardPendingChangesTool, setAgentEnabledTool } from './stateTools';
 
 /**
@@ -109,6 +111,13 @@ export interface AuthorToolDeps {
    * `createdAgentIds` through it after a create lands (AA10b).
    */
   sessions: AuthorSessionStore;
+  /**
+   * The Studio-global named-secrets store (D13). `requestSecret` only
+   * ever reads masked status (`secretStatus`) to answer `'exists'` -
+   * values are written by `POST /assistant/sessions/:id/secret`, never
+   * through a tool, and nothing here decrypts them.
+   */
+  secrets: Pick<SecretsStore, 'secretStatus'>;
 }
 
 /** Builds one tool for one turn - the factories close over `turn` (and `deps`). */
@@ -129,6 +138,7 @@ export const AUTHOR_TOOL_FACTORIES: readonly AuthorToolFactory[] = [
   proposeAgentUpdateTool,
   saveAgentTool,
   saveAgentUpdateTool,
+  requestSecretTool,
   discardPendingChangesTool,
   setAgentEnabledTool,
 ];

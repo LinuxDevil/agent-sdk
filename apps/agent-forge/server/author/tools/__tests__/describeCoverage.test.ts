@@ -52,6 +52,7 @@ const DEPS: AuthorToolDeps = {
   reviewDraft: async () => ({ pass: true }),
   requirements: async () => [],
   sessions: new AuthorSessionStore('/unused-sessions'),
+  secrets: { secretStatus: (name) => ({ name, hasValue: false, masked: null, updatedAt: null }) },
 };
 
 /** The zod internals the walk reads (zod 3 `_def` fields, structurally typed). */

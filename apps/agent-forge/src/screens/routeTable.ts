@@ -1,6 +1,8 @@
-/** The Studio's screens, one id per top-level view. */
+/** The Studio's screens, one id per top-level view. 'agents' is the builder. */
 export type ScreenId =
   | 'agents'
+  | 'agentList'
+  | 'agentDetail'
   | 'playground'
   | 'traces'
   | 'trace'
@@ -27,8 +29,11 @@ export interface RouteEntry {
  * Kept free of React so the Playwright specs can import it.
  */
 export const ROUTES: readonly RouteEntry[] = [
-  { pattern: '/agents', screen: 'agents', example: '/agents' },
-  { pattern: '/agents/:id', screen: 'agents', example: '/agents/e2e-agent' },
+  { pattern: '/agents', screen: 'agentList', example: '/agents' },
+  { pattern: '/agents/:id', screen: 'agents', example: '/agents/e2e-agent' }, // legacy, redirected
+  // Keep '/agents/:id/canvas' above '/agents/:id/:tab': 'canvas' is a tab name too.
+  { pattern: '/agents/:id/canvas', screen: 'agents', example: '/agents/e2e-agent/canvas' },
+  { pattern: '/agents/:id/:tab', screen: 'agentDetail', example: '/agents/e2e-agent/overview' },
   { pattern: '/playground', screen: 'playground', example: '/playground' },
   { pattern: '/traces', screen: 'traces', example: '/traces' },
   { pattern: '/traces/:traceId', screen: 'trace', example: '/traces/e2e-trace' },

@@ -32,7 +32,7 @@ interface AgentErrorEvent extends AgentEventBase<'error'> {
 }
 
 // @public
-type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
+type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | HealActionEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
 // @public
 interface AgentEventBase<TType extends string> {
@@ -316,6 +316,14 @@ interface HandoffEvent extends AgentEventBase<'handoff'> {
 }
 
 // @public
+interface HealActionEvent extends AgentEventBase<'heal.action'> {
+    action: 'hint' | 'deny' | 'stop';
+    failure?: 'bad-input' | 'timeout' | 'missing-capability' | 'permission' | 'unknown';
+    reason: string;
+    toolName: string;
+}
+
+// @public
 const HOOK_REGISTRY_BRAND: unique symbol;
 
 // @public
@@ -330,7 +338,7 @@ export interface HookContext {
 
 // @public
 export type HookEventPayload = Extract<AgentEventPayload, {
-    type: 'compaction.start' | 'compaction.done';
+    type: 'compaction.start' | 'compaction.done' | 'heal.action';
 }>;
 
 // @public
@@ -808,6 +816,7 @@ interface ToolCall {
 // @public
 export interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
+    emit?: (event: HookEventPayload) => void;
     principal?: Readonly<Principal>;
     resumedAfterApproval?: boolean;
     toolCall: ToolCall;

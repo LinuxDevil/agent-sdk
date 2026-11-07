@@ -11,7 +11,15 @@ import { anyError } from '../../utils/zodCompat';
 import { forwardIssues } from './common';
 
 /** A reference to a secret: an environment variable, or a name in the host's secret store (Studio: Settings → Secrets). */
-export type SecretRef = { env: string } | { secret: string };
+export type SecretRef =
+  | {
+      /** An environment variable name (ENV_NAME_PATTERN). */
+      env: string;
+    }
+  | {
+      /** A secret name in the host's store (SECRET_NAME_PATTERN). */
+      secret: string;
+    };
 
 /** What an `{ env }` name must look like: a shell-style variable name. */
 // fallow-ignore-next-line unused-export -- consumed by later spec v2 section schemas (S05 integration credentials, S22 channel secrets)
@@ -32,7 +40,7 @@ const namedSecretRefSchema = z
   .strict();
 
 /** A `{ env: 'NAME' }` or `{ secret: 'name' }` ref — exactly one of the two keys, nothing else. Used wherever a spec field holds only a ref (openapi `bearerToken`, trigger secrets). */
-export const secretRefSchema = z.union(
+export const secretRefSchema: z.ZodType<SecretRef> = z.union(
   [envRefSchema, namedSecretRefSchema],
   anyError("must be { env: 'NAME' } or { secret: 'name' }")
 );

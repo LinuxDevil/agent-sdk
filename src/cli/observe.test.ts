@@ -62,6 +62,31 @@ describe('reporterHint', () => {
 });
 
 describe('lousho observe', () => {
+  it('failures reports from a database, as text or JSON', async () => {
+    const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cli-failures-')), 'o.db');
+    const db = openDb(dbPath);
+    ingestBatch(db, [
+      { type: 'observation', data: { obs_id: 'o1', trace_id: 't1', agent_id: 'a', kind: 'tool', name: 'execute_tool x', start: 1, end: 2, status: 'error', attrs: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'x', error: 'denied by policy' } } },
+    ]);
+    db.close();
+    expect(await runObserve(['failures', '--db', dbPath])).toBe(0);
+    expect(logs.join('\n')).toContain('denied by policy');
+    logs.length = 0;
+    expect(await runObserve(['failures', '--db', dbPath, '--json'])).toBe(0);
+    expect(JSON.parse(logs.join('\n')).scanned.failed).toBe(1);
+  });
+
+  it('failures rejects a --min-score that is not a number', async () => {
+    const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cli-failures-')), 'o.db');
+    expect(await runObserve(['failures', '--db', dbPath, '--min-score', 'high'])).toBe(2);
+  });
+
+  it('failures reads trace directories without a database', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cli-traces-'));
+    expect(await runObserve(['failures', '--traces', dir])).toBe(0);
+    expect(logs.join('\n')).toContain('No failures');
+  });
+
   it('prints help (0 with --help, 2 with none) and exits 2 on an unknown command', async () => {
     expect(await runObserve([])).toBe(2);
     expect(logs.at(-1)).toContain('lousho observe');

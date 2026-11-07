@@ -92,6 +92,8 @@ export function registerVersionRoutes(app: Express): void {
       const ws = workspaceOf(req);
       const id = paramId(req);
       await withAgentLock(id, async () => {
+        // The explicit save supersedes any pending idle-version capture.
+        ws.idleVersioner.cancel(id);
         if (!ws.repo.exists(id)) {
           sendError(res, 404, `No saved agent '${id}'`, 'LOUSHO_AGENT_NOT_FOUND');
           return;

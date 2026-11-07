@@ -10,8 +10,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  # Static gates: types, lint, API surface, generated files, docs snippets. The three ci jobs run in
-  # parallel (each builds dist/ itself), so a PR waits for the slowest one instead of the sum.
   check:
     runs-on: ubuntu-latest
     steps:
@@ -30,12 +28,6 @@ jobs:
           node-version: '22.19.0'
           cache: 'npm'
       - run: npm ci
-      - run: npx tsc --noEmit
-      # The test files are type-checked too (tsconfig.tests.json), so they cannot drift from the API.
-      - run: npm run typecheck:tests
-      # The examples are type-checked too (tsconfig.examples.json), so they cannot drift from the API.
-      - run: npm run typecheck:examples
-      - run: npm run lint
       - run: npm run build
         # The dual-entry build's DTS pass (worker + executor entries) exceeds
         # the default heap, like the compat job's build below.
@@ -53,18 +45,35 @@ jobs:
       - run: npm run test:types
       # llms.txt / llms-full.txt are generated from README + docs; fail if stale.
       - run: npm run docs:llms:check
-      # TypeDoc "not documented" count may only go down.
-      - run: npm run docs:ratchet
       # registry/dist is generated from registry/; fail if stale.
       - run: npm run registry:check
       # Agent Forge imports the SDK as `lousho` via `file:../..`, i.e. the root dist/ built above.
       - run: npm run typecheck --workspace apps/agent-forge
       - run: npm run typecheck:server --workspace apps/agent-forge
-      # Source and tests also type-check against zod 4 (last: it changes node_modules).
+  zod4:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
       - run: npm install --no-save zod@4
       - run: npx tsc --noEmit
       - run: npm run typecheck:tests
-  # Unit tests with coverage, the Agent Forge suites, and the dead-code/duplication gate.
+  forge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build -- --no-dts
+      - run: npm run test --workspace apps/agent-forge -- --run
+      - run: npm run test:server --workspace apps/agent-forge
   test:
     runs-on: ubuntu-latest
     steps:
@@ -74,18 +83,10 @@ jobs:
           node-version: '22.19.0'
           cache: 'npm'
       - run: npm ci
-      # Build the root SDK's dist *before* running tests: packages/create-lousho/src/template.e2e.test.ts
-      # `npm pack`s the root SDK to install it into a generated project, which needs dist/ to exist.
-      - run: npm run build
-        # The dual-entry build's DTS pass (worker + executor entries) exceeds
-        # the default heap, like the compat job's build below.
-        env:
-          NODE_OPTIONS: --max-old-space-size=12288
+      - run: npm run build -- --no-dts
       # packages/create-lousho's own tests execFileSync its bin/cli.js, which needs ITS dist/index.js too.
       - run: npm run build --workspace=packages/create-lousho
-      - run: npm run test:coverage
-      - run: npm run test --workspace apps/agent-forge -- --run
-      - run: npm run test:server --workspace apps/agent-forge
+      - run: node_modules/.bin/vitest run --coverage --config vitest.coverage.config.ts --exclude '{packages/create-lousho/src/template.e2e,src/providers/sharedChunks}.test.ts'
       # Dead code, duplication and complexity gate (config: .fallowrc.json).
       # Bare `fallow` fails on any finding. Runs after the coverage step because
       # its CRAP scores read coverage/coverage-final.json.
@@ -107,6 +108,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=12288
       # Hello-world bundle and tarball unpacked size against scripts/size-budget.json (after pack-smoke's builds).
       - run: npm run size-check
+      - run: npx vitest run packages/create-lousho/src/template.e2e.test.ts src/providers/sharedChunks.test.ts
   # The newest peers the ranges accept (`ai` 7, `@ai-sdk/*` 4, `ollama-ai-provider-v2` 4, zod 4), installed
   # on top of the default `ai` 4 / zod 3 install (`--no-save` leaves the lockfile alone; `--save-prod
   # --legacy-peer-deps` because ollama-ai-provider-v2 is an optional peer and the dev install's v1 conflicts

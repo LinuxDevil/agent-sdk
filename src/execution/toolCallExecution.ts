@@ -12,6 +12,7 @@ import { rememberedApproval } from '../tools/approvalPolicies';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import type { ToolRunContext } from './toolRunContext';
+import { runEventsOf } from './agentRun';
 import { HookRegistry, ToolCallHookContext, type PreToolCallDecision } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, thrownToolError, type ToolErrorKind } from './toolErrors';
@@ -123,6 +124,7 @@ export function toolHookContext(
     toolName: toolCall.function.name,
     args,
     toolCall,
+    ...(ctx.scope && { emit: runEventsOf(ctx.scope.runtime)?.hookEvent }),
   };
 }
 
@@ -214,9 +216,12 @@ export async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hoo
     if (ruled?.rejection) {
       return { toolCall, args: hookedArgs, requiresApproval: false, rejection: ruled.rejection };
     }
-    // Tool guardrails run on calls that were not denied; a block throws GuardrailError.
+    // Tool guardrails run on calls that were not denied; a block throws GuardrailError. A check's span is a child of this call's span.
     const args = ctx.scope
-      ? await checkToolGuardrails(ctx.scope.runtime, { toolName: toolCall.function.name, args: hookedArgs, messages: ctx.messages })
+      ? await checkToolGuardrails(
+          { ...ctx.scope.runtime, guardrailParentSpanId: ctx.scope.spanId },
+          { toolName: toolCall.function.name, args: hookedArgs, messages: ctx.messages }
+        )
       : hookedArgs;
     // Follow-up: an `allow` / `ask` rule replaces the tool's own ask, not its deny.
     const own = await checkNeedsApproval(toolCall, ctx, args);

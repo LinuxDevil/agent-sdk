@@ -105,6 +105,92 @@ const agent = createAgent({ provider, instructions: 'You research things.', hook
 
 Each recipe is a complete program. They run against `mockModel`, so none of them needs an API key or a live model call; the same pattern tests your own hooks offline ([Testing](./testing.md)). Each one scripts a model turn that calls a tool, then a final answer.
 
+### Stop a run that makes no progress
+
+`createProgressGuard()` stops a run spending its budget on calls that aren't
+getting anywhere. It's off unless you add it:
+
+- From the second failure of a tool with the same error, it adds a `hint` to the
+  result, with advice for the class of failure (`classifyToolFailure()`: bad
+  input, timeout, missing capability, permission or unknown).
+- After `maxFailures` failures with the same error (default 3), it denies that
+  tool for the run. Numbers in the message don't make an error different.
+- After `maxRepeats` identical calls returning the same result (default 3), it
+  denies that call. A call whose result changes isn't repeating.
+- After `maxSameResults` calls to a tool return the same result (default 5), it
+  denies that tool, even when each call's arguments differ. This catches a model
+  rewording a search that keeps finding the same thing.
+- After `maxDenials` denials (default 3), the next denial stops the run with
+  `LOUSHO_RUN_NO_PROGRESS`, which `agent.recover()` won't retry.
+
+```ts
+import { createAgent, createProgressGuard, defineTool } from 'lousho';
+import { mockModel } from 'lousho/testing';
+import { z } from 'zod';
+
+const lookup = defineTool({
+  name: 'lookup',
+  description: 'Look up an order',
+  input: z.object({ id: z.string() }),
+  async execute() {
+    return { status: 'unknown' };
+  },
+});
+
+const call = { toolCalls: [{ name: 'lookup', args: { id: 'A-1' } }] };
+const agent = createAgent({
+  provider: mockModel([call, call, call, call, 'I could not find that order.']),
+  tools: [lookup],
+  hooks: [createProgressGuard({ ignoreTools: ['poll_job'], fallbacks: { lookup: 'search_orders' } })],
+});
+
+for await (const event of agent.stream('Where is order A-1?')) {
+  if (event.type === 'heal.action') console.log(event.action, event.toolName);
+}
+```
+
+Each action is streamed as a `heal.action` event. A result it replaced is marked
+on the tool's span as `lousho.tool.replaced_by_hook`, and a denial is recorded as
+the span's error. The guard counts from the run's transcript, so a resumed run
+keeps its history. Calls in one batch aren't counted until the batch settles, and
+compaction can remove old calls from the count.
+
+### Check what a tool produced
+
+A successful write doesn't prove the output is usable. `createOutputCheck()` runs
+your check after a tool succeeds. If it returns a problem, or throws, the model
+sees it as `outputCheckFailed` on the result and can fix the output. The check
+is your code, so make it independent of what the model wrote.
+
+```ts
+import { createAgent, createOutputCheck, defineTool } from 'lousho';
+import { mockModel } from 'lousho/testing';
+import { z } from 'zod';
+
+const files = new Map<string, string>();
+const writeFile = defineTool({
+  name: 'write_file',
+  description: 'Write a file',
+  input: z.object({ path: z.string(), text: z.string() }),
+  async execute({ path, text }) {
+    files.set(path, text);
+    return { path };
+  },
+});
+
+const agent = createAgent({
+  provider: mockModel([{ toolCalls: [{ name: 'write_file', args: { path: 'report.md', text: '' } }] }, 'Done.']),
+  tools: [writeFile],
+  hooks: [
+    createOutputCheck({
+      write_file: (args) => (files.get(String(args.path)) ? undefined : `${String(args.path)} is empty`),
+    }),
+  ],
+});
+
+await agent.send('Write the report');
+```
+
 ### Deny a tool by name
 
 ```ts

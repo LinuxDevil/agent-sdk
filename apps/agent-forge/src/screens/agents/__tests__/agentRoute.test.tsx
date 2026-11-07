@@ -59,29 +59,29 @@ afterEach(() => {
 });
 
 describe('agentRouteId / agentPath', () => {
-  it('reads the agent id from #/agents/:id only', () => {
+  it('reads the agent id from every agents URL that names one', () => {
     expect(agentRouteId('#/agents/support-bot')).toBe('support-bot');
+    expect(agentRouteId('#/agents/support-bot/canvas')).toBe('support-bot');
+    expect(agentRouteId('#/agents/support-bot/runs')).toBe('support-bot');
     expect(agentRouteId('#/agents/a%20b')).toBe('a b');
     expect(agentRouteId('#/agents')).toBeUndefined();
     expect(agentRouteId('#/traces/abc')).toBeUndefined();
     expect(agentRouteId('')).toBeUndefined();
   });
-  it('is #/agents/:id for a saved agent and bare #/agents for the unsaved default', () => {
-    expect(agentPath('beta', [{ id: 'beta' }])).toBe('/agents/beta');
-    expect(agentPath('untitled-agent', [])).toBe('/agents');
-    expect(agentPath('new-one', [])).toBe('/agents/new-one');
+  it('is the canvas URL for every agent, including the unsaved default', () => {
+    expect(agentPath('beta')).toBe('/agents/beta/canvas');
+    expect(agentPath('untitled-agent')).toBe('/agents/untitled-agent/canvas');
+    expect(agentPath('a b')).toBe('/agents/a%20b/canvas');
   });
 });
 
 describe('routeSyncAction', () => {
   const agents = [{ id: 'alpha' }, { id: 'beta' }];
   it('does nothing without an id, before the list loads, or when the id is already open', () => {
+    expect(routeSyncAction(undefined, 'alpha', [], true)).toEqual({ kind: 'none' });
     expect(routeSyncAction(undefined, 'alpha', agents, false)).toEqual({ kind: 'none' });
     expect(routeSyncAction('beta', 'alpha', [], false)).toEqual({ kind: 'none' });
     expect(routeSyncAction('alpha', 'alpha', agents, true)).toEqual({ kind: 'none' });
-  });
-  it('names the open agent on bare #/agents once loaded', () => {
-    expect(routeSyncAction(undefined, 'alpha', agents, true)).toEqual({ kind: 'canonical' });
   });
   it('switches to a saved agent and falls back on an unknown one', () => {
     expect(routeSyncAction('beta', 'alpha', agents, true)).toEqual({ kind: 'switch', id: 'beta' });
@@ -96,29 +96,27 @@ describe('useAgentRouteSync', () => {
   };
 
   it('opens the agent the hash names', () => {
-    window.history.replaceState(null, '', '/#/agents/beta');
+    window.history.replaceState(null, '', '/#/agents/beta/canvas');
     render(createElement(Probe));
     expect(appState.switchAgent).toHaveBeenCalledWith('beta');
   });
 
-  it('replaces an unknown agent id with bare #/agents, then names the open agent', async () => {
-    window.history.replaceState(null, '', '/#/agents/typo');
+  it('replaces an unknown agent id with #/agents (the list) and leaves it there', async () => {
+    window.history.replaceState(null, '', '/#/agents/typo/canvas');
     const before = window.history.length;
     render(createElement(Probe));
     expect(window.location.hash).toBe('#/agents');
     await flush();
-    expect(window.location.hash).toBe('#/agents/alpha');
+    expect(window.location.hash).toBe('#/agents');
     expect(window.history.length).toBe(before);
     expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 
-  it('replaces bare #/agents (returning from another screen) with the open agent, so a reload reopens it', () => {
+  it('leaves bare #/agents (the list) alone', () => {
     window.history.replaceState(null, '', '/#/agents');
-    appState.agentId = 'beta';
-    const before = window.history.length;
     render(createElement(Probe));
-    expect(window.location.hash).toBe('#/agents/beta');
-    expect(window.history.length).toBe(before);
+    expect(window.location.hash).toBe('#/agents');
+    expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 
   it('leaves a non-Agents hash alone (a move off Agents held for the prompt)', () => {
@@ -127,51 +125,49 @@ describe('useAgentRouteSync', () => {
     expect(window.location.hash).toBe('#/traces');
   });
 
-  it('reports a failed open as an error toast and falls back', async () => {
+  it('reports a failed open as an error toast and falls back to the list', async () => {
     appState.switchAgent.mockImplementation(() => Promise.reject(new Error('not found')));
-    window.history.replaceState(null, '', '/#/agents/beta');
+    window.history.replaceState(null, '', '/#/agents/beta/canvas');
     render(createElement(Probe));
     await act(async () => {});
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('Could not open agent beta: not found');
-    // Back on the agent that stayed open, so URL and screen agree.
     await flush();
-    expect(window.location.hash).toBe('#/agents/alpha');
+    expect(window.location.hash).toBe('#/agents');
   });
 
   it('asks before switching away from unsaved changes, and restores the hash on cancel', async () => {
-    window.history.replaceState(null, '', '/#/agents/alpha');
+    window.history.replaceState(null, '', '/#/agents/alpha/canvas');
     appState.dirty = true;
     render(createElement(Probe));
     confirmSpy.mockReturnValue(false);
-    go('#/agents/beta');
+    go('#/agents/beta/canvas');
     expect(confirmSpy).toHaveBeenCalledTimes(1);
     expect(appState.switchAgent).not.toHaveBeenCalled();
-    expect(window.location.hash).toBe('#/agents/alpha');
+    expect(window.location.hash).toBe('#/agents/alpha/canvas');
     await flush();
 
     confirmSpy.mockReturnValue(true);
-    go('#/agents/beta');
+    go('#/agents/beta/canvas');
     expect(appState.switchAgent).toHaveBeenCalledWith('beta');
   });
 
   it('follows the open agent when it changes under the URL (create, rename, delete)', () => {
-    window.history.replaceState(null, '', '/#/agents/alpha');
+    window.history.replaceState(null, '', '/#/agents/alpha/canvas');
     render(createElement(Probe));
     appState.agentId = 'alpha-2';
     rerender(createElement(Probe));
-    expect(window.location.hash).toBe('#/agents/alpha-2');
+    expect(window.location.hash).toBe('#/agents/alpha-2/canvas');
     expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 
-  it('names the loaded agent once the initial load finishes', () => {
-    window.history.replaceState(null, '', '/#/agents');
+  it('opens the agent the hash names once the saved list has loaded', () => {
+    window.history.replaceState(null, '', '/#/agents/beta/canvas');
     appState.agentsLoaded = false;
-    appState.agentId = 'untitled-agent';
     render(createElement(Probe));
+    expect(appState.switchAgent).not.toHaveBeenCalled();
     appState.agentsLoaded = true;
-    appState.agentId = 'alpha';
     rerender(createElement(Probe));
-    expect(window.location.hash).toBe('#/agents/alpha');
+    expect(appState.switchAgent).toHaveBeenCalledWith('beta');
   });
 });
 
@@ -187,7 +183,7 @@ describe('useLeaveAgentsGuard', () => {
   }
 
   it('leaves Agents without asking when nothing is unsaved', () => {
-    window.history.replaceState(null, '', '/#/agents/alpha');
+    window.history.replaceState(null, '', '/#/agents/alpha/canvas');
     const seen = probe();
     go('#/traces');
     expect(confirmSpy).not.toHaveBeenCalled();
@@ -195,13 +191,13 @@ describe('useLeaveAgentsGuard', () => {
   });
 
   it('asks before leaving Agents with unsaved changes; cancel restores the hash', async () => {
-    window.history.replaceState(null, '', '/#/agents/alpha');
+    window.history.replaceState(null, '', '/#/agents/alpha/canvas');
     appState.dirty = true;
     const seen = probe();
     confirmSpy.mockReturnValue(false);
     go('#/traces');
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(window.location.hash).toBe('#/agents/alpha');
+    expect(window.location.hash).toBe('#/agents/alpha/canvas');
     expect(seen.at(-1)).toBe('agents');
     expect(seen).not.toContain('traces');
     await flush();

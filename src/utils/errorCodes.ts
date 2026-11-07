@@ -125,6 +125,8 @@ export const ERROR_CODES = {
   LOUSHO_OUTPUT_INVALID: "Reserved: an invalid structured reply is reported as finishReason 'output-invalid', not thrown.",
   LOUSHO_BUDGET_EXCEEDED:
     "Raise the limit named in the message, or use onExceeded: 'stop' (the default) to get finishReason 'budget-exceeded' instead of an error.",
+  /** `createProgressGuard()` stopped a run whose calls it kept denying. */
+  LOUSHO_RUN_NO_PROGRESS: 'Read the heal.action events to see which calls were denied, then fix the agent or its tool before resuming.',
   LOUSHO_AUTH_CONFIG_INVALID: 'Fix the auth helper option named in the message (docs/auth.md lists what each helper needs).',
   LOUSHO_GUARDRAIL_TRIPPED:
     "Look at `error.guardrail` for which guardrail blocked and why, or use onTripped: 'stop' (the default) to get finishReason 'guardrail' instead of an error.",

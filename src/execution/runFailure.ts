@@ -31,7 +31,7 @@ export function checkpointError(error: unknown): CheckpointError {
     message: error instanceof Error ? error.message : String(error),
     ...(code && { code }),
     ...(compacted && { category: compacted.category }),
-    retryable: !permanent,
+    retryable: !permanent && code !== 'LOUSHO_RUN_NO_PROGRESS',
     at: new Date().toISOString(),
   };
 }
