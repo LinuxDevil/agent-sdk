@@ -41,6 +41,8 @@ import { proposeAgentUpdateTool } from './proposeAgentUpdateTool';
 import { saveAgentTool, saveAgentUpdateTool } from './saveTools';
 import { requestSecretTool } from './requestSecretTool';
 import { discardPendingChangesTool, setAgentEnabledTool } from './stateTools';
+import { runDraftTool } from './runDraftTool';
+import { getTraceTool } from './getTraceTool';
 
 /**
  * A registry-index item that names an MCP server (`type: 'mcp'`,
@@ -141,6 +143,8 @@ export const AUTHOR_TOOL_FACTORIES: readonly AuthorToolFactory[] = [
   requestSecretTool,
   discardPendingChangesTool,
   setAgentEnabledTool,
+  runDraftTool,
+  getTraceTool,
 ];
 
 /** The call name a `ToolDescriptor` carries (`defineTool`/loader results), else its display name. */
