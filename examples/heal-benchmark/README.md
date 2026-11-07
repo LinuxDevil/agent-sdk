@@ -59,6 +59,10 @@ change what's measured:
 | `--confirm-candidates` | Confirms every editor's harness, not only a proposal, with `--confirm` fresh runs. Needs `--confirm` above 0 |
 | `--first-attempt <n>` | Starts numbering attempts at `n`, to continue a run on another day |
 
+## Gate experiment
+
+`experiment.ts` replays recorded editor outputs through four gates (A: none, B: the old gate, C: the current gate, D: the current gate with fallback), plus a no-op (N) and a planted regression (P). `simulate.ts` estimates the same rates offline from per-case pass rates.
+
 ## Test it
 
 ```bash
