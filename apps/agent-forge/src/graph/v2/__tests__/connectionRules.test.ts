@@ -103,6 +103,18 @@ describe('canConnect instance rules', () => {
     expect(canConnect(source, target)).toEqual({ ok: true });
   });
 
+  it('allows agent -> handoff (the handsOff edge re-owns the handoff)', () => {
+    const source = node('agent', { id: 'agent' });
+    const target = node('handoff', { id: 'handoff:billing', owner: 'other' });
+    expect(canConnect(source, target)).toEqual({ ok: true });
+  });
+
+  it('refuses handoff -> agent (a handoff is not an edge source)', () => {
+    const source = node('handoff', { id: 'handoff:billing', owner: 'agent' });
+    const target = node('agent', { id: 'sub:research', owner: 'other' });
+    expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect handoff → agent" });
+  });
+
   it('refuses tool -> agent (a tool is not an edge source)', () => {
     const source = node('tool', { id: 'tool:http', owner: 'agent' });
     const target = node('agent', { id: 'sub:research', owner: 'other' });

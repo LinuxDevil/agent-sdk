@@ -317,6 +317,29 @@ describe('palette create (C06 tool entries)', () => {
   });
 });
 
+describe('palette create (C05 handoff entry)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const handoff = entries.find((e) => e.id === 'handoff');
+
+  it('registers the entry under the Agents group', () => {
+    expect(handoff).toBeDefined();
+    expect(handoff?.group).toBe('Agents');
+    expect(handoff?.kind).toBe('handoff');
+  });
+
+  it('creates the empty item', () => {
+    expect(handoff!.create(g0, 'agent').data).toStrictEqual({ item: { agent: '' } });
+  });
+
+  it('names two creates handoff:new and handoff:new#2', () => {
+    const first = addNode(g0, handoff!.create(g0, 'agent'), AT, 'agent');
+    expect(first.nodeId).toBe('handoff:new');
+    const second = addNode(first.graph, handoff!.create(first.graph, 'agent'), AT, 'agent');
+    expect(second.nodeId).toBe('handoff:new#2');
+  });
+});
+
 describe('reownNode', () => {
   const g = specToGraph(treeSpec());
 
