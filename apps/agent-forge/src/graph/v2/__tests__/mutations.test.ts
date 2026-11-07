@@ -477,6 +477,55 @@ describe('palette create (trigger entries)', () => {
   });
 });
 
+describe('palette create (C13 note entry)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const note = entries.find((e) => e.id === 'note');
+
+  it('registers the entry under the Canvas group', () => {
+    expect(note).toBeDefined();
+    expect(note?.group).toBe('Canvas');
+    expect(note?.kind).toBe('note');
+  });
+
+  it('creates an ownerless note:n node that lands in layout.notes, not the spec', () => {
+    const created = note!.create(g0, ownerForNewNode(g0, 'note'));
+    const added = addNode(g0, created, AT, null);
+    expect(added.nodeId).toMatch(/^note:n/);
+    const node = nodeById(added.graph, added.nodeId);
+    expect(node.owner).toBeNull();
+    const r = graphToSpec(added.graph);
+    expect(r.layout.notes).toStrictEqual([
+      { id: added.nodeId.slice('note:'.length), x: AT.x, y: AT.y, text: '' },
+    ]);
+    expect(r.spec).toStrictEqual(minimalSpec());
+  });
+});
+
+describe('palette create (C13 hook entry)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const hook = entries.find((e) => e.id === 'hook');
+
+  it('registers the entry under the Safety group', () => {
+    expect(hook).toBeDefined();
+    expect(hook?.group).toBe('Safety');
+    expect(hook?.kind).toBe('hook');
+  });
+
+  it('creates the audit-log inline hook with the first free h id', () => {
+    const first = addNode(g0, hook!.create(g0, 'agent'), AT, 'agent');
+    expect(first.nodeId).toBe('hook:h1');
+    const second = addNode(first.graph, hook!.create(first.graph, 'agent'), AT, 'agent');
+    expect(second.nodeId).toBe('hook:h2');
+    const data = nodeById(second.graph, 'hook:h2').data as { item: { id: string; inline: { name: string; point: string; code: string } } };
+    expect(data.item.id).toBe('h2');
+    expect(data.item.inline.name).toBe('audit-log');
+    expect(data.item.inline.point).toBe('postToolCall');
+    expect(data.item.inline.code).not.toBe('');
+  });
+});
+
 describe('reownNode', () => {
   const g = specToGraph(treeSpec());
 

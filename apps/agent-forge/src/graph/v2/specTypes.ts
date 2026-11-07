@@ -42,8 +42,8 @@ export type { HandoffSpec } from '../../../../../src/spec/v2/handoffs';
 export type { GuardrailSpec } from '../../../../../src/spec/v2/guardrails';
 /** One `spec.permissions` entry. */
 export type { PermissionRuleSpec } from '../../../../../src/spec/v2/permissions';
-/** One `spec.hooks` entry. */
-export type { HookSpec } from '../../../../../src/spec/v2/hooks';
+/** One `spec.hooks` entry, plus the `inline` member's shape for the hook Inspector. */
+export type { HookSpec, InlineHookSpec } from '../../../../../src/spec/v2/hooks';
 /**
  * One `spec.triggers` entry, plus the channel union and the required
  * `secrets` keys per channel kind (`CHANNEL_SECRET_KEYS`) — the SDK's own
