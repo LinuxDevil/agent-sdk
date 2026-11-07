@@ -57,7 +57,7 @@ export const WEBHOOK_PATH_PATTERN = /^\/[A-Za-z0-9/_-]*$/;
  */
 export function isCron(expression: string): boolean {
   const fields = expression.trim().split(/\s+/);
-  return fields.length === 5 && fields.every((field) => /^[0-9*/,-A-Za-z]+$/.test(field));
+  return fields.length === 5 && fields.every((field) => /^[0-9*/,\-A-Za-z]+$/.test(field));
 }
 
 /** Whether `timeZone` is an IANA name `Intl` accepts — try constructing a formatter rather than keeping a zone list. */

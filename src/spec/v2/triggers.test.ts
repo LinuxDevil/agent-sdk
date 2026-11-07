@@ -157,7 +157,7 @@ describe('spec v2 triggers', () => {
     expect(error.errors).toHaveProperty('triggers.0.secrets.botToken');
   });
 
-  it('accepts extra secret keys a channel may still need (e.g. discord botToken)', () => {
+  it('accepts extra secret keys a channel may still need (e.g. discord guildId)', () => {
     const trigger = {
       id: 'd',
       type: 'channel',
@@ -166,6 +166,7 @@ describe('spec v2 triggers', () => {
         publicKey: { env: 'DISCORD_PUBLIC_KEY' },
         applicationId: { env: 'DISCORD_APP_ID' },
         botToken: { secret: 'discord-bot-token' },
+        guildId: { env: 'DISCORD_GUILD' },
       },
     };
     expect(agentSpecV2Schema.safeParse(spec([trigger])).success).toBe(true);
