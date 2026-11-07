@@ -177,6 +177,21 @@ function enableAgentIdOf(body: unknown, res: Response): string | undefined {
 }
 
 /**
+ * The `agentId` a `POST .../enable` body carries, or `undefined` once the
+ * 400 was sent: a valid agent id - the value reaches the filesystem, so
+ * the same rule the `/agents/:id` middleware enforces applies here.
+ */
+function enableAgentIdOf(body: unknown, res: Response): string | undefined {
+  const agentId =
+    typeof body === 'object' && body !== null ? (body as { agentId?: unknown }).agentId : undefined;
+  if (typeof agentId !== 'string' || !isValidAgentId(agentId)) {
+    sendError(res, 400, 'Request body must be { agentId: string } (a valid agent id).', 'INVALID_INPUT');
+    return undefined;
+  }
+  return agentId;
+}
+
+/**
  * A failed save's HTTP answer: the person-facing `userMessage` and the
  * failure `code` (`latestProposalId` travels as `details` so the client
  * can point at the newer card). A `WRITE_FAILED` is a server fault - 500;
