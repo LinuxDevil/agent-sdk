@@ -22,11 +22,15 @@ export const INVARIANT_PROMPT = `${SHARED}
 
 Your scope is HOW the agent works: procedure, tool use, when to stop, and checking its result. Don't add facts about the subject matter; another editor owns that.
 
+Trace each failed run step by step and fix its earliest point of divergence: the first moment it went somewhere a passing run didn't. Later mistakes often follow from it.
+
 Look for: repeating a call that isn't working, rewording a search that keeps returning the same thing, retrying something that can't succeed, running out of steps with no answer, and not saying plainly what it couldn't do.`;
 
 export const DOMAIN_PROMPT = `${SHARED}
 
 Your scope is WHAT the agent needs to know: this agent's subject, its rules and policies, and the shape of a good answer. Don't change general procedure or tool habits; another editor owns that.
+
+The test: if your edit would help just as much on a task from a completely different profession, it belongs to the other editor.
 
 Look for: answers that misread a rule, ignored a policy, or used the wrong source. Write down a rule only if the runs show it, and never guess a fact.`;
 
@@ -39,6 +43,7 @@ Write the best next harness into harness/. You may merge edits, revise them, tak
 - Two proposals agreeing is support, not independent proof, since they read the same runs.
 - If a proposal changed several things and the runs can't tell them apart, say so.
 - Remove anything that didn't help. It costs tokens on every run.
+- If any run of an edit ended with no answer, say so in your notes and treat that edit as unsafe: drop it unless the rest of the evidence is overwhelming.
 
 In <notes>, give one line per edit in this form:
 kept|revised|dropped: <edit>: helped|hurt|no observed effect|confounded: <the evidence>

@@ -4,6 +4,7 @@ import { mockModel, type MockTurn } from '../testing';
 import { evidenceFiles } from './evidence';
 import { diffHarness, validateHarness } from './harness';
 import { createShadowHook, improveAgent, renderTranscript, type Harness, type ImproveOptions, type ProbeRun } from './index';
+import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT } from './prompts';
 
 const BASE: Harness = { instructions: 'You answer questions.', skills: {} };
 const FIX = 'You answer questions. If a document is forbidden, say so and stop.';
@@ -207,6 +208,27 @@ describe('improveAgent', () => {
     await expect(improveAgent(options({ cases: [] }))).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
     await expect(improveAgent(options({ repeats: 0 }))).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
     await expect(improveAgent(options({ holdout: ['stuck'] }))).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
+  });
+});
+
+describe('editor prompts', () => {
+  it('tells the invariant editor to fix the earliest divergence', () => {
+    expect(INVARIANT_PROMPT).toContain('earliest point of divergence');
+  });
+
+  it('gives the domain editor the profession test', () => {
+    expect(DOMAIN_PROMPT).toContain('a completely different profession');
+  });
+
+  it('tells the composer to drop edits whose runs gave no answer', () => {
+    expect(COMPOSE_PROMPT).toContain('ended with no answer');
+  });
+
+  it('sends each editor its own scope', async () => {
+    const provider = mockModel([...noEdit, ...noEdit, ...noEdit]);
+    await improveAgent(options({ editor: { provider } }));
+    expect(JSON.stringify(provider.calls[0])).toContain('earliest point of divergence');
+    expect(JSON.stringify(provider.calls[1])).toContain('completely different profession');
   });
 });
 
