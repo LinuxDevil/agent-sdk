@@ -68,12 +68,9 @@ invoke_agent {agent name}          INTERNAL
   guardrail {guardrail name}       INTERNAL   one per input/output guardrail check
   chat {model}                     CLIENT     one per provider.generate() call
   execute_tool {tool name}         INTERNAL   one per tool call
-<<<<<<< HEAD
+    guardrail {guardrail name}     INTERNAL   one per tool guardrail check
   handoff {target agent}           INTERNAL   zero-length marker, one per honored handoff
   approval.wait {tool name}        INTERNAL   zero-length marker, one per paused approval
-=======
-    guardrail {guardrail name}     INTERNAL   one per tool guardrail check
->>>>>>> origin/fb-s20b-guardrail-spans
 ```
 
 `handoff` and `approval.wait` are marker spans: `startTime === endTime`, so a
