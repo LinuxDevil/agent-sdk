@@ -60,6 +60,23 @@ describe('arm summary', () => {
     expect([...trueFixAttempts(lines)]).toEqual([0]);
   });
 
+  it('does not count a candidate as a true fix from a ratio alone, below five passes', () => {
+    const lines = [
+      { attempt: 0, label: 'compose' as const, passed: 1, scored: 1, containsFix: true },
+      { attempt: 1, label: 'compose' as const, passed: 4, scored: 4, containsFix: true },
+      { attempt: 2, label: 'compose' as const, passed: 5, scored: 6, containsFix: true },
+    ];
+    expect([...trueFixAttempts(lines)]).toEqual([2]);
+  });
+
+  it('counts the confirmation bar as held only at five passes or more, and missed with no confirmations', () => {
+    const confirm = (confirmations: { passed: number; scored: number }[]) => bars({ ...passing, confirmations: confirmations.map((count) => ({ attempt: 0, caseId: 'page-count', ...count })) })[3];
+    expect(confirm([])).toMatchObject({ passed: 0, total: 0, met: false });
+    expect(confirm([{ passed: 4, scored: 4 }])).toMatchObject({ passed: 0, total: 1, met: false });
+    expect(confirm([{ passed: 5, scored: 6 }])).toMatchObject({ passed: 1, total: 1, met: true });
+    expect(confirm([{ passed: 5, scored: 6 }, { passed: 1, scored: 1 }])).toMatchObject({ passed: 1, total: 2, met: false });
+  });
+
   it('renders accepted counts, bars, pass^3 per case and probe counts per arm', () => {
     const rows = [...passing.rows, row('D', 5, true, { 'add-months': 1, 'page-count': null })];
     const counts = { 'A-D': { ...emptyCounts(), planned: 30, cached: 30 }, N: emptyCounts(), P: emptyCounts() };

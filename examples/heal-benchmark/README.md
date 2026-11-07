@@ -63,6 +63,18 @@ change what's measured:
 
 `experiment.ts` replays recorded editor outputs through four gates (A: none, B: the old gate, C: the current gate, D: the current gate with fallback), plus a no-op (N) and a planted regression (P). `simulate.ts` estimates the same rates offline from per-case pass rates.
 
+`experiment.ts` has no default model, so pass `--model` and `--editor` every time. Before arms N and P, it checks that each `--holdout` case passes 6/6 on the base, and exits with code 2 if one doesn't. It replays only rows that ended in a proposal or kept the base. The proof run, in order:
+
+```bash
+MODEL=stealth/crouton-alpha EDITOR=stealth/crouton-alpha S=$SCRATCH/m34
+npx tsx examples/heal-benchmark/simulate.ts --trials 2000
+npx tsx examples/heal-benchmark/experiment.ts --admit --model $MODEL --editor $EDITOR --holdout round-root-cause --holdout page-count --cache $S/cache
+npx tsx examples/heal-benchmark/improve.ts --agent coding-agent --case add-months --holdout <admitted> --model $MODEL --editor $EDITOR --attempts 2 --first-attempt <n> --repeats 3 --confirm 6 --confirm-candidates --cache $S/cache --out $S/rows.jsonl
+npx tsx examples/heal-benchmark/improve.ts --agent coding-agent --case <first admitted> --holdout <second admitted> --model $MODEL --editor $EDITOR --always-propose --attempts 5 --repeats 3 --confirm 6 --confirm-candidates --cache $S/cache --out $S/healthy.jsonl
+npx tsx examples/heal-benchmark/replay.ts --in $S/rows.jsonl --model $MODEL --cache $S/cache --confirm 6 --out $S/truth.jsonl
+npx tsx examples/heal-benchmark/experiment.ts --in $S/rows.jsonl --truth $S/truth.jsonl --healthy $S/healthy.jsonl --model $MODEL --editor $EDITOR --cache $S/cache --attempts 10 --holdout <admitted> --out $S/arms.jsonl
+```
+
 ## Test it
 
 ```bash

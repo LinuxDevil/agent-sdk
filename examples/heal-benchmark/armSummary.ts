@@ -27,7 +27,7 @@ export interface Bar {
 const GATED: readonly Arm[] = ['A', 'B', 'C', 'D'];
 
 export function trueFixAttempts(lines: readonly ReplayLine[]): Set<number> {
-  return new Set(lines.filter((line) => line.containsFix).map((line) => line.attempt));
+  return new Set(lines.filter((line) => line.containsFix && line.passed >= 5).map((line) => line.attempt));
 }
 
 const ofArm = (rows: readonly ArmRow[], arm: Arm) => rows.filter((row) => row.arm === arm);
@@ -52,8 +52,9 @@ function plantedBar(input: SummaryInput): Bar {
 }
 
 function confirmBar(input: SummaryInput): Bar {
-  const held = input.confirmations.filter((count) => count.scored > 0 && count.passed * 6 >= count.scored * 5).length;
-  return { name: 'Every held-out case 5/6 or better on confirmation, for every proposal', passed: held, total: input.confirmations.length, met: held === input.confirmations.length };
+  const total = input.confirmations.length;
+  const held = input.confirmations.filter((count) => count.passed >= 5).length;
+  return { name: 'Every held-out case 5/6 or better on confirmation, for every proposal', passed: held, total, met: total > 0 && held === total };
 }
 
 function healthyBar(input: SummaryInput): Bar {
