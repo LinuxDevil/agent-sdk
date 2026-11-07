@@ -223,6 +223,13 @@ interface FileContentPart {
 }
 
 // @public
+export interface GateVerdict {
+    label: 'compose' | 'invariant' | 'domain';
+    passed: boolean;
+    reason: string;
+}
+
+// @public
 interface GenerateHookContext extends HookContext {
     emit?: (event: HookEventPayload) => void;
     generate?: (provider: LLMProvider, request: GenerateOptions, purpose: string) => Promise<GenerateResult>;
@@ -452,6 +459,7 @@ export interface ImproveResult {
     diff?: string;
     final?: ProbeSummary;
     freshBase?: ProbeSummary;
+    gate?: GateVerdict[];
     harness?: Harness;
     holdout?: {
         base: ProbeSummary;

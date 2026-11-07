@@ -70,6 +70,10 @@ console.log(result.outcome, result.reason);
    rejected. If no case passed under both, `reason` says cost could not be
    compared, so include a held-out case that already passes.
 
+If the composed harness fails the gate, each editor's own harness that improved
+a training case is tried through the same held-out and cost checks, cheapest
+first. `gate` lists every verdict in order.
+
 A failed run looks fine to an editor when the agent never saw the check it
 missed. Return `failure` from `probe` to name that check. Name the requirement,
 not the fix.
