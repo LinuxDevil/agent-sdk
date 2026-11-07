@@ -126,6 +126,70 @@ describe('nodeIdExporter span stamping', () => {
     expect(node.attributes[NODE_ID]).toBe('flow:s1');
   });
 
+  it('stamps a `handoff <to>` marker and the run\'s later chat spans with handoff:<to>', () => {
+    const { exporter } = recorder();
+    const wrapped = nodeIdExporter(exporter, index());
+    const run = span('invoke_agent a', { [OP]: GenAiOperation.INVOKE_AGENT });
+    wrapped.onSpanStart(run);
+    const before = span('chat m', { [OP]: GenAiOperation.CHAT }, run.id);
+    wrapped.onSpanStart(before);
+    const marker = span(
+      'handoff billing',
+      { [SdkAttr.HANDOFF_FROM]: 'a', [SdkAttr.HANDOFF_TO]: 'billing', [GenAiAttr.TOOL_CALL_ID]: 'call_1' },
+      run.id
+    );
+    wrapped.onSpanStart(marker);
+    const after = span('chat m', { [OP]: GenAiOperation.CHAT }, run.id);
+    wrapped.onSpanStart(after);
+    expect(before.attributes[NODE_ID]).toBe('agent');
+    expect(marker.attributes[NODE_ID]).toBe('handoff:billing');
+    expect(after.attributes[NODE_ID]).toBe('handoff:billing');
+    // The run's tool spans keep resolving their own nodes.
+    const tool = span('execute_tool web_fetch', { [OP]: GenAiOperation.EXECUTE_TOOL, [GenAiAttr.TOOL_NAME]: 'web_fetch' }, run.id);
+    wrapped.onSpanStart(tool);
+    expect(tool.attributes[NODE_ID]).toBe('tool:fetch');
+    // A second handoff moves the active node again.
+    const next = span('handoff refunds', { [SdkAttr.HANDOFF_TO]: 'refunds' }, run.id);
+    wrapped.onSpanStart(next);
+    const last = span('chat m', { [OP]: GenAiOperation.CHAT }, run.id);
+    wrapped.onSpanStart(last);
+    expect(next.attributes[NODE_ID]).toBe('handoff:refunds');
+    expect(last.attributes[NODE_ID]).toBe('handoff:refunds');
+  });
+
+  it('does not leak a run\'s active node into another run', () => {
+    const { exporter } = recorder();
+    const wrapped = nodeIdExporter(exporter, index());
+    const a = span('invoke_agent a', { [OP]: GenAiOperation.INVOKE_AGENT });
+    wrapped.onSpanStart(a);
+    wrapped.onSpanStart(span('handoff billing', { [SdkAttr.HANDOFF_TO]: 'billing' }, a.id));
+    const b = span('invoke_agent a', { [OP]: GenAiOperation.INVOKE_AGENT });
+    wrapped.onSpanStart(b);
+    const chat = span('chat m', { [OP]: GenAiOperation.CHAT }, b.id);
+    wrapped.onSpanStart(chat);
+    expect(chat.attributes[NODE_ID]).toBe('agent');
+  });
+
+  it('stamps `approval.wait <tool>` with the node id execute_tool would get', () => {
+    const { exporter } = recorder();
+    const wrapped = nodeIdExporter(exporter, index());
+    const run = span('invoke_agent a', { [OP]: GenAiOperation.INVOKE_AGENT });
+    wrapped.onSpanStart(run);
+    const wait = span(
+      'approval.wait web_fetch',
+      { [GenAiAttr.TOOL_NAME]: 'web_fetch', [GenAiAttr.TOOL_CALL_ID]: 'c1', [SdkAttr.APPROVAL_ID]: 'ap1', [SdkAttr.APPROVAL_KIND]: 'tool' },
+      run.id
+    );
+    wrapped.onSpanStart(wait);
+    expect(wait.attributes[NODE_ID]).toBe('tool:fetch');
+    const handoffWait = span('approval.wait transfer_to_billing', { [GenAiAttr.TOOL_NAME]: 'transfer_to_billing' }, run.id);
+    wrapped.onSpanStart(handoffWait);
+    expect(handoffWait.attributes[NODE_ID]).toBe('handoff:billing');
+    const unknown = span('approval.wait mystery', { [GenAiAttr.TOOL_NAME]: 'mystery' }, run.id);
+    wrapped.onSpanStart(unknown);
+    expect(unknown.attributes[NODE_ID]).toBeUndefined();
+  });
+
   it('leaves unmatched spans alone and treats an unknown parent as root scope', () => {
     const { exporter } = recorder();
     const wrapped = nodeIdExporter(exporter, index());
@@ -161,7 +225,9 @@ describe('specV2ToAgent integration', () => {
     LLMProviderRegistry.register('mock', (config) =>
       config.defaultModel === 'research'
         ? mockModel([{ toolCalls: [{ name: 'web_fetch', args: { url: 'http://127.0.0.1/' } }] }, 'sub done'])
-        : mockModel(leadScript)
+        : config.defaultModel === 'billing'
+          ? mockModel(['Billed.'])
+          : mockModel(leadScript)
     );
   });
 
@@ -235,5 +301,45 @@ describe('specV2ToAgent integration', () => {
     const check = started.find((s) => s.name === 'guardrail g1');
     expect(check?.attributes[NODE_ID]).toBe('guard:g1');
     expect(check?.attributes[SdkAttr.GUARDRAIL_OUTCOME]).toBe('pass');
+  });
+
+  it('stamps the handoff marker handoff:billing and the run\'s later chat spans the same', async () => {
+    leadScript = [{ toolCalls: [{ name: 'transfer_to_billing', args: { reason: 'charged twice' } }] }, 'done'];
+    const { started, exporter } = recorder();
+    const agent = await specV2ToAgent(
+      spec({
+        subagents: {
+          billing: { inline: { name: 'billing', model: 'mock/billing', instructions: 'You bill.', description: 'Bills.' } },
+        },
+        handoffs: [{ agent: 'billing' }],
+      }),
+      host({ exporter })
+    );
+    await agent.send('I was charged twice');
+
+    const marker = started.find((s) => s.name === 'handoff billing');
+    expect(marker?.attributes[NODE_ID]).toBe('handoff:billing');
+    // The lead's call stays 'agent'; the target's calls after the switch get 'handoff:billing'.
+    const chats = started.filter((s) => s.name.startsWith('chat '));
+    expect(chats.map((s) => s.attributes[NODE_ID])).toEqual(['agent', 'handoff:billing']);
+  });
+
+  it('stamps `approval.wait <tool>` with the tool\'s node id', async () => {
+    leadScript = [{ toolCalls: [{ name: 'web_fetch', args: { url: 'http://127.0.0.1/' } }] }, 'done'];
+    const { started, exporter } = recorder();
+    const agent = await specV2ToAgent(
+      spec({
+        tools: [{ builtin: 'web_fetch', id: 'http_request' }],
+        permissions: [{ id: 'ask-fetch', tool: 'web_fetch', action: 'ask' }],
+      }),
+      host({ exporter })
+    );
+
+    const paused = await agent.send('fetch it');
+
+    expect(paused.finishReason).toBe('awaiting-approval');
+    const wait = started.find((s) => s.name === 'approval.wait web_fetch');
+    expect(wait?.attributes[SdkAttr.APPROVAL_ID]).toBe(paused.approvalId);
+    expect(wait?.attributes[NODE_ID]).toBe('tool:http_request');
   });
 });
