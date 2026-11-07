@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act } from 'react';
 
-const appState = vi.hoisted(() => ({ connected: true, agents: [] as { id: string; spec: { name: string } }[] }));
+const appState = vi.hoisted(() => ({ connected: true, agents: [] as { id: string; name: string }[] }));
 vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
 
 const mocks = vi.hoisted(() => ({ chat: null as unknown as import('../AuthorChatContext').AuthorChat }));
@@ -122,7 +122,7 @@ beforeEach(() => {
   stubWide();
   window.localStorage.setItem(DOCK_OPEN_KEY, '1');
   window.location.hash = '#/';
-  appState.agents = [{ id: 'support-triage', spec: { name: 'Support Triage' } }];
+  appState.agents = [{ id: 'support-triage', name: 'Support Triage' }];
   vi.mocked(runtimeClient.listAuthorSessions).mockResolvedValue([]);
   vi.mocked(runtimeClient.deleteAuthorSession).mockResolvedValue(undefined);
 });

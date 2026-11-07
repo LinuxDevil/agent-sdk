@@ -11,7 +11,7 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import { promptHash, SuggestionStore } from '../storage/suggestionStore';
 import type { PortabilityAnalysis, PromptSuggestion, StoredSuggestion } from '../../shared/wireTypes';
 
@@ -73,7 +73,7 @@ const ANALYSIS: PortabilityAnalysis = {
  */
 describe('suggestion routes', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
   let store: SuggestionStore;
