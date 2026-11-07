@@ -1,0 +1,107 @@
+/* Menu (overflow action lists, Menu.tsx) and the Kbd shortcut chip (Kbd.tsx).
+   The list portals to document.body so .screen-main's `container-type: size`
+   cannot trap its fixed positioning. z scale lives in overlay.css's comment:
+   menus 80 (above sheets/dialogs at 70), tooltips 90 in tooltip.css. */
+.menu {
+  position: relative;
+  display: inline-flex;
+}
+.menu-list {
+  position: fixed;
+  z-index: 80;
+  min-width: 180px;
+  max-width: 280px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 30px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--surface-2);
+  outline: none;
+}
+.menu-item-danger {
+  color: var(--danger);
+}
+.menu-item-danger:hover,
+.menu-item-danger:focus-visible {
+  background: var(--danger-soft);
+}
+.menu-item[aria-disabled='true'] {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+.menu-item[aria-disabled='true']:hover {
+  background: transparent;
+}
+.menu-item-icon {
+  display: inline-flex;
+  width: 16px;
+  flex: none;
+  color: var(--text-muted);
+}
+.menu-item-danger .menu-item-icon {
+  color: inherit;
+}
+.menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.menu-item-kbd {
+  margin-left: auto;
+}
+.menu-item-check {
+  color: var(--accent);
+}
+.menu-separator {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--border);
+}
+.menu-heading {
+  padding: 6px var(--space-2) 2px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .menu-list {
+    animation: menu-in var(--dur-fast) var(--ease);
+  }
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* Shortcut chips: Kbd wraps the base.css <kbd> styling, joining parts with a faint +. */
+.kbd-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.kbd-plus {
+  color: var(--text-faint);
+  font-size: 11px;
+}

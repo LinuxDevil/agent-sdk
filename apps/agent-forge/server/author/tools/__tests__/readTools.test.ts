@@ -86,6 +86,7 @@ function fakeDeps(over: Partial<AuthorToolDeps> = {}): AuthorToolDeps {
     docsDir: '/nonexistent-docs',
     reviewDraft: async () => ({ pass: true }),
     requirements: async () => [],
+    secrets: { secretStatus: (name) => ({ name, hasValue: false, masked: null, updatedAt: null }) },
     ...over,
   };
 }
@@ -111,15 +112,15 @@ function failure(value: unknown): AuthorToolFailure {
 }
 
 describe('buildAuthorTools', () => {
-  it('returns the 17 tools sorted by name, every one in AUTHOR_TOOL_NAMES', () => {
+  it('returns the 20 tools sorted by name, every one in AUTHOR_TOOL_NAMES', () => {
     const built = buildAuthorTools(TURN, fakeDeps());
     const names = built.map(nameOf);
-    expect(names).toHaveLength(17);
+    expect(names).toHaveLength(20);
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
     for (const name of names) {
       expect(AUTHOR_TOOL_NAMES as readonly string[]).toContain(name);
     }
-    expect(AUTHOR_TOOL_FACTORIES).toHaveLength(17);
+    expect(AUTHOR_TOOL_FACTORIES).toHaveLength(20);
   });
 
   it('builds the same list for different turns (the tool surface never changes mid-session)', () => {

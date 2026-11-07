@@ -152,17 +152,12 @@ interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
-    // (undocumented)
     description?: string;
     flow?: EditorStep;
-    // (undocumented)
     id?: string;
-    // (undocumented)
     inputs?: FlowInputVariable[];
-    // (undocumented)
     name: string;
 }
 
@@ -239,17 +234,13 @@ interface AgentSettings {
     model?: string;
 }
 
-// @public (undocumented)
+// @public
 export interface AgentSpec {
     mcpServers?: Record<string, McpServerSpec>;
-    // (undocumented)
     name: string;
     policy?: AgentSpecPolicy;
-    // (undocumented)
     prompt: string;
-    // (undocumented)
     provider: AgentSpecProvider;
-    // (undocumented)
     tools?: string[];
     triggers?: AgentSpecTrigger[];
 }
@@ -506,6 +497,14 @@ interface ApprovalSignIn {
     displayName?: string;
     provider: string;
     url: string;
+}
+
+// @public
+interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    type: 'approval';
 }
 
 // @public
@@ -2995,6 +2994,7 @@ interface RecoverOptions<TResult = unknown> {
     intervalMs?: number;
     maxAttempts?: number;
     onError?: (error: unknown, run?: PendingRun) => void;
+    onOutage?: (paused: boolean) => void;
     onQuarantined?: (run: PendingRun) => void;
     onRecovered?: (run: PendingRun, result: TResult) => void;
     retryWithDiagnosis?: boolean;
@@ -3131,7 +3131,7 @@ interface RunStartEvent extends AgentEventBase<'run.start'> {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {

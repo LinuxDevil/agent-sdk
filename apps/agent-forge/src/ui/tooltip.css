@@ -1,0 +1,18 @@
+/* Neutral tooltip (Tooltip.tsx). Portalled to document.body; z 90 sits above
+   menus (80) and sheets/dialogs (70) - see the scale comment in overlay.css.
+   pointer-events: none so it can never steal hover or focus. */
+.tooltip {
+  position: fixed;
+  z-index: 90;
+  max-width: 280px;
+  padding: 4px 8px;
+  pointer-events: none;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}

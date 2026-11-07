@@ -102,6 +102,7 @@ describe('OpenTelemetry GenAI semantic conventions', () => {
       'gen_ai.usage.input_tokens': 30,
       'gen_ai.usage.output_tokens': 12,
       input: 'Weather in Paris?', // deprecated
+      'lousho.run.finish_reason': 'stop',
     });
   });
 

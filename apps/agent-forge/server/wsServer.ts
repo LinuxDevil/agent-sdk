@@ -54,11 +54,12 @@ export function attachWebSocketServer(router: UpgradeRouter, runManager: RunMana
 
   runManager.on('status', (payload) => broadcast(payload.agentId, { type: 'status', payload }));
 
-  // 'event' plus 'log'/'span'/'debug' and 'chat' (the chat
+  // 'event' plus 'log'/'span'/'debug', 'chat' (the chat
   // transcript, reconciled from the real ExecutionResult.messages - see
-  // chatReconcile.ts): same fan-out pattern as 'status', over the same WS
-  // connection - no second channel.
-  for (const type of ['event', 'log', 'span', 'debug', 'chat'] as const) {
+  // chatReconcile.ts) and 'node' (the per-node run states nodeStates.ts
+  // derives from `lousho.node.id` spans): same fan-out pattern as
+  // 'status', over the same WS connection - no second channel.
+  for (const type of ['event', 'log', 'span', 'debug', 'chat', 'node'] as const) {
     runManager.on(type, (agentId: string, payload: unknown) =>
       broadcast(agentId, { type, payload } as StreamMessage)
     );

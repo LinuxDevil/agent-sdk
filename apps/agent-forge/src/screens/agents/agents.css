@@ -587,6 +587,25 @@ button.breakpoint-toggle {
   font-weight: 600;
   box-shadow: var(--shadow);
 }
+/* Same banner placement as .canvas-connect-error, but informational: a saved flow the canvas can't draw. */
+.canvas-notice {
+  position: absolute;
+  left: 50%;
+  top: var(--space-3);
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: var(--info-soft);
+  color: var(--text);
+  border: 1px solid var(--info);
+  border-radius: var(--radius);
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
 
 /* Controls: a vertical card bottom-left. MiniMap: bottom-right, a card in the same family. */
 .canvas-wrap .react-flow__controls {

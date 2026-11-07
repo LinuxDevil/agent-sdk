@@ -39,6 +39,8 @@ const PAIRS: [text: string, background: string][] = [
   ['danger', 'danger-soft'],
   ['warning', 'warning-soft'],
   ['danger', 'surface'],
+  // The SecretRefField plain-text warning hint draws --warning on the inspector's --surface.
+  ['warning', 'surface'],
   ['info', 'surface'],
   // The running status pill draws info on the neutral pill tint.
   ['info', 'surface-2'],
@@ -77,6 +79,8 @@ const PAIRS: [text: string, background: string][] = [
   ['text-muted', 'nav-bg'],
   ['text-faint', 'nav-bg'],
   ['accent', 'nav-bg'],
+  // The Author dock's connection note draws --warning text on the card's --surface (AA15b).
+  ['warning', 'surface'],
   // Tinted toasts (U12) draw the message in --text and the close button in --text-muted on each -soft tint.
   ['text', 'success-soft'],
   ['text', 'danger-soft'],

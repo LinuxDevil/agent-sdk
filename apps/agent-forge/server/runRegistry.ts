@@ -45,6 +45,7 @@ import { DebugSession, type BreakpointKey } from './debugController';
 import { FileChatStore, previewFor } from './chatStore';
 import { markRunInput, reconcileChatMessages } from './chatReconcile';
 import { toLogEntries, toFlowLogEntries } from './logEntries';
+import { nodeStateFor } from './nodeStates';
 import type { SecretsStore } from './secretsStore';
 import type { SettingsStore } from './settingsStore';
 import type {
@@ -351,7 +352,14 @@ export class RunManager extends EventEmitter {
     }
   }
 
-  private emitSpan(agentId: string, span: Span): void {
+  /**
+   * Forwards one span start/end notification as a `span` frame, then -
+   * when the span carries `lousho.node.id` - the `node` frame it implies
+   * (nodeStates.ts), so a canvas client always sees the node state right
+   * after the span it was derived from. `phase` is which exporter hook
+   * fired (start vs end), the only thing that decides running-vs-done.
+   */
+  private emitSpan(agentId: string, span: Span, phase: 'start' | 'end'): void {
     this.emit('span', agentId, {
       id: span.id,
       name: span.name,
@@ -362,6 +370,8 @@ export class RunManager extends EventEmitter {
       ...(span.kind !== undefined && { kind: span.kind }),
       ...(span.status !== undefined && { status: span.status }),
     });
+    const node = nodeStateFor(span, phase, new Date());
+    if (node !== undefined) this.emit('node', agentId, node);
   }
 
   /**
@@ -378,9 +388,9 @@ export class RunManager extends EventEmitter {
     const live: TraceExporter = {
       onSpanStart: (span) => {
         if (span.parentId === undefined) this.setEntry(agentId, { traceId: span.id });
-        this.emitSpan(agentId, span);
+        this.emitSpan(agentId, span, 'start');
       },
-      onSpanEnd: (span) => this.emitSpan(agentId, span),
+      onSpanEnd: (span) => this.emitSpan(agentId, span, 'end'),
     };
     const file = fileTraceExporter({ dir: agentTraceDir(this.opts.baseDir, agentId) });
     // Content captured for a loopback daemon is for the reporter alone: the
