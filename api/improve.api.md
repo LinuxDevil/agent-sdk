@@ -147,6 +147,21 @@ interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetE
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
 
 // @public
+export interface CaseCount {
+    passed: number;
+    scored: number;
+}
+
+// @public
+export interface CaseVerdict {
+    base: CaseCount;
+    caseId: string;
+    final: CaseCount;
+    reasons: string[];
+    role: 'training' | 'holdout';
+}
+
+// @public
 type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'model-unloaded' | 'unknown';
 
 // @public
@@ -427,6 +442,7 @@ export interface ImproveResult {
         domain: Harness;
         compose: Harness;
     };
+    cases?: CaseVerdict[];
     costOnPassingCases?: {
         cases: number;
         base: number;

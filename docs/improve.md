@@ -53,9 +53,11 @@ console.log(result.outcome, result.reason);
    never compares against the unlucky runs that triggered editing. The probe
    gets new repeat numbers for these runs, from `repeats` to `2 × repeats − 1`,
    and they cost `repeats` extra runs per case, so allow for them in
-   `maxTokens`. The result must beat the fresh runs
-   by more than the spread between repeats, without making a held-out case worse
-   or raising tokens per passing run by more than `maxCostIncrease`. Cost is
+   `maxTokens`. Each training case is judged on its own. At least one must pass
+   at least 2 more runs in 3 than it did on the fresh runs, and none may get
+   worse. `cases` shows each case's verdict and why. The result also must not
+   make a held-out case worse or raise tokens per passing run by more than
+   `maxCostIncrease`. Cost is
    compared only on cases that pass under both harnesses, because a failing run
    can stop early and look cheap. A rise within the spread between runs isn't
    rejected. If no case passed under both, `reason` says cost could not be

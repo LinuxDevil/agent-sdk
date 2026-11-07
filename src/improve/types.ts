@@ -83,6 +83,28 @@ export interface ProbeSummary {
   tokensPerRun: number;
 }
 
+/** Passed runs out of scored runs. */
+export interface CaseCount {
+  /** Runs that passed. */
+  passed: number;
+  /** Runs that could be scored. */
+  scored: number;
+}
+
+/** How one case did under the current harness and the result, and why the gate counted it as it did. */
+export interface CaseVerdict {
+  /** The case id. */
+  caseId: string;
+  /** `training` for a case the editors saw, `holdout` for one they didn't. */
+  role: 'training' | 'holdout';
+  /** Its runs under the current harness. */
+  base: CaseCount;
+  /** Its runs under the result. */
+  final: CaseCount;
+  /** What the gate decided about this case, one sentence each. */
+  reasons: string[];
+}
+
 /** What one editor session did. */
 export interface ImproveStage {
   /** Which editor. */
@@ -149,6 +171,8 @@ export interface ImproveResult {
     /** The composer's harness, or the base if it changed nothing. */
     compose: Harness;
   };
+  /** Each case's verdict, training cases first, when the result was gated. */
+  cases?: CaseVerdict[];
   /** What each editor did. */
   stages: ImproveStage[];
   /** Tokens spent in total. */
