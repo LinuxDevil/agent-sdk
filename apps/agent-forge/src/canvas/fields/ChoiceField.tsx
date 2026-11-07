@@ -4,7 +4,7 @@
  * given) maps to `undefined`. Option values are positional, so any string
  * - including '' - is a valid `T`.
  */
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { Field } from '../../ui/Field';
 import { Select } from '../../ui/controls';
 import './fields.css';
@@ -24,7 +24,7 @@ export interface ChoiceFieldProps<T extends string> {
   /** The unset option's text (default 'Default'). */
   unsetLabel?: string;
   /** Muted help under the control. */
-  help?: string;
+  help?: ReactNode;
 }
 
 /** The select's internal value for `undefined` (option values are their 1-based index). */

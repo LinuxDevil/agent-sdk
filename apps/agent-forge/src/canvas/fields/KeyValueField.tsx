@@ -33,6 +33,8 @@ export interface KeyValueFieldProps {
   valueKind: 'text' | 'secret';
   /** Every non-empty key must match (env-name maps pass `^[A-Z_][A-Z0-9_]*$`). */
   keyPattern?: RegExp;
+  /** When set, a row with an empty key is invalid and shows this message (empty keys are allowed otherwise). */
+  emptyKeyError?: string;
   /** Muted help under the control. */
   help?: string;
 }
@@ -45,8 +47,9 @@ function rowsOf(value: Record<string, RowValue> | undefined): KvRow[] {
   return Object.entries(value ?? {}).map(([key, rowValue]) => ({ key, value: rowValue }));
 }
 
-/** The first problem with `rows` ('Each name must be unique', then the key pattern), or `undefined`. */
-function validate(rows: KvRow[], keyPattern: RegExp | undefined): string | undefined {
+/** The first problem with `rows` (empty key, 'Each name must be unique', then the key pattern), or `undefined`. */
+function validate(rows: KvRow[], keyPattern: RegExp | undefined, emptyKeyError: string | undefined): string | undefined {
+  if (emptyKeyError !== undefined && rows.some((row) => row.key === '')) return emptyKeyError;
   const seen = new Set<string>();
   for (const row of rows) {
     if (seen.has(row.key)) return DUPLICATE_KEYS_ERROR;
@@ -75,6 +78,7 @@ export function KeyValueField({
   onChange,
   valueKind,
   keyPattern,
+  emptyKeyError,
   help,
 }: KeyValueFieldProps): JSX.Element {
   const [rows, setRows] = useState<KvRow[]>(() => rowsOf(value));
@@ -87,12 +91,12 @@ export function KeyValueField({
     setRows(rowsOf(value));
   }, [value]);
 
-  const problem = validate(rows, keyPattern);
+  const problem = validate(rows, keyPattern, emptyKeyError);
 
   /** Emits `nextRows` when they are valid; the draft always updates either way. */
   const update = (nextRows: KvRow[]) => {
     setRows(nextRows);
-    if (validate(nextRows, keyPattern) !== undefined) return;
+    if (validate(nextRows, keyPattern, emptyKeyError) !== undefined) return;
     const next = nextRows.length === 0 ? undefined : mapOf(nextRows);
     emitted.current = next;
     onChange(next);
