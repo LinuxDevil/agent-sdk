@@ -252,6 +252,26 @@ describe('improveAgent', () => {
     expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 16, noise: 0 });
   });
 
+  it('does not reject a rise of exactly 50% by default', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      const fixed = harness.instructions.includes('forbidden');
+      return caseId === 'held-out' ? run(true, fixed ? 15 : 10) : run(fixed, 10);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.reason).toMatch(/from 10 to 15 tokens/);
+  });
+
+  it('rejects a rise just over 50% by default', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      const fixed = harness.instructions.includes('forbidden');
+      return caseId === 'held-out' ? run(true, fixed ? 15.1 : 10) : run(fixed, 10);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('keep-base');
+    expect(result.reason).toMatch(/cost/i);
+  });
+
   it('does not reject on cost when the rise is within the spread between runs', async () => {
     const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
       const fixed = harness.instructions.includes('forbidden');
