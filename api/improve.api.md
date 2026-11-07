@@ -422,6 +422,11 @@ export type ImproveOutcome = 'proposal' | 'keep-base' | 'no-failures' | 'outage'
 // @public
 export interface ImproveResult {
     base: ProbeSummary;
+    candidates?: {
+        invariant: Harness;
+        domain: Harness;
+        compose: Harness;
+    };
     costOnPassingCases?: {
         cases: number;
         base: number;

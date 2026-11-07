@@ -1,9 +1,10 @@
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { createAgent, defineSkill, type AgentHook } from 'lousho';
-import { improveAgent, renderTranscript, type Harness, type ProbeRun } from 'lousho/improve';
+import { improveAgent, type Harness, type ImproveOptions } from 'lousho/improve';
 import { mockModel } from 'lousho/testing';
-import { AGENTS, type BenchmarkAgent } from './agents';
+import { benchmarkProbe, buildAgent, throttleHook } from './probe';
+import { cachedProbe, emptyCounts } from './probeCache';
+import { confirmHarness, replayRow, type RecordedRow, type ReplayLine } from './replayRows';
 
 const { values } = parseArgs({
   options: {
@@ -13,8 +14,11 @@ const { values } = parseArgs({
     model: { type: 'string', default: 'nvidia/nemotron-3-ultra-550b-a55b:free' },
     editor: { type: 'string', default: 'nvidia/nemotron-3.5-super-vl:free' },
     attempts: { type: 'string', default: '1' },
+    'first-attempt': { type: 'string', default: '0' },
     repeats: { type: 'string', default: '3' },
     confirm: { type: 'string', default: '0' },
+    'confirm-candidates': { type: 'boolean', default: false },
+    cache: { type: 'string' },
     'max-tokens': { type: 'string', default: '400000' },
     'max-cost-increase': { type: 'string' },
     'always-propose': { type: 'boolean', default: false },
@@ -25,72 +29,50 @@ const { values } = parseArgs({
 
 const live = process.env.OPENROUTER_API_KEY !== undefined;
 const gapMs = Number(values['gap-ms']);
+const confirmRuns = Number(values.confirm);
 const costLimit = values['max-cost-increase'] === undefined ? {} : { maxCostIncrease: Number(values['max-cost-increase']) };
-const throttle: AgentHook = { name: 'throttle', preGenerate: () => new Promise((resolve) => setTimeout(resolve, gapMs)) };
+const throttle = throttleHook(gapMs);
+const probe = benchmarkProbe({ agent: values.agent, model: values.model, live, gapMs });
+const scripted = mockModel(["<notes>KEEP_BASE. The runs don't argue for a change.</notes>"], { onExhausted: 'repeat-last' });
 
-function buildAgent(): BenchmarkAgent {
-  const build = AGENTS.find((candidate) => candidate().name === values.agent);
-  if (!build) throw new Error(`Unknown agent '${values.agent}'.`);
-  return build();
+function probeFor(salt: string, distinct = false): ImproveOptions['probe'] {
+  if (values.cache === undefined) return probe;
+  const model = live ? values.model : `mock:${values.model}`;
+  return cachedProbe(probe, { dir: values.cache, model, salt, counts: emptyCounts(), distinct });
 }
 
-function failedCheck(task: BenchmarkAgent['tasks'][number]): { failure?: string } {
-  const failure = task.failure?.();
-  return failure ? { failure } : {};
+async function confirmCandidates(row: RecordedRow): Promise<Partial<Record<ReplayLine['label'], { passed: number; scored: number }>>> {
+  const lines = await replayRow(row, probeFor(`confirm-${row.attempt}`), confirmRuns);
+  return Object.fromEntries(lines.map(({ label, passed, scored }) => [label, { passed, scored }]));
 }
 
-async function probe(harness: Harness, caseId: string): Promise<ProbeRun> {
-  const spec = buildAgent();
-  const task = spec.tasks.find((candidate) => candidate.id === caseId);
-  if (!task) throw new Error(`Unknown case '${caseId}'.`);
-  const agent = createAgent({
-    name: spec.name,
-    ...(live ? { model: `openrouter/${values.model}` } : { provider: mockModel(['I cannot access that document.']) }),
-    instructions: harness.instructions,
-    tools: spec.tools,
-    skills: Object.entries(harness.skills).map(([name, skill]) => defineSkill({ name, ...skill })),
-    maxSteps: 15,
-    hooks: live ? [throttle] : [],
+async function runAttempt(attempt: number, base: Harness): Promise<void> {
+  const result = await improveAgent({
+    harness: base,
+    cases: values.case,
+    holdout: values.holdout,
+    probe: probeFor(`attempt-${attempt}`, true),
+    editor: live ? { model: `openrouter/${values.editor}` } : { provider: scripted },
+    repeats: Number(values.repeats),
+    maxTokens: Number(values['max-tokens']),
+    ...costLimit,
+    alwaysPropose: values['always-propose'],
+    editorHooks: live ? [throttle] : [],
   });
-  try {
-    const result = await agent.send(task.input);
-    return { passed: task.check(result.text ?? ''), transcript: renderTranscript(result.messages), tokens: result.usage?.totalTokens ?? 0, ended: result.finishReason, ...failedCheck(task) };
-  } catch (error) {
-    const { code, usage } = error as { code?: string; usage?: { totalTokens?: number } };
-    return { passed: null, transcript: String(error), tokens: usage?.totalTokens ?? 0, ended: code ?? 'error' };
-  }
-}
-
-async function confirmRate(harness: Harness, caseIds: readonly string[], runs: number): Promise<{ passed: number; scored: number }> {
-  const results: ProbeRun[] = [];
-  for (let i = 0; i < runs; i += 1) for (const caseId of caseIds) results.push(await probe(harness, caseId));
-  const scored = results.filter((run) => run.passed !== null);
-  return { passed: scored.filter((run) => run.passed).length, scored: scored.length };
+  const confirmed = result.harness && confirmRuns > 0 ? await confirmHarness(probeFor(`confirm-${attempt}`), result.harness, values.case, confirmRuns) : undefined;
+  const recorded: RecordedRow = { attempt, cases: values.case, holdout: values.holdout, model: values.model, date: new Date().toISOString().slice(0, 10), baseHarness: base };
+  const candidatesConfirmed = values['confirm-candidates'] && confirmRuns > 0 ? await confirmCandidates({ ...recorded, ...(result.candidates && { candidates: result.candidates }) }) : undefined;
+  const row = { ...recorded, ...result, confirmed, candidatesConfirmed };
+  if (values.out !== undefined) appendFileSync(values.out, `${JSON.stringify(row)}\n`);
+  console.log(`attempt ${attempt}: ${result.outcome}. ${result.reason} ${result.spend.tokens} tokens.`);
+  if (result.diff) console.log(result.diff);
+  if (confirmed) console.log(`confirmed on fresh runs: ${confirmed.passed}/${confirmed.scored}`);
 }
 
 async function main(): Promise<void> {
-  const base: Harness = { instructions: buildAgent().instructions, skills: {} };
-  const scripted = mockModel(["<notes>KEEP_BASE. The runs don't argue for a change.</notes>"], { onExhausted: 'repeat-last' });
-  for (let attempt = 0; attempt < Number(values.attempts); attempt += 1) {
-    const result = await improveAgent({
-      harness: base,
-      cases: values.case,
-      holdout: values.holdout,
-      probe,
-      editor: live ? { model: `openrouter/${values.editor}` } : { provider: scripted },
-      repeats: Number(values.repeats),
-      maxTokens: Number(values['max-tokens']),
-      ...costLimit,
-      alwaysPropose: values['always-propose'],
-      editorHooks: live ? [throttle] : [],
-    });
-    const confirmed = result.harness && Number(values.confirm) > 0 ? await confirmRate(result.harness, values.case, Number(values.confirm)) : undefined;
-    const row = { attempt, ...result, confirmed };
-    if (values.out !== undefined) appendFileSync(values.out, `${JSON.stringify(row)}\n`);
-    console.log(`attempt ${attempt}: ${result.outcome}. ${result.reason} ${result.spend.tokens} tokens.`);
-    if (result.diff) console.log(result.diff);
-    if (confirmed) console.log(`confirmed on fresh runs: ${confirmed.passed}/${confirmed.scored}`);
-  }
+  const base: Harness = { instructions: buildAgent(values.agent).instructions, skills: {} };
+  const first = Number(values['first-attempt']);
+  for (let attempt = first; attempt < first + Number(values.attempts); attempt += 1) await runAttempt(attempt, base);
 }
 
 main().catch((error: unknown) => {

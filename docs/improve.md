@@ -61,6 +61,9 @@ A failed run looks fine to an editor when the agent never saw the check it
 missed. Return `failure` from `probe` to name that check. Name the requirement,
 not the fix.
 
+`candidates` holds each editor's harness from before the gate, so you can review
+or replay one the gate rejected.
+
 ## Outcomes
 
 | Outcome | Meaning |

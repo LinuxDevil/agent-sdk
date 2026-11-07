@@ -49,6 +49,16 @@ change what's measured:
 - A provider failure, such as a rate limit, counts as `excluded` and never as a
   failure. Results refuse to combine if a task's input changed between runs.
 
+## Improve and replay
+
+`improve.ts` runs `improveAgent` on one agent's cases. `replay.ts` re-runs the harnesses it recorded.
+
+| Flag | Effect |
+| --- | --- |
+| `--cache <dir>` | Stores each scored run by harness, case, repeat, model and attempt, so a replay reuses it. Offline mock runs are kept apart from live ones, and the gate never reuses a run the editors were shown |
+| `--confirm-candidates` | Confirms every editor's harness, not only a proposal, with `--confirm` fresh runs. Needs `--confirm` above 0 |
+| `--first-attempt <n>` | Starts numbering attempts at `n`, to continue a run on another day |
+
 ## Test it
 
 ```bash

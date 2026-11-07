@@ -358,6 +358,7 @@
     "example:slack-notifier": "tsx examples/slack-notifier/index.ts",
     "example:heal-benchmark": "tsx examples/heal-benchmark/index.ts",
     "example:heal-benchmark:improve": "tsx examples/heal-benchmark/improve.ts",
+    "example:heal-benchmark:replay": "tsx examples/heal-benchmark/replay.ts",
     "example:support-desk": "tsx examples/support-desk/index.ts",
     "example:deep-research": "tsx examples/deep-research/index.ts",
     "example:data-analyst": "tsx examples/data-analyst/index.ts",

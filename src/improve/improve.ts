@@ -93,6 +93,7 @@ const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.
 class ImproveRun {
   readonly stages: ImproveStage[] = [];
   tokens = 0;
+  candidates?: NonNullable<ImproveResult['candidates']>;
   private readonly repeats: number;
   private readonly maxAlwaysOn: number;
 
@@ -184,6 +185,7 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
     extra: { ...candidateFiles('invariant', base, invariant), ...candidateFiles('domain', base, domain) },
   });
   const composed = await run.edit('compose', COMPOSE_PROMPT, composeFiles, base);
+  run.candidates = { invariant, domain, compose: composed };
   if (diffHarness(base, composed) === '') return { composed, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };
   return { composed };
 }
@@ -210,7 +212,7 @@ async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness
 export async function improveAgent(options: ImproveOptions): Promise<ImproveResult> {
   const run = new ImproveRun(options);
   let base: ProbeSummary = summarize([]);
-  const finish = (result: Omit<ImproveResult, 'base' | 'stages' | 'spend'>): ImproveResult => ({ ...result, base, stages: run.stages, spend: { tokens: run.tokens } });
+  const finish = (result: Omit<ImproveResult, 'base' | 'stages' | 'spend'>): ImproveResult => ({ ...result, base, ...(run.candidates && { candidates: run.candidates }), stages: run.stages, spend: { tokens: run.tokens } });
   try {
     const baseRuns = await run.probe(options.harness, 'base', options.cases);
     base = summarize(baseRuns);
