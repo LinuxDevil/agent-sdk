@@ -151,7 +151,10 @@ describe('validateGraph: core checks', () => {
       let g = specToGraph(
         minimalSpec({
           triggers: [{ id: 't9', type: 'chat' }],
-          subagents: { r: inlineAgent({ name: 'r' }) },
+          // A tool under each owner so a permission rule's '*' matches (no
+          // 'No tool on this agent matches this rule' warning).
+          tools: [{ builtin: 'http' }],
+          subagents: { r: inlineAgent({ name: 'r', tools: [{ builtin: 'http' }] }) },
         })
       );
       const owner = kind === 'trigger' || kind === 'abort' ? 'agent' : 'sub:r';

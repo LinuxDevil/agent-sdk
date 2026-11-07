@@ -49,6 +49,25 @@ export function globMatch(pattern: string, name: string): boolean {
   return new RegExp(source + '$').test(name);
 }
 
+/**
+ * Whether a permission rule's `tool` patterns cover a tool node named
+ * `name` — a glob match (`github__*` covers `github__issue`). Shared by
+ * the `governs` edge derivation, the connect refusal and the validator's
+ * 'No tool on this agent matches this rule' warning.
+ */
+export function ruleCoversTool(patterns: readonly string[], name: string): boolean {
+  return patterns.some((pattern) => globMatch(pattern, name));
+}
+
+/**
+ * Whether a permission rule's `tool` patterns cover every tool of MCP
+ * server `key`: `'*'`, or any pattern under the `<key>__` prefix — both
+ * `key__*` and a single-tool `key__tool` rule count.
+ */
+export function ruleCoversServer(patterns: readonly string[], key: string): boolean {
+  return patterns.some((pattern) => pattern === '*' || pattern.startsWith(`${key}__`));
+}
+
 /** One derived edge: id `${kind}:${source}->${target}`, label only when `EDGE_LABELS` names one. */
 function edge(kind: EdgeKind, source: string, target: string): GraphEdge {
   const label = EDGE_LABELS[kind];
@@ -78,10 +97,10 @@ function permissionEdges(node: GraphNode, nodes: GraphNode[]): GraphEdge[] {
     if (other.owner !== node.owner) continue;
     if (other.kind === 'tool') {
       const name = toolNodeName((other.data as ToolNodeData).item);
-      if (patterns.some((p) => globMatch(p, name))) sources.push(other.id);
+      if (ruleCoversTool(patterns, name)) sources.push(other.id);
     } else if (other.kind === 'mcp') {
       const key = (other.data as McpNodeData).key;
-      if (patterns.some((p) => p === '*' || p.startsWith(`${key}__`))) sources.push(other.id);
+      if (ruleCoversServer(patterns, key)) sources.push(other.id);
     }
   }
   if (sources.length === 0) {

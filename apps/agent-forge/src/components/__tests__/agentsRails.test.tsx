@@ -235,10 +235,12 @@ describe('NodesTab palette', () => {
           <LeftRail />
         </ReactFlowProvider>,
       );
-      // The registered views contribute the Agents group (C04); the fake view adds Capabilities.
+      // The registered views contribute the Agents group (C04) and Safety
+      // (C11's permission rule); the fake view adds Capabilities.
       expect([...container.querySelectorAll('.palette-group .rail-section-title')].map((g) => g.textContent)).toEqual([
         'Agents',
         'Capabilities',
+        'Safety',
       ]);
       const item = [...container.querySelectorAll<HTMLElement>('.node-palette-item')].find(
         (el) => el.getAttribute('aria-label') === 'Tool call',

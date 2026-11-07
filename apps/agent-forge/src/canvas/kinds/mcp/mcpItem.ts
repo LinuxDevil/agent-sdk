@@ -5,6 +5,7 @@
  * them), the probe/readiness check and the per-tool `Allowed` toggle that
  * rewrites `item.tools`.
  */
+import { allPermissionIds } from '../../../graph/v2/kinds/permission';
 import { fullUrlOk } from '../../../graph/v2/kinds/tool';
 import type { McpServerSpec } from '../../../graph/v2/specTypes';
 import type { Graph, NodeOfKind, PermissionNodeData } from '../../../graph/v2/types';
@@ -107,7 +108,5 @@ export function askFirstNode(
 
 /** Every permission rule's `item.id` — the `taken` set for `nextItemId('p', …)`. */
 export function permissionIds(graph: Graph): string[] {
-  return graph.nodes
-    .filter((n) => n.kind === 'permission')
-    .map((n) => (n.data as PermissionNodeData).item.id);
+  return allPermissionIds(graph);
 }
