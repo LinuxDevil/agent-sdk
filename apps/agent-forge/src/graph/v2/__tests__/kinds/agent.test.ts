@@ -115,6 +115,12 @@ describe('agentRules.validate: inline subagent', () => {
     });
     expect(validateGraph(graph)).toStrictEqual([
       error('sub:a/sub:b', 'A subagent needs a description', 'subagents.a.inline.subagents.b.inline.description'),
+      {
+        nodeId: 'sub:a/sub:b',
+        severity: 'warning',
+        message: "This subagent is deeper than the agent's max subagent depth (1)",
+        fieldPath: 'subagents.a.inline.subagents.b.inline',
+      },
     ]);
   });
 });

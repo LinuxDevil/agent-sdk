@@ -7,9 +7,11 @@
  * always exists and inline subagents come from C04's palette.
  */
 import { Bot } from 'lucide-react';
-import type { AgentFields, NodeOfKind } from '../../graph/v2/types';
+import { uniqueName } from '../../graph/v2/nodeIds';
+import { subagentSiblingKeys } from '../../graph/v2/order';
+import type { AgentFields, AgentNodeData, Graph, NodeOfKind } from '../../graph/v2/types';
 import { AgentFields as AgentInspector } from './agent/AgentFields';
-import type { KindView, NodeRow } from './index';
+import type { KindView, NodeRow, PaletteEntry } from './index';
 
 /** The instructions row: the first non-empty line of text (≤ 40 chars + '…'), or `file: <path>`. */
 function instructionsRow(instructions: AgentFields['instructions']): string | undefined {
@@ -44,6 +46,37 @@ function rows(node: NodeOfKind<'agent'>): NodeRow[] {
   return rows;
 }
 
+/** The owner agent's model for the new inline subagent's `fields.model` ('' when the owner is not an agent). */
+function ownerModel(graph: Graph, owner: string | null): string {
+  const ownerNode = owner === null ? undefined : graph.nodes.find((n) => n.id === owner);
+  if (ownerNode === undefined || ownerNode.kind !== 'agent') return '';
+  return (ownerNode.data as AgentNodeData).fields.model ?? '';
+}
+
+/** An inline subagent (an `agent` node with a `subagentKey`): key named after `helper`, fields seeded from the owner. */
+function createInlineSubagent(graph: Graph, owner: string | null): { kind: 'agent'; data: AgentNodeData } {
+  const key = uniqueName('helper', subagentSiblingKeys(graph, owner));
+  return {
+    kind: 'agent',
+    data: {
+      fields: { name: key, description: '', model: ownerModel(graph, owner), instructions: '' },
+      extra: {},
+      subagentKey: key,
+    },
+  };
+}
+
+const PALETTE: PaletteEntry[] = [
+  {
+    id: 'subagent-inline',
+    group: 'Agents',
+    label: 'Subagent',
+    description: 'A helper agent defined here',
+    kind: 'agent',
+    create: createInlineSubagent,
+  },
+];
+
 /** The `agent` kind's card + Inspector, registered in `KIND_VIEWS` (canvas/kinds/index.ts). */
 export const AGENT_VIEW: KindView<'agent'> = {
   label: 'Agent',
@@ -54,5 +87,5 @@ export const AGENT_VIEW: KindView<'agent'> = {
   rows,
   ports: { in: true, out: true },
   Fields: AgentInspector,
-  palette: [],
+  palette: PALETTE,
 };

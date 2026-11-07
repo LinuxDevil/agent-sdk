@@ -84,7 +84,7 @@ export function addNode(
 }
 
 /** `rootId` plus every node whose `owner` chain reaches it (fixpoint walk — inline agents own whole subtrees). */
-function descendantsOf(graph: Graph, rootId: string): ReadonlySet<string> {
+export function descendantsOf(graph: Graph, rootId: string): ReadonlySet<string> {
   const ids = new Set([rootId]);
   let grew = true;
   while (grew) {
