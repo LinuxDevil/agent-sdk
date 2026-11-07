@@ -81,6 +81,7 @@ function ineligibility(options: ImproveOptions, harnesses: Record<GateVerdict['l
   const candidate = harnesses[label];
   if (diffHarness(options.harness, candidate) === '') return 'Made no change.';
   if (diffHarness(harnesses.compose, candidate) === '') return 'Same as the composite, so it was not judged again.';
+  if (label === 'domain' && diffHarness(harnesses.invariant, candidate) === '') return "Same as the invariant editor's harness, so it was not judged again.";
   const failure = trainingFailure(options.cases.map((id) => judgeTrainingCase(id, caseCount(fresh, id), caseCount(runs, id))));
   return failure && `Failed on training: ${failure}`;
 }
@@ -112,7 +113,7 @@ export async function judgeWithFallback(
     const judged = await gateHarness(run, options, base, harnesses[label], candidateRuns[label], `holdout-${label}`);
     tried.push({ label, passed: judged.outcome === 'proposal', reason: judged.reason });
     if (judged.outcome !== 'proposal') continue;
-    const reason = `The composite failed the gate (${result.reason}) The ${label} editor's harness passed instead.`;
+    const reason = `The composite failed the gate (${result.reason}) The ${label} editor's harness passed instead.${costNote(judged.costOnPassingCases)}`;
     return { ...judged, reason, gate: [compose, ...tried, ...ineligible] };
   }
   return { ...result, gate: [compose, ...tried, ...ineligible] };

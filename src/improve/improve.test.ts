@@ -332,7 +332,7 @@ describe('improveAgent', () => {
       expect(result.harness?.instructions).toBe(FIX);
       expect(result.diff).toBe(diffHarness(BASE, { instructions: FIX, skills: {} }));
       expect(harness).toEqual(BASE);
-      expect(result.reason).toMatch(/^The composite failed the gate \(A held-out case got worse.*\) The domain editor's harness passed instead\.$/);
+      expect(result.reason).toMatch(/^The composite failed the gate \(A held-out case got worse.*\) The domain editor's harness passed instead\. Cost/);
       expect(result.gate).toEqual([
         { label: 'compose', passed: false, reason: expect.stringMatching(/held-out/) },
         { label: 'domain', passed: true, reason: expect.any(String) },
@@ -366,11 +366,28 @@ describe('improveAgent', () => {
     it('tries the cheaper candidate first', async () => {
       const tokens = (harness: Harness) => (harness.instructions.includes('Invariant') ? 50 : 10);
       const turns = [...edit(`${FIX} Invariant.`), ...edit(`${FIX} Domain.`), ...edit(`${FIX} Always.`)];
-      const result = await improveAgent(options({ probe: gated(tokens), turns }));
+      const heldOutHarnesses: string[] = [];
+      const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+        if (caseId === 'held-out') heldOutHarnesses.push(harness.instructions);
+        return gated(tokens)(harness, caseId, repeat);
+      };
+      const result = await improveAgent(options({ probe, turns }));
       expect(result.outcome).toBe('proposal');
       expect(result.gate?.[1].label).toBe('domain');
       expect(result.harness?.instructions).toBe(`${FIX} Domain.`);
       expect(result.gate).toHaveLength(2);
+      expect(heldOutHarnesses).not.toContain(`${FIX} Invariant.`);
+    });
+
+    it("skips a domain harness identical to the invariant one", async () => {
+      const turns = [...edit(`${FIX} Always a.`), ...edit(`${FIX} Always a.`), ...edit(`${FIX} Always b.`)];
+      const result = await improveAgent(options({ probe: gated(), turns }));
+      expect(result.outcome).toBe('keep-base');
+      expect(result.gate).toEqual([
+        { label: 'compose', passed: false, reason: expect.stringMatching(/held-out/) },
+        { label: 'invariant', passed: false, reason: expect.stringMatching(/held-out/) },
+        { label: 'domain', passed: false, reason: "Same as the invariant editor's harness, so it was not judged again." },
+      ]);
     });
 
     it('does not fall back when the composite passes', async () => {
