@@ -336,6 +336,8 @@ interface PaletteItemProps {
   tone: KindTone;
   Icon: LucideIcon;
   title: string;
+  /** Set when the entry cannot be added for the current owner: the button is disabled and `title` says why. */
+  disabled?: boolean;
   onDragStart: (e: DragEvent<HTMLButtonElement>) => void;
   onActivate: () => void;
 }
@@ -344,14 +346,17 @@ interface PaletteItemProps {
  * A palette entry is a real button - drag it onto the canvas as
  * before, or activate it (click, Enter, Space) to add it without a mouse.
  * A card: the kind's icon tile, its name, and a one-line description.
+ * `disabled` (an `unavailable` reason) greys it out and the reason becomes
+ * the tooltip, per the "disabled controls say why" copy rule.
  */
-function PaletteItem({ id, label, description, tone, Icon, title, onDragStart, onActivate }: PaletteItemProps) {
+function PaletteItem({ id, label, description, tone, Icon, title, disabled, onDragStart, onActivate }: PaletteItemProps) {
   const descriptionId = `palette-${id}-desc`;
   return (
     <button
       type="button"
       className="node-palette-item"
-      draggable
+      draggable={!disabled}
+      disabled={disabled}
       onDragStart={onDragStart}
       onClick={onActivate}
       title={title}
@@ -396,6 +401,12 @@ function usePaletteActions() {
     const { transform, width, height } = flow.getState();
     const position = viewportCentrePosition(transform, width, height);
     const owner = ownerForNewNode(graph, entry.kind, selectedNodeId);
+    // Same refusal the drop applies: an `unavailable` entry cannot be added for this owner.
+    const reason = entry.unavailable?.(graph, owner);
+    if (reason !== undefined) {
+      setNotice(reason);
+      return;
+    }
     // A selected group owns the new node - its position must be group-relative.
     const { graph: next, nodeId } = addNode(graph, entry.create(graph, owner), positionFor(graph, position, owner), owner);
     setGraph(() => next);
@@ -408,6 +419,7 @@ function usePaletteActions() {
 
 function NodesTab() {
   const { notice, addAtViewportCentre } = usePaletteActions();
+  const { graph, selectedNodeId } = useAppState();
   const groups = paletteGroups();
   return (
     <div className="rail-body">
@@ -417,6 +429,7 @@ function NodesTab() {
           <div className="rail-section-title overline">{group}</div>
           {entries.map((entry) => {
             const { tone, Icon } = viewFor(entry.kind);
+            const reason = entry.unavailable?.(graph, ownerForNewNode(graph, entry.kind, selectedNodeId));
             return (
               <PaletteItem
                 key={entry.id}
@@ -425,7 +438,8 @@ function NodesTab() {
                 description={entry.description}
                 tone={tone}
                 Icon={Icon}
-                title="Drag onto the canvas, or press to add at the centre"
+                title={reason ?? 'Drag onto the canvas, or press to add at the centre'}
+                disabled={reason !== undefined}
                 onDragStart={(e) => startPaletteDrag(e, PALETTE_DRAG_MIME, entry.id)}
                 onActivate={() => addAtViewportCentre(entry)}
               />

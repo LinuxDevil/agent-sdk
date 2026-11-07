@@ -411,7 +411,8 @@ function expandedGroupAtPoint(clientX: number, clientY: number): string | undefi
 function useDropHandlers(
   setGraph: SetGraph,
   selectedNodeId: string | undefined,
-  setSelectedNodeId: SetSelectedNodeId
+  setSelectedNodeId: SetSelectedNodeId,
+  flashError: (reason: string) => void
 ) {
   const { screenToFlowPosition } = useReactFlow();
 
@@ -431,18 +432,35 @@ function useDropHandlers(
       const position = screenToFlowPosition({ x: e.clientX, y: e.clientY });
       const groupId = expandedGroupAtPoint(e.clientX, e.clientY);
       let addedId: string | undefined;
+      let refusal: string | undefined;
+      let refusedNodeId: string | undefined;
       setGraph((g) => {
         let owner = ownerForNewNode(g, entry.kind, selectedNodeId);
         // A drop inside an expanded group attaches to it; notes stay
         // ownerless and root-only kinds stay on the root agent.
         if (groupId !== undefined && owner !== null && !ROOT_ONLY_KINDS.has(entry.kind)) owner = groupId;
+        // An `unavailable` entry refuses the drop with its reason and selects
+        // the node that already blocks it (e.g. the agent's output schema).
+        const reason = entry.unavailable?.(g, owner);
+        if (reason !== undefined) {
+          refusal = reason;
+          refusedNodeId = g.nodes.find(
+            (n) => n.kind === entry.kind && n.owner === owner && n.proposed !== 'remove'
+          )?.id;
+          return g;
+        }
         const result = addNode(g, entry.create(g, owner), positionFor(g, position, owner), owner);
         addedId = result.nodeId;
         return result.graph;
       });
+      if (refusal !== undefined) {
+        flashError(refusal);
+        if (refusedNodeId !== undefined) setSelectedNodeId(refusedNodeId);
+        return;
+      }
       if (addedId) setSelectedNodeId(addedId);
     },
-    [screenToFlowPosition, setGraph, selectedNodeId, setSelectedNodeId]
+    [screenToFlowPosition, setGraph, selectedNodeId, setSelectedNodeId, flashError]
   );
 
   return { onDragOver, onDrop };
@@ -748,7 +766,7 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
 
   const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId);
   const { onConnect, isValidConnection } = useConnectionHandlers(graph, setGraph, flashError);
-  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId);
+  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError);
   const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
   useFitViewOnResize();
   useKeepSelectionInView(selectedNodeId);

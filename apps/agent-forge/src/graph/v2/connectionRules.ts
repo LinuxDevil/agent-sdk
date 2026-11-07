@@ -62,13 +62,6 @@ const INSTANCE_RULES: readonly ConnectRule[] = [
     reason: () => 'Already attached to this agent',
   },
   {
-    // Only reachable when the output node is owned by another agent — an
-    // agent's own output is refused by the attach rule above — because a
-    // spec carries at most one `output` per agent.
-    test: (source, target) => source.kind === 'agent' && target.kind === 'output',
-    reason: () => 'This agent already has an output schema',
-  },
-  {
     test: (source, target) =>
       (source.kind === 'tool' || source.kind === 'mcp') &&
       target.kind === 'permission' &&

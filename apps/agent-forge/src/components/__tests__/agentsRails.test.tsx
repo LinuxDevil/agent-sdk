@@ -236,13 +236,14 @@ describe('NodesTab palette', () => {
         </ReactFlowProvider>,
       );
       // The registered views contribute the Start (triggers), Agents (C04),
-      // Safety (C11's permission rule, C13's hook) and Canvas (C13's note)
-      // groups; the fake view adds Capabilities.
+      // Safety (C11's permission rule, C13's hook), Output (C14's output
+      // schema) and Canvas (C13's note) groups; the fake view adds Capabilities.
       expect([...container.querySelectorAll('.palette-group .rail-section-title')].map((g) => g.textContent)).toEqual([
         'Start',
         'Agents',
         'Capabilities',
         'Safety',
+        'Output',
         'Canvas',
       ]);
       const item = [...container.querySelectorAll<HTMLElement>('.node-palette-item')].find(
@@ -256,6 +257,64 @@ describe('NodesTab palette', () => {
       expect(dataTransfer.setData).toHaveBeenCalledWith('application/agent-forge-node-type', 'tool');
     } finally {
       delete KIND_VIEWS.tool;
+      appState.railTab = 'agents';
+    }
+  });
+
+  it('disables the output palette entry with its reason when the agent already has an output schema', async () => {
+    const { LeftRail } = await import('../LeftRail');
+    const { ReactFlowProvider } = await import('@xyflow/react');
+    const savedGraph = appState.graph;
+    const savedSelection = appState.selectedNodeId;
+    try {
+      appState.selectedNodeId = undefined;
+      appState.graph = { version: 2, nodes: [], emptySections: [], unplaced: [] } as never;
+      appState.railTab = 'nodes';
+      const { render: mount, cleanup } = await import('../../ui/__tests__/render');
+      const enabled = mount(
+        <ReactFlowProvider>
+          <LeftRail />
+        </ReactFlowProvider>,
+      );
+      const find = (c: HTMLElement) =>
+        [...c.querySelectorAll<HTMLButtonElement>('.node-palette-item')].find(
+          (el) => el.getAttribute('aria-label') === 'Output schema',
+        )!;
+      expect(find(enabled).disabled).toBe(false);
+      cleanup();
+
+      appState.graph = {
+        version: 2,
+        emptySections: [],
+        unplaced: [],
+        nodes: [
+          {
+            id: 'agent',
+            kind: 'agent',
+            owner: null,
+            position: { x: 0, y: 0 },
+            data: { fields: {}, extra: {} },
+          },
+          {
+            id: 'output',
+            kind: 'output',
+            owner: 'agent',
+            position: { x: 0, y: 0 },
+            data: { item: { jsonSchema: { type: 'object' } } },
+          },
+        ],
+      } as never;
+      const disabled = mount(
+        <ReactFlowProvider>
+          <LeftRail />
+        </ReactFlowProvider>,
+      );
+      const item = find(disabled);
+      expect(item.disabled).toBe(true);
+      expect(item.title).toBe('This agent already has an output schema');
+    } finally {
+      appState.graph = savedGraph;
+      appState.selectedNodeId = savedSelection;
       appState.railTab = 'agents';
     }
   });

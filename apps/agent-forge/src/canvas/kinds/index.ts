@@ -9,6 +9,7 @@ import { HOOK_VIEW } from './hook';
 import { MCP_VIEW } from './mcp';
 import { MEMORY_VIEW } from './memory';
 import { NOTE_VIEW } from './note';
+import { OUTPUT_VIEW } from './output';
 import { PERMISSION_VIEW } from './permission';
 import { SKILL_VIEW } from './skill';
 import { SUBAGENT_VIEW } from './subagent';
@@ -58,6 +59,8 @@ export interface PaletteEntry {
   kind: NodeKind;
   /** Default data for a node of `kind` owned by `owner`. */
   create: (graph: Graph, owner: string | null) => NewNode;
+  /** Why this entry cannot be added for `owner` right now, or undefined. Palette shows it disabled with this as title; drop refuses with it. */
+  unavailable?: (graph: Graph, owner: string | null) => string | undefined;
 }
 
 /** The props every kind's Inspector body (`view.Fields`) receives. */
@@ -112,6 +115,7 @@ export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
   guardrail: GUARDRAIL_VIEW,
   permission: PERMISSION_VIEW,
   hook: HOOK_VIEW,
+  output: OUTPUT_VIEW,
   note: NOTE_VIEW,
 };
 

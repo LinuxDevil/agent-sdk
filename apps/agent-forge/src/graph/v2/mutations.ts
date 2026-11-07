@@ -120,7 +120,8 @@ export function removeNode(graph: Graph, nodeId: string): Graph {
 /**
  * Copies a node at +40,+40 with a deduped id, using
  * `KIND_RULES[kind].duplicateData` for fresh ids/names (default
- * `structuredClone`). The root agent and notes cannot be duplicated;
+ * `structuredClone`). The root agent, notes and output nodes cannot be
+ * duplicated (a spec carries at most one `output` per agent);
  * children of an inline agent copy are not duplicated (C04 gives the copy
  * a fresh `subagentKey` via `agentRules.duplicateData`).
  */
@@ -132,6 +133,7 @@ export function duplicateNode(
   if (
     source === undefined ||
     source.kind === 'note' ||
+    source.kind === 'output' ||
     (source.id === ROOT_AGENT_ID && source.kind === 'agent')
   ) {
     return { graph, nodeId: undefined };

@@ -11,6 +11,7 @@ import { handoffRules } from './kinds/handoff';
 import { hookRules } from './kinds/hook';
 import { mcpRules } from './kinds/mcp';
 import { memoryRules } from './kinds/memory';
+import { outputRules } from './kinds/output';
 import { permissionRules } from './kinds/permission';
 import { skillRules } from './kinds/skill';
 import { subagentRules } from './kinds/subagent';
@@ -58,4 +59,5 @@ export const KIND_RULES: { [K in NodeKind]?: KindRules<K> } = {
   guardrail: guardrailRules,
   permission: permissionRules,
   hook: hookRules,
+  output: outputRules,
 };
