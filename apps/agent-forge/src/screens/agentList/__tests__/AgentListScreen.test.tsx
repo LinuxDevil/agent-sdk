@@ -70,6 +70,12 @@ async function mountAt(hash = '#/agents') {
 const buttonNamed = (host: HTMLElement, name: string) =>
   [...host.querySelectorAll('button')].find((b) => b.textContent?.trim() === name || b.getAttribute('aria-label') === name);
 
+/** A row of the New agent menu, which portals to document.body. */
+const menuItemNamed = (name: string) =>
+  [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((el) =>
+    el.textContent?.startsWith(name)
+  );
+
 const cardOf = (host: HTMLElement, name: string) =>
   [...host.querySelectorAll('article.agent-card')].find((card) => card.textContent?.includes(name)) as HTMLElement;
 
@@ -120,11 +126,18 @@ describe('AgentListScreen', () => {
     expect(host.querySelectorAll('article.agent-card')).toHaveLength(3);
   });
 
-  it('shows the empty state with a Blank agent action when there are no agents', async () => {
+  it('shows the empty state with three start options when there are no agents', async () => {
     api.listAgents.mockResolvedValue([]);
     const host = await mountAt();
     expect(host.textContent).toContain('No agents yet');
-    expect(buttonNamed(host, 'Blank agent')).toBeDefined();
+    expect(host.textContent).toContain('Pick a way to start.');
+    const options = host.querySelectorAll('button.start-option');
+    expect(options).toHaveLength(3);
+    expect([...options].map((b) => b.querySelector('.start-option-title')?.textContent)).toEqual([
+      'Blank agent',
+      'Describe with AI',
+      'From template',
+    ]);
   });
 
   it('shows the no-match state under a filter and Clear filters restores the URL and the cards', async () => {
@@ -172,9 +185,44 @@ describe('AgentListScreen', () => {
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('meta is locked');
   });
 
-  it('creates a blank agent and opens its canvas', async () => {
+  it('shares one creating state between the header menu and the start options', async () => {
+    api.listAgents.mockResolvedValue([]);
+    let resolveCreate!: (record: AgentRecord) => void;
+    api.createAgentRecord.mockReturnValue(
+      new Promise<AgentRecord>((resolve) => {
+        resolveCreate = resolve;
+      })
+    );
     const host = await mountAt();
-    await act(async () => buttonNamed(host, 'Blank agent')!.click());
+
+    // Start the create from the empty state's Blank button.
+    const blankOption = [...host.querySelectorAll<HTMLButtonElement>('button.start-option')].find(
+      (b) => b.querySelector('.start-option-title')?.textContent === 'Blank agent'
+    )!;
+    await act(async () => blankOption.click());
+    await flush();
+    expect(api.createAgentRecord).toHaveBeenCalledTimes(1);
+    expect(api.createAgentRecord).toHaveBeenCalledWith({ from: 'blank' });
+
+    // The header trigger and the start option both reflect the same in-flight create,
+    // so a second activation cannot issue a duplicate POST /agents.
+    const trigger = host.querySelector<HTMLButtonElement>('.menu-trigger')!;
+    expect(trigger.textContent).toContain('Creating…');
+    expect(trigger.disabled).toBe(true);
+    expect(blankOption.disabled).toBe(true);
+    expect(blankOption.getAttribute('title')).toBe('Creating an agent…');
+
+    await act(async () => resolveCreate({ id: 'untitled-1' } as AgentRecord));
+    await flush();
+    expect(api.createAgentRecord).toHaveBeenCalledTimes(1);
+    expect(window.location.hash).toBe('#/agents/untitled-1/canvas');
+  });
+
+  it('creates a blank agent from the New agent menu and opens its canvas', async () => {
+    const host = await mountAt();
+    await act(async () => buttonNamed(host, 'New agent')!.click());
+    await flush();
+    await act(async () => menuItemNamed('Blank agent')!.click());
     await flush();
     expect(api.createAgentRecord).toHaveBeenCalledWith({ from: 'blank' });
     expect(window.location.hash).toBe('#/agents/untitled-1/canvas');
