@@ -286,6 +286,37 @@ describe('palette create (C04 subagent entries)', () => {
   });
 });
 
+describe('palette create (C06 tool entries)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const tool = entries.find((e) => e.id === 'tool');
+  const openapi = entries.find((e) => e.id === 'tool-openapi');
+  const integration = entries.find((e) => e.id === 'tool-integration');
+
+  it('registers all three entries under the Capabilities group', () => {
+    for (const entry of [tool, openapi, integration]) {
+      expect(entry).toBeDefined();
+      expect(entry?.group).toBe('Capabilities');
+      expect(entry?.kind).toBe('tool');
+    }
+  });
+
+  it('creates the empty item each entry describes', () => {
+    expect(tool!.create(g0, 'agent').data).toStrictEqual({ item: { builtin: '' } });
+    expect(openapi!.create(g0, 'agent').data).toStrictEqual({ item: { openapi: { url: '' } } });
+    expect(integration!.create(g0, 'agent').data).toStrictEqual({
+      item: { integration: 'github', credentials: {} },
+    });
+  });
+
+  it('names two built-in creates tool:new and tool:new#2', () => {
+    const first = addNode(g0, tool!.create(g0, 'agent'), AT, 'agent');
+    expect(first.nodeId).toBe('tool:new');
+    const second = addNode(first.graph, tool!.create(first.graph, 'agent'), AT, 'agent');
+    expect(second.nodeId).toBe('tool:new#2');
+  });
+});
+
 describe('reownNode', () => {
   const g = specToGraph(treeSpec());
 

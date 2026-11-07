@@ -75,6 +75,25 @@ export function subagentSiblingKeys(graph: Graph, ownerId: string | null): strin
 }
 
 /**
+ * The `subagents.<key>.inline` path prefix of an owner id: `''` for the root
+ * agent, `subagents.a.inline.subagents.b.inline.` for a nested inline agent.
+ * Kind validators build a node's spec path as `<ownerSpecPrefix><section path>`.
+ */
+export function ownerSpecPrefix(ownerId: string | null, graph: Graph): string {
+  const segments: string[] = [];
+  let current: string | null = ownerId;
+  while (current !== null) {
+    const owner: GraphNode | undefined = graph.nodes.find((n) => n.id === current);
+    // The root agent contributes no segment — only inline agents do.
+    if (owner === undefined || owner.kind !== 'agent' || owner.owner === null) break;
+    const key: string | undefined = subagentEntryKey(owner);
+    segments.unshift(`subagents.${key ?? ''}.inline`);
+    current = owner.owner;
+  }
+  return segments.length === 0 ? '' : `${segments.join('.')}.`;
+}
+
+/**
  * The live (not `note`, not `proposed: 'remove'`) nodes of section `key`
  * owned by `ownerId`, in node-array order — the same membership rule
  * `orderedNodes` and `graphToSpec` share.

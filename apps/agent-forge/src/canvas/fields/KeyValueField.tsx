@@ -35,6 +35,8 @@ export interface KeyValueFieldProps {
   keyPattern?: RegExp;
   /** When set, a row with an empty key is invalid and shows this message (empty keys are allowed otherwise). */
   emptyKeyError?: string;
+  /** An external error that wins over the row checks — for "the map itself is invalid" rules like a required credential set. */
+  error?: string;
   /** Muted help under the control. */
   help?: string;
 }
@@ -79,6 +81,7 @@ export function KeyValueField({
   valueKind,
   keyPattern,
   emptyKeyError,
+  error,
   help,
 }: KeyValueFieldProps): JSX.Element {
   const [rows, setRows] = useState<KvRow[]>(() => rowsOf(value));
@@ -91,7 +94,7 @@ export function KeyValueField({
     setRows(rowsOf(value));
   }, [value]);
 
-  const problem = validate(rows, keyPattern, emptyKeyError);
+  const problem = error ?? validate(rows, keyPattern, emptyKeyError);
 
   /** Emits `nextRows` when they are valid; the draft always updates either way. */
   const update = (nextRows: KvRow[]) => {

@@ -13,20 +13,12 @@ import { subagentSiblingKeys } from '../../graph/v2/order';
 import type { SecretRef } from '../../graph/v2/specTypes';
 import type { NodeOfKind } from '../../graph/v2/types';
 import { SubagentFields } from './subagent/SubagentFields';
+import { urlHost } from './urlHost';
 import type { KindView, NodeRow, PaletteEntry } from './index';
 
 /** The display name of a ref target: `agents/billing.yaml` → `billing`; anything else is shown verbatim. */
 function refName(ref: string): string {
   return ref.replace(/^agents\//, '').replace(/\.yaml$/, '');
-}
-
-/** The host part of `url`, or the raw string when it does not parse. */
-function urlHost(url: string): string {
-  try {
-    return new URL(url).host;
-  } catch {
-    return url;
-  }
 }
 
 /** `env:NAME`, `secret:NAME` or `none` for the remote's auth row. */

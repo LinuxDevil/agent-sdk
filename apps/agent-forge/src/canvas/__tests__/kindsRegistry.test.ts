@@ -2,15 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { KIND_VIEWS, viewFor } from '../kinds';
 
 describe('viewFor', () => {
-  it('falls back to the generic view while KIND_VIEWS.tool is unset', () => {
-    const view = viewFor('tool');
-    expect(KIND_VIEWS.tool).toBeUndefined();
-    expect(view.label).toBe('tool');
+  it('falls back to the generic view while KIND_VIEWS.skill is unset', () => {
+    const view = viewFor('skill');
+    expect(KIND_VIEWS.skill).toBeUndefined();
+    expect(view.label).toBe('skill');
     expect(view.tone).toBe('neutral');
     expect(view.ports).toEqual({ in: true, out: true });
     expect(view.palette).toEqual([]);
-    expect(view.title({ id: 'tool:http' } as never)).toBe('http');
+    expect(view.title({ id: 'skill:review' } as never)).toBe('review');
     expect(view.title({ id: 'agent' } as never)).toBe('agent');
+  });
+
+  it('returns the registered tool view', () => {
+    const view = viewFor('tool');
+    expect(view.label).toBe('Tool');
+    expect(view.tone).toBe('info');
+    expect(view.ports).toEqual({ in: true, out: true });
+    expect(view.palette.map((entry) => entry.id)).toEqual([
+      'tool',
+      'tool-openapi',
+      'tool-integration',
+    ]);
   });
 });
 
