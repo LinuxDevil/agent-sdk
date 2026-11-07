@@ -49,11 +49,13 @@ describe('CONNECTION_RULES', () => {
 
 describe('canConnect kind table', () => {
   /**
-   * `trigger > agent` and `agent > output` are in the table but can never
-   * connect: those edges always exist already, so the instance rules below
-   * refuse them. They are asserted separately with their refusal reasons.
+   * `trigger > agent` is in the table but can never connect: that edge
+   * always exists already, so the instance rules below refuse it. It is
+   * asserted separately with its refusal reason. `agent > output` stays in
+   * the table — `canConnect` has no graph, so the one-output-per-agent rule
+   * is enforced by `agentRules.connectFrom` (see kinds/output.test.ts).
    */
-  const ALWAYS_REFUSED = new Set(['trigger>agent', 'agent>output']);
+  const ALWAYS_REFUSED = new Set(['trigger>agent']);
 
   it.each(
     (Object.entries(CONNECTION_RULES) as Array<[NodeKind, readonly NodeKind[]]>).flatMap(
@@ -199,24 +201,20 @@ describe('canConnect instance rules', () => {
     expect(canConnect(source, target)).toEqual({ ok: false, reason: 'Already attached to this agent' });
   });
 
-  it('refuses agent -> output the agent does not own', () => {
+  it('allows agent -> output the agent does not own (re-own; connectFrom checks ownership)', () => {
     const source = node('agent', { id: 'agent' });
     const target = node('output', { owner: 'other' });
-    expect(canConnect(source, target)).toEqual({
-      ok: false,
-      reason: 'This agent already has an output schema',
-    });
+    expect(canConnect(source, target)).toEqual({ ok: true });
   });
 
-  it('refuses agent -> a second output schema (the agent already owns one)', () => {
+  it('allows agent -> output when the agent already owns one (connectFrom refuses it)', () => {
+    // `canConnect` cannot see the graph, so a second output is only refused
+    // by `connectNodes` → `agentRules.connectFrom`; the kind pair itself is fine.
     const source = node('agent', { id: 'agent' });
     const own = node('output', { id: 'output', owner: 'agent' });
     const other = node('output', { id: 'output#2', owner: 'other' });
     expect(canConnect(source, own)).toEqual({ ok: false, reason: 'Already attached to this agent' });
-    expect(canConnect(source, other)).toEqual({
-      ok: false,
-      reason: 'This agent already has an output schema',
-    });
+    expect(canConnect(source, other)).toEqual({ ok: true });
   });
 
   it('refuses agent -> output owned by the agent with the attach reason (rule order)', () => {

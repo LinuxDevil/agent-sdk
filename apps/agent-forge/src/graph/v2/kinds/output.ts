@@ -4,8 +4,9 @@
  * `result.object` with, plus the `promptSchema`/`responseFormat` options).
  * `validate` checks the schema is an object schema and that every
  * `required` entry names a declared property. There is no `connectFrom`:
- * the `agent → output` re-own uses the default attach effect, and
- * `CONNECTION_RULES`/the instance rules refuse a second output per agent.
+ * the `agent → output` re-own is the agent kind's default attach effect,
+ * and its one-output-per-agent refusal lives in `agentRules.connectFrom`
+ * (it needs the graph, which `canConnect` does not have).
  * `duplicateData` returns the same schema — `duplicateNode` refuses output
  * nodes outright (a spec carries at most one `output` per agent), so the
  * hook only exists to satisfy the kind contract.

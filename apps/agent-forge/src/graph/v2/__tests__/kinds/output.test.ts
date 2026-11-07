@@ -57,6 +57,17 @@ describe('specToGraph: output worked example', () => {
   it('round-trips to an identical spec', () => {
     expect(graphToSpec(specToGraph(spec)).spec).toStrictEqual(spec);
   });
+
+  it('round-trips promptSchema and responseFormat', () => {
+    const withOptions = specOf({
+      output: {
+        jsonSchema: { type: 'object' },
+        promptSchema: false,
+        responseFormat: 'always',
+      },
+    });
+    expect(graphToSpec(specToGraph(withOptions)).spec.output).toStrictEqual(withOptions.output);
+  });
 });
 
 describe('output node ids', () => {
@@ -169,6 +180,31 @@ describe('output node connections and duplicates', () => {
     // sub:r already owns sub:r/output; the root's `output` belongs to another agent.
     const result = connectNodes(g, 'sub:r', 'output');
     expect(result).toEqual({ ok: false, reason: 'This agent already has an output schema' });
+  });
+
+  it('re-owns an output schema onto an agent that has none', () => {
+    const g = specToGraph(
+      specOf({
+        output: { jsonSchema: { type: 'object' } },
+        subagents: {
+          r: {
+            inline: {
+              name: 'r',
+              description: 'd',
+              model: 'mock/mock-1',
+              instructions: 'x',
+            },
+          },
+        },
+      }),
+    );
+    const result = connectNodes(g, 'sub:r', 'output');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.graph.nodes.find((n) => n.id === 'output')!.owner).toBe('sub:r');
+      expect(deriveEdges(result.graph).map((e) => e.id)).toContain('returns:sub:r->output');
+      expect(deriveEdges(result.graph).map((e) => e.id)).not.toContain('returns:agent->output');
+    }
   });
 
   it('refuses to duplicate an output node', () => {

@@ -6,6 +6,7 @@
  */
 import type { ConnectResult, KindRules } from '../kindRules';
 import { uniqueName } from '../nodeIds';
+import { outputUnavailableReason } from './output';
 import { subagentSiblingKeys } from '../order';
 import { reownNode } from '../reown';
 import type { AgentNodeData, Graph, GraphNode, NodeOfKind, Problem } from '../types';
@@ -105,10 +106,15 @@ function depthWarning(node: NodeOfKind<'agent'>, graph: Graph): Problem[] {
 /** `KindRules` for `agent`: `connectFrom` re-owns the target to the source agent. */
 export const agentRules: KindRules<'agent'> = {
   validate: (node, graph) => [...validateAgent(node, graph), ...depthWarning(node, graph)],
-  connectFrom: (source, target: GraphNode, graph: Graph): ConnectResult => ({
-    ok: true,
-    graph: reownNode(graph, target.id, source.id),
-  }),
+  connectFrom: (source, target: GraphNode, graph: Graph): ConnectResult => {
+    // `agent → output` re-owns the schema; the one-output-per-agent rule
+    // needs the graph, so it lives here rather than in `canConnect`.
+    if (target.kind === 'output') {
+      const taken = outputUnavailableReason(graph, source.id);
+      if (taken !== undefined) return { ok: false, reason: taken };
+    }
+    return { ok: true, graph: reownNode(graph, target.id, source.id) };
+  },
   // Duplicating an inline agent copies the node only (never its children);
   // its `subagents` record key still has to be unique among siblings.
   duplicateData: (node, graph) =>

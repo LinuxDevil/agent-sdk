@@ -43,11 +43,14 @@ function propertiesOf(schema: Record<string, unknown>): Record<string, unknown> 
   return isRecord(schema.properties) ? schema.properties : {};
 }
 
-/** The string entries of `schema.required` (non-strings cannot name a property). */
-function requiredOf(schema: Record<string, unknown>): string[] {
-  return Array.isArray(schema.required)
-    ? schema.required.filter((name): name is string => typeof name === 'string')
-    : [];
+/**
+ * `schema.required` verbatim. Entries are `unknown`: the table only ever
+ * adds/removes/renames string names, but non-string or dangling entries
+ * already in the schema are preserved so `validate` can surface them
+ * instead of the table silently repairing the schema.
+ */
+function requiredOf(schema: Record<string, unknown>): unknown[] {
+  return Array.isArray(schema.required) ? schema.required : [];
 }
 
 /** The row's type when the property is a single-type schema the table can edit. */
@@ -73,18 +76,19 @@ function descriptionOf(prop: unknown): string {
 /**
  * The next `jsonSchema`: `properties`/`required` replaced, every other key
  * (`additionalProperties`, `description`, …) carried over. `required` is
- * re-emitted only while non-empty and only naming declared properties, so
- * the table never leaves a dangling required entry behind.
+ * emitted as the handlers left it — the table's own edits already keep it
+ * in sync with `properties`, and pre-existing entries the table cannot
+ * interpret (non-strings, names with no property) pass through untouched
+ * so graph validation reports them rather than hiding them.
  */
 function emit(
   schema: Record<string, unknown>,
   properties: Record<string, unknown>,
-  required: string[]
+  required: unknown[]
 ): Record<string, unknown> {
   const next: Record<string, unknown> = { ...schema, properties };
-  const kept = required.filter((name) => name in properties);
-  if (kept.length === 0) delete next.required;
-  else next.required = kept;
+  if (required.length === 0) delete next.required;
+  else next.required = required;
   return next;
 }
 
@@ -207,7 +211,7 @@ export function OutputFieldTable({ jsonSchema, onChange }: OutputFieldTableProps
   const required = requiredOf(jsonSchema);
   const names = Object.keys(properties);
 
-  const commit = (nextProperties: Record<string, unknown>, nextRequired: string[]) => {
+  const commit = (nextProperties: Record<string, unknown>, nextRequired: unknown[]) => {
     onChange(emit(jsonSchema, nextProperties, nextRequired));
   };
 
