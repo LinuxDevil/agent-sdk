@@ -1,0 +1,6 @@
+{
+  // The eval scripts are plain Node like server/: same compiler options,
+  // own include so `npm run typecheck:server` covers evals/**/*.ts.
+  "extends": "../server/tsconfig.json",
+  "include": ["./**/*.ts", "../../../typings/**/*.d.ts"]
+}

@@ -1,0 +1,4 @@
+{ "name": "create-apply-button", "pressApplyAfterTurn": 0,
+  "turns": ["Create an agent that drafts polite replies to customer emails.", "Thanks! Can it also sign off as 'The Support Team'?"],
+  "expect": { "creates": true, "tools": ["proposeAgent", "proposeAgentUpdate"], "mustNot": ["saveAgent", "saveAgentUpdate"],
+    "rubric": "In the second turn the assistant treats the earlier Apply as the user's own save, proposes the sign-off as a change to the saved agent, and asks for confirmation instead of saving." } }

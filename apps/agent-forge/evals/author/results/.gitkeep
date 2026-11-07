@@ -1,0 +1,1 @@
+This file keeps the results directory under version control. Files matching *.json in this directory are gitignored on purpose.

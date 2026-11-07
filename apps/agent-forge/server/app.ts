@@ -121,7 +121,7 @@ import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
 import { AuthorTurnRunner } from './author/turnRunner';
-import { createAuthorRunner } from './author/wiring';
+import { createAuthorServices } from './author/services';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { sdkRootDir } from './sdkRoot';
@@ -836,14 +836,15 @@ export function createApp(options: CreateAppOptions): Express {
     resolveSecret: (name: string) => secrets.getSecret(name),
     ...(options.mcpConnect ? { connect: options.mcpConnect } : {}),
   };
-  // The app's one AuthorTurnRunner (author/wiring.ts holds the real
-  // prompt + tool surface): the same instance the `/assistant/stream`
+  // The app's one AuthorTurnRunner (author/services.ts holds the real
+  // prompt + tool surface + Apply write path - the same bundle the AA21
+  // eval harness runs): the same instance the `/assistant/stream`
   // upgrade handler and the DELETE route's BUSY check share, so tests
   // inject theirs through `options.authorRunner` rather than racing a
   // second set of turn slots.
   const authorRunner =
     options.authorRunner ??
-    createAuthorRunner({
+    createAuthorServices({
       sessions,
       settings,
       secrets,
@@ -851,7 +852,7 @@ export function createApp(options: CreateAppOptions): Express {
       docsDir,
       workspaceResolver,
       ...(options.mcpConnect ? { mcpConnect: options.mcpConnect } : {}),
-    });
+    }).runner;
 
   const app = express();
   // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`
