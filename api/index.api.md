@@ -6161,6 +6161,7 @@ export const SdkAttr: {
     readonly SUBAGENT_NAME: "lousho.subagent.name";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
     readonly TASK_ID: "lousho.task.id";
+    readonly NODE_ID: "lousho.node.id";
 };
 
 // @public
