@@ -133,6 +133,33 @@ class RuntimeClient implements AgentApi {
     return `${proto}//${window.location.host}`;
   }
 
+  private subscribeJson<T>(
+    path: string,
+    onFrame: (frame: T) => void,
+    connection?: StreamConnectionHandlers,
+    onError?: (event: Event) => void
+  ): () => void {
+    const query = this.token ? `?${new URLSearchParams({ token: this.token })}` : '';
+    const ws = new WebSocket(`${this.wsBaseUrl()}${path}${query}`);
+    let closedByCaller = false;
+    ws.addEventListener('message', (event) => {
+      try {
+        onFrame(JSON.parse(event.data as string) as T);
+      } catch {
+        return;
+      }
+    });
+    if (onError) ws.addEventListener('error', onError);
+    if (connection?.onOpen) ws.addEventListener('open', connection.onOpen);
+    ws.addEventListener('close', () => {
+      if (!closedByCaller) connection?.onLost?.();
+    });
+    return () => {
+      closedByCaller = true;
+      ws.close();
+    };
+  }
+
   private async request<T = AgentRunStatusPayload>(path: string, init?: RequestInit): Promise<T> {
     const res = await this.fetch(path, {
       ...init,
@@ -623,27 +650,7 @@ class RuntimeClient implements AgentApi {
     onError?: (event: Event) => void,
     connection?: StreamConnectionHandlers
   ): () => void {
-    const query = this.token ? `?${new URLSearchParams({ token: this.token })}` : '';
-    const ws = new WebSocket(`${this.wsBaseUrl()}/agents/${encodeURIComponent(agentId)}/stream${query}`);
-    let closedByCaller = false;
-    ws.addEventListener('message', (event) => {
-      try {
-        onMessage(JSON.parse(event.data as string) as StreamMessage);
-      } catch {
-        // Ignore malformed frames rather than crashing the UI over one bad message.
-      }
-    });
-    if (onError) ws.addEventListener('error', onError);
-    // Tell the caller when the stream opens, and when it drops
-    // for any reason other than the caller's own unsubscribe.
-    if (connection?.onOpen) ws.addEventListener('open', connection.onOpen);
-    ws.addEventListener('close', () => {
-      if (!closedByCaller) connection?.onLost?.();
-    });
-    return () => {
-      closedByCaller = true;
-      ws.close();
-    };
+    return this.subscribeJson(`/agents/${encodeURIComponent(agentId)}/stream`, onMessage, connection, onError);
   }
 
   // -------------------------------------------------------------------
@@ -698,7 +705,6 @@ class RuntimeClient implements AgentApi {
    * `RuntimeApiError` whose `code` carries the refusal (`NOT_PENDING`,
    * `BUSY`, `INVALID_INPUT`, `NOT_FOUND`).
    */
-  // fallow-ignore-next-line unused-class-member -- the SecretCard calls it once AA17 lands
   async submitAuthorSecret(sessionId: string, body: AuthorSecretRequest): Promise<void> {
     await this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/secret`, {
       method: 'POST',
@@ -713,7 +719,6 @@ class RuntimeClient implements AgentApi {
    * `RuntimeApiError` on `WRONG_AGENT` (the chat did not create it),
    * `AGENT_NOT_FOUND`, or a session 404.
    */
-  // fallow-ignore-next-line unused-class-member -- the SuccessCard calls it once AA17 lands
   async enableAuthorAgent(sessionId: string, agentId: string): Promise<SetEnabledOutput> {
     return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/enable`, {
       method: 'POST',
@@ -758,24 +763,7 @@ class RuntimeClient implements AgentApi {
     onEvent: (event: StudioEvent) => void,
     connection?: StreamConnectionHandlers
   ): () => void {
-    const query = this.token ? `?${new URLSearchParams({ token: this.token })}` : '';
-    const ws = new WebSocket(`${this.wsBaseUrl()}/events${query}`);
-    let closedByCaller = false;
-    ws.addEventListener('message', (event) => {
-      try {
-        onEvent(JSON.parse(event.data as string) as StudioEvent);
-      } catch {
-        // Ignore malformed frames rather than crashing the UI over one bad message.
-      }
-    });
-    if (connection?.onOpen) ws.addEventListener('open', connection.onOpen);
-    ws.addEventListener('close', () => {
-      if (!closedByCaller) connection?.onLost?.();
-    });
-    return () => {
-      closedByCaller = true;
-      ws.close();
-    };
+    return this.subscribeJson('/events', onEvent, connection);
   }
 }
 

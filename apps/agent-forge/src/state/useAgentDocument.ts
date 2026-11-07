@@ -32,11 +32,24 @@ function deriveSpec(graph: Graph, fallback: GraphToSpecResult): GraphToSpecResul
   }
 }
 
-interface AutosaveDeps {
+type DocumentJson = { spec: string; layout: string };
+
+function jsonOf(derived: GraphToSpecResult): DocumentJson {
+  return { spec: JSON.stringify(derived.spec), layout: JSON.stringify(derived.layout) };
+}
+
+function sameJson(a: DocumentJson, b: DocumentJson): boolean {
+  return a.spec === b.spec && a.layout === b.layout;
+}
+
+interface AutosaveDeps extends SaveDeps {
+  dirty: boolean;
+}
+
+interface SaveDeps {
   store: AgentStore;
   agentId: string;
   derived: GraphToSpecResult;
-  dirty: boolean;
   setDirty: (dirty: boolean) => void;
   refreshAgents: () => Promise<void>;
   /** Canonical JSON of the spec and layout last confirmed written (shared with the explicit `save()`). */
@@ -50,7 +63,7 @@ function pendingSaves(store: AgentStore, agentId: string, derived: GraphToSpecRe
   json: { spec: string; layout: string };
   writes: Promise<void>[];
 } {
-  const json = { spec: JSON.stringify(derived.spec), layout: JSON.stringify(derived.layout) };
+  const json = jsonOf(derived);
   const writes: Promise<void>[] = [];
   if (json.spec !== lastSaved.spec) writes.push(store.save(agentId, derived.spec));
   if (json.layout !== lastSaved.layout) writes.push(store.saveLayout(agentId, derived.layout));
@@ -83,7 +96,7 @@ function useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, 
           // in flight: a stale write clearing dirty would cancel the newer
           // edit's pending autosave (this effect re-runs on `dirty`) and
           // silently lose it.
-          if (latestJson.current.spec === json.spec && latestJson.current.layout === json.layout) {
+          if (sameJson(latestJson.current, json)) {
             setDirty(false);
           }
           void refreshAgents();
@@ -97,6 +110,19 @@ function useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, 
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     };
   }, [derived, dirty, store, agentId, refreshAgents, lastSavedJson, latestJson]);
+}
+
+function useExplicitSave({ store, agentId, derived, setDirty, refreshAgents, lastSavedJson, latestJson }: SaveDeps) {
+  return useCallback(async () => {
+    const json = jsonOf(derived);
+    await store.save(agentId, derived.spec);
+    await store.saveLayout(agentId, derived.layout);
+    lastSavedJson.current = json;
+    if (sameJson(latestJson.current, json)) {
+      setDirty(false);
+    }
+    await refreshAgents();
+  }, [store, agentId, derived, setDirty, refreshAgents, lastSavedJson, latestJson]);
 }
 
 /** The setters of the open document that loading, switching, renaming and deleting agents write. */
@@ -128,7 +154,7 @@ function showAgent(
   doc.setAgentId(id);
   doc.setGraphState(nextGraph);
   doc.lastDerived.current = derived;
-  doc.lastSavedJson.current = { spec: JSON.stringify(derived.spec), layout: JSON.stringify(derived.layout) };
+  doc.lastSavedJson.current = jsonOf(derived);
   if (!keepSelection) doc.setSelectedNodeId(undefined);
   if (clean) doc.setDirty(false);
 }
@@ -356,6 +382,36 @@ function useAgentActions(
   return { switchAgent, createAgent, renameAgent, deleteAgent };
 }
 
+function useDocumentState() {
+  const [agentId, setAgentId] = useState('untitled-agent');
+  const [graph, setGraphState] = useState<Graph>(() => specToGraph(DEFAULT_SPEC));
+  const [dirty, setDirty] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(undefined);
+  const lastDerived = useRef<GraphToSpecResult>(graphToSpec(specToGraph(DEFAULT_SPEC), DEFAULT_SPEC));
+  // Canonical JSON of what the server is known to hold: autosave only writes what differs.
+  const lastSavedJson = useRef(jsonOf(lastDerived.current));
+  // Canonical JSON of the document as currently derived; compared against an
+  // in-flight save's JSON so a stale write never clears a newer edit's dirty.
+  const latestJson = useRef(lastSavedJson.current);
+  const doc: DocumentSetters = { setAgentId, setGraphState, lastDerived, lastSavedJson, setSelectedNodeId, setDirty };
+  return { agentId, graph, dirty, selectedNodeId, latestJson, doc };
+}
+
+function useDerivedDocument(
+  graph: Graph,
+  lastDerived: MutableRefObject<GraphToSpecResult>,
+  latestJson: MutableRefObject<DocumentJson>
+): { derived: GraphToSpecResult; edges: GraphEdge[] } {
+  const derived = useMemo(() => {
+    const next = deriveSpec(graph, lastDerived.current);
+    lastDerived.current = next;
+    latestJson.current = jsonOf(next);
+    return next;
+  }, [graph, lastDerived, latestJson]);
+  const edges = useMemo(() => deriveEdges(graph), [graph]);
+  return { derived, edges };
+}
+
 /**
  * The editable document for the currently-loaded agent: its id, canvas
  * `Graph` (graph v2), the spec/layout/nodeIdMap `graphToSpec` derives from
@@ -364,45 +420,21 @@ function useAgentActions(
  * `initialId` when that agent is saved (the `#/agents/:id` of a reload).
  */
 export function useAgentDocument(store: AgentStore, initialId?: string) {
-  const [agentId, setAgentId] = useState('untitled-agent');
-  const [graph, setGraphState] = useState<Graph>(() => specToGraph(DEFAULT_SPEC));
-  const [dirty, setDirty] = useState(false);
-  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(undefined);
-  const lastDerived = useRef<GraphToSpecResult>(graphToSpec(specToGraph(DEFAULT_SPEC), DEFAULT_SPEC));
-  // Canonical JSON of what the server is known to hold: autosave only writes what differs.
-  const lastSavedJson = useRef({ spec: JSON.stringify(lastDerived.current.spec), layout: JSON.stringify(lastDerived.current.layout) });
-  // Canonical JSON of the document as currently derived; compared against an
-  // in-flight save's JSON so a stale write never clears a newer edit's dirty.
-  const latestJson = useRef(lastSavedJson.current);
-  const doc: DocumentSetters = { setAgentId, setGraphState, lastDerived, lastSavedJson, setSelectedNodeId, setDirty };
+  const { agentId, graph, dirty, selectedNodeId, latestJson, doc } = useDocumentState();
+  const { setDirty, lastSavedJson, setSelectedNodeId } = doc;
   const { agents, setAgents, refreshAgents, agentsLoaded } = useAgentList(store, initialId ?? agentId, doc);
   // `WS /events`: another tab's write refreshes this tab's agents list.
   useStudioEvents(useAgentChangedRefresh(refreshAgents));
 
-  const derived = useMemo(() => {
-    const next = deriveSpec(graph, lastDerived.current);
-    lastDerived.current = next;
-    latestJson.current = { spec: JSON.stringify(next.spec), layout: JSON.stringify(next.layout) };
-    return next;
-  }, [graph]);
+  const { derived, edges } = useDerivedDocument(graph, doc.lastDerived, latestJson);
   const spec = derived.spec;
-  const edges: GraphEdge[] = useMemo(() => deriveEdges(graph), [graph]);
 
-  const save = useCallback(async () => {
-    const json = { spec: JSON.stringify(derived.spec), layout: JSON.stringify(derived.layout) };
-    await store.save(agentId, derived.spec);
-    await store.saveLayout(agentId, derived.layout);
-    lastSavedJson.current = json;
-    // Same in-flight guard as autosave: keep dirty when a newer edit arrived during Save.
-    if (latestJson.current.spec === json.spec && latestJson.current.layout === json.layout) {
-      setDirty(false);
-    }
-    await refreshAgents();
-  }, [store, agentId, derived, refreshAgents]);
+  const saveDeps: SaveDeps = { store, agentId, derived, setDirty, refreshAgents, lastSavedJson, latestJson };
+  const save = useExplicitSave(saveDeps);
 
   const { setGraph, setSpec } = useGraphEditors(doc);
 
-  useAutosave({ store, agentId, derived, dirty, setDirty, refreshAgents, lastSavedJson, latestJson });
+  useAutosave({ ...saveDeps, dirty });
 
   const { switchAgent, createAgent, renameAgent, deleteAgent } = useAgentActions(
     { store, agents, agentId, refreshAgents, doc },

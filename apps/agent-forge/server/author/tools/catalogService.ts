@@ -6,11 +6,9 @@
  * (shared with the route's reader so the two never parse it
  * differently).
  */
-import * as path from 'node:path';
-import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from 'lousho';
-import { sdkRootDir } from '../../sdkRoot';
+import { listModels } from 'lousho';
 import type { SecretsStore } from '../../secretsStore';
-import { readRegistryIndex, withStoredKeyAvailability } from '../../routes/catalogRoutes';
+import { loadStaticCatalog, withStoredKeyAvailability } from '../../routes/catalogRoutes';
 import type { CatalogService } from './index';
 
 /**
@@ -25,11 +23,7 @@ export function createAuthorCatalogService(deps: {
   secretsStore: SecretsStore;
   registryIndexPath?: string;
 }): CatalogService {
-  const indexPath = deps.registryIndexPath ?? path.join(sdkRootDir(), 'registry', 'dist', 'index.json');
-  const registryItems = readRegistryIndex(indexPath);
-  const tools = listBuiltinTools();
-  const guardrails = listGuardrails();
-  const triggerTypes = listTriggerTypes();
+  const { registryItems, tools, guardrails, triggerTypes } = loadStaticCatalog(deps.registryIndexPath);
   return {
     listModels: (provider) =>
       withStoredKeyAvailability(listModels(provider === undefined ? {} : { provider }), deps.secretsStore),

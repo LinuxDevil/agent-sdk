@@ -398,7 +398,12 @@ kbd {
     background-color var(--dur) var(--ease),
     border-color var(--dur) var(--ease);
 }
-.switch.on {
+input.switch {
+  appearance: none;
+  margin: 0;
+}
+.switch.on,
+.switch:checked {
   background: var(--accent-solid);
   border-color: var(--accent-solid);
 }
@@ -414,7 +419,8 @@ kbd {
   left: 1px;
   transition: transform var(--dur) var(--ease);
 }
-.switch.on::after {
+.switch.on::after,
+.switch:checked::after {
   transform: translateX(14px);
 }
 .switch:focus-visible {

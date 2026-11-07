@@ -4,9 +4,10 @@
  * optional `check`), and only a valid document reaches `onChange`.
  * Invalid text stays in the draft with the error shown below it.
  */
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import type { ChangeEvent } from 'react';
 import { Field } from '../../ui/Field';
 import { Textarea } from '../../ui/controls';
+import { useSyncedDraft } from './useSyncedDraft';
 import './fields.css';
 
 /** Props for {@link JsonField}. */
@@ -35,25 +36,12 @@ function textOf(value: unknown): string {
  * settings" maps use across the node inspectors.
  */
 export function JsonField({ id, label, value, onChange, help, rows = 6, check }: JsonFieldProps): JSX.Element {
-  const [draft, setDraft] = useState(() => textOf(value));
-  const [error, setError] = useState<string | undefined>();
-  // The last value this field emitted, so an external change can be told
-  // apart from the echo of our own onChange (which must not reformat the
-  // draft the user just wrote).
-  const emitted = useRef<unknown>(value);
-  useEffect(() => {
-    if (Object.is(value, emitted.current)) return;
-    emitted.current = value;
-    setDraft(textOf(value));
-    setError(undefined);
-  }, [value]);
+  const { draft, setDraft, error, setError, emit } = useSyncedDraft<unknown>(value, textOf, onChange);
 
   const onBlur = () => {
     const text = draft.trim();
     if (text === '') {
-      setError(undefined);
-      emitted.current = undefined;
-      onChange(undefined);
+      emit(undefined);
       return;
     }
     let parsed: unknown;
@@ -68,9 +56,7 @@ export function JsonField({ id, label, value, onChange, help, rows = 6, check }:
       setError(problem);
       return;
     }
-    setError(undefined);
-    emitted.current = parsed;
-    onChange(parsed);
+    emit(parsed);
   };
 
   return (

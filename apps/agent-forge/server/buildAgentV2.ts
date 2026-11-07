@@ -46,7 +46,7 @@ import {
   type TraceExporter,
 } from 'lousho';
 import type { AgentFlow } from 'lousho/flows';
-import { LOCAL_TOOLS, resolveProviderForModel } from './buildAgent';
+import { asAgentFlow, LOCAL_TOOLS, resolveProviderForModel } from './buildAgent';
 import type { FileApprovalStore } from './approvalStore';
 import { isSecretProvider, PROVIDER_KEY_ENV, type SecretsStore } from './secretsStore';
 
@@ -100,13 +100,7 @@ export function scopedApprovalStore(store: FileApprovalStore, agentId: string): 
 
 /** `spec.flow`, lenient like buildAgent.ts's `extractFlowFromSpec` (the v2 `flow` key is a pending section typed `never`, so it is read as data). */
 function flowOf(spec: AgentSpecV2): AgentFlow | undefined {
-  const raw = (spec as { flow?: unknown }).flow;
-  if (!raw || typeof raw !== 'object') return undefined;
-  const candidate = raw as Partial<AgentFlow>;
-  if (typeof candidate.code !== 'string' || typeof candidate.name !== 'string' || !candidate.flow) {
-    return undefined;
-  }
-  return candidate as AgentFlow;
+  return asAgentFlow((spec as { flow?: unknown }).flow);
 }
 
 /** A `tools` entry's name when it is a `{ builtin }`/`{ registry }` ref naming a Studio-local tool (LOCAL_TOOLS key), else undefined. */
