@@ -41,8 +41,14 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       - run: npm run build
       - run: npm run api:update
+      # llms.txt / llms-full.txt ship in the package; regenerate so they match this build.
+      - run: npm run docs:llms
       - run: npm run build -w create-lousho
       - name: Push version bump
+        # The husky pre-commit hook re-runs the full static suite (and fails on
+        # drift merged by others); the release commit only carries generated files.
+        env:
+          HUSKY: '0'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
