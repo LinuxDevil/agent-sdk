@@ -71,6 +71,7 @@ describe('canConnect kind table', () => {
 
   it.each([
     ['note', 'agent'],
+    ['agent', 'note'],
     ['tool', 'agent'],
     ['output', 'agent'],
     ['subagent', 'tool'],

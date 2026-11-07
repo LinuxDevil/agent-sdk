@@ -3,6 +3,7 @@ import type { NodeProps } from '@xyflow/react';
 import type { NodeKind } from '../graph/v2/types';
 import { AgentGroupNode } from './AgentGroupNode';
 import { NodeCard, type CanvasNodeData } from './NodeCard';
+import { NoteNode } from './NoteNode';
 
 /**
  * The one ReactFlow node renderer for every `NodeKind`: a card built by
@@ -55,6 +56,8 @@ const NODE_KIND_LIST: NodeKind[] = [
 
 export const NODE_TYPES: Record<string, typeof AgentNode> = {
   ...Object.fromEntries(NODE_KIND_LIST.map((kind) => [flowNodeType(kind), AgentNode])),
+  // Notes render as sticky-note cards, not the shared NodeCard chrome.
+  [flowNodeType('note')]: NoteNode,
   [GROUP_NODE_TYPE]: AgentGroupNode,
 };
 

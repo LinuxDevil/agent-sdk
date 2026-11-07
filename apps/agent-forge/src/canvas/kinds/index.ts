@@ -4,8 +4,10 @@ import type { NewNode } from '../../graph/v2/mutations';
 import type { Graph, NodeKind, NodeOfKind, Problem } from '../../graph/v2/types';
 import { AGENT_VIEW } from './agent';
 import { HANDOFF_VIEW } from './handoff';
+import { HOOK_VIEW } from './hook';
 import { MCP_VIEW } from './mcp';
 import { MEMORY_VIEW } from './memory';
+import { NOTE_VIEW } from './note';
 import { PERMISSION_VIEW } from './permission';
 import { SKILL_VIEW } from './skill';
 import { SUBAGENT_VIEW } from './subagent';
@@ -105,6 +107,8 @@ export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
   skill: SKILL_VIEW,
   memory: MEMORY_VIEW,
   permission: PERMISSION_VIEW,
+  hook: HOOK_VIEW,
+  note: NOTE_VIEW,
 };
 
 /** The fallback `KindView`: bare kind tile, id-suffix title, no rows, both ports, the JSON `GenericFields`. */
