@@ -13,6 +13,7 @@ import type { RateLimitOptions } from '../../providers/rateLimit';
 import type { ReasoningOption } from '../../providers/reasoning';
 import type { BackoffOptions } from '../../providers/resilience';
 import type { SubagentOptions } from '../../subagents/backgroundTasks';
+import type { AgentFlow } from '../../types/flow';
 import type { GuardrailSpec } from './guardrails';
 import type { HandoffSpec } from './handoffs';
 import type { HookSpec } from './hooks';
@@ -103,8 +104,8 @@ export interface AgentSpecV2 {
   triggers?: TriggerSpec[]; // S22a
   /** Listeners that abort queued or running runs (R03); not supported yet. */
   abortListeners?: never; // R03
-  /** A flow the run follows instead of a plain agent loop (S21); not supported yet. */
-  flow?: never; // S21
+  /** A flow the run follows instead of a plain agent loop (S21): executable step shapes only, each with an explicit id. */
+  flow?: AgentFlow; // S21
   /** Eval gates the publish gate runs (X01); not supported yet. */
   evals?: never; // X01
 }
@@ -126,6 +127,7 @@ export type SubagentSpec =
       inline: InlineAgentSpec;
     }
   | {
+      /** An agent deployed elsewhere, reached over HTTP. */
       remote: {
         /** Base URL of the deployed agent; the task goes to `<url>/chat`. */
         url: string;

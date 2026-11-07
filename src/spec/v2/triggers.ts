@@ -31,11 +31,64 @@ export type ChannelKind = (typeof CHANNEL_KINDS)[number];
  * needs; `agent` the agent id whose run ending (`on`) starts this one.
  */
 export type TriggerSpec =
-  | { id: string; type: 'chat' }
-  | { id: string; type: 'cron'; cron: string; timezone?: string; prompt: string; sharedSession?: boolean }
-  | { id: string; type: 'webhook'; path: string; secret?: SecretRef; promptTemplate: string; filter?: string }
-  | { id: string; type: 'channel'; channel: ChannelKind; secrets: Record<string, SecretRef>; filter?: string }
-  | { id: string; type: 'agent'; after: string; on: 'done' | 'error' | 'any'; promptTemplate: string };
+  | {
+      /** Stable id (`trigger:<id>` on the canvas). */
+      id: string;
+      /** A chat surface the host attaches. */
+      type: 'chat';
+    }
+  | {
+      /** Stable id (`trigger:<id>` on the canvas). */
+      id: string;
+      /** A cron schedule. */
+      type: 'cron';
+      /** Cron expression (five fields) the run follows. */
+      cron: string;
+      /** IANA timezone the schedule evaluates in. */
+      timezone?: string;
+      /** The input each scheduled run gets. */
+      prompt: string;
+      /** Share one session across scheduled runs instead of a fresh one each time. */
+      sharedSession?: boolean;
+    }
+  | {
+      /** Stable id (`trigger:<id>` on the canvas). */
+      id: string;
+      /** An inbound webhook route. */
+      type: 'webhook';
+      /** The route path, e.g. '/github'. */
+      path: string;
+      /** HMAC secret as a SecretRef; required by the route's signature check. */
+      secret?: SecretRef;
+      /** The prompt each call runs with (payload fields as placeholders). */
+      promptTemplate: string;
+      /** safeExpression the payload must pass for a run to start. */
+      filter?: string;
+    }
+  | {
+      /** Stable id (`trigger:<id>` on the canvas). */
+      id: string;
+      /** A platform channel (telegram, slack, ...). */
+      type: 'channel';
+      /** Which channel kind. */
+      channel: ChannelKind;
+      /** The credentials the channel's factory needs, as SecretRefs (CHANNEL_SECRET_KEYS). */
+      secrets: Record<string, SecretRef>;
+      /** safeExpression an inbound event must pass for a run to start. */
+      filter?: string;
+    }
+  | {
+      /** Stable id (`trigger:<id>` on the canvas). */
+      id: string;
+      /** Fires when another agent's run ends. */
+      type: 'agent';
+      /** The agent id whose run ending starts this one. */
+      after: string;
+      /** Which run outcome fires the trigger. */
+      on: 'done' | 'error' | 'any';
+      /** The prompt each chained run gets. */
+      promptTemplate: string;
+    };
 
 /**
  * The `secrets` keys each channel kind must carry — the credential option

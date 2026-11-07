@@ -683,6 +683,7 @@ class RuntimeClient implements AgentApi {
    * `RuntimeApiError` whose `code` carries the refusal (`NOT_PENDING`,
    * `BUSY`, `INVALID_INPUT`, `NOT_FOUND`).
    */
+  // fallow-ignore-next-line unused-class-member -- the SecretCard calls it once AA17 lands
   async submitAuthorSecret(sessionId: string, body: AuthorSecretRequest): Promise<void> {
     await this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/secret`, {
       method: 'POST',
@@ -697,11 +698,11 @@ class RuntimeClient implements AgentApi {
    * `RuntimeApiError` on `WRONG_AGENT` (the chat did not create it),
    * `AGENT_NOT_FOUND`, or a session 404.
    */
+  // fallow-ignore-next-line unused-class-member -- the SuccessCard calls it once AA17 lands
   async enableAuthorAgent(sessionId: string, agentId: string): Promise<SetEnabledOutput> {
     return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/enable`, {
       method: 'POST',
       body: JSON.stringify({ agentId }),
-
     });
   }
 

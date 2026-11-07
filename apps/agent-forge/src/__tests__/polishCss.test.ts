@@ -69,3 +69,24 @@ describe('U01 tokens', () => {
     expect(theme).toMatch(/--nav-bg:\s*light-dark\(#efeff2,\s*#060608\);/);
   });
 });
+
+describe('U02 floating content card', () => {
+  const css = sheet('shell/shell.css');
+  it('frames the shell on --nav-bg', () => {
+    expect(rulesFor(css, '.app-shell')).toMatch(/background:\s*var\(--nav-bg\)/);
+    expect(rulesFor(css, '.nav-rail')).toMatch(/background:\s*var\(--nav-bg\)/);
+  });
+  it('floats the screen as a card when docked', () => {
+    const main = rulesFor(css, '.app-shell-main');
+    expect(main).toMatch(/margin:\s*var\(--space-2\) var\(--space-2\) var\(--space-2\) 0/);
+    expect(main).toMatch(/border-radius:\s*var\(--radius-lg\)/);
+    expect(main).toMatch(/box-shadow:\s*var\(--shadow-sm\)/);
+    expect(main).toMatch(/overflow:\s*hidden/);
+  });
+  it('drops the card below 860px', () => {
+    const narrow = rulesFor(css, '.app-shell-narrow .app-shell-main');
+    expect(narrow).toMatch(/margin:\s*0/);
+    expect(narrow).toMatch(/border-radius:\s*0/);
+    expect(narrow).toMatch(/box-shadow:\s*none/);
+  });
+});

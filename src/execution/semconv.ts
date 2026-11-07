@@ -138,7 +138,30 @@ export const SdkAttr = {
   SUBAGENT_DEPTH: 'lousho.subagent.depth',
   /** On a sub-agent's `invoke_agent` span, the `task` call's taskId. */
   TASK_ID: 'lousho.task.id',
+  /** On a `guardrail <name>` span: the `IoGuardrail.name` of the check that ran. */
+  GUARDRAIL_NAME: 'lousho.guardrail.name',
+  /** On a `guardrail <name>` span: which side it checked (`'input'`, `'output'` or `'tool'`). */
+  GUARDRAIL_KIND: 'lousho.guardrail.kind',
+  /** On a `guardrail <name>` span, set before it ends: `'pass'`, `'block'` or `'rewrite'`. */
+  GUARDRAIL_OUTCOME: 'lousho.guardrail.outcome',
+  /** On a `guardrail <name>` span of a `runInParallel` input check: `true`; absent otherwise. */
+  GUARDRAIL_PARALLEL: 'lousho.guardrail.parallel',
+  /** On spans of an agent built from a spec: the builder node id (`agent`, `tool:web_fetch`, `sub:research`, `flow:s1`, …). */
+  NODE_ID: 'lousho.node.id',
+  /** On a `handoff <to>` marker span: the agent the run handed off from. */
+  HANDOFF_FROM: 'lousho.handoff.from',
+  /** On a `handoff <to>` marker span: the agent the run handed off to. */
+  HANDOFF_TO: 'lousho.handoff.to',
+  /** On an `approval.wait <tool>` marker span: the pending approval's id (the run result's `approvalId`). */
+  APPROVAL_ID: 'lousho.approval.id',
+  /** On an `approval.wait <tool>` marker span: what the pause waits on (`'tool'`, `'question'` or `'sign-in'`). */
+  APPROVAL_KIND: 'lousho.approval.kind',
+  /** On an `approval.wait <tool>` marker span: the pause's ISO deadline, when it has one. */
+  APPROVAL_EXPIRES_AT: 'lousho.approval.expires_at',
 } as const;
+
+/** Span-name prefix for a guardrail check span (`guardrail <IoGuardrail.name>`). */
+export const GUARDRAIL_SPAN_NAME = 'guardrail';
 
 /**
  * The attribute names this SDK emitted before. They are still emitted
@@ -169,6 +192,19 @@ export const FlowAttr = {
 
 /** Span-name prefix for a flow node span (`flow.node sequence`, ...). */
 export const FLOW_NODE_SPAN_NAME = 'flow.node';
+
+/**
+ * Span-name prefix for the zero-length marker span a handoff leaves in the
+ * run's trace (`handoff billing`): the run continues as `<to>` from here.
+ */
+export const HANDOFF_SPAN_NAME = 'handoff';
+
+/**
+ * Span-name prefix for the zero-length marker span a pause for approval
+ * leaves in the run's trace (`approval.wait send_email`): the tool node is
+ * waiting on a decision. One span per pending call of the paused step.
+ */
+export const APPROVAL_WAIT_SPAN_NAME = 'approval.wait';
 
 /** Environment variable that turns content capture on when `captureContent` is not set. */
 export const CAPTURE_CONTENT_ENV = 'OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT';

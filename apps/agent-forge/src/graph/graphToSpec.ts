@@ -1,20 +1,7 @@
 import type { AgentSpec, AgentSpecTrigger } from 'lousho';
-import type { AgentGraphNode, AgentGraphSpec } from './types';
+import { hookNodeKey, type AgentGraphSpec } from './types';
 import { graphToFlow, hasRouterNode } from './graphToFlow';
-
-/**
- * Stable key identifying which node a serialized hook belongs to, used
- * instead of the node's own `id` because `specToGraph()` always
- * regenerates fresh node ids on every load (see graph/types.ts's file
- * header) - an id-keyed hook would never re-attach after a round trip.
- * `llm` is unique per graph; `tool` nodes are keyed by tool name, which is
- * unique within the fixed-pipeline shape this app supports today (see
- * graph/types.ts).
- */
-export function hookNodeKey(node: AgentGraphNode): string {
-  if (node.type === 'tool') return `tool:${node.data.toolName}`;
-  return node.type;
-}
+import { NON_APPROVAL_POLICY_KEYS } from './specToGraph';
 
 /**
  * Serialize every ENABLED hook on every node into `spec.policy`,
@@ -47,7 +34,14 @@ function applyPipelineNodes(spec: AgentSpec, graph: AgentGraphSpec): void {
 
   const approvalNode = graph.nodes.find((n) => n.type === 'approval');
   if (approvalNode && approvalNode.type === 'approval') {
-    spec.policy = { ...approvalNode.data.policy };
+    // Strip non-approval keys defensively: specToGraph no longer puts
+    // hooks/flow inside an approval node's policy, but an older or
+    // hand-built graph might - they belong to node `hooks` and the graph's
+    // `retainedFlow` respectively, so copying them here would resurrect a
+    // stale `policy.flow` (see specToGraph.ts's `NON_APPROVAL_POLICY_KEYS`).
+    const policy = { ...approvalNode.data.policy };
+    for (const key of NON_APPROVAL_POLICY_KEYS) delete policy[key];
+    if (Object.keys(policy).length > 0) spec.policy = policy;
   }
 
   const triggerNodes = graph.nodes.filter((n) => n.type === 'trigger');
@@ -97,8 +91,14 @@ export function graphToSpec(graph: AgentGraphSpec): AgentSpec {
   // so it round-trips over the exact same wire contract (PUT/POST
   // `AgentSpec` JSON) without any server API change. `server/buildAgent.ts`
   // reads it back to decide `AgentExecutor.execute()` vs. `FlowExecutor`.
-  if (hasRouterNode(graph)) {
-    spec.policy = { ...spec.policy, flow: graphToFlow(graph, llmNode.data.name) };
+  // Without a router node, `graph.retainedFlow` - the `policy.flow` a
+  // loaded spec carried, kept verbatim because specToGraph cannot redraw
+  // it - is written back instead, so a saved flow is neither silently kept
+  // after its router is gone (a router would win above) nor silently
+  // dropped on save.
+  const flow = hasRouterNode(graph) ? graphToFlow(graph, llmNode.data.name) : graph.retainedFlow;
+  if (flow !== undefined) {
+    spec.policy = { ...spec.policy, flow };
   }
 
   return spec;
