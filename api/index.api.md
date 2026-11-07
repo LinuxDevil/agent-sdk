@@ -411,7 +411,7 @@ export interface AgentSpecV2 {
     description?: string;
     evals?: never;
     fallbackModels?: string[];
-    flow?: never;
+    flow?: AgentFlow;
     guardrails?: GuardrailSpec[];
     handoffs?: HandoffSpec[];
     hooks?: HookSpec[];
@@ -721,6 +721,7 @@ interface ApprovalStepNode extends NodeRunOptions {
     message: string;
     outputVariable?: string;
     // (undocumented)
+
     type: 'approval';
 }
 
