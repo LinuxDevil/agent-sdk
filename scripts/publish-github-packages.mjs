@@ -30,6 +30,9 @@ for (const t of targets) {
   const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
   pkg.name = t.name;
   pkg.publishConfig = { registry: REGISTRY, access: 'public' };
+  // The tarball is already built. Its lifecycle scripts (prepare: husky,
+  // prepublishOnly) would otherwise run here, where their deps don't exist.
+  delete pkg.scripts;
   // The scaffolder resolves the SDK by its npm name; alias keeps that working.
   if (pkg.dependencies?.[SDK]) pkg.dependencies[SDK] = `npm:${SCOPE}/lousho@^${sdkVersion}`;
   fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
