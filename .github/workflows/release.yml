@@ -69,6 +69,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Mirror to GitHub Packages
+        # Best effort: npm is the source of truth, so a mirror failure must not skip the GitHub release.
+        continue-on-error: true
         run: node scripts/publish-github-packages.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -76,6 +78,6 @@ jobs:
       - name: GitHub release
         run: |
           awk -v h="## [$VERSION]" 'index($0,h)==1{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --prerelease --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
+          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --latest --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
