@@ -105,6 +105,18 @@ export function ownerSpecPrefix(ownerId: string | null, graph: Graph): string {
 }
 
 /**
+ * The spec path of an array-section node: `<owner prefix><key>[<index>]`,
+ * where `index` is the node's position among its live section siblings.
+ * Kind validators share it so every kind's `fieldPath` maps to the same
+ * emitted spec location.
+ */
+export function arrayItemSpecPath(graph: Graph, node: GraphNode, key: SectionKey): string {
+  const siblings = sectionChildren(graph, node.owner ?? '', key);
+  const index = siblings.findIndex((n) => n.id === node.id);
+  return `${ownerSpecPrefix(node.owner, graph)}${key}[${index === -1 ? 0 : index}]`;
+}
+
+/**
  * The live (not `note`, not `proposed: 'remove'`) nodes of section `key`
  * owned by `ownerId`, in node-array order — the same membership rule
  * `orderedNodes` and `graphToSpec` share.
