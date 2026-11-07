@@ -43,17 +43,12 @@ interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
-    // (undocumented)
     description?: string;
     flow?: EditorStep;
-    // (undocumented)
     id?: string;
-    // (undocumented)
     inputs?: FlowInputVariable[];
-    // (undocumented)
     name: string;
 }
 
@@ -104,8 +99,11 @@ interface ApprovalStepNode extends NodeRunOptions {
     id?: string;
     message: string;
     outputVariable?: string;
+<<<<<<< HEAD
+=======
     // (undocumented)
 
+>>>>>>> origin/main
     type: 'approval';
 }
 

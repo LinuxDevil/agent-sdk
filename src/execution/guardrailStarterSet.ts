@@ -7,21 +7,8 @@
 
 import type { LLMProvider, Message } from '../providers';
 import { resolveProvider } from '../providers/resolveProvider';
+import { MODERATION_CATEGORIES, PII_TYPES } from './guardrailLists';
 import type { GuardrailTripInfo, IoGuardrail, IoGuardrailResult, ModerationCategory, PiiType } from './ioGuardrails';
-
-/** Every {@link PiiType}, in the order overlapping matches are kept. */
-export const PII_TYPES = ['iban', 'credit-card', 'us-ssn', 'email', 'ip-address', 'phone'] as const satisfies readonly PiiType[];
-
-/** Every {@link ModerationCategory}. */
-export const MODERATION_CATEGORIES = [
-  'hate',
-  'harassment',
-  'self-harm',
-  'sexual',
-  'sexual-minors',
-  'violence',
-  'illicit',
-] as const satisfies readonly ModerationCategory[];
 
 interface Span<L> {
   label: L;

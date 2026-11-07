@@ -9,13 +9,14 @@
  */
 import { z } from 'zod';
 import type { WhenArgMatcher } from '../../agentDir/validateConfig';
-import { APPROVAL_TTL_RULE, isApprovalTtl } from '../../execution/permissions';
+import { APPROVAL_TTL_RULE, isApprovalTtl } from '../../execution/approvalTtl';
 import { anyError } from '../../utils/zodCompat';
 import { refineUniqueIds, specIdSchema } from './common';
 import { addUnsupportedIssue } from './unsupported';
 
 /** One `spec.permissions` entry (the SDK's serializable rule form plus a stable `id`). */
 export interface PermissionRuleSpec {
+  /** Stable id (`perm:<id>` on the canvas and in validation paths). */
   id: string;
   /** A tool name, '*', a glob ('github_*', 'read_?'), or a list of those. */
   tool: string | string[];
@@ -23,6 +24,7 @@ export interface PermissionRuleSpec {
   when?: Record<string, string | WhenArgMatcher>;
   /** 'auto' (model-decided) is not supported yet (R01). */
   action: 'allow' | 'deny' | 'ask' | 'auto';
+  /** Why the rule decides as it does, shown with a `deny` or kept with an `ask`. */
   reason?: string;
   /** Only with action 'ask'. */
   ttlMs?: number;

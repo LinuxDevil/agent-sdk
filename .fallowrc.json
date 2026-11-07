@@ -5,7 +5,11 @@
     "**/*.test-d.ts",
     "**/*.{test,spec}.{ts,tsx}",
     "**/*.eval.ts",
-    "examples/hostinger-deploy/deploy.mjs"
+    "examples/hostinger-deploy/deploy.mjs",
+    // The lousho/spec barrel: package.json `exports` marks its value
+    // re-exports used, but type-only re-exports emit no JS for exports to
+    // reach, so the file itself must count as an entry (S23).
+    "src/spec/v2/index.ts"
   ],
   "ignorePatterns": [
     ".claude/**"

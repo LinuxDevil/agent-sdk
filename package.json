@@ -93,6 +93,16 @@
         "default": "./dist/types/index.js"
       }
     },
+    "./spec": {
+      "import": {
+        "types": "./dist/spec/index.d.mts",
+        "default": "./dist/spec/index.mjs"
+      },
+      "require": {
+        "types": "./dist/spec/index.d.ts",
+        "default": "./dist/spec/index.js"
+      }
+    },
     "./testing": {
       "import": {
         "types": "./dist/testing/index.d.mts",
@@ -246,6 +256,9 @@
       ],
       "types": [
         "dist/types/index.d.ts"
+      ],
+      "spec": [
+        "dist/spec/index.d.ts"
       ],
       "testing": [
         "dist/testing/index.d.ts"

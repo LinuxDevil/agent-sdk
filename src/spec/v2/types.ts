@@ -127,6 +127,7 @@ export type SubagentSpec =
       inline: InlineAgentSpec;
     }
   | {
+      /** An agent deployed elsewhere, reached over HTTP. */
       remote: {
         /** Base URL of the deployed agent; the task goes to `<url>/chat`. */
         url: string;
