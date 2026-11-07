@@ -77,6 +77,31 @@ describe('improveAgent', () => {
     expect(result.harness).toBeUndefined();
   });
 
+  it("keeps every editor's candidate in the result, even when the gate rejects", async () => {
+    const result = await improveAgent(options({ probe: async () => run(false), turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(result.outcome).toBe('keep-base');
+    expect(result.candidates).toEqual({ invariant: BASE, domain: { instructions: FIX, skills: {} }, compose: { instructions: FIX, skills: {} } });
+  });
+
+  it('keeps candidates when the composer changes nothing', async () => {
+    const result = await improveAgent(options({ turns: [...edit(FIX), ...noEdit, ...noEdit] }));
+    expect(result.outcome).toBe('keep-base');
+    expect(result.candidates?.invariant.instructions).toBe(FIX);
+    expect(result.candidates?.compose).toEqual(BASE);
+  });
+
+  it('keeps candidates on a proposal', async () => {
+    const result = await improveAgent(options({ turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.candidates?.compose).toEqual(result.harness);
+  });
+
+  it('leaves candidates out when no editor ran', async () => {
+    const result = await improveAgent(options({ probe: fixable([]) }));
+    expect(result.outcome).toBe('no-failures');
+    expect(result.candidates).toBeUndefined();
+  });
+
   it('keeps the base when a held-out case gets worse, even if training cases improve', async () => {
     const probe: ImproveOptions['probe'] = async (harness, caseId) => {
       if (caseId === 'held-out') return run(!harness.instructions.includes('forbidden'));

@@ -138,6 +138,15 @@ export interface ImproveResult {
     /** Average spread in tokens between runs of a case. A rise within this isn't rejected. */
     noise: number;
   };
+  /** Each editor's harness from before the gate, so a person or a replay can judge one the gate rejected. */
+  candidates?: {
+    /** The invariant editor's harness, or the base if it changed nothing. */
+    invariant: Harness;
+    /** The domain editor's harness, or the base if it changed nothing. */
+    domain: Harness;
+    /** The composer's harness, or the base if it changed nothing. */
+    compose: Harness;
+  };
   /** What each editor did. */
   stages: ImproveStage[];
   /** Tokens spent in total. */
