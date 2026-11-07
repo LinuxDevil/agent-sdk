@@ -29,11 +29,7 @@ import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import type { SecretsStore } from '../secretsStore';
 import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceResolver } from '../workspace/context';
-import type { SecretsStore } from '../secretsStore';
 import { applyStoredProposal } from './applyProposal';
-import { identityOfProposal, resolveStoredProposal } from './proposal/gate';
-import { agentGoneFailure, unknownProposalFailure } from './proposal/failures';
-import { requestTextFor, writeProposal } from './proposal/save';
 import { computeRequirements, requirementDeps } from './requirements';
 import { setAgentEnabledFor } from './tools/stateTools';
 import type { AuthorSessionStore } from './sessionStore';
@@ -205,12 +201,6 @@ export function registerAuthorRoutes(
      * header.
      */
     workspaceResolver: WorkspaceResolver;
-    /**
-     * The Studio-global secrets store: `POST .../enable` reports the
-     * agent's `missingRequirements` count, which reads stored provider
-     * keys and named secrets through it (AA13's `requirementDeps`).
-     */
-    secrets: SecretsStore;
   }
 ): void {
   /**

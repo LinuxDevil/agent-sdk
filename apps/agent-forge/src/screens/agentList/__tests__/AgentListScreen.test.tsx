@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const appState = vi.hoisted(() => ({
-  agents: [] as { id: string; spec: { name: string } }[],
+  agents: [] as { id: string; name: string }[],
   agentsLoaded: true,
   runStatus: undefined,
 }));
@@ -26,8 +26,8 @@ describe('AgentListScreen', () => {
 
   it('links every agent to its overview tab', () => {
     appState.agents = [
-      { id: 'alpha', spec: { name: 'Alpha' } },
-      { id: 'beta', spec: { name: 'Beta bot' } },
+      { id: 'alpha', name: 'Alpha' },
+      { id: 'beta', name: 'Beta bot' },
     ];
     const host = render(<AgentListScreen />);
     const links = [...host.querySelectorAll<HTMLAnchorElement>('.agent-list-placeholder a')];

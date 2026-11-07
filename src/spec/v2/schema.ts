@@ -97,9 +97,10 @@ export const agentSpecV2Shape = {
  * keep the "not supported yet" marker (LOUSHO_SPEC_UNSUPPORTED); the rest are
  * plain custom issues (LOUSHO_SPEC_INVALID). Paths are already spec-rooted.
  */
-function refineFlow(spec: { flow?: AgentFlow; subagents?: Record<string, unknown> }, ctx: z.RefinementCtx): void {
+function refineFlow(spec: { flow?: AgentFlow; subagents?: unknown }, ctx: z.RefinementCtx): void {
   if (spec.flow === undefined) return;
-  const agentNames = Object.keys(spec.subagents ?? {});
+  const { subagents } = spec;
+  const agentNames = typeof subagents === 'object' && subagents !== null ? Object.keys(subagents) : [];
   for (const problem of flowProblems(spec.flow, { agentNames })) {
     if (problem.unsupported) addUnsupportedIssue(ctx, problem.message, problem.path);
     else ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem.message, path: problem.path });
