@@ -228,7 +228,10 @@ describe('editor prompts', () => {
     const provider = mockModel([...noEdit, ...noEdit, ...noEdit]);
     await improveAgent(options({ editor: { provider } }));
     expect(JSON.stringify(provider.calls[0])).toContain('earliest point of divergence');
+    expect(JSON.stringify(provider.calls[0])).not.toContain('completely different profession');
     expect(JSON.stringify(provider.calls[1])).toContain('completely different profession');
+    expect(JSON.stringify(provider.calls[1])).not.toContain('earliest point of divergence');
+    expect(JSON.stringify(provider.calls[2])).toContain('ended with no answer');
   });
 });
 
