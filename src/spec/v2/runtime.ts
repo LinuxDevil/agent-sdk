@@ -5,7 +5,7 @@
  * straight to `createAgent()`. Browser-safe: no `node:*` imports.
  */
 import { z } from 'zod';
-import { APPROVAL_TTL_RULE, isApprovalTtl } from '../../execution/permissions';
+import { APPROVAL_TTL_RULE, isApprovalTtl } from '../../execution/approvalTtl';
 import { modelSettingProblem } from '../../execution/modelSettings';
 import { anyError } from '../../utils/zodCompat';
 import { runLimitsSchema } from '../runLimitsSchema';

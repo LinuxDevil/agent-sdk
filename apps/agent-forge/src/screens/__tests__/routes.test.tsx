@@ -69,8 +69,10 @@ afterEach(() => {
 
 describe('screenFor', () => {
   it('maps every nav destination and its deep links to a screen', () => {
-    expect(screenFor('#/agents')).toBe('agents');
+    expect(screenFor('#/agents')).toBe('agentList');
     expect(screenFor('#/agents/support-bot')).toBe('agents');
+    expect(screenFor('#/agents/support-bot/canvas')).toBe('agents');
+    expect(screenFor('#/agents/support-bot/overview')).toBe('agentDetail');
     expect(screenFor('#/traces')).toBe('traces');
     expect(screenFor('#/traces/abc?obs=1')).toBe('trace');
     expect(screenFor('#/monitoring?window=24h')).toBe('monitoring');
@@ -120,6 +122,16 @@ describe('useScreen', () => {
     expect(window.location.hash).toBe('#/agents');
     expect(window.location.search).toBe('?token=secret');
     expect(window.history.length).toBe(before);
+    expect(seen.every((s) => s === 'agentList')).toBe(true);
+  });
+
+  it('redirects the legacy #/agents/:id builder URL to its canvas tab, keeping ?token=', () => {
+    window.history.replaceState(null, '', '/?token=secret#/agents/x');
+    const before = window.history.length;
+    const seen = probe();
+    expect(window.location.hash).toBe('#/agents/x/canvas');
+    expect(window.location.search).toBe('?token=secret');
+    expect(window.history.length).toBe(before);
     expect(seen.every((s) => s === 'agents')).toBe(true);
   });
 
@@ -140,15 +152,15 @@ describe('useScreen', () => {
 });
 
 describe('Topbar', () => {
-  it('shows the Build controls on #/agents', () => {
-    window.history.replaceState(null, '', '/?token=secret#/agents');
+  it('shows the Build controls on the builder', () => {
+    window.history.replaceState(null, '', '/?token=secret#/agents/demo/canvas');
     render(<Topbar />);
     expect(buttonNames()).toEqual(expect.arrayContaining(['Run', 'Stop', 'Import', 'Export', 'Save', 'Debug']));
     expect(container.querySelector('.env-select')).not.toBeNull();
   });
 
   it("centres the LLM node's provider · model as the model badge, hidden when the graph has none", () => {
-    window.history.replaceState(null, '', '/?token=secret#/agents');
+    window.history.replaceState(null, '', '/?token=secret#/agents/demo/canvas');
     render(<Topbar />);
     expect(container.querySelector('.env-select')?.textContent).toBe('mock · echoMOCK');
     expect(container.querySelector('.crumbs')?.textContent).toBe('Agentsdemo');
@@ -184,15 +196,15 @@ describe('Topbar', () => {
     expect(container.querySelector('[aria-label="More actions"]')).toBeNull();
   });
 
-  it('drops the Build/Observe switch on #/agents', () => {
-    window.history.replaceState(null, '', '/?token=secret#/agents');
+  it('drops the Build/Observe switch on the builder', () => {
+    window.history.replaceState(null, '', '/?token=secret#/agents/demo/canvas');
     render(<Topbar />);
     expect(container.querySelector('[aria-label="Studio surface"]')).toBeNull();
     expect(buttonNames()).not.toContain('Observe');
   });
 
   it("maps the old 'Observe surface' shortcut to #/traces", () => {
-    window.history.replaceState(null, '', '/?token=secret#/agents');
+    window.history.replaceState(null, '', '/?token=secret#/agents/demo/canvas');
     render(<Topbar narrow />);
     act(() => (container.querySelector('[aria-label="More actions"]') as HTMLButtonElement).click());
     const item = [...container.querySelectorAll('[role="menuitem"]')].find(

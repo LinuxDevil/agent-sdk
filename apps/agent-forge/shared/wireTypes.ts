@@ -203,6 +203,31 @@ export interface ChatSessionRecord extends ChatSessionMeta {
 }
 
 /**
+ * The run states one canvas node can be in, pushed as `node` frames.
+ * `waiting` is the approval-wait pause (the run is paused on a human
+ * decision for that node's tool); the other three mirror a span's
+ * start/end.
+ */
+export type NodeRunState = 'running' | 'done' | 'error' | 'waiting';
+
+/**
+ * One `node` frame: the run state of the builder node `nodeId` (the
+ * §3.3 ids - `agent`, `tool:<name>`, `sub:<n>/...`, `guard:<id>`,
+ * `handoff:<to>`), derived server-side from a span carrying the
+ * `lousho.node.id` attribute (see server/nodeStates.ts). Frames carry
+ * node ids and state only - never attribute values, args or secrets -
+ * and each one follows the `span` frame it was derived from.
+ */
+export interface NodeStatePayload {
+  nodeId: string;
+  state: NodeRunState;
+  /** The span this state was derived from - correlates with `span` frames of the same id. */
+  spanId: string;
+  /** ISO time the server derived the state (the notification's arrival, not the span's own timestamps). */
+  at: string;
+}
+
+/**
  * A single WS message pushed to `WS /agents/:id/stream` subscribers.
  * `type: 'status'` carries the full AgentRunStatusPayload (sent on every
  * status transition, and once immediately on connect). `type: 'event'`
@@ -212,7 +237,8 @@ export interface ChatSessionRecord extends ChatSessionMeta {
  * the Trace tab's spans and the step-debugger state, all derived from the
  * same run rather than a second parallel event system. `type: 'chat'`
  * is the live chat transcript, sent on every reconciled update and
- * once immediately on connect (mirroring 'status').
+ * once immediately on connect (mirroring 'status'). `type: 'node'` is the
+ * per-node run state the canvas highlights from.
  */
 export type StreamMessage =
   | { type: 'status'; payload: AgentRunStatusPayload }
@@ -220,7 +246,8 @@ export type StreamMessage =
   | { type: 'log'; payload: LogEntry }
   | { type: 'span'; payload: SpanEvent }
   | { type: 'debug'; payload: DebugStatePayload }
-  | { type: 'chat'; payload: ChatStatePayload };
+  | { type: 'chat'; payload: ChatStatePayload }
+  | { type: 'node'; payload: NodeStatePayload };
 
 /**
  * One `WS /events` push - Studio-wide lifecycle notifications every open
@@ -747,6 +774,80 @@ export interface SettleDraftRequest {
   /** Reviewer note recorded on the settled draft. */
   note?: string;
 }
+
+/**
+ * The prompt-suggestion lifecycle: `open` while it waits in
+ * `.lousho/agents/<id>/suggestions/`, `applied` once its edit landed on
+ * the instructions, `dismissed` when the user rejected it, `conflict`
+ * when the instructions moved past its `expectedPromptHash`.
+ */
+export type SuggestionStatus = 'open' | 'applied' | 'dismissed' | 'conflict';
+
+/**
+ * One `.lousho/agents/<id>/suggestions/<id>.json` record the prompt
+ * optimizer pass writes: an anchored `oldText` → `newText` edit of the
+ * instructions. `oldText` occurs exactly once in the instructions and the
+ * edit is at most 15 changed lines. `expectedPromptHash` is the CAS key -
+ * apply only rewrites when the current instructions still hash to it and
+ * the rewrite hashes to `proposedPromptHash`.
+ */
+export interface PromptSuggestion {
+  kind: 'prompt_edit';
+  id: string;
+  agentId: string;
+  /** Trace the optimizer pass read to find this friction. */
+  sourceTraceId: string;
+  /** `promptHash(instructions)` when the suggestion was generated. */
+  expectedPromptHash: string;
+  /** `promptHash(instructions after the edit)` - verified on apply. */
+  proposedPromptHash: string;
+  oldText: string;
+  newText: string;
+  confidence: 'high' | 'low';
+  optimizationClass: string;
+  evidence: string;
+  expectedSaving: string;
+  risk: string;
+  validationPlan: string[];
+  status: SuggestionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One flagged sender-specific reference the portability check pass
+ * reported: the exact `quote`, where it sits in the spec, what it is,
+ * and the placeholder/edit the recipient should make.
+ */
+export interface PortabilityFinding {
+  location: 'instructions' | 'triggers' | 'tools' | 'mcpServers' | 'other';
+  kind: 'repository' | 'email_address' | 'slack_channel' | 'path' | 'url' | 'secret' | 'person' | 'other';
+  quote: string;
+  explanation: string;
+  suggestion: string;
+}
+
+/**
+ * One `.lousho/agents/<id>/suggestions/<id>.json` record the portability
+ * check pass writes on export/copy/import: the findings plus
+ * `adaptedInstructions` (the instructions rewritten with `[YOUR …]`
+ * placeholders, `null` when nothing needed adapting). Cached by
+ * `specHash` - re-run only when the spec changed.
+ */
+export interface PortabilityAnalysis {
+  kind: 'portability';
+  id: string;
+  agentId: string;
+  /** `specHash()` of the spec this analysis ran on - the cache key. */
+  specHash: string;
+  summary: string;
+  findings: PortabilityFinding[];
+  adaptedInstructions: string | null;
+  createdAt: string;
+}
+
+/** What a `suggestions/<id>.json` file holds - discriminated on `kind`. */
+export type StoredSuggestion = PromptSuggestion | PortabilityAnalysis;
 
 /**
  * `GET /catalog/*` rows - the SDK catalogs, so picker picklists always show

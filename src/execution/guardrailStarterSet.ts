@@ -7,21 +7,8 @@
 
 import type { LLMProvider, Message } from '../providers';
 import { resolveProvider } from '../providers/resolveProvider';
+import { MODERATION_CATEGORIES, PII_TYPES } from './guardrailLists';
 import type { GuardrailTripInfo, IoGuardrail, IoGuardrailResult, ModerationCategory, PiiType } from './ioGuardrails';
-
-/** Every {@link PiiType}, in the order overlapping matches are kept. */
-export const PII_TYPES = ['iban', 'credit-card', 'us-ssn', 'email', 'ip-address', 'phone'] as const satisfies readonly PiiType[];
-
-/** Every {@link ModerationCategory}. */
-export const MODERATION_CATEGORIES = [
-  'hate',
-  'harassment',
-  'self-harm',
-  'sexual',
-  'sexual-minors',
-  'violence',
-  'illicit',
-] as const satisfies readonly ModerationCategory[];
 
 interface Span<L> {
   label: L;
@@ -215,6 +202,11 @@ const INJECTION_SIGNALS: ReadonlyArray<{ signal: string; pattern: RegExp }> = [
   { signal: 'unicode-tags', pattern: /[\u{E0000}-\u{E007F}]/u },
 ];
 
+/** The prompt-injection signals `text` trips, using the same heuristics as {@link promptInjectionGuardrail}. */
+export function promptInjectionSignals(text: string): string[] {
+  return INJECTION_SIGNALS.filter(({ pattern }) => pattern.test(text)).map((entry) => entry.signal);
+}
+
 /** A model a starter-set check asks once per check (resolved on first use). */
 function lazyModel(model: LLMProvider | string): (messages: Message[], signal?: AbortSignal) => Promise<string> {
   let provider: LLMProvider | undefined;
@@ -249,7 +241,7 @@ export function promptInjectionGuardrail(options: { model?: LLMProvider | string
     name,
     ...(runInParallel && { runInParallel }),
     async check({ text, signal }): Promise<IoGuardrailResult> {
-      const signals = INJECTION_SIGNALS.filter(({ pattern }) => pattern.test(text)).map((entry) => entry.signal);
+      const signals = promptInjectionSignals(text);
       if (signals.length > 0) return injection(`prompt injection signals: ${signals.join(', ')}`, 'heuristic', signals);
       if (!ask) return { ok: true };
       const reply = await ask([{ role: 'system', content: INJECTION_PROMPT }, { role: 'user', content: text }], signal);

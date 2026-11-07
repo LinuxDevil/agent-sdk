@@ -7,7 +7,7 @@
  * disabled select; a failed fetch falls back to the input plus a Retry
  * button that calls `refreshCatalog('models')`.
  */
-import { useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent, type ChangeEventHandler } from 'react';
 import { Field } from '../../../ui/Field';
 import { Input, Select, type SelectGroup } from '../../../ui/controls';
 import { refreshCatalog, useCatalog } from '../../useCatalog';
@@ -56,7 +56,7 @@ function FreeText({
 }: {
   value: string | undefined;
   catalogError: string | undefined;
-  onChange: (value: string | undefined) => void;
+  onChange: ChangeEventHandler<HTMLInputElement>;
 }): JSX.Element {
   return (
     <div className="modelpicker-row">

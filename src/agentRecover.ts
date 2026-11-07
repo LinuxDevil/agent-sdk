@@ -12,7 +12,7 @@
  */
 
 import type { PendingRun } from './agentPending';
-import { ConfigurationError } from './execution/errors';
+import { CompactedLLMProviderError, ConfigurationError } from './execution/errors';
 
 /** Options for `agent.recover()`. */
 export interface RecoverOptions<TResult = unknown> {
@@ -35,6 +35,8 @@ export interface RecoverOptions<TResult = unknown> {
   onQuarantined?: (run: PendingRun) => void;
   /** Before quarantining a run, resume one fork of it told why it failed; if the fork finishes, the original is deleted (default false). */
   retryWithDiagnosis?: boolean;
+  /** Called with `true` when provider failures pause the loop, and `false` when a probe shows the provider is back. */
+  onOutage?: (paused: boolean) => void;
 }
 
 /** The loop `agent.recover()` started. */
@@ -58,6 +60,8 @@ const DEFAULT_MAX_ATTEMPTS = 10;
 const MAX_BACKOFF_MS = 15 * 60_000;
 const HEAL_SUFFIX = '.heal';
 const MAX_DIAGNOSIS_CHARS = 500;
+const OUTAGE_AFTER_FAILURES = 3;
+const FIRST_PAUSE_INTERVALS = 4;
 
 export function diagnosisNote(run: PendingRun): string {
   const error = JSON.stringify((run.lastError?.message ?? 'unknown error').slice(0, MAX_DIAGNOSIS_CHARS));
@@ -77,6 +81,41 @@ function backingOff(run: PendingRun, intervalMs: number): boolean {
   if (!run.lastError || !run.attempts) return false;
   const delayMs = Math.min(intervalMs * 2 ** (run.attempts - 1), MAX_BACKOFF_MS);
   return Date.now() < Date.parse(run.lastError.at) + delayMs;
+}
+
+function isProviderOutage(error: unknown): boolean {
+  return error instanceof CompactedLLMProviderError && error.compacted.retryable;
+}
+
+function createOutageBreaker(intervalMs: number, onChange: (paused: boolean) => void) {
+  let failures = 0;
+  let open = false;
+  let pauseMs = 0;
+  let nextProbeAt = 0;
+  return {
+    isOpen: () => open,
+    probeDue: () => Date.now() >= nextProbeAt,
+    probing: () => {
+      nextProbeAt = Date.now() + pauseMs;
+    },
+    failed: () => {
+      failures += 1;
+      if (failures < OUTAGE_AFTER_FAILURES) return;
+      pauseMs = open ? Math.min(pauseMs * 2, MAX_BACKOFF_MS) : Math.min(intervalMs * FIRST_PAUSE_INTERVALS, MAX_BACKOFF_MS);
+      nextProbeAt = Date.now() + pauseMs;
+      if (!open) {
+        open = true;
+        onChange(true);
+      }
+    },
+    succeeded: () => {
+      failures = 0;
+      if (!open) return;
+      open = false;
+      pauseMs = 0;
+      onChange(false);
+    },
+  };
 }
 
 /** Errors a sweep expects: the run is someone else's right now, or it waits on a human. */
@@ -113,6 +152,7 @@ export function startRecovery<TResult>(target: RecoveryTarget<TResult>, options:
   if (outer?.aborted) abort();
   else outer?.addEventListener('abort', abort, { once: true });
 
+  const breaker = createOutageBreaker(intervalMs, (paused) => safely(options.onOutage, paused));
   const inFlight = new Map<string, Promise<void>>();
   const report = (error: unknown, run?: PendingRun) => {
     if (!signal.aborted) safely(options.onError, error, run);
@@ -123,13 +163,17 @@ export function startRecovery<TResult>(target: RecoveryTarget<TResult>, options:
       .resume(run.sessionId, { signal })
       .then(
         async (result) => {
+          breaker.succeeded();
           if (result === null) return;
           const original = originalOf(run);
           if (original !== run) await target.discard?.(original.checkpointId).catch((error: unknown) => report(error, original));
           safely(options.onRecovered, original, result);
         },
         (error: unknown) => {
-          if (!expected(error)) report(error, run);
+          if (expected(error)) return;
+          if (isProviderOutage(error)) breaker.failed();
+          else breaker.succeeded();
+          report(error, run);
         }
       )
       .finally(() => inFlight.delete(run.sessionId));
@@ -159,12 +203,24 @@ export function startRecovery<TResult>(target: RecoveryTarget<TResult>, options:
     await target.fork?.(run.sessionId, { fromStep: run.step, newSessionId, patch: { appendInput: diagnosisNote(run) } }).catch((error: unknown) => report(error, run));
   };
 
+  const probe = (runs: readonly PendingRun[]) => {
+    if (!breaker.probeDue()) return;
+    const run = runs.find((candidate) => candidate.status === 'in-progress' && candidate.lastError?.retryable !== false && !inFlight.has(candidate.sessionId));
+    if (!run) return;
+    breaker.probing();
+    resume(run);
+  };
+
   const sweep = async () => {
     let runs: PendingRun[];
     try {
       runs = await target.pending();
     } catch (error) {
       report(error);
+      return;
+    }
+    if (breaker.isOpen()) {
+      probe(runs);
       return;
     }
     for (const run of runs) {

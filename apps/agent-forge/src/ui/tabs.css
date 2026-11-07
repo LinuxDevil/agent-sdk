@@ -1,0 +1,98 @@
+/* Tabs: a route-synced row of underline tabs (moved from evals.css). Tokens only.
+   The strip scrolls horizontally with no scrollbar; data-overflow fades hidden edges. */
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-4);
+  min-width: 0;
+  width: 100%;
+}
+.tabs-strip {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  column-gap: var(--space-5);
+  overflow-x: auto;
+  scrollbar-width: none;
+  scroll-padding-inline: 12px;
+}
+.tabs-strip::-webkit-scrollbar {
+  display: none;
+}
+/* masks read alpha: var(--text) is used only as an opaque colour. */
+.tabs-strip[data-overflow='end'] {
+  mask-image: linear-gradient(to right, var(--text) calc(100% - 24px), transparent);
+}
+.tabs-strip[data-overflow='start'] {
+  mask-image: linear-gradient(to left, var(--text) calc(100% - 24px), transparent);
+}
+.tabs-strip[data-overflow='both'] {
+  mask-image: linear-gradient(to right, transparent, var(--text) 24px, var(--text) calc(100% - 24px), transparent);
+}
+/* Two classes: outranks a screen's own `a` colour. The 2px underline is drawn
+   inset, so it sits on the header's hairline. */
+.tabs .tabs-tab {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  box-shadow: inset 0 -2px 0 transparent;
+  color: var(--text-muted);
+  font-size: var(--fs-table);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease);
+}
+.tabs .tabs-tab:hover:not(.tabs-tab-disabled) {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--border-strong);
+}
+.tabs .tabs-tab[aria-current='page'] {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+.tabs .tabs-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--radius-sm);
+}
+.tabs .tabs-tab-disabled {
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+.tabs-count {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+.tabs-trailing {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-bottom: 6px;
+}
+@media (max-width: 860px) {
+  .tabs {
+    flex-wrap: wrap;
+  }
+  .tabs-trailing {
+    padding-bottom: var(--space-2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tabs .tabs-tab {
+    transition: none;
+  }
+}

@@ -11,6 +11,7 @@ import { KIND_VIEWS, PALETTE_GROUP_ORDER, type KindTone, type PaletteEntry, type
 import { viewFor } from '../canvas/kinds';
 import { StatusPill, statusTone } from '../ui/StatusPill';
 import { navigate } from '../router/router';
+import { agentPath } from '../screens/agents/agentRoute';
 import { errorMessage } from './errorMessage';
 import { tabIds, tabListKeyDown } from './tabs';
 import { agentIdProblem } from '../../shared/agentId';
@@ -201,7 +202,7 @@ function AgentCard({ entry }: { entry: AgentEntry }) {
         className="agent-card-main"
         aria-current={selected ? 'true' : undefined}
         // The hash drives selection (screens/agents/agentRoute.ts), so back/forward and reload follow it.
-        onClick={() => navigate(`/agents/${encodeURIComponent(entry.id)}`)}
+        onClick={() => navigate(agentPath(entry.id))}
       >
         <AgentRowBody name={entry.id} meta={entry.model} status={status} />
       </button>

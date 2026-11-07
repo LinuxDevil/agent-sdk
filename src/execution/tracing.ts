@@ -10,6 +10,7 @@
  */
 
 import { newId } from '../utils/id';
+import { notifyExporter } from './markSpan';
 import { safeRedactor, scrubSecrets } from './scrubSecrets';
 import { ErrorAttr, GenAiAttr, GenAiOperation, LegacyAttr, SdkAttr } from './semconv';
 
@@ -241,33 +242,6 @@ export async function withSpan<T>(
   }
 }
 
-/** Exporters that already threw once; later throws from them are not reported again. */
-const warnedExporters = new WeakSet<TraceExporter>();
-
-/**
- * Calls an exporter hook, never letting it fail the traced work: a throwing
- * exporter (a broken observability backend), or an async one whose promise
- * rejects, is reported once with `console.warn` and otherwise ignored, like
- * the OpenTelemetry SDK does.
- */
-function notifyExporter(exporter: TraceExporter | undefined, hook: 'onSpanStart' | 'onSpanEnd', span: Span): void {
-  if (!exporter) return;
-  const warn = (error: unknown) => {
-    if (warnedExporters.has(exporter)) return;
-    warnedExporters.add(exporter);
-    console.warn(
-      `[lousho] A trace exporter's ${hook} threw (${error instanceof Error ? error.message : String(error)}); the run continues. Further errors from this exporter are not reported.`
-    );
-  };
-  try {
-    // The hooks are typed `void`, but an `async` implementation is assignable: catch its rejection.
-    const result: unknown = exporter[hook](span);
-    if (isThenable(result)) result.then(undefined, warn);
-  } catch (error) {
-    warn(error);
-  }
-}
-
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function';
-}
+// notifyExporter (the swallow-and-warn-once rule withSpan applies) lives in
+// ./markSpan.ts: exporting it from here would make it public, since this
+// module is re-exported from the package root.

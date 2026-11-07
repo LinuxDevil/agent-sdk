@@ -9,7 +9,11 @@ import { test, expect, type Page } from '@playwright/test';
  */
 async function open(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height });
-  await page.goto('/?token=e2e-studio-token');
+  // The builder is `#/agents/:id/canvas` (bare `#/agents` is the agents list);
+  // an id that is not saved falls back there, so open a saved agent when one exists.
+  const res = await page.request.get('/agents', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
+  const ids = ((await res.json()) as { id: string }[]).map((a) => a.id);
+  await page.goto(`/?token=e2e-studio-token#/agents/${ids[0] ?? 'untitled-agent'}/canvas`);
   await expect(page.locator('.app')).toBeVisible();
 }
 

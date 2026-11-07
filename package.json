@@ -1,6 +1,6 @@
 {
   "name": "lousho",
-  "version": "1.0.0-alpha.31",
+  "version": "1.0.0-alpha.34",
   "description": "TypeScript AI agent SDK with tools, MCP, durable sessions, human approvals, and OpenTelemetry. Runs in your own Node process.",
   "workspaces": [
     "apps/*",
@@ -93,6 +93,16 @@
         "default": "./dist/types/index.js"
       }
     },
+    "./spec": {
+      "import": {
+        "types": "./dist/spec/index.d.mts",
+        "default": "./dist/spec/index.mjs"
+      },
+      "require": {
+        "types": "./dist/spec/index.d.ts",
+        "default": "./dist/spec/index.js"
+      }
+    },
     "./testing": {
       "import": {
         "types": "./dist/testing/index.d.mts",
@@ -161,6 +171,16 @@
       "require": {
         "types": "./dist/deploy/worker.d.ts",
         "default": "./dist/deploy/worker.js"
+      }
+    },
+    "./improve": {
+      "import": {
+        "types": "./dist/improve/index.d.mts",
+        "default": "./dist/improve/index.mjs"
+      },
+      "require": {
+        "types": "./dist/improve/index.d.ts",
+        "default": "./dist/improve/index.js"
       }
     },
     "./traces": {
@@ -236,6 +256,9 @@
       ],
       "types": [
         "dist/types/index.d.ts"
+      ],
+      "spec": [
+        "dist/spec/index.d.ts"
       ],
       "testing": [
         "dist/testing/index.d.ts"
@@ -333,6 +356,8 @@
     "example:doc-qa": "tsx examples/doc-qa/index.ts",
     "example:plan-mode": "tsx examples/plan-mode/index.ts",
     "example:slack-notifier": "tsx examples/slack-notifier/index.ts",
+    "example:heal-benchmark": "tsx examples/heal-benchmark/index.ts",
+    "example:heal-benchmark:improve": "tsx examples/heal-benchmark/improve.ts",
     "example:support-desk": "tsx examples/support-desk/index.ts",
     "example:deep-research": "tsx examples/deep-research/index.ts",
     "example:data-analyst": "tsx examples/data-analyst/index.ts",
@@ -362,7 +387,8 @@
     "pack-smoke": "tsx scripts/pack-smoke.ts",
     "registry:build": "tsx scripts/build-registry.ts",
     "registry:check": "tsx scripts/build-registry.ts --check",
-    "registry-smoke": "tsx scripts/registrySmoke.ts"
+    "registry-smoke": "tsx scripts/registrySmoke.ts",
+    "prepare": "husky"
   },
   "keywords": [
     "typescript",
@@ -379,7 +405,7 @@
     "vercel-ai-sdk",
     "lousho"
   ],
-  "author": "Lousho Team",
+  "author": "Ali Mohammad",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -489,6 +515,7 @@
     "esbuild": "^0.25.12",
     "eslint": "^10.11.0",
     "fallow": "^3.31.0",
+    "husky": "^9.1.7",
     "prompts": "^2.4.2",
     "quickjs-emscripten": "^0.32.0",
     "react": "^18.3.1",

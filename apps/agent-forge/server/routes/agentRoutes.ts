@@ -439,6 +439,8 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         throw error;
       }
       res.status(204).end();
+      // A successful autosave (re)arms this agent's idle-version timer.
+      ws.idleVersioner.touch(id);
       ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'save' });
     })
   );
@@ -523,6 +525,8 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
       const id = paramId(req);
       await ws.repo.remove(id);
       res.status(204).end();
+      // The agent is gone - its pending idle-version timer goes with it.
+      ws.idleVersioner.cancel(id);
       ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'save' });
     })
   );

@@ -213,19 +213,19 @@ export interface FlowCheckpointState {
   steps: number;
   /** With `status: 'finished'`: the flow's output. */
   output?: unknown;
-  /** With `status: 'awaiting-approval'`: the `toolCall` step the run is paused on. */
+  /** With `status: 'awaiting-approval'`: the `toolCall` or `approval` step the run is paused on. */
   pendingApproval?: FlowPendingApproval;
 }
 
-/** A flow `toolCall` step paused until its approval is decided. */
+/** A flow `toolCall` or `approval` step paused until its approval is decided. */
 export interface FlowPendingApproval {
   /** Pass it back as `FlowExecutor.resume(flow, { ..., approval: { approvalId, approved } })`. */
   approvalId: string;
   /** The step's id in `completedNodeIds` terms. */
   nodeId: string;
-  /** The tool waiting to run. */
+  /** The call waiting for the decision: a `toolCall`'s tool, or `'flow_approval'` for an `approval` step. */
   toolName: string;
-  /** The arguments the tool will run with once approved. */
+  /** What the call waits on: a `toolCall`'s tool arguments, `{ message, stepId }` for an `approval` step. */
   args: Record<string, unknown>;
 }
 
