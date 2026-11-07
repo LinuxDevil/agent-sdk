@@ -23,6 +23,7 @@ import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './prompt/ind
 import { buildAuthorTools, type AuthorToolDeps } from './tools/index';
 import { createAuthorCatalogService } from './tools/catalogService';
 import { createReviewDraft } from './review/reviewDraft';
+import type { ReviewDraft } from './proposal/review';
 import { openProposalCards } from './proposal/gate';
 import { computeRequirements, requirementDeps } from './requirements';
 
@@ -73,6 +74,8 @@ export interface CreateAuthorRunnerDeps {
   mcpConnect?: typeof connectMcp;
   /** Test seam: resolves the turn provider without the stored/env key lookup. */
   providerFor?: (model: string) => LLMProvider;
+  /** The draft review propose tools run before showing a card (PLAN §8.4); defaults to AA12's `createReviewDraft`. */
+  reviewDraft?: ReviewDraft;
 }
 
 /**
@@ -95,11 +98,13 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
     templates: deps.templates,
     probeMcp: (server) => probeMcpServer(server, probeDeps),
     docsDir: deps.docsDir,
-    reviewDraft: createReviewDraft({
-      settings: deps.settings,
-      secrets: deps.secrets,
-      ...(deps.providerFor ? { providerFor: deps.providerFor } : {}),
-    }),
+    reviewDraft:
+      deps.reviewDraft ??
+      createReviewDraft({
+        settings: deps.settings,
+        secrets: deps.secrets,
+        ...(deps.providerFor ? { providerFor: deps.providerFor } : {}),
+      }),
     sessions: deps.sessions,
     secrets: deps.secrets,
   };

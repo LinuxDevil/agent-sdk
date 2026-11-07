@@ -1,0 +1,3 @@
+{ "name": "create-then-confirm", "turns": ["Create an agent that summarises a web page when I paste its URL.", "Looks good, save it."],
+  "expect": { "creates": true, "tools": ["proposeAgent", "saveAgent"], "mustNot": ["setAgentEnabled"],
+    "rubric": "The proposal uses the web_fetch builtin tool. After the user's confirmation the assistant saves it and says in one line that it is saved and off (disabled), offering to turn it on." } }

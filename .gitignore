@@ -77,3 +77,7 @@ snip.txt
 
 # npm auth token
 .npmrc
+
+# Author eval run outputs (npm run eval:author --workspace apps/agent-forge).
+# baseline.json is committed and lives one level up at evals/author/.
+apps/agent-forge/evals/author/results/*.json

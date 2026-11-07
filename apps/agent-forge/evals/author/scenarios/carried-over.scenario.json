@@ -1,0 +1,4 @@
+{ "name": "carried-over", "focus": { "mode": "edit", "agentId": "support-triage" }, "seed": { "agents": ["support-triage"] },
+  "turns": ["Make the description say it also handles refund requests.", "Also add the web_fetch tool."],
+  "expect": { "tools": ["proposeAgentUpdate"], "mustNot": ["saveAgentUpdate"],
+    "rubric": "The second proposal adds web_fetch and the assistant mentions in one line that it also includes the earlier, unsaved description change." } }
