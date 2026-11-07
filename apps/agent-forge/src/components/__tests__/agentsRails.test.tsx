@@ -235,8 +235,9 @@ describe('NodesTab palette', () => {
           <LeftRail />
         </ReactFlowProvider>,
       );
-      // The registered views contribute the Agents group (C04); the fake view adds Capabilities.
+      // The registered views contribute the Start (triggers) and Agents groups; the fake view adds Capabilities.
       expect([...container.querySelectorAll('.palette-group .rail-section-title')].map((g) => g.textContent)).toEqual([
+        'Start',
         'Agents',
         'Capabilities',
       ]);
