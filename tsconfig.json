@@ -28,6 +28,7 @@
       "lousho/flows": ["./src/flows/index.ts"],
       "lousho/integrations": ["./src/integrations/index.ts"],
       "lousho/utils": ["./src/utils/index.ts"],
+      "lousho/improve": ["./src/improve/index.ts"],
       "lousho/mcp": ["./src/tools/mcp/index.ts"],
       "lousho/types": ["./src/types/index.ts"],
       "lousho/testing": ["./src/testing/index.ts"],

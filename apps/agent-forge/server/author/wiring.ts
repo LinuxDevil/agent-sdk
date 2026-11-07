@@ -96,6 +96,7 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
     docsDir: deps.docsDir,
     reviewDraft: passReview,
     sessions: deps.sessions,
+    secrets: deps.secrets,
   };
   const workspaceForTurn = async (turn: AuthorTurn): Promise<WorkspaceContext> => {
     const session = await deps.sessions.get(turn.sessionId);

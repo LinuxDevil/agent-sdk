@@ -82,6 +82,7 @@ function fakeDeps(repo: AgentRepo, over: Partial<AuthorToolDeps> = {}): AuthorTo
     reviewDraft: passReview,
     requirements: async () => [],
     sessions: new AuthorSessionStore('/unused-sessions'),
+    secrets: { secretStatus: (name) => ({ name, hasValue: false, masked: null, updatedAt: null }) },
     ...over,
   };
 }

@@ -172,7 +172,7 @@ export interface AgentErrorEvent extends AgentEventBase<'error'> {
 }
 
 // @public
-export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
+export type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | HealActionEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
 // @public
 export interface AgentEventBase<TType extends string> {
@@ -622,6 +622,9 @@ export function appendToRing<T>(ring: readonly T[], entry: T, limit: number): T[
 export const APPROVAL_EXPIRED_REASON = "approval expired";
 
 // @public
+export const APPROVAL_WAIT_SPAN_NAME = "approval.wait";
+
+// @public
 export interface ApprovalAccessRequest {
     approval: PendingApproval;
     principal: Principal | undefined;
@@ -717,6 +720,8 @@ interface ApprovalStepNode extends NodeRunOptions {
     id?: string;
     message: string;
     outputVariable?: string;
+    // (undocumented)
+
     type: 'approval';
 }
 
@@ -1264,6 +1269,12 @@ export interface ChoiceQuestion {
 }
 
 // @public
+export function classifyToolFailure(failure: {
+    kind?: string;
+    message: string;
+}): ToolFailureClass;
+
+// @public
 export interface ClaudeProject {
     instructions?: string;
     manifest: ClaudeProjectManifest;
@@ -1613,6 +1624,12 @@ export function createLintCheck(repoPath: string, options?: CommandCheckOptions)
 
 // @public
 export function createMockProvider(config?: MockProviderConfig): MockLLMProvider;
+
+// @public
+export function createOutputCheck(checks: OutputChecks): AgentHook;
+
+// @public
+export function createProgressGuard(options?: ProgressGuardOptions): AgentHook;
 
 // @public
 export function createRateLimiter(options?: RateLimitOptions): RateLimiter;
@@ -2122,6 +2139,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_OPERATION_TIMEOUT: "Raise the timeout or make the operation faster.";
     readonly LOUSHO_OUTPUT_INVALID: "Reserved: an invalid structured reply is reported as finishReason 'output-invalid', not thrown.";
     readonly LOUSHO_BUDGET_EXCEEDED: "Raise the limit named in the message, or use onExceeded: 'stop' (the default) to get finishReason 'budget-exceeded' instead of an error.";
+    readonly LOUSHO_RUN_NO_PROGRESS: "Read the heal.action events to see which calls were denied, then fix the agent or its tool before resuming.";
     readonly LOUSHO_AUTH_CONFIG_INVALID: "Fix the auth helper option named in the message (docs/auth.md lists what each helper needs).";
     readonly LOUSHO_GUARDRAIL_TRIPPED: "Look at `error.guardrail` for which guardrail blocked and why, or use onTripped: 'stop' (the default) to get finishReason 'guardrail' instead of an error.";
     readonly LOUSHO_TOKEN_KEY_MISSING: "Pass the store's tokenKey (32 random bytes as base64, from generateTokenKey()) or set LOUSHO_TOKEN_KEY before storing OAuth tokens.";
@@ -2416,6 +2434,9 @@ interface ExpressionEvaluatorNode extends NodeRunOptions {
     // (undocumented)
     type: 'evaluator';
 }
+
+// @public
+export function failureSignature(message: string): string;
 
 // @public
 export interface FallbackInfo {
@@ -3028,6 +3049,9 @@ export interface GroupDecision {
 }
 
 // @public
+export const GUARDRAIL_SPAN_NAME = "guardrail";
+
+// @public
 export interface GuardrailCatalogEntry {
     canRewrite: boolean;
     canRunInParallel: boolean;
@@ -3133,6 +3157,9 @@ export interface Handoff {
 export function handoff(target: SimpleAgent, options?: HandoffOptions): Handoff;
 
 // @public
+export const HANDOFF_SPAN_NAME = "handoff";
+
+// @public
 export interface HandoffEvent extends AgentEventBase<'handoff'> {
     from: string;
     to: string;
@@ -3196,6 +3223,14 @@ export interface HandoffTarget extends SubagentSpec {
 }
 
 // @public
+interface HealActionEvent extends AgentEventBase<'heal.action'> {
+    action: 'hint' | 'deny' | 'stop';
+    failure?: 'bad-input' | 'timeout' | 'missing-capability' | 'permission' | 'unknown';
+    reason: string;
+    toolName: string;
+}
+
+// @public
 interface HmacWebhookAuth {
     algorithm?: 'sha256' | 'sha1';
     header?: string;
@@ -3225,7 +3260,7 @@ export interface HookContext {
 
 // @public
 export type HookEventPayload = Extract<AgentEventPayload, {
-    type: 'compaction.start' | 'compaction.done';
+    type: 'compaction.start' | 'compaction.done' | 'heal.action';
 }>;
 
 // @public
@@ -4930,6 +4965,9 @@ export interface OpenRouterProviderConfig extends AiSdkProviderConfig {
 export const OPERATION_DURATION_BUCKETS: number[];
 
 // @public
+export type OutputChecks = Readonly<Record<string, (args: Record<string, unknown>, result: unknown) => string | undefined | Promise<string | undefined>>>;
+
+// @public
 export interface OutputError {
     issues: ToolArgumentIssue[];
     kind: 'invalid' | 'truncated';
@@ -5322,6 +5360,16 @@ export interface Principal {
 }
 
 // @public
+export interface ProgressGuardOptions {
+    fallbacks?: Readonly<Record<string, string>>;
+    ignoreTools?: readonly string[];
+    maxDenials?: number;
+    maxFailures?: number;
+    maxRepeats?: number;
+    maxSameResults?: number;
+}
+
+// @public
 export interface ProjectInstructions {
     content: string;
     path: string;
@@ -5530,8 +5578,12 @@ export function recordSpanError(span: Span, error: unknown, redact?: (text: stri
 // @public
 export interface RecoverOptions<TResult = unknown> {
     intervalMs?: number;
+    maxAttempts?: number;
     onError?: (error: unknown, run?: PendingRun) => void;
+    onOutage?: (paused: boolean) => void;
+    onQuarantined?: (run: PendingRun) => void;
     onRecovered?: (run: PendingRun, result: TResult) => void;
+    retryWithDiagnosis?: boolean;
     signal?: AbortSignal;
 }
 
@@ -6128,6 +6180,16 @@ export const SdkAttr: {
     readonly SUBAGENT_NAME: "lousho.subagent.name";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
     readonly TASK_ID: "lousho.task.id";
+    readonly GUARDRAIL_NAME: "lousho.guardrail.name";
+    readonly GUARDRAIL_KIND: "lousho.guardrail.kind";
+    readonly GUARDRAIL_OUTCOME: "lousho.guardrail.outcome";
+    readonly GUARDRAIL_PARALLEL: "lousho.guardrail.parallel";
+    readonly NODE_ID: "lousho.node.id";
+    readonly HANDOFF_FROM: "lousho.handoff.from";
+    readonly HANDOFF_TO: "lousho.handoff.to";
+    readonly APPROVAL_ID: "lousho.approval.id";
+    readonly APPROVAL_KIND: "lousho.approval.kind";
+    readonly APPROVAL_EXPIRES_AT: "lousho.approval.expires_at";
 };
 
 // @public
@@ -7300,6 +7362,7 @@ export function toolCallArgs(call: ToolCall | {
 // @public
 export interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
+    emit?: (event: HookEventPayload) => void;
     principal?: Readonly<Principal>;
     resumedAfterApproval?: boolean;
     toolCall: ToolCall;
@@ -7470,6 +7533,9 @@ export class ToolExecutionError extends SDKError {
     // (undocumented)
     readonly toolName?: string | undefined;
 }
+
+// @public
+export type ToolFailureClass = 'bad-input' | 'timeout' | 'missing-capability' | 'permission' | 'unknown';
 
 // @public
 export type ToolInput<T extends DefinedTool> = InferSchemaOutput<T['input']>;

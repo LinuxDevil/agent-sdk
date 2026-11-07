@@ -71,7 +71,7 @@ interface AgentErrorEvent extends AgentEventBase<'error'> {
 }
 
 // @public
-type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
+type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | HealActionEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
 // @public
 interface AgentEventBase<TType extends string> {
@@ -747,6 +747,14 @@ interface HandoffEvent extends AgentEventBase<'handoff'> {
 }
 
 // @public
+interface HealActionEvent extends AgentEventBase<'heal.action'> {
+    action: 'hint' | 'deny' | 'stop';
+    failure?: 'bad-input' | 'timeout' | 'missing-capability' | 'permission' | 'unknown';
+    reason: string;
+    toolName: string;
+}
+
+// @public
 interface HostedTool {
     readonly aiSdkTool?: unknown;
     // (undocumented)
@@ -1227,8 +1235,12 @@ type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 // @public
 interface RecoverOptions<TResult = unknown> {
     intervalMs?: number;
+    maxAttempts?: number;
     onError?: (error: unknown, run?: PendingRun) => void;
+    onOutage?: (paused: boolean) => void;
+    onQuarantined?: (run: PendingRun) => void;
     onRecovered?: (run: PendingRun, result: TResult) => void;
+    retryWithDiagnosis?: boolean;
     signal?: AbortSignal;
 }
 
