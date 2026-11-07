@@ -78,6 +78,6 @@ jobs:
       - name: GitHub release
         run: |
           awk -v h="## [$VERSION]" 'index($0,h)==1{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --prerelease --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
+          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --latest --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
