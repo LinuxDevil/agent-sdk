@@ -23,6 +23,7 @@ import type {
   Graph,
   GraphNode,
   McpNodeData,
+  MemoryNodeData,
   NodeKind,
   SkillNodeData,
   SubagentNodeData,
@@ -388,6 +389,36 @@ describe('palette create (C08 skill entry)', () => {
     expect(second.nodeId).toBe('skill:skill-2');
     expect((nodeById(second.graph, 'skill:skill-2').data as SkillNodeData).item).toStrictEqual({
       inline: { name: 'skill-2', description: '', content: '' },
+    });
+  });
+});
+
+describe('palette create (C09 memory entry)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const memory = entries.find((e) => e.id === 'memory');
+
+  it('registers the entry under the Capabilities group', () => {
+    expect(memory).toBeDefined();
+    expect(memory?.group).toBe('Capabilities');
+    expect(memory?.kind).toBe('memory');
+  });
+
+  it('creates the in-memory session slot named after the first free name', () => {
+    expect(memory!.create(g0, 'agent').data).toStrictEqual({
+      item: { name: 'notes', scope: 'session', provider: { type: 'in-memory' } },
+    });
+  });
+
+  it('names two creates memory:notes and memory:notes-2', () => {
+    const first = addNode(g0, memory!.create(g0, 'agent'), AT, 'agent');
+    expect(first.nodeId).toBe('memory:notes');
+    const second = addNode(first.graph, memory!.create(first.graph, 'agent'), AT, 'agent');
+    expect(second.nodeId).toBe('memory:notes-2');
+    expect((nodeById(second.graph, 'memory:notes-2').data as MemoryNodeData).item).toStrictEqual({
+      name: 'notes-2',
+      scope: 'session',
+      provider: { type: 'in-memory' },
     });
   });
 });

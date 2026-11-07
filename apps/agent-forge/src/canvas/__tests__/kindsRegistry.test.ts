@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { KIND_VIEWS, viewFor } from '../kinds';
 
 describe('viewFor', () => {
-  it('falls back to the generic view while KIND_VIEWS.memory is unset', () => {
-    const view = viewFor('memory');
-    expect(KIND_VIEWS.memory).toBeUndefined();
-    expect(view.label).toBe('memory');
+  it('falls back to the generic view while KIND_VIEWS.guardrail is unset', () => {
+    const view = viewFor('guardrail');
+    expect(KIND_VIEWS.guardrail).toBeUndefined();
+    expect(view.label).toBe('guardrail');
     expect(view.tone).toBe('neutral');
     expect(view.ports).toEqual({ in: true, out: true });
     expect(view.palette).toEqual([]);
-    expect(view.title({ id: 'memory:mem' } as never)).toBe('mem');
+    expect(view.title({ id: 'guard:g1' } as never)).toBe('g1');
     expect(view.title({ id: 'agent' } as never)).toBe('agent');
   });
 
