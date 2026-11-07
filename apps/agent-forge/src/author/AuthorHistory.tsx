@@ -37,7 +37,7 @@ export function AuthorHistory({ onClose }: { onClose(): void }): JSX.Element {
   const [deleteError, setDeleteError] = useState<string>();
 
   /** An agent's display name from the app's already-loaded list; an unknown id shows itself. */
-  const agentName = useCallback((id: string) => agents.find((a) => a.id === id)?.spec.name ?? id, [agents]);
+  const agentName = useCallback((id: string) => agents.find((a) => a.id === id)?.name ?? id, [agents]);
 
   const reload = useCallback(async (): Promise<void> => {
     setLoad({ status: 'loading' });
