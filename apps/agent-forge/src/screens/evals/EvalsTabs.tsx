@@ -7,6 +7,7 @@
 import './evals.css';
 import { useRoute } from '../../router/useRoute';
 import { ScreenHeader, type ScreenHeaderProps } from '../../shell/ScreenHeader';
+import { Tabs } from '../../ui/Tabs';
 
 const TABS = [
   { section: 'scores', label: 'Scores' },
@@ -15,23 +16,16 @@ const TABS = [
   { section: 'queues', label: 'Annotation queues' },
 ] as const;
 
-/** `<nav aria-label="Evaluations">`: one underline tab per Evaluations screen. */
+/** The kit {@link Tabs} row (`nav aria-label="Evaluations"`): one underline tab per Evaluations screen. */
 export function EvalsTabs() {
   const { path } = useRoute();
   const current = path.split('/').filter(Boolean)[1];
   return (
-    <nav className="evals-tabs" aria-label="Evaluations">
-      {TABS.map(({ section, label }) => (
-        <a
-          key={section}
-          className="evals-tab"
-          href={`#/evals/${section}`}
-          aria-current={section === current ? 'page' : undefined}
-        >
-          {label}
-        </a>
-      ))}
-    </nav>
+    <Tabs
+      label="Evaluations"
+      items={TABS.map(({ section, label }) => ({ id: section, label, href: `#/evals/${section}` }))}
+      currentId={current}
+    />
   );
 }
 
