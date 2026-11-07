@@ -19,9 +19,7 @@ import {
   AUTHOR_SESSION_ID_RE,
   type AuthorFocus,
   type AuthorMessage,
-  type AuthorSaveResponse,
   type AuthorSessionRecord,
-  type AuthorToolFailure,
   type AuthorToolPart,
   type AuthorUserMessage,
   type RequestSecretOutput,
@@ -32,6 +30,7 @@ import type { SecretsStore } from '../secretsStore';
 import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceResolver } from '../workspace/context';
 import type { SecretsStore } from '../secretsStore';
+import { applyStoredProposal } from './applyProposal';
 import { identityOfProposal, resolveStoredProposal } from './proposal/gate';
 import { agentGoneFailure, unknownProposalFailure } from './proposal/failures';
 import { requestTextFor, writeProposal } from './proposal/save';
@@ -177,18 +176,6 @@ function enableAgentIdOf(body: unknown, res: Response): string | undefined {
 }
 
 /**
- * A failed save's HTTP answer: the person-facing `userMessage` and the
- * failure `code` (`latestProposalId` travels as `details` so the client
- * can point at the newer card). A `WRITE_FAILED` is a server fault - 500;
- * every refusal is a 400.
- */
-function sendSaveFailure(res: Response, failure: AuthorToolFailure): void {
-  const details =
-    typeof failure.latestProposalId === 'string' ? { latestProposalId: failure.latestProposalId } : undefined;
-  sendError(res, failure.code === 'WRITE_FAILED' ? 500 : 400, failure.userMessage, failure.code, details);
-}
-
-/**
  * Registers the four session routes. `deps.sessions` is the app's single
  * `AuthorSessionStore` (sessions are Studio-global); the workspace the
  * session belongs to still comes from `workspaceOf(req)` on create.
@@ -317,52 +304,16 @@ export function registerAuthorRoutes(
       }
       savesInFlight.add(id);
       try {
-        const identity = identityOfProposal(session.transcript, proposalId);
-        if (identity === null) {
-          const failure = unknownProposalFailure('create', proposalId);
-          sendError(res, 400, failure.userMessage, failure.code);
+        const outcome = await applyStoredProposal(
+          { sessions: deps.sessions, workspaceResolver: deps.workspaceResolver },
+          session,
+          proposalId
+        );
+        if (!outcome.ok) {
+          sendError(res, outcome.status, outcome.userMessage, outcome.code, outcome.details);
           return;
         }
-        const ws = await deps.workspaceResolver.resolve(session.workspaceId);
-        if (ws === undefined) {
-          const failure = agentGoneFailure(identity.kind === 'update' ? identity.agentId : session.workspaceId);
-          sendSaveFailure(res, failure);
-          return;
-        }
-        const resolved = resolveStoredProposal(session.transcript, identity, proposalId);
-        if (!resolved.ok) {
-          sendSaveFailure(res, resolved);
-          return;
-        }
-        const result = await writeProposal(identity, resolved.output, {
-          sessionId: id,
-          requestText: requestTextFor(session.transcript, proposalId),
-          agents: ws.repo,
-          versions: ws.versions,
-          sessions: deps.sessions,
-          bus: ws.events,
-        });
-        if (!result.ok) {
-          sendSaveFailure(res, result);
-          return;
-        }
-        const message: AuthorUserMessage = {
-          id: `m_${randomUUID()}`,
-          role: 'user',
-          text: '',
-          at: new Date().toISOString(),
-          uiEvent: { kind: 'save', proposalId, agentId: result.agentId, version: result.version },
-        };
-        await deps.sessions.update(id, (s) => ({ ...s, transcript: [...s.transcript, message] }));
-        const body: AuthorSaveResponse = {
-          ok: true,
-          agentId: result.agentId,
-          version: result.version,
-          name: result.name,
-          enabled: result.enabled,
-          message,
-        };
-        res.status(200).json(body);
+        res.status(200).json(outcome.response);
       } finally {
         savesInFlight.delete(id);
       }

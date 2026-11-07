@@ -1,0 +1,4 @@
+{ "name": "edit-question-only", "focus": { "mode": "edit", "agentId": "support-triage" }, "seed": { "agents": ["support-triage"] },
+  "turns": ["What does this agent do, and which tools does it use?"],
+  "expect": { "tools": ["getCurrentSpec"], "mustNot": ["proposeAgentUpdate", "saveAgentUpdate"],
+    "rubric": "The assistant answers from the agent's spec: it triages support emails into four categories and drafts replies, and it has no tools. It does not propose a change." } }

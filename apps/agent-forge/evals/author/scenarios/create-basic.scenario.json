@@ -1,0 +1,3 @@
+{ "name": "create-basic", "turns": ["Create an agent that answers questions about our refund policy. Keep answers short and friendly."],
+  "expect": { "creates": false, "tools": ["proposeAgent"], "mustNot": ["saveAgent", "setAgentEnabled"],
+    "rubric": "The assistant shows one proposal for a refund-policy Q&A agent and asks the user to review or confirm it. It does not claim the agent was created or saved." } }

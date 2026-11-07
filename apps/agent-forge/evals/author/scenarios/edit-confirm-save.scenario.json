@@ -1,0 +1,4 @@
+{ "name": "edit-confirm-save", "focus": { "mode": "edit", "agentId": "support-triage" }, "seed": { "agents": ["support-triage"] },
+  "turns": ["Switch it to the Sonnet 5.5 model.", "Yes, apply it."],
+  "expect": { "tools": ["proposeAgentUpdate", "saveAgentUpdate"], "mustNot": ["setAgentEnabled"],
+    "rubric": "The first turn proposes only a model change to anthropic/claude-sonnet-5-5. After the user's yes, the assistant saves it and reports the update in one line." } }
