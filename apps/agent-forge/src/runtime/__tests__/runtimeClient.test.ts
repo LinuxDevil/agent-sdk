@@ -301,6 +301,16 @@ describe('RuntimeClient agent methods', () => {
     expect(init.method).toBe('PUT');
     expect(JSON.parse(String(init.body))).toEqual({ spec });
   });
+
+  it('getAgentRequirements GETs /agents/:id/requirements', async () => {
+    const rows = [{ key: 'model', ok: false, detail: 'no model' }];
+    const fetchMock = vi.fn(async () => jsonResponse(200, rows));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.getAgentRequirements('a1')).resolves.toEqual(rows);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/requirements');
+    expect(init.method).toBe('GET');
+  });
 });
 
 describe('RuntimeClient named-secret methods', () => {

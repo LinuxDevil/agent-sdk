@@ -3,6 +3,8 @@ import {
   isDraftReviewFailure,
   type AuthorAssistantMessage,
   type AuthorToolPart,
+  type AuthorUiEvent,
+  type AuthorUserMessage,
 } from '../../shared/authorWire';
 import type { AuthorChat } from './AuthorChatContext';
 
@@ -32,7 +34,6 @@ const renderers = new Map<string, ToolPartRenderer>();
  * (success/secret/error/setup) plug in here; this ticket ships the
  * registry itself plus the ActivityLine fallback.
  */
-// fallow-ignore-next-line unused-export -- AA16/AA17 register their cards here
 export function registerToolRenderer(name: string, renderer: ToolPartRenderer): void {
   renderers.set(name, renderer);
 }
@@ -47,4 +48,35 @@ export function registerToolRenderer(name: string, renderer: ToolPartRenderer): 
 export function renderToolPart(part: AuthorToolPart, ctx: ToolRenderContext): ReactNode {
   if (isDraftReviewFailure(part.output)) return null;
   return renderers.get(part.name)?.(part, ctx);
+}
+
+/**
+ * A card renderer for one `uiEvent` kind: the app-written user messages
+ * (button saves, answered secrets) that carry no tool part. `undefined`
+ * means "no card" and the caller draws the quiet event line.
+ */
+export type UiEventRenderer = (
+  message: AuthorUserMessage,
+  ctx: { chat: AuthorChat; live: boolean }
+) => ReactNode | undefined;
+
+const uiEventRenderers = new Map<AuthorUiEvent['kind'], UiEventRenderer>();
+
+/** Registers the card one `uiEvent` kind renders (the save event's SuccessCard). */
+export function registerUiEventRenderer(kind: AuthorUiEvent['kind'], renderer: UiEventRenderer): void {
+  uiEventRenderers.set(kind, renderer);
+}
+
+/**
+ * Renders a `uiEvent` user message through the registry. A message with
+ * no `uiEvent`, an unregistered kind, or a renderer returning `undefined`
+ * returns `undefined` so the caller draws the event line.
+ */
+export function renderUiEvent(
+  message: AuthorUserMessage,
+  ctx: { chat: AuthorChat; live: boolean }
+): ReactNode | undefined {
+  const uiEvent = message.uiEvent;
+  if (uiEvent === undefined) return undefined;
+  return uiEventRenderers.get(uiEvent.kind)?.(message, ctx);
 }

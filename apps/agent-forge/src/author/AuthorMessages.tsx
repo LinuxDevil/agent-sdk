@@ -10,7 +10,7 @@ import type { AuthorChat } from './AuthorChatContext';
 import type { ActiveTurn } from './authorChatReducer';
 import { ActivityLine } from './ActivityLine';
 import { AuthorText } from './AuthorText';
-import { renderToolPart } from './toolRenderers';
+import { renderToolPart, renderUiEvent } from './toolRenderers';
 
 /** The quiet end-of-turn notes keyed by `finishReason`; 'error' and normal ends show no note. */
 const TURN_NOTES: Record<string, string> = {
@@ -27,11 +27,14 @@ function eventCopy(uiEvent: AuthorUiEvent): string {
   return uiEvent.outcome === 'saved' ? `You saved ${uiEvent.name}` : `You skipped ${uiEvent.name}`;
 }
 
-function UserRow({ message }: { message: AuthorUserMessage }): JSX.Element {
+function UserRow({ message, chat }: { message: AuthorUserMessage; chat: AuthorChat }): JSX.Element {
   if (message.uiEvent !== undefined) {
+    // A registered uiEvent renderer (the save event's SuccessCard) wins;
+    // `undefined` falls back to the quiet event line.
+    const rendered = renderUiEvent(message, { chat, live: false });
     return (
       <li className="author-msg author-msg--event">
-        <p className="author-event">{eventCopy(message.uiEvent)}</p>
+        {rendered === undefined ? <p className="author-event">{eventCopy(message.uiEvent)}</p> : rendered}
       </li>
     );
   }
@@ -94,7 +97,7 @@ export function AuthorMessages({
     <ol className="author-messages">
       {messages.map((message) =>
         message.role === 'user' ? (
-          <UserRow key={message.id} message={message} />
+          <UserRow key={message.id} message={message} chat={chat} />
         ) : (
           <AssistantRow key={message.id} message={message} chat={chat} live={false} />
         )
