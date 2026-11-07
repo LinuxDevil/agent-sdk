@@ -10966,6 +10966,7 @@ An `evaluator` step stores its result in `outputVariable` too, like
 | `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders; see [Template values](#template-values)); `outputVariable` stores the reply text. |
 | `agent` | Sends `input` (placeholders interpolated) to a `createAgent()` agent registered in the context's `agents` (see [Running an agent in a flow](#running-an-agent-in-a-flow)); `outputVariable` stores the reply text. |
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated; see [Argument values](#argument-values)). |
+| `approval` | Pauses for a human decision on its `message` (see [Approval steps](#approval-steps)); `outputVariable` gets `true` once approved. |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
 | `forEach` | Runs a step for each item of `items`, one after another. The item and index (`itemVariable`, default `item`; `indexVariable`, default `index`) belong to that iteration only, so loops in `parallel` branches never see each other's item; other variables the step sets are written to the flow's variables. |
@@ -11244,6 +11245,54 @@ These resume calls are refused:
 Flow approvals are not listed in an agent's approval store. Keep the
 `approvalId` (or read `checkpoint.flow.pendingApproval` from the store) to
 decide later.
+
+### Approval steps
+
+An `approval` step is a human gate of its own - no tool call needed. Its
+`message` (`{{variable}}` placeholders interpolated) is what the approver is
+asked, and the context's `approve` callback decides, exactly as for a
+`toolCall` that needs approval. The callback sees a call whose `toolName` is
+`'flow_approval'` and whose `args` are `{ message, stepId }` (`stepId` is the
+node's `id`, or its place in the flow).
+
+```ts
+import type { EditorStep } from 'lousho/flows';
+
+const steps: EditorStep = {
+  type: 'sequence',
+  steps: [
+    { type: 'approval', id: 'ship-gate', message: 'Ship {{version}} to production?', outputVariable: 'approved' },
+    { type: 'toolCall', tool: 'deploy', arguments: { version: '{{version}}' } },
+  ],
+};
+```
+
+- `approve` returning `true` (or a note) continues the flow; `outputVariable`
+  gets `true`. `false` fails the step with `LOUSHO_FLOW_TOOL_DENIED`, as do
+  `'defer'` and a missing `approve` in a run that is not durable (fail closed).
+- In a durable run, `'defer'` or no `approve` pauses the flow the same way a
+  `toolCall` pause does ([Pausing for approval](#pausing-for-approval)):
+  `pendingApproval.toolName` is `'flow_approval'` and
+  `pendingApproval.args.message` is the interpolated message. Resume it with
+  the decision:
+
+```ts no-run
+import { FlowExecutor, type AgentFlow } from 'lousho/flows';
+
+declare const flow: AgentFlow;
+
+const paused = await FlowExecutor.execute(flow, {
+  agent, provider, checkpointStore, variables: { version: '2.1' }, runId: 'ship-2.1',
+});
+if (paused.status === 'awaiting-approval') {
+  // paused.pendingApproval is
+  // { approvalId, nodeId: '0.0', toolName: 'flow_approval', args: { message: 'Ship 2.1 to production?', stepId: 'ship-gate' } }
+  const result = await FlowExecutor.resume(flow, {
+    agent, provider, checkpointStore, runId: 'ship-2.1',
+    approval: { approvalId: paused.approvalId!, approved: true },
+  });
+}
+```
 
 ## Running an agent in a flow
 
@@ -14408,9 +14457,22 @@ and error status over to OpenTelemetry. See `examples/tracing`
 
 ```
 invoke_agent {agent name}          INTERNAL
+  guardrail {guardrail name}       INTERNAL   one per input/output guardrail check
   chat {model}                     CLIENT     one per provider.generate() call
   execute_tool {tool name}         INTERNAL   one per tool call
+<<<<<<< HEAD
+  handoff {target agent}           INTERNAL   zero-length marker, one per honored handoff
+  approval.wait {tool name}        INTERNAL   zero-length marker, one per paused approval
+=======
+    guardrail {guardrail name}     INTERNAL   one per tool guardrail check
+>>>>>>> origin/fb-s20b-guardrail-spans
 ```
+
+`handoff` and `approval.wait` are marker spans: `startTime === endTime`, so a
+consumer can mark the handoff target as the run's active node (`lousho.handoff.from`
+/ `lousho.handoff.to`) and a paused call's tool node as waiting
+(`lousho.approval.id` / `lousho.approval.kind` / `lousho.approval.expires_at`)
+without holding a span open across the wait.
 
 Each `send()` / `stream()` call is a trace of its own unless you parent it.
 To put several runs in one trace, pass a span id of yours as `parentSpanId`;
@@ -14513,6 +14575,22 @@ then stay on `chat` spans only (`lousho.cost_usd` stays on every span).
 | `gen_ai.tool.type` | `function` |
 | `gen_ai.agent.name`, `gen_ai.conversation.id` | The calling agent / session |
 | `lousho.tool.parent_call_id` | On a call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made: the `run_code` call's id (its span is the parent) |
+
+### Guardrail check: `guardrail {name}`
+
+One span per guardrail check, under the run's `invoke_agent` span (input and
+output checks) or the checked call's `execute_tool` span (`tools` checks). The
+span carries ids and outcome only — never the checked text or the trip
+reason, which may hold user data (a trip is already reported by the
+`guardrail.tripped` event).
+
+| Attribute | Value |
+| --- | --- |
+| `lousho.guardrail.name` | The guardrail's `name` |
+| `lousho.guardrail.kind` | `input`, `output` or `tool` |
+| `lousho.guardrail.outcome` | `pass`, `block` or `rewrite`, set when the check returns |
+| `lousho.guardrail.parallel` | `true` on a `runInParallel` input check; absent otherwise |
+| `gen_ai.tool.name` | On a `tool` check: the tool whose arguments were checked |
 
 ### Flows
 

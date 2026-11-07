@@ -1,6 +1,5 @@
 import type { AgentSpec } from 'lousho';
-import type { AgentGraphEdge, AgentGraphNode, AgentGraphSpec, AgentNodeHookInstance } from './types';
-import { hookNodeKey } from './graphToSpec';
+import { hookNodeKey, type AgentGraphEdge, type AgentGraphNode, type AgentGraphSpec, type AgentNodeHookInstance } from './types';
 
 /** Shape `graphToSpec()` serializes each hook as, under `spec.policy.hooks`. */
 interface SerializedHook {
@@ -100,6 +99,23 @@ function upstreamOf(llmId: string, toolIds: string[]): string[] {
   return toolIds.length > 0 ? toolIds : [llmId];
 }
 
+/** Policy keys that are not approval settings: hooks are re-attached to nodes, flow is retained separately. */
+export const NON_APPROVAL_POLICY_KEYS = ['hooks', 'flow'] as const;
+
+/**
+ * The subset of `spec.policy` that is genuinely approval config: every
+ * key except `NON_APPROVAL_POLICY_KEYS`. `undefined` when nothing is left,
+ * so a spec whose policy holds only hooks/flow produces no approval node -
+ * such a node would carry the old hooks/flow inside `data.policy` and
+ * `graphToSpec()` would copy a stale `policy.flow` back into the spec.
+ */
+function approvalPolicyOf(policy: NonNullable<AgentSpec['policy']>): NonNullable<AgentSpec['policy']> | undefined {
+  const approval = Object.fromEntries(
+    Object.entries(policy).filter(([key]) => !(NON_APPROVAL_POLICY_KEYS as readonly string[]).includes(key))
+  ) as NonNullable<AgentSpec['policy']>;
+  return Object.keys(approval).length > 0 ? approval : undefined;
+}
+
 function addApprovalNode(
   builder: GraphBuilder,
   policy: NonNullable<AgentSpec['policy']>,
@@ -171,14 +187,18 @@ function reattachHooks(nodes: AgentGraphNode[], rawHooks: unknown): void {
  */
 /**
  * Known limitation: `spec.policy.flow` (the compiled `AgentFlow` a
- * router graph's `graphToSpec()` stashes there - see that file) is NOT
- * read back here. A saved branching graph still round-trips through its
- * `llm`/`tool`/`output`/etc. node data exactly like today, but reloading it
- * regenerates the plain auto-layout pipeline (no `router` node, no branch
- * edges) rather than reconstructing the original branching shape - the
- * same category of loss `graph/types.ts`'s file header already documents
- * for edges/position. A future pass could add a `flowToGraph()` the same
- * way `specToGraph()` exists today; out of scope for this ticket.
+ * router graph's `graphToSpec()` stashes there - see that file) cannot be
+ * redrawn as a branching graph. It is kept verbatim on the graph's
+ * `retainedFlow` instead, so `graphToSpec()` writes it back while no
+ * router node exists rather than silently dropping it - and the canvas
+ * shows a notice offering to remove it. A saved branching graph still
+ * round-trips through its `llm`/`tool`/`output`/etc. node data exactly
+ * like today, but reloading it regenerates the plain auto-layout pipeline
+ * (no `router` node, no branch edges) rather than reconstructing the
+ * original branching shape - the same category of loss `graph/types.ts`'s
+ * file header already documents for edges/position. A future pass could
+ * add a `flowToGraph()` the same way `specToGraph()` exists today; out of
+ * scope for this ticket.
  */
 export function specToGraph(spec: AgentSpec): AgentGraphSpec {
   let nextId = 0;
@@ -189,10 +209,13 @@ export function specToGraph(spec: AgentSpec): AgentGraphSpec {
   const toolIds = addToolNodes(builder, spec, llmId);
   const upstream = upstreamOf(llmId, toolIds);
 
-  const outputUpstream = spec.policy ? [addApprovalNode(builder, spec.policy, upstream)] : upstream;
-  addOutputNode(builder, Boolean(spec.policy), outputUpstream);
+  const approvalPolicy = spec.policy ? approvalPolicyOf(spec.policy) : undefined;
+  const outputUpstream = approvalPolicy ? [addApprovalNode(builder, approvalPolicy, upstream)] : upstream;
+  addOutputNode(builder, Boolean(approvalPolicy), outputUpstream);
 
   reattachHooks(builder.nodes, spec.policy?.hooks);
 
-  return { version: 1, nodes: builder.nodes, edges: builder.edges };
+  const graph: AgentGraphSpec = { version: 1, nodes: builder.nodes, edges: builder.edges };
+  if (spec.policy?.flow !== undefined) graph.retainedFlow = spec.policy.flow;
+  return graph;
 }

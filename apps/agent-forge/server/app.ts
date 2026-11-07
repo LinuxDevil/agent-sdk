@@ -107,6 +107,7 @@ import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { AgentRepo } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
 import { createIdleVersioner, type IdleVersioner } from './storage/idleVersioner';
+import { SuggestionStore } from './storage/suggestionStore';
 import { VersionStore } from './storage/versionStore';
 import { StudioEventBus } from './events/eventBus';
 import { mergeLegacySave } from './storage/legacySpec';
@@ -812,6 +813,7 @@ function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefi
     versions,
     drafts: new DraftStore(repo),
     idleVersioner: createIdleVersioner(versions),
+    suggestions: new SuggestionStore(repo),
     // The legacy pair's RunManager carries its own host; this one exists to
     // satisfy the context shape (nothing reads ws.host yet - catalog/steer
     // routes are later tickets).
@@ -951,7 +953,7 @@ export function createApp(options: CreateAppOptions): Express {
   registerMcpProbeRoute(app, probeDeps);
   // Agent Author chat sessions (Studio-global files under
   // studioPaths().sessions; each session records which workspace it edits).
-  registerAuthorRoutes(app, { sessions, runner: authorRunner, workspaceResolver });
+  registerAuthorRoutes(app, { sessions, runner: authorRunner, workspaceResolver, secrets });
   // The Author's own settings (author/settings.ts): which model its turns
   // run on and whether a key for it exists.
   registerAuthorSettingsRoutes(app, { settings, secrets });

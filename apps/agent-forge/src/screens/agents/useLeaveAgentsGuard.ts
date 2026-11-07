@@ -12,7 +12,7 @@ import { confirmDiscardChanges } from './unsavedChanges';
  */
 export function useLeaveAgentsGuard(screen: ScreenId): ScreenId {
   const { dirty, agentId } = useAppState();
-  // A dependency so the remembered Agents hash follows `#/agents/:id` changes too.
+  // A dependency so the remembered Agents hash follows `#/agents/:id/<tab>` changes too.
   const route = useRoute();
   const [shown, setShown] = useState(screen);
   const agentsHash = useRef(window.location.hash);

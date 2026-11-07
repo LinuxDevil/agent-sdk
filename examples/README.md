@@ -43,6 +43,10 @@ A question-answering agent scoped to a single fixed document.
 
 The evaluator-optimizer pattern (CrewAI's writer/critic shape): a writer drafts, `llmCritique()` scores the draft against a rubric and returns actionable feedback, and the draft is revised until it passes or `maxRounds` is hit. Runs offline with mock models.
 
+## [heal-benchmark](./heal-benchmark)
+
+A repeatable benchmark for agent reliability: four agents with working tools and realistic faults, deterministic checks, and a scoreboard of pass rate, noise and cost for each harness version. Runs offline, or live with `OPENROUTER_API_KEY`.
+
 ## [hostinger-deploy](./hostinger-deploy)
 
 Deploy an agent to a real Hostinger VPS: verify the VM via the Hostinger API, `lousho build --target=docker`, ship the image over SSH, run it behind bearer auth, then prove `/health` + approval pause/resume. Needs a Hostinger API token and a VM; no purchase step.

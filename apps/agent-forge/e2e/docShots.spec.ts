@@ -282,6 +282,16 @@ async function open(page: Page, hash: string) {
   await expect(page.locator('.app')).toBeVisible();
 }
 
+/**
+ * A builder URL that survives the unknown-id fallback to `#/agents`: the first
+ * saved agent's canvas tab, or the unsaved default's when none are saved yet.
+ */
+async function builderHash(page: Page): Promise<string> {
+  const res = await page.request.get('/agents', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
+  const ids = ((await res.json()) as { id: string }[]).map((a) => a.id);
+  return `/agents/${ids[0] ?? 'untitled-agent'}/canvas`;
+}
+
 /** The docs set shot in dark too, written as `studio-<screen>-dark.png`. */
 const DARK_DOCS = new Set(['agents', 'traces', 'trace', 'monitoring']);
 
@@ -314,7 +324,7 @@ async function shoot(page: Page, screen: string) {
 const rows = (page: Page) => page.getByRole('main').locator('table.data-table tbody tr:not(.skeleton-row)');
 
 test('agents: the builder with an agent', async ({ page }) => {
-  await open(page, '/agents');
+  await open(page, await builderHash(page));
   await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill('support-bot');
   await page.locator('#new-agent-template').selectOption('support-bot');
@@ -625,7 +635,7 @@ test('x: 375 wide, Traces with the nav drawer closed and open', async ({ page })
  * agent's stream socket, so nodes and edges hold their running state.
  */
 async function newAgent(page: Page, name: string, template?: 'support-bot') {
-  await open(page, '/agents');
+  await open(page, await builderHash(page));
   await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(name);
   if (template) await page.locator('#new-agent-template').selectOption(template);
@@ -981,7 +991,7 @@ test('agents x-rail-status: the unsaved default agent, and an errored agent with
   await page.route(/\/agents(\?|$)/, (route) =>
     route.request().method() === 'GET' ? route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }) : route.continue(),
   );
-  await open(page, '/agents');
+  await open(page, '/agents/untitled-agent/canvas');
   await expect(page.locator('.agent-card.selected')).toBeVisible();
   await shoot(page, 'x-agents-rail-unsaved');
   await page.unroute(/\/agents(\?|$)/);

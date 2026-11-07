@@ -13,6 +13,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { navigate } from '../router/router';
+import { agentTabPath } from '../screens/agents/agentTabs';
 import { NAV_ITEMS } from '../shell/NavRail';
 import { SHORTCUTS, matchShortcut } from '../shell/shortcuts';
 import { toggleTheme } from '../shell/theme';
@@ -323,7 +324,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState<'palette' | 'help' | null>(null);
   const agentRefs = useMemo(() => agents.map((a) => ({ id: a.id, name: a.spec.name || a.id })), [agents]);
   // The hash drives selection (screens/agents/useAgentRouteSync.ts): it asks about unsaved changes and reports a failed open.
-  const openAgent = useCallback((id: string) => navigate(`/agents/${encodeURIComponent(id)}`), []);
+  const openAgent = useCallback((id: string) => navigate(agentTabPath(id, 'overview')), []);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

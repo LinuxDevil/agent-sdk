@@ -195,6 +195,23 @@ export interface AuthorSaveResponse {
 }
 
 /**
+ * The `ok: true` output of `setAgentEnabled` and of
+ * `POST /assistant/sessions/:id/enable` (the SuccessCard's "Enable agent"
+ * button - both go through the same write, AA11). `status` distinguishes
+ * a real flip from a no-op, and `missingRequirements` is the count of the
+ * agent's readiness rows still `status: 'missing'` - the switch lands
+ * either way; the number exists so the model (and the card) can mention
+ * what the agent still needs before it can run.
+ */
+export interface SetEnabledOutput {
+  ok: true;
+  agentId: string;
+  enabled: boolean;
+  status: 'updated' | 'unchanged';
+  missingRequirements: number;
+}
+
+/**
  * The `ok: true` output of `proposeAgent`/`proposeAgentUpdate` - the card
  * the Author panel renders (PLAN §8.3). `proposalId` is the propose call's
  * `toolCallId`: the transcript is the proposal store, so nothing is
