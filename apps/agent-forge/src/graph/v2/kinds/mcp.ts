@@ -2,16 +2,17 @@
  * `KindRules` for `mcp` nodes — every `spec.mcpServers` entry (stdio
  * `command` or HTTP `url`). `validate` checks the transport's required
  * field, the record key, the OAuth pairing rules and warns on a
- * secret-sounding `env`/`headers` value written as a plain string. No
- * `connectFrom`: an incoming `agent → mcp` edge takes the default re-own
- * effect, and `CONNECTION_RULES.mcp` (the `permission` target) gets its
- * effect from C11.
+ * secret-sounding `env`/`headers` value written as a plain string.
+ * `connectFrom` implements the `mcp → permission` edge: it adds the
+ * server's `<key>__*` glob to the rule's `item.tool`. An incoming
+ * `agent → mcp` edge takes the agent's own re-own effect.
  */
 import { uniqueName } from '../nodeIds';
 import { mcpSiblingKeys, ownerSpecPrefix } from '../order';
 import { MCP_SERVER_NAME } from '../specTypes';
-import type { KindRules } from '../kindRules';
-import type { Graph, NodeOfKind, Problem } from '../types';
+import type { ConnectResult, KindRules } from '../kindRules';
+import type { Graph, GraphNode, NodeOfKind, Problem } from '../types';
+import { addToolToRule } from './permission';
 import { fullUrlOk } from './tool';
 
 /**
@@ -109,10 +110,9 @@ function secretProblems(node: NodeOfKind<'mcp'>, path: string): Problem[] {
 }
 
 /**
- * `KindRules` for `mcp`: validation only — incoming `agent → mcp` edges take
- * the default re-own effect and the `mcp → permission` connect effect is
- * C11's. `duplicateData` rekeys the copy `<key>-copy` like the other
- * record-keyed kinds.
+ * `KindRules` for `mcp`: validation, the `mcp → permission` connect
+ * effect and `duplicateData`, which rekeys the copy `<key>-copy` like the
+ * other record-keyed kinds.
  */
 export const mcpRules: KindRules<'mcp'> = {
   validate: (node, graph) => {
@@ -124,6 +124,15 @@ export const mcpRules: KindRules<'mcp'> = {
       ...secretProblems(node, path),
     ];
   },
+  /**
+   * The `mcp → permission` connect effect — the only target
+   * `CONNECTION_RULES.mcp` allows — adds `<key>__*` to the rule's
+   * `item.tool` via `addToolToRule`.
+   */
+  connectFrom: (source, target: GraphNode, graph: Graph): ConnectResult =>
+    target.kind === 'permission'
+      ? addToolToRule(graph, target.id, `${source.data.key}__*`)
+      : { ok: true, graph },
   duplicateData: (node, graph) => ({
     ...node.data,
     key: uniqueName(`${node.data.key}-copy`, mcpSiblingKeys(graph, node.owner)),
