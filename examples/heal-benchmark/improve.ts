@@ -35,9 +35,10 @@ const throttle = throttleHook(gapMs);
 const probe = benchmarkProbe({ agent: values.agent, model: values.model, live, gapMs });
 const scripted = mockModel(["<notes>KEEP_BASE. The runs don't argue for a change.</notes>"], { onExhausted: 'repeat-last' });
 
-function probeFor(salt: string): ImproveOptions['probe'] {
+function probeFor(salt: string, distinct = false): ImproveOptions['probe'] {
   if (values.cache === undefined) return probe;
-  return cachedProbe(probe, { dir: values.cache, model: values.model, salt, counts: emptyCounts() });
+  const model = live ? values.model : `mock:${values.model}`;
+  return cachedProbe(probe, { dir: values.cache, model, salt, counts: emptyCounts(), distinct });
 }
 
 async function confirmCandidates(row: RecordedRow): Promise<Partial<Record<ReplayLine['label'], { passed: number; scored: number }>>> {
@@ -50,7 +51,7 @@ async function runAttempt(attempt: number, base: Harness): Promise<void> {
     harness: base,
     cases: values.case,
     holdout: values.holdout,
-    probe: probeFor(`attempt-${attempt}`),
+    probe: probeFor(`attempt-${attempt}`, true),
     editor: live ? { model: `openrouter/${values.editor}` } : { provider: scripted },
     repeats: Number(values.repeats),
     maxTokens: Number(values['max-tokens']),
@@ -60,7 +61,7 @@ async function runAttempt(attempt: number, base: Harness): Promise<void> {
   });
   const confirmed = result.harness && confirmRuns > 0 ? await confirmHarness(probeFor(`confirm-${attempt}`), result.harness, values.case, confirmRuns) : undefined;
   const recorded: RecordedRow = { attempt, cases: values.case, holdout: values.holdout, model: values.model, date: new Date().toISOString().slice(0, 10), baseHarness: base };
-  const candidatesConfirmed = values['confirm-candidates'] ? await confirmCandidates({ ...recorded, ...(result.candidates && { candidates: result.candidates }) }) : undefined;
+  const candidatesConfirmed = values['confirm-candidates'] && confirmRuns > 0 ? await confirmCandidates({ ...recorded, ...(result.candidates && { candidates: result.candidates }) }) : undefined;
   const row = { ...recorded, ...result, confirmed, candidatesConfirmed };
   if (values.out !== undefined) appendFileSync(values.out, `${JSON.stringify(row)}\n`);
   console.log(`attempt ${attempt}: ${result.outcome}. ${result.reason} ${result.spend.tokens} tokens.`);

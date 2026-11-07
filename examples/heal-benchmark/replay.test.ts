@@ -1,14 +1,16 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Harness, ImproveOptions, ProbeRun } from 'lousho/improve';
+import { improveAgent, type Harness, type ImproveOptions, type ProbeRun } from 'lousho/improve';
+import { mockModel, type MockTurn } from 'lousho/testing';
 import { cacheKey, cachedProbe, emptyCounts } from './probeCache';
-import { replayRow, type RecordedRow } from './replayRows';
+import { assertRowModel, replayRow, type RecordedRow } from './replayRows';
 
 const BASE: Harness = { instructions: 'Fix the bug.', skills: {} };
 const FIXED: Harness = { instructions: 'Fix the bug. Never call new Date for today.', skills: {} };
 const scored = (passed: boolean | null): ProbeRun => ({ passed, transcript: 'ran', tokens: 10, ended: 'stop' });
+const write = (content: string): MockTurn => ({ toolCalls: [{ name: 'write_file', args: { path: 'harness/instructions.md', content } }] });
 
 const dirs: string[] = [];
 const tempDir = () => {
@@ -52,6 +54,44 @@ describe('probe cache', () => {
     await retrying(BASE, 'c', 0);
     expect(unscored).toHaveBeenCalledTimes(2);
     expect(unscoredCounts.excluded).toBe(2);
+  });
+
+  it('cachedProbe treats an unparsable cache file as a miss and rewrites it whole', async () => {
+    const dir = tempDir();
+    const file = path.join(dir, `${cacheKey({ model: 'm', salt: 's', caseId: 'c', repeat: 0, harness: BASE })}.json`);
+    writeFileSync(file, '{"passed":tr');
+    const probe = vi.fn(async () => scored(true));
+    const counts = emptyCounts();
+    expect(await cachedProbe(probe, { dir, model: 'm', salt: 's', counts })(BASE, 'c', 0)).toEqual(scored(true));
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(counts).toMatchObject({ run: 1, cached: 0 });
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(scored(true));
+    expect(readdirSync(dir)).toEqual([path.basename(file)]);
+  });
+
+  it('a distinct cachedProbe gives the gate fresh runs when the composer repeats the domain candidate', async () => {
+    const dir = tempDir();
+    const turns = ['<notes>KEEP_BASE.</notes>', write(FIXED.instructions), '<notes>Fixed.</notes>', write(FIXED.instructions), '<notes>Composed.</notes>'];
+    const attempt = async (probe: ImproveOptions['probe']) =>
+      improveAgent({ harness: BASE, cases: ['c'], probe: cachedProbe(probe, { dir, model: 'm', salt: 'attempt-0', counts: emptyCounts(), distinct: true }), editor: { provider: mockModel(turns) }, repeats: 2 });
+
+    const probe = vi.fn(async (harness: Harness) => scored(harness.instructions.includes('new Date')));
+    const result = await attempt(probe);
+    expect(result.candidates?.compose).toEqual(result.candidates?.domain);
+    expect(probe.mock.calls.filter(([harness]) => harness.instructions === FIXED.instructions)).toHaveLength(2 * 2 * 1);
+
+    const again = vi.fn(probe);
+    await attempt(again);
+    expect(again).not.toHaveBeenCalled();
+  });
+});
+
+describe('assertRowModel', () => {
+  it('accepts a row recorded with the same model, or with none, and refuses another model', () => {
+    const row: RecordedRow = { attempt: 3, cases: ['c'], holdout: [], model: 'm', date: 'd', baseHarness: BASE };
+    expect(() => assertRowModel(row, 'm')).not.toThrow();
+    expect(() => assertRowModel({ attempt: 3 }, 'other')).not.toThrow();
+    expect(() => assertRowModel(row, 'other')).toThrow('row 3 was recorded with m');
   });
 });
 

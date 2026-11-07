@@ -229,6 +229,14 @@ describe('improveAgent', () => {
     expect(probe.mock.calls.length).toBeLessThanOrEqual(4);
   });
 
+  it('stops during the domain stage when the budget runs out there, and keeps no candidates', async () => {
+    const probe = vi.fn(async (harness: Harness) => run(false, harness.instructions === FIX ? 10_000 : 10));
+    const result = await improveAgent(options({ probe, maxTokens: 5_000, turns: [...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('budget-exceeded');
+    expect(result.stages.map((stage) => stage.label)).toEqual(['invariant', 'domain']);
+    expect(result.candidates).toBeUndefined();
+  });
+
   it('rejects bad options', async () => {
     await expect(improveAgent(options({ cases: [] }))).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
     await expect(improveAgent(options({ repeats: 0 }))).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });

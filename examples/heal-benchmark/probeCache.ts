@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Harness, ImproveOptions, ProbeRun } from 'lousho/improve';
 
@@ -20,14 +20,35 @@ export function cacheKey(parts: { model: string; salt: string; caseId: string; r
     .digest('hex');
 }
 
-export function cachedProbe(probe: ImproveOptions['probe'], options: { dir: string; model: string; salt: string; counts: ProbeCounts }): ImproveOptions['probe'] {
-  const { dir, model, salt, counts } = options;
+function readCached(file: string): ProbeRun | undefined {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as ProbeRun;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCached(dir: string, file: string, run: ProbeRun): void {
+  mkdirSync(dir, { recursive: true });
+  const temp = `${file}.${process.pid}.tmp`;
+  writeFileSync(temp, JSON.stringify(run));
+  renameSync(temp, file);
+}
+
+export function cachedProbe(probe: ImproveOptions['probe'], options: { dir: string; model: string; salt: string; counts: ProbeCounts; distinct?: boolean }): ImproveOptions['probe'] {
+  const { dir, model, salt, counts, distinct = false } = options;
+  const seen = new Map<string, number>();
   return async (harness, caseId, repeat) => {
     counts.planned += 1;
-    const file = path.join(dir, `${cacheKey({ model, salt, caseId, repeat, harness })}.json`);
-    if (existsSync(file)) {
+    const first = cacheKey({ model, salt, caseId, repeat, harness });
+    const nth = seen.get(first) ?? 0;
+    seen.set(first, nth + 1);
+    const key = distinct && nth > 0 ? cacheKey({ model, salt: `${salt}#${nth}`, caseId, repeat, harness }) : first;
+    const file = path.join(dir, `${key}.json`);
+    const hit = readCached(file);
+    if (hit) {
       counts.cached += 1;
-      return JSON.parse(readFileSync(file, 'utf8')) as ProbeRun;
+      return hit;
     }
     const run = await probe(harness, caseId, repeat);
     counts.run += 1;
@@ -35,8 +56,7 @@ export function cachedProbe(probe: ImproveOptions['probe'], options: { dir: stri
       counts.excluded += 1;
       return run;
     }
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(file, JSON.stringify(run));
+    writeCached(dir, file, run);
     return run;
   };
 }

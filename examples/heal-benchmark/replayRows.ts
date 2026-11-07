@@ -18,7 +18,11 @@ export interface ReplayLine {
   containsFix: boolean;
 }
 
-export const LABELS =['invariant', 'domain', 'compose'] as const;
+export const LABELS = ['invariant', 'domain', 'compose'] as const;
+
+export function assertRowModel(row: Pick<RecordedRow, 'attempt'> & { model?: string }, model: string): void {
+  if (row.model && row.model !== model) throw new Error(`row ${row.attempt} was recorded with ${row.model}`);
+}
 
 export async function confirmHarness(probe: ImproveOptions['probe'], harness: Harness, caseIds: readonly string[], runs: number): Promise<{ passed: number; scored: number }> {
   let passed = 0;
