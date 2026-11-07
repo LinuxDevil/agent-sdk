@@ -1,14 +1,41 @@
 .agent-list-screen {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
   align-content: start;
   padding: var(--space-5) var(--page-gutter) var(--space-8);
+  container-type: inline-size;
 }
 
-.agent-list-placeholder {
+.agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-4);
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.agent-card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  height: 172px;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.agent-card-skeleton-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.agent-card-skeleton-lines {
   display: grid;
+  flex: 1;
   gap: var(--space-2);
+  min-width: 0;
 }

@@ -201,13 +201,11 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Creates a blank agent or a copy (`POST /agents`) and answers its record. Named `createAgentRecord` so it never reads as the SDK's `createAgent` function. */
-  // fallow-ignore-next-line unused-class-member -- the new-agent menu and Duplicate call it once those UI tickets land
   async createAgentRecord(request: CreateAgentRequest): Promise<AgentRecord> {
     return this.request('/agents', { method: 'POST', body: JSON.stringify(request) });
   }
 
   /** Toggles `enabled` and/or stores the label set (`PATCH /agents/:id/meta`); answers the updated meta. */
-  // fallow-ignore-next-line unused-class-member -- the enable switch and label editor call it once those UI tickets land
   async patchAgentMeta(agentId: string, patch: PatchAgentMetaRequest): Promise<AgentMeta> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/meta`, {
       method: 'PATCH',
