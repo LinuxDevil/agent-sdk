@@ -1,8 +1,8 @@
 name: CI
+# PRs only: main is updated solely by merging green PRs (and the release
+# bot's version bump), so re-running the suite on push is redundant.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 # A newer push to the same PR cancels the run it supersedes.
@@ -115,7 +115,7 @@ jobs:
   # with zod 4). Then the sandbox egress, credential broker and docker deploy image against the runner's
   # real Docker Engine (`*.docker.test.ts`, which fail instead of skipping with LOUSHO_DOCKER_TESTS=1).
   compat:
-    # Slow (full suite on the newest peers plus Docker); runs on main and by hand, not on every PR push.
+    # Slow (full suite on the newest peers plus Docker); manual only (Actions -> CI -> Run workflow), not on every PR push.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
