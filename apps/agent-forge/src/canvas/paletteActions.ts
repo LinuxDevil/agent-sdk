@@ -1,5 +1,4 @@
-import { HOOK_TEMPLATES, type HookTemplate } from '../hooks/hookTemplates';
-import type { AgentNodeHookPhase, GraphPosition } from '../graph/types';
+import type { GraphPosition } from '../graph/v2/types';
 
 /** Approximate rendered size of an `.rf-node` (screens/agents/agents.css), used to centre a newly added node. */
 const NODE_SIZE = { width: 208, height: 80 };
@@ -21,19 +20,4 @@ export function viewportCentrePosition(
     x: Math.round((width / 2 - x) / safeZoom - NODE_SIZE.width / 2),
     y: Math.round((height / 2 - y) / safeZoom - NODE_SIZE.height / 2),
   };
-}
-
-/**
- * Attach the first starter template matching both this palette item's phase
- * (see LeftRail's HOOK_PALETTE) and the target node's hook point (llm ->
- * generate, tool -> toolCall) as a sensible default; the Inspector lets the
- * user pick a different template/edit the code afterward.
- */
-export function pickHookTemplate(targetType: 'llm' | 'tool', hookPhase: AgentNodeHookPhase): HookTemplate {
-  const point = targetType === 'llm' ? 'generate' : 'toolCall';
-  return (
-    HOOK_TEMPLATES.find((t) => t.phase === hookPhase && t.point === point) ??
-    HOOK_TEMPLATES.find((t) => t.point === point) ??
-    HOOK_TEMPLATES[0]
-  );
 }

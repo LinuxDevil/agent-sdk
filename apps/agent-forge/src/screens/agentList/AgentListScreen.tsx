@@ -31,7 +31,7 @@ export function AgentListScreen() {
           <ul className="agent-list-placeholder">
             {agents.map((agent) => (
               <li key={agent.id}>
-                <a href={`#${agentTabPath(agent.id, 'overview')}`}>{agent.spec.name || agent.id}</a>{' '}
+                <a href={`#${agentTabPath(agent.id, 'overview')}`}>{agent.name || agent.id}</a>{' '}
                 <span>{agent.id}</span>
               </li>
             ))}

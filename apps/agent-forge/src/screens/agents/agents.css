@@ -644,19 +644,46 @@ button.breakpoint-toggle {
 .react-flow__minimap-node.minimap-node-trigger {
   fill: var(--accent);
 }
-.react-flow__minimap-node.minimap-node-llm {
+.react-flow__minimap-node.minimap-node-agent {
+  fill: var(--violet);
+}
+.react-flow__minimap-node.minimap-node-subagent {
   fill: var(--violet);
 }
 .react-flow__minimap-node.minimap-node-tool {
   fill: var(--info);
 }
-.react-flow__minimap-node.minimap-node-approval {
+.react-flow__minimap-node.minimap-node-mcp {
+  fill: var(--info);
+}
+.react-flow__minimap-node.minimap-node-skill {
+  fill: var(--info);
+}
+.react-flow__minimap-node.minimap-node-memory {
+  fill: var(--info);
+}
+.react-flow__minimap-node.minimap-node-guardrail {
   fill: var(--warning);
+}
+.react-flow__minimap-node.minimap-node-permission {
+  fill: var(--warning);
+}
+.react-flow__minimap-node.minimap-node-hook {
+  fill: var(--warning);
+}
+.react-flow__minimap-node.minimap-node-abort {
+  fill: var(--warning);
+}
+.react-flow__minimap-node.minimap-node-handoff {
+  fill: var(--accent);
 }
 .react-flow__minimap-node.minimap-node-output {
   fill: var(--success);
 }
-.react-flow__minimap-node.minimap-node-router {
+.react-flow__minimap-node.minimap-node-flow {
+  fill: var(--text-muted);
+}
+.react-flow__minimap-node.minimap-node-note {
   fill: var(--text-muted);
 }
 

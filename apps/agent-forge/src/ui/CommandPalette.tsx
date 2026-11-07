@@ -322,7 +322,7 @@ function ShortcutSheet({ onClose }: { onClose: () => void }) {
 export function CommandPalette() {
   const { agents } = useAppState();
   const [open, setOpen] = useState<'palette' | 'help' | null>(null);
-  const agentRefs = useMemo(() => agents.map((a) => ({ id: a.id, name: a.spec.name || a.id })), [agents]);
+  const agentRefs = useMemo(() => agents.map((a) => ({ id: a.id, name: a.name || a.id })), [agents]);
   // The hash drives selection (screens/agents/useAgentRouteSync.ts): it asks about unsaved changes and reports a failed open.
   const openAgent = useCallback((id: string) => navigate(agentTabPath(id, 'overview')), []);
 

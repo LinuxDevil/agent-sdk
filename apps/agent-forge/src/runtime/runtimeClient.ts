@@ -6,7 +6,7 @@
  * so the two can evolve together without every component knowing the HTTP
  * details.
  */
-import type { AgentSpec, AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from 'lousho';
 import type {
   AddWorkspaceRequest,
   AgentListItem,
@@ -67,7 +67,6 @@ import {
   type AuthorSettingsPayload,
   type SetEnabledOutput,
 } from '../../shared/authorWire';
-import type { AgentStoreEntry } from '../persistence/AgentStore';
 import type { AgentApi } from '../persistence/HttpAgentStore';
 
 /** Same-origin default: `lousho studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
@@ -143,33 +142,13 @@ class RuntimeClient implements AgentApi {
     return body as T;
   }
 
-  /** The saved agents in the studio's `.lousho/agents/` (the v1 list - `?view=legacy` until the canvas moves to v2). */
-  async listAgents(): Promise<AgentStoreEntry[]> {
-    return this.request('/agents?view=legacy', { method: 'GET' });
-  }
-
-  /** One saved agent's v1 spec (the legacy view), or undefined when there is none. */
-  async loadAgent(agentId: string): Promise<AgentSpec | undefined> {
-    try {
-      return await this.request<AgentSpec>(`/agents/${encodeURIComponent(agentId)}?view=legacy`, { method: 'GET' });
-    } catch (error) {
-      if (error instanceof RuntimeApiError && error.status === 404) return undefined;
-      throw error;
-    }
-  }
-
-  /** Writes `.lousho/agents/<id>.yaml` from a v1 spec (the server merges it onto the stored v2 spec). */
-  async saveAgent(agentId: string, spec: AgentSpec): Promise<void> {
-    await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'PUT', body: JSON.stringify(spec) });
-  }
-
-  /** The Agents list's rows: one `AgentListItem` per saved spec (`GET /agents`, the v2 shape). */
-  async listAgentItems(): Promise<AgentListItem[]> {
+  /** The saved agents in the studio's `.lousho/agents/` - one `AgentListItem` per spec (`GET /agents`). */
+  async listAgents(): Promise<AgentListItem[]> {
     return this.request('/agents', { method: 'GET' });
   }
 
-  /** One agent's `AgentRecord` - spec v2 plus meta, layout and the latest version - or undefined on a 404. */
-  async getAgentRecord(agentId: string): Promise<AgentRecord | undefined> {
+  /** One saved agent's `AgentRecord` - spec v2 plus meta, layout and the latest version - or undefined on a 404. */
+  async loadAgent(agentId: string): Promise<AgentRecord | undefined> {
     try {
       return await this.request<AgentRecord>(`/agents/${encodeURIComponent(agentId)}`, { method: 'GET' });
     } catch (error) {
@@ -178,8 +157,8 @@ class RuntimeClient implements AgentApi {
     }
   }
 
-  /** Saves an AgentSpecV2 working copy (`PUT /agents/:id` with a `{ spec }` body). */
-  async saveAgentSpec(agentId: string, spec: AgentSpecV2): Promise<void> {
+  /** Writes `.lousho/agents/<id>.yaml` from a spec v2 working copy (`PUT /agents/:id` with a `{ spec }` body). */
+  async saveAgent(agentId: string, spec: AgentSpecV2): Promise<void> {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, {
       method: 'PUT',
       body: JSON.stringify({ spec }),
@@ -202,7 +181,6 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Stores the canvas layout (`PUT /agents/:id/layout`) - node positions, notes and viewport. */
-  // fallow-ignore-next-line unused-class-member -- the v2 canvas's position persistence calls it once that ticket lands
   async saveLayout(agentId: string, layout: CanvasLayout): Promise<void> {
     await this.request(`/agents/${encodeURIComponent(agentId)}/layout`, {
       method: 'PUT',
@@ -325,7 +303,7 @@ class RuntimeClient implements AgentApi {
     await this.request(`/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
-  async run(agentId: string, input: string, spec: AgentSpec): Promise<AgentRunStatusPayload> {
+  async run(agentId: string, input: string, spec: AgentSpecV2): Promise<AgentRunStatusPayload> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/run`, {
       method: 'POST',
       body: JSON.stringify({ input, spec }),
@@ -373,7 +351,7 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Sends a chat message - continues the agent's conversation (or starts one), replying over the WS `subscribe()` stream as `{type:'chat'}`. */
-  async sendMessage(agentId: string, message: string, spec?: AgentSpec): Promise<AgentRunStatusPayload> {
+  async sendMessage(agentId: string, message: string, spec?: AgentSpecV2): Promise<AgentRunStatusPayload> {
     // Send the canvas's current spec along, like run() does, so
     // chat never runs a stale (or missing) saved spec.
     return this.request(`/agents/${encodeURIComponent(agentId)}/message`, {

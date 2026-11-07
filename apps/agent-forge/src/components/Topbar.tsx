@@ -92,20 +92,21 @@ function profileName(profile: ActiveProfile) {
 
 type Graph = ReturnType<typeof useAppState>['graph'];
 
-/** The agent's LLM node's `provider/model`, or undefined when the graph has no LLM node. */
+/** The root agent node's `provider/model` string, or undefined when it has none. */
 function llmProviderOf(graph: Graph | undefined): string | undefined {
-  const llm = graph?.nodes.find((node) => node.type === 'llm');
-  return llm?.type === 'llm' ? `${llm.data.provider.type}/${llm.data.provider.model}` : undefined;
+  const root = graph?.nodes.find((node) => node.id === 'agent' && node.kind === 'agent');
+  if (root?.kind !== 'agent') return undefined;
+  return (root.data.fields as { model?: string }).model;
 }
 
 /**
  * The toolbar's centre model badge: the provider the agent actually runs on -
- * the one the in-flight run reported, else the agent's LLM node's - as a mono
- * `provider · model` chip, hidden when the graph has no LLM node. A mock agent
+ * the one the in-flight run reported, else the root agent node's - as a mono
+ * `provider · model` chip, hidden when the agent has no model. A mock agent
  * gets a visible MOCK badge, so canned replies are never mistaken for a real
  * model. The settings profile is named in its tooltip.
  */
-/** `provider/model` the agent runs on: the in-flight run's, else the LLM node's; undefined without an LLM node. */
+/** `provider/model` the agent runs on: the in-flight run's, else the root agent's; undefined without a model. */
 function useModelProvider(): string | undefined {
   const { graph, runStatus } = useAppState();
   const live = runStatus?.status === 'running' || runStatus?.status === 'paused';

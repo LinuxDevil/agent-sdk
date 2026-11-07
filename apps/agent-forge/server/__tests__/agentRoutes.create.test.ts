@@ -17,7 +17,7 @@ import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
 import { TemplateCatalog } from '../templates/templateCatalog';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { AgentRecord, VersionListItem } from '../../shared/wireTypes';
 
 const V2_SPEC: AgentSpecV2 = {
@@ -38,7 +38,7 @@ const LAYOUT = {
 describe('POST /agents', () => {
   let baseDir: string;
   let templatesDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
 
@@ -280,7 +280,7 @@ describe('POST /agents', () => {
 
 describe('PUT /agents/:id/layout', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
 
   beforeEach(() => {

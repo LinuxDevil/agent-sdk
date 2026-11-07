@@ -19,7 +19,7 @@
  * canvas layout after `parseCanvasLayout` clears it.
  *
  * The v1 canvas keeps working until C02 through the `?view=legacy` bridge:
- * the two GETs answer the old `AgentStoreEntry[]`/`AgentSpec` shapes (the
+ * the two GETs answer the old `LegacyAgentStoreEntry[]`/`AgentSpec` shapes (the
  * `agentStore` facade, `toLegacySpec`) and a bare v1 `AgentSpec` PUT body is
  * merged onto the stored v2 spec (`mergeLegacySave`), preserving v2-only
  * keys. A v2 spec sent without the `{ spec }` wrapper is NOT a v1 body and
@@ -289,7 +289,7 @@ export interface AgentRouteDeps {
  * Studio-global services (the template catalog).
  */
 export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
-  // The Agents list. `?view=legacy` keeps the old AgentStoreEntry[] shape
+  // The Agents list. `?view=legacy` keeps the old LegacyAgentStoreEntry[] shape
   // for the v1 canvas; anything else (or no view) answers AgentListItem[].
   app.get(
     '/agents',

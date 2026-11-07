@@ -3,8 +3,15 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const appState = vi.hoisted(() => ({
-  spec: { name: 'demo', provider: { type: 'mock', model: 'echo' } },
-  graph: { nodes: [{ id: 'llm', type: 'llm', label: 'LLM', data: { provider: { type: 'mock', model: 'echo' } } }], edges: [] },
+  spec: { version: 2, name: 'demo', model: 'mock/echo', instructions: '' },
+  graph: {
+    version: 2,
+    nodes: [
+      { id: 'agent', kind: 'agent', owner: null, position: { x: 0, y: 0 }, data: { fields: { model: 'mock/echo' }, extra: {} } },
+    ],
+    emptySections: [],
+    unplaced: [],
+  },
   agentId: 'demo',
   dirty: false,
   runStatus: undefined,
@@ -159,7 +166,7 @@ describe('Topbar', () => {
     expect(container.querySelector('.crumbs')?.textContent).toBe('Agentsdemo');
     act(() => root?.unmount());
     const { graph } = appState;
-    appState.graph = { nodes: [], edges: [] };
+    appState.graph = { version: 2, nodes: [], emptySections: [], unplaced: [] };
     try {
       render(<Topbar />);
       expect(container.querySelector('.env-select')).toBeNull();

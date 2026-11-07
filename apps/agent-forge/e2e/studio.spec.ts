@@ -62,7 +62,7 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
 
   // --- Retarget the tool node at the local, always-needsApproval
   // 'demo-approval' tool, and save ---
-  const toolNode = page.locator('[data-node-type="tool"]');
+  const toolNode = page.locator('[data-node-kind="tool"]');
   await expect(toolNode).toBeVisible();
   await toolNode.click();
 
@@ -124,7 +124,7 @@ test('a pending approval keeps "Open trace" and the MOCK badge in the toolbar at
   await page.locator('#new-agent-name').fill(agentId);
   await page.locator('#new-agent-template').selectOption('support-bot');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await page.locator('[data-node-type="tool"]').click();
+  await page.locator('[data-node-kind="tool"]').click();
   await page.locator('#node-tool-name').fill('demo-approval');
   await page.locator('.chat-input').fill('Please call demo-approval to look something up for me.');
   await page.locator('.btn-send').click();
