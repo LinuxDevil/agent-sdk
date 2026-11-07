@@ -45,6 +45,9 @@ console.log(result.outcome, result.reason);
 1. It runs your cases on the current harness. If they all pass, it stops.
 2. An invariant editor (how the agent works) and a domain editor (what it knows)
    each propose edits, and each proposal is run on the same cases.
+   The invariant editor fixes the earliest point where a run went wrong. The
+   domain editor leaves anything that would help in any profession to the
+   invariant editor.
 3. A composer merges what the runs support, or changes nothing.
 4. The result must beat the current harness by more than the spread between
    repeats, without making a held-out case worse or raising tokens per passing
