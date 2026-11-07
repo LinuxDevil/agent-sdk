@@ -1,0 +1,31 @@
+/* ToolCallRow: one quiet line per tool call (icon, server badge, name, summary,
+   duration, time, chevron) that expands to show the caller's renderer. Error
+   rows get a danger-tinted border, interrupted/waiting a warning-tinted one.
+   @keyframes status-spin comes from ui/status.css. */
+.tool-call { container-type: inline-size; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: 0; }
+.tool-call-error { border-color: var(--danger-border); }
+.tool-call-interrupted, .tool-call-waiting { border-color: var(--warning-border); }
+.tool-call-head { display: flex; align-items: center; min-width: 0; }
+.tool-call-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); min-height: 32px;
+  padding: 0 var(--space-3); border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12px;
+  text-align: left; cursor: pointer; border-radius: var(--radius); }
+.tool-call-toggle:disabled { cursor: default; }
+.tool-call-toggle:hover:not(:disabled) { background: var(--surface-2); }
+.tool-call-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tool-call-icon { display: inline-flex; flex: none; color: var(--text-muted); }
+.tool-call-running .tool-call-icon { color: var(--info); }
+.tool-call-error .tool-call-icon { color: var(--danger); }
+.tool-call-interrupted .tool-call-icon, .tool-call-waiting .tool-call-icon { color: var(--warning); }
+.tool-call-running .tool-call-icon svg { animation: status-spin 1s linear infinite; }
+.tool-call-server { flex: none; height: 16px; padding: 0 4px; border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); font: 500 10px/14px var(--font-mono); color: var(--text-muted); }
+.tool-call-name { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 500; font-family: var(--font-mono); }
+.tool-call-summary { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.tool-call-meta { flex: none; margin-left: auto; display: inline-flex; gap: var(--space-2); font-size: 11px; color: var(--text-faint); }
+.tool-call-chevron { flex: none; color: var(--text-faint); transition: transform var(--dur-fast) var(--ease); }
+.tool-call-toggle[aria-expanded='true'] .tool-call-chevron { transform: rotate(90deg); }
+.tool-call-actions { flex: none; display: flex; gap: 4px; padding-right: var(--space-2); }
+.tool-call-body { border-top: 1px solid var(--border); padding: var(--space-3); min-width: 0; overflow-x: auto; }
+@container (max-width: 420px) { .tool-call-summary { display: none; } }
+@media (prefers-reduced-motion: reduce) { .tool-call-chevron { transition: none; } .tool-call-running .tool-call-icon svg { animation: none; } }
