@@ -16,6 +16,8 @@ import type { AgentStore, AgentStoreEntry } from '../../src/persistence/AgentSto
 import { WORKSPACE_ID_RE } from '../../shared/workspace';
 import { workspaceIdFor, workspaceRefFor } from '../workspace/workspaceId';
 import { DraftStore } from '../storage/draftStore';
+import { IdleVersioner } from '../storage/idleVersioner';
+import { SuggestionStore } from '../storage/suggestionStore';
 import { VersionStore } from '../storage/versionStore';
 import { StudioEventBus } from '../events/eventBus';
 import type { WorkspaceContext } from '../workspace/context';
@@ -117,6 +119,8 @@ describe('workspace seam', () => {
       },
       versions: new VersionStore(repo),
       drafts: new DraftStore(repo),
+      idleVersioner: new IdleVersioner({ capture: async () => {} }),
+      suggestions: new SuggestionStore(repo),
       host: newTestHost(baseDir),
       runs: { status } as unknown as RunManager,
       chatTriggers: new TriggerRegistry(),

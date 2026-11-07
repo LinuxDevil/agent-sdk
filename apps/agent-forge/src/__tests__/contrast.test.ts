@@ -39,6 +39,8 @@ const PAIRS: [text: string, background: string][] = [
   ['danger', 'danger-soft'],
   ['warning', 'warning-soft'],
   ['danger', 'surface'],
+  // The SecretRefField plain-text warning hint draws --warning on the inspector's --surface.
+  ['warning', 'surface'],
   ['info', 'surface'],
   // The running status pill draws info on the neutral pill tint.
   ['info', 'surface-2'],

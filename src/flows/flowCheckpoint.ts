@@ -57,8 +57,8 @@ export function durableOptions(
 }
 
 /**
- * Thrown by a durable run's `toolCall` step whose approval is deferred (or
- * that has no `approve` callback): the run stops and is saved as
+ * Thrown by a durable run's `toolCall` or `approval` step whose approval is
+ * deferred (or that has no `approve` callback): the run stops and is saved as
  * `'awaiting-approval'`. Not a failure: no `step-error`, no retry.
  */
 export class FlowApprovalPause extends Error {
@@ -72,7 +72,7 @@ export class FlowApprovalPause extends Error {
 export interface FlowApprovalDecision {
   /** The `approvalId` the paused run returned. */
   approvalId: string;
-  /** `true` runs the paused tool call; `false` fails its step with `LOUSHO_FLOW_TOOL_DENIED`. */
+  /** `true` lets the paused step continue; `false` fails it with `LOUSHO_FLOW_TOOL_DENIED`. */
   approved: boolean;
 }
 

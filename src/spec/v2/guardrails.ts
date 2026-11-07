@@ -16,11 +16,17 @@ export type GuardrailSide = 'input' | 'output' | 'tools';
 
 /** One `spec.guardrails` entry. */
 export interface GuardrailSpec {
+  /** Stable id (`guard:<id>` on the canvas and in validation paths). */
   id: string;
+  /** The built-in guardrail to run. */
   name: SpecGuardrailName;
+  /** Which side(s) it checks; default `['input', 'output']`. */
   on?: GuardrailSide | GuardrailSide[];
+  /** Run alongside the model call instead of before/after it. */
   runInParallel?: boolean;
+  /** What a trip does (only 'warn' is allowed on non-rewritable built-ins). */
   onTripped?: 'block' | 'rewrite' | 'warn';
+  /** The guardrail's own options, checked against its JSON Schema. */
   options?: Record<string, unknown>;
 }
 

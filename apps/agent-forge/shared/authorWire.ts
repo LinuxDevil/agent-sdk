@@ -158,10 +158,27 @@ export interface AuthorToolFailure {
 }
 
 /**
+ * The five yes/no questions the draft-review pass asks about a proposal
+ * (PLAN §8.4), in prompt order: `runs` (every builtin tool, guardrail and
+ * trigger type exists, MCP servers have a command or URL, no literal
+ * secrets), `fulfillsIntent` (the draft does what the user asked),
+ * `toolsComplete` (every instruction step has a way to happen),
+ * `guardrailsFit` (approvals/guardrails fit the risk) and `triggersFit`
+ * (triggers match when the user wants the agent to run).
+ */
+export const DRAFT_REVIEW_DIMENSIONS = ['runs', 'fulfillsIntent', 'toolsComplete', 'guardrailsFit', 'triggersFit'] as const;
+
+/** One {@link DRAFT_REVIEW_DIMENSIONS} question. */
+export type DraftReviewDimension = (typeof DRAFT_REVIEW_DIMENSIONS)[number];
+
+/** The per-identity round cap on draft-review bounces in one turn (PLAN §8.4); round 3 shows the card anyway. */
+export const DRAFT_REVIEW_MAX_ROUNDS = 3;
+
+/**
  * Whether `output` is a `DRAFT_REVIEW` tool failure: the hidden bounce a
- * propose call returns while the Author redrafts (PLAN §8.4). The panel
- * renders nothing for these outputs (the review is internal), so the
- * client checks this before showing a tool result.
+ * propose call returns while the Author redrafts. The panel renders
+ * nothing for these outputs (the review is internal), so the client
+ * checks this before showing a tool result.
  */
 export function isDraftReviewFailure(output: unknown): boolean {
   return (

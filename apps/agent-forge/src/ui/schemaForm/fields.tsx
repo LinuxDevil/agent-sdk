@@ -5,8 +5,11 @@ import { Field } from '../Field';
 import { Input, Select, Switch, Textarea } from '../controls';
 
 import { fieldKind, humanize, schemaType, type FieldKind } from './fieldKind';
+import { ObjectArrayField } from './ObjectArrayField';
+import { RecordField } from './RecordField';
 import { getAtPath, pathKey, resolveRef } from './schemaPath';
 import type { JsonSchema, SchemaPath } from './types';
+import { VariantField } from './VariantField';
 
 /** Everything one field renderer needs: position in the tree plus the form-wide context. */
 export interface FieldRendererProps {
@@ -18,7 +21,6 @@ export interface FieldRendererProps {
   /** The value at `path`. */
   value: unknown;
   /** Whether the parent object's `required` lists this key. */
-  // fallow-ignore-next-line unused-component-prop -- read by PrimitiveArrayField/SchemaNode; leaf renderers share the props type without reading it.
   required: boolean;
   ctx: {
     idPrefix: string;
@@ -33,11 +35,18 @@ export interface FieldRendererProps {
 /** Field value convention: every control maps its empty state to `undefined` (removes the key). */
 const emptyToUndefined = (text: string): string | undefined => (text === '' ? undefined : text);
 
-/** Label resolution order: `labels[path]` → schema `title` → `humanize(key)`. */
-function fieldLabel(schema: JsonSchema, path: SchemaPath, ctx: FieldRendererProps['ctx']): string {
+/**
+ * Label resolution order: `labels[path]` → schema `title` → `humanize(key)`;
+ * a numeric last segment (a list item) becomes `Item {n}` so nested union
+ * pickers read `Item 1 kind`, not `0 kind`. Exported for the container
+ * renderers (`VariantField`, `ObjectArrayField`, `RecordField`).
+ */
+export function fieldLabel(schema: JsonSchema, path: SchemaPath, ctx: FieldRendererProps['ctx']): string {
   const key = pathKey(path);
   const last = path[path.length - 1];
-  return ctx.labels[key] ?? schema.title ?? humanize(last == null ? key : String(last));
+  const fallback =
+    typeof last === 'number' ? `Item ${last + 1}` : humanize(last == null ? key : String(last));
+  return ctx.labels[key] ?? schema.title ?? fallback;
 }
 
 /** Hint resolution order: `hints[path]` → schema `description`. */
@@ -45,8 +54,8 @@ function fieldHint(schema: JsonSchema, path: SchemaPath, ctx: FieldRendererProps
   return ctx.hints[pathKey(path)] ?? schema.description;
 }
 
-/** DOM id for a path: `${idPrefix}-${pathKey}` with non-id characters dashed. */
-function fieldId(idPrefix: string, path: SchemaPath): string {
+/** DOM id for a path: `${idPrefix}-${pathKey}` with non-id characters dashed. Exported for the container renderers. */
+export function fieldId(idPrefix: string, path: SchemaPath): string {
   return `${idPrefix}-${pathKey(path).replace(/[^A-Za-z0-9_-]/g, '-')}`;
 }
 
@@ -180,14 +189,23 @@ function BooleanField({ schema, path, value, ctx }: FieldRendererProps): JSX.Ele
 }
 
 function ObjectField(props: FieldRendererProps): JSX.Element {
-  const { root, schema, path, value, ctx } = props;
+  const { schema, path, ctx } = props;
   const key = pathKey(path);
   const hint = fieldHint(schema, path, ctx);
-  const required = new Set(schema.required ?? []);
   return (
     <fieldset className="schema-object" data-path={key}>
       <legend className="schema-legend">{fieldLabel(schema, path, ctx)}</legend>
       {hint != null ? <p className="schema-object-hint">{hint}</p> : null}
+      <ObjectChildren {...props} />
+    </fieldset>
+  );
+}
+
+/** The `properties` rows of an object schema; shared by {@link ObjectField} and `VariantField`'s body. */
+export function ObjectChildren({ root, schema, path, value, ctx }: FieldRendererProps): JSX.Element {
+  const required = new Set(schema.required ?? []);
+  return (
+    <>
       {Object.entries(schema.properties ?? {}).map(([childKey, child]) => (
         <SchemaNode
           key={childKey}
@@ -199,7 +217,7 @@ function ObjectField(props: FieldRendererProps): JSX.Element {
           ctx={ctx}
         />
       ))}
-    </fieldset>
+    </>
   );
 }
 
@@ -293,8 +311,8 @@ function JsonField({ path, value, ctx }: FieldRendererProps): JSX.Element {
   );
 }
 
-/** Registry the renderers dispatch through; U14 adds `variant`, `objectArray` and `record` entries. */
-// fallow-ignore-next-line unused-export -- public dispatch table, re-exported from SchemaForm.tsx; U14 registers more kinds.
+/** Registry the renderers dispatch through. */
+// fallow-ignore-next-line unused-export -- public dispatch table, re-exported from SchemaForm.tsx.
 export const FIELD_RENDERERS: Record<FieldKind, (p: FieldRendererProps) => JSX.Element> = {
   string: StringField,
   text: TextField,
@@ -305,6 +323,9 @@ export const FIELD_RENDERERS: Record<FieldKind, (p: FieldRendererProps) => JSX.E
   boolean: BooleanField,
   object: ObjectField,
   primitiveArray: PrimitiveArrayField,
+  variant: VariantField,
+  objectArray: ObjectArrayField,
+  record: RecordField,
   json: JsonField,
 };
 
@@ -324,7 +345,10 @@ export function SchemaNode(props: FieldRendererProps): JSX.Element {
   const kind = fieldKind(resolved);
   const p: FieldRendererProps = { ...props, schema: resolved };
   const Renderer = FIELD_RENDERERS[kind];
-  if (kind === 'object') return <Renderer {...p} />;
+  // These kinds draw their own field chrome (`fieldset`, `.field`, `.schema-variant`).
+  if (kind === 'object' || kind === 'variant' || kind === 'objectArray' || kind === 'record') {
+    return <Renderer {...p} />;
+  }
   const key = pathKey(props.path);
   return (
     <Field

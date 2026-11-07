@@ -12,11 +12,13 @@ import * as fs from 'node:fs';
 import { createAgent, type CreateAgentConfig, type PromptRefString, type SimpleAgent } from '../../createAgent';
 import { ConfigurationError } from '../../execution/errors';
 import type { LLMProvider } from '../../providers/llm';
+import type { Subagents } from '../../subagents/types';
 import { resolveSpecProvider } from '../provider';
 import type { McpServerSpec } from '../schema';
 import { familyInstructions } from './familyInstructions';
 import { specFilePath } from './files';
 import { outputFromSpec } from './jsonSchemaAdapter';
+import { isNodeIdExporter, nodeIdExporter, nodeIdIndexOf, type NodeIdIndex } from './nodeIdExporter';
 import { parseAgentSpecV2 } from './parse';
 import { resolveMcpServers } from './resolve/mcpServers';
 import { resolveToolRef, type ResolvedTools } from './resolve/tools';
@@ -181,14 +183,45 @@ export type SpecAgentV2 = SimpleAgent & {
   readonly toolNamesByRef: readonly (readonly string[])[];
 };
 
+/** Whether `value` is an agent this function built (carries `spec`/`toolNamesByRef`); remote sub-agents are not. */
+function isSpecAgent(value: unknown): value is SpecAgentV2 {
+  return typeof value === 'object' && value !== null && 'spec' in value && 'toolNamesByRef' in value;
+}
+
+/** `config.subagents` entries that are spec-built, as `name → their own NodeIdIndex` for the root index. */
+function subIndexesOf(subagents: Subagents | undefined): Record<string, NodeIdIndex> {
+  if (subagents === undefined || 'list' in subagents) return {};
+  const indexes: Record<string, NodeIdIndex> = {};
+  for (const [name, sub] of Object.entries(subagents)) {
+    if (isSpecAgent(sub)) indexes[name] = nodeIdIndexOf(sub.spec, sub.toolNamesByRef);
+  }
+  return indexes;
+}
+
 /**
  * Validates (parseAgentSpecV2), compiles and builds the agent. The spec,
  * its resolved `mcpServers` and `toolNamesByRef` stay readable on the
  * result; `agent.close()` disconnects the MCP servers it connected.
+ *
+ * When `host.exporter` is set (and not already a node-id exporter), it is
+ * wrapped in `nodeIdExporter` so every span carries `lousho.node.id`
+ * (S20a): the index is created empty, the wrapper is compiled with (so
+ * inline sub-agents see an already-wrapped exporter and share the one
+ * scope map), then filled from the compiled spec before `createAgent()`
+ * returns — before any span can start.
  */
 export async function specV2ToAgent(spec: AgentSpecV2, host: SpecHost): Promise<SpecAgentV2> {
   const parsed = parseAgentSpecV2(spec);
-  const compiled = await compileSpec(parsed, host);
+  let compileHost = host;
+  let nodeIds: NodeIdIndex | undefined;
+  if (host.exporter !== undefined && !isNodeIdExporter(host.exporter)) {
+    nodeIds = { toolNodeByName: {}, mcpServers: {}, handoffByToolName: {}, memorySlots: {}, guardrailByName: {}, subagents: {} };
+    compileHost = { ...host, exporter: nodeIdExporter(host.exporter, nodeIds) };
+  }
+  const compiled = await compileSpec(parsed, compileHost);
+  if (nodeIds !== undefined) {
+    Object.assign(nodeIds, nodeIdIndexOf(parsed, compiled.toolNamesByRef, subIndexesOf(compiled.config.subagents)));
+  }
   const agent = createAgent(compiled.config);
   return Object.assign(agent, {
     spec: parsed,

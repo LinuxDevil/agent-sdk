@@ -50,7 +50,7 @@ export async function gateFlowToolCall(
     throw new SDKError(error ?? `Tool '${toolName}' was refused`, denied ? 'LOUSHO_FLOW_TOOL_DENIED' : 'LOUSHO_TOOL_EXECUTION_FAILED');
   }
   if (prepared.requiresApproval) {
-    await requireApproval(toolName, toolCallId, prepared.args, context, durable);
+    await requireFlowApproval({ toolName, toolCallId, args: prepared.args, subject: `Tool '${toolName}'` }, context, durable);
   }
   return prepared.args;
 }
@@ -74,30 +74,27 @@ function gateContext(context: FlowExecutionContext, toolCallId: string): ToolCal
 }
 
 /**
- * Asks the context's `approve` callback about a call that needs approval.
- * `true` (or a note) runs it; `false` refuses it. `'defer'` or no callback
- * at all refuses it too, except in a durable run, which pauses instead; a
- * resume brings the decision.
+ * Asks for (or, in a durable run, pauses for) a decision on
+ * `toolName(args)`. `true` (or a note) runs it; `false` refuses it.
+ * `'defer'` or no callback at all refuses it too, except in a durable run,
+ * which pauses instead; a resume brings the decision. Throws
+ * `LOUSHO_FLOW_TOOL_DENIED` when refused. `subject` names what is asked
+ * in the error messages: `Tool '<name>'` for a `toolCall` step,
+ * `Approval step '<stepId>'` for an `approval` step.
  */
-async function requireApproval(
-  toolName: string,
-  toolCallId: string,
-  args: Record<string, unknown>,
+export async function requireFlowApproval(
+  request: { toolName: string; toolCallId: string; args: Record<string, unknown>; subject: string },
   context: FlowExecutionContext,
   durable: FlowGateDurability | undefined
 ): Promise<void> {
+  const { toolName, toolCallId, args, subject } = request;
   if (durable?.decision) {
     if (durable.decision.approved) return;
-    throw new SDKError(`Tool '${toolName}' was not run: approval '${durable.decision.approvalId}' was rejected`, 'LOUSHO_FLOW_TOOL_DENIED');
+    throw new SDKError(`${subject} was not run: approval '${durable.decision.approvalId}' was rejected`, 'LOUSHO_FLOW_TOOL_DENIED');
   }
   const pause = () => new FlowApprovalPause({ approvalId: toolCallId, nodeId: durable!.nodeId, toolName, args });
   if (!context.approve) {
-    if (durable) throw pause();
-    throw new SDKError(
-      `Tool '${toolName}' needs approval, and the flow has no approve callback, so it was not run. ` +
-        `Pass approve in the flow context, e.g. FlowExecutor.execute(flow, { ...context, approve: ({ toolName, args }) => ... })`,
-      'LOUSHO_FLOW_TOOL_DENIED'
-    );
+    refuseWithoutApprover(subject, durable, pause);
   }
   const verdict = await context.approve({
     id: toolCallId,
@@ -113,7 +110,17 @@ async function requireApproval(
     verdict === 'defer'
       ? `approve returned 'defer', and only a durable run (checkpointStore and runId) can pause for a decision`
       : 'approve rejected the call';
-  throw new SDKError(`Tool '${toolName}' was not run: ${why}`, 'LOUSHO_FLOW_TOOL_DENIED');
+  throw new SDKError(`${subject} was not run: ${why}`, 'LOUSHO_FLOW_TOOL_DENIED');
+}
+
+/** Refuses a call nobody can decide (no `approve` callback); a durable run pauses for the decision instead. */
+function refuseWithoutApprover(subject: string, durable: FlowGateDurability | undefined, pause: () => FlowApprovalPause): never {
+  if (durable) throw pause();
+  throw new SDKError(
+    `${subject} needs approval, and the flow has no approve callback, so it was not run. ` +
+      `Pass approve in the flow context, e.g. FlowExecutor.execute(flow, { ...context, approve: ({ toolName, args }) => ... })`,
+    'LOUSHO_FLOW_TOOL_DENIED'
+  );
 }
 
 /** The arguments as JSON for the gate's `ToolCall` (it only labels the call). */
