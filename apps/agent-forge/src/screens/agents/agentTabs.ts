@@ -1,14 +1,12 @@
 import { matchRoute } from '../../router/router';
 
 /** The agent detail tabs, in the order the tab bar shows them. */
-// fallow-ignore-next-line unused-export -- the detail screen's tab bar (A05) iterates this
 export const AGENT_TABS = ['overview', 'canvas', 'configure', 'code', 'runs', 'versions', 'suggestions'] as const;
 
 /** A tab of the agent detail screen (`#/agents/:id/<tab>`). */
 export type AgentTab = (typeof AGENT_TABS)[number];
 
 /** The tab bar's label for each tab. */
-// fallow-ignore-next-line unused-export -- the detail screen's tab bar (A05) labels tabs from this
 export const AGENT_TAB_LABELS: Record<AgentTab, string> = {
   overview: 'Overview',
   canvas: 'Canvas',
@@ -20,12 +18,12 @@ export const AGENT_TAB_LABELS: Record<AgentTab, string> = {
 };
 
 /**
- * Tabs with a screen behind them. Only 'canvas' exists so far; 'overview'
- * lands in A05, 'configure' in A07, 'code' in A08, 'runs' in A11, 'versions' in
- * L01 and 'suggestions' in R06. An unbuilt tab's URL redirects to canvas.
+ * Tabs with a screen behind them. 'canvas' is the builder screen, 'overview'
+ * the detail screen's first tab (A05); 'configure' lands in A07, 'code' in
+ * A08, 'runs' in A11, 'versions' in L01 and 'suggestions' in R06. An unbuilt
+ * tab's URL redirects to canvas.
  */
-// fallow-ignore-next-line unused-export -- the tab bar (A05) dims the tabs that are not built yet
-export const BUILT_AGENT_TABS: ReadonlySet<AgentTab> = new Set<AgentTab>(['canvas']);
+export const BUILT_AGENT_TABS: ReadonlySet<AgentTab> = new Set<AgentTab>(['canvas', 'overview']);
 
 /** Whether `s` names an agent detail tab. */
 export function isAgentTab(s: string): s is AgentTab {
