@@ -49,6 +49,7 @@ import { planModeRefusal, reportApprovalExpiry } from './permissions';
 import { RUN_CODE_TOOL, codeModeOf, nestedToolCaller, withCodeMode } from './codeMode';
 import { withToolSearch } from './toolSearch';
 import { pauseAgain, resumeSubagentCall, type ResumeContext } from './resumeSubagent';
+import { markApprovalWait, markHandoff } from './markSpan';
 import type { Principal } from '../auth/types';
 import { readonlyPrincipal } from './runPrincipal';
 import type { OAuthTokenStore } from '../oauth/types';
@@ -343,7 +344,12 @@ async function continueInRunSpan(resumed: ResumedRun, span: Span): Promise<Execu
     return step.paused;
   }
   // The approved transfer completed its switch - continue the run as the target.
-  if ('handoff' in step) return continueHandoff(ctx, step.handoff, span, checkpointStore, businessState, resumed.lease);
+  if ('handoff' in step) {
+    // The marker sits where the `handoff` event is emitted (streamedCall), so a
+    // sink-less resume still marks the honored transfer in the trace.
+    markHandoff(executeOptions.exporter, step.handoff.marker, resumed.pending.toolCallId, span.id);
+    return continueHandoff(ctx, step.handoff, span, checkpointStore, businessState, resumed.lease);
+  }
   // A call whose sub-agent paused already has a placeholder result.
   if ('message' in step) replaceToolResult(messages, step.message);
   // A sub-agent of the step paused too - the run pauses on it now.
@@ -810,6 +816,7 @@ async function signInAgain(ctx: ResumeContext, pending: PendingApproval, signal:
   }
   await ctx.approvalStore.save(next, saved);
   runEventsOf(executeOptions as ExecuteOptions)?.approvalRequested(next);
+  markApprovalWait(executeOptions, next, ctx.runSpanId);
   return { paused: { text: '', messages: ctx.messages, toolCalls: [], usage: ctx.usage, finishReason: 'awaiting-approval', steps: snapshot.steps, approvalId: id, approvalIds: [id] } };
 }
 

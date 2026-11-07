@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { issuesByPath, validateSchemaValue } from '../validate';
 
-import { SCHEMA } from './fixture';
+import { SCHEMA, SPEC } from './fixture';
 
 describe('validateSchemaValue', () => {
   it('reports Required. for each missing required property', () => {
@@ -76,6 +76,19 @@ describe('validateSchemaValue', () => {
     ).toEqual([
       { path: 'tags', message: 'Add at least 2.' },
       { path: 'tags.0', message: 'Must be text.' },
+    ]);
+  });
+  it('reports one union issue at the union path when no option matches', () => {
+    expect(validateSchemaValue(SPEC, { tools: [{ nope: 1 }] })).toEqual([
+      { path: 'tools.0', message: 'Doesn’t match any allowed shape.' },
+    ]);
+  });
+
+  it('accepts a value valid against one union option and skips null options', () => {
+    expect(validateSchemaValue(SPEC, { tools: [{ registry: 'x' }] })).toEqual([]);
+    expect(validateSchemaValue(SPEC, { nullableName: 'hi' })).toEqual([]);
+    expect(validateSchemaValue(SPEC, { nullableName: 5 })).toEqual([
+      { path: 'nullableName', message: 'Doesn’t match any allowed shape.' },
     ]);
   });
 });

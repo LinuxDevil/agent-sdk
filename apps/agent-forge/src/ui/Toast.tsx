@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { CircleAlert, CircleCheck, Info, X, type LucideIcon } from 'lucide-react';
+import { CircleAlert, CircleCheck, Info, TriangleAlert, X, type LucideIcon } from 'lucide-react';
 import './primitives.css';
 import './toast.css';
 
-/** What {@link useToast}'s `show` takes: a message, a tone (default `info`) and an optional action button. */
+/** What {@link useToast}'s `show` takes: a message, a tone (default `info`), an optional muted second line and an optional action button. */
 export interface ToastOptions {
   message: string;
-  tone?: 'info' | 'success' | 'error';
+  description?: string;
+  tone?: 'info' | 'success' | 'error' | 'warning';
   action?: { label: string; onClick: () => void };
 }
 
@@ -21,6 +22,7 @@ interface ToastItem extends ToastOptions {
 }
 
 const AUTO_DISMISS_MS = 5000;
+const WARNING_DISMISS_MS = 8000;
 
 const ToastContext = createContext<ToastApi | null>(null);
 
@@ -28,15 +30,19 @@ const TONE_ICON: Record<NonNullable<ToastOptions['tone']>, LucideIcon> = {
   info: Info,
   success: CircleCheck,
   error: CircleAlert,
+  warning: TriangleAlert,
 };
 
 function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: string) => void }) {
-  const { id, message, tone = 'info', action } = toast;
+  const { id, message, description, tone = 'info', action } = toast;
   const Icon = TONE_ICON[tone];
   return (
     <div className={`toast toast-${tone}`} role={tone === 'error' ? 'alert' : undefined}>
       <Icon className="toast-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
-      <span className="toast-message">{message}</span>
+      <span className="toast-text">
+        <span className="toast-message">{message}</span>
+        {description && <span className="toast-description">{description}</span>}
+      </span>
       {action && (
         <button
           type="button"
@@ -57,9 +63,10 @@ function ToastView({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: str
 }
 
 /**
- * Hosts the app's toasts: one polite `role="status"` live region for info and
- * success toasts (auto-dismissed after 5 s) and `role="alert"` error toasts
- * that stay until dismissed. Mount once near the app root.
+ * Hosts the app's toasts: one polite `role="status"` live region for info,
+ * success and warning toasts (auto-dismissed after 5 s, 8 s for warnings) and
+ * `role="alert"` error toasts that stay until dismissed. Mount once near the
+ * app root.
  */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -77,7 +84,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (t: ToastOptions) => {
       const id = `toast-${++nextId.current}`;
       setToasts((list) => [...list, { ...t, id }]);
-      if (t.tone !== 'error') timers.current.set(id, setTimeout(() => dismiss(id), AUTO_DISMISS_MS));
+      if (t.tone !== 'error')
+        timers.current.set(id, setTimeout(() => dismiss(id), t.tone === 'warning' ? WARNING_DISMISS_MS : AUTO_DISMISS_MS));
       return id;
     },
     [dismiss],

@@ -1,0 +1,7 @@
+npx tsc --noEmit
+npm run typecheck:tests
+npm run typecheck:examples
+npm run lint
+npm run docs:ratchet
+npm run docs:llms:check
+npm run registry:check

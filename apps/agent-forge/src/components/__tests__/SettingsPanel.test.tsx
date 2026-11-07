@@ -130,6 +130,7 @@ describe('SettingsPanel', () => {
     expect([...shortcuts.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual([
       'Ctrl/Cmd+K',
       '?',
+      'Ctrl/Cmd+S',
       'j',
       'k',
       'Enter',

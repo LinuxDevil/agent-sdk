@@ -65,6 +65,7 @@ import {
   type AuthorSessionRecord,
   type AuthorSessionSummary,
   type AuthorSettingsPayload,
+  type SetEnabledOutput,
 } from '../../shared/authorWire';
 import type { AgentStoreEntry } from '../persistence/AgentStore';
 import type { AgentApi } from '../persistence/HttpAgentStore';
@@ -690,6 +691,21 @@ class RuntimeClient implements AgentApi {
     await this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/secret`, {
       method: 'POST',
       body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * The SuccessCard's "Enable agent" button (`POST
+   * /assistant/sessions/:id/enable`): flips `meta.enabled` for an agent
+   * this chat created, without a model turn. Rejects with a
+   * `RuntimeApiError` on `WRONG_AGENT` (the chat did not create it),
+   * `AGENT_NOT_FOUND`, or a session 404.
+   */
+  // fallow-ignore-next-line unused-class-member -- the SuccessCard calls it once AA17 lands
+  async enableAuthorAgent(sessionId: string, agentId: string): Promise<SetEnabledOutput> {
+    return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/enable`, {
+      method: 'POST',
+      body: JSON.stringify({ agentId }),
     });
   }
 

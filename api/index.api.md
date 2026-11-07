@@ -622,6 +622,9 @@ export function appendToRing<T>(ring: readonly T[], entry: T, limit: number): T[
 export const APPROVAL_EXPIRED_REASON = "approval expired";
 
 // @public
+export const APPROVAL_WAIT_SPAN_NAME = "approval.wait";
+
+// @public
 export interface ApprovalAccessRequest {
     approval: PendingApproval;
     principal: Principal | undefined;
@@ -710,6 +713,15 @@ export interface ApprovalSignIn {
     displayName?: string;
     provider: string;
     url: string;
+}
+
+// @public
+interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    // (undocumented)
+    type: 'approval';
 }
 
 // @public
@@ -3036,6 +3048,9 @@ export interface GroupDecision {
 }
 
 // @public
+export const GUARDRAIL_SPAN_NAME = "guardrail";
+
+// @public
 export interface GuardrailCatalogEntry {
     canRewrite: boolean;
     canRunInParallel: boolean;
@@ -3139,6 +3154,9 @@ export interface Handoff {
 
 // @public
 export function handoff(target: SimpleAgent, options?: HandoffOptions): Handoff;
+
+// @public
+export const HANDOFF_SPAN_NAME = "handoff";
 
 // @public
 export interface HandoffEvent extends AgentEventBase<'handoff'> {
@@ -5917,7 +5935,7 @@ export interface RunStartEvent extends AgentEventBase<'run.start'> {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 export interface RunUsage {
@@ -6161,6 +6179,16 @@ export const SdkAttr: {
     readonly SUBAGENT_NAME: "lousho.subagent.name";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
     readonly TASK_ID: "lousho.task.id";
+    readonly GUARDRAIL_NAME: "lousho.guardrail.name";
+    readonly GUARDRAIL_KIND: "lousho.guardrail.kind";
+    readonly GUARDRAIL_OUTCOME: "lousho.guardrail.outcome";
+    readonly GUARDRAIL_PARALLEL: "lousho.guardrail.parallel";
+    readonly NODE_ID: "lousho.node.id";
+    readonly HANDOFF_FROM: "lousho.handoff.from";
+    readonly HANDOFF_TO: "lousho.handoff.to";
+    readonly APPROVAL_ID: "lousho.approval.id";
+    readonly APPROVAL_KIND: "lousho.approval.kind";
+    readonly APPROVAL_EXPIRES_AT: "lousho.approval.expires_at";
 };
 
 // @public

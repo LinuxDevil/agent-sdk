@@ -5393,7 +5393,7 @@ lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
-lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
+lousho observe <start|status|stop|rebuild-rollups|prune|export|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
 lousho --version
 ```
@@ -5638,8 +5638,6 @@ npx lousho observe stop                         # <db>.pid + SIGTERM (checks the
 npx lousho observe rebuild-rollups              # recompute insight aggregates
 npx lousho observe prune --older-than 30d       # delete finished runs older than 30 days, then VACUUM
 npx lousho observe export --since 7d --out runs.jsonl # traces as JSONL, one per line
-npx lousho observe failures --since 7d          # recurring tool and model failures, by agent
-npx lousho observe failures --traces .lousho/traces --json # the same from trace files, no database
 npx lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
 
@@ -8287,24 +8285,6 @@ What a sweep does with each pending run:
   human decides it with `agent.approvals.resolve()`.
 - A run whose `lastError` has `retryable: false`: left alone, since it would
   fail the same way; `agent.pending()` still lists it.
-- A run that failed recently: skipped until its backoff passes, `intervalMs`
-  doubled for each failed attempt in a row, up to 15 minutes.
-- A run that failed `maxAttempts` times in a row (default 10): quarantined. The
-  loop stops resuming it and calls `onQuarantined(run)` once. `agent.pending()`
-  still lists it, and `agent.resume()` still runs it. Saving progress resets the
-  count. A failure that kills the process records no attempt, so it is not
-  counted. With `retryWithDiagnosis: true`, a run (not a session turn) first
-  gets one last try: a fork `<id>.heal`, resumed from the same step, with a note
-  saying why it failed. If the fork finishes, the original is deleted and
-  `onRecovered` reports the original's id. If it also reaches the cap, both are
-  quarantined. The note quotes the error as data and caps its length, because
-  the error can hold tool output. The store must keep a history.
-- During a provider outage: after 3 provider failures in a row, across any runs,
-  the loop pauses and calls `onOutage(true)`. It then tries one run at a time, at
-  growing intervals of up to 15 minutes, and carries on as normal, calling
-  `onOutage(false)`, once one gets past the provider. Nothing is quarantined for
-  provider failures while it's paused, so an outage doesn't use up healthy runs'
-  attempts. A bad API key doesn't count as an outage, since waiting won't fix it.
 - A run still running in another process, or one whose crashed process's
   [run lease](#run-leases) has not expired yet: its resume is turned away
   with `LOUSHO_SESSION_BUSY` before anything runs, silently, and a later sweep
@@ -8953,7 +8933,7 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format), [`LOUSHO_SPEC_UNSUPPORTED`](#lousho_spec_unsupported), [`LOUSHO_SPEC_SECRET_MISSING`](#lousho_spec_secret_missing) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed), [`LOUSHO_MCP_CALL_FAILED`](#lousho_mcp_call_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start or a call to one failed. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_DECISION_INVALID`](#lousho_approval_decision_invalid), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated), [`LOUSHO_RUN_NO_PROGRESS`](#lousho_run_no_progress) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_DECISION_INVALID`](#lousho_approval_decision_invalid), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
@@ -9716,18 +9696,6 @@ its checkpoint, reject its approval). See
 again for a new run. See [Streaming](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/streaming.md).
 
 **Example:** two `for await (const event of run)` loops over the same `run`.
-
-### LOUSHO_RUN_NO_PROGRESS
-
-**Means:** `createProgressGuard()` denied `maxDenials` calls and the model made
-another call it would deny. The failure is recorded as not retryable, so
-`agent.recover()` leaves the run; `agent.pending()` still lists it.
-
-**Fix:** read the run's `heal.action` events to see which calls were denied, then
-fix the tool or the agent's instructions. If a tool rightly repeats, such as one
-that polls, add it to `ignoreTools`. See [Hooks](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md#stop-a-run-that-makes-no-progress).
-
-**Example:** a model that keeps calling a failing tool after being told to stop.
 
 ## Schedules
 
@@ -10998,6 +10966,7 @@ An `evaluator` step stores its result in `outputVariable` too, like
 | `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders; see [Template values](#template-values)); `outputVariable` stores the reply text. |
 | `agent` | Sends `input` (placeholders interpolated) to a `createAgent()` agent registered in the context's `agents` (see [Running an agent in a flow](#running-an-agent-in-a-flow)); `outputVariable` stores the reply text. |
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated; see [Argument values](#argument-values)). |
+| `approval` | Pauses for a human decision on its `message` (see [Approval steps](#approval-steps)); `outputVariable` gets `true` once approved. |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
 | `forEach` | Runs a step for each item of `items`, one after another. The item and index (`itemVariable`, default `item`; `indexVariable`, default `index`) belong to that iteration only, so loops in `parallel` branches never see each other's item; other variables the step sets are written to the flow's variables. |
@@ -11276,6 +11245,54 @@ These resume calls are refused:
 Flow approvals are not listed in an agent's approval store. Keep the
 `approvalId` (or read `checkpoint.flow.pendingApproval` from the store) to
 decide later.
+
+### Approval steps
+
+An `approval` step is a human gate of its own - no tool call needed. Its
+`message` (`{{variable}}` placeholders interpolated) is what the approver is
+asked, and the context's `approve` callback decides, exactly as for a
+`toolCall` that needs approval. The callback sees a call whose `toolName` is
+`'flow_approval'` and whose `args` are `{ message, stepId }` (`stepId` is the
+node's `id`, or its place in the flow).
+
+```ts
+import type { EditorStep } from 'lousho/flows';
+
+const steps: EditorStep = {
+  type: 'sequence',
+  steps: [
+    { type: 'approval', id: 'ship-gate', message: 'Ship {{version}} to production?', outputVariable: 'approved' },
+    { type: 'toolCall', tool: 'deploy', arguments: { version: '{{version}}' } },
+  ],
+};
+```
+
+- `approve` returning `true` (or a note) continues the flow; `outputVariable`
+  gets `true`. `false` fails the step with `LOUSHO_FLOW_TOOL_DENIED`, as do
+  `'defer'` and a missing `approve` in a run that is not durable (fail closed).
+- In a durable run, `'defer'` or no `approve` pauses the flow the same way a
+  `toolCall` pause does ([Pausing for approval](#pausing-for-approval)):
+  `pendingApproval.toolName` is `'flow_approval'` and
+  `pendingApproval.args.message` is the interpolated message. Resume it with
+  the decision:
+
+```ts no-run
+import { FlowExecutor, type AgentFlow } from 'lousho/flows';
+
+declare const flow: AgentFlow;
+
+const paused = await FlowExecutor.execute(flow, {
+  agent, provider, checkpointStore, variables: { version: '2.1' }, runId: 'ship-2.1',
+});
+if (paused.status === 'awaiting-approval') {
+  // paused.pendingApproval is
+  // { approvalId, nodeId: '0.0', toolName: 'flow_approval', args: { message: 'Ship 2.1 to production?', stepId: 'ship-gate' } }
+  const result = await FlowExecutor.resume(flow, {
+    agent, provider, checkpointStore, runId: 'ship-2.1',
+    approval: { approvalId: paused.approvalId!, approved: true },
+  });
+}
+```
 
 ## Running an agent in a flow
 
@@ -12049,92 +12066,6 @@ const agent = createAgent({ provider, instructions: 'You research things.', hook
 ## Recipes
 
 Each recipe is a complete program. They run against `mockModel`, so none of them needs an API key or a live model call; the same pattern tests your own hooks offline ([Testing](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/testing.md)). Each one scripts a model turn that calls a tool, then a final answer.
-
-### Stop a run that makes no progress
-
-`createProgressGuard()` stops a run spending its budget on calls that aren't
-getting anywhere. It's off unless you add it:
-
-- From the second failure of a tool with the same error, it adds a `hint` to the
-  result, with advice for the class of failure (`classifyToolFailure()`: bad
-  input, timeout, missing capability, permission or unknown).
-- After `maxFailures` failures with the same error (default 3), it denies that
-  tool for the run. Numbers in the message don't make an error different.
-- After `maxRepeats` identical calls returning the same result (default 3), it
-  denies that call. A call whose result changes isn't repeating.
-- After `maxSameResults` calls to a tool return the same result (default 5), it
-  denies that tool, even when each call's arguments differ. This catches a model
-  rewording a search that keeps finding the same thing.
-- After `maxDenials` denials (default 3), the next denial stops the run with
-  `LOUSHO_RUN_NO_PROGRESS`, which `agent.recover()` won't retry.
-
-```ts
-import { createAgent, createProgressGuard, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
-import { z } from 'zod';
-
-const lookup = defineTool({
-  name: 'lookup',
-  description: 'Look up an order',
-  input: z.object({ id: z.string() }),
-  async execute() {
-    return { status: 'unknown' };
-  },
-});
-
-const call = { toolCalls: [{ name: 'lookup', args: { id: 'A-1' } }] };
-const agent = createAgent({
-  provider: mockModel([call, call, call, call, 'I could not find that order.']),
-  tools: [lookup],
-  hooks: [createProgressGuard({ ignoreTools: ['poll_job'], fallbacks: { lookup: 'search_orders' } })],
-});
-
-for await (const event of agent.stream('Where is order A-1?')) {
-  if (event.type === 'heal.action') console.log(event.action, event.toolName);
-}
-```
-
-Each action is streamed as a `heal.action` event. A result it replaced is marked
-on the tool's span as `lousho.tool.replaced_by_hook`, and a denial is recorded as
-the span's error. The guard counts from the run's transcript, so a resumed run
-keeps its history. Calls in one batch aren't counted until the batch settles, and
-compaction can remove old calls from the count.
-
-### Check what a tool produced
-
-A successful write doesn't prove the output is usable. `createOutputCheck()` runs
-your check after a tool succeeds. If it returns a problem, or throws, the model
-sees it as `outputCheckFailed` on the result and can fix the output. The check
-is your code, so make it independent of what the model wrote.
-
-```ts
-import { createAgent, createOutputCheck, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
-import { z } from 'zod';
-
-const files = new Map<string, string>();
-const writeFile = defineTool({
-  name: 'write_file',
-  description: 'Write a file',
-  input: z.object({ path: z.string(), text: z.string() }),
-  async execute({ path, text }) {
-    files.set(path, text);
-    return { path };
-  },
-});
-
-const agent = createAgent({
-  provider: mockModel([{ toolCalls: [{ name: 'write_file', args: { path: 'report.md', text: '' } }] }, 'Done.']),
-  tools: [writeFile],
-  hooks: [
-    createOutputCheck({
-      write_file: (args) => (files.get(String(args.path)) ? undefined : `${String(args.path)} is empty`),
-    }),
-  ],
-});
-
-await agent.send('Write the report');
-```
 
 ### Deny a tool by name
 
@@ -14526,9 +14457,22 @@ and error status over to OpenTelemetry. See `examples/tracing`
 
 ```
 invoke_agent {agent name}          INTERNAL
+  guardrail {guardrail name}       INTERNAL   one per input/output guardrail check
   chat {model}                     CLIENT     one per provider.generate() call
   execute_tool {tool name}         INTERNAL   one per tool call
+<<<<<<< HEAD
+  handoff {target agent}           INTERNAL   zero-length marker, one per honored handoff
+  approval.wait {tool name}        INTERNAL   zero-length marker, one per paused approval
+=======
+    guardrail {guardrail name}     INTERNAL   one per tool guardrail check
+>>>>>>> origin/fb-s20b-guardrail-spans
 ```
+
+`handoff` and `approval.wait` are marker spans: `startTime === endTime`, so a
+consumer can mark the handoff target as the run's active node (`lousho.handoff.from`
+/ `lousho.handoff.to`) and a paused call's tool node as waiting
+(`lousho.approval.id` / `lousho.approval.kind` / `lousho.approval.expires_at`)
+without holding a span open across the wait.
 
 Each `send()` / `stream()` call is a trace of its own unless you parent it.
 To put several runs in one trace, pass a span id of yours as `parentSpanId`;
@@ -14586,7 +14530,6 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
-| `lousho.run.finish_reason` | Why the run ended (`stop`, `max-steps`, `budget-exceeded`, ...), when it didn't throw |
 
 #### Summing token usage over spans
 
@@ -14632,6 +14575,22 @@ then stay on `chat` spans only (`lousho.cost_usd` stays on every span).
 | `gen_ai.tool.type` | `function` |
 | `gen_ai.agent.name`, `gen_ai.conversation.id` | The calling agent / session |
 | `lousho.tool.parent_call_id` | On a call a [code mode](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/code-mode.md) script made: the `run_code` call's id (its span is the parent) |
+
+### Guardrail check: `guardrail {name}`
+
+One span per guardrail check, under the run's `invoke_agent` span (input and
+output checks) or the checked call's `execute_tool` span (`tools` checks). The
+span carries ids and outcome only — never the checked text or the trip
+reason, which may hold user data (a trip is already reported by the
+`guardrail.tripped` event).
+
+| Attribute | Value |
+| --- | --- |
+| `lousho.guardrail.name` | The guardrail's `name` |
+| `lousho.guardrail.kind` | `input`, `output` or `tool` |
+| `lousho.guardrail.outcome` | `pass`, `block` or `rewrite`, set when the check returns |
+| `lousho.guardrail.parallel` | `true` on a `runInParallel` input check; absent otherwise |
+| `gen_ai.tool.name` | On a `tool` check: the tool whose arguments were checked |
 
 ### Flows
 
@@ -15288,19 +15247,6 @@ deleted, then runs `VACUUM`. It is safe while the daemon is running on the
 same db.
 
 ### Export
-
-`lousho observe failures [--since 7d] [--agent X] [--json]` groups failed tool
-and model calls by agent, source and error, with numbers and ids masked, and lists
-the most widespread first. A failure seen in two or more traces is marked
-`RECURRING`, with trace ids to open. Each has a class (bad input, timeout, missing
-capability, permission, unknown, or denied by `createProgressGuard()`), inferred
-from the error text, so check the example. A rate limit gets its own class, and a
-run that ended on `max-steps` or `budget-exceeded` is listed as `no-answer`, read
-from the run span's `lousho.run.finish_reason`, even if none of its calls failed.
-Traces recorded before that attribute existed can't show this. It also lists runs whose
-process died (`interrupted`), and scores below `--min-score` (default 0.5) as
-`low-score`, which catches a wrong answer with no error. A missing score isn't a low one. Pass `--traces <dir>`, more than once
-if needed, to read trace files instead of the database. It only reads.
 
 `lousho observe export [--since 7d] [--agent X] [--out file]` dumps traces as
 JSONL for offline analysis or another tool. Each line is one trace:
@@ -18629,7 +18575,6 @@ The event types and their extra fields:
 | `provider.fallback`  | `from: string`, `to: string`, `fromModel?: string`, `toModel?: string`, `error: { message: string }` | A model call still failed after its retries and the next provider takes over (`createAgent({ fallbackModels })` or any `withFallback()` provider). `from` and `to` are provider names; `fromModel` and `toModel` are the model ids, which tell two providers of the same name apart (e.g. two OpenRouter models). |
 | `compaction.start`   | `strategy: string`, `tokensBefore: number`, `contextWindow: number`, `thresholdTokens: number`, `trigger?: 'manual'` | The compaction hook (`createAgent({ compaction })`) found the next model request above its threshold and starts compacting it. Exactly one `compaction.done` follows. `trigger: 'manual'` marks a `session.compact()` call (see `context.cleared`). See [Context compaction](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/compaction.md). |
 | `compaction.done`    | `strategy: string`, `appliedStrategy?: string`, `tokensBefore: number`, `tokensAfter: number`, `prunedToolCallIds: string[]`, `summary?: boolean`, `error?: { message: string }`, `unchanged?: true`, `trigger?: 'manual'` | A compaction ended. `tokensAfter` equals `tokensBefore` and `unchanged` is `true` when nothing could be compacted (later no-op attempts on the same transcript emit no events); `summary` is set when old turns were replaced by a summary; `error` is set when the strategy failed or fell back (the run continues); `appliedStrategy` names the strategy whose result was applied when it differs from `strategy` (`'prune-tool-results'` after a rejected summary). `trigger: 'manual'` marks a `session.compact()` call. |
-| `heal.action`        | `action: 'hint' \| 'deny' \| 'stop'`, `toolName: string`, `reason: string`, `failure?: 'bad-input' \| 'timeout' \| 'missing-capability' \| 'permission' \| 'unknown'` | A hook stepped in to get a run unstuck (see [`createProgressGuard()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/hooks.md#stop-a-run-that-makes-no-progress)). |
 | `context.cleared`    | `sessionId: string`, `messagesCleared: number` | `session.clear()` emptied a session's transcript. Delivered to `session.on()` listeners, not to a run's stream. `compaction.start` / `compaction.done` from `session.compact()` also reach `session.on()` and carry `trigger: 'manual'`. |
 | `budget.exceeded`    | `limit: string`, `value: number`, `max: number`, `scope: 'run' \| 'session'` | A [`limits` budget](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#budgets) tripped: `limit` is `'maxTokens'`, `'maxInputTokens'`, `'maxOutputTokens'`, `'maxCostUsd'`, `'maxDurationMs'` or `'maxSteps'`, `value` what was spent, `max` the limit. `run.done` (`'budget-exceeded'`) follows; with `onExceeded: 'throw'`, `error` and `run.done` (`'error'`). |
 | `input.queued`       | `id: string`, `text: string` | `run.enqueue()` took an input (`id` is `EnqueueResult.id`, `text` its user text). Can come at any point of the run, also inside a step. See [Queued input](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/queue-and-steer.md#queued-input). |
@@ -21692,7 +21637,6 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 
 | Change | Opt-out |
 | ------ | ------- |
-| `agent.recover()` backs off from a run's last failure and stops resuming it after 10 failures in a row, calling `onQuarantined(run)` once, instead of resuming it every sweep forever. See [Recovering automatically](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#recovering-automatically). | a larger `maxAttempts` |
 | A checkpointed run holds a run lease while it executes: a second process, replica or store object that sends to the same session, resumes it or resolves one of its approvals fails with `LOUSHO_SESSION_BUSY` instead of running its tool calls a second time. See [Run leases](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#run-leases). | no opt-out (a custom `CheckpointStore` without `acquireLease()` gets no lease) |
 | Approvals run at most once: deciding one re-saves the turn as `'in-progress'` with the call in `Checkpoint.startedToolCallIds`; after a crash mid-call, resuming gives that call a `kind: 'interrupted'` tool error instead of running it again. See [Guarantees](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#guarantees). | no opt-out |
 | Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |

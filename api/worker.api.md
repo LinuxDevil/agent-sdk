@@ -509,6 +509,15 @@ interface ApprovalSignIn {
 }
 
 // @public
+interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    // (undocumented)
+    type: 'approval';
+}
+
+// @public
 interface ApprovalStore {
     list?(): Promise<PendingApproval[]>;
     load?(id: string): Promise<ResolvedApproval | null>;
@@ -3132,7 +3141,7 @@ interface RunStartEvent extends AgentEventBase<'run.start'> {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {

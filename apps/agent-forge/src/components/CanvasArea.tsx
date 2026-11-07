@@ -39,6 +39,7 @@ import { autoLayout } from '../canvas/layout';
 import { EmptyCanvas } from '../canvas/EmptyCanvas';
 import { nodeRunStatuses, type NodeRunStatus } from '../canvas/nodeStatus';
 import { isEdgeTypeAllowed } from '../graph/connectionRules';
+import { hasRouterNode } from '../graph/graphToFlow';
 import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { pickHookTemplate } from '../canvas/paletteActions';
 import { useAgentEdgeSelection, useFitOnLoad } from '../canvas/canvasResets';
@@ -576,6 +577,35 @@ function InspectorToggle({ inspectorCollapsed = false, onToggleInspector }: Insp
   );
 }
 
+/**
+ * Banner above the canvas when the loaded spec carried a `policy.flow`
+ * (a saved branching flow) this canvas cannot redraw: `specToGraph` keeps
+ * it verbatim on `graph.retainedFlow`, so saving does not silently drop
+ * it - and "Remove flow" clears it so the next save writes a spec with no
+ * `policy.flow` and the server runs the plain `AgentExecutor` loop again.
+ * Hidden while a router node exists: that graph compiles its own flow.
+ */
+export function RetainedFlowNotice() {
+  const { graph, setGraph } = useAppState();
+  if (graph.retainedFlow === undefined || hasRouterNode(graph)) return null;
+  return (
+    <div className="canvas-notice" role="status">
+      <span>This agent has a saved flow the canvas can't show yet. It still runs.</span>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={() => {
+          if (window.confirm('Remove the saved flow? The agent will run as a single model loop.')) {
+            setGraph((g) => ({ ...g, retainedFlow: undefined }));
+          }
+        }}
+      >
+        Remove flow
+      </button>
+    </div>
+  );
+}
+
 /** The MiniMap (bottom-right) and zoom/fit Controls (bottom-left), both themed in agents.css. */
 function CanvasNavigator() {
   return (
@@ -658,6 +688,7 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
           {connectError}
         </div>
       )}
+      <RetainedFlowNotice />
       <ReactFlow
         nodes={nodes}
         edges={edges}

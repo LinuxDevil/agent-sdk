@@ -238,4 +238,98 @@ describe('Author save flow', () => {
     const [item] = await new VersionStore(repo).list('triage');
     expect(item).toMatchObject({ version: 1, kind: 'update', source: 'author' });
   });
+
+  /** An agent on disk for the update-side tests (same spec the AA10b update test saves). */
+  async function seedTriage(): Promise<AgentSpecV2> {
+    const saved: AgentSpecV2 = {
+      version: 2,
+      name: 'Triage',
+      model: 'mock/mock-1',
+      instructions: 'You triage.',
+      triggers: [{ id: 't1', type: 'chat' }],
+    };
+    await repo.writeSpec('triage', saved);
+    await repo.writeMeta('triage', { ...defaultMeta('2026-01-01T00:00:00.000Z'), enabled: false });
+    return saved;
+  }
+
+  it('turn 2 discards then saves the same update card -> NO_PROPOSAL, nothing written', async () => {
+    await seedTriage();
+    const model = mockModel([
+      { toolCalls: [{ name: 'proposeAgentUpdate', args: { agentId: 'triage', patch: { description: 'First.' } }, id: 'call_u1' }] },
+      { text: 'Here is the card.' },
+      { toolCalls: [{ name: 'discardPendingChanges', args: { agentId: 'triage' }, id: 'call_d1' }] },
+      { toolCalls: [{ name: 'saveAgentUpdate', args: { agentId: 'triage', proposalId: 'call_u1' }, id: 'call_s1' }] },
+      { text: 'Done.' },
+    ]);
+    const runner = makeRunner(model);
+
+    let end = turnEnd(runner);
+    await runner.start(session.id, { requestId: 'req-aa11-t1', text: 'change the description' });
+    await end;
+    end = turnEnd(runner);
+    await runner.start(session.id, { requestId: 'req-aa11-t2', text: 'never mind, drop it and save' });
+    await end;
+
+    expect(await toolOutput('discardPendingChanges', 'call_d1')).toMatchObject({ ok: true, agentId: 'triage' });
+    expect(await toolOutput('saveAgentUpdate', 'call_s1')).toMatchObject({ ok: false, code: 'NO_PROPOSAL' });
+    // The discard touched nothing saved.
+    expect((await repo.readSpec('triage'))?.description).toBeUndefined();
+    expect(await new VersionStore(repo).list('triage')).toHaveLength(0);
+  });
+
+  it('the discard part in the stored transcript resets the gate: a later save -> NO_PROPOSAL', async () => {
+    await seedTriage();
+    const model = mockModel([
+      { toolCalls: [{ name: 'proposeAgentUpdate', args: { agentId: 'triage', patch: { description: 'First.' } }, id: 'call_u1' }] },
+      { text: 'Here is the card.' },
+      { toolCalls: [{ name: 'discardPendingChanges', args: { agentId: 'triage' }, id: 'call_d1' }] },
+      { text: 'Dropped it.' },
+      { toolCalls: [{ name: 'saveAgentUpdate', args: { agentId: 'triage', proposalId: 'call_u1' }, id: 'call_s1' }] },
+      { text: 'Done.' },
+    ]);
+    const runner = makeRunner(model);
+
+    for (const [requestId, text] of [
+      ['req-aa11-t1', 'change it'],
+      ['req-aa11-t2', 'drop that'],
+      ['req-aa11-t3', 'actually save it'],
+    ] as const) {
+      const end = turnEnd(runner);
+      await runner.start(session.id, { requestId, text });
+      await end;
+    }
+
+    // The stored transcript's ok discard part reset the card's status to
+    // none, so turn 3's save scan finds no open card.
+    expect(await toolOutput('saveAgentUpdate', 'call_s1')).toMatchObject({ ok: false, code: 'NO_PROPOSAL' });
+  });
+
+  it('proposing again in a later turn after discarding does not fold the dropped card', async () => {
+    await seedTriage();
+    const model = mockModel([
+      { toolCalls: [{ name: 'proposeAgentUpdate', args: { agentId: 'triage', patch: { description: 'First.' } }, id: 'call_u1' }] },
+      { text: 'Here is the card.' },
+      { toolCalls: [{ name: 'discardPendingChanges', args: { agentId: 'triage' }, id: 'call_d1' }] },
+      { text: 'Dropped it.' },
+      { toolCalls: [{ name: 'proposeAgentUpdate', args: { agentId: 'triage', patch: { description: 'Second.' } }, id: 'call_u2' }] },
+      { text: 'Here is the new card.' },
+    ]);
+    const runner = makeRunner(model);
+
+    for (const [requestId, text] of [
+      ['req-aa11-t1', 'change it'],
+      ['req-aa11-t2', 'drop that'],
+      ['req-aa11-t3', 'new idea'],
+    ] as const) {
+      const end = turnEnd(runner);
+      await runner.start(session.id, { requestId, text });
+      await end;
+    }
+
+    const card = (await toolOutput('proposeAgentUpdate', 'call_u2')) as unknown as ProposalOutput;
+    expect(card.carriedOver).toBe(false);
+    expect(card.carriedFields).toEqual([]);
+    expect(card.spec.description).toBe('Second.');
+  });
 });

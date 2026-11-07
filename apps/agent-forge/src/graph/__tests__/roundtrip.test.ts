@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AgentSpec } from 'lousho';
+import { graphToFlow } from '../graphToFlow';
 import { graphToSpec } from '../graphToSpec';
 import { specToGraph } from '../specToGraph';
 import type { AgentGraphSpec } from '../types';
@@ -123,5 +124,110 @@ describe('graph -> spec -> graph round trip', () => {
       const graph = specToGraph(specWithBadHooks);
       expect(graph.nodes.every((n) => !n.hooks)).toBe(true);
     });
+  });
+});
+
+describe('policy: approval keys vs. hooks vs. retained flow', () => {
+  const hook = {
+    nodeKey: 'llm',
+    id: 'h1',
+    name: 'inject-context',
+    phase: 'pre' as const,
+    point: 'generate' as const,
+    code: 'return ctx;',
+  };
+  const flow = { name: 'saved-flow', code: 'agent', flow: { type: 'sequence', steps: [] } };
+
+  /** A router graph shaped like the canvas produces (mirrors graphToFlow.test.ts's branchingGraph). */
+  function branchingGraph(): AgentGraphSpec {
+    return {
+      version: 1,
+      nodes: [
+        {
+          id: 'llm-1',
+          type: 'llm',
+          position: { x: 0, y: 0 },
+          label: 'classify',
+          data: { name: 'classify', prompt: 'Classify: {{input}}', provider: { type: 'mock', model: 'mock-1' } },
+        },
+        { id: 'router-1', type: 'router', position: { x: 0, y: 0 }, label: 'Router', data: {} },
+        { id: 'tool-1', type: 'tool', position: { x: 0, y: 0 }, label: 'refund-tool', data: { toolName: 'refund-tool' } },
+        { id: 'output-1', type: 'output', position: { x: 0, y: 0 }, label: 'Output', data: {} },
+        { id: 'output-2', type: 'output', position: { x: 0, y: 0 }, label: 'Output (default)', data: {} },
+      ],
+      edges: [
+        { id: 'e-llm-router', source: 'llm-1', target: 'router-1' },
+        { id: 'e-router-tool', source: 'router-1', target: 'tool-1', condition: "'{{classify}}' === 'refund'" },
+        { id: 'e-tool-output', source: 'tool-1', target: 'output-1' },
+        { id: 'e-router-default', source: 'router-1', target: 'output-2' },
+      ],
+    };
+  }
+
+  it('no policy: no approval node, no retainedFlow, policy stays undefined', () => {
+    const graph = specToGraph(minimalSpec);
+    expect(graph.nodes.some((n) => n.type === 'approval')).toBe(false);
+    expect(graph.retainedFlow).toBeUndefined();
+    expect(graphToSpec(graph).policy).toBeUndefined();
+  });
+
+  it('hooks-only policy: NO spurious approval node, hooks re-attach, policy saves back unchanged', () => {
+    const spec: AgentSpec = { ...minimalSpec, policy: { hooks: [hook] } };
+    const graph = specToGraph(spec);
+    expect(graph.nodes.map((n) => n.type)).toEqual(['llm', 'output']);
+    expect(graph.retainedFlow).toBeUndefined();
+    expect(graph.nodes.find((n) => n.type === 'llm')!.hooks).toHaveLength(1);
+    expect(graphToSpec(graph)).toEqual(spec);
+  });
+
+  it('flow-only policy: no approval node, the flow is kept verbatim in retainedFlow and written back', () => {
+    const spec: AgentSpec = { ...minimalSpec, policy: { flow } };
+    const graph = specToGraph(spec);
+    expect(graph.nodes.some((n) => n.type === 'approval')).toBe(false);
+    expect(graph.retainedFlow).toBe(flow);
+    expect(graphToSpec(graph)).toEqual(spec);
+  });
+
+  it('approval + hooks + flow: the approval node carries approval keys only, hooks and flow round-trip', () => {
+    const spec: AgentSpec = { ...minimalSpec, policy: { requiresApproval: true, hooks: [hook], flow } };
+    const graph = specToGraph(spec);
+    const approval = graph.nodes.find((n) => n.type === 'approval');
+    expect(approval).toBeDefined();
+    expect(approval!.type === 'approval' && approval!.data.policy).toEqual({ requiresApproval: true });
+    expect(graph.retainedFlow).toBe(flow);
+    expect(graphToSpec(graph)).toEqual(spec);
+  });
+
+  it("defensively strips hooks/flow from a stale approval node's data.policy", () => {
+    const graph = specToGraph(minimalSpec);
+    // A graph saved before the fix can carry a policy that still holds hooks/flow.
+    graph.nodes.push({
+      id: 'approval-1',
+      type: 'approval',
+      position: { x: 0, y: 0 },
+      label: 'Human approval',
+      data: { policy: { requiresApproval: true, hooks: [hook], flow } },
+    });
+    expect(graphToSpec(graph).policy).toEqual({ requiresApproval: true });
+  });
+
+  it('a router node wins: retainedFlow is ignored and policy.flow is the compiled flow', () => {
+    const graph = branchingGraph();
+    graph.retainedFlow = { stale: true };
+    const spec = graphToSpec(graph);
+    expect(spec.policy?.flow).toEqual(graphToFlow(graph, 'classify'));
+    expect(spec.policy?.flow).not.toEqual({ stale: true });
+  });
+
+  it('cleared retainedFlow ("Remove flow") with no router: no flow key, policy omitted when empty', () => {
+    const spec: AgentSpec = { ...minimalSpec, policy: { flow } };
+    const graph = { ...specToGraph(spec), retainedFlow: undefined };
+    expect(graphToSpec(graph)).toEqual(minimalSpec);
+  });
+
+  it('cleared retainedFlow keeps the rest of the approval policy', () => {
+    const spec: AgentSpec = { ...minimalSpec, policy: { requiresApproval: true, flow } };
+    const graph = { ...specToGraph(spec), retainedFlow: undefined };
+    expect(graphToSpec(graph).policy).toEqual({ requiresApproval: true });
   });
 });

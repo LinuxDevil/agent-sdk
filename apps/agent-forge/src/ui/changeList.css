@@ -1,0 +1,42 @@
+/*
+ * ChangeList: the shared spec-change diff (proposal cards, version diff
+ * sheet, draft cards). Colours mirror the prompts screen's .prompt-diff-*
+ * (danger/success soft tints); the .change-list container makes the label
+ * column collapse to a stacked row under 420px (the 360px Author dock).
+ */
+
+.change-list { container-type: inline-size; padding: 10px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius); background: var(--surface-2); }
+.change-list-title { display: flex; align-items: center; gap: 6px; margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--text); }
+.change-list-icon { color: var(--accent); }
+.change-list-count { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.change-list-group { margin: 10px 0 2px; }
+.change-list-rows { list-style: none; margin: 0; padding: 0; }
+.change-row { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: var(--space-3); padding: 6px 0;
+  border-top: 1px solid var(--border); font-size: 13px; }
+.change-row:first-child { border-top: 0; }
+.change-label { font-size: 12px; font-weight: 500; color: var(--text-muted); padding-top: 1px; }
+.change-value { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.change-before { color: var(--text-muted); text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 60%, transparent); }
+.change-after { color: var(--text); font-weight: 500; text-decoration: none; }
+.change-arrow { color: var(--text-faint); }
+.change-chips { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.change-chip { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border: 1px solid;
+  border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 11.5px; }
+.change-chip-add { border-color: var(--success-border); background: var(--success-soft); color: var(--success); }
+.change-chip-remove { border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger); text-decoration: line-through; }
+.change-chip-edit { border-color: var(--warning-border); background: var(--warning-soft); color: var(--warning); }
+.change-counts { display: inline-flex; gap: 6px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.change-count-add { color: var(--success); }
+.change-count-remove { color: var(--danger); }
+.change-diff { flex-basis: 100%; margin: 6px 0 0; max-height: 320px; overflow: auto; padding: 6px 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font: 12px/1.5 var(--font-mono); white-space: pre-wrap; }
+.change-line { display: block; padding: 0 8px; }
+.change-line-removed { background: var(--danger-soft); color: var(--danger); }
+.change-line-added { background: var(--success-soft); color: var(--success); }
+.change-line-same { color: var(--text-muted); }
+.change-mark { display: inline-block; width: 1.5ch; user-select: none; }
+.change-list-empty { margin: 0; font-size: 13px; color: var(--text-muted); }
+@container (max-width: 420px) { .change-row { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
