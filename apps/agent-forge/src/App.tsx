@@ -10,6 +10,7 @@ import { AppShell } from './shell/AppShell';
 import { Screens } from './screens/routes';
 import { ToastProvider } from './ui/Toast';
 import { AuthorChatProvider } from './author/AuthorChatContext';
+import { AuthorPanel } from './author/AuthorPanel';
 
 export function App() {
   return (
@@ -20,7 +21,7 @@ export function App() {
           <ToastProvider>
             {/* The Author conversation lives above the dock: closing the panel is a pause, not an end. */}
             <AuthorChatProvider>
-              <AppShell>
+              <AppShell dock={<AuthorPanel />}>
                 <Screens />
               </AppShell>
             </AuthorChatProvider>

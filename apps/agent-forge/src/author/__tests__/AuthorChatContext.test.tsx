@@ -8,7 +8,7 @@ import {
   AUTHOR_SESSION_KEY,
   type AuthorChat,
 } from '../AuthorChatContext';
-import { onAgentSaved } from '../authorEvents';
+import { onAgentSaved, onOpenPage } from '../authorEvents';
 import { connectAuthorStream, type AuthorStream, type AuthorStreamHandlers } from '../authorStream';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import type {
@@ -370,5 +370,49 @@ describe('AuthorChatProvider', () => {
     act(() => fake.handlers.onOpen?.());
     await act(flush);
     expect(fake.sent).toContainEqual({ type: 'chat.resume', requestId: 'r_pending', afterSeq: 0 });
+  });
+
+  it('fires onOpenPage for a live openPage result, never for a replayed one', async () => {
+    const paths: string[] = [];
+    const off = onOpenPage((path) => paths.push(path));
+    try {
+      window.localStorage.setItem(AUTHOR_SESSION_KEY, 'sess-1');
+      window.localStorage.setItem(
+        PENDING_REQUEST_KEY,
+        JSON.stringify({ sessionId: 'sess-1', requestId: 'r_pending', lastSeq: 0 })
+      );
+      vi.mocked(runtimeClient.getAuthorSession).mockResolvedValue(RECORD('sess-1'));
+      mount();
+      await act(flush);
+      const fake = streams[0];
+      act(() => fake.handlers.onOpen?.());
+      await act(flush);
+      // A replayed openPage result during the reattach pass must not navigate.
+      emit(fake, {
+        type: 'tool.result',
+        requestId: 'r_pending',
+        seq: 2,
+        toolCallId: 'tc_old',
+        name: 'openPage',
+        output: { ok: true, path: '/agents/old' },
+        state: 'done',
+      });
+      expect(paths).toEqual([]);
+      // The replay settles; the next live openPage result navigates.
+      emit(fake, { type: 'turn.finished', requestId: 'r_pending', seq: 3, finishReason: 'stop' });
+      await act(flush);
+      emit(fake, {
+        type: 'tool.result',
+        requestId: 'r_live',
+        seq: 1,
+        toolCallId: 'tc_new',
+        name: 'openPage',
+        output: { ok: true, path: '/agents/new' },
+        state: 'done',
+      });
+      expect(paths).toEqual(['/agents/new']);
+    } finally {
+      off();
+    }
   });
 });

@@ -703,6 +703,7 @@ class RuntimeClient implements AgentApi {
     return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/enable`, {
       method: 'POST',
       body: JSON.stringify({ agentId }),
+
     });
   }
 
