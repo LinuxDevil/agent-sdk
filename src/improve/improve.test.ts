@@ -127,9 +127,15 @@ describe('improveAgent', () => {
   });
 
   it('never sends fresh base runs to an editor', async () => {
-    const provider = mockModel([...noEdit, ...noEdit, ...noEdit]);
-    await improveAgent(options({ editor: { provider } }));
-    expect(JSON.stringify(provider.calls)).not.toContain('fresh-base');
+    const provider = mockModel([...noEdit, ...edit(FIX), ...edit(FIX)]);
+    const editorCallsAtFreshRuns: number[] = [];
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      if (harness === BASE && caseId === 'stuck' && repeat >= 2) editorCallsAtFreshRuns.push(provider.calls.length);
+      return fixable()(harness, caseId, repeat);
+    };
+    const result = await improveAgent(options({ probe, editor: { provider } }));
+    expect(result.freshBase).toBeDefined();
+    expect(editorCallsAtFreshRuns).toEqual([provider.calls.length, provider.calls.length]);
   });
 
   it('keeps the base when a held-out case gets worse, even if training cases improve', async () => {

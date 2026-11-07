@@ -39,7 +39,7 @@ export interface ImproveOptions {
   cases: readonly string[];
   /** Ids of cases that gate the result, kept away from the editors. */
   holdout?: readonly string[];
-  /** Runs one case under a harness. It owns side effects: use {@link createShadowHook} unless its tools are safe to run. */
+  /** Runs one case under a harness, where `repeat` goes up to `2 × repeats − 1` for the base harness. It owns side effects: use {@link createShadowHook} unless its tools are safe to run. */
   probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
   /** The editors' model. */
   editor:
@@ -51,7 +51,7 @@ export interface ImproveOptions {
         /** A model string, such as `openrouter/<model>`. */
         model: string;
       };
-  /** Runs per case, per harness (default 3). */
+  /** Runs per case, per harness (default 3). The base harness gets twice as many on training cases, because the gate compares against fresh runs. */
   repeats?: number;
   /** Stops once this many tokens are spent, across probes and editors. */
   maxTokens?: number;
