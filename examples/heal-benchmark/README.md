@@ -68,7 +68,7 @@ change what's measured:
 ```bash
 MODEL=stealth/crouton-alpha EDITOR=stealth/crouton-alpha S=$SCRATCH/m34
 npx tsx examples/heal-benchmark/simulate.ts --trials 2000
-npx tsx examples/heal-benchmark/experiment.ts --admit --model $MODEL --editor $EDITOR --holdout round-root-cause --holdout page-count --cache $S/cache
+npx tsx examples/heal-benchmark/experiment.ts --admit --model $MODEL --editor $EDITOR --holdout page-count --holdout dedupe-first --cache $S/cache
 npx tsx examples/heal-benchmark/improve.ts --agent coding-agent --case add-months --holdout <admitted> --model $MODEL --editor $EDITOR --attempts 2 --first-attempt <n> --repeats 3 --confirm 6 --confirm-candidates --cache $S/cache --out $S/rows.jsonl
 npx tsx examples/heal-benchmark/improve.ts --agent coding-agent --case <first admitted> --holdout <second admitted> --model $MODEL --editor $EDITOR --always-propose --attempts 5 --repeats 3 --confirm 6 --confirm-candidates --cache $S/cache --out $S/healthy.jsonl
 npx tsx examples/heal-benchmark/replay.ts --in $S/rows.jsonl --model $MODEL --cache $S/cache --confirm 6 --out $S/truth.jsonl

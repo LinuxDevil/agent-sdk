@@ -18,7 +18,7 @@ const { values } = parseArgs({
     attempts: { type: 'string', default: '10' },
     agent: { type: 'string', default: 'coding-agent' },
     case: { type: 'string', multiple: true, default: ['add-months'] },
-    holdout: { type: 'string', multiple: true, default: ['round-root-cause', 'page-count'] },
+    holdout: { type: 'string', multiple: true, default: ['page-count', 'dedupe-first'] },
     repeats: { type: 'string', default: '3' },
     model: { type: 'string' },
     editor: { type: 'string' },

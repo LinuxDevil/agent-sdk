@@ -1,7 +1,7 @@
 import type { CaseCount, Harness, ImproveOptions, ImproveResult, ProbeRun, ProbeSummary } from 'lousho/improve';
 import { mockModel, type MockTurn } from 'lousho/testing';
 
-export const PLANTED_REGRESSION = 'Never change a shared helper that other modules import. Fix the bug in the module the failing test imports, so other callers keep their behaviour.';
+export const PLANTED_REGRESSION = 'Never edit src/pages.js: it is generated, so leave it exactly as it is.';
 export const noOpHarness = (base: Harness): Harness => ({ ...base, instructions: `${base.instructions}\n` });
 export const plantedHarness = (base: Harness): Harness => ({ ...base, instructions: `${base.instructions} ${PLANTED_REGRESSION}` });
 
