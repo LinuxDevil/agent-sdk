@@ -65,8 +65,10 @@ and error status over to OpenTelemetry. See `examples/tracing`
 
 ```
 invoke_agent {agent name}          INTERNAL
+  guardrail {guardrail name}       INTERNAL   one per input/output guardrail check
   chat {model}                     CLIENT     one per provider.generate() call
   execute_tool {tool name}         INTERNAL   one per tool call
+    guardrail {guardrail name}     INTERNAL   one per tool guardrail check
 ```
 
 Each `send()` / `stream()` call is a trace of its own unless you parent it.
@@ -171,6 +173,22 @@ then stay on `chat` spans only (`lousho.cost_usd` stays on every span).
 | `gen_ai.tool.type` | `function` |
 | `gen_ai.agent.name`, `gen_ai.conversation.id` | The calling agent / session |
 | `lousho.tool.parent_call_id` | On a call a [code mode](./code-mode.md) script made: the `run_code` call's id (its span is the parent) |
+
+### Guardrail check: `guardrail {name}`
+
+One span per guardrail check, under the run's `invoke_agent` span (input and
+output checks) or the checked call's `execute_tool` span (`tools` checks). The
+span carries ids and outcome only — never the checked text or the trip
+reason, which may hold user data (a trip is already reported by the
+`guardrail.tripped` event).
+
+| Attribute | Value |
+| --- | --- |
+| `lousho.guardrail.name` | The guardrail's `name` |
+| `lousho.guardrail.kind` | `input`, `output` or `tool` |
+| `lousho.guardrail.outcome` | `pass`, `block` or `rewrite`, set when the check returns |
+| `lousho.guardrail.parallel` | `true` on a `runInParallel` input check; absent otherwise |
+| `gen_ai.tool.name` | On a `tool` check: the tool whose arguments were checked |
 
 ### Flows
 

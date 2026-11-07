@@ -1006,11 +1006,12 @@ export class AgentExecutor {
     options.metadata = state.metadata;
     await checkResumedAgent(options, state, tools);
     state.budget = budget;
-    // The new input is checked before anything else runs.
-    const blocked = await checkInputGuardrails(options, [state.messages, state.queuedInput]);
+    // The new input is checked before anything else runs. Guardrail check spans nest under the run's invoke_agent span.
+    const guarded = { ...options, guardrailParentSpanId: agentSpanId };
+    const blocked = await checkInputGuardrails(guarded, [state.messages, state.queuedInput]);
     if (blocked) return this.stopForGuardrail(options, state, blocked);
     // The `runInParallel` ones check the (possibly rewritten) input while the first model call runs.
-    state.inputCheck = startParallelInputGuardrails(options, [...state.messages, ...state.queuedInput]);
+    state.inputCheck = startParallelInputGuardrails(guarded, [...state.messages, ...state.queuedInput]);
 
     options.inputQueue?.listen((queued) => {
       runEventsOf(options)?.inputQueued(queued);
@@ -1142,7 +1143,7 @@ export class AgentExecutor {
     const { generated, measured } = generatedStep;
     const stepUsage = recordStep(state, measured);
     noteReasoning(state, generated.reasoning);
-    const text = await this.guardOutput(options, state, generated);
+    const text = await this.guardOutput(options, state, generated, agentSpanId);
     if (typeof text !== 'string') return text;
     if (text) {
       state.finalText = text;
@@ -1311,7 +1312,7 @@ export class AgentExecutor {
     // The provider already ran its hosted calls; they are counted, never run here.
     countHostedCalls(state.usage, generated.hostedToolCalls);
 
-    const text = await this.guardOutput(options, state, generated);
+    const text = await this.guardOutput(options, state, generated, agentSpanId);
     if (typeof text !== 'string') return text;
     // `functions.read_file` runs `read_file` when that is a known tool.
     const known = new Set([...tools.map((tool) => tool.function.name), ...(options.toolRegistry?.list() ?? [])]);
@@ -1374,10 +1375,11 @@ export class AgentExecutor {
   private static async guardOutput(
     options: ExecuteOptions,
     state: AgentRunState,
-    { text, toolCalls }: GenerateResult
+    { text, toolCalls }: GenerateResult,
+    agentSpanId: string
   ): Promise<string | ExecutionResult> {
     if (!text || (toolCalls?.length && !runEventsOf(options)?.iterated)) return text;
-    const checked = await checkOutputGuardrails(options, text, state.messages);
+    const checked = await checkOutputGuardrails({ ...options, guardrailParentSpanId: agentSpanId }, text, state.messages);
     return 'tripped' in checked ? this.stopForGuardrail(options, state, checked.tripped) : checked.text;
   }
 
