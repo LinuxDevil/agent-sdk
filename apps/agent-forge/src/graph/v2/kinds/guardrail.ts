@@ -12,7 +12,7 @@
 import type { KindRules } from '../kindRules';
 import { nextItemId } from '../nodeIds';
 import { arrayItemSpecPath } from '../order';
-import { guardrailSidesOf, SPEC_ID_PATTERN } from '../specTypes';
+import { guardrailSidesOf, REWRITABLE_GUARDRAILS, SPEC_ID_PATTERN } from '../specTypes';
 import type { Graph, GuardrailNodeData, NodeOfKind, Problem } from '../types';
 
 /**
@@ -113,6 +113,48 @@ function optionProblems(node: NodeOfKind<'guardrail'>, path: string): Problem[] 
   return problems;
 }
 
+/**
+ * The `onTripped` rows the SDK enforces (`refineGuardrail` in
+ * `src/spec/v2/guardrails.ts`): 'warn' has no SDK mechanism, 'rewrite' is
+ * limited to the rewritable built-ins, and `onTripped` must not disagree
+ * with `options.action`.
+ */
+function trippedProblems(node: NodeOfKind<'guardrail'>, path: string): Problem[] {
+  const { item } = node.data;
+  const problems: Problem[] = [];
+  if (item.onTripped === 'warn') {
+    problems.push({
+      nodeId: node.id,
+      severity: 'error',
+      message: "'warn' is not supported; use 'block' or 'rewrite'",
+      fieldPath: `${path}.onTripped`,
+    });
+  }
+  if (item.onTripped === 'rewrite' && !(REWRITABLE_GUARDRAILS as readonly string[]).includes(item.name)) {
+    problems.push({
+      nodeId: node.id,
+      severity: 'error',
+      message: `'${item.name}' cannot rewrite; use 'block'`,
+      fieldPath: `${path}.onTripped`,
+    });
+  }
+  const action = item.options?.['action'];
+  if (item.onTripped !== undefined && action !== undefined && action !== item.onTripped) {
+    problems.push({
+      nodeId: node.id,
+      severity: 'error',
+      message: 'set either onTripped or options.action, not both',
+      fieldPath: `${path}.options.action`,
+    });
+  }
+  return problems;
+}
+
+/** The action a trip compiles to: `onTripped` wins over `options.action` (the SDK's `effectiveAction`). */
+function effectiveAction(item: GuardrailNodeData['item']): unknown {
+  return item.onTripped === 'block' || item.onTripped === 'rewrite' ? item.onTripped : item.options?.['action'];
+}
+
 /** The `runInParallel` rows: input-side built-ins only, and a parallel check cannot rewrite. */
 function parallelProblems(node: NodeOfKind<'guardrail'>, path: string): Problem[] {
   const { item } = node.data;
@@ -127,12 +169,12 @@ function parallelProblems(node: NodeOfKind<'guardrail'>, path: string): Problem[
       fieldPath: `${path}.runInParallel`,
     });
   }
-  if (item.onTripped === 'rewrite') {
+  if (effectiveAction(item) === 'rewrite') {
     problems.push({
       nodeId: node.id,
       severity: 'error',
       message: 'A parallel check cannot rewrite',
-      fieldPath: `${path}.onTripped`,
+      fieldPath: item.onTripped === 'rewrite' ? `${path}.onTripped` : `${path}.options.action`,
     });
   }
   return problems;
@@ -149,6 +191,7 @@ export const guardrailRules: KindRules<'guardrail'> = {
     return [
       ...identityProblems(node, path),
       ...optionProblems(node, path),
+      ...trippedProblems(node, path),
       ...parallelProblems(node, path),
     ];
   },

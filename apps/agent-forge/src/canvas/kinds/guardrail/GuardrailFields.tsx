@@ -17,7 +17,7 @@ import {
   GUARDRAIL_ID_PATTERN,
   PARALLEL_GUARDRAILS,
 } from '../../../graph/v2/kinds/guardrail';
-import { guardrailSidesOf } from '../../../graph/v2/specTypes';
+import { guardrailSidesOf, REWRITABLE_GUARDRAILS } from '../../../graph/v2/specTypes';
 import type { CatalogGuardrail } from '../../../../shared/wireTypes';
 import type { Graph, GuardrailNodeData, NodeOfKind } from '../../../graph/v2/types';
 import { ChoiceField } from '../../fields/ChoiceField';
@@ -32,11 +32,34 @@ type SideChoice = 'input' | 'output' | 'both';
 
 const PARALLEL_TITLE = 'Only prompt-injection and moderation can run in parallel, on input';
 
-const TRIPPED_OPTIONS = [
-  { value: 'block', label: 'Block the run' },
-  { value: 'warn', label: 'Warn only' },
-  { value: 'rewrite', label: 'Rewrite the text' },
-] as const;
+/** The title on the always-disabled Warn option: the SDK has no warn mechanism (`onTripped` accepts it but rejects it). */
+const WARN_TITLE = "'warn' is not supported; use 'block' or 'rewrite'";
+
+/** The title on Rewrite while a parallel check is on (the SDK forbids a parallel rewrite). */
+const PARALLEL_REWRITE_TITLE = 'A parallel check cannot rewrite';
+
+/** The title on Rewrite for a built-in whose options take no `action` (the SDK's REWRITABLE_GUARDRAILS). */
+const REWRITE_TITLE = 'This guardrail cannot rewrite';
+
+/**
+ * The When-it-trips options. 'warn' stays listed but disabled — the SDK
+ * parses `onTripped: 'warn'` and then rejects it, so offering it would let
+ * a user author a spec that cannot save. 'rewrite' is enabled only for the
+ * catalog entry's `canRewrite` built-ins (the SDK's rewritable set when the
+ * catalog has not answered) and never while the check runs in parallel.
+ */
+function trippedOptions(parallel: boolean, canRewrite: boolean) {
+  return [
+    { value: 'block', label: 'Block the run' },
+    { value: 'warn', label: 'Warn only', disabled: true, title: WARN_TITLE },
+    {
+      value: 'rewrite',
+      label: 'Rewrite the text',
+      disabled: parallel || !canRewrite,
+      title: parallel ? PARALLEL_REWRITE_TITLE : canRewrite ? undefined : REWRITE_TITLE,
+    },
+  ] as const;
+}
 
 /**
  * The Checks field's current value: 'both' for the input+output default,
@@ -173,9 +196,13 @@ export function GuardrailFields({ node, graph, patch, problems }: KindFieldsProp
   const entry = catalog.data?.find((e) => e.name === item.name);
   const name = item.name as string;
   const parallel = item.runInParallel === true;
+  const side = sideChoice(item);
   const parallelAllowed =
     (PARALLEL_GUARDRAILS as readonly string[]).includes(name) &&
-    guardrailSidesOf(item).includes('input');
+    guardrailSidesOf(item).includes('input') &&
+    entry?.canRunInParallel !== false;
+  // The catalog's `canRewrite` is the SDK's REWRITABLE_GUARDRAILS membership; fall back to the set itself while the catalog is unanswered.
+  const canRewrite = entry?.canRewrite ?? (REWRITABLE_GUARDRAILS as readonly string[]).includes(name);
   return (
     <>
       <Field
@@ -197,9 +224,14 @@ export function GuardrailFields({ node, graph, patch, problems }: KindFieldsProp
       <ChoiceField
         id="node-guard-on"
         label="Checks"
-        value={sideChoice(item)}
+        value={side}
         options={sideOptions(entry)}
-        onChange={(side) => patch({ on: side === 'both' ? ['input', 'output'] : side })}
+        onChange={(next) => patch({ on: next === 'both' ? ['input', 'output'] : next })}
+        help={
+          side === undefined
+            ? 'This guardrail checks the tools side, which this editor cannot change.'
+            : undefined
+        }
       />
       <Field
         id="node-guard-parallel"
@@ -220,11 +252,7 @@ export function GuardrailFields({ node, graph, patch, problems }: KindFieldsProp
         value={item.onTripped}
         allowUnset
         unsetLabel="Default"
-        options={TRIPPED_OPTIONS.map((option) =>
-          option.value === 'rewrite' && parallel
-            ? { ...option, disabled: true, title: 'A parallel check cannot rewrite' }
-            : option,
-        )}
+        options={[...trippedOptions(parallel, canRewrite)]}
         onChange={(onTripped) => patch({ onTripped })}
       />
       <OptionsArea

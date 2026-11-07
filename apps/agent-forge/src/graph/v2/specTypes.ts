@@ -44,7 +44,7 @@ export type { HandoffSpec } from '../../../../../src/spec/v2/handoffs';
  * list; absent means input and output).
  */
 export type { GuardrailSpec } from '../../../../../src/spec/v2/guardrails';
-export { guardrailSidesOf } from '../../../../../src/spec/v2/guardrails';
+export { guardrailSidesOf, REWRITABLE_GUARDRAILS } from '../../../../../src/spec/v2/guardrails';
 /** One `spec.permissions` entry. */
 export type { PermissionRuleSpec } from '../../../../../src/spec/v2/permissions';
 /** One `spec.hooks` entry, plus the `inline` member's shape for the hook Inspector. */

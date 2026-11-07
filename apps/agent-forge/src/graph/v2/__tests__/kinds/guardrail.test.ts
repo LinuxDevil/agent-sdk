@@ -119,7 +119,39 @@ describe('guardrailRules.validate', () => {
       { id: 'g1', name: 'prompt-injection', on: 'input', runInParallel: true, onTripped: 'rewrite' },
     ]);
     expect(validateGraph(g)).toStrictEqual([
+      // prompt-injection cannot rewrite at all, and a parallel check cannot rewrite either.
+      error('guard:g1', "'prompt-injection' cannot rewrite; use 'block'", 'guardrails[0].onTripped'),
       error('guard:g1', 'A parallel check cannot rewrite', 'guardrails[0].onTripped'),
+    ]);
+  });
+
+  it('refuses a parallel check whose options.action rewrites', () => {
+    const g = graphOf([
+      { id: 'g1', name: 'prompt-injection', on: 'input', runInParallel: true, options: { action: 'rewrite' } },
+    ]);
+    expect(validateGraph(g)).toStrictEqual([
+      error('guard:g1', 'A parallel check cannot rewrite', 'guardrails[0].options.action'),
+    ]);
+  });
+
+  it('refuses onTripped warn (the SDK has no warn mechanism)', () => {
+    const g = graphOf([{ id: 'g1', name: 'max-length', onTripped: 'warn' }]);
+    expect(validateGraph(g)).toStrictEqual([
+      error('guard:g1', "'warn' is not supported; use 'block' or 'rewrite'", 'guardrails[0].onTripped'),
+    ]);
+  });
+
+  it('refuses rewrite on a built-in that cannot rewrite', () => {
+    const g = graphOf([{ id: 'g1', name: 'max-length', onTripped: 'rewrite' }]);
+    expect(validateGraph(g)).toStrictEqual([
+      error('guard:g1', "'max-length' cannot rewrite; use 'block'", 'guardrails[0].onTripped'),
+    ]);
+  });
+
+  it('refuses onTripped and options.action disagreeing', () => {
+    const g = graphOf([{ id: 'g1', name: 'pii', onTripped: 'block', options: { action: 'rewrite' } }]);
+    expect(validateGraph(g)).toStrictEqual([
+      error('guard:g1', 'set either onTripped or options.action, not both', 'guardrails[0].options.action'),
     ]);
   });
 

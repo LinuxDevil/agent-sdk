@@ -214,6 +214,12 @@ describe('guardrail Inspector: checks side', () => {
     expect(options[2].disabled).toBe(true);
     expect(options[2].title).toBe('This guardrail cannot check both');
   });
+
+  it('hints that a tools-side guardrail is not editable here', () => {
+    useGuardrail([{ id: 'g1', name: 'pii', on: 'tools' }]);
+    renderInspector();
+    expect(container.textContent).toContain('checks the tools side');
+  });
 });
 
 describe('guardrail Inspector: parallel and trip behaviour', () => {
@@ -243,6 +249,30 @@ describe('guardrail Inspector: parallel and trip behaviour', () => {
     const rewrite = options.find((o) => o.textContent === 'Rewrite the text')!;
     expect(rewrite.disabled).toBe(true);
     expect(rewrite.title).toBe('A parallel check cannot rewrite');
+  });
+
+  it('keeps warn listed but disabled — the SDK rejects it', () => {
+    renderInspector();
+    const options = [...field<HTMLSelectElement>('node-guard-tripped').querySelectorAll('option')];
+    const warn = options.find((o) => o.textContent === 'Warn only')!;
+    expect(warn.disabled).toBe(true);
+    expect(warn.title).toBe("'warn' is not supported; use 'block' or 'rewrite'");
+  });
+
+  it('disables rewrite for a built-in that cannot rewrite and says why', () => {
+    useGuardrail([{ id: 'g1', name: 'max-length', on: 'input' }]);
+    renderInspector();
+    const options = [...field<HTMLSelectElement>('node-guard-tripped').querySelectorAll('option')];
+    const rewrite = options.find((o) => o.textContent === 'Rewrite the text')!;
+    expect(rewrite.disabled).toBe(true);
+    expect(rewrite.title).toBe('This guardrail cannot rewrite');
+  });
+
+  it('enables rewrite for a rewritable built-in', () => {
+    renderInspector();
+    const options = [...field<HTMLSelectElement>('node-guard-tripped').querySelectorAll('option')];
+    const rewrite = options.find((o) => o.textContent === 'Rewrite the text')!;
+    expect(rewrite.disabled).toBe(false);
   });
 
   it('writes onTripped and clears it to Default', () => {
