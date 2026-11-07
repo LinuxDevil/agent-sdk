@@ -28,6 +28,7 @@ import type {
   SkillNodeData,
   SubagentNodeData,
   ToolNodeData,
+  TriggerNodeData,
 } from '../types';
 import { ROOT_ONLY_KINDS } from '../types';
 import { arbSpec } from './arbitraries';
@@ -420,6 +421,59 @@ describe('palette create (C09 memory entry)', () => {
       scope: 'session',
       provider: { type: 'in-memory' },
     });
+  });
+});
+
+describe('palette create (trigger entries)', () => {
+  const g0 = specToGraph(minimalSpec());
+  const entries = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
+  const byId = (id: string) => entries.find((e) => e.id === id);
+
+  it('registers the five entries under the Start group', () => {
+    for (const id of ['trigger-chat', 'trigger-cron', 'trigger-webhook', 'trigger-channel', 'trigger-agent']) {
+      const entry = byId(id);
+      expect(entry, id).toBeDefined();
+      expect(entry?.group).toBe('Start');
+      expect(entry?.kind).toBe('trigger');
+    }
+  });
+
+  it('creates each type\'s empty value with a fresh t-item id', () => {
+    expect(byId('trigger-chat')!.create(g0, 'agent').data).toStrictEqual({
+      item: { id: 't1', type: 'chat' },
+    });
+    expect(byId('trigger-cron')!.create(g0, 'agent').data).toStrictEqual({
+      item: { id: 't1', type: 'cron', cron: '0 9 * * 1-5', prompt: '' },
+    });
+    expect(byId('trigger-webhook')!.create(g0, 'agent').data).toStrictEqual({
+      item: { id: 't1', type: 'webhook', path: '/hooks/t1', promptTemplate: '' },
+    });
+    expect(byId('trigger-channel')!.create(g0, 'agent').data).toStrictEqual({
+      item: { id: 't1', type: 'channel', channel: 'slack', secrets: {} },
+    });
+    expect(byId('trigger-agent')!.create(g0, 'agent').data).toStrictEqual({
+      item: { id: 't1', type: 'agent', after: '', on: 'done', promptTemplate: '{{run.resultText}}' },
+    });
+  });
+
+  it('names two creates trigger:t1 and trigger:t2', () => {
+    const chat = byId('trigger-chat')!;
+    const first = addNode(g0, chat.create(g0, 'agent'), AT, 'agent');
+    expect(first.nodeId).toBe('trigger:t1');
+    const second = addNode(first.graph, chat.create(first.graph, 'agent'), AT, 'agent');
+    expect(second.nodeId).toBe('trigger:t2');
+    expect((nodeById(second.graph, 'trigger:t2').data as TriggerNodeData).item).toStrictEqual({
+      id: 't2',
+      type: 'chat',
+    });
+  });
+
+  it('keeps the owner on the root agent when an inline subagent is selected', () => {
+    const g = specToGraph(treeSpec());
+    const owner = ownerForNewNode(g, 'trigger', 'sub:r');
+    expect(owner).toBe('agent');
+    const added = addNode(g, byId('trigger-chat')!.create(g, owner), AT, owner);
+    expect(nodeById(added.graph, 'trigger:t1').owner).toBe('agent');
   });
 });
 

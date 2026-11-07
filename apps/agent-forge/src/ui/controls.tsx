@@ -118,6 +118,8 @@ export interface SelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /** The option's `title` tooltip (e.g. a catalog entry's description). */
+  title?: string;
 }
 
 /** One labelled `<optgroup>` for {@link Select} (e.g. a provider's models); rendered before the flat `options`. */
@@ -174,14 +176,14 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       {groups?.map((group) => (
         <optgroup key={group.label} label={group.label}>
           {group.options.map((option) => (
-            <option key={option.value} value={option.value} disabled={option.disabled}>
+            <option key={option.value} value={option.value} disabled={option.disabled} title={option.title}>
               {option.label}
             </option>
           ))}
         </optgroup>
       ))}
       {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>
+        <option key={option.value} value={option.value} disabled={option.disabled} title={option.title}>
           {option.label}
         </option>
       ))}

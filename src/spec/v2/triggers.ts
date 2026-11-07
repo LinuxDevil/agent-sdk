@@ -47,7 +47,7 @@ export const CHANNEL_SECRET_KEYS: Readonly<Record<ChannelKind, readonly string[]
   slack: ['signingSecret', 'botToken'],
   github: ['webhookSecret', 'token'],
   teams: ['appId', 'appPassword'],
-  discord: ['publicKey', 'applicationId'],
+  discord: ['publicKey', 'applicationId', 'botToken'],
   http: [],
 };
 

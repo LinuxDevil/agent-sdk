@@ -1,0 +1,5 @@
+/* Trigger node forms (src/canvas/kinds/trigger/*) — mono text for the cron,
+   path, filter and channel values the Inspector edits. */
+.input-mono {
+  font-family: var(--font-mono);
+}

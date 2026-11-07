@@ -9,6 +9,7 @@ import { MEMORY_VIEW } from './memory';
 import { SKILL_VIEW } from './skill';
 import { SUBAGENT_VIEW } from './subagent';
 import { TOOL_VIEW } from './tool';
+import { TRIGGER_VIEW } from './trigger';
 import { GenericFields } from './GenericFields';
 
 /** A kind tile's colour family: `kind-<tone>` in screens/agents/agents.css (also the MiniMap's node fill). */
@@ -103,6 +104,7 @@ export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
   mcp: MCP_VIEW,
   skill: SKILL_VIEW,
   memory: MEMORY_VIEW,
+  trigger: TRIGGER_VIEW,
 };
 
 /** The fallback `KindView`: bare kind tile, id-suffix title, no rows, both ports, the JSON `GenericFields`. */

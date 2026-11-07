@@ -143,7 +143,7 @@ describe('validateGraph: core checks', () => {
     ['guardrail', { id: 'g1', name: 'max-length', on: 'input' }, 'guardrails'],
     ['permission', { id: 'p1', tool: '*', action: 'ask' }, 'permission rules'],
     ['hook', { id: 'h1', file: 'hooks/h.ts' }, 'hooks'],
-    ['trigger', { id: 't1', type: 'chat' }, 'triggers'],
+    ['trigger', { id: 't1', type: 'cron', cron: '0 9 * * *', prompt: 'go' }, 'triggers'],
     ['abort', { id: 'a1', triggerId: 't1', when: 'true', match: 'true', scope: 'both' }, 'abort listeners'],
   ] as Array<[NodeKind, Record<string, unknown>, string]>)(
     'reports two %s items sharing an id across the graph',

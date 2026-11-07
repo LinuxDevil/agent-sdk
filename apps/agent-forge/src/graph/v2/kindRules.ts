@@ -12,6 +12,7 @@ import { memoryRules } from './kinds/memory';
 import { skillRules } from './kinds/skill';
 import { subagentRules } from './kinds/subagent';
 import { toolRules } from './kinds/tool';
+import { triggerRules } from './kinds/trigger';
 import type { Graph, GraphNode, NodeKind, NodeOfKind, Problem } from './types';
 
 /** The result of a user-drawn edge: a new graph, or a refusal with a user-facing reason. */
@@ -50,4 +51,5 @@ export const KIND_RULES: { [K in NodeKind]?: KindRules<K> } = {
   mcp: mcpRules,
   skill: skillRules,
   memory: memoryRules,
+  trigger: triggerRules,
 };
