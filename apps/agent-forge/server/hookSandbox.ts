@@ -2,7 +2,7 @@
  * Sandboxed execution of user-authored hook code.
  *
  * A hook's `code` (edited in the Inspector's CodeMirror editor, see
- * src/hooks/hookTemplates.ts and graph/types.ts's `AgentNodeHookInstance`)
+ * the graph-v2 hook node spec)
  * is arbitrary JS a user typed into this local dev tool. It must NOT run
  * with full host privileges in this process - the same constraint
  * already solved for tool execution (see src/tools/built-in/sandboxFetch.ts

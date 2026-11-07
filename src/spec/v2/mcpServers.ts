@@ -17,10 +17,18 @@ export const MCP_SERVER_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** An MCP server entry as a v2 spec writes it: v1's McpServerSpec, with SecretRef allowed where secrets go. */
 export type McpServerSpecV2 =
-  | (Omit<McpStdioServerSpec, 'env'> & { env?: Record<string, string | SecretRef> })
+  | (Omit<McpStdioServerSpec, 'env'> & {
+      /** Environment for the server process; values may be SecretRefs. */
+      env?: Record<string, string | SecretRef>;
+    })
   | (Omit<McpHttpServerSpec, 'headers' | 'oauth'> & {
+      /** HTTP headers; values may be SecretRefs. */
       headers?: Record<string, string | SecretRef>;
-      oauth?: Omit<McpOAuthOptions, 'clientSecret'> & { clientSecret?: string | SecretRef };
+      /** OAuth options whose `clientSecret` may be a SecretRef. */
+      oauth?: Omit<McpOAuthOptions, 'clientSecret'> & {
+        /** The OAuth client secret, as a literal string or SecretRef. */
+        clientSecret?: string | SecretRef;
+      };
     });
 
 /**

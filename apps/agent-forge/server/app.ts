@@ -3,7 +3,7 @@
  *
  * Routes:
  *   GET  /health                     -> 200 'ok'
- *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> AgentStoreEntry[]
+ *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> LegacyAgentStoreEntry[]
  *   POST /agents                     -> create blank/template/copy (body: CreateAgentRequest), 201 AgentRecord
  *   GET  /templates                  -> TemplateSummary[] - the SDK's shipped templates (templates/templateCatalog.ts)
  *   GET  /templates/:id              -> TemplateDetail (summary + spec v2 + README) | 400/404
@@ -74,7 +74,7 @@ import {
   type ForkPatch,
 } from 'lousho';
 import type { connectMcp } from 'lousho/mcp';
-import type { AgentStore } from '../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,
   AgentNotFoundError,
@@ -109,6 +109,7 @@ import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
 import { AgentRepo } from './storage/agentRepo';
 import { DraftStore } from './storage/draftStore';
+import { createIdleVersioner, type IdleVersioner } from './storage/idleVersioner';
 import { SuggestionStore } from './storage/suggestionStore';
 import { VersionStore } from './storage/versionStore';
 import { StudioEventBus } from './events/eventBus';
@@ -191,6 +192,13 @@ interface CreateAppBaseOptions {
    */
   eventBus?: StudioEventBus;
   /**
+   * The default workspace context's `IdleVersioner` - a test seam, like
+   * `eventBus`: inject one with a short `delayMs` (or a spy `capture`) to
+   * test the PUT/POST/DELETE wiring without waiting 60 s. Defaults to
+   * `createIdleVersioner(versions)` (storage/idleVersioner.ts).
+   */
+  idleVersioner?: IdleVersioner;
+  /**
    * The app's one TemplateCatalog - Studio-global (the templates folder
    * ships in the SDK package), shared between `GET /templates*` and the
    * `{ template }` branch of `POST /agents`. Defaults to the SDK's own
@@ -214,7 +222,7 @@ interface CreateAppBaseOptions {
  */
 type CreateAppWorkspaceOptions =
   | { workspace: WorkspaceContext; agentStore?: never; runManager?: never }
-  | { workspace?: undefined; agentStore: AgentStore; runManager: RunManager };
+  | { workspace?: undefined; agentStore: LegacyAgentStore; runManager: RunManager };
 
 /**
  * `createApp`'s options: the launch folder and Studio-global services,
@@ -784,10 +792,14 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * `workspace`: the launch folder's ref around those two stores.
  */
 function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
-  const workspace = options.workspace ?? legacyWorkspaceContext(options);
+  let workspace = options.workspace ?? legacyWorkspaceContext(options);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
-  return options.eventBus === undefined ? workspace : { ...workspace, events: options.eventBus };
+  if (options.eventBus !== undefined) workspace = { ...workspace, events: options.eventBus };
+  // `idleVersioner` is a test seam too: it swaps the context's idle-version
+  // scheduler - the one `workspaceOf(req).idleVersioner` touches/cancels.
+  if (options.idleVersioner !== undefined) workspace = { ...workspace, idleVersioner: options.idleVersioner };
+  return workspace;
 }
 
 /**
@@ -797,12 +809,14 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
  */
 function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefined }): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
+  const versions = new VersionStore(repo);
   return {
     ref: workspaceRefFor(options.baseDir),
     repo,
     agentStore: options.agentStore,
-    versions: new VersionStore(repo),
+    versions,
     drafts: new DraftStore(repo),
+    idleVersioner: createIdleVersioner(versions),
     suggestions: new SuggestionStore(repo),
     // The legacy pair's RunManager carries its own host; this one exists to
     // satisfy the context shape (nothing reads ws.host yet - catalog/steer
@@ -947,7 +961,7 @@ export function createApp(options: CreateAppOptions): Express {
   registerMcpProbeRoute(app, probeDeps);
   // Agent Author chat sessions (Studio-global files under
   // studioPaths().sessions; each session records which workspace it edits).
-  registerAuthorRoutes(app, { sessions, runner: authorRunner, workspaceResolver });
+  registerAuthorRoutes(app, { sessions, runner: authorRunner, workspaceResolver, secrets });
   // The Author's own settings (author/settings.ts): which model its turns
   // run on and whether a key for it exists.
   registerAuthorSettingsRoutes(app, { settings, secrets });

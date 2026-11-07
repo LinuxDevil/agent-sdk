@@ -6,8 +6,8 @@ import { render } from './render';
 
 const appState = vi.hoisted(() => ({
   agents: [
-    { id: 'support-bot', spec: { name: 'Support Bot' } },
-    { id: 'researcher', spec: { name: '' } },
+    { id: 'support-bot', name: 'Support Bot' },
+    { id: 'researcher', name: '' },
   ],
   switchAgent: vi.fn<[string], Promise<void>>(() => Promise.resolve()),
 }));
@@ -112,7 +112,7 @@ describe('CommandPalette', () => {
     expect(activeText()).toBe('Open agent Support Bot');
     key('ArrowUp', {}, input());
     key('Enter', {}, input());
-    expect(window.location.hash).toBe('#/agents/researcher');
+    expect(window.location.hash).toBe('#/agents/researcher/overview');
     // Only the hash: the Agents screen's route sync opens it (and asks about unsaved changes).
     expect(appState.switchAgent).not.toHaveBeenCalled();
   });
@@ -181,7 +181,7 @@ describe('CommandPalette edge cases', () => {
     key('k', { ctrlKey: true });
     type('support bot');
     key('Enter', {}, input());
-    expect(window.location.hash).toBe('#/agents/support-bot');
+    expect(window.location.hash).toBe('#/agents/support-bot/overview');
     expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 

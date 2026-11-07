@@ -170,7 +170,7 @@
   background: var(--surface-2);
   color: var(--text-faint);
 }
-/* Kind colours match the canvas (canvas/nodeKinds.ts): tool = info, generation = violet; amber is for warning status only.
+/* Kind colours match the canvas (canvas/kinds registry tones): tool = info, generation = violet; amber is for warning status only.
    The agent kind is outlined (an accent hairline round its soft tile, a hollow waterfall bar), so it differs from the
    (lavender) generation by shape, not only by hue. */
 .run-kind-agent {

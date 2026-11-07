@@ -1,11 +1,12 @@
-import { createContext, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpecV2 } from 'lousho';
 import { HttpAgentStore } from '../persistence/HttpAgentStore';
 import { runtimeClient } from '../runtime/runtimeClient';
-import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';
-import type { AgentGraphSpec } from '../graph/types';
+import type { AgentStore } from '../persistence/AgentStore';
+import type { Graph, GraphEdge } from '../graph/v2/types';
 import type { TemplateId } from '../canvas/templates';
+import type { AgentListItem } from '../../shared/wireTypes';
 import type {
   AgentRunStatusPayload,
   LogEntry,
@@ -14,6 +15,7 @@ import type {
   ChatSessionMeta,
   ChatSessionRecord,
   SettingsProfile,
+  VersionListItem,
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
 import { useAgentDocument } from './useAgentDocument';
@@ -33,21 +35,41 @@ interface AppState {
    * rename) goes through `setGraph`, never a ReactFlow-only, ephemeral
    * state that could drift from this.
    */
-  graph: AgentGraphSpec;
-  setGraph: (updater: (graph: AgentGraphSpec) => AgentGraphSpec) => void;
+  graph: Graph;
+  setGraph: (updater: (graph: Graph) => Graph) => void;
   /**
-   * Derived, read-mostly view of `graph` as the SDK's `AgentSpec` (via
-   * `graphToSpec()`), kept for components that predate the real canvas
+   * Derived, read-mostly view of `graph` as the SDK's `AgentSpecV2` (via
+   * `graphToSpec()`), kept for components that read the spec shape
    * (Topbar import/export, the drawer's Output tab) and for persistence.
    * Writing through `setSpec` replaces the whole graph via `specToGraph()`
    * - appropriate for "import a whole new spec file", not for incremental
    * node edits (use `setGraph` for those).
    */
-  spec: AgentSpec;
-  setSpec: (updater: (spec: AgentSpec) => AgentSpec) => void;
+  spec: AgentSpecV2;
+  setSpec: (updater: (spec: AgentSpecV2) => AgentSpecV2) => void;
+  /** The canvas's edges, derived from `graph` by `deriveEdges()` (edges are never stored). */
+  edges: GraphEdge[];
+  /** Graph node id → the id `specToGraph(spec)` gives it today, from the same `graphToSpec` call as `spec`. */
+  nodeIdMap: Record<string, string>;
   /** True when there are unsaved changes since the last successful `save()`. */
   dirty: boolean;
   save: () => Promise<void>;
+  /**
+   * The explicit "Save version" (the Topbar's Save button and Ctrl/Cmd+S):
+   * `save()` (the working-copy PUT, same as autosave) then
+   * `POST /agents/:id/versions`. Resolves to the written item when a
+   * version was captured, `undefined` when the working copy already
+   * matched the latest version (the route's 200 no-op). Rejects on
+   * failure - the caller's error surface handles it.
+   */
+  saveVersion: () => Promise<VersionListItem | undefined>;
+  /**
+   * The version number the most recent `saveVersion()` reported - the
+   * `v<n>` of the "No changes since" toast (the server's 200 answer
+   * carries the latest item, so this is always current after a call).
+   * `null` before the first `saveVersion()`.
+   */
+  latestVersion: number | null;
   selectedNodeId: string | undefined;
   setSelectedNodeId: (nodeId: string | undefined) => void;
   railTab: RailTab;
@@ -55,7 +77,7 @@ interface AppState {
   drawerTab: DrawerTab;
   setDrawerTab: (tab: DrawerTab) => void;
   /** Every agent currently known to `store`, refreshed after save/create/switch. */
-  agents: AgentStoreEntry[];
+  agents: AgentListItem[];
   /** False until the first `agents` fetch (and opening the initial agent) has finished, failed included. */
   agentsLoaded: boolean;
   /** Loads a different agent's graph into the canvas - a full state swap, not a visual pan. */
@@ -153,10 +175,20 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
   const [railTab, setRailTab] = useState<RailTab>('agents');
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
-  // A reload of `#/agents/:id` reopens that agent.
+  // A reload of an agents URL (`#/agents/:id`, `#/agents/:id/canvas`, `#/agents/:id/:tab`) reopens that agent.
   const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
   const doc = useAgentDocument(store, initialAgentId);
-  const { agentId, spec } = doc;
+  const { agentId, spec, save } = doc;
+  // A ref (not state) so a caller reading `latestVersion` after `await
+  // saveVersion()` sees the version that call just reported, not the one
+  // captured when its closure was created.
+  const latestVersionRef = useRef<number | null>(null);
+  const saveVersion = useCallback(async (): Promise<VersionListItem | undefined> => {
+    await save();
+    const { item, created } = await runtimeClient.saveVersion(agentId);
+    latestVersionRef.current = item.version;
+    return created ? item : undefined;
+  }, [save, agentId]);
   const agentStatuses = useAgentStatuses(doc.agents);
   const stream = useAgentStream(agentId);
   const run = useRunControls({ agentId, spec, ...stream });
@@ -166,6 +198,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const value: AppState = {
     store,
     ...doc,
+    saveVersion,
+    get latestVersion() {
+      return latestVersionRef.current;
+    },
     railTab,
     setRailTab,
     drawerTab,

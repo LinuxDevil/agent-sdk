@@ -157,6 +157,38 @@ export interface AuthorToolFailure {
   [extra: string]: unknown;
 }
 
+/**
+ * The five yes/no questions the draft-review pass asks about a proposal
+ * (PLAN §8.4), in prompt order: `runs` (every builtin tool, guardrail and
+ * trigger type exists, MCP servers have a command or URL, no literal
+ * secrets), `fulfillsIntent` (the draft does what the user asked),
+ * `toolsComplete` (every instruction step has a way to happen),
+ * `guardrailsFit` (approvals/guardrails fit the risk) and `triggersFit`
+ * (triggers match when the user wants the agent to run).
+ */
+export const DRAFT_REVIEW_DIMENSIONS = ['runs', 'fulfillsIntent', 'toolsComplete', 'guardrailsFit', 'triggersFit'] as const;
+
+/** One {@link DRAFT_REVIEW_DIMENSIONS} question. */
+export type DraftReviewDimension = (typeof DRAFT_REVIEW_DIMENSIONS)[number];
+
+/** The per-identity round cap on draft-review bounces in one turn (PLAN §8.4); round 3 shows the card anyway. */
+export const DRAFT_REVIEW_MAX_ROUNDS = 3;
+
+/**
+ * Whether `output` is a `DRAFT_REVIEW` tool failure: the hidden bounce a
+ * propose call returns while the Author redrafts. The panel renders
+ * nothing for these outputs (the review is internal), so the client
+ * checks this before showing a tool result.
+ */
+export function isDraftReviewFailure(output: unknown): boolean {
+  return (
+    typeof output === 'object' &&
+    output !== null &&
+    (output as { ok?: unknown }).ok === false &&
+    (output as { code?: unknown }).code === 'DRAFT_REVIEW'
+  );
+}
+
 /** The exact pathname the Author chat's WebSocket lives on (`WS /assistant/stream?session=<id>`). */
 export const AUTHOR_STREAM_PATH = '/assistant/stream';
 
@@ -195,6 +227,23 @@ export interface AuthorSaveResponse {
 }
 
 /**
+ * The `ok: true` output of `setAgentEnabled` and of
+ * `POST /assistant/sessions/:id/enable` (the SuccessCard's "Enable agent"
+ * button - both go through the same write, AA11). `status` distinguishes
+ * a real flip from a no-op, and `missingRequirements` is the count of the
+ * agent's readiness rows still `status: 'missing'` - the switch lands
+ * either way; the number exists so the model (and the card) can mention
+ * what the agent still needs before it can run.
+ */
+export interface SetEnabledOutput {
+  ok: true;
+  agentId: string;
+  enabled: boolean;
+  status: 'updated' | 'unchanged';
+  missingRequirements: number;
+}
+
+/**
  * The `ok: true` output of `proposeAgent`/`proposeAgentUpdate` - the card
  * the Author panel renders (PLAN §8.3). `proposalId` is the propose call's
  * `toolCallId`: the transcript is the proposal store, so nothing is
@@ -228,6 +277,33 @@ export interface ProposalOutput {
   baseSpecHash: string | null;
   /** Creates: `false`; updates: the agent's `meta.enabled`. */
   enabled: boolean;
+}
+
+/**
+ * `requestSecret`'s result and the settled output `POST .../secret` stores
+ * on the card's tool part (AA14). `'pending'` keeps the card open (the
+ * runner emits `tool.pending` and stores the part `state: 'pending'`);
+ * `'exists'` means the name already holds a value so no card is needed;
+ * `'saved'` is written by the secret route after the value lands in the
+ * secrets store; `DECLINED` is what a skipped card stores. The value
+ * itself is never part of this union - it travels from the card's HTTP
+ * POST straight to the secrets store.
+ */
+export type RequestSecretOutput =
+  | { ok: true; name: string; status: 'pending' | 'exists' | 'saved' }
+  | { ok: false; code: 'DECLINED'; name: string; error: string; userMessage: string };
+
+/**
+ * `POST /assistant/sessions/:id/secret`'s body (AA14): which pending
+ * `requestSecret` card it answers, plus exactly one of `value` (the
+ * secret text, 1-8192 chars) or `declined: true` (the user skipped the
+ * card). `name` must equal the card's stored `input.name`.
+ */
+export interface AuthorSecretRequest {
+  toolCallId: string;
+  name: string;
+  value?: string;
+  declined?: boolean;
 }
 
 /**

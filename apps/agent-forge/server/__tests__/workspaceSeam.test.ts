@@ -12,10 +12,11 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore, AgentStoreEntry } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore, LegacyAgentStoreEntry } from '../../src/persistence/AgentStore';
 import { WORKSPACE_ID_RE } from '../../shared/workspace';
 import { workspaceIdFor, workspaceRefFor } from '../workspace/workspaceId';
 import { DraftStore } from '../storage/draftStore';
+import { IdleVersioner } from '../storage/idleVersioner';
 import { SuggestionStore } from '../storage/suggestionStore';
 import { VersionStore } from '../storage/versionStore';
 import { StudioEventBus } from '../events/eventBus';
@@ -36,7 +37,7 @@ const SPEC: AgentSpec = {
  */
 describe('workspace seam', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
 
   beforeEach(() => {
@@ -104,7 +105,7 @@ describe('workspace seam', () => {
   });
 
   it('createApp({ workspace }) routes read the given context, not a closed-over store', async () => {
-    const entries: AgentStoreEntry[] = [{ id: 'stub-agent', spec: SPEC, updatedAt: 't' }];
+    const entries: LegacyAgentStoreEntry[] = [{ id: 'stub-agent', spec: SPEC, updatedAt: 't' }];
     const status = vi.fn().mockReturnValue({ agentId: 'x', status: 'idle', updatedAt: 't' });
     const repo = new AgentRepo(baseDir);
     const workspace: WorkspaceContext = {
@@ -118,6 +119,7 @@ describe('workspace seam', () => {
       },
       versions: new VersionStore(repo),
       drafts: new DraftStore(repo),
+      idleVersioner: new IdleVersioner({ capture: async () => {} }),
       suggestions: new SuggestionStore(repo),
       host: newTestHost(baseDir),
       runs: { status } as unknown as RunManager,

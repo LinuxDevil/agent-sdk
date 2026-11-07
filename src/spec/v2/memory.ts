@@ -17,7 +17,10 @@ const SLOT_NAME = /^[a-zA-Z0-9_-]{1,55}$/;
 const maxItems = z.number().int().positive('must be a positive integer');
 
 /** Whose memory a run sees, as data: one shared memory, one per session, or one per `metadata[key]` value. */
-export type MemoryScopeSpec = 'global' | 'session' | { metadataKey: string };
+export type MemoryScopeSpec = 'global' | 'session' | {
+  /** The metadata key whose value scopes the memory. */
+  metadataKey: string;
+};
 
 /**
  * Where a slot keeps its items, as data: in this process (`in-memory`), JSON
@@ -27,9 +30,32 @@ export type MemoryScopeSpec = 'global' | 'session' | { metadataKey: string };
  * '.lousho/memory.db').
  */
 export type MemoryProviderSpec =
-  | { type: 'in-memory'; maxItems?: number }
-  | { type: 'file'; dir: string; maxItems?: number }
-  | { type: 'sqlite-vector'; path?: string; embedder: string; maxItems?: number; minScore?: number };
+  | {
+      /** In-process memory that dies with the run. */
+      type: 'in-memory';
+      /** Cap on stored items. */
+      maxItems?: number;
+    }
+  | {
+      /** JSON files under `dir` relative to the spec's directory. */
+      type: 'file';
+      /** Directory of the JSON files, relative to the spec's directory. */
+      dir: string;
+      /** Cap on stored items. */
+      maxItems?: number;
+    }
+  | {
+      /** Vectors in a SQLite file. */
+      type: 'sqlite-vector';
+      /** SQLite file path relative to the spec's directory (default '.lousho/memory.db'). */
+      path?: string;
+      /** Embedder id the host builds (e.g. 'openai/text-embedding-3-small'). */
+      embedder: string;
+      /** Cap on stored items. */
+      maxItems?: number;
+      /** Recall score floor, 0-1. */
+      minScore?: number;
+    };
 
 /** One `spec.memory` entry: the data form of `defineMemory()`'s options. */
 export interface MemorySpec {
@@ -37,12 +63,28 @@ export interface MemorySpec {
   name: string;
   /** What this memory holds; shown to the model in the tool descriptions. */
   description?: string;
+  /** Whose memory a run sees. */
   scope: MemoryScopeSpec;
+  /** Where the slot keeps its items. */
   provider: MemoryProviderSpec;
   /** Recall at the start of a run (defineMemory's `recall`, defaults applied by it). */
-  recall?: { onSessionStart?: boolean; maxItems?: number; query?: 'last-input' | 'none' };
+  recall?: {
+    /** Recall items when a session starts. */
+    onSessionStart?: boolean;
+    /** How many items to recall. */
+    maxItems?: number;
+    /** The recall query ('last-input' or 'none'). */
+    query?: 'last-input' | 'none';
+  };
   /** Which `remember`/`recall`/`forget` tools the model gets (defineMemory's `expose`). */
-  expose?: { remember?: boolean; recall?: boolean; forget?: boolean };
+  expose?: {
+    /** Expose the `remember_<name>` tool. */
+    remember?: boolean;
+    /** Expose the `recall_<name>` tool. */
+    recall?: boolean;
+    /** Expose the `forget_<name>` tool. */
+    forget?: boolean;
+  };
   /** JSON Schema (draft 7) of one item; the host turns it into the slot's `itemSchema`. */
   itemJsonSchema?: Record<string, unknown>;
   /** The `itemJsonSchema` field (or fields) identifying an item for upserts; only valid with `itemJsonSchema`. */
@@ -76,8 +118,7 @@ const providerSchema = z.discriminatedUnion('type', [
  * One `spec.memory` entry (zod): strict objects, so misspelt keys are refused;
  * `itemKey` requires `itemJsonSchema` (the fields it names are fields of the schema).
  */
-// fallow-ignore-next-line unused-export -- composed by memoryListSchema; exported for section schemas that embed it
-export const memorySpecSchema = z
+export const memorySpecSchema: z.ZodType<MemorySpec> = z
   .object({
     name: z
       .string(typeErrors({ required: 'is required', invalid: 'must be a string' }))

@@ -33,11 +33,24 @@ import { test, expect, type Page } from '@playwright/test';
  * - so this test chats on the freshly created agent straight
  * away, with no Run first.
  */
+const API = { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } };
+
+/**
+ * A builder URL that survives the unknown-id fallback to `#/agents`: the first
+ * saved agent's canvas tab, or the unsaved default's when none are saved yet.
+ */
+async function builderHash(page: Page): Promise<string> {
+  const res = await page.request.get('/agents', API);
+  const ids = ((await res.json()) as { id: string }[]).map((a) => a.id);
+  return `#/agents/${ids[0] ?? 'untitled-agent'}/canvas`;
+}
+
 test('create an agent, hit an approval gate via chat, approve it, and complete the run', async ({ page }) => {
   const agentId = `e2e-approval-agent-${Date.now()}`;
 
-  // The studio URL carries the per-launch token (see playwright.config.ts).
-  await page.goto('/?token=e2e-studio-token');
+  // The studio URL carries the per-launch token (see playwright.config.ts);
+  // the builder lives at `#/agents/:id/canvas`.
+  await page.goto(`/?token=e2e-studio-token${await builderHash(page)}`);
   await expect(page.locator('.app')).toBeVisible();
 
   // --- Create an agent from the "Support bot" template (trigger -> llm ->
@@ -49,7 +62,7 @@ test('create an agent, hit an approval gate via chat, approve it, and complete t
 
   // --- Retarget the tool node at the local, always-needsApproval
   // 'demo-approval' tool, and save ---
-  const toolNode = page.locator('[data-node-type="tool"]');
+  const toolNode = page.locator('[data-node-kind="tool"]');
   await expect(toolNode).toBeVisible();
   await toolNode.click();
 
@@ -106,12 +119,12 @@ async function expectInside(inner: ReturnType<Page['locator']>, outer: ReturnTyp
 test('a pending approval keeps "Open trace" and the MOCK badge in the toolbar at 1280 and 1024 wide', async ({ page }) => {
   const agentId = `e2e-pending-trace-${Date.now()}`;
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto('/?token=e2e-studio-token');
+  await page.goto(`/?token=e2e-studio-token${await builderHash(page)}`);
   await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(agentId);
   await page.locator('#new-agent-template').selectOption('support-bot');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await page.locator('[data-node-type="tool"]').click();
+  await page.locator('[data-node-kind="tool"]').click();
   await page.locator('#node-tool-name').fill('demo-approval');
   await page.locator('.chat-input').fill('Please call demo-approval to look something up for me.');
   await page.locator('.btn-send').click();
@@ -130,8 +143,15 @@ test('a pending approval keeps "Open trace" and the MOCK badge in the toolbar at
   }
 });
 
-/** F5: the builder is the Agents screen, and `#/agents/:id` names the open agent. */
+/** F5: the builder lives at `#/agents/:id/canvas`; the hash names the open agent. */
 async function createAgent(page: Page, id: string) {
+  // Landing on `#/agents` (the list) first? Open the builder through it:
+  // an agent's link, or the empty state's builder link when there are none.
+  if ((await page.getByRole('button', { name: 'New agent', exact: true }).count()) === 0) {
+    const agentLink = page.locator('.agent-list-placeholder a').first();
+    if ((await agentLink.count()) > 0) await agentLink.click();
+    else await page.getByRole('link', { name: 'Open the builder' }).click();
+  }
   await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(id);
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -145,39 +165,42 @@ test('selecting an agent updates the URL, a reload restores it, an unknown id fa
   await expect(page.locator('.app')).toBeVisible();
 
   await createAgent(page, first);
-  await expect(page).toHaveURL(new RegExp(`#/agents/${first}$`));
+  await expect(page).toHaveURL(new RegExp(`#/agents/${first}/canvas$`));
   await createAgent(page, second);
-  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}/canvas$`));
 
   await page.locator('.agent-card-main', { hasText: first }).click();
-  await expect(page).toHaveURL(new RegExp(`#/agents/${first}$`));
+  await expect(page).toHaveURL(new RegExp(`#/agents/${first}/canvas$`));
   await expect(page.locator('.crumbs b')).toHaveText(first);
 
   // The token moved to sessionStorage on the first load, so the reload has none in the URL.
   await page.reload();
   await expect(page.locator('.crumbs b')).toHaveText(first);
   await expect(page.locator('.agent-card.selected')).toContainText(first);
-  await expect(page).toHaveURL(new RegExp(`#/agents/${first}$`));
+  await expect(page).toHaveURL(new RegExp(`#/agents/${first}/canvas$`));
 
+  // The legacy `#/agents/:id` URL still opens the builder, redirected to its canvas tab.
   await page.goto(`/?token=e2e-studio-token#/agents/${second}`);
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}/canvas$`));
   await expect(page.locator('.crumbs b')).toHaveText(second);
 
-  // Unknown id: no error screen; falls back to #/agents, which then names the open agent.
+  // Unknown id: no error screen; falls back to the agents list at #/agents.
   await page.goto('/#/agents/no-such-agent');
-  await expect(page.locator('.canvas-wrap')).toBeVisible();
-  await expect(page).toHaveURL(/#\/agents\/(?!no-such-agent)[^/]+$/);
+  await expect(page).toHaveURL(/#\/agents$/);
+  await expect(page.locator('.agent-list-screen')).toBeVisible();
 
-  // Agents -> Traces -> Agents (the nav link is bare #/agents) -> reload keeps the open agent.
-  await page.locator('.agent-card-main', { hasText: second }).click();
+  // From the list an agent link opens its builder; Agents -> Traces -> Agents lands back on the list.
+  await page.locator(`.agent-list-placeholder a[href="#/agents/${second}/overview"]`).click();
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}/canvas$`));
   await expect(page.locator('.crumbs b')).toHaveText(second);
   const nav = page.getByRole('navigation', { name: 'Primary' });
   await nav.getByRole('link', { name: 'Traces' }).click();
   await expect(page).toHaveURL(/#\/traces$/);
   await nav.getByRole('link', { name: 'Agents' }).click();
-  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+  await expect(page).toHaveURL(/#\/agents$/);
   await page.reload();
-  await expect(page.locator('.crumbs b')).toHaveText(second);
-  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+  await expect(page.getByRole('heading', { name: 'Agents' })).toBeVisible();
+  await expect(page).toHaveURL(/#\/agents$/);
 });
 
 test('unsaved changes ask before switching agents or leaving Agents; cancelling keeps the URL', async ({ page }) => {
@@ -203,13 +226,13 @@ test('unsaved changes ask before switching agents or leaving Agents; cancelling 
   await page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Traces' }).click();
   await expect.poll(() => dialogs.length).toBe(1);
   expect(dialogs[0]).toContain(second);
-  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}/canvas$`));
   await expect(page.locator('.canvas-wrap')).toBeVisible();
 
   await page.getByRole('tab', { name: 'Agents' }).click();
   page.once('dialog', (d) => void d.dismiss());
   await page.locator('.agent-card-main', { hasText: first }).click();
-  await expect(page).toHaveURL(new RegExp(`#/agents/${second}$`));
+  await expect(page).toHaveURL(new RegExp(`#/agents/${second}/canvas$`));
   await expect(page.locator('.crumbs b')).toHaveText(second);
 
   page.once('dialog', (d) => void d.accept());

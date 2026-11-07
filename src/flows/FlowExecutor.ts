@@ -8,6 +8,7 @@ import { ToolRegistry } from '../tools';
 import {
   AgentFlow,
   AgentStepNode,
+  ApprovalStepNode,
   EditorStep,
   EndNode,
   ExpressionEvaluatorNode,
@@ -52,7 +53,7 @@ import {
 import { compactGenerateError } from '../execution/generateStep';
 import type { PermissionOptions } from '../execution/permissions';
 import type { ApproveToolCall } from '../createAgentApprovals';
-import { gateFlowToolCall } from './flowToolGate';
+import { gateFlowToolCall, requireFlowApproval } from './flowToolGate';
 import { validateFlowInput } from './inputs';
 import { abortableDelay } from '../providers/abortableDelay';
 import type { CheckpointStore } from '../execution/checkpoint';
@@ -139,7 +140,8 @@ export interface FlowExecutionContext {
   redactContent?: boolean | ((text: string) => string);
   /**
    * Decides `toolCall` steps that need approval (the tool's
-   * `needsApproval`, or an `ask` permission rule), as `createAgent({ approve })`
+   * `needsApproval`, or an `ask` permission rule) and `approval` steps, as
+   * `createAgent({ approve })`
    * does: `true` (or a note) runs the tool, `false` fails the step with
    * `LOUSHO_FLOW_TOOL_DENIED`. `'defer'` - or no `approve` at all - refuses
    * the call too, except in a durable run (`checkpointStore` and `runId`),
@@ -207,7 +209,7 @@ export type FlowResumeContext = Omit<FlowExecutionContext, 'variables' | 'checkp
   /**
    * The decision on the approval a paused run waits for
    * (`result.approvalId`). Required to resume a run whose status is
-   * `'awaiting-approval'`; approved, the paused `toolCall` runs, rejected, it
+   * `'awaiting-approval'`; approved, the paused step continues, rejected, it
    * fails with `LOUSHO_FLOW_TOOL_DENIED`.
    */
   approval?: FlowApprovalDecision;
@@ -300,13 +302,13 @@ export type FlowExecutionEvent = {
 export interface FlowExecutionResult {
   /**
    * `'completed'` (`success: true`), `'failed'` (`error` says why),
-   * or `'awaiting-approval'`: a durable run paused on a `toolCall` that needs
-   * approval. Continue it with `FlowExecutor.resume(flow, { ..., approval: { approvalId, approved } })`.
+   * or `'awaiting-approval'`: a durable run paused on a `toolCall` or
+   * `approval` step waiting for a decision. Continue it with `FlowExecutor.resume(flow, { ..., approval: { approvalId, approved } })`.
    */
   status: 'completed' | 'failed' | 'awaiting-approval';
   /** With `status: 'awaiting-approval'`: the id to decide (`pendingApproval.approvalId`). */
   approvalId?: string;
-  /** With `status: 'awaiting-approval'`: the tool call waiting for the decision. */
+  /** With `status: 'awaiting-approval'`: the step's call waiting for the decision. */
   pendingApproval?: FlowPendingApproval;
   success: boolean;
   output: unknown;
@@ -415,6 +417,7 @@ type ExecutableNode =
   | ExpressionEvaluatorNode
   | LLMCallNode
   | AgentStepNode
+  | ApprovalStepNode
   | ToolCallNode
   | SetVariableNode
   | ReturnNode
@@ -804,6 +807,7 @@ export class FlowExecutor {
     evaluator: (node, context, events, onEvent) => this.executeEvaluator(node, context, events, onEvent),
     llmCall: (node, context, events, onEvent) => this.executeLLMCall(node, context, events, onEvent),
     agent: (node, context, events, onEvent) => this.executeAgentStep(node, context, events, onEvent),
+    approval: (node, context, events, onEvent) => this.executeApprovalStep(node, context, events, onEvent),
     toolCall: (node, context, events, onEvent) => this.executeToolCall(node, context, events, onEvent),
     setVariable: (node, context, events, onEvent) => this.executeSetVariable(node, context, events, onEvent),
     return: (node, context) => this.executeReturn(node, context),
@@ -1497,6 +1501,39 @@ export class FlowExecutor {
       init.kind,
       contentRedactor(context)
     );
+  }
+
+  /**
+   * Execute an approval step: ask the context's `approve` callback about
+   * the step's interpolated `message` - or, in a durable run, pause until
+   * `FlowExecutor.resume()` brings the decision - exactly as a `toolCall`
+   * that needs approval does. The approver sees a `flow_approval` call
+   * whose args carry the `message` and the `stepId` (`node.id`, else the
+   * node's place in the flow). Approved, the step stores `true` in its
+   * `outputVariable`; refused, it fails with `LOUSHO_FLOW_TOOL_DENIED`.
+   */
+  private static async executeApprovalStep(
+    node: ApprovalStepNode,
+    context: FlowExecutionContext,
+    events: FlowExecutionEvent[],
+    onEvent?: (event: FlowExecutionEvent) => void
+  ): Promise<true> {
+    const message = this.interpolate(node.message, context.variables);
+    const stepId = node.id ?? nodePath(context);
+
+    const run = flowRuns.get(events);
+    const durable = run && { nodeId: nodePath(context), decision: run.decisionFor(nodePath(context)) };
+    const approvalId = durable?.decision?.approvalId ?? `flow-${globalThis.crypto.randomUUID()}`;
+    await requireFlowApproval(
+      { toolName: 'flow_approval', toolCallId: approvalId, args: { message, stepId }, subject: `Approval step '${stepId}'` },
+      context,
+      durable
+    );
+
+    // Store `true` in variable if specified
+    this.storeOutputVariable(node, true, context, events, onEvent);
+
+    return true;
   }
 
   /**

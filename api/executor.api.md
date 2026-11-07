@@ -108,7 +108,7 @@ interface AgentErrorEvent extends AgentEventBase<'error'> {
 }
 
 // @public
-type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
+type AgentEvent = RunStartEvent | StepStartEvent | TextDeltaEvent | ObjectDeltaEvent | TextDoneEvent | ReasoningStartEvent | ReasoningDeltaEvent | ReasoningDoneEvent | ToolStartEvent | ToolResumeEvent | ToolPartialEvent | ToolDoneEvent | TodoUpdatedEvent | ToolErrorEvent | ApprovalRequestedEvent | PermissionDecisionEvent | StepDoneEvent | AgentErrorEvent | ProviderRetryEvent | ProviderFallbackEvent | CompactionStartEvent | CompactionDoneEvent | HealActionEvent | ContextClearedEvent | BudgetExceededEvent | InputQueuedEvent | InputSteeredEvent | InputAppliedEvent | GuardrailTrippedEvent | GuardrailRewroteEvent | AgentDriftEvent | HandoffEvent | RunDoneEvent;
 
 // @public
 interface AgentEventBase<TType extends string> {
@@ -180,17 +180,12 @@ interface AgentFingerprint {
 
 // @public
 interface AgentFlow {
-    // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
-    // (undocumented)
     description?: string;
     flow?: EditorStep;
-    // (undocumented)
     id?: string;
-    // (undocumented)
     inputs?: FlowInputVariable[];
-    // (undocumented)
     name: string;
 }
 
@@ -349,6 +344,14 @@ interface ApprovalSignIn {
     displayName?: string;
     provider: string;
     url: string;
+}
+
+// @public
+interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    type: 'approval';
 }
 
 // @public
@@ -1111,6 +1114,14 @@ interface HandoffTarget extends SubagentSpec {
 }
 
 // @public
+interface HealActionEvent extends AgentEventBase<'heal.action'> {
+    action: 'hint' | 'deny' | 'stop';
+    failure?: 'bad-input' | 'timeout' | 'missing-capability' | 'permission' | 'unknown';
+    reason: string;
+    toolName: string;
+}
+
+// @public
 const HOOK_REGISTRY_BRAND: unique symbol;
 
 // @public
@@ -1125,7 +1136,7 @@ interface HookContext {
 
 // @public
 type HookEventPayload = Extract<AgentEventPayload, {
-    type: 'compaction.start' | 'compaction.done';
+    type: 'compaction.start' | 'compaction.done' | 'heal.action';
 }>;
 
 // @public
@@ -1870,8 +1881,12 @@ type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 // @public
 interface RecoverOptions<TResult = unknown> {
     intervalMs?: number;
+    maxAttempts?: number;
     onError?: (error: unknown, run?: PendingRun) => void;
+    onOutage?: (paused: boolean) => void;
+    onQuarantined?: (run: PendingRun) => void;
     onRecovered?: (run: PendingRun, result: TResult) => void;
+    retryWithDiagnosis?: boolean;
     signal?: AbortSignal;
 }
 
@@ -2007,7 +2022,7 @@ interface RunStartEvent extends AgentEventBase<'run.start'> {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
@@ -2584,6 +2599,7 @@ interface ToolCall {
 // @public
 interface ToolCallHookContext extends HookContext {
     args: Record<string, unknown>;
+    emit?: (event: HookEventPayload) => void;
     principal?: Readonly<Principal>;
     resumedAfterApproval?: boolean;
     toolCall: ToolCall;

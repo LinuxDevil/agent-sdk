@@ -9,7 +9,11 @@ import { test, expect, type Page } from '@playwright/test';
  */
 async function open(page: Page, width: number, height: number) {
   await page.setViewportSize({ width, height });
-  await page.goto('/?token=e2e-studio-token');
+  // The builder is `#/agents/:id/canvas` (bare `#/agents` is the agents list);
+  // an id that is not saved falls back there, so open a saved agent when one exists.
+  const res = await page.request.get('/agents', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
+  const ids = ((await res.json()) as { id: string }[]).map((a) => a.id);
+  await page.goto(`/?token=e2e-studio-token#/agents/${ids[0] ?? 'untitled-agent'}/canvas`);
   await expect(page.locator('.app')).toBeVisible();
 }
 
@@ -110,7 +114,7 @@ async function createSupportBot(page: Page, name: string) {
   await page.locator('#new-agent-template').selectOption('support-bot');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.locator('.crumbs b')).toHaveText(name);
-  await expect(page.locator('[data-node-type="output"]')).toBeVisible();
+  await expect(page.locator('[data-node-kind="output"]')).toBeVisible();
   await expect(page.locator('.canvas-wrap[data-fitting]')).toHaveCount(0);
 }
 
@@ -145,10 +149,10 @@ test('at 1280x800 the default graph opens whole and legible, and selecting a nod
 
   // Selecting the right-most node opens the Inspector, and the canvas pans so the node stays visible.
   await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeHidden();
-  await page.locator('[data-node-type="output"]').click();
+  await page.locator('[data-node-kind="output"]').click();
   await expect(page.getByRole('complementary', { name: 'Inspector' })).toBeVisible();
   const outputInPane = () =>
-    page.locator('[data-node-type="output"]').evaluate((el) => {
+    page.locator('[data-node-kind="output"]').evaluate((el) => {
       const node = el.getBoundingClientRect();
       const pane = el.closest('.react-flow')!.getBoundingClientRect();
       return node.left >= pane.left && node.right <= pane.right;

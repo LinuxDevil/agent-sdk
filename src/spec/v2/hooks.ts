@@ -30,7 +30,19 @@ export interface InlineHookSpec {
 }
 
 /** One `spec.hooks` entry: a hook file inside the agent's folder or inline code, named by `id` (`hook:<id>` on the canvas). */
-export type HookSpec = { id: string; file: string } | { id: string; inline: InlineHookSpec };
+export type HookSpec =
+  | {
+      /** Stable id (`hook:<id>` on the canvas). */
+      id: string;
+      /** Hook file, relative to the spec's directory. */
+      file: string;
+    }
+  | {
+      /** Stable id (`hook:<id>` on the canvas). */
+      id: string;
+      /** Inline JS function-body code the host's sandbox runs. */
+      inline: InlineHookSpec;
+    };
 
 /** Longest `code` an inline hook may carry (a function body, not a file). */
 export const MAX_INLINE_HOOK_CODE = 20_000;

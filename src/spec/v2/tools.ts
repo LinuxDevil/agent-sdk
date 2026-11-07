@@ -64,10 +64,15 @@ export const SECRET_CREDENTIALS: Record<IntegrationName, readonly string[]> = {
 
 /** Options of an `{ openapi }` ref: one tool per selected operation (S05). */
 export interface OpenApiToolRefOptions {
+  /** URL of the OpenAPI document the tools are generated from. */
   url: string;
+  /** Operation ids to generate tools for (all when absent). */
   include?: string[];
+  /** Operation ids to skip. */
   exclude?: string[];
+  /** Which generated tools need approval ('mutating', 'always' or 'never'). */
   approval?: 'mutating' | 'always' | 'never';
+  /** Bearer token sent on calls, as a SecretRef (never a literal). */
   bearerToken?: SecretRef;
 }
 
@@ -79,13 +84,46 @@ export interface OpenApiToolRefOptions {
  * provider-run tool and `{ hub }` the Context Hub publish/query pair.
  */
 export type ToolRef =
-  | (ToolRefCommon & { builtin: string; options?: Record<string, unknown> })
-  | (ToolRefCommon & { registry: string; version?: string })
-  | (ToolRefCommon & { file: string })
-  | (ToolRefCommon & { integration: IntegrationName; credentials: Record<string, string | SecretRef> })
-  | (ToolRefCommon & { openapi: OpenApiToolRefOptions })
-  | { id?: string; hosted: 'web_search' | 'code_interpreter' | 'file_search'; options?: Record<string, unknown> }
-  | { id?: string; hub: true };
+  | (ToolRefCommon & {
+      /** An SDK built-in by its model-facing name (`web_fetch`). */
+      builtin: string;
+      /** The built-in's options (BUILTIN_TOOL_OPTIONS). */
+      options?: Record<string, unknown>;
+    })
+  | (ToolRefCommon & {
+      /** An item installed by `lousho add`. */
+      registry: string;
+      /** Registry version to install. */
+      version?: string;
+    })
+  | (ToolRefCommon & {
+      /** An agentDir-relative code file exporting the tool. */
+      file: string;
+    })
+  | (ToolRefCommon & {
+      /** A credentialed connector (`github`, `jira`, `slack`, `email`). */
+      integration: IntegrationName;
+      /** Credential values as strings or SecretRefs (never literals in git). */
+      credentials: Record<string, string | SecretRef>;
+    })
+  | (ToolRefCommon & {
+      /** An OpenAPI document to generate tools from. */
+      openapi: OpenApiToolRefOptions;
+    })
+  | {
+      /** Optional stable id (`tool:<id>` on the canvas). */
+      id?: string;
+      /** A provider-run tool. */
+      hosted: 'web_search' | 'code_interpreter' | 'file_search';
+      /** The hosted tool's options. */
+      options?: Record<string, unknown>;
+    }
+  | {
+      /** Optional stable id (`tool:hub` on the canvas). */
+      id?: string;
+      /** The Context Hub publish/query pair. */
+      hub: true;
+    };
 
 const positiveInt = z.number().int().positive();
 const nonNegativeInt = z.number().int().min(0);
@@ -407,8 +445,7 @@ function refineToolRef(value: unknown, ctx: z.RefinementCtx): void {
  * rules itself, so the "exactly one kind" and per-kind issues point at the
  * right paths instead of a union's generic failure.
  */
-// fallow-ignore-next-line unused-export -- composed by toolRefListSchema; exported for section schemas that embed it
-export const toolRefSchema = z.any().superRefine(refineToolRef);
+export const toolRefSchema: z.ZodType<ToolRef> = z.any().superRefine(refineToolRef);
 
 /** The `spec.tools` list (zod): each entry's `id` must be unique. */
 export const toolRefListSchema = z.array(toolRefSchema).superRefine(refineUniqueIds);

@@ -22,7 +22,7 @@ import type { AuthorSessionStore } from './sessionStore';
 import { buildAuthorSystemPrompt, type AuthorPromptCatalogs } from './prompt/index';
 import { buildAuthorTools, type AuthorToolDeps } from './tools/index';
 import { createAuthorCatalogService } from './tools/catalogService';
-import { passReview } from './proposal/review';
+import { createReviewDraft } from './review/reviewDraft';
 import { openProposalCards } from './proposal/gate';
 import { computeRequirements, requirementDeps } from './requirements';
 
@@ -87,15 +87,21 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
     ...(deps.mcpConnect ? { connect: deps.mcpConnect } : {}),
   };
   // `workspace` (and `requirements`, which reads under the workspace
-  // root) is bound per turn below. `reviewDraft` is AA12's seam;
-  // passReview is the always-approve default until it lands.
+  // root) is bound per turn below. `reviewDraft` is AA12's judge pass:
+  // it shares the `providerFor` test seam and fails open whenever the
+  // review model cannot run.
   const toolDeps: Omit<AuthorToolDeps, 'workspace' | 'requirements'> = {
     catalog: createAuthorCatalogService({ secretsStore: deps.secrets }),
     templates: deps.templates,
     probeMcp: (server) => probeMcpServer(server, probeDeps),
     docsDir: deps.docsDir,
-    reviewDraft: passReview,
+    reviewDraft: createReviewDraft({
+      settings: deps.settings,
+      secrets: deps.secrets,
+      ...(deps.providerFor ? { providerFor: deps.providerFor } : {}),
+    }),
     sessions: deps.sessions,
+    secrets: deps.secrets,
   };
   const workspaceForTurn = async (turn: AuthorTurn): Promise<WorkspaceContext> => {
     const session = await deps.sessions.get(turn.sessionId);

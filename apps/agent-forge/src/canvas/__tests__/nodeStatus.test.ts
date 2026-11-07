@@ -1,16 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import { nodeRunStatuses } from '../nodeStatus';
-import { specToGraph } from '../../graph/specToGraph';
+import { specToGraph } from '../../graph/v2/specToGraph';
+import { graphToSpec } from '../../graph/v2/graphToSpec';
 import type { AgentRunStatusPayload, SpanEvent } from '../../../shared/wireTypes';
 
 const graph = specToGraph({
+  version: 2,
   name: 'bot',
-  prompt: 'p',
-  provider: { type: 'mock', model: 'mock-1' },
-  tools: ['http'],
+  model: 'mock/mock-1',
+  instructions: 'p',
+  tools: [{ builtin: 'http' }],
 });
-const llmId = graph.nodes.find((n) => n.type === 'llm')!.id;
-const toolId = graph.nodes.find((n) => n.type === 'tool')!.id;
+const nodeIdMap = graphToSpec(graph).nodeIdMap;
+const toolId = 'tool:http';
 
 const chat = (over: Partial<SpanEvent> = {}): SpanEvent => ({
   id: 'chat-1',
@@ -33,33 +35,40 @@ const status = (s: AgentRunStatusPayload['status'], over: Partial<AgentRunStatus
 
 describe('nodeRunStatuses', () => {
   it('is idle for every node before any run', () => {
-    const statuses = nodeRunStatuses(graph, [], undefined);
+    const statuses = nodeRunStatuses(graph, [], undefined, nodeIdMap);
     expect(graph.nodes.every((n) => statuses[n.id] === 'idle')).toBe(true);
   });
 
+  it('a span stamped with lousho.node.id lands on the graph node the id maps from', () => {
+    const stamped = chat({ attributes: { 'lousho.node.id': 'tool:http', 'gen_ai.operation.name': 'chat' } });
+    const statuses = nodeRunStatuses(graph, [stamped], status('running'), nodeIdMap);
+    expect(statuses[toolId]).toBe('running');
+    expect(statuses['agent']).toBe('idle');
+  });
+
   it('marks the node of an open span running, and a finished one done', () => {
-    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5 }), tool()], status('running'));
-    expect(statuses[llmId]).toBe('done');
+    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5 }), tool()], status('running'), nodeIdMap);
+    expect(statuses['agent']).toBe('done');
     expect(statuses[toolId]).toBe('running');
   });
 
   it('reads an open span as running only while the run is running', () => {
     for (const s of ['stopped', 'done', 'error', 'idle'] as const) {
-      expect(nodeRunStatuses(graph, [tool()], status(s))[toolId]).toBe('idle');
+      expect(nodeRunStatuses(graph, [tool()], status(s), nodeIdMap)[toolId]).toBe('idle');
     }
-    expect(nodeRunStatuses(graph, [tool()], undefined)[toolId]).toBe('idle');
-    expect(nodeRunStatuses(graph, [tool()], status('paused'))[toolId]).toBe('paused');
+    expect(nodeRunStatuses(graph, [tool()], undefined, nodeIdMap)[toolId]).toBe('idle');
+    expect(nodeRunStatuses(graph, [tool()], status('paused'), nodeIdMap)[toolId]).toBe('paused');
   });
 
   it('marks a failed span error', () => {
-    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5, status: { code: 'error' } })], status('error'));
-    expect(statuses[llmId]).toBe('error');
+    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5, status: { code: 'error' } })], status('error'), nodeIdMap);
+    expect(statuses['agent']).toBe('error');
     expect(statuses[toolId]).toBe('idle');
   });
 
   it('marks the tool awaiting approval paused', () => {
     const paused = status('paused', { pendingApproval: { toolName: 'http', args: {} } as AgentRunStatusPayload['pendingApproval'] });
-    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5 })], paused);
+    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5 })], paused, nodeIdMap);
     expect(statuses[toolId]).toBe('paused');
   });
 });

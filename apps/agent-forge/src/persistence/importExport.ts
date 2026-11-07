@@ -1,34 +1,26 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import type { AgentSpec } from 'lousho';
-// NOTE (deviation, documented in the epic report): `agentSpecSchema` is a
-// VALUE import, not `import type`, so it ends up in this browser bundle.
-// The `lousho` package only exposes one bundled entry
-// point (its "." export) which eagerly imports Node-only/native deps
-// (dockerode, for the sandboxed tool executor) that break a Vite/browser
-// build. There's no narrower "./spec" export subpath to import just the
-// schema from. Importing the zod schema directly from the SDK's source
-// tree (still inside this monorepo, not a different package) avoids
-// pulling in the rest of the SDK's dependency graph. AgentSpec/
-// AgentSpecTrigger above stay `import type`-only from the package
-// proper, which is erased at build time and has no such cost.
-import { agentSpecSchema } from '../../../../src/spec/schema';
+import type { AgentSpecV2 } from 'lousho/spec';
+// `lousho/spec` is the SDK's browser-safe spec entry (schema, types and
+// pure helpers only, no Node-only deps), so this value import is safe in
+// the Vite/browser bundle where the package root is not.
+import { agentSpecV2Schema } from 'lousho/spec';
 
 export type ExportFormat = 'yaml' | 'json';
 
-/** Serializes an `AgentSpec` to text, in the same YAML/JSON shapes `loadSpec()` reads. */
-export function serializeSpec(spec: AgentSpec, format: ExportFormat): string {
+/** Serializes an `AgentSpecV2` to text, in the same YAML/JSON shapes `loadSpecV2()` reads. */
+export function serializeSpec(spec: AgentSpecV2, format: ExportFormat): string {
   return format === 'json' ? JSON.stringify(spec, null, 2) : stringifyYaml(spec);
 }
 
 /**
  * Parses spec text (YAML or JSON) and validates it against the SDK's own
- * `agentSpecSchema`, mirroring `loadSpec()`'s validation for a file already
- * read into memory (a browser `File` has no filesystem path for `loadSpec`
+ * `agentSpecV2Schema`, mirroring `loadSpecV2()`'s validation for a file already
+ * read into memory (a browser `File` has no filesystem path for `loadSpecV2`
  * to use `fs.readFileSync` + extension-sniff against).
  */
-export function parseSpecText(text: string, format: ExportFormat): AgentSpec {
+export function parseSpecText(text: string, format: ExportFormat): AgentSpecV2 {
   const data = format === 'json' ? JSON.parse(text) : parseYaml(text);
-  const result = agentSpecSchema.safeParse(data);
+  const result = agentSpecV2Schema.safeParse(data);
   if (!result.success) {
     const details = result.error.issues
       .map((issue) => `'${(issue.path ?? []).join('.') || '(root)'}': ${issue.message}`)
@@ -47,7 +39,7 @@ function formatFromFilename(filename: string): ExportFormat {
  * URL (no server round-trip). `document`-dependent, so only usable in a
  * browser/jsdom environment.
  */
-export function downloadSpec(spec: AgentSpec, filename: string): void {
+export function downloadSpec(spec: AgentSpecV2, filename: string): void {
   const format = formatFromFilename(filename);
   const text = serializeSpec(spec, format);
   const blob = new Blob([text], { type: format === 'json' ? 'application/json' : 'text/yaml' });
@@ -81,8 +73,8 @@ function readFileText(file: File): Promise<string> {
   });
 }
 
-/** Reads an uploaded `File` (from an `<input type="file">`) and parses/validates it as an `AgentSpec`. */
-export async function importSpecFile(file: File): Promise<AgentSpec> {
+/** Reads an uploaded `File` (from an `<input type="file">`) and parses/validates it as an `AgentSpecV2`. */
+export async function importSpecFile(file: File): Promise<AgentSpecV2> {
   const text = await readFileText(file);
   return parseSpecText(text, formatFromFilename(file.name));
 }

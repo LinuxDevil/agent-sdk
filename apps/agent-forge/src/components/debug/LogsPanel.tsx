@@ -4,7 +4,7 @@ import { filterLogs } from '../../state/logReducer';
 import type { LogEntry, LogLevel, LogPhase } from '../../../shared/wireTypes';
 import type { StatusTone } from '../../ui/StatusPill';
 import { TonePill } from './TonePill';
-import type { AgentGraphSpec } from '../../graph/types';
+import type { Graph } from '../../graph/v2/types';
 import { VirtualList } from './VirtualList';
 import { findLlmNodeId, findToolNodeId } from './nodeLookup';
 import { formatTime } from '../formatTime';
@@ -16,8 +16,8 @@ const ROW_HEIGHT = 28;
 /** Each level's status-pill tone: info blue, warn amber, error red, tool violet. */
 const LEVEL_TONES: Record<LogLevel, StatusTone> = { info: 'running', warn: 'warning', error: 'error', tool: 'violet' };
 
-function nodeIdForLog(graph: AgentGraphSpec, entry: LogEntry): string | undefined {
-  if (entry.phase === 'llm') return findLlmNodeId(graph);
+function nodeIdForLog(graph: Graph, entry: LogEntry): string | undefined {
+  if (entry.phase === 'llm') return findLlmNodeId();
   if (entry.phase === 'tool') return findToolNodeId(graph, entry.toolName);
   return undefined;
 }

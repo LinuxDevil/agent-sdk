@@ -73,6 +73,8 @@ export type {
 } from './ioGuardrails';
 export { piiGuardrail, secretsGuardrail, promptInjectionGuardrail, moderationGuardrail } from './guardrailStarterSet';
 export * from './hooks';
+export * from './progressGuard';
+export * from './outputCheck';
 export { ToolArgumentsValidationError } from './toolArgsValidation';
 export type { ToolArgumentIssue } from './toolArgsValidation';
 export { toolErrorResult } from './toolErrors';

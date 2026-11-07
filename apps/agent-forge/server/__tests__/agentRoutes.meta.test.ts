@@ -15,12 +15,12 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { AgentMeta, VersionListItem } from '../../shared/wireTypes';
 
 describe('PATCH /agents/:id/meta', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
 

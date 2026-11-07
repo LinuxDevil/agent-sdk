@@ -12,7 +12,7 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { SpecChange, VersionListItem, VersionRecord } from '../../shared/wireTypes';
 
 const V1_SPEC: AgentSpec = {
@@ -33,7 +33,7 @@ const V1_SPEC_EDITED: AgentSpec = {
  */
 describe('version routes', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
 

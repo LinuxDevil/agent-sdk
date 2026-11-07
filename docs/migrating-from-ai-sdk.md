@@ -144,5 +144,4 @@ App Router route is `createRouteHandler(agent)` ([Next.js](./nextjs.md)).
 
 ## See also
 
-- [Comparison](./comparison.md): where Lousho and the AI SDK differ, including where Lousho is weaker.
 - [Migrating to createAgent()](./migrating-to-create-agent.md) is about Lousho's own older `AgentBuilder` / `AgentExecutor` API, not the AI SDK.

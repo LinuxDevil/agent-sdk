@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickHookTemplate, viewportCentrePosition } from '../paletteActions';
+import { viewportCentrePosition } from '../paletteActions';
 import { nextTabId, tabIds } from '../../components/tabs';
 
 describe('viewportCentrePosition', () => {
@@ -14,15 +14,6 @@ describe('viewportCentrePosition', () => {
 
   it('survives a zero zoom before the pane has measured', () => {
     expect(viewportCentrePosition([0, 0, 0], 0, 0)).toEqual({ x: -104, y: -40 });
-  });
-});
-
-describe('pickHookTemplate', () => {
-  it('matches the node hook point and the palette phase', () => {
-    const llmPost = pickHookTemplate('llm', 'post');
-    expect(llmPost.point).toBe('generate');
-    const toolPre = pickHookTemplate('tool', 'pre');
-    expect(toolPre.point).toBe('toolCall');
   });
 });
 

@@ -6,7 +6,7 @@
  * so the two can evolve together without every component knowing the HTTP
  * details.
  */
-import type { AgentSpec, AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from 'lousho';
 import type {
   AddWorkspaceRequest,
   AgentListItem,
@@ -61,12 +61,13 @@ import {
   AUTHOR_STREAM_PATH,
   type AuthorFocus,
   type AuthorSaveResponse,
+  type AuthorSecretRequest,
   type AuthorSession,
   type AuthorSessionRecord,
   type AuthorSessionSummary,
   type AuthorSettingsPayload,
+  type SetEnabledOutput,
 } from '../../shared/authorWire';
-import type { AgentStoreEntry } from '../persistence/AgentStore';
 import type { AgentApi } from '../persistence/HttpAgentStore';
 
 /** Same-origin default: `lousho studio` prints the API server's own URL, but in dev the Vite server proxies to it (see vite.config.ts). */
@@ -142,33 +143,13 @@ class RuntimeClient implements AgentApi {
     return body as T;
   }
 
-  /** The saved agents in the studio's `.lousho/agents/` (the v1 list - `?view=legacy` until the canvas moves to v2). */
-  async listAgents(): Promise<AgentStoreEntry[]> {
-    return this.request('/agents?view=legacy', { method: 'GET' });
-  }
-
-  /** One saved agent's v1 spec (the legacy view), or undefined when there is none. */
-  async loadAgent(agentId: string): Promise<AgentSpec | undefined> {
-    try {
-      return await this.request<AgentSpec>(`/agents/${encodeURIComponent(agentId)}?view=legacy`, { method: 'GET' });
-    } catch (error) {
-      if (error instanceof RuntimeApiError && error.status === 404) return undefined;
-      throw error;
-    }
-  }
-
-  /** Writes `.lousho/agents/<id>.yaml` from a v1 spec (the server merges it onto the stored v2 spec). */
-  async saveAgent(agentId: string, spec: AgentSpec): Promise<void> {
-    await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'PUT', body: JSON.stringify(spec) });
-  }
-
-  /** The Agents list's rows: one `AgentListItem` per saved spec (`GET /agents`, the v2 shape). */
-  async listAgentItems(): Promise<AgentListItem[]> {
+  /** The saved agents in the studio's `.lousho/agents/` - one `AgentListItem` per spec (`GET /agents`). */
+  async listAgents(): Promise<AgentListItem[]> {
     return this.request('/agents', { method: 'GET' });
   }
 
-  /** One agent's `AgentRecord` - spec v2 plus meta, layout and the latest version - or undefined on a 404. */
-  async getAgentRecord(agentId: string): Promise<AgentRecord | undefined> {
+  /** One saved agent's `AgentRecord` - spec v2 plus meta, layout and the latest version - or undefined on a 404. */
+  async loadAgent(agentId: string): Promise<AgentRecord | undefined> {
     try {
       return await this.request<AgentRecord>(`/agents/${encodeURIComponent(agentId)}`, { method: 'GET' });
     } catch (error) {
@@ -177,8 +158,8 @@ class RuntimeClient implements AgentApi {
     }
   }
 
-  /** Saves an AgentSpecV2 working copy (`PUT /agents/:id` with a `{ spec }` body). */
-  async saveAgentSpec(agentId: string, spec: AgentSpecV2): Promise<void> {
+  /** Writes `.lousho/agents/<id>.yaml` from a spec v2 working copy (`PUT /agents/:id` with a `{ spec }` body). */
+  async saveAgent(agentId: string, spec: AgentSpecV2): Promise<void> {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, {
       method: 'PUT',
       body: JSON.stringify({ spec }),
@@ -201,7 +182,6 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Stores the canvas layout (`PUT /agents/:id/layout`) - node positions, notes and viewport. */
-  // fallow-ignore-next-line unused-class-member -- the v2 canvas's position persistence calls it once that ticket lands
   async saveLayout(agentId: string, layout: CanvasLayout): Promise<void> {
     await this.request(`/agents/${encodeURIComponent(agentId)}/layout`, {
       method: 'PUT',
@@ -356,7 +336,7 @@ class RuntimeClient implements AgentApi {
     await this.request(`/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
-  async run(agentId: string, input: string, spec: AgentSpec): Promise<AgentRunStatusPayload> {
+  async run(agentId: string, input: string, spec: AgentSpecV2): Promise<AgentRunStatusPayload> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/run`, {
       method: 'POST',
       body: JSON.stringify({ input, spec }),
@@ -404,7 +384,7 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Sends a chat message - continues the agent's conversation (or starts one), replying over the WS `subscribe()` stream as `{type:'chat'}`. */
-  async sendMessage(agentId: string, message: string, spec?: AgentSpec): Promise<AgentRunStatusPayload> {
+  async sendMessage(agentId: string, message: string, spec?: AgentSpecV2): Promise<AgentRunStatusPayload> {
     // Send the canvas's current spec along, like run() does, so
     // chat never runs a stale (or missing) saved spec.
     return this.request(`/agents/${encodeURIComponent(agentId)}/message`, {
@@ -667,7 +647,6 @@ class RuntimeClient implements AgentApi {
   // -------------------------------------------------------------------
 
   /** Starts an Author chat (`POST /assistant/sessions`); `focus` omitted defaults server-side to "new agent". */
-  // fallow-ignore-next-line unused-class-member -- the Author panel's New-chat flow calls it once AA15 lands
   async createAuthorSession(focus?: AuthorFocus): Promise<AuthorSession> {
     return this.request('/assistant/sessions', { method: 'POST', body: JSON.stringify({ focus }) });
   }
@@ -683,7 +662,6 @@ class RuntimeClient implements AgentApi {
    * rejects on 404. `runningRequestId` names the in-flight reply's
    * requestId, when one is running (the reattach decision).
    */
-  // fallow-ignore-next-line unused-class-member -- the Author panel calls it once AA15 lands
   async getAuthorSession(id: string): Promise<AuthorSessionRecord> {
     return this.request(`/assistant/sessions/${encodeURIComponent(id)}`, { method: 'GET' });
   }
@@ -701,7 +679,6 @@ class RuntimeClient implements AgentApi {
    * whose `code`/`details` carry the refusal (`STALE_PROPOSAL` +
    * `details.latestProposalId`, `ALREADY_SAVED`, `BUSY`, ...).
    */
-  // fallow-ignore-next-line unused-class-member -- the card's Apply button calls it once AA16 lands
   async saveProposal(sessionId: string, proposalId: string): Promise<AuthorSaveResponse> {
     return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/save`, {
       method: 'POST',
@@ -709,8 +686,39 @@ class RuntimeClient implements AgentApi {
     });
   }
 
+  /**
+   * The SecretCard's submit (`POST /assistant/sessions/:id/secret`,
+   * AA14): `body.value` goes straight to the secrets store server-side -
+   * it never enters the transcript, the WS stream, or anything this
+   * client receives back. Resolves on 204; rejects with a
+   * `RuntimeApiError` whose `code` carries the refusal (`NOT_PENDING`,
+   * `BUSY`, `INVALID_INPUT`, `NOT_FOUND`).
+   */
+  // fallow-ignore-next-line unused-class-member -- the SecretCard calls it once AA17 lands
+  async submitAuthorSecret(sessionId: string, body: AuthorSecretRequest): Promise<void> {
+    await this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/secret`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * The SuccessCard's "Enable agent" button (`POST
+   * /assistant/sessions/:id/enable`): flips `meta.enabled` for an agent
+   * this chat created, without a model turn. Rejects with a
+   * `RuntimeApiError` on `WRONG_AGENT` (the chat did not create it),
+   * `AGENT_NOT_FOUND`, or a session 404.
+   */
+  // fallow-ignore-next-line unused-class-member -- the SuccessCard calls it once AA17 lands
+  async enableAuthorAgent(sessionId: string, agentId: string): Promise<SetEnabledOutput> {
+    return this.request(`/assistant/sessions/${encodeURIComponent(sessionId)}/enable`, {
+      method: 'POST',
+      body: JSON.stringify({ agentId }),
+
+    });
+  }
+
   /** The Author's model choices plus `ready`/`missingKeyFor` (`GET /settings/author`). */
-  // fallow-ignore-next-line unused-class-member -- the Author panel's setup card calls it once AA15 lands
   async getAuthorSettings(): Promise<AuthorSettingsPayload> {
     return this.request('/settings/author', { method: 'GET' });
   }

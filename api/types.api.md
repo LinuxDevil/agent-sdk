@@ -32,17 +32,12 @@ export interface AgentConfig {
 
 // @public
 interface AgentFlow {
-    // (undocumented)
     agents?: FlowAgentDefinition[];
     code: string;
-    // (undocumented)
     description?: string;
     flow?: EditorStep;
-    // (undocumented)
     id?: string;
-    // (undocumented)
     inputs?: FlowInputVariable[];
-    // (undocumented)
     name: string;
 }
 
@@ -84,6 +79,14 @@ export type ApprovalOutcome = boolean | 'approve' | 'deny' | 'ask' | {
 type ApprovalPredicate = {
     check(args: unknown, ctx: ApprovalCheckContext): ApprovalOutcome | Promise<ApprovalOutcome>;
 }['check'];
+
+// @public
+interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    type: 'approval';
+}
 
 // @public (undocumented)
 interface BestOfAllNode {
@@ -467,7 +470,7 @@ interface ReturnNode extends NodeRunOptions {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {

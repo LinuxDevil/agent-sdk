@@ -282,6 +282,16 @@ async function open(page: Page, hash: string) {
   await expect(page.locator('.app')).toBeVisible();
 }
 
+/**
+ * A builder URL that survives the unknown-id fallback to `#/agents`: the first
+ * saved agent's canvas tab, or the unsaved default's when none are saved yet.
+ */
+async function builderHash(page: Page): Promise<string> {
+  const res = await page.request.get('/agents', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
+  const ids = ((await res.json()) as { id: string }[]).map((a) => a.id);
+  return `/agents/${ids[0] ?? 'untitled-agent'}/canvas`;
+}
+
 /** The docs set shot in dark too, written as `studio-<screen>-dark.png`. */
 const DARK_DOCS = new Set(['agents', 'traces', 'trace', 'monitoring']);
 
@@ -314,12 +324,12 @@ async function shoot(page: Page, screen: string) {
 const rows = (page: Page) => page.getByRole('main').locator('table.data-table tbody tr:not(.skeleton-row)');
 
 test('agents: the builder with an agent', async ({ page }) => {
-  await open(page, '/agents');
+  await open(page, await builderHash(page));
   await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill('support-bot');
   await page.locator('#new-agent-template').selectOption('support-bot');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.locator('[data-node-type="tool"]')).toBeVisible();
+  await expect(page.locator('[data-node-kind="tool"]')).toBeVisible();
   await shoot(page, 'agents');
 });
 
@@ -625,7 +635,7 @@ test('x: 375 wide, Traces with the nav drawer closed and open', async ({ page })
  * agent's stream socket, so nodes and edges hold their running state.
  */
 async function newAgent(page: Page, name: string, template?: 'support-bot') {
-  await open(page, '/agents');
+  await open(page, await builderHash(page));
   await page.getByRole('button', { name: 'New agent', exact: true }).click();
   await page.locator('#new-agent-name').fill(name);
   if (template) await page.locator('#new-agent-template').selectOption(template);
@@ -650,7 +660,7 @@ test('agents x: a graph with a node selected', async ({ page }) => {
   await newAgent(page, `selected-${Date.now()}`, 'support-bot');
   // The whole graph is in view on load, trigger included.
   const triggerInPane = () =>
-    page.locator('[data-node-type="trigger"]').evaluate((el) => {
+    page.locator('[data-node-kind="trigger"]').evaluate((el) => {
       const node = el.getBoundingClientRect();
       const pane = el.closest('.react-flow')!.getBoundingClientRect();
       return node.left >= pane.left && node.right <= pane.right && node.top >= pane.top && node.bottom <= pane.bottom;
@@ -668,8 +678,8 @@ test('agents x: a graph with a node selected', async ({ page }) => {
   });
   await page.mouse.click(mid.x, mid.y);
   await expect(edge).toHaveClass(/selected/);
-  await page.locator('[data-node-type="tool"]').click();
-  await expect(page.locator('.react-flow__node.selected [data-node-type="tool"]')).toBeVisible();
+  await page.locator('[data-node-kind="tool"]').click();
+  await expect(page.locator('.react-flow__node.selected [data-node-kind="tool"]')).toBeVisible();
   await shoot(page, 'x-agents-selected');
 });
 
@@ -700,7 +710,7 @@ test('agents x: a run in progress', async ({ page }) => {
   });
   const name = `running-${Date.now()}`;
   await newAgent(page, name, 'support-bot');
-  await expect(page.locator('[data-node-type="tool"]')).toBeVisible();
+  await expect(page.locator('[data-node-kind="tool"]')).toBeVisible();
   // The builder and the rail each hold a socket for the open agent; both get the run.
   const own = () => sockets.filter((s) => s.url().includes(`/agents/${name}/stream`));
   await expect.poll(() => own().length).toBeGreaterThan(1);
@@ -717,11 +727,11 @@ test('agents x: a run in progress', async ({ page }) => {
     type: 'span',
     payload: { id: 'x-chat', name: 'chat mock-1', startTime: start, kind: 'client', attributes: { 'gen_ai.operation.name': 'chat' } },
   });
-  await expect(page.locator('[data-node-type="llm"] .status-pill')).toHaveText('running');
+  await expect(page.locator('[data-node-kind="agent"] .status-pill')).toHaveText('running');
 
   // A breakpoint on the running LLM node, which is also selected: every state ring stays visible.
   send({ type: 'debug', payload: { agentId: name, paused: false, messages: [], stepCount: 0, breakpoints: ['llm:before'] } });
-  const llm = page.locator('[data-node-type="llm"]');
+  const llm = page.locator('[data-node-kind="agent"]');
   await llm.click();
   await expect(llm).toHaveClass(/running/);
   await expect(llm).toHaveClass(/has-breakpoint/);
@@ -938,7 +948,7 @@ test('agents x: the drawer on every tab after an approved chat', async ({ page }
   test.setTimeout(90_000);
   await tallDrawer(page);
   await newAgent(page, `drawer-${Date.now()}`, 'support-bot');
-  await page.locator('[data-node-type="tool"]').click();
+  await page.locator('[data-node-kind="tool"]').click();
   await page.locator('#node-tool-name').fill('demo-approval');
   const chatInput = page.locator('.chat-input');
   await chatInput.fill('Please call demo-approval to look something up for me.');
@@ -981,7 +991,7 @@ test('agents x-rail-status: the unsaved default agent, and an errored agent with
   await page.route(/\/agents(\?|$)/, (route) =>
     route.request().method() === 'GET' ? route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }) : route.continue(),
   );
-  await open(page, '/agents');
+  await open(page, '/agents/untitled-agent/canvas');
   await expect(page.locator('.agent-card.selected')).toBeVisible();
   await shoot(page, 'x-agents-rail-unsaved');
   await page.unroute(/\/agents(\?|$)/);
@@ -1023,7 +1033,7 @@ test('agents x: the builder toolbar at 860 and 375 wide', async ({ page }) => {
 test('agents x: the builder toolbar with a pending approval at 1280, 1024 and 375 wide', async ({ page }) => {
   test.setTimeout(60_000);
   await newAgent(page, `pending-${Date.now()}`, 'support-bot');
-  await page.locator('[data-node-type="tool"]').click();
+  await page.locator('[data-node-kind="tool"]').click();
   await page.locator('#node-tool-name').fill('demo-approval');
   await page.locator('.chat-input').fill('Please call demo-approval to look something up for me.');
   await page.locator('.btn-send').click();

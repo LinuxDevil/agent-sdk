@@ -271,6 +271,24 @@ What a sweep does with each pending run:
   human decides it with `agent.approvals.resolve()`.
 - A run whose `lastError` has `retryable: false`: left alone, since it would
   fail the same way; `agent.pending()` still lists it.
+- A run that failed recently: skipped until its backoff passes, `intervalMs`
+  doubled for each failed attempt in a row, up to 15 minutes.
+- A run that failed `maxAttempts` times in a row (default 10): quarantined. The
+  loop stops resuming it and calls `onQuarantined(run)` once. `agent.pending()`
+  still lists it, and `agent.resume()` still runs it. Saving progress resets the
+  count. A failure that kills the process records no attempt, so it is not
+  counted. With `retryWithDiagnosis: true`, a run (not a session turn) first
+  gets one last try: a fork `<id>.heal`, resumed from the same step, with a note
+  saying why it failed. If the fork finishes, the original is deleted and
+  `onRecovered` reports the original's id. If it also reaches the cap, both are
+  quarantined. The note quotes the error as data and caps its length, because
+  the error can hold tool output. The store must keep a history.
+- During a provider outage: after 3 provider failures in a row, across any runs,
+  the loop pauses and calls `onOutage(true)`. It then tries one run at a time, at
+  growing intervals of up to 15 minutes, and carries on as normal, calling
+  `onOutage(false)`, once one gets past the provider. Nothing is quarantined for
+  provider failures while it's paused, so an outage doesn't use up healthy runs'
+  attempts. A bad API key doesn't count as an outage, since waiting won't fix it.
 - A run still running in another process, or one whose crashed process's
   [run lease](#run-leases) has not expired yet: its resume is turned away
   with `LOUSHO_SESSION_BUSY` before anything runs, silently, and a later sweep

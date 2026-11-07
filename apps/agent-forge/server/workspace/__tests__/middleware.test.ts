@@ -3,7 +3,7 @@ import express from 'express';
 import request from 'supertest';
 import { TriggerRegistry } from 'lousho/triggers';
 import { ALL_WORKSPACES } from '../../../shared/workspace';
-import type { AgentStore } from '../../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../../src/persistence/AgentStore';
 import type { RunManager } from '../../runRegistry';
 import { AgentRepo } from '../../storage/agentRepo';
 import { DraftStore } from '../../storage/draftStore';
@@ -11,10 +11,11 @@ import { StudioEventBus } from '../../events/eventBus';
 import type { AgentHost } from '../../host/agentHost';
 import { SuggestionStore } from '../../storage/suggestionStore';
 import { VersionStore } from '../../storage/versionStore';
+import { IdleVersioner } from '../../storage/idleVersioner';
 import { singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from '../context';
 import { requestedWorkspaceId, workspaceMiddleware, workspaceOf } from '../middleware';
 
-const emptyStore: AgentStore = {
+const emptyStore: LegacyAgentStore = {
   list: async () => [],
   load: async () => undefined,
   save: async () => {},
@@ -29,6 +30,7 @@ function ctx(id: string): WorkspaceContext {
     agentStore: emptyStore,
     versions: new VersionStore(repo),
     drafts: new DraftStore(repo),
+    idleVersioner: new IdleVersioner({ capture: async () => {} }),
     suggestions: new SuggestionStore(repo),
     host: {} as AgentHost,
     runs: {} as RunManager,

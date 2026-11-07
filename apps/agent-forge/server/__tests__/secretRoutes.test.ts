@@ -12,7 +12,7 @@ import { FileApprovalStore } from '../approvalStore';
 import { SecretsStore } from '../secretsStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 
 const TOKEN = 'secret-routes-token-0123456789';
 const NAME_ERROR = {
@@ -33,7 +33,7 @@ const VALUE_ERROR = {
  */
 describe('secret routes', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let secrets: SecretsStore;
 

@@ -11,7 +11,7 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import { DraftStore } from '../storage/draftStore';
 import type { ChangeDraft } from '../../shared/wireTypes';
 
@@ -30,7 +30,7 @@ const V1_SPEC: AgentSpec = {
  */
 describe('draft routes', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
 

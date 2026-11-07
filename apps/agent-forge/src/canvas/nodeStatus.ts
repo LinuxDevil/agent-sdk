@@ -1,4 +1,6 @@
-import type { AgentGraphSpec } from '../graph/types';
+import type { Graph } from '../graph/v2/types';
+import { toolNodeName } from '../graph/v2/nodeIds';
+import type { ToolNodeData } from '../graph/v2/types';
 import type { AgentRunStatusPayload, SpanEvent } from '../../shared/wireTypes';
 import { nodeIdForSpan } from '../components/debug/nodeLookup';
 
@@ -22,21 +24,24 @@ const RANK: Record<NodeRunStatus, number> = { idle: 0, done: 1, error: 2, paused
  * of an open span is running while the run is running (paused while it is
  * paused, idle once it stopped or ended), a node whose spans
  * all ended is done (error if one failed), the tool a run is paused on for
- * approval is paused, and every other node is idle.
+ * approval is paused, and every other node is idle. `nodeIdMap` is the
+ * graphToSpec id rekey, so a span's `lousho.node.id` lands on the current
+ * node even after an in-session rename.
  */
 export function nodeRunStatuses(
-  graph: AgentGraphSpec,
+  graph: Graph,
   spans: SpanEvent[],
-  runStatus: AgentRunStatusPayload | undefined
+  runStatus: AgentRunStatusPayload | undefined,
+  nodeIdMap: Record<string, string>
 ): Record<string, NodeRunStatus> {
   const statuses: Record<string, NodeRunStatus> = Object.fromEntries(graph.nodes.map((n) => [n.id, 'idle']));
   const raise = (nodeId: string | undefined, status: NodeRunStatus) => {
     if (nodeId && nodeId in statuses && RANK[status] > RANK[statuses[nodeId]]) statuses[nodeId] = status;
   };
-  for (const span of spans) raise(nodeIdForSpan(graph, span), spanStatus(span, runStatus));
+  for (const span of spans) raise(nodeIdForSpan(graph, span, nodeIdMap), spanStatus(span, runStatus));
   const pending = runStatus?.status === 'paused' ? runStatus.pendingApproval : undefined;
   if (pending) {
-    const tool = graph.nodes.find((n) => n.type === 'tool' && n.data.toolName === pending.toolName);
+    const tool = graph.nodes.find((n) => n.kind === 'tool' && toolNodeName((n.data as ToolNodeData).item) === pending.toolName);
     raise(tool?.id, 'paused');
   }
   return statuses;

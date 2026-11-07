@@ -15,11 +15,12 @@
  */
 import { TriggerRegistry } from 'lousho/triggers';
 import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
 import { withAgentLock } from '../storage/atomic';
 import { DraftStore } from '../storage/draftStore';
+import { createIdleVersioner, type IdleVersioner } from '../storage/idleVersioner';
 import { SuggestionStore } from '../storage/suggestionStore';
 import { VersionStore } from '../storage/versionStore';
 import { ChatTriggerAdapter } from '../chatTriggerAdapter';
@@ -38,11 +39,19 @@ export interface WorkspaceContext {
   /** This workspace's `.lousho/agents` storage: the spec v2 working copies and their meta/layout/working sidecars. */
   repo: AgentRepo;
   /** v1 facade over `repo` (fsAgentStore) - what the still-v1 routes and RunManager use. */
-  agentStore: AgentStore;
+  agentStore: LegacyAgentStore;
   /** Append-only version history under `<id>/versions/` - captures and the external-edit baseline live here (storage/versionStore.ts). */
   versions: VersionStore;
   /** Pending + settled change drafts under `<id>/drafts/` (storage/draftStore.ts). */
   drafts: DraftStore;
+  /**
+   * The workspace's idle-version scheduler (storage/idleVersioner.ts):
+   * `PUT /agents/:id` `touch`es it after each autosave write,
+   * `POST /agents/:id/versions` and `DELETE /agents/:id` `cancel` it, and
+   * server close `flushAll()`s it - so an edited agent gets an `editor`
+   * version after 60 s of quiet.
+   */
+  idleVersioner: IdleVersioner;
   /** Prompt suggestions + cached portability analyses under `<id>/suggestions/` (storage/suggestionStore.ts). */
   suggestions: SuggestionStore;
   /** The host this workspace's agent runs execute through (InProcessAgentHost on Studio's SDK; a bridge host when the project has its own). */
@@ -147,6 +156,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     agentStore,
     versions,
     drafts: new DraftStore(repo),
+    idleVersioner: createIdleVersioner(versions),
     suggestions,
     host,
     runs,
