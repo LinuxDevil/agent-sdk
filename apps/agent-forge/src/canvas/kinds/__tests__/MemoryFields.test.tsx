@@ -174,6 +174,15 @@ describe('memory Inspector: Storage', () => {
     expect(container.textContent).toContain('Enter the folder for memory files');
   });
 
+  it.each(['../escape', 'C:/abs/memory', '/abs/memory', 'a\\b'])(
+    'flags the folder %j as outside the agent folder',
+    (dir) => {
+      useMemory([{ ...BASE, provider: { type: 'file', dir } }], 'memory:notes');
+      renderInspector();
+      expect(container.textContent).toContain('Use a relative path inside the agent folder');
+    },
+  );
+
   it('edits the sqlite-vector path, embedder and minimum score', () => {
     useMemory(
       [{ ...BASE, provider: { type: 'sqlite-vector', path: '.lousho/m.db', embedder: 'openai/text-embedding-3-small', minScore: 0.3 } }],
@@ -194,6 +203,16 @@ describe('memory Inspector: Storage', () => {
     });
   });
 
+  it('flags a database file outside the agent folder but accepts a relative one', () => {
+    useMemory([{ ...BASE, provider: { type: 'sqlite-vector', path: '../m.db', embedder: 'e/m' } }], 'memory:notes');
+    renderInspector();
+    expect(container.textContent).toContain('Use a relative path inside the agent folder');
+    type('node-memory-path', '.lousho/memory.db');
+    expect(item().provider).toMatchObject({ path: '.lousho/memory.db' });
+    flush();
+    expect(container.textContent).not.toContain('Use a relative path inside the agent folder');
+  });
+
   it('flags a missing embedder', () => {
     useMemory([{ ...BASE, provider: { type: 'sqlite-vector', embedder: '' } }], 'memory:notes');
     renderInspector();
@@ -209,6 +228,13 @@ describe('memory Inspector: recall', () => {
     flush();
     click(field<HTMLButtonElement>('node-memory-recall'));
     expect(item().recall).toBeUndefined();
+  });
+
+  it('keeps the other recall keys when toggled off', () => {
+    useMemory([{ ...BASE, recall: { onSessionStart: true, query: 'last-input' } }], 'memory:notes');
+    renderInspector();
+    click(field<HTMLButtonElement>('node-memory-recall'));
+    expect(item().recall).toStrictEqual({ onSessionStart: true });
   });
 
   it('edits the items-to-recall limit while recall is on', () => {
@@ -277,6 +303,14 @@ describe('memory Inspector: item schema and key', () => {
     expect(item().itemKey).toBe('email');
     type('node-memory-item-key', '');
     expect(item().itemKey).toBeUndefined();
+  });
+
+  it('keeps an array item key an array', () => {
+    useMemory([{ ...BASE, itemJsonSchema: { type: 'object' }, itemKey: ['customerId', 'region'] }], 'memory:notes');
+    renderInspector();
+    expect(field('node-memory-item-key').value).toBe('customerId, region');
+    type('node-memory-item-key', 'customerId, region, tier');
+    expect(item().itemKey).toStrictEqual(['customerId', 'region', 'tier']);
   });
 });
 

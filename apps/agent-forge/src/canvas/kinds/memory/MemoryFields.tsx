@@ -33,9 +33,23 @@ function objectSchemaOk(value: unknown): string | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? undefined : SCHEMA_ERROR;
 }
 
-/** The "Recall from the last message" switch plus its item limit. */
+/**
+ * The "Recall from the last message" switch plus its item limit. The switch
+ * only touches `recall.query`: off drops `query` (back to the SDK default
+ * `'none'`) and keeps siblings like `onSessionStart`; `recall` itself is
+ * deleted when nothing is left.
+ */
 function RecallFields({ item, patch }: { item: MemorySpec; patch: Patch }): JSX.Element {
   const recallOn = item.recall?.query === 'last-input';
+  const onToggle = (on: boolean) => {
+    if (on) {
+      patch({ recall: { ...item.recall, query: 'last-input' } });
+      return;
+    }
+    const next = { ...item.recall };
+    delete next.query;
+    patch({ recall: Object.keys(next).length === 0 ? undefined : next });
+  };
   const onLimit = (maxItems: number | undefined) => {
     const recall = { ...item.recall, query: 'last-input' as const };
     if (maxItems === undefined) delete recall.maxItems;
@@ -50,10 +64,7 @@ function RecallFields({ item, patch }: { item: MemorySpec; patch: Patch }): JSX.
         inline
         hint="Injects matching items before the first model call."
       >
-        <Switch
-          checked={recallOn}
-          onChange={(on) => patch({ recall: on ? { ...item.recall, query: 'last-input' } : undefined })}
-        />
+        <Switch checked={recallOn} onChange={onToggle} />
       </Field>
       {recallOn && (
         <OptionalNumberField
@@ -101,9 +112,24 @@ function ExposeFields({ item, patch }: { item: MemorySpec; patch: Patch }): JSX.
 }
 
 /** The memory Inspector described above. */
+/** `itemKey` shown in the single Input: an array joins with ', ', a string shows as-is. */
+function itemKeyText(itemKey: MemorySpec['itemKey']): string {
+  return Array.isArray(itemKey) ? itemKey.join(', ') : (itemKey ?? '');
+}
+
+/**
+ * `text` as an `itemKey` write: an existing array stays an array (comma-
+ * separated fields), anything else is one field name; empty deletes the key.
+ */
+function itemKeyValue(text: string, wasArray: boolean): string | string[] | undefined {
+  if (text.trim() === '') return undefined;
+  if (!wasArray) return text;
+  const fields = text.split(',').map((field) => field.trim()).filter((field) => field !== '');
+  return fields.length === 0 ? undefined : fields;
+}
+
 export function MemoryFields({ node, patch }: KindFieldsProps<'memory'>): JSX.Element {
   const { item } = node.data;
-  const itemKey = Array.isArray(item.itemKey) ? item.itemKey.join(', ') : (item.itemKey ?? '');
   return (
     <>
       <Field
@@ -146,9 +172,9 @@ export function MemoryFields({ node, patch }: KindFieldsProps<'memory'>): JSX.El
         hint="Field that identifies an item, so saving it again updates it."
       >
         <Input
-          value={itemKey}
+          value={itemKeyText(item.itemKey)}
           onChange={(event: ChangeEvent<HTMLInputElement>) =>
-            patch({ itemKey: event.target.value === '' ? undefined : event.target.value })
+            patch({ itemKey: itemKeyValue(event.target.value, Array.isArray(item.itemKey)) })
           }
         />
       </Field>
