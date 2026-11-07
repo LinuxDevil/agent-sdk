@@ -9,6 +9,7 @@ import { useShell } from '../../shell/AppShell';
 import { useAppState } from '../../state/AppState';
 import { useAgentRouteSync } from './useAgentRouteSync';
 import { useInspectorCollapsed } from './useInspectorCollapsed';
+import { useSaveVersionShortcut } from './useSaveVersionShortcut';
 
 /**
  * Below 860px the rail and the Inspector are slide-over drawers,
@@ -47,6 +48,8 @@ function useSidePanels() {
  */
 export function AgentsScreen() {
   useAgentRouteSync();
+  // Ctrl/Cmd+S saves a version - bound only on the builder screen.
+  useSaveVersionShortcut();
   const panels = useSidePanels();
   const inspector = useInspectorCollapsed(useAppState().selectedNodeId);
   const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}${inspector.collapsed ? ' inspector-collapsed' : ''}`;

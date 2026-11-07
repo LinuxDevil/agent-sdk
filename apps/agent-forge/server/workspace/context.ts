@@ -20,6 +20,7 @@ import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
 import { withAgentLock } from '../storage/atomic';
 import { DraftStore } from '../storage/draftStore';
+import { createIdleVersioner, type IdleVersioner } from '../storage/idleVersioner';
 import { SuggestionStore } from '../storage/suggestionStore';
 import { VersionStore } from '../storage/versionStore';
 import { ChatTriggerAdapter } from '../chatTriggerAdapter';
@@ -43,6 +44,14 @@ export interface WorkspaceContext {
   versions: VersionStore;
   /** Pending + settled change drafts under `<id>/drafts/` (storage/draftStore.ts). */
   drafts: DraftStore;
+  /**
+   * The workspace's idle-version scheduler (storage/idleVersioner.ts):
+   * `PUT /agents/:id` `touch`es it after each autosave write,
+   * `POST /agents/:id/versions` and `DELETE /agents/:id` `cancel` it, and
+   * server close `flushAll()`s it - so an edited agent gets an `editor`
+   * version after 60 s of quiet.
+   */
+  idleVersioner: IdleVersioner;
   /** Prompt suggestions + cached portability analyses under `<id>/suggestions/` (storage/suggestionStore.ts). */
   suggestions: SuggestionStore;
   /** The host this workspace's agent runs execute through (InProcessAgentHost on Studio's SDK; a bridge host when the project has its own). */
@@ -147,6 +156,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     agentStore,
     versions,
     drafts: new DraftStore(repo),
+    idleVersioner: createIdleVersioner(versions),
     suggestions,
     host,
     runs,
