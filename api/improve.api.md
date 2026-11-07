@@ -435,6 +435,7 @@ export interface ImproveResult {
     };
     diff?: string;
     final?: ProbeSummary;
+    freshBase?: ProbeSummary;
     harness?: Harness;
     holdout?: {
         base: ProbeSummary;

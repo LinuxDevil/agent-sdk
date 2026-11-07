@@ -116,8 +116,10 @@ export interface ImproveResult {
   harness?: Harness;
   /** The proposed changes, line by line, with `outcome: 'proposal'`. */
   diff?: string;
-  /** The current harness on the training cases. */
+  /** The current harness on the training runs the editors read. */
   base: ProbeSummary;
+  /** The current harness on fresh runs of the training cases: the runs the gate compares against. */
+  freshBase?: ProbeSummary;
   /** The composed harness on the training cases, when it was probed. */
   final?: ProbeSummary;
   /** Both harnesses on the held-out cases, when they were probed. */

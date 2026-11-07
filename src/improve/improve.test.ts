@@ -102,6 +102,36 @@ describe('improveAgent', () => {
     expect(result.candidates).toBeUndefined();
   });
 
+  it('judges the edit against fresh base runs, not the ones that triggered editing', async () => {
+    let baseCalls = 0;
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      if (caseId === 'held-out' || harness.instructions.includes('forbidden')) return run(true);
+      baseCalls += 1;
+      return run(baseCalls > 2);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(result.base.passRate).toBe(0);
+    expect(result.freshBase?.passRate).toBe(1);
+    expect(result.outcome).toBe('keep-base');
+    expect(result.reason).toMatch(/did not beat/i);
+  });
+
+  it('gives the probe new repeat numbers for the fresh base runs', async () => {
+    const repeats: number[] = [];
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      if (harness === BASE && caseId === 'stuck') repeats.push(repeat);
+      return fixable()(harness, caseId, repeat);
+    };
+    await improveAgent(options({ probe, repeats: 2, turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(repeats).toEqual([0, 1, 2, 3]);
+  });
+
+  it('never sends fresh base runs to an editor', async () => {
+    const provider = mockModel([...noEdit, ...noEdit, ...noEdit]);
+    await improveAgent(options({ editor: { provider } }));
+    expect(JSON.stringify(provider.calls)).not.toContain('fresh-base');
+  });
+
   it('keeps the base when a held-out case gets worse, even if training cases improve', async () => {
     const probe: ImproveOptions['probe'] = async (harness, caseId) => {
       if (caseId === 'held-out') return run(!harness.instructions.includes('forbidden'));
