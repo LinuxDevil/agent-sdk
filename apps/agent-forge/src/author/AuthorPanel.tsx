@@ -2,6 +2,7 @@ import './authorPanel.css';
 import {
   useEffect,
   useRef,
+  useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
   type UIEvent,
@@ -14,6 +15,7 @@ import type { AuthorChatState } from './authorChatReducer';
 import { onOpenPage } from './authorEvents';
 import { useAuthorDock } from './authorDock';
 import { AuthorComposer } from './AuthorComposer';
+import { AuthorHistory } from './AuthorHistory';
 import { AuthorMessages } from './AuthorMessages';
 import { SetupCard } from './SetupCard';
 // Registers the proposeAgent/proposeAgentUpdate ProposalCard renderers.
@@ -112,6 +114,7 @@ export function AuthorPanel(): JSX.Element {
   const chat = useAuthorChat();
   const dock = useAuthorDock();
   const { state } = chat;
+  const [historyOpen, setHistoryOpen] = useState(false);
   const { bodyRef, onScroll, pin } = usePinnedScroll();
 
   // A live openPage tool.result moves the app; replays never reach this
@@ -121,8 +124,14 @@ export function AuthorPanel(): JSX.Element {
   useEffect(pin);
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLElement>): void => {
-    if (e.key === 'Escape' && chat.isStreaming) {
+    if (e.key !== 'Escape') return;
+    if (historyOpen) {
       e.preventDefault(); // the Dock sees defaultPrevented and stays open
+      setHistoryOpen(false);
+      return;
+    }
+    if (chat.isStreaming) {
+      e.preventDefault();
       chat.stop();
     }
   };
@@ -156,8 +165,9 @@ export function AuthorPanel(): JSX.Element {
             type="button"
             className="icon-btn author-history-btn"
             aria-label="Chat history"
-            aria-pressed={false}
-            hidden
+            aria-pressed={historyOpen}
+            title={historyOpen ? 'Back to chat' : 'Chat history'}
+            onClick={() => setHistoryOpen((open) => !open)}
           >
             <History size={16} strokeWidth={1.75} aria-hidden="true" />
           </button>
@@ -172,10 +182,21 @@ export function AuthorPanel(): JSX.Element {
           </button>
         </div>
       </header>
-      <div ref={bodyRef} className="author-body" role="log" aria-live="polite" aria-label="Conversation" onScroll={onScroll}>
-        <AuthorBody state={state} chat={chat} />
-      </div>
-      <AuthorComposer chat={chat} />
+      {historyOpen ? (
+        <AuthorHistory onClose={() => setHistoryOpen(false)} />
+      ) : (
+        <div
+          ref={bodyRef}
+          className="author-body"
+          role="log"
+          aria-live="polite"
+          aria-label="Conversation"
+          onScroll={onScroll}
+        >
+          <AuthorBody state={state} chat={chat} />
+        </div>
+      )}
+      <AuthorComposer chat={chat} disabledReason={historyOpen ? 'Close history to keep chatting' : undefined} />
     </section>
   );
 }
