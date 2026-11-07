@@ -9,6 +9,7 @@
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+  container-type: inline-size;
 }
 .schema-object {
   margin: 0 0 14px;
@@ -44,4 +45,111 @@
 }
 .schema-list-add {
   align-self: flex-start;
+}
+
+/* U14: union pickers, collapsible object-array items and record-map rows. */
+.schema-variant {
+  margin-bottom: 14px;
+}
+.schema-variant-body {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border);
+}
+.schema-count {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.schema-items {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.schema-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.schema-item-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px 2px 0;
+}
+.schema-item-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.schema-item-toggle:hover {
+  background: var(--surface-2);
+}
+.schema-item-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.schema-item-toggle svg {
+  flex: none;
+  color: var(--text-faint);
+  transition: transform var(--dur-fast) var(--ease);
+}
+.schema-item-toggle[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+.schema-item-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.schema-item-body {
+  padding: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+.schema-record {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.schema-record-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 30%) minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+}
+.schema-record-add {
+  display: flex;
+  gap: 6px;
+}
+@container (max-width: 420px) {
+  .schema-record-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .schema-record-value {
+    grid-column: 1 / -1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .schema-item-toggle svg {
+    transition: none;
+  }
 }

@@ -21,3 +21,64 @@ export const SCHEMA: JsonSchema = {
     },
   },
 };
+
+/** A ToolRef-shaped `anyOf`: each option discriminated by one unique required key. */
+export const TOOL_REF: JsonSchema = {
+  anyOf: [
+    {
+      type: 'object',
+      required: ['builtin'],
+      properties: {
+        builtin: { type: 'string' },
+        id: { type: 'string' },
+        approval: { enum: ['always', 'never', 'auto'] },
+      },
+    },
+    {
+      type: 'object',
+      required: ['registry'],
+      properties: {
+        registry: { type: 'string' },
+        version: { type: 'string' },
+        id: { type: 'string' },
+      },
+    },
+    {
+      type: 'object',
+      required: ['file'],
+      properties: { file: { type: 'string' }, id: { type: 'string' } },
+    },
+  ],
+};
+
+/** A TriggerSpec-shaped `oneOf`: discriminated by a `const` on the shared `type` key. */
+export const TRIGGER: JsonSchema = {
+  oneOf: [
+    {
+      type: 'object',
+      required: ['id', 'type'],
+      properties: { id: { type: 'string' }, type: { const: 'chat' } },
+    },
+    {
+      type: 'object',
+      required: ['id', 'type', 'cron', 'prompt'],
+      properties: {
+        id: { type: 'string' },
+        type: { const: 'cron' },
+        cron: { type: 'string' },
+        prompt: { type: 'string' },
+      },
+    },
+  ],
+};
+
+/** U14 fixture: a union array, a record map and a nullable string on top of the union shapes. */
+export const SPEC: JsonSchema = {
+  type: 'object',
+  properties: {
+    tools: { type: 'array', items: TOOL_REF },
+    triggers: { type: 'array', items: TRIGGER },
+    instructionsByFamily: { type: 'object', additionalProperties: { type: 'string' } },
+    nullableName: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+  },
+};
