@@ -158,14 +158,6 @@ const toolRule: NodeIdRule = (span, parent) => {
   return nodeId === undefined ? undefined : { nodeId: parent.scope + nodeId };
 };
 
-/** `guardrail <name>`: the spec guardrail the span is named after; an unknown name (code-built, inherited) stamps nothing. */
-const guardrailRule: NodeIdRule = (span, parent) => {
-  if (!span.name.startsWith(`${GUARDRAIL_SPAN_NAME} `)) return undefined;
-  const name = span.attributes[SdkAttr.GUARDRAIL_NAME];
-  const nodeId = typeof name === 'string' ? parent.index.guardrailByName[name] : undefined;
-  return nodeId === undefined ? undefined : { nodeId: parent.scope + nodeId };
-};
-
 /** `handoff <to>` (S20c): `<scope>handoff:<to>` — and the run's active node from then on. */
 const handoffRule: NodeIdRule = (span, parent) => {
   if (!span.name.startsWith(`${HANDOFF_SPAN_NAME} `)) return undefined;
@@ -185,6 +177,14 @@ const approvalWaitRule: NodeIdRule = (span, parent) => {
   return nodeId === undefined ? undefined : { nodeId: parent.scope + nodeId };
 };
 
+/** `guardrail <name>` (S20b): the spec guardrail the span is named after; an unknown name (code-built, inherited) stamps nothing. */
+const guardrailRule: NodeIdRule = (span, parent) => {
+  if (!span.name.startsWith(`${GUARDRAIL_SPAN_NAME} `)) return undefined;
+  const name = span.attributes[SdkAttr.GUARDRAIL_NAME];
+  const nodeId = typeof name === 'string' ? parent.index.guardrailByName[name] : undefined;
+  return nodeId === undefined ? undefined : { nodeId: parent.scope + nodeId };
+};
+
 /** `flow.node <type>` with `lousho.flow.node.id`: the step's `flow:<id>`. */
 const flowNodeRule: NodeIdRule = (span) => {
   if (span.name !== FLOW_NODE_SPAN_NAME && !span.name.startsWith(`${FLOW_NODE_SPAN_NAME} `)) return undefined;
@@ -192,8 +192,8 @@ const flowNodeRule: NodeIdRule = (span) => {
   return typeof step === 'string' ? { nodeId: `flow:${step}` } : undefined;
 };
 
-/** The S20a mapping table, first hit wins; anything else gets no `lousho.node.id`. */
-const RULES: readonly NodeIdRule[] = [invokeAgentRule, chatRule, toolRule, guardrailRule, handoffRule, approvalWaitRule, flowNodeRule];
+/** The S20a mapping table, first hit wins; anything else gets no `lousho.node.id` (S20b/S20c extend it). */
+const RULES: readonly NodeIdRule[] = [invokeAgentRule, chatRule, toolRule, handoffRule, approvalWaitRule, guardrailRule, flowNodeRule];
 
 /** The index of a sub-agent compiled outside the spec pipeline (its spans stamp but resolve no members). */
 const EMPTY_INDEX: NodeIdIndex = { toolNodeByName: {}, mcpServers: {}, handoffByToolName: {}, memorySlots: {}, guardrailByName: {}, subagents: {} };

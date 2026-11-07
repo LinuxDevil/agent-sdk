@@ -289,20 +289,6 @@ describe('specV2ToAgent integration', () => {
     expect(started.find((s) => s.name === 'execute_tool task')?.attributes[NODE_ID]).toBeUndefined();
   });
 
-  it('stamps guard:<id> on a spec guardrail’s check span', async () => {
-    leadScript = ['done'];
-    const { started, exporter } = recorder();
-    const agent = await specV2ToAgent(
-      spec({ guardrails: [{ id: 'g1', name: 'max-length', on: 'input', options: { maxChars: 100 } }] }),
-      host({ exporter })
-    );
-    await agent.send('hi');
-
-    const check = started.find((s) => s.name === 'guardrail g1');
-    expect(check?.attributes[NODE_ID]).toBe('guard:g1');
-    expect(check?.attributes[SdkAttr.GUARDRAIL_OUTCOME]).toBe('pass');
-  });
-
   it('stamps the handoff marker handoff:billing and the run\'s later chat spans the same', async () => {
     leadScript = [{ toolCalls: [{ name: 'transfer_to_billing', args: { reason: 'charged twice' } }] }, 'done'];
     const { started, exporter } = recorder();
@@ -341,5 +327,19 @@ describe('specV2ToAgent integration', () => {
     const wait = started.find((s) => s.name === 'approval.wait web_fetch');
     expect(wait?.attributes[SdkAttr.APPROVAL_ID]).toBe(paused.approvalId);
     expect(wait?.attributes[NODE_ID]).toBe('tool:http_request');
+  });
+
+  it('stamps guard:<id> on a spec guardrail’s check span', async () => {
+    leadScript = ['done'];
+    const { started, exporter } = recorder();
+    const agent = await specV2ToAgent(
+      spec({ guardrails: [{ id: 'g1', name: 'max-length', on: 'input', options: { maxChars: 100 } }] }),
+      host({ exporter })
+    );
+    await agent.send('hi');
+
+    const check = started.find((s) => s.name === 'guardrail g1');
+    expect(check?.attributes[NODE_ID]).toBe('guard:g1');
+    expect(check?.attributes[SdkAttr.GUARDRAIL_OUTCOME]).toBe('pass');
   });
 });

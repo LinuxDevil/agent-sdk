@@ -203,6 +203,31 @@ export interface ChatSessionRecord extends ChatSessionMeta {
 }
 
 /**
+ * The run states one canvas node can be in, pushed as `node` frames.
+ * `waiting` is the approval-wait pause (the run is paused on a human
+ * decision for that node's tool); the other three mirror a span's
+ * start/end.
+ */
+export type NodeRunState = 'running' | 'done' | 'error' | 'waiting';
+
+/**
+ * One `node` frame: the run state of the builder node `nodeId` (the
+ * §3.3 ids - `agent`, `tool:<name>`, `sub:<n>/...`, `guard:<id>`,
+ * `handoff:<to>`), derived server-side from a span carrying the
+ * `lousho.node.id` attribute (see server/nodeStates.ts). Frames carry
+ * node ids and state only - never attribute values, args or secrets -
+ * and each one follows the `span` frame it was derived from.
+ */
+export interface NodeStatePayload {
+  nodeId: string;
+  state: NodeRunState;
+  /** The span this state was derived from - correlates with `span` frames of the same id. */
+  spanId: string;
+  /** ISO time the server derived the state (the notification's arrival, not the span's own timestamps). */
+  at: string;
+}
+
+/**
  * A single WS message pushed to `WS /agents/:id/stream` subscribers.
  * `type: 'status'` carries the full AgentRunStatusPayload (sent on every
  * status transition, and once immediately on connect). `type: 'event'`
@@ -212,7 +237,8 @@ export interface ChatSessionRecord extends ChatSessionMeta {
  * the Trace tab's spans and the step-debugger state, all derived from the
  * same run rather than a second parallel event system. `type: 'chat'`
  * is the live chat transcript, sent on every reconciled update and
- * once immediately on connect (mirroring 'status').
+ * once immediately on connect (mirroring 'status'). `type: 'node'` is the
+ * per-node run state the canvas highlights from.
  */
 export type StreamMessage =
   | { type: 'status'; payload: AgentRunStatusPayload }
@@ -220,7 +246,8 @@ export type StreamMessage =
   | { type: 'log'; payload: LogEntry }
   | { type: 'span'; payload: SpanEvent }
   | { type: 'debug'; payload: DebugStatePayload }
-  | { type: 'chat'; payload: ChatStatePayload };
+  | { type: 'chat'; payload: ChatStatePayload }
+  | { type: 'node'; payload: NodeStatePayload };
 
 /**
  * One `WS /events` push - Studio-wide lifecycle notifications every open
