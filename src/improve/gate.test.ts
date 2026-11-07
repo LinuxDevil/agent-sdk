@@ -27,6 +27,8 @@ describe('judgeTrainingCase', () => {
     { base: [F, F, F], final: [F, F, F], improved: false, dropped: false, scorable: true, reason: /failed under both/i },
     { base: [null, null, null], final: [T, T, T], improved: false, dropped: false, scorable: false, reason: /could not be scored/i },
     { base: [T, null, F], final: [T, T, null], improved: false, dropped: false, scorable: true, reason: /less than/i },
+    { base: [F, null, null], final: [T, null, null], improved: false, dropped: false, scorable: true, reason: /too few scored runs/i },
+    { base: [F, F, null], final: [T, T, null], improved: true, dropped: false, scorable: true, reason: /improved from 0\/2 to 2\/2/i },
   ])('judges $base to $final', ({ base, final, improved, dropped, scorable, reason }) => {
     const result = judged('c', base, final);
     expect(result).toMatchObject({ improved, dropped, scorable });
@@ -42,6 +44,16 @@ describe('judgeTrainingCase', () => {
     expect(gain({ passed: 1, scored: 3 }, { passed: 3, scored: 3 })).toBe(true);
     expect(gain({ passed: 1, scored: 6 }, { passed: 5, scored: 6 })).toBe(true);
     expect(gain({ passed: 0, scored: 1000 }, { passed: 666, scored: 1000 })).toBe(false);
+  });
+
+  it('improves exactly when 3 scored runs gain 2 or more, and drops exactly when they lose any', () => {
+    for (let basePassed = 0; basePassed <= 3; basePassed += 1) {
+      for (let finalPassed = 0; finalPassed <= 3; finalPassed += 1) {
+        const result = judgeTrainingCase('c', { passed: basePassed, scored: 3 }, { passed: finalPassed, scored: 3 });
+        expect(result.improved).toBe(finalPassed - basePassed >= 2);
+        expect(result.dropped).toBe(finalPassed < basePassed);
+      }
+    }
   });
 });
 

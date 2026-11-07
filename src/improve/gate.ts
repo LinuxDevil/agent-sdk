@@ -4,6 +4,7 @@ import type { CaseCount, CaseVerdict, ImproveResult, ProbeSummary } from './type
 export type CostComparison = NonNullable<ImproveResult['costOnPassingCases']>;
 
 export const MIN_CASE_GAIN = 2 / 3;
+const MIN_SCORED_RUNS = 2;
 
 export interface JudgedCase {
   verdict: CaseVerdict;
@@ -68,6 +69,8 @@ type Judgement = Pick<JudgedCase, 'scorable' | 'improved' | 'dropped'> & { reaso
 function judgeScored(base: CaseCount, final: CaseCount): Judgement {
   const gain = rate(final) - rate(base);
   const from = `${ratio(base)} to ${ratio(final)}`;
+  const enoughRuns = Math.min(base.scored, final.scored) >= MIN_SCORED_RUNS;
+  if (gain >= MIN_CASE_GAIN - 1e-9 && !enoughRuns) return { scorable: true, improved: false, dropped: false, reason: `Changed from ${from}, but too few scored runs to count as a gain.` };
   if (gain >= MIN_CASE_GAIN - 1e-9) return { scorable: true, improved: true, dropped: false, reason: `Improved from ${from}.` };
   if (gain < 0) return { scorable: true, improved: false, dropped: true, reason: `Got worse, from ${from}.` };
   if (base.passed === 0 && final.passed === 0) return { scorable: true, improved: false, dropped: false, reason: 'Failed under both harnesses.' };

@@ -55,7 +55,8 @@ console.log(result.outcome, result.reason);
    and they cost `repeats` extra runs per case, so allow for them in
    `maxTokens`. Each training case is judged on its own. At least one must pass
    at least 2 more runs in 3 than it did on the fresh runs, and none may get
-   worse. `cases` shows each case's verdict and why. The result also must not
+   worse. A gain counts only when each side has at least 2 scored runs.
+   `cases` shows each case's verdict and why. The result also must not
    make a held-out case worse or raise tokens per passing run by more than
    `maxCostIncrease`. Cost is
    compared only on cases that pass under both harnesses, because a failing run
