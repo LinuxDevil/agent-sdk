@@ -16,6 +16,7 @@ const { values } = parseArgs({
     repeats: { type: 'string', default: '3' },
     confirm: { type: 'string', default: '0' },
     'max-tokens': { type: 'string', default: '400000' },
+    'max-cost-increase': { type: 'string' },
     'always-propose': { type: 'boolean', default: false },
     'gap-ms': { type: 'string', default: '3000' },
     out: { type: 'string' },
@@ -24,6 +25,7 @@ const { values } = parseArgs({
 
 const live = process.env.OPENROUTER_API_KEY !== undefined;
 const gapMs = Number(values['gap-ms']);
+const costLimit = values['max-cost-increase'] === undefined ? {} : { maxCostIncrease: Number(values['max-cost-increase']) };
 const throttle: AgentHook = { name: 'throttle', preGenerate: () => new Promise((resolve) => setTimeout(resolve, gapMs)) };
 
 function buildAgent(): BenchmarkAgent {
@@ -73,6 +75,7 @@ async function main(): Promise<void> {
       editor: live ? { model: `openrouter/${values.editor}` } : { provider: scripted },
       repeats: Number(values.repeats),
       maxTokens: Number(values['max-tokens']),
+      ...costLimit,
       alwaysPropose: values['always-propose'],
       editorHooks: live ? [throttle] : [],
     });
