@@ -1,0 +1,27 @@
+/* Status tones: each one sets the foreground, soft background and border a
+   StatusDot, StatusBadge or .status-edge row reads. Pairs are all in contrast.test.ts. */
+.status-tone-neutral { --st-fg: var(--text-muted); --st-bg: var(--surface-2); --st-border: var(--border-strong); }
+.status-tone-info    { --st-fg: var(--info);    --st-bg: var(--info-soft);    --st-border: var(--info-border); }
+.status-tone-success { --st-fg: var(--success); --st-bg: var(--success-soft); --st-border: var(--success-border); }
+.status-tone-warning { --st-fg: var(--warning); --st-bg: var(--warning-soft); --st-border: var(--warning-border); }
+.status-tone-danger  { --st-fg: var(--danger);  --st-bg: var(--danger-soft);  --st-border: var(--danger-border); }
+.status-tone-violet  { --st-fg: var(--violet);  --st-bg: var(--violet-soft);  --st-border: color-mix(in srgb, var(--violet) 40%, transparent); }
+.status-tone-accent  { --st-fg: var(--accent);  --st-bg: var(--accent-soft);  --st-border: color-mix(in srgb, var(--accent) 40%, transparent); }
+
+.status-dot { display: inline-block; flex: none; width: 6px; height: 6px; border-radius: var(--radius-full); background: var(--st-fg); }
+.status-dot-halo { box-shadow: 0 0 0 3px var(--st-bg); }
+/* @keyframes status-pulse lives in ui/base.css, loaded globally by App.tsx. */
+.status-dot-pulse { animation: status-pulse 1.4s var(--ease) infinite; }
+
+.status-badge { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; flex: none;
+  border: 1px solid var(--st-border); border-radius: var(--radius-full); background: var(--st-bg); color: var(--st-fg);
+  font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.status-badge-sm { height: 18px; padding: 0 6px; font-size: 11px; }
+.status-badge-icon { width: 12px; height: 12px; stroke-width: 1.75; flex: none; }
+.status-badge-spin { animation: status-spin 1s linear infinite; }
+@keyframes status-spin { to { transform: rotate(360deg); } }
+
+/* A coloured left edge for list rows (run rows, attention cards): add with a tone class. */
+.status-edge { border-left: 2px solid var(--st-fg); }
+
+@media (prefers-reduced-motion: reduce) { .status-dot-pulse, .status-badge-spin { animation: none; } }

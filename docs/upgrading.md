@@ -231,6 +231,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 
 | Change | Opt-out |
 | ------ | ------- |
+| `agent.recover()` backs off from a run's last failure and stops resuming it after 10 failures in a row, calling `onQuarantined(run)` once, instead of resuming it every sweep forever. See [Recovering automatically](./durable-execution.md#recovering-automatically). | a larger `maxAttempts` |
 | A checkpointed run holds a run lease while it executes: a second process, replica or store object that sends to the same session, resumes it or resolves one of its approvals fails with `LOUSHO_SESSION_BUSY` instead of running its tool calls a second time. See [Run leases](./durable-execution.md#run-leases). | no opt-out (a custom `CheckpointStore` without `acquireLease()` gets no lease) |
 | Approvals run at most once: deciding one re-saves the turn as `'in-progress'` with the call in `Checkpoint.startedToolCallIds`; after a crash mid-call, resuming gives that call a `kind: 'interrupted'` tool error instead of running it again. See [Guarantees](./durable-execution.md#guarantees). | no opt-out |
 | Resolving an approval whose run was deleted or replaced fails with `LOUSHO_APPROVAL_ORPHANED` and withdraws it (it used to overwrite the newer conversation). | no opt-out |

@@ -9,6 +9,7 @@ import { useShell } from '../../shell/AppShell';
 import { useAppState } from '../../state/AppState';
 import { useAgentRouteSync } from './useAgentRouteSync';
 import { useInspectorCollapsed } from './useInspectorCollapsed';
+import { useSaveVersionShortcut } from './useSaveVersionShortcut';
 
 /**
  * Below 860px the rail and the Inspector are slide-over drawers,
@@ -40,12 +41,15 @@ function useSidePanels() {
 }
 
 /**
- * `#/agents` and `#/agents/:id` - the builder: agent rail, canvas, Inspector and the run drawer,
- * under the Build toolbar. The hash names the open agent (see `useAgentRouteSync`).
+ * `#/agents/:id/canvas` - the builder: agent rail, canvas, Inspector and the run drawer,
+ * under the Build toolbar. (The legacy `#/agents/:id` redirects here; bare `#/agents`
+ * is the agents list.) The hash names the open agent (see `useAgentRouteSync`).
  * The docked Inspector collapses while nothing is selected (`useInspectorCollapsed`).
  */
 export function AgentsScreen() {
   useAgentRouteSync();
+  // Ctrl/Cmd+S saves a version - bound only on the builder screen.
+  useSaveVersionShortcut();
   const panels = useSidePanels();
   const inspector = useInspectorCollapsed(useAppState().selectedNodeId);
   const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}${inspector.collapsed ? ' inspector-collapsed' : ''}`;

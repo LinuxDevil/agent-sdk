@@ -1,0 +1,81 @@
+name: Release
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+concurrency:
+  group: release
+  cancel-in-progress: false
+permissions:
+  contents: write
+  packages: write
+jobs:
+  release:
+    if: github.event.pull_request.merged == true && !contains(github.event.pull_request.labels.*.name, 'norelease')
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --max-old-space-size=12288
+    steps:
+      # The main ruleset blocks direct pushes; this write deploy key is its
+      # only non-admin bypass actor, so the version-bump push below goes over SSH.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          # Full history so the bump can rebase onto main if it moved during the build.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - name: Bump versions
+        run: |
+          npm version prerelease --preid=alpha --no-git-tag-version
+          node scripts/sync-version.mjs
+          npm version prerelease --preid=alpha --no-git-tag-version -w create-lousho
+          npm install --package-lock-only --ignore-scripts
+          VERSION=$(node -p "require('./package.json').version")
+          sed -i "s/^## \[Unreleased\]/&\n\n## [$VERSION] - $(date -u +%F)/" CHANGELOG.md
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - run: npm run build
+      - run: npm run api:update
+      # llms.txt / llms-full.txt ship in the package; regenerate so they match this build.
+      - run: npm run docs:llms
+      - run: npm run build -w create-lousho
+      - name: Push version bump
+        # The husky pre-commit hook re-runs the full static suite (and fails on
+        # drift merged by others); the release commit only carries generated files.
+        env:
+          HUSKY: '0'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -am "chore(release): $VERSION"
+          # Other PRs can merge while this job builds; replay the bump on top and retry.
+          for i in 1 2 3 4 5; do
+            git pull --rebase origin main && git push origin main && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep $((i * 5))
+          done
+          exit 1
+      - name: Publish lousho
+        run: npm publish --access public --tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish create-lousho
+        run: npm publish -w create-lousho --access public --tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Mirror to GitHub Packages
+        run: node scripts/publish-github-packages.mjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TAG: latest
+      - name: GitHub release
+        run: |
+          awk -v h="## [$VERSION]" 'index($0,h)==1{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --prerelease --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

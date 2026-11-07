@@ -328,6 +328,18 @@ export interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback
   error: { message: string };
 }
 
+/** A hook stepped in to get a run unstuck: `hint` advised the model, `deny` refused a call, `stop` ended the run. */
+export interface HealActionEvent extends AgentEventBase<'heal.action'> {
+  /** What the hook did. */
+  action: 'hint' | 'deny' | 'stop';
+  /** The tool the action concerns. */
+  toolName: string;
+  /** Why, in the words the model was given. */
+  reason: string;
+  /** The class of tool failure, when a failure caused it. */
+  failure?: 'bad-input' | 'timeout' | 'missing-capability' | 'permission' | 'unknown';
+}
+
 /**
  * The compaction hook (`createAgent({ compaction })`, `createCompactionHook()`)
  * found the next model request above its threshold and starts compacting it.
@@ -504,6 +516,7 @@ export type AgentEvent =
   | ProviderFallbackEvent
   | CompactionStartEvent
   | CompactionDoneEvent
+  | HealActionEvent
   | ContextClearedEvent
   | BudgetExceededEvent
   | InputQueuedEvent
@@ -557,6 +570,7 @@ const EVENT_TYPE_MAP: Record<AgentEventType, true> = {
   'provider.fallback': true,
   'compaction.start': true,
   'compaction.done': true,
+  'heal.action': true,
   'context.cleared': true,
   'budget.exceeded': true,
   'input.queued': true,

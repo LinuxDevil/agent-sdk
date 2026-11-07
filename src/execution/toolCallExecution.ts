@@ -12,6 +12,7 @@ import { rememberedApproval } from '../tools/approvalPolicies';
 import { SandboxAdapter } from '../security/sandboxCore';
 import { executeToolWithSandboxGuard } from './sandboxGuard';
 import type { ToolRunContext } from './toolRunContext';
+import { runEventsOf } from './agentRun';
 import { HookRegistry, ToolCallHookContext, type PreToolCallDecision } from './hooks';
 import { toolErrorMessage } from './propagatingToolError';
 import { toolErrorResult, thrownToolError, type ToolErrorKind } from './toolErrors';
@@ -123,6 +124,7 @@ export function toolHookContext(
     toolName: toolCall.function.name,
     args,
     toolCall,
+    ...(ctx.scope && { emit: runEventsOf(ctx.scope.runtime)?.hookEvent }),
   };
 }
 

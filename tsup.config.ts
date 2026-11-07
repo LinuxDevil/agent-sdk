@@ -48,6 +48,7 @@ const entry = {
     'storage/sqlite/index': 'src/storage/sqlite/index.ts',
     'auth/index': 'src/auth/index.ts',
     'deploy/kv': 'src/deploy/kv.ts',
+    'improve/index': 'src/improve/index.ts',
     'traces/index': 'src/traces/index.ts',
     'triggers/index': 'src/triggers/index.ts',
     'react/index': 'src/react/index.ts',

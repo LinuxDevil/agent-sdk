@@ -1,11 +1,7 @@
 import { resolveRef } from './schemaPath';
 import type { JsonSchema } from './types';
 
-/**
- * Which control {@link FIELD_RENDERERS} uses for a schema. U14 extends this
- * union with `'variant' | 'objectArray' | 'record'`; until then those shapes
- * are `'json'`.
- */
+/** Which control {@link FIELD_RENDERERS} uses for a schema. */
 export type FieldKind =
   | 'string'
   | 'text'
@@ -16,6 +12,9 @@ export type FieldKind =
   | 'boolean'
   | 'object'
   | 'primitiveArray'
+  | 'variant'
+  | 'objectArray'
+  | 'record'
   | 'json';
 
 /** Words that stay uppercase when {@link humanize} builds a label. */
@@ -44,15 +43,37 @@ const KIND_BY_TYPE: Record<string, KindRule> = {
 
 /**
  * Picks the field kind for a (already `$ref`-resolved) schema. First match
- * wins: `enum` beats everything; a `type` array keeps only its single
- * non-`'null'` member; anything unrecognized falls back to `'json'` so the
- * value stays editable as raw JSON instead of disappearing.
+ * wins: `enum` beats everything; a union keeps its non-`'null'` options —
+ * one left is a nullable and takes that option's kind, two or more is a
+ * `variant`; a `type` array keeps only its single non-`'null'` member;
+ * anything unrecognized falls back to `'json'` so the value stays editable
+ * as raw JSON instead of disappearing.
  */
 export function fieldKind(schema: JsonSchema): FieldKind {
   if (schema.enum != null) return 'enum';
+  const union = unionBranches(schema);
+  if (union != null) {
+    if (union.length === 1) return fieldKind(union[0]);
+    return union.length > 1 ? 'variant' : 'json';
+  }
   const type = schemaType(schema.type);
   if (type == null) return 'json';
   return (KIND_BY_TYPE[type] ?? JSON_KIND)(schema);
+}
+
+/** A union option is null-only when it declares a `type` that is just `'null'`. */
+function isNullOption(option: JsonSchema): boolean {
+  return option.type != null && schemaTypes(option.type).length === 0;
+}
+
+/**
+ * The `oneOf`/`anyOf` options with `{ type: 'null' }` removed; `undefined`
+ * when the schema is not a union. Shared by `fieldKind`, `validate` and
+ * `variants` so all three agree on what counts as nullable.
+ */
+export function unionBranches(schema: JsonSchema): JsonSchema[] | undefined {
+  const union = schema.oneOf ?? schema.anyOf;
+  return union?.filter((o) => !isNullOption(o));
 }
 
 /** All declared types with `'null'` stripped (`['string','null']` → `['string']`). */
@@ -88,11 +109,15 @@ function stringKind(schema: JsonSchema): FieldKind {
 }
 
 function objectKind(schema: JsonSchema): FieldKind {
-  return schema.properties != null && schema.oneOf == null && schema.anyOf == null ? 'object' : 'json';
+  if (schema.properties != null && schema.oneOf == null && schema.anyOf == null) return 'object';
+  if (schema.properties == null && typeof schema.additionalProperties === 'object') return 'record';
+  return 'json';
 }
 
 function arrayKind(schema: JsonSchema): FieldKind {
   const items = schema.items == null ? undefined : resolveRef(schema, schema.items);
+  const itemKind = items == null ? undefined : fieldKind(items);
+  if (itemKind === 'object' || itemKind === 'variant') return 'objectArray';
   const itemType = items == null ? undefined : schemaType(items.type);
   const primitive = itemType === 'string' || itemType === 'number' || itemType === 'integer';
   return primitive && items?.enum == null ? 'primitiveArray' : 'json';

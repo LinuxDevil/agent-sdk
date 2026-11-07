@@ -19,6 +19,7 @@ export interface Shortcut {
 export const SHORTCUTS: Shortcut[] = [
   { id: 'palette', keys: 'Ctrl/Cmd+K', description: 'Open the command palette' },
   { id: 'help', keys: '?', description: 'Show keyboard shortcuts' },
+  { id: 'save-version', keys: 'Ctrl/Cmd+S', description: 'Save a version of the agent' },
   { id: 'row-next', keys: 'j', description: 'Next row in a table' },
   { id: 'row-prev', keys: 'k', description: 'Previous row in a table' },
   { id: 'row-open', keys: 'Enter', description: 'Open the selected row' },

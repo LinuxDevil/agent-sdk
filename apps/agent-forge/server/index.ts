@@ -17,6 +17,7 @@ import { RunManager } from './runRegistry';
 import { SecretsStore } from './secretsStore';
 import { SettingsStore } from './settingsStore';
 import { startJudgeLoop, type JudgeLoopOptions } from './judge';
+import type { IdleVersioner } from './storage/idleVersioner';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
 import { createWorkspaceContext, singleWorkspace } from './workspace/context';
 import { configureStudioHome, studioPaths } from './workspace/studioPaths';
@@ -91,6 +92,13 @@ export interface StartStudioServerOptions {
    * option, which this is passed straight through to.
    */
   authorRunner?: AuthorTurnRunner;
+  /**
+   * The launch workspace's IdleVersioner - a test seam like `authorRunner`:
+   * inject one with a spy `capture` (or a long `delayMs`) to observe the
+   * PUT/POST/DELETE/`close()` wiring. Defaults to the workspace context's
+   * own `createIdleVersioner(versions)` (storage/idleVersioner.ts).
+   */
+  idleVersioner?: IdleVersioner;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -149,6 +157,9 @@ export async function startStudioServer(
     settingsStore,
     observe: options.observe !== false,
   });
+  // A test-injected versioner replaces the context's default one before the
+  // app and `close()` below both read `workspace.idleVersioner`.
+  if (options.idleVersioner !== undefined) workspace.idleVersioner = options.idleVersioner;
 
   const token = options.token ?? (process.env[STUDIO_TOKEN_ENV] || mintStudioToken());
   const allowedOrigins = (process.env[STUDIO_ALLOWED_ORIGINS_ENV] ?? '').split(',').filter(Boolean);
@@ -211,8 +222,10 @@ export async function startStudioServer(
     upgradeRouter,
     token,
     url: `http://${urlHost}:${boundPort}/?token=${encodeURIComponent(token)}`,
-    close: () => {
+    close: async () => {
       judgeLoop?.stop();
+      // Flush pending idle-version captures before the socket stops taking writes.
+      await workspace.idleVersioner.flushAll();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     },
   };
