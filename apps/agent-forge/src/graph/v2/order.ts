@@ -6,7 +6,7 @@
  * (`orderedNodes`) that `specToGraph`'s push order, `graphToSpec`'s
  * `nodeIdMap` and every consumer share.
  */
-import type { AgentNodeData, Graph, GraphNode, SectionKey, SubagentNodeData } from './types';
+import type { AgentNodeData, Graph, GraphNode, McpNodeData, SectionKey, SubagentNodeData } from './types';
 import { ROOT_AGENT_ID, SECTION_KIND, SECTION_ORDER } from './types';
 
 /** PLAN §3.1 declaration order. Emission order when there is no previousSpec. */
@@ -72,6 +72,17 @@ export function subagentSiblingKeys(graph: Graph, ownerId: string | null): strin
     .filter((n) => n.owner === ownerId && n.proposed !== 'remove')
     .map((n) => subagentEntryKey(n))
     .filter((key): key is string => key !== undefined);
+}
+
+/**
+ * The `mcpServers` record keys already taken under `ownerId` — the `taken`
+ * set for `uniqueName` when a palette entry or a duplicate names a new
+ * MCP server node.
+ */
+export function mcpSiblingKeys(graph: Graph, ownerId: string | null): string[] {
+  return graph.nodes
+    .filter((n) => n.owner === ownerId && n.kind === 'mcp' && n.proposed !== 'remove')
+    .map((n) => (n.data as McpNodeData).key);
 }
 
 /**
