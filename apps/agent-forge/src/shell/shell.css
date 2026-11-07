@@ -9,6 +9,7 @@
   display: grid;
   grid-template-columns: 232px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+  background: var(--nav-bg);
   transition: grid-template-columns var(--dur) var(--ease);
 }
 .app-shell[data-nav='collapsed'] {
@@ -19,6 +20,12 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  margin: var(--space-2) var(--space-2) var(--space-2) 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 .app-shell-main > .app {
   flex: 1;
@@ -34,8 +41,8 @@
 }
 
 .nav-rail {
-  background: var(--surface);
-  border-right: 1px solid var(--border);
+  background: var(--nav-bg);
+  border-right: 0;
   display: flex;
   flex-direction: column;
   padding: var(--space-3) var(--space-2);
@@ -131,13 +138,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Nav items sit on --nav-bg: --surface-2 is too close to it in light mode, so hover/active use --surface there. */
 .nav-item:hover {
-  background: var(--surface-2);
+  background: light-dark(var(--surface), var(--surface-2));
   color: var(--text);
 }
 .nav-item.active {
-  background: light-dark(var(--surface-3), var(--surface-2));
+  background: light-dark(var(--surface), var(--surface-2));
   color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--border);
 }
 .nav-item.active .nav-icon {
   color: var(--accent);
@@ -262,6 +271,10 @@
 }
 .app-shell-narrow .app-shell-main {
   grid-row: 2;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 .app-shell-narrow .nav-rail {
   position: absolute;
@@ -270,6 +283,8 @@
   left: 0;
   z-index: 40;
   width: min(260px, 86vw);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
   box-shadow: var(--shadow);
   transform: translateX(-100%);
   visibility: hidden;
