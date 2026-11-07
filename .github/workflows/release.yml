@@ -69,6 +69,8 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Mirror to GitHub Packages
+        # Best effort: npm is the source of truth, so a mirror failure must not skip the GitHub release.
+        continue-on-error: true
         run: node scripts/publish-github-packages.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
