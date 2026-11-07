@@ -44,6 +44,8 @@ export type { GuardrailSpec } from '../../../../../src/spec/v2/guardrails';
 export type { PermissionRuleSpec } from '../../../../../src/spec/v2/permissions';
 /** One `spec.hooks` entry, plus the `inline` member's shape for the hook Inspector. */
 export type { HookSpec, InlineHookSpec } from '../../../../../src/spec/v2/hooks';
+/** The agent's `spec.output` section (`jsonSchema` plus `promptSchema`/`responseFormat`). */
+export type { OutputSpecV2 } from '../../../../../src/spec/v2/output';
 /**
  * One `spec.triggers` entry, plus the channel union and the required
  * `secrets` keys per channel kind (`CHANNEL_SECRET_KEYS`) — the SDK's own

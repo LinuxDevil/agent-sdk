@@ -208,6 +208,17 @@ describe('canConnect instance rules', () => {
     });
   });
 
+  it('refuses agent -> a second output schema (the agent already owns one)', () => {
+    const source = node('agent', { id: 'agent' });
+    const own = node('output', { id: 'output', owner: 'agent' });
+    const other = node('output', { id: 'output#2', owner: 'other' });
+    expect(canConnect(source, own)).toEqual({ ok: false, reason: 'Already attached to this agent' });
+    expect(canConnect(source, other)).toEqual({
+      ok: false,
+      reason: 'This agent already has an output schema',
+    });
+  });
+
   it('refuses agent -> output owned by the agent with the attach reason (rule order)', () => {
     const source = node('agent', { id: 'agent' });
     const target = node('output', { owner: 'agent' });
