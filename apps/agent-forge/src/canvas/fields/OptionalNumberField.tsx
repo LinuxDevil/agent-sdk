@@ -4,10 +4,15 @@
  * number, `min`/`max` range). Invalid text stays in the draft and is
  * never emitted; an empty input emits `undefined`.
  */
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import type { ChangeEvent } from 'react';
 import { Field } from '../../ui/Field';
 import { Input } from '../../ui/controls';
+import { useSyncedDraft } from './useSyncedDraft';
 import './fields.css';
+
+function numberText(value: number | undefined): string {
+  return value === undefined ? '' : String(value);
+}
 
 /** Props for {@link OptionalNumberField}. */
 export interface OptionalNumberFieldProps {
@@ -66,35 +71,21 @@ export function OptionalNumberField({
   help,
   unit,
 }: OptionalNumberFieldProps): JSX.Element {
-  const [draft, setDraft] = useState(() => (value === undefined ? '' : String(value)));
-  const [error, setError] = useState<string | undefined>();
-  // The last value this field emitted, so an external change can be told
-  // apart from the echo of our own onChange (which must not clobber the
-  // draft the user is still typing, e.g. a trailing '0.').
-  const emitted = useRef<number | undefined>(value);
-  useEffect(() => {
-    if (Object.is(value, emitted.current)) return;
-    emitted.current = value;
-    setDraft(value === undefined ? '' : String(value));
-    setError(undefined);
-  }, [value]);
+  const { draft, setDraft, error, setError, emit } = useSyncedDraft(value, numberText, onChange);
 
   const onText = (event: ChangeEvent<HTMLInputElement>) => {
     const text = event.target.value;
     setDraft(text);
     if (text.trim() === '') {
-      setError(undefined);
-      emitted.current = undefined;
-      onChange(undefined);
+      emit(undefined);
       return;
     }
     const problem = validate(text, { min, max, integer });
-    setError(problem);
-    if (problem === undefined) {
-      const num = Number(text);
-      emitted.current = num;
-      onChange(num);
+    if (problem !== undefined) {
+      setError(problem);
+      return;
     }
+    emit(Number(text));
   };
 
   return (

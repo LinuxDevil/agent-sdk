@@ -49,7 +49,7 @@ export interface CatalogRouteDeps {
  * filter. `command`/`url` are the (optional) fields an item of
  * `type: 'mcp'` would carry; the index has none today.
  */
-export interface RegistryItem {
+interface RegistryItem {
   name: string;
   type: string;
   description: string;
@@ -70,7 +70,7 @@ function isRegistryItem(value: unknown): value is RegistryItem {
  * (author/tools/catalogService.ts), which reads skills, kits and any
  * `type: 'mcp'` entries from the same index.
  */
-export async function readRegistryIndex(indexPath: string): Promise<RegistryItem[]> {
+async function readRegistryIndex(indexPath: string): Promise<RegistryItem[]> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(await fs.promises.readFile(indexPath, 'utf8'));
@@ -110,16 +110,29 @@ function parseProvider(query: unknown): { provider?: string; error?: string } {
   return { provider: query };
 }
 
+interface StaticCatalog {
+  registryItems: Promise<RegistryItem[]>;
+  tools: CatalogTool[];
+  guardrails: CatalogGuardrail[];
+  triggerTypes: CatalogTriggerType[];
+}
+
+export function loadStaticCatalog(registryIndexPath?: string): StaticCatalog {
+  const indexPath = registryIndexPath ?? path.join(sdkRootDir(), 'registry', 'dist', 'index.json');
+  return {
+    registryItems: readRegistryIndex(indexPath),
+    tools: listBuiltinTools(),
+    guardrails: listGuardrails(),
+    triggerTypes: listTriggerTypes(),
+  };
+}
+
 /**
  * Registers the six catalog routes. `deps.secretsStore` only decides the
  * `available` flag on models - keys are never placed in a response body.
  */
 export function registerCatalogRoutes(app: Express, deps: CatalogRouteDeps): void {
-  const indexPath = deps.registryIndexPath ?? path.join(sdkRootDir(), 'registry', 'dist', 'index.json');
-  const registryItems = readRegistryIndex(indexPath);
-  const tools: CatalogTool[] = listBuiltinTools();
-  const guardrails: CatalogGuardrail[] = listGuardrails();
-  const triggerTypes: CatalogTriggerType[] = listTriggerTypes();
+  const { registryItems, tools, guardrails, triggerTypes } = loadStaticCatalog(deps.registryIndexPath);
 
   app.get('/catalog/models', (req, res) => {
     const parsed = parseProvider(req.query.provider);

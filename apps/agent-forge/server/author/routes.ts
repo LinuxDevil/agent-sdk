@@ -17,7 +17,6 @@ import { randomUUID } from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 import {
   AUTHOR_SESSION_ID_RE,
-  type AuthorFocus,
   type AuthorMessage,
   type AuthorSessionRecord,
   type AuthorToolPart,
@@ -30,6 +29,7 @@ import type { SecretsStore } from '../secretsStore';
 import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceResolver } from '../workspace/context';
 import { applyStoredProposal } from './applyProposal';
+import { parseFocus, type ParsedFocus } from './parseFocus';
 import { computeRequirements, requirementDeps } from './requirements';
 import { setAgentEnabledFor } from './tools/stateTools';
 import type { AuthorSessionStore } from './sessionStore';
@@ -44,18 +44,10 @@ const INVALID_FOCUS_MESSAGE = 'focus must be { mode: "create" } or { mode: "edit
  * is present it must be `{ mode: 'create' }` or `{ mode: 'edit', agentId }`
  * with `agentId` passing `isValidAgentId`.
  */
-function parseFocus(body: unknown): { ok: true; focus?: AuthorFocus } | { ok: false } {
+function parseBodyFocus(body: unknown): ParsedFocus {
   if (body === undefined || body === null) return { ok: true };
   if (typeof body !== 'object' || Array.isArray(body)) return { ok: false };
-  const focus = (body as { focus?: unknown }).focus;
-  if (focus === undefined) return { ok: true };
-  if (typeof focus !== 'object' || focus === null || Array.isArray(focus)) return { ok: false };
-  const candidate = focus as { mode?: unknown; agentId?: unknown };
-  if (candidate.mode === 'create') return { ok: true, focus: { mode: 'create' } };
-  if (candidate.mode === 'edit' && typeof candidate.agentId === 'string' && isValidAgentId(candidate.agentId)) {
-    return { ok: true, focus: { mode: 'edit', agentId: candidate.agentId } };
-  }
-  return { ok: false };
+  return parseFocus((body as { focus?: unknown }).focus);
 }
 
 /** The request's `:id` as a session id, or `undefined` once the 400 was sent. */
@@ -213,7 +205,7 @@ export function registerAuthorRoutes(
   app.post(
     '/assistant/sessions',
     asyncRoute(async (req, res) => {
-      const parsed = parseFocus(req.body);
+      const parsed = parseBodyFocus(req.body);
       if (!parsed.ok) {
         sendError(res, 400, INVALID_FOCUS_MESSAGE, 'INVALID_INPUT');
         return;

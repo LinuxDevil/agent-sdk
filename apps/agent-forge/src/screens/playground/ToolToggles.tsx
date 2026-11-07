@@ -89,7 +89,7 @@ export function ToolToggles({ tools, onChange }: { tools: string[]; onChange: (t
                 </span>
                 <input
                   type="checkbox"
-                  className="pg-switch"
+                  className="switch"
                   checked={tools.includes(name)}
                   onChange={(e) => toggle(name, e.target.checked)}
                 />

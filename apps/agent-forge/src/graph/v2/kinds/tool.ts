@@ -53,34 +53,31 @@ export function fullUrlOk(url: string): boolean {
 
 /** The form's required-field errors, in the ticket's order. */
 function formProblems(node: NodeOfKind<'tool'>, path: string): Problem[] {
-  const { item } = node.data;
-  const fail = (field: string, message: string): Problem => ({
-    nodeId: node.id,
-    severity: 'error',
-    message,
-    fieldPath: `${path}.${field}`,
-  });
-  if ('builtin' in item) {
-    return blank(item.builtin) ? [fail('builtin', 'Pick a tool')] : [];
-  }
-  if ('registry' in item) {
-    return blank(item.registry) ? [fail('registry', 'Enter the registry item name')] : [];
-  }
-  if ('file' in item) {
-    return toolFilePathOk(item.file) ? [] : [fail('file', FILE_ERROR)];
-  }
+  const issue = formIssue(node.data.item);
+  if (issue === undefined) return [];
+  return [{ nodeId: node.id, severity: 'error', message: issue.message, fieldPath: `${path}.${issue.field}` }];
+}
+
+interface FormIssue {
+  field: string;
+  message: string;
+}
+
+function issueIf(failed: boolean, field: string, message: string): FormIssue | undefined {
+  return failed ? { field, message } : undefined;
+}
+
+function formIssue(item: ToolNodeData['item']): FormIssue | undefined {
+  if ('builtin' in item) return issueIf(blank(item.builtin), 'builtin', 'Pick a tool');
+  if ('registry' in item) return issueIf(blank(item.registry), 'registry', 'Enter the registry item name');
+  if ('file' in item) return issueIf(!toolFilePathOk(item.file), 'file', FILE_ERROR);
   if ('integration' in item) {
-    return Object.keys(item.credentials ?? {}).length === 0
-      ? [fail('credentials', 'Add the credentials this integration needs')]
-      : [];
+    const missing = Object.keys(item.credentials ?? {}).length === 0;
+    return issueIf(missing, 'credentials', 'Add the credentials this integration needs');
   }
-  if ('openapi' in item) {
-    return fullUrlOk(item.openapi.url) ? [] : [fail('openapi.url', 'Enter the OpenAPI document URL')];
-  }
-  if ('hosted' in item) {
-    return blank(item.hosted) ? [fail('hosted', 'Pick a provider-hosted tool')] : [];
-  }
-  return [];
+  if ('openapi' in item) return issueIf(!fullUrlOk(item.openapi.url), 'openapi.url', 'Enter the OpenAPI document URL');
+  if ('hosted' in item) return issueIf(blank(item.hosted), 'hosted', 'Pick a provider-hosted tool');
+  return undefined;
 }
 
 /** The `id` error: set but not a spec id. */

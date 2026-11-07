@@ -141,7 +141,7 @@ function GeneralCard({
           </label>
           <label className="ev-enabled">
             <input
-              className="ev-switch"
+              className="switch"
               name="evaluator-enabled"
               type="checkbox"
               role="switch"

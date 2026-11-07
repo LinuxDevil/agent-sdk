@@ -24,7 +24,7 @@ function EnabledSwitch({ rule, on, onFlip }: { rule: ObserveEvaluator; on: boole
         {on ? 'On' : 'Off'}
       </span>
       <input
-        className="ev-switch"
+        className="switch"
         type="checkbox"
         role="switch"
         aria-label={`${rule.name} enabled`}
