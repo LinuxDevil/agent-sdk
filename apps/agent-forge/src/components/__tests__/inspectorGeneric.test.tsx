@@ -23,7 +23,7 @@ const baseGraph = (): Graph =>
     model: 'mock/mock-1',
     instructions: 'p',
     abortListeners: [{ id: 'a1', triggerId: 't1', when: 'event.x', match: 'run.y', scope: 'both' }],
-  } as Parameters<typeof specToGraph>[0]);
+  } as unknown as Parameters<typeof specToGraph>[0]);
 
 beforeEach(() => {
   appState.graph = baseGraph();
