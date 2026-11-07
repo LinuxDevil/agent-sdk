@@ -60,6 +60,12 @@ function costFailure(cost: CostComparison, maxCostIncrease: number): string | un
   return `The edit raised cost per passing run by more than ${Math.round(maxCostIncrease * 100)}% and more than noise (${Math.round(cost.base)} to ${Math.round(cost.final)} tokens, noise ${Math.round(cost.noise)}).`;
 }
 
+/** Says how cost per passing run changed, or that it couldn't be compared, for a proposal's `reason`. */
+export function costNote(cost: CostComparison | undefined): string {
+  if (!cost) return ' Cost could not be compared, because no case passed under both harnesses.';
+  return ` Cost per passing run went from ${Math.round(cost.base)} to ${Math.round(cost.final)} tokens (noise ${Math.round(cost.noise)}).`;
+}
+
 export function caseCount(runs: readonly LabelledRun[], caseId: string): CaseCount {
   const scored = runs.filter((entry) => entry.caseId === caseId && entry.run.passed !== null);
   return { passed: scored.filter((entry) => entry.run.passed).length, scored: scored.length };

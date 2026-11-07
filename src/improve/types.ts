@@ -57,7 +57,7 @@ export interface ImproveOptions {
   maxTokens?: number;
   /** Most characters of always-on instructions an edit may leave (default 8000). */
   maxAlwaysOnChars?: number;
-  /** The largest rise in tokens per passing run a result may cost, as a fraction, on cases that pass under both harnesses (default 0.2). A rise within measured noise isn't rejected. */
+  /** The largest rise in tokens per passing run a result may cost, as a fraction, on cases that pass under both harnesses (default 0.5). A smaller rise, or one within measured noise, is reported in `reason` and doesn't reject. */
   maxCostIncrease?: number;
   /** Most steps per editor session (default 30). */
   maxEditorSteps?: number;

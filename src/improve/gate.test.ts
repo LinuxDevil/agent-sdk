@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LabelledRun } from './evidence';
-import { caseCount, HOLDOUT_RERUNS, holdoutFailure, judgeHoldoutCase, judgePooledHoldout, judgeTrainingCase, MIN_CASE_GAIN, trainingFailure, type JudgedCase } from './gate';
+import { caseCount, costNote, HOLDOUT_RERUNS, holdoutFailure, judgeHoldoutCase, judgePooledHoldout, judgeTrainingCase, MIN_CASE_GAIN, trainingFailure, type JudgedCase } from './gate';
 import type { CaseCount } from './types';
 
 const runs = (caseId: string, results: (boolean | null)[]): LabelledRun[] =>
@@ -126,5 +126,12 @@ describe('holdoutFailure', () => {
   it('names the regressed cases, and passes when there are none', () => {
     expect(holdoutFailure([])).toBeUndefined();
     expect(holdoutFailure(['a', 'b'])).toBe('A held-out case got worse over the pooled runs (a, b).');
+  });
+});
+
+describe('costNote', () => {
+  it('reports the cost change, or says it could not be compared', () => {
+    expect(costNote({ cases: 2, base: 10.4, final: 14.6, noise: 1.2 })).toBe(' Cost per passing run went from 10 to 15 tokens (noise 1).');
+    expect(costNote(undefined)).toBe(' Cost could not be compared, because no case passed under both harnesses.');
   });
 });

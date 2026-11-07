@@ -3,14 +3,14 @@ import { CompactedLLMProviderError, ConfigurationError } from '../execution/erro
 import { MemoryWorkspace } from '../tools/workspace/MemoryWorkspace';
 import { createFsTools } from '../tools/workspace/fsTools';
 import { evidenceFiles, type LabelledRun } from './evidence';
-import { caseCount, costOnPassingCases, gateFailure, HOLDOUT_RERUNS, judgeHoldoutCase, judgePooledHoldout, judgeTrainingCase, summarize, trainingFailure } from './gate';
+import { caseCount, costNote, costOnPassingCases, gateFailure, HOLDOUT_RERUNS, judgeHoldoutCase, judgePooledHoldout, judgeTrainingCase, summarize, trainingFailure } from './gate';
 import { diffHarness, harnessFiles, readHarness, validateHarness } from './harness';
 import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, rejectedNote } from './prompts';
 import type { CaseVerdict, Harness, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeSummary } from './types';
 
 const DEFAULT_REPEATS = 3;
 const DEFAULT_MAX_ALWAYS_ON = 8000;
-const DEFAULT_MAX_COST_INCREASE = 0.2;
+const DEFAULT_MAX_COST_INCREASE = 0.5;
 const DEFAULT_MAX_EDITOR_STEPS = 30;
 const STAGE_ATTEMPTS = 2;
 
@@ -182,7 +182,7 @@ async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness
   const failure = gateFailure({ training, regressed, ...(cost && { cost }), maxCostIncrease: options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE });
   const shared = { ...summaries, cases: [...trainingVerdicts, ...verdicts] };
   if (failure) return { outcome: 'keep-base', reason: failure, ...shared };
-  const reason = `A training case improved by at least 2 in 3 runs, none got worse, and no held-out case got worse.${cost ? '' : ' Cost could not be compared, because no case passed under both harnesses.'}`;
+  const reason = `A training case improved by at least 2 in 3 runs, none got worse, and no held-out case got worse.${costNote(cost)}`;
   return { outcome: 'proposal', reason, harness: composed, diff: diffHarness(options.harness, composed), ...shared };
 }
 
