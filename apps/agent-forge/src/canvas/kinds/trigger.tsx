@@ -77,12 +77,13 @@ function rows(node: NodeOfKind<'trigger'>): NodeRow[] {
 }
 
 /** One Start-group palette entry: `create` gives the type's empty value a fresh `t<n>` id. */
-function paletteEntry(id: string, label: string, description: string, type: string): PaletteEntry {
+function paletteEntry(id: string, label: string, description: string, type: string, keywords?: string[]): PaletteEntry {
   return {
     id,
     group: 'Start',
     label,
     description,
+    keywords,
     kind: 'trigger',
     create: (graph) => ({
       kind: 'trigger',
@@ -93,7 +94,7 @@ function paletteEntry(id: string, label: string, description: string, type: stri
 
 const PALETTE: PaletteEntry[] = [
   paletteEntry('trigger-chat', 'Chat', 'Starts on a message', 'chat'),
-  paletteEntry('trigger-cron', 'Schedule', 'Starts on a cron schedule', 'cron'),
+  paletteEntry('trigger-cron', 'Schedule', 'Starts on a cron schedule', 'cron', ['schedule', 'timer']),
   paletteEntry('trigger-webhook', 'Webhook', 'Starts on an HTTP call', 'webhook'),
   paletteEntry('trigger-channel', 'Channel', 'Slack, Telegram, GitHub and more', 'channel'),
   paletteEntry('trigger-agent', 'After another agent', 'Chains agents', 'agent'),

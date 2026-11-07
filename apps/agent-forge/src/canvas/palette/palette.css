@@ -1,0 +1,75 @@
+/* NodePalette (C18): the Nodes tab's search box, collapsible group headers,
+   owner hint and empty-search row. Tokens only; the item cards themselves
+   stay styled by `.node-palette-item` in screens/agents/agents.css. */
+
+.palette-search {
+  padding: 0 var(--space-1) var(--space-2);
+}
+.palette-search .input {
+  width: 100%;
+}
+
+.palette-owner {
+  padding: 0 var(--space-1) var(--space-2);
+  font-size: var(--fs-overline);
+  color: var(--text-faint);
+}
+
+.palette-group:first-child .palette-group-head {
+  margin-top: var(--space-1);
+}
+
+.palette-group-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin: var(--space-3) var(--space-1) 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+.palette-group-head:hover .palette-group-name {
+  color: var(--text-muted);
+}
+.palette-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-count {
+  margin-left: auto;
+  font-size: var(--fs-overline);
+  color: var(--text-faint);
+}
+.palette-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.palette-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-1);
+}
+
+/* An `unavailable` entry stays focusable (aria-disabled, not disabled) so
+   the roving list and its reason announcement keep working. */
+.node-palette-item[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.node-palette-item[aria-disabled='true']:hover {
+  border-color: var(--border);
+  background: var(--surface);
+}

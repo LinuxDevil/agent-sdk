@@ -238,14 +238,9 @@ describe('NodesTab palette', () => {
       // The registered views contribute the Start (triggers), Agents (C04),
       // Safety (C11's permission rule, C13's hook), Output (C14's output
       // schema) and Canvas (C13's note) groups; the fake view adds Capabilities.
-      expect([...container.querySelectorAll('.palette-group .rail-section-title')].map((g) => g.textContent)).toEqual([
-        'Start',
-        'Agents',
-        'Capabilities',
-        'Safety',
-        'Output',
-        'Canvas',
-      ]);
+      expect(
+        [...container.querySelectorAll('.palette-group-head .palette-group-name')].map((g) => g.textContent),
+      ).toEqual(['Start', 'Agents', 'Capabilities', 'Safety', 'Output', 'Canvas']);
       const item = [...container.querySelectorAll<HTMLElement>('.node-palette-item')].find(
         (el) => el.getAttribute('aria-label') === 'Tool call',
       )!;
@@ -280,7 +275,8 @@ describe('NodesTab palette', () => {
         [...c.querySelectorAll<HTMLButtonElement>('.node-palette-item')].find(
           (el) => el.getAttribute('aria-label') === 'Output schema',
         )!;
-      expect(find(enabled).disabled).toBe(false);
+      expect(find(enabled).getAttribute('aria-disabled')).toBeNull();
+      expect(find(enabled).draggable).toBe(true);
       cleanup();
 
       appState.graph = {
@@ -310,7 +306,8 @@ describe('NodesTab palette', () => {
         </ReactFlowProvider>,
       );
       const item = find(disabled);
-      expect(item.disabled).toBe(true);
+      expect(item.getAttribute('aria-disabled')).toBe('true');
+      expect(item.draggable).toBe(false);
       expect(item.title).toBe('This agent already has an output schema');
     } finally {
       appState.graph = savedGraph;

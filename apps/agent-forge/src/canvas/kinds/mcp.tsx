@@ -52,6 +52,7 @@ const PALETTE: PaletteEntry[] = [
     group: 'Capabilities',
     label: 'MCP server',
     description: 'Tools from an MCP server',
+    keywords: ['server', 'plugin'],
     kind: 'mcp',
     create: (graph, owner) => ({
       kind: 'mcp',
