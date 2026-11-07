@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LabelledRun } from './evidence';
-import { caseCount, judgeTrainingCase, MIN_CASE_GAIN, trainingFailure, type JudgedCase } from './gate';
+import { caseCount, HOLDOUT_RERUNS, holdoutFailure, judgeHoldoutCase, judgePooledHoldout, judgeTrainingCase, MIN_CASE_GAIN, trainingFailure, type JudgedCase } from './gate';
 import type { CaseCount } from './types';
 
 const runs = (caseId: string, results: (boolean | null)[]): LabelledRun[] =>
@@ -77,5 +77,54 @@ describe('trainingFailure', () => {
       const count = caseCount(runs('c', pattern), 'c');
       expect(trainingFailure([judgeTrainingCase('c', count, count)])).toBeDefined();
     }
+  });
+});
+
+const count = (ratio: string): CaseCount => {
+  const [passed, scored] = ratio.split('/').map(Number);
+  return { passed, scored };
+};
+
+describe('judgeHoldoutCase', () => {
+  it.each([
+    { base: '3/3', final: '3/3', needsRerun: false, reason: /held: 3\/3 before, 3\/3 after/i },
+    { base: '3/3', final: '2/3', needsRerun: true, reason: /dropped from 3\/3 to 2\/3, so both harnesses ran 3 more times/i },
+    { base: '2/3', final: '3/3', needsRerun: false, reason: /held/i },
+    { base: '0/3', final: '0/3', needsRerun: false, reason: /failed under both/i },
+    { base: '0/0', final: '3/3', needsRerun: false, reason: /could not be scored/i },
+  ])('judges $base to $final', ({ base, final, needsRerun, reason }) => {
+    const result = judgeHoldoutCase('h', count(base), count(final));
+    expect(result.needsRerun).toBe(needsRerun);
+    expect(result.verdict).toMatchObject({ caseId: 'h', role: 'holdout', base: count(base), final: count(final) });
+    expect(result.verdict.reasons).toHaveLength(1);
+    expect(result.verdict.reasons[0]).toMatch(reason);
+  });
+});
+
+describe('judgePooledHoldout', () => {
+  it.each([
+    { base: '6/6', final: '5/6', regressed: false, reason: /pooled 6\/6 to 5\/6: within chance/i },
+    { base: '6/6', final: '4/6', regressed: true, reason: /pooled 6\/6 to 4\/6: a regression/i },
+    { base: '5/6', final: '3/6', regressed: true, reason: /a regression/i },
+    { base: '4/6', final: '3/6', regressed: false, reason: /within chance/i },
+    { base: '6/6', final: '4/5', regressed: false, reason: /within chance/i },
+    { base: '6/6', final: '0/0', regressed: false, reason: /could not be scored/i },
+  ])('judges pooled $base to $final', ({ base, final, regressed, reason }) => {
+    const first = judgeHoldoutCase('h', count('3/3'), count('2/3')).verdict;
+    const result = judgePooledHoldout('h', count(base), count(final), 3, first);
+    expect(result.regressed).toBe(regressed);
+    expect(result.verdict).toMatchObject({ caseId: 'h', role: 'holdout', base: count(base), final: count(final) });
+    expect(result.verdict.reasons).toEqual([first.reasons[0], expect.stringMatching(reason)]);
+  });
+
+  it('reruns 3 times per harness', () => {
+    expect(HOLDOUT_RERUNS).toBe(3);
+  });
+});
+
+describe('holdoutFailure', () => {
+  it('names the regressed cases, and passes when there are none', () => {
+    expect(holdoutFailure([])).toBeUndefined();
+    expect(holdoutFailure(['a', 'b'])).toBe('A held-out case got worse over the pooled runs (a, b).');
   });
 });

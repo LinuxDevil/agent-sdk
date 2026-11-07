@@ -6,6 +6,10 @@ export type CostComparison = NonNullable<ImproveResult['costOnPassingCases']>;
 export const MIN_CASE_GAIN = 2 / 3;
 const MIN_SCORED_RUNS = 2;
 
+export const HOLDOUT_RERUNS = 3;
+
+const UNSCORED = 'Could not be scored under both harnesses, so it was left out.';
+
 export interface JudgedCase {
   verdict: CaseVerdict;
   scorable: boolean;
@@ -80,7 +84,7 @@ function judgeScored(base: CaseCount, final: CaseCount): Judgement {
 export function judgeTrainingCase(caseId: string, base: CaseCount, final: CaseCount): JudgedCase {
   const unscored = base.scored === 0 || final.scored === 0;
   const { reason, ...judgement } = unscored
-    ? { scorable: false, improved: false, dropped: false, reason: 'Could not be scored under both harnesses, so it was left out.' }
+    ? { scorable: false, improved: false, dropped: false, reason: UNSCORED }
     : judgeScored(base, final);
   return { verdict: { caseId, role: 'training', base, final, reasons: [reason] }, ...judgement };
 }
@@ -93,17 +97,33 @@ export function trainingFailure(cases: readonly JudgedCase[]): string | undefine
   return undefined;
 }
 
-function holdoutFailure(holdout: { base: ProbeSummary; final: ProbeSummary } | undefined): string | undefined {
-  if (!holdout || holdout.base.passRate === null || holdout.final.passRate === null) return undefined;
-  if (holdout.final.passRate >= holdout.base.passRate) return undefined;
-  return `A held-out case got worse (${holdout.base.passRate.toFixed(2)} to ${holdout.final.passRate.toFixed(2)}).`;
+const scoredBoth = (base: CaseCount, final: CaseCount) => base.scored > 0 && final.scored > 0;
+
+function holdoutReason(base: CaseCount, final: CaseCount, needsRerun: boolean): string {
+  if (!scoredBoth(base, final)) return UNSCORED;
+  if (needsRerun) return `Dropped from ${ratio(base)} to ${ratio(final)}, so both harnesses ran ${HOLDOUT_RERUNS} more times.`;
+  if (base.passed === 0 && final.passed === 0) return "Failed under both harnesses, so it can't show a regression.";
+  return `Held: ${ratio(base)} before, ${ratio(final)} after.`;
 }
 
-export function gateFailure(input: {
-  training: readonly JudgedCase[];
-  holdout?: { base: ProbeSummary; final: ProbeSummary };
-  cost?: CostComparison;
-  maxCostIncrease: number;
-}): string | undefined {
-  return trainingFailure(input.training) ?? holdoutFailure(input.holdout) ?? (input.cost && costFailure(input.cost, input.maxCostIncrease));
+export function judgeHoldoutCase(caseId: string, base: CaseCount, final: CaseCount): { verdict: CaseVerdict; needsRerun: boolean } {
+  const needsRerun = scoredBoth(base, final) && rate(final) < rate(base);
+  return { verdict: { caseId, role: 'holdout', base, final, reasons: [holdoutReason(base, final, needsRerun)] }, needsRerun };
+}
+
+export function judgePooledHoldout(caseId: string, base: CaseCount, final: CaseCount, repeats: number, first: CaseVerdict): { verdict: CaseVerdict; regressed: boolean } {
+  const scorable = scoredBoth(base, final);
+  const regressed = scorable && rate(base) - rate(final) >= 2 / (repeats + HOLDOUT_RERUNS) - 1e-9;
+  const pooled = `Pooled ${ratio(base)} to ${ratio(final)}`;
+  const reason = !scorable ? UNSCORED : regressed ? `${pooled}: a regression.` : `${pooled}: within chance, not a regression.`;
+  return { verdict: { ...first, caseId, role: 'holdout', base, final, reasons: [...first.reasons, reason] }, regressed };
+}
+
+export function holdoutFailure(regressed: readonly string[]): string | undefined {
+  if (regressed.length === 0) return undefined;
+  return `A held-out case got worse over the pooled runs (${regressed.join(', ')}).`;
+}
+
+export function gateFailure(input: { training: readonly JudgedCase[]; regressed: readonly string[]; cost?: CostComparison; maxCostIncrease: number }): string | undefined {
+  return trainingFailure(input.training) ?? holdoutFailure(input.regressed) ?? (input.cost && costFailure(input.cost, input.maxCostIncrease));
 }
