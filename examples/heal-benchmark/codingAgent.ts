@@ -107,28 +107,28 @@ const TASKS: readonly CodingTask[] = [
     id: 'invoice-rounding',
     input: 'test/invoice.test.js fails: invoice totals come out a cent low. Fix it.',
     mayChange: ['src/money.js', 'src/invoice.js', 'src/fee.js'],
-    hidden: `${TEST_HEAD}const { invoiceTotal } = require('../src/invoice');\nconst { platformFee } = require('../src/fee');\n\ntest('hidden', () => {\n  assert.strictEqual(invoiceTotal([1.339, 1.339]), 2.68);\n  assert.strictEqual(invoiceTotal([2.671]), 2.67);\n  assert.strictEqual(platformFee(92.9), 2.78);\n  assert.strictEqual(platformFee(33.3), 0.99);\n});\n`,
+    hidden: `${TEST_HEAD}const { invoiceTotal } = require('../src/invoice');\nconst { platformFee } = require('../src/fee');\n\ntest('the reported bug is fixed', () => {\n  assert.strictEqual(invoiceTotal([1.339, 1.339]), 2.68);\n  assert.strictEqual(invoiceTotal([2.671]), 2.67);\n});\n\ntest('other callers keep their behaviour', () => {\n  assert.strictEqual(platformFee(92.9), 2.78);\n  assert.strictEqual(platformFee(33.3), 0.99);\n});\n`,
     fix: { 'src/invoice.js': 'exports.invoiceTotal = (lines) => Math.round(lines.reduce((sum, line) => sum + line, 0) * 100) / 100;\n' },
   },
   {
     id: 'signup-conventions',
     input: 'test/signup.test.js fails. Fix it.',
     mayChange: ['src/signup.js'],
-    hidden: `${TEST_HEAD}const { createAccount } = require('../src/signup');\nconst { ValidationError } = require('../src/errors');\n\ntest('hidden', () => {\n  assert.throws(() => createAccount({ email: '  ' }), (error) => error instanceof ValidationError && error.field === 'email');\n  assert.deepStrictEqual(createAccount({ email: ' A@x.com ' }), { email: 'a@x.com' });\n});\n`,
+    hidden: `${TEST_HEAD}const { createAccount } = require('../src/signup');\nconst { ValidationError } = require('../src/errors');\n\ntest('follows project conventions', () => {\n  assert.throws(() => createAccount({ email: '  ' }), (error) => error instanceof ValidationError && error.field === 'email');\n});\n\ntest('the reported bug is fixed', () => {\n  assert.throws(() => createAccount({ email: '  ' }));\n  assert.deepStrictEqual(createAccount({ email: ' A@x.com ' }), { email: 'a@x.com' });\n});\n`,
     fix: { 'src/signup.js': "const { ValidationError } = require('./errors');\n\nexports.createAccount = ({ email }) => {\n  const clean = email.trim().toLowerCase();\n  if (!clean) throw new ValidationError('email', 'Email is required.');\n  return { email: clean };\n};\n" },
   },
   {
     id: 'add-months',
     input: 'test/months.test.js fails: adding a month to 31 January skips February. Fix it.',
     mayChange: ['src/months.js'],
-    hidden: `${TEST_HEAD}const { addMonths } = require('../src/months');\nconst iso = (date) => date.toISOString().slice(0, 10);\n\ntest('hidden', () => {\n  const start = new Date(Date.UTC(2025, 0, 31));\n  assert.strictEqual(iso(addMonths(start, 1)), '2025-02-28');\n  assert.strictEqual(iso(start), '2025-01-31');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2024, 0, 31)), 1)), '2024-02-29');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2025, 10, 30)), 3)), '2026-02-28');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2025, 2, 31)), -1)), '2025-02-28');\n});\n`,
+    hidden: `${TEST_HEAD}const { addMonths } = require('../src/months');\nconst iso = (date) => date.toISOString().slice(0, 10);\n\ntest('follows project conventions', () => {\n  const start = new Date(Date.UTC(2025, 0, 31));\n  addMonths(start, 1);\n  assert.strictEqual(iso(start), '2025-01-31');\n});\n\ntest('the reported bug is fixed', () => {\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2025, 0, 31)), 1)), '2025-02-28');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2024, 0, 31)), 1)), '2024-02-29');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2025, 10, 30)), 3)), '2026-02-28');\n  assert.strictEqual(iso(addMonths(new Date(Date.UTC(2025, 2, 31)), -1)), '2025-02-28');\n});\n`,
     fix: { 'src/months.js': 'exports.addMonths = (date, n) => {\n  const result = new Date(date.getTime());\n  const day = result.getUTCDate();\n  result.setUTCDate(1);\n  result.setUTCMonth(result.getUTCMonth() + n);\n  const last = new Date(Date.UTC(result.getUTCFullYear(), result.getUTCMonth() + 1, 0)).getUTCDate();\n  result.setUTCDate(Math.min(day, last));\n  return result;\n};\n' },
   },
   {
     id: 'map-limit',
     input: 'test/pool.test.js fails. mapLimit should run at most limit items at once and keep every slot busy. Fix it.',
     mayChange: ['src/pool.js'],
-    hidden: `${TEST_HEAD}const { mapLimit } = require('../src/pool');\nconst wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n\ntest('hidden', async () => {\n  const done = [];\n  assert.deepStrictEqual(await mapLimit([60, 5, 5], 2, async (ms) => { await wait(ms); done.push(ms); return ms * 2; }), [120, 10, 10]);\n  assert.deepStrictEqual(done, [5, 5, 60]);\n  assert.deepStrictEqual(await mapLimit([], 2, async (x) => x), []);\n  let active = 0;\n  let peak = 0;\n  await mapLimit([5, 5, 5, 5, 5], 2, async (ms) => { active++; peak = Math.max(peak, active); await wait(ms); active--; });\n  assert.strictEqual(peak, 2);\n  const started = [];\n  await assert.rejects(mapLimit([1, 2, 3, 4], 1, async (x) => { started.push(x); if (x === 2) throw new Error('stop'); }), /stop/);\n  assert.deepStrictEqual(started, [1, 2]);\n});\n`,
+    hidden: `${TEST_HEAD}const { mapLimit } = require('../src/pool');\nconst wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));\n\ntest('the reported bug is fixed', async () => {\n  const done = [];\n  assert.deepStrictEqual(await mapLimit([60, 5, 5], 2, async (ms) => { await wait(ms); done.push(ms); return ms * 2; }), [120, 10, 10]);\n  assert.deepStrictEqual(done, [5, 5, 60]);\n  assert.deepStrictEqual(await mapLimit([], 2, async (x) => x), []);\n  let active = 0;\n  let peak = 0;\n  await mapLimit([5, 5, 5, 5, 5], 2, async (ms) => { active++; peak = Math.max(peak, active); await wait(ms); active--; });\n  assert.strictEqual(peak, 2);\n});\n\ntest('follows project conventions', async () => {\n  const started = [];\n  await assert.rejects(mapLimit([1, 2, 3, 4], 1, async (x) => { started.push(x); if (x === 2) throw new Error('stop'); }), /stop/);\n  assert.deepStrictEqual(started, [1, 2]);\n});\n`,
     fix: { 'src/pool.js': 'exports.mapLimit = async (items, limit, fn) => {\n  const out = new Array(items.length);\n  let next = 0;\n  let failed = false;\n  const worker = async () => {\n    while (next < items.length && !failed) {\n      const index = next++;\n      try {\n        out[index] = await fn(items[index], index);\n      } catch (error) {\n        failed = true;\n        throw error;\n      }\n    }\n  };\n  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));\n  return out;\n};\n' },
   },
 ];
@@ -136,7 +136,7 @@ const TASKS: readonly CodingTask[] = [
 const insideProject = (file: string) => !path.isAbsolute(file) && !file.split(/[\\/]/).includes('..');
 
 function runTestFile(root: string, file: string): { exitCode: number; output: string } {
-  const result = spawnSync(process.execPath, [PERMISSION_FLAG, `--allow-fs-read=${root}/*`, `--allow-fs-write=${root}/*`, file], { cwd: root, env: {}, encoding: 'utf8', timeout: TEST_TIMEOUT_MS });
+  const result = spawnSync(process.execPath, [PERMISSION_FLAG, `--allow-fs-read=${root}/*`, `--allow-fs-write=${root}/*`, '--test-reporter=spec', file], { cwd: root, env: {}, encoding: 'utf8', timeout: TEST_TIMEOUT_MS });
   if (result.error) return { exitCode: 1, output: `${file}: ${result.error.message}` };
   return { exitCode: result.status ?? 1, output: `${result.stdout}${result.stderr}` };
 }
@@ -164,6 +164,14 @@ function changedFiles(files: Readonly<Record<string, string>>): string[] {
   return [...new Set([...Object.keys(FIXTURE), ...Object.keys(files)])].filter((name) => files[name] !== FIXTURE[name]);
 }
 
+function failedChecks(files: Readonly<Record<string, string>>, { mayChange, hidden }: CodingTask): string[] {
+  if (changedFiles(files).some((name) => !mayChange.includes(name))) return ['changed only the files this task allows'];
+  const { exitCode, output } = runProjectTests({ ...files, 'test/hidden.test.js': hidden }, 'test/hidden.test.js');
+  if (exitCode === 0) return [];
+  const names = [...output.matchAll(/^\s*✖ (.+?) \(\d/gm)].map((match) => match[1]);
+  return names.length === 0 ? ['the project loads and runs'] : [...new Set(names)];
+}
+
 /** A coding agent with a real test runner, scored by hidden tests and by which files it changed. */
 export function codingAgent(seed: Readonly<Record<string, string>> = {}): BenchmarkAgent & { readonly files: Record<string, string> } {
   const workspace = new MemoryWorkspace({ files: { ...FIXTURE, ...seed } });
@@ -181,14 +189,11 @@ export function codingAgent(seed: Readonly<Record<string, string>> = {}): Benchm
     get files() {
       return workspace.snapshot();
     },
-    tasks: TASKS.map(({ id, input, mayChange, hidden }) => ({
-      id,
-      input,
-      check: () => {
-        const files = workspace.snapshot();
-        if (changedFiles(files).some((name) => !mayChange.includes(name))) return false;
-        return runProjectTests({ ...files, 'test/hidden.test.js': hidden }, 'test/hidden.test.js').exitCode === 0;
-      },
+    tasks: TASKS.map((task) => ({
+      id: task.id,
+      input: task.input,
+      check: () => failedChecks(workspace.snapshot(), task).length === 0,
+      failure: () => failedChecks(workspace.snapshot(), task).join('; ') || undefined,
     })),
   };
 }

@@ -47,8 +47,16 @@ console.log(result.outcome, result.reason);
    each propose edits, and each proposal is run on the same cases.
 3. A composer merges what the runs support, or changes nothing.
 4. The result must beat the current harness by more than the spread between
-   repeats, without making a held-out case worse or raising cost per run by more
-   than `maxCostIncrease`.
+   repeats, without making a held-out case worse or raising tokens per passing
+   run by more than `maxCostIncrease`. Cost is compared only on cases that pass
+   under both harnesses, because a failing run can stop early and look cheap. A
+   rise within the spread between runs isn't rejected. If no case passed under
+   both, `reason` says cost could not be compared, so include a held-out case
+   that already passes.
+
+A failed run looks fine to an editor when the agent never saw the check it
+missed. Return `failure` from `probe` to name that check. Name the requirement,
+not the fix.
 
 ## Outcomes
 

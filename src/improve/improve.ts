@@ -13,6 +13,8 @@ const DEFAULT_MAX_COST_INCREASE = 0.2;
 const DEFAULT_MAX_EDITOR_STEPS = 30;
 const STAGE_ATTEMPTS = 2;
 
+type CostComparison = NonNullable<ImproveResult['costOnPassingCases']>;
+
 class StopRun extends Error {
   constructor(
     readonly outcome: ImproveOutcome,
@@ -29,10 +31,12 @@ function assertOptions(options: ImproveOptions, repeats: number): void {
   if (overlap.length > 0) throw new ConfigurationError(`improveAgent: ${overlap.join(', ')} can't be both a case and held out.`, 'holdout');
 }
 
+const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
+
 function spread(values: readonly number[]): number {
   if (values.length < 2) return 0;
-  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
-  return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length);
+  const middle = mean(values);
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - middle) ** 2, 0) / values.length);
 }
 
 function summarize(runs: readonly LabelledRun[]): ProbeSummary {
@@ -55,15 +59,33 @@ function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined):
   return summary.passRate === 1 && !alwaysPropose;
 }
 
-function gateFailure(base: ProbeSummary, final: ProbeSummary, holdout: { base: ProbeSummary; final: ProbeSummary } | undefined, maxCostIncrease: number): string | undefined {
+const passingTokens = (runs: readonly LabelledRun[], caseId: string) => runs.filter((entry) => entry.caseId === caseId && entry.run.passed).map((entry) => entry.run.tokens);
+
+function costOnPassingCases(before: readonly LabelledRun[], after: readonly LabelledRun[]): CostComparison | undefined {
+  const pairs = [...new Set(before.map(({ caseId }) => caseId))].flatMap((caseId) => {
+    const base = passingTokens(before, caseId);
+    const final = passingTokens(after, caseId);
+    if (base.length === 0 || final.length === 0) return [];
+    return [{ base: mean(base), final: mean(final), noise: Math.max(spread(base), spread(final)) }];
+  });
+  if (pairs.length === 0) return undefined;
+  return { cases: pairs.length, base: mean(pairs.map((pair) => pair.base)), final: mean(pairs.map((pair) => pair.final)), noise: mean(pairs.map((pair) => pair.noise)) };
+}
+
+function costFailure(cost: CostComparison, maxCostIncrease: number): string | undefined {
+  const rise = cost.final - cost.base;
+  if (cost.base <= 0 || rise <= cost.base * maxCostIncrease || rise <= cost.noise) return undefined;
+  return `The edit raised cost per passing run by more than ${Math.round(maxCostIncrease * 100)}% and more than noise (${Math.round(cost.base)} to ${Math.round(cost.final)} tokens, noise ${Math.round(cost.noise)}).`;
+}
+
+function gateFailure(base: ProbeSummary, final: ProbeSummary, holdout: { base: ProbeSummary; final: ProbeSummary } | undefined, cost: CostComparison | undefined, maxCostIncrease: number): string | undefined {
   if (final.passRate === null || base.passRate === null) return 'The edit could not be scored.';
   const gain = final.passRate - base.passRate;
   if (gain <= 0 || gain <= Math.max(base.noise, final.noise)) return `The edit did not beat the base by more than noise (gain ${gain.toFixed(2)}, noise ${Math.max(base.noise, final.noise).toFixed(2)}).`;
   if (holdout && holdout.base.passRate !== null && holdout.final.passRate !== null && holdout.final.passRate < holdout.base.passRate) {
     return `A held-out case got worse (${holdout.base.passRate.toFixed(2)} to ${holdout.final.passRate.toFixed(2)}).`;
   }
-  if (base.tokensPerRun > 0 && final.tokensPerRun > base.tokensPerRun * (1 + maxCostIncrease)) return `The edit raised cost per run by more than ${Math.round(maxCostIncrease * 100)}% (${Math.round(base.tokensPerRun)} to ${Math.round(final.tokensPerRun)} tokens).`;
-  return undefined;
+  return cost && costFailure(cost, maxCostIncrease);
 }
 
 const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.trim() ?? text.trim();
@@ -166,14 +188,19 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
   return { composed };
 }
 
-async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness, base: ProbeSummary): Promise<Omit<ImproveResult, 'base' | 'stages' | 'spend'>> {
+async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness, baseRuns: readonly LabelledRun[]): Promise<Omit<ImproveResult, 'base' | 'stages' | 'spend'>> {
   const holdoutIds = options.holdout ?? [];
-  const final = summarize(await run.probe(composed, 'final', options.cases));
-  const holdout = holdoutIds.length === 0 ? undefined : { base: summarize(await run.probe(options.harness, 'holdout-base', holdoutIds)), final: summarize(await run.probe(composed, 'holdout-final', holdoutIds)) };
-  const failure = gateFailure(base, final, holdout, options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE);
-  const shared = { final, ...(holdout && { holdout }) };
+  const finalRuns = await run.probe(composed, 'final', options.cases);
+  const holdoutBaseRuns = await run.probe(options.harness, 'holdout-base', holdoutIds);
+  const holdoutFinalRuns = await run.probe(composed, 'holdout-final', holdoutIds);
+  const final = summarize(finalRuns);
+  const holdout = holdoutIds.length === 0 ? undefined : { base: summarize(holdoutBaseRuns), final: summarize(holdoutFinalRuns) };
+  const cost = costOnPassingCases([...baseRuns, ...holdoutBaseRuns], [...finalRuns, ...holdoutFinalRuns]);
+  const failure = gateFailure(summarize(baseRuns), final, holdout, cost, options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE);
+  const shared = { final, ...(holdout && { holdout }), ...(cost && { costOnPassingCases: cost }) };
   if (failure) return { outcome: 'keep-base', reason: failure, ...shared };
-  return { outcome: 'proposal', reason: 'The edit beat the base by more than noise, with no held-out regression.', harness: composed, diff: diffHarness(options.harness, composed), ...shared };
+  const reason = `The edit beat the base by more than noise, with no held-out regression.${cost ? '' : ' Cost could not be compared, because no case passed under both harnesses.'}`;
+  return { outcome: 'proposal', reason, harness: composed, diff: diffHarness(options.harness, composed), ...shared };
 }
 
 /**
@@ -190,7 +217,7 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
     if (base.passRate === null) return finish({ outcome: 'outage', reason: 'No run could be scored, so there is nothing to learn from.' });
     if (needsNoEdit(base, options.alwaysPropose)) return finish({ outcome: 'no-failures', reason: 'Every case passed, so no editor ran.' });
     const { composed, result } = await runStages(run, options, baseRuns);
-    return finish(result ?? (await judge(run, options, composed, base)));
+    return finish(result ?? (await judge(run, options, composed, baseRuns)));
   } catch (error) {
     if (error instanceof StopRun) return finish({ outcome: error.outcome, reason: error.message });
     throw error;

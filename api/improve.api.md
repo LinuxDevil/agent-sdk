@@ -422,6 +422,12 @@ export type ImproveOutcome = 'proposal' | 'keep-base' | 'no-failures' | 'outage'
 // @public
 export interface ImproveResult {
     base: ProbeSummary;
+    costOnPassingCases?: {
+        cases: number;
+        base: number;
+        final: number;
+        noise: number;
+    };
     diff?: string;
     final?: ProbeSummary;
     harness?: Harness;
@@ -576,6 +582,7 @@ interface Principal {
 // @public
 export interface ProbeRun {
     ended: string;
+    failure?: string;
     passed: boolean | null;
     tokens: number;
     transcript: string;

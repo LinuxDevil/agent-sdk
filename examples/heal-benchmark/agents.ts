@@ -6,6 +6,7 @@ export interface BenchmarkTask {
   id: string;
   input: string;
   check: (text: string) => boolean;
+  failure?: () => string | undefined;
 }
 
 export interface BenchmarkAgent {

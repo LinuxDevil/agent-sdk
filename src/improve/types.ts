@@ -27,6 +27,8 @@ export interface ProbeRun {
   tokens: number;
   /** How the run ended. */
   ended: string;
+  /** Which check a failed run missed, for the editors to read. Name the requirement, not the fix. */
+  failure?: string;
 }
 
 /** Options for {@link improveAgent}. */
@@ -55,7 +57,7 @@ export interface ImproveOptions {
   maxTokens?: number;
   /** Most characters of always-on instructions an edit may leave (default 8000). */
   maxAlwaysOnChars?: number;
-  /** The largest rise in tokens per run a result may cost, as a fraction (default 0.2). */
+  /** The largest rise in tokens per passing run a result may cost, as a fraction, on cases that pass under both harnesses (default 0.2). A rise within measured noise isn't rejected. */
   maxCostIncrease?: number;
   /** Most steps per editor session (default 30). */
   maxEditorSteps?: number;
@@ -124,6 +126,17 @@ export interface ImproveResult {
     base: ProbeSummary;
     /** The composed harness. */
     final: ProbeSummary;
+  };
+  /** Average tokens per passing run on the cases that passed under both harnesses. Absent when none did, so cost couldn't be compared. */
+  costOnPassingCases?: {
+    /** How many cases were compared. */
+    cases: number;
+    /** The current harness. */
+    base: number;
+    /** The composed harness. */
+    final: number;
+    /** Average spread in tokens between runs of a case. A rise within this isn't rejected. */
+    noise: number;
   };
   /** What each editor did. */
   stages: ImproveStage[];
