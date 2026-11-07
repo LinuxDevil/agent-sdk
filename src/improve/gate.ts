@@ -99,16 +99,17 @@ export function trainingFailure(cases: readonly JudgedCase[]): string | undefine
 
 const scoredBoth = (base: CaseCount, final: CaseCount) => base.scored > 0 && final.scored > 0;
 
-function holdoutReason(base: CaseCount, final: CaseCount, needsRerun: boolean): string {
+function holdoutReason(base: CaseCount, final: CaseCount, needsRerun: boolean, rerun: boolean): string {
   if (!scoredBoth(base, final)) return UNSCORED;
+  if (needsRerun && !rerun) return `Dropped from ${ratio(base)} to ${ratio(final)}; not rerun, because training failed.`;
   if (needsRerun) return `Dropped from ${ratio(base)} to ${ratio(final)}, so both harnesses ran ${HOLDOUT_RERUNS} more times.`;
   if (base.passed === 0 && final.passed === 0) return "Failed under both harnesses, so it can't show a regression.";
   return `Held: ${ratio(base)} before, ${ratio(final)} after.`;
 }
 
-export function judgeHoldoutCase(caseId: string, base: CaseCount, final: CaseCount): { verdict: CaseVerdict; needsRerun: boolean } {
+export function judgeHoldoutCase(caseId: string, base: CaseCount, final: CaseCount, rerun = true): { verdict: CaseVerdict; needsRerun: boolean } {
   const needsRerun = scoredBoth(base, final) && rate(final) < rate(base);
-  return { verdict: { caseId, role: 'holdout', base, final, reasons: [holdoutReason(base, final, needsRerun)] }, needsRerun };
+  return { verdict: { caseId, role: 'holdout', base, final, reasons: [holdoutReason(base, final, needsRerun, rerun)] }, needsRerun };
 }
 
 export function judgePooledHoldout(caseId: string, base: CaseCount, final: CaseCount, repeats: number, first: CaseVerdict): { verdict: CaseVerdict; regressed: boolean } {

@@ -59,7 +59,8 @@ console.log(result.outcome, result.reason);
    `cases` shows each case's verdict and why. Each held-out case is then
    checked on its own. If one passes fewer runs than before, both harnesses run
    it 3 more times, and the result is rejected only if the pooled drop is at
-   least 2 runs in 6. Choose held-out cases that almost always pass: a case that
+   least 2 runs in `repeats + 3`, or 2 in 6 with the default 3 repeats. Choose
+   held-out cases that almost always pass: a case that
    always passes can never reject a good edit by chance. These reruns happen
    only when training passed, use repeat numbers `repeats` to `repeats + 2`, and
    count toward `maxTokens`. The result also must not raise tokens per passing

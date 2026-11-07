@@ -195,7 +195,7 @@ describe('improveAgent', () => {
     expect(result.outcome).toBe('keep-base');
     expect(result.reason).toMatch(/no training case improved/i);
     expect(heldOutCalls).toBe(4);
-    expect(result.cases?.map((verdict) => verdict.reasons)).toEqual([['Failed under both harnesses.'], [expect.stringMatching(/ran 3 more times/)]]);
+    expect(result.cases?.map((verdict) => verdict.reasons)).toEqual([['Failed under both harnesses.'], [expect.stringMatching(/not rerun, because training failed/)]]);
   });
 
   it('gates on training alone when there are no held-out cases', async () => {

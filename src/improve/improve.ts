@@ -175,7 +175,7 @@ async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness
   const trainingVerdicts = training.map((judged) => judged.verdict);
   const untrained = trainingFailure(training);
   if (untrained) {
-    const firstPass = holdoutIds.map((id) => judgeHoldoutCase(id, caseCount(holdoutBaseRuns, id), caseCount(holdoutFinalRuns, id)).verdict);
+    const firstPass = holdoutIds.map((id) => judgeHoldoutCase(id, caseCount(holdoutBaseRuns, id), caseCount(holdoutFinalRuns, id), false).verdict);
     return { outcome: 'keep-base', reason: untrained, ...summaries, cases: [...trainingVerdicts, ...firstPass] };
   }
   const { verdicts, regressed } = await holdoutVerdicts(run, options, composed, holdoutBaseRuns, holdoutFinalRuns);
