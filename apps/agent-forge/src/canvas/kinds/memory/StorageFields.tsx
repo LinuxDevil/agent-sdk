@@ -10,6 +10,7 @@ import { Field } from '../../../ui/Field';
 import { Input } from '../../../ui/controls';
 import { ChoiceField } from '../../fields/ChoiceField';
 import { OptionalNumberField } from '../../fields/OptionalNumberField';
+import { isSafeRelativePath } from '../../../graph/v2/specTypes';
 import type { MemoryProviderSpec, MemorySpec } from '../../../graph/v2/specTypes';
 import type { KindFieldsProps } from '../index';
 
@@ -47,6 +48,12 @@ function providerPatch(provider: MemoryProviderSpec, part: Record<string, unknow
   return next as unknown as MemoryProviderSpec;
 }
 
+/** `dir`'s field error: required, and `isSafeRelativePath`'s rule — the same one zod's `relativePathSchema` applies. */
+function dirError(dir: string): string | undefined {
+  if (blank(dir)) return 'Enter the folder for memory files';
+  return isSafeRelativePath(dir) ? undefined : 'Use a relative path inside the agent folder';
+}
+
 /** The `{ type: 'file', dir }` sub-form: a folder relative to the agent folder. */
 function FileForm({ provider, set }: { provider: Extract<MemoryProviderSpec, { type: 'file' }>; set: (part: Record<string, unknown>) => void }): JSX.Element {
   return (
@@ -54,7 +61,7 @@ function FileForm({ provider, set }: { provider: Extract<MemoryProviderSpec, { t
       id="node-memory-dir"
       label="Folder"
       required
-      error={blank(provider.dir) ? 'Enter the folder for memory files' : undefined}
+      error={dirError(provider.dir)}
     >
       <Input
         value={provider.dir}
@@ -69,7 +76,16 @@ function FileForm({ provider, set }: { provider: Extract<MemoryProviderSpec, { t
 function VectorForm({ provider, set }: { provider: Extract<MemoryProviderSpec, { type: 'sqlite-vector' }>; set: (part: Record<string, unknown>) => void }): JSX.Element {
   return (
     <>
-      <Field id="node-memory-path" label="Database file" hint="Defaults to the Studio data folder.">
+      <Field
+        id="node-memory-path"
+        label="Database file"
+        hint="Defaults to the Studio data folder."
+        error={
+          provider.path !== undefined && provider.path !== '' && !isSafeRelativePath(provider.path)
+            ? 'Use a relative path inside the agent folder'
+            : undefined
+        }
+      >
         <Input
           value={provider.path ?? ''}
           placeholder=".lousho/memory.db"
