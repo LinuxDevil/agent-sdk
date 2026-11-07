@@ -177,21 +177,6 @@ function enableAgentIdOf(body: unknown, res: Response): string | undefined {
 }
 
 /**
- * The `agentId` a `POST .../enable` body carries, or `undefined` once the
- * 400 was sent: a valid agent id - the value reaches the filesystem, so
- * the same rule the `/agents/:id` middleware enforces applies here.
- */
-function enableAgentIdOf(body: unknown, res: Response): string | undefined {
-  const agentId =
-    typeof body === 'object' && body !== null ? (body as { agentId?: unknown }).agentId : undefined;
-  if (typeof agentId !== 'string' || !isValidAgentId(agentId)) {
-    sendError(res, 400, 'Request body must be { agentId: string } (a valid agent id).', 'INVALID_INPUT');
-    return undefined;
-  }
-  return agentId;
-}
-
-/**
  * A failed save's HTTP answer: the person-facing `userMessage` and the
  * failure `code` (`latestProposalId` travels as `details` so the client
  * can point at the newer card). A `WRITE_FAILED` is a server fault - 500;
@@ -218,9 +203,11 @@ export function registerAuthorRoutes(
     sessions: AuthorSessionStore;
     /**
      * The app's named-secrets store (D13): the `POST .../secret` card
-     * answer writes through its encrypted `setSecret` path. The value
+     * answer writes through its encrypted `setSecret` path (the value
      * never enters the transcript, the WS stream or a log line - only
-     * the outcome is persisted.
+     * the outcome is persisted), and `POST .../enable` reads stored
+     * provider keys and named secrets through it for the
+     * `missingRequirements` count (AA13's `requirementDeps`).
      */
     secrets: SecretsStore;
     runner?: Pick<AuthorTurnRunner, 'running' | 'continueAfterUiEvent'>;
