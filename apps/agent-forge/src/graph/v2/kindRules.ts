@@ -8,6 +8,7 @@
 import { agentRules } from './kinds/agent';
 import { handoffRules } from './kinds/handoff';
 import { mcpRules } from './kinds/mcp';
+import { memoryRules } from './kinds/memory';
 import { skillRules } from './kinds/skill';
 import { subagentRules } from './kinds/subagent';
 import { toolRules } from './kinds/tool';
@@ -48,4 +49,5 @@ export const KIND_RULES: { [K in NodeKind]?: KindRules<K> } = {
   handoff: handoffRules,
   mcp: mcpRules,
   skill: skillRules,
+  memory: memoryRules,
 };

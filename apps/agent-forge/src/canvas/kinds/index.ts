@@ -5,6 +5,7 @@ import type { Graph, NodeKind, NodeOfKind, Problem } from '../../graph/v2/types'
 import { AGENT_VIEW } from './agent';
 import { HANDOFF_VIEW } from './handoff';
 import { MCP_VIEW } from './mcp';
+import { MEMORY_VIEW } from './memory';
 import { SKILL_VIEW } from './skill';
 import { SUBAGENT_VIEW } from './subagent';
 import { TOOL_VIEW } from './tool';
@@ -101,6 +102,7 @@ export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
   handoff: HANDOFF_VIEW,
   mcp: MCP_VIEW,
   skill: SKILL_VIEW,
+  memory: MEMORY_VIEW,
 };
 
 /** The fallback `KindView`: bare kind tile, id-suffix title, no rows, both ports, the JSON `GenericFields`. */

@@ -133,6 +133,18 @@ describe('canConnect instance rules', () => {
     expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect skill → tool" });
   });
 
+  it('allows agent -> memory (the uses edge re-owns the slot)', () => {
+    const source = node('agent', { id: 'agent' });
+    const target = node('memory', { id: 'memory:notes', owner: 'other' });
+    expect(canConnect(source, target)).toEqual({ ok: true });
+  });
+
+  it('refuses memory -> agent (a memory slot is not an edge source)', () => {
+    const source = node('memory', { id: 'memory:notes', owner: 'agent' });
+    const target = node('agent', { id: 'sub:research', owner: 'other' });
+    expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect memory → agent" });
+  });
+
   it('refuses mcp -> tool (an mcp node only sources permission edges)', () => {
     const source = node('mcp', { id: 'mcp:gh', owner: 'agent' });
     const target = node('tool', { id: 'tool:http', owner: 'agent' });
