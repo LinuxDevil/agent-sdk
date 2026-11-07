@@ -10966,6 +10966,7 @@ An `evaluator` step stores its result in `outputVariable` too, like
 | `llmCall` | Calls the model with a `prompt` (with `{{variable}}` placeholders; see [Template values](#template-values)); `outputVariable` stores the reply text. |
 | `agent` | Sends `input` (placeholders interpolated) to a `createAgent()` agent registered in the context's `agents` (see [Running an agent in a flow](#running-an-agent-in-a-flow)); `outputVariable` stores the reply text. |
 | `toolCall` | Calls a tool with `arguments` (placeholders interpolated; see [Argument values](#argument-values)). |
+| `approval` | Pauses for a human decision on its `message` (see [Approval steps](#approval-steps)); `outputVariable` gets `true` once approved. |
 | `setVariable` | Sets `variable` to `value`. |
 | `oneOf` | Takes the first branch whose condition matches. |
 | `forEach` | Runs a step for each item of `items`, one after another. The item and index (`itemVariable`, default `item`; `indexVariable`, default `index`) belong to that iteration only, so loops in `parallel` branches never see each other's item; other variables the step sets are written to the flow's variables. |
@@ -11244,6 +11245,54 @@ These resume calls are refused:
 Flow approvals are not listed in an agent's approval store. Keep the
 `approvalId` (or read `checkpoint.flow.pendingApproval` from the store) to
 decide later.
+
+### Approval steps
+
+An `approval` step is a human gate of its own - no tool call needed. Its
+`message` (`{{variable}}` placeholders interpolated) is what the approver is
+asked, and the context's `approve` callback decides, exactly as for a
+`toolCall` that needs approval. The callback sees a call whose `toolName` is
+`'flow_approval'` and whose `args` are `{ message, stepId }` (`stepId` is the
+node's `id`, or its place in the flow).
+
+```ts
+import type { EditorStep } from 'lousho/flows';
+
+const steps: EditorStep = {
+  type: 'sequence',
+  steps: [
+    { type: 'approval', id: 'ship-gate', message: 'Ship {{version}} to production?', outputVariable: 'approved' },
+    { type: 'toolCall', tool: 'deploy', arguments: { version: '{{version}}' } },
+  ],
+};
+```
+
+- `approve` returning `true` (or a note) continues the flow; `outputVariable`
+  gets `true`. `false` fails the step with `LOUSHO_FLOW_TOOL_DENIED`, as do
+  `'defer'` and a missing `approve` in a run that is not durable (fail closed).
+- In a durable run, `'defer'` or no `approve` pauses the flow the same way a
+  `toolCall` pause does ([Pausing for approval](#pausing-for-approval)):
+  `pendingApproval.toolName` is `'flow_approval'` and
+  `pendingApproval.args.message` is the interpolated message. Resume it with
+  the decision:
+
+```ts no-run
+import { FlowExecutor, type AgentFlow } from 'lousho/flows';
+
+declare const flow: AgentFlow;
+
+const paused = await FlowExecutor.execute(flow, {
+  agent, provider, checkpointStore, variables: { version: '2.1' }, runId: 'ship-2.1',
+});
+if (paused.status === 'awaiting-approval') {
+  // paused.pendingApproval is
+  // { approvalId, nodeId: '0.0', toolName: 'flow_approval', args: { message: 'Ship 2.1 to production?', stepId: 'ship-gate' } }
+  const result = await FlowExecutor.resume(flow, {
+    agent, provider, checkpointStore, runId: 'ship-2.1',
+    approval: { approvalId: paused.approvalId!, approved: true },
+  });
+}
+```
 
 ## Running an agent in a flow
 

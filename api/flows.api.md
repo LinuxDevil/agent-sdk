@@ -119,6 +119,15 @@ interface ApprovalSignIn {
 }
 
 // @public
+export interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    // (undocumented)
+    type: 'approval';
+}
+
+// @public
 type ApproveToolCall = (request: PendingApproval) => boolean | 'defer' | (string & {}) | Promise<boolean | 'defer' | (string & {})>;
 
 // @public (undocumented)
@@ -1150,7 +1159,7 @@ export interface ReturnNode extends NodeRunOptions {
 }
 
 // @public
-export type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+export type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {

@@ -85,6 +85,15 @@ type ApprovalPredicate = {
     check(args: unknown, ctx: ApprovalCheckContext): ApprovalOutcome | Promise<ApprovalOutcome>;
 }['check'];
 
+// @public
+interface ApprovalStepNode extends NodeRunOptions {
+    id?: string;
+    message: string;
+    outputVariable?: string;
+    // (undocumented)
+    type: 'approval';
+}
+
 // @public (undocumented)
 interface BestOfAllNode {
     // (undocumented)
@@ -467,7 +476,7 @@ interface ReturnNode extends NodeRunOptions {
 }
 
 // @public
-type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
+type RuntimeStep = OneOfOptionsNode | ForEachItemsNode | ExpressionEvaluatorNode | LLMCallNode | AgentStepNode | ApprovalStepNode | ToolCallNode | SetVariableNode | ReturnNode | EndNode | ThrowNode;
 
 // @public
 interface RunUsage {
