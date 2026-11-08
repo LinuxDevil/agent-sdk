@@ -509,6 +509,7 @@ export interface ImproveOptions {
     maxCostIncrease?: number;
     maxEditorSteps?: number;
     maxTokens?: number;
+    parallelEditors?: boolean;
     probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
     recoveries?: readonly RecoveryEvidence[];
     repeats?: number;

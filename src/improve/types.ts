@@ -55,7 +55,7 @@ export interface ImproveOptions {
   holdout?: readonly string[];
   /** Retries of training cases that passed after a diagnosis, for the editors to read. They don't count as runs, each must name a training case, and none may be a held-out case's trace. */
   recoveries?: readonly RecoveryEvidence[];
-  /** Runs one case under a harness, where `repeat` goes up to `2 × repeats − 1` for the base harness. It owns side effects: use {@link createShadowHook} unless its tools are safe to run. */
+  /** Runs one case under a harness, where `repeat` goes up to `2 × repeats − 1` for the base harness. It owns side effects: use {@link createShadowHook} unless its tools are safe to run. Two calls can run at once unless `parallelEditors` is `false`. */
   probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
   /** The editors' model. */
   editor:
@@ -81,6 +81,8 @@ export interface ImproveOptions {
   alwaysPropose?: boolean;
   /** Hooks for the editor sessions, such as a rate-limit delay. */
   editorHooks?: readonly AgentHook[];
+  /** Runs the invariant and domain editors, and then their probes, two at a time (default `true`). Set `false` for a rate-limited model. */
+  parallelEditors?: boolean;
   /** Stops the run when aborted. */
   signal?: AbortSignal;
 }

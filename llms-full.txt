@@ -12831,7 +12831,9 @@ console.log(formatImproveResult(result));
    each propose edits, and each proposal is run on the same cases.
    The invariant editor fixes the earliest point where a run went wrong. The
    domain editor leaves anything that would help in any profession to the
-   invariant editor.
+   invariant editor. The two editors run at the same time, and then so do
+   their probes. Set `parallelEditors: false` to run them one after the other,
+   for example on a rate-limited model.
 3. A composer merges what the runs support, or changes nothing.
 4. It runs the current harness again on fresh runs of your cases, so the gate
    never compares against the unlucky runs that triggered editing. The probe
