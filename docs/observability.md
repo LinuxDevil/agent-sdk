@@ -906,14 +906,29 @@ Before the first full window the gate reports `ok` with `ready: false`.
 
 The daemon does not judge on every run, because repeating the test would add
 up to false alarms. It waits until an agent has 20 finished runs. After
-that, it runs the gate over the last 50 points each time 10 new runs have
-arrived, at a stricter z of 1.96. It raises an `agent.score_regression` alert
-only after two judgements in a row read `regression`. In simulation, a
-stable agent at a 0.8–0.95 pass rate raises a false alert in about 3–5% of
-1,000-run stretches. A collapse to 0.1 alerts within 40 runs, and a fall from
-0.9 to 0.3 is caught within 60 runs about three times in four. The alert
-fires at most once per agent per revision. The revision is that of the newest
-run, and `null` when that run has no stamp.
+that, each time 10 new runs have arrived, it runs the gate over the last 200
+points at a stricter z of 1.96. The long lookback keeps the old baseline in
+view when a lasting drop fills recent runs. It raises an
+`agent.score_regression` alert only after three judgements in a row read
+`regression`.
+
+These are simulated figures for pass/fail agents (1,000 seeded streams each).
+
+A stable agent with a pass rate between 0.6 and 0.95 raised a false alert in
+under 1% of 1,000-run stretches.
+
+When 200 runs at the old rate were followed by 100 at the new one, the fall
+was caught within those 100 runs this often:
+
+| Fall | Caught |
+| --- | --- |
+| 0.9 → 0.1 | always |
+| 0.9 → 0.5 | about 80% |
+| 0.9 → 0.6 | about half |
+| 0.7 → 0.4 | about 1 in 5 |
+
+The alert fires at most once per agent per revision. The revision is that of
+the newest run, and `null` when that run has no stamp.
 The alert's `details` carry:
 
 - `revision`, `peak`, `mean` and `drop`;

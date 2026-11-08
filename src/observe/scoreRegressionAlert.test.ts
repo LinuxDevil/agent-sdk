@@ -69,10 +69,10 @@ function seeded(seed: number): () => number {
 }
 
 describe('the agent.score_regression alert', () => {
-  it('fires after two regression judgements in a row, a window of new runs apart, with the gate state', () => {
+  it('fires after three regression judgements in a row, a window of new runs apart, with the gate state', () => {
     const target = stream();
     feed(target, 30, R1, 0.9);
-    expect(feed(target, 10, R2, 0.6)).toEqual([]);
+    expect(feed(target, 20, R2, 0.6)).toEqual([]);
     const fired = feed(target, 10, R2, 0.6);
 
     expect(fired).toEqual([
@@ -81,8 +81,8 @@ describe('the agent.score_regression alert', () => {
         agent_id: 'uuid-1',
         project: null,
         status: 'healthy',
-        at: NOW + 50,
-        details: expect.objectContaining({ name: 'support', revision: R2, peak: expect.closeTo(0.9, 10), mean: expect.closeTo(0.6, 10), drop: 0.15, runs: 50 }) as unknown as Record<string, unknown>,
+        at: NOW + 60,
+        details: expect.objectContaining({ name: 'support', revision: R2, peak: expect.closeTo(0.9, 10), mean: expect.closeTo(0.6, 10), drop: 0.15, runs: 60 }) as unknown as Record<string, unknown>,
       },
     ]);
     target.db.close();
@@ -91,7 +91,7 @@ describe('the agent.score_regression alert', () => {
   it('the alert fires once per revision', () => {
     const target = stream();
     feed(target, 30, R1, 0.9);
-    expect(feed(target, 20, R2, 0.6)).toHaveLength(1);
+    expect(feed(target, 30, R2, 0.6)).toHaveLength(1);
     expect(feed(target, 20, R2, 0.6)).toEqual([]);
     expect(feed(target, 10, R1, 0.3).map((alert) => alert.details.revision)).toEqual([R1]);
     target.db.close();
@@ -100,7 +100,7 @@ describe('the agent.score_regression alert', () => {
   it('never repeats a revision while revisions interleave, and names an unstamped run null', () => {
     const target = stream();
     feed(target, 30, undefined, 0.9);
-    expect(feed(target, 20, undefined, 0.5).map((alert) => alert.details.revision)).toEqual([null]);
+    expect(feed(target, 30, undefined, 0.5).map((alert) => alert.details.revision)).toEqual([null]);
     let flip = 0;
     for (let i = 0; i < 6; i++) feed(target, 7, (flip++ % 2 === 0 ? R1 : R2), 0.5);
     const revisions = target.fired.map((alert) => alert.details.revision);
@@ -118,11 +118,19 @@ describe('the agent.score_regression alert', () => {
     db.close();
   });
 
-  it('a stable pass/fail stream of 1000 runs, judged run by run, raises no alert, and a collapse alerts within 40 runs', () => {
+  it('a stable pass/fail stream of 1000 runs, judged run by run, raises no alert, and a collapse alerts within 50 runs', () => {
     const target = stream();
     const random = seeded(2026);
     expect(feed(target, 1000, R1, () => (random() < 0.9 ? 1 : 0))).toEqual([]);
-    expect(feed(target, 40, R1, () => (random() < 0.1 ? 1 : 0))).toHaveLength(1);
+    expect(feed(target, 50, R1, () => (random() < 0.1 ? 1 : 0))).toHaveLength(1);
+    target.db.close();
+  });
+
+  it('catches a sustained fall from 0.9 to 0.5 that fills the last 50 runs', () => {
+    const target = stream();
+    const random = seeded(31);
+    expect(feed(target, 200, R1, () => (random() < 0.9 ? 1 : 0))).toEqual([]);
+    expect(feed(target, 100, R2, () => (random() < 0.5 ? 1 : 0)).map((alert) => alert.details.revision)).toEqual([R2]);
     target.db.close();
   });
 
@@ -153,6 +161,8 @@ describe('the agent.score_regression alert', () => {
     const sweep = startStatusSweep(db, { intervalMs: 0, now: () => NOW, onAlerts: (alerts) => delivered.push(...alerts) });
     ingestBatch(db, runs(30, 10, R2, 0.6));
     sweep.run(NOW + 1);
+    ingestBatch(db, runs(40, 10, R2, 0.6));
+    sweep.run(NOW + 2);
     sweep.stop();
     expect(regressions(delivered)).toHaveLength(1);
     expect(regressions(startStatusSweep(db, { intervalMs: 0, now: () => NOW }).run(NOW).alerts)).toEqual([]);

@@ -92,11 +92,11 @@ export interface ScoreRegressionMemory {
   streak: number;
 }
 
-const SCORE_POINTS = 50;
+const SCORE_POINTS = 200;
 const SCORE_WINDOW = 10;
 const SCORE_DROP = 0.15;
 const SCORE_Z = 1.959963984540054;
-const SCORE_STREAK = 2;
+const SCORE_STREAK = 3;
 
 function judgedRegression(db: SqlDatabase, agentId: string, memory: ScoreRegressionMemory): { points: ScorePoint[]; gate: TrajectoryVerdict } | undefined {
   if (memory.judgedAt !== undefined && finishedRootsAfter(db, agentId, memory.judgedAt) < SCORE_WINDOW) return undefined;
