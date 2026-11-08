@@ -611,6 +611,54 @@ describe('lousho improve, one self-healing cycle', () => {
     expect(fs.existsSync(path.join(root, '.lousho'))).toBe(false);
   });
 
+  it('--watch runs cycles until stopped, and refuses a dry run', async () => {
+    const db = openDb(dbPath);
+    ingestBatch(db, stamped('s3'));
+    db.close();
+    let stopNow: () => void = () => undefined;
+    const stop = new Promise<void>((resolve) => {
+      stopNow = resolve;
+    });
+    const lines: string[] = [];
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        lines.push(String(chunk));
+        if (String(chunk).startsWith('lousho improve: ')) stopNow();
+        callback();
+      },
+    });
+    const code = await runImprove([agentDir, '--check', checkPath, '--db', dbPath, '--watch', '--interval', '1h', '--agent', 'support'], {
+      stdout,
+      stderr: sink().stream,
+      overrides: { provider: mockModel([fixedWhenForbidden], { onExhausted: 'repeat-last' }) },
+      editor: editorFor(FIX),
+      stop,
+    });
+    expect(code).toBe(0);
+    expect(lines.join('')).toMatch(/lousho improve: applied: Applied/);
+    expect(instructions()).toBe(FIX);
+    const dry = await run([agentDir, '--check', checkPath, '--db', dbPath, '--watch', '--dry-run'], { editor: editorFor(FIX) });
+    expect(dry).toMatchObject({ code: 2, stderr: expect.stringMatching(/--watch needs an agent directory/) });
+    expect(() => parseImproveArgs([agentDir, '--check', checkPath, '--interval', 'soon'])).toThrow(/--interval must be a positive duration/);
+    expect(parseImproveArgs([agentDir, '--check', checkPath, '--interval', '30s']).intervalMs).toBe(30_000);
+  });
+
+  it('pause writes the kill switch once and resume removes it, both audited', async () => {
+    const paused = await run(['pause', agentDir, '--reason', 'maintenance', '--by', 'ana']);
+    expect(paused).toMatchObject({ code: 0, stdout: expect.stringMatching(/Paused self-healing/) });
+    expect(fs.readFileSync(path.join(agentDir, '.lousho', 'improve.stop'), 'utf8')).toBe('maintenance\n');
+    expect((await run(['pause', agentDir])).stdout).toMatch(/already paused/);
+    const cycle = await run([agentDir, '--check', checkPath, '--db', dbPath], { editor: editorFor(FIX) });
+    expect(cycle.stdout).toMatch(/lousho improve: paused: Paused: \.lousho\/improve\.stop exists/);
+    expect(instructions()).toBe('You answer refund questions.');
+    expect((await run(['resume', agentDir, '--by', 'ana'])).stdout).toMatch(/Resumed self-healing/);
+    expect(fs.existsSync(path.join(agentDir, '.lousho', 'improve.stop'))).toBe(false);
+    expect(readAudit(agentDir).map((entry) => [entry.action, entry.actor])).toEqual([
+      ['pause', 'person:ana'],
+      ['resume', 'person:ana'],
+    ]);
+  });
+
   it('an agent whose instructions are not in instructions.md is forced to dry run', async () => {
     fs.mkdirSync(path.join(agentDir, 'instructions'));
     fs.writeFileSync(path.join(agentDir, 'instructions', 'claude.md'), 'You answer refund questions for Claude.');

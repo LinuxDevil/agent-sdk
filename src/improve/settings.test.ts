@@ -28,6 +28,7 @@ describe('loadImproveSettings', () => {
       monitor: { minRuns: 20, window: 20, maxDrop: 0.05, autoRollback: true, giveUpDays: 7 },
       guard: { runs: 3, everyHours: 24, maxCases: 30 },
       cooldownHours: 24,
+      rateLimit: { rpm: 20 },
       library: { enabled: true },
     });
   });
@@ -73,6 +74,7 @@ describe('loadImproveSettings', () => {
       monitor: { minRuns: 10, window: 15, maxDrop: 0.1, autoRollback: false, giveUpDays: 3 },
       guard: { runs: 2, everyHours: 12, maxCases: 40 },
       cooldownHours: 6,
+      rateLimit: { rpm: 5 },
       library: { enabled: false, domain: 'billing' },
     };
     file({ $schema: './improve.schema.json', ...settings });

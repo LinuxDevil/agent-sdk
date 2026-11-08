@@ -33,3 +33,6 @@ export type { GuardCorpusOptions, GuardCorpusResult, GuardedCase } from './corpu
 export { healOnce } from './heal';
 export type { HealOptions } from './heal';
 export type { HealCycle } from './cycles';
+export { improveSchedule, watchAgent } from './watch';
+export type { WatchOptions, WatchTick } from './watch';
+export { pauseImprove, resumeImprove } from './pause';

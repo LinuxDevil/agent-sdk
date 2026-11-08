@@ -65,6 +65,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const AUTO_ACTORS: readonly string[] = ['gate', 'canary'];
 
+export function ownLousho(dir: string): string {
+  const lousho = path.join(dir, LOUSHO);
+  if (lstatSync(lousho, { throwIfNoEntry: false })?.isSymbolicLink()) throw new ConfigurationError(`${lousho} is a symlink; the self-healing state must live inside the agent directory.`, 'dir');
+  mkdirSync(lousho, { recursive: true });
+  return lousho;
+}
+
 /** A new cycle id: its UTC start time and a random suffix. */
 export function newCycleId(now: number): string {
   const stamp = new Date(now).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
@@ -115,7 +122,7 @@ export function readCycles(dir: string): HealCycle[] {
     .sort((a, b) => b.id.localeCompare(a.id));
 }
 
-const dayStart = (now: number): number => Math.floor(now / DAY_MS) * DAY_MS;
+export const dayStart = (now: number): number => Math.floor(now / DAY_MS) * DAY_MS;
 
 /** Cycles, tokens and automatic applies so far in the current UTC day. */
 export function usageToday(dir: string, now: number): { cycles: number; tokens: number; applies: number } {
