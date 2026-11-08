@@ -1,5 +1,6 @@
 import { promptInjectionSignals } from '../execution/guardrailStarterSet';
 import { findQuotedChecks } from './harness';
+import { isCheckpoint } from './judge';
 import type { CaseCount, CaseVerdict, ImproveChange, ImproveResult, ImproveStage } from './types';
 
 const CASES_HEADER = '| Case | Role | Base | Result | pass^3 base | pass^3 result | Why |\n| --- | --- | --- | --- | --- | --- | --- |';
@@ -119,7 +120,7 @@ export function formatImproveResult(result: ImproveResult): string {
     `## Cases\n\n${cases(result.cases)}`,
   ];
   if (result.gate && result.gate.length > 0) sections.push(`## Gate\n\n${result.gate.map((verdict) => `- ${inline(verdict.label)}: ${verdict.passed ? 'passed' : 'failed'}. ${inline(verdict.reason)}`).join('\n')}`);
-  if (result.diversity) sections.push(`## Proposals\n\n${Object.keys(result.candidates?.pool ?? {}).length} proposals, ${result.diversity.distinct} distinct, mean line overlap ${result.diversity.meanJaccard}.`);
+  if (result.diversity) sections.push(`## Proposals\n\n${Object.keys(result.candidates?.pool ?? {}).filter((label) => !isCheckpoint(label)).length} proposals, ${result.diversity.distinct} distinct, mean line overlap ${result.diversity.meanJaccard}.`);
   sections.push(`## Editors\n\n${result.stages.length > 0 ? result.stages.map(editor).join('\n\n') : 'No editor ran.'}`, `## Spend\n\n${result.spend.tokens} tokens.`);
   return `${sections.join('\n\n')}\n`;
 }

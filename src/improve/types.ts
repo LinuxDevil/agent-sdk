@@ -91,8 +91,10 @@ export interface ImproveOptions {
   cacheDir?: string;
   /** Runs the invariant and domain editors, and then their probes, two at a time (default `true`). Set `false` for a rate-limited model. */
   parallelEditors?: boolean;
-  /** How many invariant and how many domain editors propose from the same runs (default 1, at most 4). Each proposal that changes the harness is probed, so k costs about k times the editor sessions and proposal runs. */
+  /** How many invariant and how many domain editors propose from the same runs (default 1, at most 4), or in `seq` mode how many rounds run. Each proposal that changes the harness is probed, so k costs about k times the editor sessions and proposal runs. */
   proposers?: number;
+  /** `agg` (default) proposes k of each editor side by side; `seq` runs k rounds, each editing the checkpoint the last round's composer wrote, and gates every checkpoint against the original harness. */
+  mode?: 'agg' | 'seq';
   /** Stops the run when aborted. */
   signal?: AbortSignal;
 }
@@ -147,8 +149,8 @@ export interface CaseVerdict {
 
 /** The gate's verdict on one harness. */
 export interface GateVerdict {
-  /** Which editor's harness: `invariant-<n>` and `domain-<n>` when there are several proposers. */
-  label: 'compose' | 'invariant' | 'domain' | `invariant-${number}` | `domain-${number}`;
+  /** Which editor's harness: `invariant-<n>` and `domain-<n>` when there are several proposers, and `compose-<round>` for a checkpoint in `seq` mode. */
+  label: 'compose' | 'invariant' | 'domain' | `invariant-${number}` | `domain-${number}` | `compose-${number}`;
   /** Whether it passed the gate. */
   passed: boolean;
   /** Why, in a sentence. */
@@ -232,7 +234,7 @@ export interface ImproveResult {
   };
   /** Each case's verdict, training cases first, when the result was gated. */
   cases?: CaseVerdict[];
-  /** Each harness the gate judged, in order: the composite first, then any single editor's harness tried after it failed. */
+  /** Each harness the gate judged, in order: the composite first, then any single editor's harness tried after it failed. In `seq` mode, each round's checkpoint, cheapest first. */
   gate?: GateVerdict[];
   /** Each editor's harness from before the gate, so a person or a replay can judge one the gate rejected. */
   candidates?: {
@@ -240,9 +242,9 @@ export interface ImproveResult {
     invariant: Harness;
     /** The domain editor's harness, or the base if it changed nothing. */
     domain: Harness;
-    /** The composer's harness, or the base if it changed nothing. */
+    /** The composer's harness, or the base if it changed nothing. In `seq` mode, the last round's checkpoint. */
     compose: Harness;
-    /** Every proposal by label, with several proposers; `invariant` and `domain` then hold the first of each. */
+    /** Every proposal by label, with several proposers, and in `seq` mode each round's checkpoint as `compose-<round>`; `invariant` and `domain` then hold the first of each. */
     pool?: Record<string, Harness>;
   };
   /** How alike the proposals were, with several proposers: mean pairwise line overlap (1 means identical) and how many differed. */
