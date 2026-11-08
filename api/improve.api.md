@@ -203,6 +203,23 @@ class AgentSession<TObject = unknown> {
     protected get turnEvents(): ((event: AgentEvent) => void) | undefined;
 }
 
+// @public (undocumented)
+interface Alerter {
+    post(alerts: readonly AlertEvent[]): void;
+}
+
+// @public
+interface AlertEvent {
+    // (undocumented)
+    agent_id: string;
+    at: number;
+    details: Record<string, unknown>;
+    // (undocumented)
+    project: string | null;
+    status: string;
+    type: 'agent.status' | 'agent.error_rate' | 'agent.score_regression' | 'improve.pending' | 'improve.applied' | 'improve.rolled_back' | 'improve.guard_failed' | 'improve.paused' | 'improve.canary';
+}
+
 // @public
 export function appendAudit(dir: string, entry: AuditInput): Promise<AuditEntry>;
 
@@ -1244,6 +1261,51 @@ export interface ImproveStage {
 }
 
 // @public
+export interface ImproveStatus {
+    approval: 'auto' | 'manual';
+    audit: Pick<AuditEntry, 'seq' | 'at' | 'actor' | 'action' | 'reason'>[];
+    budget: {
+        cycles: StatusCount;
+        applies: StatusCount;
+        tokens: StatusCount;
+    };
+    canary: {
+        traffic: {
+            share: number;
+            sessions: number;
+        } | null;
+        last: {
+            cycle: string;
+            passed: boolean;
+            reason: string;
+        } | null;
+    };
+    cooldownUntil: string | null;
+    dir: string;
+    lastCycle: {
+        id: string;
+        outcome: string;
+        reason: string;
+        startedAt: string;
+    } | null;
+    monitor: MonitorVerdict | null;
+    paused: string | null;
+    pending: {
+        id: string;
+        createdAt: string;
+        stale: boolean;
+    }[];
+    revision: string | null;
+    warnings: string[];
+}
+
+// @public
+export function improveStatus(dir: string, options?: {
+    now?: number;
+    env?: NodeJS.ProcessEnv;
+}): ImproveStatus;
+
+// @public
 interface InputAppliedEvent extends AgentEventBase<'input.applied'> {
     // (undocumented)
     id: string;
@@ -2194,6 +2256,12 @@ interface StandardSchemaV1<Input = unknown, Output = Input> {
 }
 
 // @public
+export interface StatusCount {
+    max: number;
+    used: number;
+}
+
+// @public
 interface SteerResult {
     // (undocumented)
     applied: 'immediate' | 'queued' | false;
@@ -2471,7 +2539,9 @@ export function watchAgent(options: WatchOptions): {
 // @public
 export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' | 'agent'> {
     agent: string;
+    alerter?: Alerter;
     intervalMs?: number;
+    log?: (line: string) => void;
     onCycle?: (cycle: HealCycle) => void;
     onError?: (error: unknown) => void;
     reloadSettings?: () => ImproveSettings;

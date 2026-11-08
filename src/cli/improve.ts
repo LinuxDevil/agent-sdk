@@ -30,6 +30,7 @@ import { watchAgent } from '../improve/watch';
 import { writtenHash } from '../improve/harnessWriter';
 import { readAgentHarness } from '../improve/revisions';
 import { loadImproveSettings, type ImproveSettings } from '../improve/settings';
+import { createAlerter, resolveAlertConfig, type Alerter } from '../observe/alerts';
 import { openDb } from '../observe/store';
 import type { AgentInput, LLMProvider } from '../providers';
 import { defineSkill } from '../skills/defineSkill';
@@ -40,7 +41,7 @@ import { isImproveAdmin, runImproveAdmin } from './improveAdmin';
 import { dbPathOf, resolveAgent, sinceMs } from './observe';
 
 const USAGE =
-  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--dry-run] [--watch [--interval 15m]]\n       lousho improve revisions|rollback|audit|pending|approve|reject|pause|resume <agent-dir> ...';
+  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--dry-run] [--watch [--interval 15m]]\n       lousho improve revisions|rollback|audit|pending|approve|reject|pause|resume|status <agent-dir> ...';
 
 const HELP = `${USAGE}
 
@@ -104,6 +105,7 @@ Revisions, rollback, the audit log and pending proposals (run one with --help fo
   lousho improve reject <agent-dir> <id> --by <name> [--reason text]
   lousho improve pause <agent-dir> [--reason text] [--by <name>]   write the kill switch file
   lousho improve resume <agent-dir> [--by <name>]                  remove it
+  lousho improve status <agent-dir> [--json]                        mode, revision, monitor, budget left
 
 See docs/improve.md.`;
 
@@ -492,6 +494,11 @@ async function healDir(args: ImproveArgs, io: ImproveIo, dir: string, config: Cr
   }
 }
 
+function alertsFor(args: ImproveArgs): { alerter?: Alerter } {
+  const config = resolveAlertConfig(dbPathOf(args.db));
+  return config.webhooks.length > 0 ? { alerter: createAlerter(config) } : {};
+}
+
 function stopRequested(io: ImproveIo): { stopped: Promise<unknown>; dispose(): void } {
   if (io.stop) return { stopped: io.stop, dispose: () => undefined };
   let done: () => void = () => undefined;
@@ -531,6 +538,8 @@ async function watchDir(args: ImproveArgs, io: ImproveIo, dir: string, config: C
         withRecoveries: args.withRecoveries === true,
         ...(args.since !== undefined && { since: args.since }),
         ...(args.intervalMs !== undefined && { intervalMs: args.intervalMs }),
+        ...alertsFor(args),
+        log: (line) => io.stderr.write(line),
         onCycle: (cycle) => io.stdout.write(`lousho improve: ${cycle.outcome}: ${cycle.reason}\n`),
         onError: (error) => io.stderr.write(`lousho improve: a watch tick failed: ${error instanceof Error ? error.message : String(error)}\n`),
       });

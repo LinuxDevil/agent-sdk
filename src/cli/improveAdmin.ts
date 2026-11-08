@@ -7,6 +7,7 @@ import { approvePending, isPendingId, listPending, readPendingProposal, rejectPe
 import { currentRevision, listRevisions, type HarnessRevision } from '../improve/revisions';
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { pause, resume } from './improvePause';
+import { status } from './improveStatus';
 
 interface AdminIo {
   stdout: Writable;
@@ -187,7 +188,7 @@ async function reject(args: readonly string[], io: AdminIo): Promise<number> {
   return 0;
 }
 
-const COMMANDS: Record<string, (args: readonly string[], io: AdminIo) => number | Promise<number>> = { revisions, rollback, audit, pending, approve, reject, pause, resume };
+const COMMANDS: Record<string, (args: readonly string[], io: AdminIo) => number | Promise<number>> = { revisions, rollback, audit, pending, approve, reject, pause, resume, status };
 
 /** Whether the arguments after `improve` name an admin subcommand rather than an agent path. */
 export function isImproveAdmin(args: readonly string[]): boolean {

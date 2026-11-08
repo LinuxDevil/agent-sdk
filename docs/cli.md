@@ -512,6 +512,13 @@ Three outages in a row write the stop file. Editor calls are limited to
 `rateLimit.rpm` a minute. Ctrl-C stops after the current step. `pause` writes
 the stop file and `resume` removes it; both are audited.
 
+`lousho improve status <dir> [--json]` prints the mode and active revision, the
+last 5 audit entries, pending proposals, the monitor's verdict (with a warning
+while it waits for runs or kept an edit unverified), what is left of today's
+budget, the cooldown, the kill switch and the canary. The watcher's events go
+to the `alerts.json` webhooks beside the observe db (see
+[Observability](./observability.md)).
+
 ### `improve.json`
 
 Self-healing settings live in `improve.json` beside the agent. Every key is

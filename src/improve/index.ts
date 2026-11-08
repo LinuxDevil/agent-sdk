@@ -36,3 +36,5 @@ export type { HealCycle } from './cycles';
 export { improveSchedule, watchAgent } from './watch';
 export type { WatchOptions, WatchTick } from './watch';
 export { pauseImprove, resumeImprove } from './pause';
+export { improveStatus } from './status';
+export type { ImproveStatus, StatusCount } from './status';

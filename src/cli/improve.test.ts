@@ -643,6 +643,33 @@ describe('lousho improve, one self-healing cycle', () => {
     expect(parseImproveArgs([agentDir, '--check', checkPath, '--interval', '30s']).intervalMs).toBe(30_000);
   });
 
+  it('status --json has every field, and the text form names the mode and the monitor', async () => {
+    await run([agentDir, '--check', checkPath, '--db', dbPath], { editor: editorFor(FIX) });
+    const json = await run(['status', agentDir, '--json']);
+    expect(json.code).toBe(0);
+    const report = JSON.parse(json.stdout) as Record<string, unknown>;
+    expect(Object.keys(report).sort()).toEqual(['approval', 'audit', 'budget', 'canary', 'cooldownUntil', 'dir', 'lastCycle', 'monitor', 'paused', 'pending', 'revision', 'warnings']);
+    expect(report).toMatchObject({ approval: 'auto', paused: null, revision: currentRevision(agentDir), monitor: { state: 'pending' }, lastCycle: { outcome: 'applied' }, budget: { applies: { used: 1, max: 1 } }, canary: { traffic: null, last: { passed: true } } });
+    expect(report.warnings).toEqual([expect.stringMatching(/hasn't judged the last apply yet/)]);
+    const text = await run(['status', agentDir]);
+    expect(text.stdout).toMatch(/^Mode: auto\nRevision: [0-9a-f]{12}\nMonitor: pending/);
+    expect(text.stdout).toMatch(/1\/1 automatic applies/);
+    fs.writeFileSync(path.join(agentDir, '.lousho', 'state.json'), '[1, 2');
+    const corrupt = JSON.parse((await run(['status', agentDir, '--json'])).stdout) as { warnings: string[] };
+    expect(corrupt.warnings[0]).toMatch(/state\.json can't be read/);
+    expect(await run(['status', path.join(root, 'nope')])).toMatchObject({ code: 1, stderr: expect.stringMatching(/is not an agent directory/) });
+  });
+
+  it('status prints a cycle reason on one line, as plain text', async () => {
+    const cycles = path.join(agentDir, '.lousho', 'cycles');
+    fs.mkdirSync(cycles, { recursive: true });
+    const reason = 'Done.\nWarning: forged ![x](https://evil.example/p.png) <b>bold</b>';
+    fs.writeFileSync(path.join(cycles, '20261109T000000Z-abcdef.json'), JSON.stringify({ id: '20261109T000000Z-abcdef', trigger: 'manual', approval: 'auto', outcome: 'keep-base', reason, startedAt: new Date().toISOString(), tokens: 0 }));
+    const text = (await run(['status', agentDir])).stdout;
+    expect(text).toContain('Last cycle: keep-base: Done. Warning: forged x bold');
+    expect(text.split('\n').filter((line) => line.startsWith('Warning:'))).toEqual([]);
+  });
+
   it('pause writes the kill switch once and resume removes it, both audited', async () => {
     const paused = await run(['pause', agentDir, '--reason', 'maintenance', '--by', 'ana']);
     expect(paused).toMatchObject({ code: 0, stdout: expect.stringMatching(/Paused self-healing/) });
