@@ -95,16 +95,22 @@ or replay one the gate rejected.
 
 Set `proposers` (default 1, at most 4) to have k invariant and k domain editors
 propose independently from the same runs, labelled `invariant-1` to
-`invariant-k` and `domain-1` to `domain-k`. Each proposal that changes the
-harness is probed, and one composer reads them all. If the composite fails the
-gate, every proposal is a fallback, cheapest first, and one identical to an
-earlier proposal is not judged again. `candidates.pool` holds every proposal,
-and `diversity` reports how alike they were: `meanJaccard` is the mean pairwise
-overlap of their non-blank lines (1 means identical) and `distinct` counts the
-different ones. It costs about k times the editor sessions and proposal runs of
-the default, so with k = 3 a cycle runs 7 editor sessions instead of 3. More
-fallbacks are also more chances for noise to pass the gate, so confirm a
-proposal on fresh runs before you apply it.
+`invariant-k` and `domain-1` to `domain-k`. They run two at a time, and then so
+do their probes, or one at a time with `parallelEditors: false`. Each proposal
+that changes the harness is probed, and one composer reads them all. If the
+composite fails the gate, each proposal that improved a training case is a
+fallback, cheapest first, and one identical to an earlier proposal is not judged
+again. `candidates.pool` holds every proposal, and `diversity` reports how alike
+they were: `meanJaccard` is the mean pairwise overlap of their non-blank lines
+(1 means identical) and `distinct` counts the different ones. As in Harness², a
+proposal that changed nothing counts as a copy of the current harness.
+
+It costs about k times the editor sessions and proposal runs of the default, so
+with k = 3 a cycle runs 7 editor sessions instead of 3. Each fallback the gate
+judges also costs held-out runs and maybe reruns. More fallbacks are also more
+chances for noise to pass the gate: at k = 4 up to 9 harnesses can be judged,
+against 3 by default, so the 15% no-op pass rate above can more than double.
+Confirm a proposal with `canaryReplay` before you apply it.
 
 ## Caching and the ledger
 

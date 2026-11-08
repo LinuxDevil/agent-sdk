@@ -40,18 +40,20 @@ interface Proposer {
 function promptsFor(options: ImproveOptions): { proposers: Proposer[]; compose: string } {
   const k = options.proposers ?? 1;
   const note = (options.recoveries?.length ? RECOVERIES_NOTE : '') + (Object.keys(options.library ?? {}).length > 0 ? LIBRARY_NOTE : '');
-  if (k === 1) return { proposers: [{ label: 'invariant', system: INVARIANT_PROMPT + note }, { label: 'domain', system: DOMAIN_PROMPT + note }], compose: COMPOSE_PROMPT + note };
-  const proposers = Array.from({ length: k }, (_, i): Proposer[] => [
-    { label: `invariant-${i + 1}`, system: INVARIANT_PROMPT + note + candidateNote(i + 1, k) },
-    { label: `domain-${i + 1}`, system: DOMAIN_PROMPT + note + candidateNote(i + 1, k) },
-  ]).flat();
-  return { proposers, compose: poolComposePrompt(k) + note };
+  const proposers = Array.from({ length: k }, (_, i): Proposer[] => {
+    const suffix = k === 1 ? '' : (`-${i + 1}` as const);
+    const own = k === 1 ? note : note + candidateNote(i + 1, k);
+    return [
+      { label: `invariant${suffix}`, system: INVARIANT_PROMPT + own },
+      { label: `domain${suffix}`, system: DOMAIN_PROMPT + own },
+    ];
+  }).flat();
+  return { proposers, compose: (k === 1 ? COMPOSE_PROMPT : poolComposePrompt(k)) + note };
 }
 
-function candidatesOf(pool: readonly Proposal[], compose: Harness): NonNullable<ImproveResult['candidates']> {
-  const first = (scope: string) => pool.find((proposal) => proposal.label.startsWith(scope))?.harness ?? pool[0].harness;
-  const candidates = { invariant: first('invariant'), domain: first('domain'), compose };
-  return pool.length === 2 ? candidates : { ...candidates, pool: Object.fromEntries(pool.map(({ label, harness }) => [label, harness])) };
+function candidatesOf(pool: readonly Proposal[], compose: Harness, several: boolean): NonNullable<ImproveResult['candidates']> {
+  const candidates = { invariant: pool[0].harness, domain: pool[1].harness, compose };
+  return several ? { ...candidates, pool: Object.fromEntries(pool.map(({ label, harness }) => [label, harness])) } : candidates;
 }
 
 function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined): boolean {
@@ -102,7 +104,7 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
     extra: Object.assign({ ...library }, ...pool.map((proposal) => candidateFiles(proposal.label, base, proposal.harness))),
   });
   const composed = await run.edit(run.stage('compose'), prompts.compose, composeFiles, base, { failedChecks: failedChecks(composeRuns) });
-  run.candidates = candidatesOf(pool, composed);
+  run.candidates = candidatesOf(pool, composed, (options.proposers ?? 1) > 1);
   if (diffHarness(base, composed) === '') return { composed, pool, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };
   return { composed, pool };
 }

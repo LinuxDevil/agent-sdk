@@ -38,9 +38,9 @@ The test: if your edit would help just as much on a task from a completely diffe
 
 Look for: answers that misread a rule, ignored a policy, or used the wrong source. Write down a rule only if the runs show it, and never guess a fact.`;
 
-export const COMPOSE_PROMPT = `${SHARED}
+const composePrompt = (who: string) => `${SHARED}
 
-You are the composer. Two editors proposed changes. Each proposal is under context/candidates/<name>/: its files, a diff.md, and the runs it produced under context/runs/<name>/. The current harness is in harness/, and context/runs/base/ shows how it behaves.
+You are the composer. ${who} Each proposal is under context/candidates/<name>/: its files, a diff.md, and the runs it produced under context/runs/<name>/. The current harness is in harness/, and context/runs/base/ shows how it behaves.
 
 Write the best next harness into harness/. You may merge edits, revise them, take one proposal, or change nothing:
 - Keep an edit only if its runs show it helped. Being in a proposal doesn't make it good.
@@ -53,12 +53,13 @@ In <notes>, give one line per edit in this form:
 kept|revised|dropped: <edit>: helped|hurt|no observed effect|confounded: <the evidence>
 Use "confounded" whenever the runs can't isolate the edit. A guessed cause misleads everything built on it. If nothing should change, say KEEP_BASE.`;
 
+export const COMPOSE_PROMPT = composePrompt('Two editors proposed changes.');
+
 export const candidateNote = (index: number, k: number) => `
 
 You are candidate ${index} of ${k} for this scope, drawn independently from the same runs as the others. Don't hedge toward an average: commit to the single most defensible version of your scope. The composer compares and merges.`;
 
-export const poolComposePrompt = (k: number) =>
-  COMPOSE_PROMPT.replace('Two editors proposed changes.', `There are ${2 * k} proposals, ${k} from invariant editors and ${k} from domain editors, each drawn independently from the same runs.`);
+export const poolComposePrompt = (k: number) => composePrompt(`There are ${2 * k} proposals, ${k} from invariant editors and ${k} from domain editors, each drawn independently from the same runs.`);
 
 export const RECOVERIES_NOTE = `
 

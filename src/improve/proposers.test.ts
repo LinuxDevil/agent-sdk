@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { mockModel, type MockModel, type MockRequest, type MockTurn } from '../testing';
 import { improveAgent, type Harness, type ImproveOptions, type ProbeRun } from './index';
+import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT } from './prompts';
 
 const BASE: Harness = { instructions: 'You answer questions.', skills: {} };
 const FIX = 'You answer questions. If a document is forbidden, say so and stop.';
@@ -280,6 +281,27 @@ describe('improveAgent with several proposers', () => {
     expect(one).toEqual(plain);
     expect(plain).not.toHaveProperty('diversity');
     expect(plain.candidates).not.toHaveProperty('pool');
+  });
+
+  it('k=1 gives the editors the same prompts as before', async () => {
+    const provider = editors({ invariant: noEdit, domain: noEdit, compose: noEdit });
+    await improveAgent(options({ editor: { provider } }));
+    expect(provider.calls.map(systemOf)).toEqual([INVARIANT_PROMPT, DOMAIN_PROMPT, COMPOSE_PROMPT]);
+  });
+
+  it('stops with budget-exceeded among the proposers, keeping only the stages that started', async () => {
+    const provider = editors({ 'invariant-1': edit(FIX), 'domain-1': edit(FIX), 'invariant-2': edit(FIX), 'domain-2': edit(FIX), compose: noEdit });
+    const result = await improveAgent(options({ proposers: 2, parallelEditors: false, maxTokens: 2500, editor: { provider } }));
+    expect(result.outcome).toBe('budget-exceeded');
+    expect(result.stages.length).toBeLessThan(4);
+    expect(result).not.toHaveProperty('candidates');
+    expect(result).not.toHaveProperty('diversity');
+  });
+
+  it('runs the proposers one at a time, in order, when parallelEditors is false', async () => {
+    const provider = editors({ 'invariant-1': noEdit, 'domain-1': noEdit, 'invariant-2': noEdit, 'domain-2': noEdit, compose: noEdit });
+    await improveAgent(options({ proposers: 2, parallelEditors: false, editor: { provider } }));
+    expect(provider.calls.map(stageOf)).toEqual(['invariant-1', 'domain-1', 'invariant-2', 'domain-2', 'compose']);
   });
 
   it.each([0, 5, 1.5])('rejects proposers=%s', async (proposers) => {
