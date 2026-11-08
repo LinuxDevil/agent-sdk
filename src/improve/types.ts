@@ -148,6 +148,8 @@ export interface ImproveResult {
   harness?: Harness;
   /** The proposed changes, line by line, with `outcome: 'proposal'`. */
   diff?: string;
+  /** The failed-check names the editors saw, so a reviewer can spot an edit that quotes one. */
+  failedChecks?: string[];
   /** The current harness on the training runs the editors read. */
   base: ProbeSummary;
   /** The current harness on fresh runs of the training cases: the runs the gate compares against. */

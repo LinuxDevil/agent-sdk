@@ -18,6 +18,10 @@ function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined):
   return summary.passRate === 1 && !alwaysPropose;
 }
 
+function failedChecks(runs: readonly LabelledRun[]): string[] {
+  return [...new Set(runs.flatMap(({ run }) => (run.failure ? run.failure.split('; ') : [])))];
+}
+
 function candidateFiles(name: string, base: Harness, candidate: Harness): Record<string, string> {
   const files: Record<string, string> = { [`context/candidates/${name}/diff.md`]: diffHarness(base, candidate) || 'No change.' };
   for (const [path, content] of Object.entries(harnessFiles(candidate))) files[`context/candidates/${name}/${path}`] = content;
@@ -66,12 +70,21 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
   const run = new ImproveRun(options);
   assertOptions(options, run.repeats);
   let base: ProbeSummary = summarize([]);
-  const finish = (result: Omit<ImproveResult, 'base' | 'stages' | 'spend'>): ImproveResult => ({ ...result, base, ...(run.candidates && { candidates: run.candidates }), stages: run.stages, spend: { tokens: run.tokens } });
+  let checks: string[] = [];
+  const finish = (result: Omit<ImproveResult, 'base' | 'stages' | 'spend'>): ImproveResult => ({
+    ...result,
+    ...(checks.length > 0 && { failedChecks: checks }),
+    base,
+    ...(run.candidates && { candidates: run.candidates }),
+    stages: run.stages,
+    spend: { tokens: run.tokens },
+  });
   try {
     const baseRuns = await run.probe(options.harness, 'base', options.cases);
     base = summarize(baseRuns);
     if (base.passRate === null) return finish({ outcome: 'outage', reason: 'No run could be scored, so there is nothing to learn from.' });
     if (needsNoEdit(base, options.alwaysPropose)) return finish({ outcome: 'no-failures', reason: 'Every case passed, so no editor ran.' });
+    checks = failedChecks(baseRuns);
     const stages = await runStages(run, options, baseRuns);
     return finish(stages.result ?? (await judgeStages(run, options, stages)));
   } catch (error) {
