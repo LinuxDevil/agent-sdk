@@ -8,6 +8,7 @@ import { dayStart, readCycles, usageToday, type HealCycle } from './cycles';
 import { corpusCases } from './healApply';
 import { BudgetSpent, caseProbe, libraryOf, unscored } from './healState';
 import type { MonitorVerdict } from './monitor';
+import type { Notify } from './notify';
 import { voteOnOutcome } from './reflect';
 import { harnessHash, readAgentHarness } from './revisions';
 import type { ImproveSettings } from './settings';
@@ -20,6 +21,7 @@ export interface WatchContext {
   leaseId: string;
   store: CheckpointStore;
   editor: ImproveOptions['editor'];
+  notify: Notify;
   signal?: AbortSignal;
 }
 
@@ -138,18 +140,26 @@ async function claimHarvest(dir: string): Promise<number | undefined> {
   return claimed;
 }
 
-export async function harvest(options: WatchOptions, monitor: MonitorVerdict, now: number, signal?: AbortSignal): Promise<void> {
-  if (monitor.state !== 'kept' && monitor.state !== 'rolled-back') return;
+const DECIDED: readonly MonitorVerdict['state'][] = ['kept', 'rolled-back', 'regressed'];
+
+const MONITOR_EVENTS: Partial<Record<MonitorVerdict['state'], 'improve.rolled_back' | 'improve.guard_failed'>> = { 'rolled-back': 'improve.rolled_back', regressed: 'improve.guard_failed' };
+
+export async function harvest(options: WatchOptions, monitor: MonitorVerdict, now: number, context: Pick<WatchContext, 'notify' | 'signal'>): Promise<void> {
+  if (!DECIDED.includes(monitor.state)) return;
   const applySeq = await claimHarvest(options.dir);
   if (applySeq === undefined) return;
   const cycle = cycleOfApply(options.dir, applySeq);
-  if (!cycle?.result) return;
+  const type = MONITOR_EVENTS[monitor.state];
+  if (type) context.notify({ type, reason: monitor.reason ?? `The monitor says ${monitor.state}.`, ...(cycle?.id && { cycle: cycle.id }), ...(cycle?.to && { from: cycle.to }), ...(monitor.to && { to: monitor.to }) });
+  if (!cycle?.result || monitor.state === 'regressed') return;
+  const signal = context.signal;
   const library = libraryOf(options.dir, options.settings);
-  if (library) voteOnOutcome(library.dir, { outcome: monitor.state, result: cycle.result, domain: library.domain });
+  if (library) voteOnOutcome(library.dir, { outcome: monitor.state === 'kept' ? 'kept' : 'rolled-back', result: cycle.result, domain: library.domain });
   if (monitor.state === 'kept') await admitFixed(options, cycle, now, signal);
 }
 
-export async function guardScheduled(options: WatchOptions, now: number, signal?: AbortSignal): Promise<GuardCorpusResult | undefined> {
+export async function guardScheduled(options: WatchOptions, now: number, context: Pick<WatchContext, 'notify' | 'signal'>): Promise<GuardCorpusResult | undefined> {
+  const { signal } = context;
   const { dir, settings } = options;
   const last = watchOf(dir).guardAt;
   if (last !== undefined && now - last < settings.guard.everyHours * HOUR_MS) return undefined;
@@ -159,6 +169,8 @@ export async function guardScheduled(options: WatchOptions, now: number, signal?
   const earlier = readAudit(dir).filter((entry) => (entry.action === 'guard-pass' || entry.action === 'guard-fail') && entry.to === revision).length;
   const firstRepeat = GUARD_FIRST_REPEAT + earlier * GUARD_RANGE;
   const guard = await withSpend(options, now, (spend) => guardCorpus(dir, { probe: corpusProbe(options, corpusCases(corpus), spend, signal), runs: settings.guard.runs, rollback: true, firstRepeat, ...(signal && { signal }) }));
-  if (guard) await saveWatch(dir, { guardAt: now });
+  if (!guard) return undefined;
+  await saveWatch(dir, { guardAt: now });
+  if (guard.cases.some((item) => item.class === 'regressed')) context.notify({ type: guard.rolledBackTo ? 'improve.rolled_back' : 'improve.guard_failed', reason: guard.reason, from: revision, ...(guard.rolledBackTo && { to: guard.rolledBackTo }) });
   return guard;
 }

@@ -17,6 +17,7 @@ import { loadImproveSettings, type ImproveSettings } from './settings';
 import { updateState } from './state';
 import type { Harness } from './types';
 import { isDefinedSchedule } from '../schedules/defineSchedule';
+import { noticeEvent } from './notify';
 import { improveSchedule, watchAgent, watchContext, watchTick, type WatchOptions } from './watch';
 
 vi.mock('./heal', async (original) => {
@@ -82,7 +83,7 @@ function settings(over: Partial<ImproveSettings> = {}): ImproveSettings {
   return { ...loadImproveSettings(dir, {}, {}), library: { enabled: false }, ...over };
 }
 
-const options = (over: Partial<WatchOptions> = {}): WatchOptions => ({ dir, db, check, runCase, editor: { provider: editor() }, settings: settings(), agent: 'support', ...over });
+const options = (over: Partial<WatchOptions> = {}): WatchOptions => ({ dir, db, check, runCase, editor: { provider: editor() }, settings: settings(), agent: 'support', log: () => undefined, ...over });
 
 const tick = (over: Partial<WatchOptions> = {}, context = watchContext(options(over))) => watchTick(options(over), context);
 
@@ -259,6 +260,48 @@ describe('watchTick', () => {
     await updateState(dir, { monitor: undefined });
     await watchTick(options(), context);
     expect(readCorpus(dir).filter((item) => item.origin === 'fixed')).toHaveLength(fixed.length);
+  });
+});
+
+describe('notifications', () => {
+  it('an apply posts one improve.applied', async () => {
+    seedFailures();
+    const post = vi.fn();
+    const lines: string[] = [];
+    const result = await tick({ alerter: { post }, log: (line) => lines.push(line) });
+    expect(result.cycle?.outcome).toBe('applied');
+    expect(post).toHaveBeenCalledTimes(1);
+    const [[[event]]] = post.mock.calls;
+    expect(event).toMatchObject({ type: 'improve.applied', agent_id: 'support', status: 'applied', details: { agent: 'support', dir, from: result.cycle?.from, to: result.cycle?.to, cycle: result.cycle?.id } });
+    expect(lines).toEqual([expect.stringMatching(/^lousho improve: improve\.applied support: Applied/)]);
+  });
+
+  it('webhook failure never fails the cycle', async () => {
+    seedFailures();
+    const post = () => {
+      throw new Error('webhook down');
+    };
+    const result = await tick({ alerter: { post }, log: () => {
+      throw new Error('stderr closed');
+    } });
+    expect(result.cycle?.outcome).toBe('applied');
+  });
+
+  it('a pause and a pending proposal are posted, the pending one with its local card path', async () => {
+    seedFailures();
+    const post = vi.fn();
+    const manual = settings({ approval: 'manual', trigger: { minNewFailures: 3, requireRecurring: false } });
+    const queued = await tick({ alerter: { post }, settings: manual });
+    stop();
+    await tick({ alerter: { post } });
+    await tick({ alerter: { post } });
+    expect(post.mock.calls.map(([[event]]) => event.type)).toEqual(['improve.pending', 'improve.paused']);
+    expect(post.mock.calls[0]?.[0][0].details.card).toBe(path.join(dir, '.lousho', 'proposals', `${queued.cycle?.pending}.json`));
+  });
+
+  it('no editor text reaches a webhook unsanitized', () => {
+    const event = noticeEvent({ type: 'improve.canary', reason: 'See ![pixel](https://evil.example/p.png) and [here](https://evil.example) <img src=x onerror=alert(1)> <untrusted>' }, { agent: 'support', dir }, 0);
+    expect(event.details.reason).toBe('See pixel and here');
   });
 });
 

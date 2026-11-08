@@ -10,7 +10,9 @@ import { resolveProvider } from '../providers/resolveProvider';
 import { defineSchedule, type DefinedSchedule } from '../schedules/defineSchedule';
 import { fileStore } from '../storage/fileStore';
 import { appendAudit } from './audit';
+import type { Alerter } from '../observe/alerts';
 import type { GuardCorpusResult } from './corpusGuard';
+import { cycleNotice, notifier, type Notify } from './notify';
 import { pausedBy, type HealCycle } from './cycles';
 import { healOnce, type HealOptions } from './heal';
 import { checkApplied, type MonitorVerdict } from './monitor';
@@ -35,6 +37,10 @@ export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' 
   onError?: (error: unknown) => void;
   /** Holds the one-watcher-per-directory lease; it must support leases (default a file store in `.lousho/watch`). */
   store?: CheckpointStore;
+  /** Posts `improve.*` events to webhooks, such as `createAlerter(resolveAlertConfig(dbPath))`; a failed post never fails a tick. */
+  alerter?: Alerter;
+  /** Writes one line per `improve.*` event (default stderr). */
+  log?: (line: string) => void;
 }
 
 /** What one watch tick did. */
@@ -70,7 +76,9 @@ export function watchContext(options: WatchOptions, signal?: AbortSignal): Watch
   const store = options.store ?? fileStore(path.join(options.dir, '.lousho', 'watch')).checkpoints;
   if (!store.acquireLease) throw new ConfigurationError('watchAgent: the store must support leases (acquireLease), so only one watcher runs per agent directory.', 'store');
   const leaseId = `improve-${createHash('sha256').update(path.resolve(options.dir)).digest('hex').slice(0, 32)}`;
-  return { owner: `${process.pid}:watch:${randomUUID()}`, leaseId, store, editor: rateLimited(options.editor, options.settings.rateLimit.rpm), ...(signal && { signal }) };
+  const log = options.log ?? ((line: string) => process.stderr.write(line));
+  const notify = notifier({ agent: options.agent, dir: options.dir }, { log, ...(options.alerter && { alerter: options.alerter }) });
+  return { owner: `${process.pid}:watch:${randomUUID()}`, leaseId, store, editor: rateLimited(options.editor, options.settings.rateLimit.rpm), notify, ...(signal && { signal }) };
 }
 
 function settingsOf(options: WatchOptions): ImproveSettings | string {
@@ -82,10 +90,11 @@ function settingsOf(options: WatchOptions): ImproveSettings | string {
   }
 }
 
-async function pauseOnce(dir: string, reason: string): Promise<WatchTick> {
+async function pauseOnce(dir: string, reason: string, notify: Notify): Promise<WatchTick> {
   if (watchOf(dir).paused === undefined) {
     await appendAudit(dir, { actor: 'scheduler', action: 'pause', reason: `The self-healing loop is paused: ${reason}.` });
     await saveWatch(dir, { paused: reason });
+    notify({ type: 'improve.paused', reason: `Paused: ${reason}.` });
   }
   return { state: 'paused', reason: `Paused: ${reason}.` };
 }
@@ -121,7 +130,7 @@ function cooldownUntil(dir: string, now: number): string | undefined {
   return Number.isFinite(at) && at > now ? until : undefined;
 }
 
-async function countOutage(dir: string, cycle: HealCycle): Promise<void> {
+async function countOutage(dir: string, cycle: HealCycle, notify: Notify): Promise<void> {
   if (UNCOUNTED.includes(cycle.outcome)) return;
   if (cycle.outcome !== 'outage') {
     await saveWatch(dir, { outages: 0 });
@@ -130,8 +139,10 @@ async function countOutage(dir: string, cycle: HealCycle): Promise<void> {
   const outages = (watchOf(dir).outages ?? 0) + 1;
   await saveWatch(dir, { outages });
   if (outages < MAX_OUTAGES) return;
-  await pauseImprove(dir, { reason: `The self-healing loop paused itself: ${MAX_OUTAGES} cycles in a row ended in a provider outage.` });
+  const reason = `The self-healing loop paused itself: ${MAX_OUTAGES} cycles in a row ended in a provider outage.`;
+  await pauseImprove(dir, { reason });
   await saveWatch(dir, { outages: 0 });
+  notify({ type: 'improve.paused', reason, cycle: cycle.id });
 }
 
 async function runCycle(options: WatchOptions, context: WatchContext, trigger: HealCycle['trigger'], now: number): Promise<WatchTick> {
@@ -141,10 +152,12 @@ async function runCycle(options: WatchOptions, context: WatchContext, trigger: H
   const last = watchOf(options.dir);
   const same = last.revision === key.revision && last.failed === key.failed && last.newest === key.newest && (last.signatures ?? []).join('\n') === key.signatures.join('\n');
   if (same && last.signatures !== undefined) return { state: 'deduped', reason: 'The same failures as the last cycle and nothing new, so no cycle ran.' };
-  const { intervalMs: _interval, reloadSettings: _reload, onCycle, onError: _onError, store: _store, ...heal } = options;
+  const { intervalMs: _interval, reloadSettings: _reload, onCycle, onError: _onError, store: _store, alerter: _alerter, log: _log, ...heal } = options;
   const cycle = await healOnce({ ...heal, editor: context.editor, trigger, maxTokens: budgetLeft(options.dir, options.settings, now), ...(context.signal && { signal: context.signal }) });
   if (!NOT_WORKED.includes(cycle.outcome)) await saveWatch(options.dir, { revision: key.revision, signatures: key.signatures, failed: key.failed, ...(key.newest && { newest: key.newest }) });
-  await countOutage(options.dir, cycle);
+  await countOutage(options.dir, cycle, context.notify);
+  const notice = cycleNotice(cycle, options.dir);
+  if (notice) context.notify(notice);
   onCycle?.(cycle);
   return { state: 'ran', reason: cycle.reason, cycle };
 }
@@ -166,10 +179,10 @@ async function steps(options: WatchOptions, context: WatchContext, trigger: Heal
   const monitor = await checkApplied(options.db, options.dir, options.settings, { agent: options.agent, now });
   const stopAfterMonitor = halted(options, context.signal);
   if (stopAfterMonitor) return { ...stopAfterMonitor, monitor };
-  await harvest(options, monitor, now, context.signal);
+  await harvest(options, monitor, now, context);
   const stopAfterHarvest = halted(options, context.signal);
   if (stopAfterHarvest) return { ...stopAfterHarvest, monitor };
-  const guard = await guardScheduled(options, now, context.signal);
+  const guard = await guardScheduled(options, now, context);
   const stopAfterGuard = halted(options, context.signal);
   if (stopAfterGuard) return { ...stopAfterGuard, monitor, ...(guard && { guard }) };
   const ran = await runCycle(options, context, trigger, now);
@@ -181,7 +194,7 @@ export async function watchTick(options: WatchOptions, context: WatchContext, tr
   const now = Date.now();
   const settings = settingsOf(options);
   const paused = typeof settings === 'string' ? settings : pausedBy(options.dir, settings);
-  if (paused) return pauseOnce(options.dir, paused);
+  if (paused) return pauseOnce(options.dir, paused, context.notify);
   await resumeIfPaused(options.dir);
   if (context.signal?.aborted) return { state: 'stopped', reason: 'The watcher stopped.' };
   const ttl = 2 * (options.intervalMs ?? DEFAULT_INTERVAL_MS);

@@ -25,8 +25,8 @@ const ALERT_TIMEOUT_MS = 5000;
 
 /** One alert, POSTed verbatim as the JSON body to every configured webhook. */
 export interface AlertEvent {
-  /** 'agent.status' for a transition to 'down'; 'agent.error_rate' for a threshold crossing; 'agent.score_regression' when the trajectory gate sees the continuous score fall. */
-  type: 'agent.status' | 'agent.error_rate' | 'agent.score_regression';
+  /** 'agent.status' for a transition to 'down'; 'agent.error_rate' for a threshold crossing; 'agent.score_regression' when the trajectory gate sees the continuous score fall; 'improve.*' from a self-healing watcher, with `{ agent, dir, from, to, reason, cycle }` in `details`. */
+  type: 'agent.status' | 'agent.error_rate' | 'agent.score_regression' | 'improve.pending' | 'improve.applied' | 'improve.rolled_back' | 'improve.guard_failed' | 'improve.paused' | 'improve.canary';
   agent_id: string;
   project: string | null;
   /** 'down' for status alerts; the agent's current status for error-rate and score-regression alerts. */

@@ -643,6 +643,18 @@ describe('lousho improve, one self-healing cycle', () => {
     expect(parseImproveArgs([agentDir, '--check', checkPath, '--interval', '30s']).intervalMs).toBe(30_000);
   });
 
+  it('status --json has every field, and the text form names the mode and the monitor', async () => {
+    await run([agentDir, '--check', checkPath, '--db', dbPath], { editor: editorFor(FIX) });
+    const json = await run(['status', agentDir, '--json']);
+    expect(json.code).toBe(0);
+    const report = JSON.parse(json.stdout) as Record<string, unknown>;
+    expect(Object.keys(report).sort()).toEqual(['approval', 'audit', 'budget', 'canary', 'cooldownUntil', 'dir', 'lastCycle', 'monitor', 'paused', 'pending', 'revision', 'warnings']);
+    expect(report).toMatchObject({ approval: 'auto', paused: null, revision: currentRevision(agentDir), lastCycle: { outcome: 'applied' }, budget: { applies: { used: 1, max: 1 } }, canary: { traffic: null, last: { passed: true } } });
+    const text = await run(['status', agentDir]);
+    expect(text.stdout).toMatch(/^Mode: auto\nRevision: [0-9a-f]{12}\nMonitor: nothing applied to watch/);
+    expect(text.stdout).toMatch(/1\/1 automatic applies/);
+  });
+
   it('pause writes the kill switch once and resume removes it, both audited', async () => {
     const paused = await run(['pause', agentDir, '--reason', 'maintenance', '--by', 'ana']);
     expect(paused).toMatchObject({ code: 0, stdout: expect.stringMatching(/Paused self-healing/) });

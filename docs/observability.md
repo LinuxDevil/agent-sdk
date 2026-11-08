@@ -506,6 +506,14 @@ error-rate thresholds and score regressions (see
 [Continuous score](#continuous-score)) POST to `--webhook` URLs or an
 `alerts.json` next to the db.
 
+`lousho improve --watch` posts to the same `alerts.json` webhooks:
+`improve.pending`, `improve.applied`, `improve.rolled_back`,
+`improve.guard_failed`, `improve.paused` and `improve.canary`. `details` holds
+`{ agent, dir, from, to, reason, cycle }`, plus `card`, the local path of a
+pending proposal. The reason is plain text: links, images and markup are
+stripped. Each event is also one stderr line, and a webhook that fails never
+fails the cycle.
+
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an
 agent first seen today with 12 runs reports 12/day, not 12/7. The per-bucket
