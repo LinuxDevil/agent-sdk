@@ -63,9 +63,9 @@ console.log(result.outcome, result.reason);
    held-out cases that almost always pass: a case that
    always passes can never reject a good edit by chance. These reruns happen
    only when training passed, use repeat numbers `repeats` to `repeats + 2`, and
-   count toward `maxTokens`. The result also must not raise tokens per passing
-   run by more than `maxCostIncrease`. Cost is
-   compared only on cases that pass under both harnesses, because a failing run
+   count toward `maxTokens`. Tokens per passing run may rise by up to
+   `maxCostIncrease` (default 0.5, a 50% rise), and `reason` reports the change
+   either way. Cost is compared only on cases that pass under both harnesses, because a failing run
    can stop early and look cheap. A rise within the spread between runs isn't
    rejected. If no case passed under both, `reason` says cost could not be
    compared, so include a held-out case that already passes.
