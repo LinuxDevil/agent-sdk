@@ -3,10 +3,10 @@ import { CompactedLLMProviderError, ConfigurationError } from '../execution/erro
 import { MemoryWorkspace } from '../tools/workspace/MemoryWorkspace';
 import { createFsTools } from '../tools/workspace/fsTools';
 import { evidenceFiles, type LabelledRun } from './evidence';
-import { caseCount, costOnPassingCases, gateFailure, judgeTrainingCase, summarize } from './gate';
+import { caseCount, costOnPassingCases, gateFailure, HOLDOUT_RERUNS, judgeHoldoutCase, judgePooledHoldout, judgeTrainingCase, summarize, trainingFailure } from './gate';
 import { diffHarness, harnessFiles, readHarness, validateHarness } from './harness';
 import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, rejectedNote } from './prompts';
-import type { Harness, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeSummary } from './types';
+import type { CaseVerdict, Harness, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeSummary } from './types';
 
 const DEFAULT_REPEATS = 3;
 const DEFAULT_MAX_ALWAYS_ON = 8000;
@@ -136,6 +136,30 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
   return { composed };
 }
 
+async function holdoutVerdicts(
+  run: ImproveRun,
+  options: ImproveOptions,
+  candidate: Harness,
+  baseRuns: readonly LabelledRun[],
+  finalRuns: readonly LabelledRun[]
+): Promise<{ verdicts: CaseVerdict[]; regressed: string[] }> {
+  const verdicts: CaseVerdict[] = [];
+  const regressed: string[] = [];
+  for (const id of options.holdout ?? []) {
+    const first = judgeHoldoutCase(id, caseCount(baseRuns, id), caseCount(finalRuns, id));
+    if (!first.needsRerun) {
+      verdicts.push(first.verdict);
+      continue;
+    }
+    const baseRerun = await run.probe(options.harness, 'holdout-base-rerun', [id], run.repeats, HOLDOUT_RERUNS);
+    const finalRerun = await run.probe(candidate, 'holdout-final-rerun', [id], run.repeats, HOLDOUT_RERUNS);
+    const pooled = judgePooledHoldout(id, caseCount([...baseRuns, ...baseRerun], id), caseCount([...finalRuns, ...finalRerun], id), run.repeats, first.verdict);
+    verdicts.push(pooled.verdict);
+    if (pooled.regressed) regressed.push(id);
+  }
+  return { verdicts, regressed };
+}
+
 async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness): Promise<Omit<ImproveResult, 'base' | 'stages' | 'spend'>> {
   const freshBaseRuns = await run.probe(options.harness, 'fresh-base', options.cases, run.repeats);
   const holdoutIds = options.holdout ?? [];
@@ -147,8 +171,16 @@ async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness
   const freshBase = summarize(freshBaseRuns);
   const cost = costOnPassingCases([...freshBaseRuns, ...holdoutBaseRuns], [...finalRuns, ...holdoutFinalRuns]);
   const training = options.cases.map((id) => judgeTrainingCase(id, caseCount(freshBaseRuns, id), caseCount(finalRuns, id)));
-  const failure = gateFailure({ training, ...(holdout && { holdout }), ...(cost && { cost }), maxCostIncrease: options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE });
-  const shared = { freshBase, final, ...(holdout && { holdout }), ...(cost && { costOnPassingCases: cost }), cases: training.map((judged) => judged.verdict) };
+  const summaries = { freshBase, final, ...(holdout && { holdout }), ...(cost && { costOnPassingCases: cost }) };
+  const trainingVerdicts = training.map((judged) => judged.verdict);
+  const untrained = trainingFailure(training);
+  if (untrained) {
+    const firstPass = holdoutIds.map((id) => judgeHoldoutCase(id, caseCount(holdoutBaseRuns, id), caseCount(holdoutFinalRuns, id), false).verdict);
+    return { outcome: 'keep-base', reason: untrained, ...summaries, cases: [...trainingVerdicts, ...firstPass] };
+  }
+  const { verdicts, regressed } = await holdoutVerdicts(run, options, composed, holdoutBaseRuns, holdoutFinalRuns);
+  const failure = gateFailure({ training, regressed, ...(cost && { cost }), maxCostIncrease: options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE });
+  const shared = { ...summaries, cases: [...trainingVerdicts, ...verdicts] };
   if (failure) return { outcome: 'keep-base', reason: failure, ...shared };
   const reason = `A training case improved by at least 2 in 3 runs, none got worse, and no held-out case got worse.${cost ? '' : ' Cost could not be compared, because no case passed under both harnesses.'}`;
   return { outcome: 'proposal', reason, harness: composed, diff: diffHarness(options.harness, composed), ...shared };

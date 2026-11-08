@@ -74,7 +74,10 @@ describe('improveAgent', () => {
     const result = await improveAgent(options({ probe: async () => run(false), turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
     expect(result.outcome).toBe('keep-base');
     expect(result.reason).toMatch(/no training case improved/i);
-    expect(result.cases).toEqual([{ caseId: 'stuck', role: 'training', base: { passed: 0, scored: 2 }, final: { passed: 0, scored: 2 }, reasons: ['Failed under both harnesses.'] }]);
+    expect(result.cases).toEqual([
+      { caseId: 'stuck', role: 'training', base: { passed: 0, scored: 2 }, final: { passed: 0, scored: 2 }, reasons: ['Failed under both harnesses.'] },
+      { caseId: 'held-out', role: 'holdout', base: { passed: 0, scored: 2 }, final: { passed: 0, scored: 2 }, reasons: ["Failed under both harnesses, so it can't show a regression."] },
+    ]);
     expect(result.harness).toBeUndefined();
   });
 
@@ -105,7 +108,10 @@ describe('improveAgent', () => {
 
   it('reports a verdict for each training case', async () => {
     const result = await improveAgent(options({ turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
-    expect(result.cases).toEqual([{ caseId: 'stuck', role: 'training', base: { passed: 0, scored: 2 }, final: { passed: 2, scored: 2 }, reasons: ['Improved from 0/2 to 2/2.'] }]);
+    expect(result.cases).toEqual([
+      { caseId: 'stuck', role: 'training', base: { passed: 0, scored: 2 }, final: { passed: 2, scored: 2 }, reasons: ['Improved from 0/2 to 2/2.'] },
+      { caseId: 'held-out', role: 'holdout', base: { passed: 2, scored: 2 }, final: { passed: 2, scored: 2 }, reasons: ['Held: 2/2 before, 2/2 after.'] },
+    ]);
   });
 
   it('judges the edit against fresh base runs, not the ones that triggered editing', async () => {
@@ -152,6 +158,66 @@ describe('improveAgent', () => {
     const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
     expect(result.outcome).toBe('keep-base');
     expect(result.reason).toMatch(/held-out/i);
+  });
+
+  it('reruns a held-out case that dropped, and keeps a result whose drop was chance', async () => {
+    const heldOut: [string, number][] = [];
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      const fixed = harness.instructions.includes('forbidden');
+      if (caseId !== 'held-out') return run(fixed);
+      heldOut.push([fixed ? 'final' : 'base', repeat]);
+      return run(!fixed || repeat !== 0);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(heldOut).toHaveLength(10);
+    expect(heldOut.slice(4)).toEqual([
+      ['base', 2],
+      ['base', 3],
+      ['base', 4],
+      ['final', 2],
+      ['final', 3],
+      ['final', 4],
+    ]);
+    expect(result.cases?.[1]).toMatchObject({ caseId: 'held-out', role: 'holdout', base: { passed: 5, scored: 5 }, final: { passed: 4, scored: 5 } });
+    expect(result.cases?.[1].reasons).toEqual([expect.stringMatching(/ran 3 more times/), expect.stringMatching(/within chance/)]);
+    expect(result.holdout?.final.passRate).toBe(0.5);
+  });
+
+  it('spends no reruns when training already failed', async () => {
+    let heldOutCalls = 0;
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      if (caseId !== 'held-out') return run(false);
+      heldOutCalls += 1;
+      return run(!harness.instructions.includes('forbidden'));
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('keep-base');
+    expect(result.reason).toMatch(/no training case improved/i);
+    expect(heldOutCalls).toBe(4);
+    expect(result.cases?.map((verdict) => verdict.reasons)).toEqual([['Failed under both harnesses.'], [expect.stringMatching(/not rerun, because training failed/)]]);
+  });
+
+  it('gates on training alone when there are no held-out cases', async () => {
+    const result = await improveAgent(options({ holdout: [], turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.holdout).toBeUndefined();
+    expect(result.cases).toHaveLength(1);
+  });
+
+  it('stops with budget-exceeded during a rerun, and proposes nothing', async () => {
+    const heldOutRepeats: number[] = [];
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      const fixed = harness.instructions.includes('forbidden');
+      if (caseId !== 'held-out') return run(fixed, 10);
+      heldOutRepeats.push(repeat);
+      return run(!fixed, 10_000);
+    };
+    const result = await improveAgent(options({ probe, maxTokens: 45_000, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('budget-exceeded');
+    expect(result.harness).toBeUndefined();
+    expect(result.cases).toBeUndefined();
+    expect(heldOutRepeats).toEqual([0, 1, 0, 1, 2]);
   });
 
   it('keeps the base when the edit makes passing runs much more expensive', async () => {

@@ -56,9 +56,15 @@ console.log(result.outcome, result.reason);
    `maxTokens`. Each training case is judged on its own. At least one must pass
    at least 2 more runs in 3 than it did on the fresh runs, and none may get
    worse. A gain counts only when each side has at least 2 scored runs.
-   `cases` shows each case's verdict and why. The result also must not
-   make a held-out case worse or raise tokens per passing run by more than
-   `maxCostIncrease`. Cost is
+   `cases` shows each case's verdict and why. Each held-out case is then
+   checked on its own. If one passes fewer runs than before, both harnesses run
+   it 3 more times, and the result is rejected only if the pooled drop is at
+   least 2 runs in `repeats + 3`, or 2 in 6 with the default 3 repeats. Choose
+   held-out cases that almost always pass: a case that
+   always passes can never reject a good edit by chance. These reruns happen
+   only when training passed, use repeat numbers `repeats` to `repeats + 2`, and
+   count toward `maxTokens`. The result also must not raise tokens per passing
+   run by more than `maxCostIncrease`. Cost is
    compared only on cases that pass under both harnesses, because a failing run
    can stop early and look cheap. A rise within the spread between runs isn't
    rejected. If no case passed under both, `reason` says cost could not be
