@@ -181,6 +181,7 @@ export interface CanaryReplayResult {
     cases: CaseVerdict[];
     passed: boolean;
     reason: string;
+    tokens: number;
 }
 
 // @public
