@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AlertEvent } from '../observe/alerts';
 import type { IngestEvent } from '../observe/envelope';
 import { ingestBatch, openDb } from '../observe/store';
 import type { SqlDatabase } from '../storage/sqlite/driver';
@@ -297,6 +298,25 @@ describe('notifications', () => {
     await tick({ alerter: { post } });
     expect(post.mock.calls.map(([[event]]) => event.type)).toEqual(['improve.pending', 'improve.paused']);
     expect(post.mock.calls[0]?.[0][0].details.card).toBe(path.join(dir, '.lousho', 'proposals', `${queued.cycle?.pending}.json`));
+  });
+
+  it('a monitor rollback posts once across ticks, with its reason as plain text', async () => {
+    const post = vi.fn(async (_events: readonly AlertEvent[]) => {
+      throw new Error('webhook rejected');
+    });
+    const context = watchContext(options({ alerter: { post } }));
+    seedFailures();
+    await watchTick(options(), context);
+    const applySeq = readAudit(dir).find((entry) => entry.action === 'apply')?.seq as number;
+    await updateState(dir, { monitor: { revision: currentRevision(dir), applySeq, at: new Date().toISOString(), verdict: { state: 'rolled-back' } } });
+    const verdict = { state: 'rolled-back' as const, to: 'a'.repeat(64), reason: 'Dropped ![pixel](https://evil.example/p.png) <img src=x> to 40%.' };
+    vi.mocked(checkApplied).mockResolvedValueOnce(verdict).mockResolvedValueOnce(verdict);
+    post.mockClear();
+    await watchTick(options(), context);
+    await watchTick(options(), context);
+    const events = post.mock.calls.map(([[event]]) => event);
+    expect(events.map((event) => event.type)).toEqual(['improve.rolled_back']);
+    expect(events[0]?.details.reason).toBe('Dropped pixel to 40%.');
   });
 
   it('no editor text reaches a webhook unsanitized', () => {

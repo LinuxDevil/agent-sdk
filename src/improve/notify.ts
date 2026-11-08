@@ -47,11 +47,12 @@ function quietly(task: () => void): void {
 }
 
 export function notifier(target: { agent: string; dir: string }, sinks: { alerter?: Alerter; log?: (line: string) => void }): Notify {
-  return (notice) => {
-    const event = noticeEvent(notice, target, Date.now());
-    quietly(() => sinks.log?.(`lousho improve: ${event.type} ${target.agent}: ${String(event.details.reason)}\n`));
-    quietly(() => void Promise.resolve(sinks.alerter?.post([event])).catch(() => undefined));
-  };
+  return (notice) =>
+    quietly(() => {
+      const event = noticeEvent(notice, target, Date.now());
+      quietly(() => sinks.log?.(`lousho improve: ${event.type} ${target.agent}: ${String(event.details.reason)}\n`));
+      quietly(() => void Promise.resolve(sinks.alerter?.post([event])).catch(() => undefined));
+    });
 }
 
 const CYCLE_EVENTS: Partial<Record<HealCycle['outcome'], ImproveEventType>> = {

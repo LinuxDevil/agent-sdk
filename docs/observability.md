@@ -510,7 +510,9 @@ error-rate thresholds and score regressions (see
 `improve.pending`, `improve.applied`, `improve.rolled_back`,
 `improve.guard_failed`, `improve.paused` and `improve.canary`. `details` holds
 `{ agent, dir, from, to, reason, cycle }`, plus `card`, the local path of a
-pending proposal. The reason is plain text: links, images and markup are
+pending proposal. A regression the monitor or a scheduled guard saw but did
+not roll back (automatic rollback off, or refused) is `improve.guard_failed`,
+posted once per revision. The reason is plain text: links, images and markup are
 stripped. Each event is also one stderr line, and a webhook that fails never
 fails the cycle.
 

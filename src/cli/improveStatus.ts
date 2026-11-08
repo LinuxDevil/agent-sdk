@@ -10,7 +10,7 @@ interface StatusIo {
 
 const STATUS: CommandSpec = { command: 'improve status', usage: 'Usage: lousho improve status <agent-dir> [--json]', positionals: 1, options: { json: { type: 'boolean' } } };
 
-const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
 const safe = (value: unknown): string => String(value ?? '-').replace(CONTROL, ' ');
 const short = (id: string | null): string => (id === null ? '-' : id.slice(0, 12));
 

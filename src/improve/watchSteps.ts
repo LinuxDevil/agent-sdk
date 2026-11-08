@@ -36,6 +36,7 @@ export interface WatchMemory {
   spentDay?: number;
   spent?: number;
   harvested?: number;
+  guardNotified?: string;
 }
 
 export interface WatchState {
@@ -171,6 +172,11 @@ export async function guardScheduled(options: WatchOptions, now: number, context
   const guard = await withSpend(options, now, (spend) => guardCorpus(dir, { probe: corpusProbe(options, corpusCases(corpus), spend, signal), runs: settings.guard.runs, rollback: true, firstRepeat, ...(signal && { signal }) }));
   if (!guard) return undefined;
   await saveWatch(dir, { guardAt: now });
-  if (guard.cases.some((item) => item.class === 'regressed')) context.notify({ type: guard.rolledBackTo ? 'improve.rolled_back' : 'improve.guard_failed', reason: guard.reason, from: revision, ...(guard.rolledBackTo && { to: guard.rolledBackTo }) });
+  const regressed = guard.cases.some((item) => item.class === 'regressed');
+  const type = guard.rolledBackTo ? 'improve.rolled_back' : 'improve.guard_failed';
+  if (regressed && watchOf(dir).guardNotified !== `${revision}:${type}`) {
+    await saveWatch(dir, { guardNotified: `${revision}:${type}` });
+    context.notify({ type, reason: guard.reason, from: revision, ...(guard.rolledBackTo && { to: guard.rolledBackTo }) });
+  }
   return guard;
 }

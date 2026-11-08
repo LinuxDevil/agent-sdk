@@ -1,4 +1,6 @@
-import { readAudit, type AuditEntry } from './audit';
+import { lstatSync } from 'node:fs';
+import { ConfigurationError } from '../execution/errors';
+import { plain, readAudit, type AuditEntry } from './audit';
 import { cooldownEnds, pausedBy, readCycles, usageToday } from './cycles';
 import type { MonitorVerdict } from './monitor';
 import { listPending } from './pending';
@@ -7,6 +9,7 @@ import { loadImproveSettings } from './settings';
 import { readState } from './state';
 
 const RECENT = 5;
+const MAX_REASON = 500;
 
 /** What `lousho improve status` shows for one agent directory. */
 export interface ImproveStatus {
@@ -71,20 +74,51 @@ function cooldownOf(dir: string, hours: number, now: number, stored: string | un
 }
 
 function warningsOf(monitor: MonitorVerdict | null, minRuns: number): string[] {
-  if (monitor?.state === 'pending') return [`The monitor is waiting: ${monitor.runs ?? 0} of the ${minRuns} runs it needs under the new revision, so it holds rather than passes.`];
+  if (monitor?.state === 'pending') return [`The monitor hasn't judged the last apply yet; it needs ${minRuns} runs under the new revision, and holds rather than passes until then.`];
   if (monitor?.state === 'kept-unverified') return [`The last apply was kept unverified: ${monitor.reason ?? 'too few runs to judge'}. Consider manual mode for an agent with this little traffic.`];
   if (monitor?.state === 'regressed') return [`The monitor saw a regression it did not roll back: ${monitor.reason ?? ''}`.trim()];
   return [];
 }
 
+type StoredState = { cooldownUntil?: string; monitor?: { applySeq?: number; verdict?: MonitorVerdict } };
+
+function storedState(dir: string, warnings: string[]): StoredState {
+  try {
+    return readState<StoredState>(dir);
+  } catch (error) {
+    warnings.push(`.lousho/state.json can't be read, so the monitor and the cooldown are unknown: ${error instanceof Error ? error.message : String(error)}`);
+    return {};
+  }
+}
+
+function monitorOf(audit: readonly AuditEntry[], revision: string | null, state: StoredState): MonitorVerdict | null {
+  const change = [...audit].reverse().find((entry) => entry.action === 'apply' || entry.action === 'rollback');
+  if (change?.action !== 'apply' || change.to !== revision) return state.monitor?.verdict ?? null;
+  if (state.monitor?.applySeq === change.seq && state.monitor.verdict) return { ...state.monitor.verdict, ...(state.monitor.verdict.reason !== undefined && { reason: plain(state.monitor.verdict.reason, MAX_REASON) }) };
+  return { state: 'pending' };
+}
+
+function usageOf(dir: string, now: number): ReturnType<typeof usageToday> {
+  try {
+    return usageToday(dir, now);
+  } catch {
+    return { cycles: 0, tokens: 0, applies: 0 };
+  }
+}
+
 /** The self-healing state of an agent directory: mode, revision, recent audit entries, pending proposals, monitor, budget, cooldown, kill switch and canary. */
 export function improveStatus(dir: string, options: { now?: number; env?: NodeJS.ProcessEnv } = {}): ImproveStatus {
+  if (!lstatSync(dir, { throwIfNoEntry: false })?.isDirectory()) throw new ConfigurationError(`improveStatus: ${dir} is not an agent directory.`, 'dir');
   const now = options.now ?? Date.now();
   const env = options.env ?? process.env;
   const settings = loadImproveSettings(dir, {}, env);
-  const state = readState<{ cooldownUntil?: string; monitor?: { verdict?: MonitorVerdict } }>(dir);
-  const used = usageToday(dir, now);
-  const monitor = state.monitor?.verdict ?? null;
+  const warnings: string[] = [];
+  const state = storedState(dir, warnings);
+  const used = usageOf(dir, now);
+  const audit = readAudit(dir);
+  const revision = revisionOf(dir);
+  if (revision === null) warnings.push("The instructions don't live in instructions.md, so the loop can't change this agent.");
+  const monitor = monitorOf(audit, revision, state);
   const cycles = readCycles(dir);
   const lastCanary = cycles.find((cycle) => cycle.canary !== undefined);
   const last = cycles[0];
@@ -93,8 +127,8 @@ export function improveStatus(dir: string, options: { now?: number; env?: NodeJS
     dir,
     approval: settings.approval,
     paused: pausedBy(dir, settings, env) ?? null,
-    revision: revisionOf(dir),
-    audit: readAudit(dir)
+    revision,
+    audit: audit
       .slice(-RECENT)
       .reverse()
       .map(({ seq, at, actor, action, reason }) => ({ seq, at, actor, action, reason })),
@@ -102,8 +136,8 @@ export function improveStatus(dir: string, options: { now?: number; env?: NodeJS
     monitor,
     budget: { cycles: { used: used.cycles, max: budget.maxCyclesPerDay }, applies: { used: used.applies, max: budget.maxAppliesPerDay }, tokens: { used: used.tokens, max: budget.maxTokensPerDay } },
     cooldownUntil: cooldownOf(dir, settings.cooldownHours, now, state.cooldownUntil),
-    canary: { traffic: settings.canary.traffic ?? null, last: lastCanary?.canary ? { cycle: lastCanary.id, passed: lastCanary.canary.passed, reason: lastCanary.canary.reason } : null },
-    lastCycle: last ? { id: last.id, outcome: last.outcome, reason: last.reason, startedAt: last.startedAt } : null,
-    warnings: warningsOf(monitor, Math.max(settings.monitor.minRuns, settings.monitor.window)),
+    canary: { traffic: settings.canary.traffic ?? null, last: lastCanary?.canary ? { cycle: lastCanary.id, passed: lastCanary.canary.passed, reason: plain(lastCanary.canary.reason, MAX_REASON) } : null },
+    lastCycle: last ? { id: last.id, outcome: last.outcome, reason: plain(last.reason, MAX_REASON), startedAt: last.startedAt } : null,
+    warnings: [...warnings, ...warningsOf(monitor, Math.max(settings.monitor.minRuns, settings.monitor.window))],
   };
 }
