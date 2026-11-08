@@ -21,6 +21,13 @@ const proposal = (harness: Harness, over: Partial<ImproveResult> = {}): ImproveR
 const section = (card: string, heading: string): string => card.split(`## ${heading}\n`)[1]?.split('\n## ')[0] ?? '';
 
 describe('formatImproveResult', () => {
+  it('reports how alike the proposals were, only with several proposers', () => {
+    const pool = { 'invariant-1': BASE, 'domain-1': BASE, 'invariant-2': BASE, 'domain-2': BASE };
+    const card = formatImproveResult(result({ candidates: { invariant: BASE, domain: BASE, compose: BASE, pool }, diversity: { meanJaccard: 0.5, distinct: 3 } }));
+    expect(section(card, 'Proposals').trim()).toBe('4 proposals, 3 distinct, mean line overlap 0.5.');
+    expect(formatImproveResult(result())).not.toContain('## Proposals');
+  });
+
   it('flags an edit that quotes a failed check', () => {
     const card = formatImproveResult(result({ failedChecks: ['follows project conventions'], diff: 'instructions.md\n+ Always make sure it follows project conventions.' }));
     expect(card).toContain('Quotes a failed check word for word: "follows project conventions".');
