@@ -12913,7 +12913,7 @@ gate changes: it judges the harness, not the reasons.
 
 `db` is your observe database (default `~/.lousho/observe.db`), opened with `new DatabaseSync(path)` from `node:sqlite`; it matches the exported `SqlDatabase` type. Build each transcript your `runCase` returns with `renderTranscript`, so tool results reach the editors marked as untrusted.
 
-A `CaseCheck` returns `true`, `false`, `null` when it can't score the answer, or `{ passed, failure }`. Return `failure` on a failed answer to name the check it missed, as a custom `probe` does: each editor reads it in that run's record, after `Result: failed`, with forged untrusted markers removed. Without it, a failed run whose answer looks right gives the editors nothing to fix. Name the real check; a wrong name is worse than none. A `failure` on a passed answer is dropped.
+A `CaseCheck` returns `true`, `false`, `null` when it can't score the answer, or `{ passed, failure }`. Return `failure` on a failed answer to name the check it missed, as a custom `probe` does: each editor reads it in that run's record, after `Result: failed`, on one line with forged untrusted markers removed. A check must be synchronous; any other return value throws a `ConfigurationError`. Without it, a failed run whose answer looks right gives the editors nothing to fix. Name the real check; a wrong name is worse than none. A `failure` on a passed answer is dropped.
 
 ```ts
 import type { CaseCheck } from 'lousho/improve';

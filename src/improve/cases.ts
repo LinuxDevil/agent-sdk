@@ -16,7 +16,7 @@ export type CaseCheck = (
   | {
       /** Whether the answer passed. */
       passed: boolean;
-      /** Which check a failed answer missed, shown to the editors as untrusted text. Name the requirement, not the fix. */
+      /** Which check a failed answer missed, shown to the editors as data on one line. Name the requirement, not the fix. */
       failure?: string;
     };
 
@@ -25,7 +25,8 @@ export function scoreCase(check: CaseCheck, input: string, answer: string): Pick
   if (result === null || typeof result === 'boolean') return { passed: result };
   const { passed, failure } = (typeof result === 'object' ? result : {}) as { passed?: unknown; failure?: unknown };
   if (typeof passed !== 'boolean' || (failure !== undefined && typeof failure !== 'string')) {
-    throw new ConfigurationError('A CaseCheck must return true, false, null or { passed: boolean; failure?: string }.', 'check');
+    const got = result instanceof Promise ? 'a Promise; a CaseCheck must be synchronous' : JSON.stringify(result) ?? String(result);
+    throw new ConfigurationError(`A CaseCheck must return true, false, null or { passed: boolean; failure?: string }, not ${got}.`, 'check');
   }
   return !passed && failure ? { passed, failure } : { passed };
 }
