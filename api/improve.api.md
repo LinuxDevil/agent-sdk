@@ -720,6 +720,9 @@ interface InputSteeredEvent extends AgentEventBase<'input.steered'> {
 type IoGuardrailKind = 'input' | 'output' | 'tool';
 
 // @public
+export function lastGoodRevision(dir: string): string | undefined;
+
+// @public
 export interface LibraryEntry {
     at: string;
     confidence: 'low' | 'medium' | 'high';
@@ -1010,6 +1013,23 @@ export function reflect(options: {
 export function renderTranscript(messages: readonly Message[], options?: {
     maxResultChars?: number;
 }): string;
+
+// @public
+export interface RollbackBy {
+    actor: AuditEntry['actor'];
+    expectedFrom?: string;
+    reason: string;
+}
+
+// @public
+export function rollbackHarness(dir: string, to: string, by: RollbackBy): Promise<RollbackResult>;
+
+// @public
+export interface RollbackResult {
+    from: string;
+    to: string;
+    written: string[];
+}
 
 // @public
 interface RunDoneEvent extends AgentEventBase<'run.done'> {

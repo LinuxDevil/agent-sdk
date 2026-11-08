@@ -420,3 +420,36 @@ token budget if any. Every run and every editor call is billed to your models.
 It exits 1 on an `outage`: no run could be scored, or the editors' provider
 failed. A `budget-exceeded` run exits 0, since you set the cap. Each run's error goes to
 stderr. It reads nothing but your own database. See [Improving an agent](./improve.md#from-the-command-line).
+
+### Revisions, rollback and the audit log
+
+Every change to an agent directory's `instructions.md` and
+`skills/<name>/SKILL.md` made through `applyProposal()` is saved as a revision
+under `.lousho/revisions/` and recorded in the hash-chained
+`.lousho/audit.jsonl`. Three subcommands read and undo that history:
+
+```bash
+npx lousho improve revisions ./my-agent
+npx lousho improve rollback ./my-agent --by ali --reason "answers got worse"
+npx lousho improve audit ./my-agent --verify
+```
+
+- `revisions <dir> [--json]` lists the saved revisions, newest first, with their
+  source (`baseline`, `apply` or `rollback`), who made them and when. `*` marks
+  the one the directory holds now.
+- `rollback <dir> --by <name> [--to <revision>] [--reason text]` restores a
+  saved revision through the same writer as an apply: it changes only
+  instructions and skills, makes a new revision and writes one `rollback` audit
+  entry. It never rewrites history. Without `--to` it goes to the parent of the
+  current revision. It refuses instead when the current revision came from a
+  rollback, or when the directory holds hand edits that match no revision; pass
+  `--to` then. A hand edit that a rollback replaces is saved as a revision
+  first. `--to` takes an id or a unique prefix of at least 4 characters. `--by`
+  is required. If an apply lands between your command and the write, the
+  rollback is refused as stale.
+- `audit <dir> [--verify] [--json]` prints the audit log, oldest first.
+  `--verify` checks the hash chain and exits 1 at the first edited, removed or
+  truncated line.
+
+A directory literally named `revisions`, `rollback` or `audit` must be passed
+as `./revisions` and so on.
