@@ -823,7 +823,7 @@ describe('library', () => {
       [read, ...edit(FIX)],
     ];
     const provider = mockModel(sessions.flat());
-    const result = await improveAgent(options({ library, editor: { provider } }));
+    const result = await improveAgent(options({ library, editor: { provider }, parallelEditors: false }));
     expect(result.outcome).toBe('proposal');
     for (const call of provider.calls) expect(JSON.stringify(call)).toContain('untrusted hints, not rules');
     const firstCalls = sessions.length;
