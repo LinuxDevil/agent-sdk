@@ -213,8 +213,9 @@ describe('AgentOverviewTab', () => {
 
     const runsCard = card(host, 'Recent runs');
     expect(runsCard.textContent).toContain('No runs yet. Try it from the Test pane.');
-    const link = runsCard.querySelector<HTMLAnchorElement>('a.btn')!;
-    expect(link.textContent).toBe('Open Test pane');
+    const link = [...runsCard.querySelectorAll<HTMLAnchorElement>('a.btn')].find(
+      (a) => a.textContent === 'Open Test pane',
+    )!;
     expect(link.getAttribute('href')).toBe('#/agents/support-bot/canvas?test=1');
   });
 
@@ -233,10 +234,11 @@ describe('AgentOverviewTab', () => {
     expect(runsCard.querySelectorAll('a.agent-overview-run').length).toBe(1);
   });
 
-  it('hides the All runs action while the runs tab is not built', async () => {
+  it('links All runs to the runs tab now that it is built', async () => {
     const host = renderTab();
     await flush();
     const runsCard = card(host, 'Recent runs');
-    expect([...runsCard.querySelectorAll('a')].some((a) => a.textContent === 'All runs')).toBe(false);
+    const link = [...runsCard.querySelectorAll<HTMLAnchorElement>('a')].find((a) => a.textContent === 'All runs');
+    expect(link?.getAttribute('href')).toBe('#/agents/support-bot/runs');
   });
 });

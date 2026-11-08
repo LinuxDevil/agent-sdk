@@ -1,0 +1,10 @@
+.runs-tab { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5) var(--page-gutter) var(--space-8); min-width: 0; }
+.runs-toolbar { display: flex; align-items: center; gap: var(--space-2); }
+.runs-count { margin: 0 auto 0 0; font-size: 13px; color: var(--text-muted); }
+.runs-note { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 12px; color: var(--text-muted); }
+.runs-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.runs-id { display: block; font: 11px var(--font-mono); color: var(--text-faint); }
+.runs-rating { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; color: var(--text); }
+.runs-rating svg { color: var(--warning); fill: currentColor; }
+.runs-rating-low { color: var(--danger); }
+.runs-tab a.btn { text-decoration: none; }
