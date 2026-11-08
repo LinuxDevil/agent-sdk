@@ -1,11 +1,10 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { improveAgent, type Harness, type ImproveResult } from 'lousho/improve';
+import { cachedProbe, emptyLedger, improveAgent, type Harness, type ImproveLedger, type ImproveResult } from 'lousho/improve';
 import { renderReport, trueFixAttempts, type Confirmation } from './armSummary';
 import { admitHoldout, armRow, armsFromResult, loggedProbe, noOpHarness, plantedHarness, scriptedEditor, type Arm, type ArmContext, type ArmRow, type LoggedRun } from './gates';
 import { benchmarkProbe, buildAgent } from './probe';
 import { admissionFailure, replayable, requireModels } from './experimentRules';
-import { cachedProbe, emptyCounts, type ProbeCounts } from './probeCache';
 import { assertRowModel, type RecordedRow, type ReplayLine } from './replayRows';
 
 const { values } = parseArgs({
@@ -45,13 +44,13 @@ const cacheModel = live ? model : `mock:${model}`;
 const repeats = Number(values.repeats);
 const arms = values.arms.split(',').map((arm) => arm.trim()) as Arm[];
 const probe = benchmarkProbe({ agent: values.agent, model, live, gapMs: Number(values['gap-ms']) });
-const counts: Record<string, ProbeCounts> = { admit: emptyCounts(), 'A-D': emptyCounts(), confirm: emptyCounts(), N: emptyCounts(), P: emptyCounts() };
+const counts: Record<string, ImproveLedger> = { admit: emptyLedger(), 'A-D': emptyLedger(), confirm: emptyLedger(), N: emptyLedger(), P: emptyLedger() };
 
 type Row = RecordedRow & Partial<ImproveResult>;
 
 function probeFor(salt: string, bucket: string, distinct = false) {
   if (values.cache === undefined) throw new Error('experiment needs --cache <dir>.');
-  return cachedProbe(probe, { dir: values.cache, model: cacheModel, salt, counts: counts[bucket], distinct });
+  return cachedProbe(probe, { dir: values.cache, model: cacheModel, salt, ledger: counts[bucket], distinct });
 }
 
 function readJsonl<T>(file: string | undefined): T[] {

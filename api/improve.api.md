@@ -203,6 +203,25 @@ interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetE
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
 
 // @public
+export function cachedProbe(probe: ImproveOptions['probe'], options: CachedProbeOptions): ImproveOptions['probe'];
+
+// @public
+export interface CachedProbeOptions {
+    dir: string;
+    distinct?: boolean;
+    ledger?: ImproveLedger;
+    model: string;
+    salt?: string;
+}
+
+// @public
+export interface CacheLimits {
+    maxAgeMs?: number;
+    maxBytes?: number;
+    now?: number;
+}
+
+// @public
 export function canaryReplay(options: CanaryReplayOptions): Promise<CanaryReplayResult>;
 
 // @public
@@ -320,6 +339,9 @@ export function createShadowHook(options: {
 
 // @public
 export function currentRevision(dir: string): string;
+
+// @public
+export const emptyLedger: () => ImproveLedger;
 
 // @public
 type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail';
@@ -557,8 +579,17 @@ export interface ImproveChange {
 }
 
 // @public
+export interface ImproveLedger {
+    cached: number;
+    excluded: number;
+    planned: number;
+    run: number;
+}
+
+// @public
 export interface ImproveOptions {
     alwaysPropose?: boolean;
+    cacheDir?: string;
     cases: readonly string[];
     editor: {
         provider: LLMProvider;
@@ -610,6 +641,7 @@ export interface ImproveResult {
         base: ProbeSummary;
         final: ProbeSummary;
     };
+    ledger?: ImproveLedger;
     outcome: ImproveOutcome;
     reason: string;
     spend: {
@@ -785,6 +817,15 @@ interface Principal {
 }
 
 // @public
+export function probeCacheKey(parts: {
+    model: string;
+    salt: string;
+    caseId: string;
+    repeat: number;
+    harness: Harness;
+}): string;
+
+// @public
 export function probeCapturedCases(cases: readonly CapturedCase[], runCase: (harness: Harness, input: string) => Promise<{
     answer: string;
     transcript: string;
@@ -794,6 +835,7 @@ export function probeCapturedCases(cases: readonly CapturedCase[], runCase: (har
 
 // @public
 export interface ProbeRun {
+    cached?: boolean;
     ended: string;
     failure?: string;
     passed: boolean | null;
@@ -853,6 +895,9 @@ interface ProviderUsage {
     // (undocumented)
     totalTokens: number;
 }
+
+// @public
+export function pruneCache(dir: string, limits?: CacheLimits): void;
 
 // @public
 export function readAgentHarness(dir: string): Harness;

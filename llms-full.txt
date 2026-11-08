@@ -12875,6 +12875,55 @@ the fix less often.
 `candidates` holds each editor's harness from before the gate, so you can review
 or replay one the gate rejected.
 
+## Caching and the ledger
+
+A loop that runs every day sees the same failures again. Two caches stop it
+paying twice for the same work. Both write only to a directory you choose, such
+as `<agentDir>/.lousho/cache`, and use them together: an editor session is
+replayed only when its evidence is byte for byte the same, and fresh probe runs
+almost never are.
+
+- **Probe runs.** Wrap your probe with `cachedProbe(probe, { dir, model })`. A
+  scored run is stored under its model, `salt`, case, repeat and harness, and
+  replayed with `cached: true` when the same ones come again. A run that couldn't
+  be scored is never stored. Pass `distinct: true` so that a harness probed twice
+  in one run, such as a composer that repeats an editor's harness, gets fresh
+  runs for the gate. A replayed run is the same evidence as before, not new
+  evidence, so change `salt` when you want fresh runs.
+- **Editor sessions.** Set `cacheDir`. Each session is stored under a hash of its
+  editor, prompt, evidence files, model, step limit and validation limits.
+  `editorHooks` aren't part of the hash. A later run that would send the same
+  session replays its harness and notes, with no editor call and no tokens. A
+  replayed harness is validated again like a new edit, and is ignored if it
+  fails. A session whose edits were dropped (`fell-back`) is never stored.
+
+At the start of each run with `cacheDir`, entries older than 7 days are deleted,
+then the oldest until the rest fit in 200 MB. Call `pruneCache(dir)` to do the
+same for a probe cache elsewhere. Only cache entries are deleted, never other
+files.
+
+`ledger` counts the probe calls a run made: `planned` calls, served by `run`
+(the agent ran) or `cached` (replayed), so `planned` is always `run + cached`.
+`excluded` counts runs that couldn't be scored. If you wrap a cached probe in
+your own function, keep its `cached` field so the run is counted as cached.
+
+```ts
+import { cachedProbe, improveAgent, type Harness, type ImproveOptions } from 'lousho/improve';
+
+declare const harness: Harness;
+declare const probe: ImproveOptions['probe'];
+
+const cacheDir = './my-agent/.lousho/cache';
+const result = await improveAgent({
+  harness,
+  cases: ['discount-question'],
+  probe: cachedProbe(probe, { dir: cacheDir, model: 'openrouter/<model>', distinct: true }),
+  editor: { model: 'openrouter/<model>' },
+  cacheDir,
+});
+console.log(result.ledger);
+```
+
 ## Outcomes
 
 | Outcome | Meaning |

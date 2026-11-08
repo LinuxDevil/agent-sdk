@@ -2,6 +2,7 @@ import { createAgent } from '../createAgent';
 import { CompactedLLMProviderError } from '../execution/errors';
 import { MemoryWorkspace } from '../tools/workspace/MemoryWorkspace';
 import { createFsTools } from '../tools/workspace/fsTools';
+import { editorCacheKey, emptyLedger, readSession, writeSession, type CachedSession } from './cache';
 import type { LabelledRun } from './evidence';
 import { diffHarness, readHarness, validateHarness } from './harness';
 import { rejectedNote } from './prompts';
@@ -33,6 +34,7 @@ export class ImproveRun {
   private readonly reserved: ImproveStage[] = [];
   private readonly started = new Set<ImproveStage>();
   tokens = 0;
+  readonly ledger = emptyLedger();
   candidates?: NonNullable<ImproveResult['candidates']>;
   readonly repeats: number;
   private readonly maxAlwaysOn: number;
@@ -87,11 +89,27 @@ export class ImproveRun {
       for (const caseId of caseIds) {
         signal?.throwIfAborted();
         const run = await this.options.probe(harness, caseId, repeat);
+        this.count(run);
         runs.push({ label, caseId, repeat, run });
         this.spend(run.tokens);
       }
     }
     return runs;
+  }
+
+  private count(run: LabelledRun['run']): void {
+    this.ledger.planned += 1;
+    if (run.cached === true) {
+      this.ledger.cached += 1;
+      return;
+    }
+    this.ledger.run += 1;
+    if (run.passed === null) this.ledger.excluded += 1;
+  }
+
+  private editorModel(): string {
+    const { editor } = this.options;
+    return 'model' in editor ? editor.model : `${editor.provider.name}/${editor.provider.defaultModel ?? ''}`;
   }
 
   private async session(system: string, input: string, workspace: MemoryWorkspace, signal: AbortSignal | undefined): Promise<{ text: string; tokens: number }> {
@@ -127,16 +145,39 @@ export class ImproveRun {
   async edit(stage: ImproveStage, system: string, files: Record<string, string>, base: Harness, context: EditContext = {}): Promise<Harness> {
     this.started.add(stage);
     try {
-      return await this.attempts(stage, system, new MemoryWorkspace({ files }), base, { ...context, signal: context.signal ?? this.options.signal });
+      return await this.cachedAttempts(stage, system, files, base, { ...context, signal: context.signal ?? this.options.signal });
     } catch (error) {
       this.failed.push([error, stage]);
       throw error;
     }
   }
 
-  private async attempts(stage: ImproveStage, system: string, workspace: MemoryWorkspace, base: Harness, { signal, failedChecks }: EditContext): Promise<Harness> {
-    const checked = this.options.quotedChecks === 'flag' ? undefined : failedChecks;
+  private async cachedAttempts(stage: ImproveStage, system: string, files: Record<string, string>, base: Harness, context: EditContext): Promise<Harness> {
+    const checked = this.options.quotedChecks === 'flag' ? undefined : context.failedChecks;
     const limits = { maxAlwaysOnChars: this.maxAlwaysOn, ...(checked && { failedChecks: checked }) };
+    const { cacheDir } = this.options;
+    if (!cacheDir) return this.attempts(stage, system, new MemoryWorkspace({ files }), base, limits, context.signal);
+    const settings = { limits, maxEditorSteps: this.options.maxEditorSteps ?? DEFAULT_MAX_EDITOR_STEPS, attempts: STAGE_ATTEMPTS };
+    const key = editorCacheKey({ label: stage.label, system, files, model: this.editorModel(), settings });
+    const hit = this.replay(readSession(cacheDir, key), base, limits);
+    if (hit) {
+      stage.status = hit.stage.status;
+      stage.notes = hit.stage.notes;
+      if (hit.stage.error !== undefined) stage.error = hit.stage.error;
+      return hit.harness;
+    }
+    const harness = await this.attempts(stage, system, new MemoryWorkspace({ files }), base, limits, context.signal);
+    if (stage.status !== 'fell-back') writeSession(cacheDir, key, { harness, stage: { status: stage.status, notes: stage.notes, ...(stage.error !== undefined && { error: stage.error }) } });
+    return harness;
+  }
+
+  private replay(session: CachedSession | undefined, base: Harness, limits: Parameters<typeof validateHarness>[2]): CachedSession | undefined {
+    if (!session || validateHarness(session.harness, base, limits).length > 0) return undefined;
+    const changed = diffHarness(base, session.harness) !== '';
+    return changed === (session.stage.status === 'edited') ? session : undefined;
+  }
+
+  private async attempts(stage: ImproveStage, system: string, workspace: MemoryWorkspace, base: Harness, limits: Parameters<typeof validateHarness>[2], signal: AbortSignal | undefined): Promise<Harness> {
     let input = 'Read the runs in context/runs/, then improve the harness, or say KEEP_BASE.';
     for (let attempt = 1; attempt <= STAGE_ATTEMPTS; attempt += 1) {
       const { text, tokens } = await this.session(system, input, workspace, signal);

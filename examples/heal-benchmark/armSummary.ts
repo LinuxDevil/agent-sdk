@@ -1,5 +1,5 @@
 import type { Arm, ArmRow } from './gates';
-import type { ProbeCounts } from './probeCache';
+import type { ImproveLedger } from 'lousho/improve';
 import type { ReplayLine } from './replayRows';
 
 export interface Confirmation {
@@ -90,7 +90,7 @@ function passKTable(input: SummaryInput): string {
   return table(['Arm', ...cases], input.arms.map((arm) => [arm, ...cases.map((caseId) => meanPassK(ofArm(input.rows, arm), caseId))]));
 }
 
-export function renderReport(input: SummaryInput, counts: Readonly<Record<string, ProbeCounts>>): string {
+export function renderReport(input: SummaryInput, counts: Readonly<Record<string, ImproveLedger>>): string {
   const arms = table(['Arm', 'Accepted', 'Accepted true fixes'], input.arms.map((arm) => armLine(input, arm)));
   const barTable = table(['Bar', 'Result', 'Met'], bars(input).map((bar) => [bar.name, `${bar.passed}/${bar.total}`, bar.met ? 'met' : 'missed']));
   const probes = table(['Probes', 'Planned', 'Run', 'Cached', 'Excluded'], Object.entries(counts).map(([name, count]) => [name, String(count.planned), String(count.run), String(count.cached), String(count.excluded)]));

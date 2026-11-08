@@ -29,6 +29,8 @@ export interface ProbeRun {
   ended: string;
   /** Which check a failed run missed, for the editors to read. Name the requirement, not the fix. */
   failure?: string;
+  /** Set by {@link cachedProbe} when the run was replayed from its cache rather than run; keep it when you wrap a probe, so `ledger` counts it. */
+  cached?: boolean;
 }
 
 /** A retry of a training case that passed after a diagnosis was added, shown to the editors as evidence and never scored. */
@@ -85,10 +87,24 @@ export interface ImproveOptions {
   editorHooks?: readonly AgentHook[];
   /** What to do with an edit that quotes, word for word, a failed check of two or more words that its editor saw: `reject` (default) sends it back once with that feedback, then drops it; `flag` keeps it and flags it on the review card. Use `flag` only when a person approves every edit. */
   quotedChecks?: 'reject' | 'flag';
+  /** A directory, such as `<agentDir>/.lousho/cache`, where editor sessions are cached by their prompt, evidence, model and limits, so a cycle that sees the same evidence again makes no editor calls. Entries older than 7 days, then the oldest past 200 MB, are deleted at the start of each run. */
+  cacheDir?: string;
   /** Runs the invariant and domain editors, and then their probes, two at a time (default `true`). Set `false` for a rate-limited model. */
   parallelEditors?: boolean;
   /** Stops the run when aborted. */
   signal?: AbortSignal;
+}
+
+/** Probe runs a cycle planned, and how each was served: `planned` is always `run + cached`, and `excluded` counts the runs that couldn't be scored. */
+export interface ImproveLedger {
+  /** Probe calls made. */
+  planned: number;
+  /** Calls that ran the agent. */
+  run: number;
+  /** Calls served from a {@link cachedProbe} cache. */
+  cached: number;
+  /** Runs that couldn't be scored. */
+  excluded: number;
 }
 
 /** A harness's results over a set of runs. */
@@ -227,6 +243,8 @@ export interface ImproveResult {
   };
   /** What each editor did. */
   stages: ImproveStage[];
+  /** How many probe runs were planned, run, served from a cache, or excluded. */
+  ledger?: ImproveLedger;
   /** Tokens spent in total. */
   spend: {
     /** Tokens across probes and editors. */
