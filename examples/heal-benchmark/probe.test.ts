@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { codingAgent } from './codingAgent';
-import { benchmarkProbe, checkFailureNames, failureFor, parseFailureNames, SHUFFLED_FAILURES, type FailureNames } from './probe';
+import { benchmarkProbe, checkFailureNames, failureFor, nameFailures, parseFailureNames, SHUFFLED_FAILURES } from './probe';
 
 describe('failureFor', () => {
   it('failureFor keeps, hides or swaps the name', () => {
@@ -23,25 +23,31 @@ describe('failureFor', () => {
   });
 });
 
-describe('benchmarkProbe', () => {
+describe('nameFailures', () => {
   const harness = { instructions: 'Fix it.', skills: {} };
-  const runWith = (failureNames?: FailureNames) => benchmarkProbe({ agent: 'coding-agent', model: 'm', live: false, gapMs: 0, ...(failureNames && { failureNames }) })(harness, 'add-months');
+  const realRun = async () => ({ passed: false, transcript: 't', tokens: 1, ended: 'stop', failure: 'x' });
 
-  it('reports the real failed check by default', async () => {
-    const run = await runWith();
-    expect(run.passed).toBe(false);
-    expect(run.failure).toBeTruthy();
-    expect(run.failure).not.toBe('other callers keep their behaviour');
-  });
-
-  it('hides or swaps the failed check when asked', async () => {
-    expect((await runWith('none')).failure).toBeUndefined();
-    expect((await runWith('shuffled')).failure).toBe('other callers keep their behaviour');
+  it('keeps the real run, and changes only the name the editors see', async () => {
+    let calls = 0;
+    const inner = async () => {
+      calls += 1;
+      return realRun();
+    };
+    expect((await nameFailures(inner, 'real')(harness, 'add-months', 0)).failure).toBe('x');
+    expect(await nameFailures(inner, 'none')(harness, 'add-months', 0)).toEqual({ passed: false, transcript: 't', tokens: 1, ended: 'stop' });
+    expect((await nameFailures(inner, 'shuffled')(harness, 'add-months', 0)).failure).toBe('other callers keep their behaviour');
+    expect(calls).toBe(3);
   });
 
   it('throws, instead of scoring the run unknown, when shuffled meets a task with no pair', async () => {
-    const probe = benchmarkProbe({ agent: 'coding-agent', model: 'm', live: false, gapMs: 0, failureNames: 'shuffled' });
-    await expect(probe(harness, 'page-count')).rejects.toThrow(/only for add-months and invoice-rounding, not 'page-count'/);
+    await expect(nameFailures(realRun, 'shuffled')(harness, 'page-count', 0)).rejects.toThrow(/only for add-months and invoice-rounding, not 'page-count'/);
+  });
+
+  it('benchmarkProbe still reports the real failed check', async () => {
+    const run = await benchmarkProbe({ agent: 'coding-agent', model: 'm', live: false, gapMs: 0 })(harness, 'add-months');
+    expect(run.passed).toBe(false);
+    expect(run.failure).toBeTruthy();
+    expect(run.failure).not.toBe('other callers keep their behaviour');
   });
 });
 

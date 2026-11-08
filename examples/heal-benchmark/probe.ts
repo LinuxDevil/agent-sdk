@@ -36,7 +36,6 @@ export interface ProbeSettings {
   model: string;
   live: boolean;
   gapMs: number;
-  failureNames?: FailureNames;
 }
 
 export function throttleHook(gapMs: number): AgentHook {
@@ -54,14 +53,16 @@ function failedCheck(task: BenchmarkAgent['tasks'][number]): { failure?: string 
   return failure ? { failure } : {};
 }
 
-function withFailureNames(run: ProbeRun, mode: FailureNames, caseId: string): ProbeRun {
-  const { failure: real, ...rest } = run;
-  const failure = failureFor(mode, caseId, real);
-  return failure ? { ...rest, failure } : rest;
+export function nameFailures(probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>, mode: FailureNames): (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun> {
+  return async (harness, caseId, repeat) => {
+    const { failure: real, ...rest } = await probe(harness, caseId, repeat);
+    const failure = failureFor(mode, caseId, real);
+    return failure ? { ...rest, failure } : rest;
+  };
 }
 
 export function benchmarkProbe(settings: ProbeSettings): (harness: Harness, caseId: string, repeat?: number) => Promise<ProbeRun> {
-  const { live, model, failureNames = 'real' } = settings;
+  const { live, model } = settings;
   const throttle = throttleHook(settings.gapMs);
   return async (harness, caseId) => {
     const spec = buildAgent(settings.agent);
@@ -76,14 +77,12 @@ export function benchmarkProbe(settings: ProbeSettings): (harness: Harness, case
       maxSteps: 15,
       hooks: live ? [throttle] : [],
     });
-    let run: ProbeRun;
     try {
       const result = await agent.send(task.input);
-      run = { passed: task.check(result.text ?? ''), transcript: renderTranscript(result.messages), tokens: result.usage?.totalTokens ?? 0, ended: result.finishReason, ...failedCheck(task) };
+      return { passed: task.check(result.text ?? ''), transcript: renderTranscript(result.messages), tokens: result.usage?.totalTokens ?? 0, ended: result.finishReason, ...failedCheck(task) };
     } catch (error) {
       const { code, usage } = error as { code?: string; usage?: { totalTokens?: number } };
       return { passed: null, transcript: String(error), tokens: usage?.totalTokens ?? 0, ended: code ?? 'error' };
     }
-    return withFailureNames(run, failureNames, caseId);
   };
 }
