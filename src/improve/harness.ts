@@ -56,9 +56,11 @@ export async function readHarness(fs: FsProvider): Promise<{ harness: Harness; e
 
 function addedText(current: string, base: string): string {
   const existing = new Set(base.split('\n'));
+  const kept = [...existing].filter((line) => line.trim() !== '').sort((a, b) => b.length - a.length);
   return current
     .split('\n')
-    .filter((line) => !existing.has(line) && ![...existing].some((old) => old.length > 0 && line.includes(old)))
+    .filter((line) => !existing.has(line))
+    .map((line) => kept.reduce((rest, old) => rest.split(old).join('\n'), line))
     .join('\n');
 }
 
@@ -79,13 +81,25 @@ function skillErrors(harness: Harness, base: Harness): string[] {
   return Object.entries(harness.skills).flatMap(([name, skill]) => [...skillShapeErrors(name, skill), ...skillInjectionErrors(name, skill.content, base.skills[name]?.content)]);
 }
 
-export function validateHarness(harness: Harness, base: Harness, limits: { maxAlwaysOnChars: number }): string[] {
+export function findQuotedChecks(text: string, checks: readonly string[]): string[] {
+  const lower = text.toLowerCase();
+  return checks.filter((check) => check.trim() !== '' && lower.includes(check.toLowerCase()));
+}
+
+function leakErrors(harness: Harness, base: Harness, checks: readonly string[]): string[] {
+  const before = Object.values(harnessFiles(base)).join('\n');
+  const after = Object.values(harnessFiles(harness)).join('\n');
+  const specific = checks.filter((check) => check.trim().split(/\s+/).length >= 2 && findQuotedChecks(before, [check]).length === 0);
+  return findQuotedChecks(addedText(after, before), specific).map((check) => `An edit quotes the failed check '${check.replace(/\s+/g, ' ').trim()}' word for word; describe the requirement instead.`);
+}
+
+export function validateHarness(harness: Harness, base: Harness, limits: { maxAlwaysOnChars: number; failedChecks?: readonly string[] }): string[] {
   const errors: string[] = [];
   if (!harness.instructions.trim()) errors.push('The instructions are empty.');
   if (harness.instructions.length > limits.maxAlwaysOnChars) errors.push(`The instructions are ${harness.instructions.length} characters, over the ${limits.maxAlwaysOnChars} limit. Move detail into a skill.`);
   const signals = promptInjectionSignals(addedText(harness.instructions, base.instructions));
   if (signals.length > 0) errors.push(`The instructions add text that looks like prompt injection (${signals.join(', ')}).`);
-  return [...errors, ...skillErrors(harness, base)];
+  return [...errors, ...skillErrors(harness, base), ...leakErrors(harness, base, limits.failedChecks ?? [])];
 }
 
 function lineChanges(before: string, after: string): string[] {

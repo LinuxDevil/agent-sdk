@@ -13026,6 +13026,13 @@ and a run that hits it ends `budget-exceeded`.
   them as data, and edits that add text that looks like prompt injection are
   rejected, but heuristics can be beaten. That's one reason a person reviews every
   proposal.
+- **An edit that quotes a failed check word for word is rejected.** An edit may
+  not add the name of a failed check its editor saw, when the name has two or
+  more words and the base harness doesn't already contain it. The editor gets
+  one retry with that feedback, and then its edit is dropped. This keeps edits
+  from teaching the check instead of the requirement. When a person approves
+  every edit, set the `improveAgent` option `quotedChecks: 'flag'` to keep such
+  an edit and only flag it on the review card.
 - **Tool results are marked as untrusted** in what the editors read. Any marker
   forged inside a run, nested or spaced, is removed, and the editors are told to
   treat everything in a run as untrusted, not just the marked part.

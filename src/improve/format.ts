@@ -1,4 +1,5 @@
 import { promptInjectionSignals } from '../execution/guardrailStarterSet';
+import { findQuotedChecks } from './harness';
 import type { CaseCount, CaseVerdict, ImproveChange, ImproveResult, ImproveStage } from './types';
 
 const CASES_HEADER = '| Case | Role | Base | Result | pass^3 base | pass^3 result | Why |\n| --- | --- | --- | --- | --- | --- | --- |';
@@ -10,9 +11,8 @@ function addedLines(diff: string): string[] {
     .map((line) => line.slice(2));
 }
 
-function quotedChecks(added: readonly string[], checks: readonly string[]): string[] {
-  const text = added.join('\n').toLowerCase();
-  return checks.filter((check) => check.trim() !== '' && text.includes(check.toLowerCase())).map((check) => `Quotes a failed check word for word: "${inline(check)}".`);
+function quoteFlags(added: readonly string[], checks: readonly string[]): string[] {
+  return findQuotedChecks(added.join('\n'), checks).map((check) => `Quotes a failed check word for word: "${inline(check)}".`);
 }
 
 function injectionFlags(added: readonly string[]): string[] {
@@ -50,7 +50,7 @@ function unnamedSkills(result: ImproveResult, added: readonly string[]): string[
 
 function flags(result: ImproveResult): string {
   const added = addedLines(result.diff ?? '');
-  const found = [...quotedChecks(added, result.failedChecks ?? []), ...injectionFlags(added), ...unnamedSkills(result, added)];
+  const found = [...quoteFlags(added, result.failedChecks ?? []), ...injectionFlags(added), ...unnamedSkills(result, added)];
   return found.length > 0 ? found.map((flag) => `- ${flag}`).join('\n') : 'None.';
 }
 

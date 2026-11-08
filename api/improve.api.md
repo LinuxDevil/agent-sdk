@@ -559,6 +559,7 @@ export interface ImproveOptions {
     maxTokens?: number;
     parallelEditors?: boolean;
     probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
+    quotedChecks?: 'reject' | 'flag';
     recoveries?: readonly RecoveryEvidence[];
     repeats?: number;
     signal?: AbortSignal;
