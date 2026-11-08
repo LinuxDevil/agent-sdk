@@ -23,3 +23,5 @@ export { loadImproveSettings } from './settings';
 export type { ImproveSettings } from './settings';
 export { approvePending, listPending, rejectPending, savePending } from './pending';
 export type { PendingProposal } from './pending';
+export { addToCorpus, readCorpus } from './corpus';
+export type { CorpusCase } from './corpus';
