@@ -2,7 +2,7 @@ import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { improveAgent, type Harness, type ImproveOptions } from 'lousho/improve';
 import { mockModel } from 'lousho/testing';
-import { benchmarkProbe, buildAgent, throttleHook } from './probe';
+import { benchmarkProbe, buildAgent, checkFailureNames, parseFailureNames, throttleHook, type FailureNames } from './probe';
 import { cachedProbe, emptyCounts } from './probeCache';
 import { confirmHarness, replayRow, type RecordedRow, type ReplayLine } from './replayRows';
 
@@ -23,21 +23,25 @@ const { values } = parseArgs({
     'max-cost-increase': { type: 'string' },
     'always-propose': { type: 'boolean', default: false },
     'gap-ms': { type: 'string', default: '3000' },
+    'failure-names': { type: 'string', default: 'real' },
     out: { type: 'string' },
   },
 });
 
 const live = process.env.OPENROUTER_API_KEY !== undefined;
+const failureNames = parseFailureNames(values['failure-names']);
+checkFailureNames(failureNames, [...values.case, ...values.holdout]);
 const gapMs = Number(values['gap-ms']);
 const confirmRuns = Number(values.confirm);
 const costLimit = values['max-cost-increase'] === undefined ? {} : { maxCostIncrease: Number(values['max-cost-increase']) };
 const throttle = throttleHook(gapMs);
-const probe = benchmarkProbe({ agent: values.agent, model: values.model, live, gapMs });
+const probe = benchmarkProbe({ agent: values.agent, model: values.model, live, gapMs, failureNames });
 const scripted = mockModel(["<notes>KEEP_BASE. The runs don't argue for a change.</notes>"], { onExhausted: 'repeat-last' });
 
 function probeFor(salt: string, distinct = false): ImproveOptions['probe'] {
   if (values.cache === undefined) return probe;
-  const model = live ? values.model : `mock:${values.model}`;
+  const runModel = live ? values.model : `mock:${values.model}`;
+  const model = failureNames === 'real' ? runModel : `${runModel}#failure-names=${failureNames}`;
   return cachedProbe(probe, { dir: values.cache, model, salt, counts: emptyCounts(), distinct });
 }
 
@@ -60,7 +64,7 @@ async function runAttempt(attempt: number, base: Harness): Promise<void> {
     editorHooks: live ? [throttle] : [],
   });
   const confirmed = result.harness && confirmRuns > 0 ? await confirmHarness(probeFor(`confirm-${attempt}`), result.harness, values.case, confirmRuns) : undefined;
-  const recorded: RecordedRow = { attempt, cases: values.case, holdout: values.holdout, model: values.model, date: new Date().toISOString().slice(0, 10), baseHarness: base };
+  const recorded: RecordedRow & { failureNames: FailureNames } = { attempt, cases: values.case, holdout: values.holdout, model: values.model, date: new Date().toISOString().slice(0, 10), baseHarness: base, failureNames };
   const candidatesConfirmed = values['confirm-candidates'] && confirmRuns > 0 ? await confirmCandidates({ ...recorded, ...(result.candidates && { candidates: result.candidates }) }) : undefined;
   const { cases: caseVerdicts, holdout: holdoutSummary, ...rest } = result;
   const row = { ...rest, ...recorded, caseVerdicts, holdoutSummary, confirmed, candidatesConfirmed };
