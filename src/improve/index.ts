@@ -6,3 +6,5 @@ export { casesFromRecoveries } from './recoveries';
 export type { CapturedCase, CaseCheck } from './cases';
 export type { SqlDatabase, SqlRow, SqlStatement, SqlValue } from '../storage/sqlite/driver';
 export type { CaseCount, CaseVerdict, GateVerdict, Harness, ImproveChange, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeRun, ProbeSummary, RecoveryEvidence } from './types';
+export { appendAudit, readAudit, verifyAudit } from './audit';
+export type { AuditEntry } from './audit';
