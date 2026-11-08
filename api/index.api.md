@@ -49,6 +49,7 @@ export interface AgentConfig {
     expectedResult?: unknown;
     // (undocumented)
     flows?: AgentFlow[];
+    harnessRevision?: string;
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -6152,6 +6153,7 @@ export const SdkAttr: {
     readonly RETRY_COUNT: "lousho.retry.count";
     readonly RETRY_ERRORS: "lousho.retry.errors";
     readonly SUBAGENT_NAME: "lousho.subagent.name";
+    readonly HARNESS_REVISION: "lousho.harness.revision";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
     readonly TASK_ID: "lousho.task.id";
     readonly GUARDRAIL_NAME: "lousho.guardrail.name";

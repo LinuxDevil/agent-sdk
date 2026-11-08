@@ -18,6 +18,9 @@ import { withSpan, type Span, type TraceExporter } from './execution/tracing';
 import { memoryStore } from './storage/agentStore';
 import { mockModel } from './testing';
 import { defineTool } from './tools/defineTool';
+import { defineSkill } from './skills/defineSkill';
+import { loadAgentDir } from './agentDir/loadAgentDir';
+import { currentRevision, harnessHash } from './improve/revisions';
 
 /** An exporter that keeps the spans it was told about. */
 function recording(): TraceExporter & { ended: Span[] } {
@@ -459,5 +462,52 @@ describe('captureContent default on a local collector', () => {
     await createAgent({ name, provider: mockModel(['Done.']), tools: [flaky], store, exporter }).resume('job');
     expect(exporter.ended.find((span) => op(span) === 'chat')!.attributes['gen_ai.output.messages']).toBeUndefined();
     expect(await daemonText(name)).toContain('Done.');
+  });
+});
+
+describe('the harness revision on the invoke_agent span', () => {
+  const revisionOf = (spans: Span[]) => spans.find((span) => op(span) === 'invoke_agent')!.attributes['lousho.harness.revision'];
+  const skills = [defineSkill({ name: 'refunds', description: 'Refund rules', content: 'Check the receipt first.' })];
+
+  it('the root span carries the harness revision', async () => {
+    const exporter = recording();
+    await createAgent({ name: 'a', instructions: 'Be careful.', skills, provider: mockModel(['Hi.']), exporter }).send('Hello');
+
+    expect(revisionOf(exporter.ended)).toBe(harnessHash({ instructions: 'Be careful.', skills: { refunds: { description: 'Refund rules', content: 'Check the receipt first.' } } }));
+  });
+
+  it('two agents with the same instructions and skills share a revision', async () => {
+    const first = recording();
+    const second = recording();
+    const other = recording();
+    await createAgent({ name: 'a', instructions: 'Be careful.', skills, provider: mockModel(['Hi.']), exporter: first }).send('Hello');
+    await createAgent({ name: 'b', instructions: 'Be careful.', skills: [...skills], provider: mockModel(['Hi.']), exporter: second }).send('Hello');
+    await createAgent({ name: 'a', instructions: 'Be brief.', skills, provider: mockModel(['Hi.']), exporter: other }).send('Hello');
+
+    expect(revisionOf(first.ended)).toMatch(/^[0-9a-f]{64}$/);
+    expect(revisionOf(second.ended)).toBe(revisionOf(first.ended));
+    expect(revisionOf(other.ended)).not.toBe(revisionOf(first.ended));
+  });
+
+  it("an agent loaded from a directory is stamped with the directory's current revision", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-revision-'));
+    try {
+      fs.writeFileSync(path.join(dir, 'instructions.md'), 'Answer refund questions.\n');
+      fs.mkdirSync(path.join(dir, 'skills', 'refunds'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'skills', 'refunds', 'SKILL.md'), '---\nname: refunds\ndescription: Refund rules\n---\n\nCheck the receipt first.\n');
+      const exporter = recording();
+      await (await loadAgentDir(dir, { provider: mockModel(['Hi.']), exporter })).send('Hello');
+
+      expect(revisionOf(exporter.ended)).toBe(currentRevision(dir));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves the revision unset when the instructions are resolved per run', async () => {
+    const exporter = recording();
+    await createAgent({ name: 'a', instructions: () => 'Be careful.', provider: mockModel(['Hi.']), exporter }).send('Hello');
+
+    expect(revisionOf(exporter.ended)).toBeUndefined();
   });
 });

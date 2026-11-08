@@ -43,6 +43,7 @@ interface AgentConfig {
     expectedResult?: unknown;
     // (undocumented)
     flows?: AgentFlow[];
+    harnessRevision?: string;
     // (undocumented)
     id?: string;
     // (undocumented)
