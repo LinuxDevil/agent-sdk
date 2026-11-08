@@ -3,13 +3,14 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { mockModel } from 'lousho/testing';
 import { codingAgent } from '../heal-benchmark/codingAgent';
-import { houseRules, LEAD_TOOLS, MAX_STEPS, PAGE_TOOLS, parseArms, PRODUCT_DIR } from './arms';
+import { flatPlusInstructions, houseRules, LEAD_TOOLS, PAGE_TOOLS, pageGuidance, parseArms, PRODUCT_DIR } from './arms';
 import { CASE_IDS, PILOT_FIXES, PILOT_PROJECT } from './cases';
-import { doneKeys, parseRows, planRuns, rowKey, runPilot, type PilotRow } from './pilot';
+import { budgetOf, doneKeys, parseRows, planRuns, rowKey, runPilot, type PilotRow } from './pilot';
 
 const FIX = PILOT_FIXES['page-count']['src/pages.js'];
 const NOW = () => new Date('2026-11-08T00:00:00.000Z');
-const base = { cases: ['page-count'], repeats: 1, model: 'mock', gapMs: 0, maxTokens: 300_000, now: NOW };
+const base = { cases: ['page-count'], repeats: 1, model: 'mock', gapMs: 0, maxTokens: 300_000, maxSteps: 40, now: NOW };
+const BUDGET = budgetOf(40, 300_000);
 
 describe('planRuns', () => {
   it('runs every arm on every case and repeat, with both arms of a case back to back', () => {
@@ -30,14 +31,14 @@ describe('planRuns', () => {
 
 describe('resume', () => {
   it('skips runs already scored, and runs excluded ones again', () => {
-    const scored: PilotRow = { arm: 'flat', case: 'page-count', repeat: 0, passed: false, tokens: 1, costUsd: null, modelCalls: 1, toolRuns: 0, ended: 'stop', model: 'mock', date: '' };
+    const scored: PilotRow = { arm: 'flat', case: 'page-count', repeat: 0, passed: false, tokens: 1, costUsd: null, modelCalls: 1, toolRuns: 0, ended: 'stop', model: 'mock', budget: BUDGET, date: '' };
     const excluded: PilotRow = { ...scored, arm: 'product', passed: null };
     expect([...doneKeys([scored, excluded])]).toEqual([rowKey(scored)]);
     expect(parseRows(`${JSON.stringify(scored)}\n\n${JSON.stringify(excluded)}\n`)).toEqual([scored, excluded]);
   });
 
   it('runs nothing that the cache already holds', async () => {
-    const done = new Set([rowKey({ model: 'mock', arm: 'flat', case: 'page-count', repeat: 0 })]);
+    const done = new Set([rowKey({ model: 'mock', budget: BUDGET, arm: 'flat', case: 'page-count', repeat: 0 })]);
     const rows = await runPilot({ ...base, arms: ['flat'], done, provider: () => mockModel(['x']) });
     expect(rows).toEqual([]);
   });
@@ -62,10 +63,22 @@ describe('arms', () => {
     expect(readFileSync(path.join(PRODUCT_DIR, 'instructions.md'), 'utf8')).not.toContain('## House rules');
   });
 
-  it('gives the lead and every page the same step limit as the flat agent', () => {
-    const steps = (dir: string) => (JSON.parse(readFileSync(path.join(dir, 'agent.json'), 'utf8')) as { maxSteps: number }).maxSteps;
-    expect(steps(PRODUCT_DIR)).toBe(MAX_STEPS);
-    for (const page of Object.keys(PAGE_TOOLS)) expect(steps(path.join(PRODUCT_DIR, 'subagents', page))).toBe(MAX_STEPS);
+  it('sets no step limit in the directory, so every agent in every arm gets the same --max-steps', () => {
+    const config = (dir: string) => JSON.parse(readFileSync(path.join(dir, 'agent.json'), 'utf8')) as Record<string, unknown>;
+    expect(config(PRODUCT_DIR)).not.toHaveProperty('maxSteps');
+    for (const page of Object.keys(PAGE_TOOLS)) expect(config(path.join(PRODUCT_DIR, 'subagents', page))).not.toHaveProperty('maxSteps');
+  });
+
+  it('gives flat-plus every page instruction, the loop and the house rules, so routing is the only difference', () => {
+    const text = flatPlusInstructions('FLAT');
+    expect(text.startsWith('FLAT\n\n')).toBe(true);
+    for (const page of Object.keys(PAGE_TOOLS)) {
+      expect(pageGuidance(page).length).toBeGreaterThan(100);
+      expect(pageGuidance(page)).not.toContain('House rules');
+      expect(text).toContain(pageGuidance(page));
+    }
+    expect(text.split('## House rules')).toHaveLength(2);
+    expect(text).toContain(houseRules());
   });
 
   it('parses --arms', () => {
@@ -83,7 +96,7 @@ describe('runPilot with a mock model', () => {
     ]);
     const rows: PilotRow[] = [];
     await runPilot({ ...base, arms: ['flat'], provider: () => provider, onRow: (row) => rows.push(row) });
-    expect(rows).toEqual([expect.objectContaining({ arm: 'flat', case: 'page-count', repeat: 0, passed: true, ended: 'stop', toolRuns: 2, model: 'mock', date: '2026-11-08T00:00:00.000Z' })]);
+    expect(rows).toEqual([expect.objectContaining({ arm: 'flat', case: 'page-count', repeat: 0, passed: true, ended: 'stop', toolRuns: 2, model: 'mock', budget: BUDGET, date: '2026-11-08T00:00:00.000Z' })]);
     expect(rows[0].modelCalls).toBe(3);
     expect(rows[0].tokens).toBeGreaterThan(0);
     expect(rows[0].failure).toBeUndefined();
@@ -119,6 +132,17 @@ describe('runPilot with a mock model', () => {
     expect(flat.passed).toBeNull();
   });
 
+  it('scores a page that runs out of steps, instead of leaving the run out', async () => {
+    const provider = mockModel([
+      { toolCalls: [{ name: 'task', args: { agent: 'investigate', prompt: 'Look.' } }] },
+      { toolCalls: [{ name: 'read_file', args: { path: 'src/pages.js' } }] },
+      'Gave up.',
+    ]);
+    const [row] = await runPilot({ ...base, maxSteps: 1, arms: ['product'], provider: () => provider });
+    expect(row.passed).toBe(false);
+    expect(row.ended).not.toBe('page-error');
+  });
+
   it('refuses a page that tries a tool it was not given', async () => {
     const provider = mockModel([
       { toolCalls: [{ name: 'task', args: { agent: 'review', prompt: 'Write the fix.' } }] },
@@ -128,5 +152,11 @@ describe('runPilot with a mock model', () => {
     ]);
     const [row] = await runPilot({ ...base, arms: ['product'], provider: () => provider });
     expect(row.passed).toBe(false);
+  });
+
+  it('records a run whose arm fails to build as excluded and goes on', async () => {
+    const rows = await runPilot({ ...base, cases: ['no-such-case', 'page-count'], arms: ['flat'], provider: () => mockModel(['Done.']) });
+    expect(rows.map((row) => row.passed)).toEqual([null, false]);
+    expect(rows[0].failure).toMatch(/Unknown case/);
   });
 });

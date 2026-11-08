@@ -1,4 +1,3 @@
 {
-  "description": "Changes the code to fix a diagnosed bug, then runs the tests. Needs the root cause, the files it may change, the conventions and the edge cases.",
-  "maxSteps": 15
+  "description": "Changes the code to fix a diagnosed bug, then runs the tests. Needs the root cause, the files it may change, the conventions and the edge cases."
 }

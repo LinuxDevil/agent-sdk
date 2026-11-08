@@ -71,7 +71,7 @@ Plan first, then edit: a coding agent in `plan` mode reads and proposes, then `s
 
 ## [product-pilot](./product-pilot)
 
-An A/B experiment: does a product (a lead agent that delegates to investigate, fix and review pages) beat one flat coding agent? Both arms run the same 24 synthetic coding cases with hidden-test checkers, 3 repeats each, and a report gives pass^3, cost and a go/no-go. Runs offline with `--mock`, or live with `OPENROUTER_API_KEY`.
+An A/B experiment: does a product (a lead agent that delegates to investigate, fix and review pages) beat one flat coding agent? Every arm runs the same 24 synthetic coding cases with hidden-test checkers, 3 repeats each, and a report gives pass^3, cost and a go/no-go. Runs offline with `--mock`, or live with `OPENROUTER_API_KEY`.
 
 ## [research-assistant](./research-assistant)
 

@@ -101,7 +101,7 @@ const NEW_TASKS: readonly CodingTask[] = [
   },
   {
     id: 'merge-config',
-    input: 'test/config.test.js fails. mergeConfig should merge nested objects. Fix it.',
+    input: 'test/config.test.js fails. mergeConfig should merge nested objects; an array or null in the override replaces the base value. Fix it.',
     mayChange: ['src/config.js'],
     hidden: `${HEAD}const { mergeConfig } = require('../src/config');\n\ntest('the reported bug is fixed', () => {\n  assert.deepStrictEqual(mergeConfig({ db: { host: 'a', port: 1 } }, { db: { port: 2 } }), { db: { host: 'a', port: 2 } });\n  assert.deepStrictEqual(mergeConfig({ tags: ['a'] }, { tags: ['b'] }), { tags: ['b'] });\n  assert.deepStrictEqual(mergeConfig({ a: { b: 1 } }, { a: null }), { a: null });\n});\n\ntest('follows project conventions', () => {\n  const base = { db: { host: 'a', port: 1 } };\n  mergeConfig(base, { db: { port: 2 }, extra: true });\n  assert.deepStrictEqual(base, { db: { host: 'a', port: 1 } });\n});\n`,
     fix: { 'src/config.js': "const isPlain = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);\n\nconst mergeConfig = (base, override) => {\n  const out = { ...base };\n  for (const [key, value] of Object.entries(override)) out[key] = isPlain(value) && isPlain(base[key]) ? mergeConfig(base[key], value) : value;\n  return out;\n};\n\nexports.mergeConfig = mergeConfig;\n" },
@@ -110,7 +110,7 @@ const NEW_TASKS: readonly CodingTask[] = [
     id: 'group-by',
     input: 'test/group.test.js fails. groupBy should work for any string key. Fix it.',
     mayChange: ['src/group.js'],
-    hidden: `${HEAD}const { groupBy } = require('../src/group');\n\ntest('hidden', () => {\n  assert.deepStrictEqual(groupBy([1, 2, 3, 4], (x) => (x % 2 ? 'odd' : 'even')), { odd: [1, 3], even: [2, 4] });\n  assert.deepStrictEqual(groupBy([], (x) => x), {});\n  assert.deepStrictEqual(groupBy(['a', 'b'], () => 'constructor'), { constructor: ['a', 'b'] });\n  assert.deepStrictEqual(groupBy(['c'], () => 'toString'), { toString: ['c'] });\n});\n`,
+    hidden: `${HEAD}const { groupBy } = require('../src/group');\n\ntest('hidden', () => {\n  assert.deepStrictEqual({ ...groupBy([1, 2, 3, 4], (x) => (x % 2 ? 'odd' : 'even')) }, { odd: [1, 3], even: [2, 4] });\n  assert.deepStrictEqual({ ...groupBy([], (x) => x) }, {});\n  assert.deepStrictEqual({ ...groupBy(['a', 'b'], () => 'constructor') }, { constructor: ['a', 'b'] });\n  assert.deepStrictEqual({ ...groupBy(['c'], () => 'toString') }, { toString: ['c'] });\n});\n`,
     fix: { 'src/group.js': 'exports.groupBy = (items, key) => {\n  const groups = new Map();\n  for (const item of items) {\n    const name = key(item);\n    groups.set(name, [...(groups.get(name) ?? []), item]);\n  }\n  return Object.fromEntries(groups);\n};\n' },
   },
   {
@@ -129,7 +129,7 @@ const NEW_TASKS: readonly CodingTask[] = [
   },
   {
     id: 'cache-ttl',
-    input: 'test/cache.test.js fails. An entry should expire ttlMs after it was set. Fix it.',
+    input: 'test/cache.test.js fails. An entry should expire ttlMs after it was set: from set time plus ttlMs on, get returns undefined. Fix it.',
     mayChange: ['src/cache.js'],
     hidden: `${HEAD}const { createCache } = require('../src/cache');\n\ntest('hidden', () => {\n  let t = 0;\n  const cache = createCache(100, () => t);\n  cache.set('k', 'v');\n  t = 99;\n  assert.strictEqual(cache.get('k'), 'v');\n  t = 100;\n  assert.strictEqual(cache.get('k'), undefined);\n  cache.set('k', 'w');\n  t = 150;\n  assert.strictEqual(cache.get('k'), 'w');\n  assert.strictEqual(cache.get('missing'), undefined);\n});\n`,
     fix: { 'src/cache.js': 'exports.createCache = (ttlMs, now = Date.now) => {\n  const entries = new Map();\n  return {\n    set: (key, value) => entries.set(key, { value, at: now() }),\n    get: (key) => {\n      const entry = entries.get(key);\n      if (!entry || now() - entry.at >= ttlMs) return undefined;\n      return entry.value;\n    },\n  };\n};\n' },

@@ -13,13 +13,14 @@ const row = (over: Partial<PilotRow> = {}): PilotRow => ({
   toolRuns: 3,
   ended: 'stop',
   model: 'm',
+  budget: 'b',
   date: '2026-11-08T00:00:00.000Z',
   ...over,
 });
 
 const runs = (arm: PilotRow['arm'], caseId: string, passed: boolean[], over: Partial<PilotRow> = {}): PilotRow[] => passed.map((value, repeat) => row({ arm, case: caseId, repeat, passed: value, ...over }));
 
-const summary = (over: Partial<ArmSummary>): ArmSummary => ({ arm: 'flat', cases: 1, passK: 1, passRate: 1, scored: 3, meanTokens: 100, meanCostUsd: null, meanModelCalls: 1, ...over });
+const summary = (over: Partial<ArmSummary>): ArmSummary => ({ arm: 'flat', cases: 1, passK: 1, passRate: 1, scored: 3, meanTokens: 100, meanCostUsd: null, meanModelCalls: 1, excluded: 0, outOfBudget: 0, ...over });
 
 describe('passHatK', () => {
   it('is 1 only when all k of k runs pass', () => {
@@ -101,14 +102,35 @@ describe('buildReport', () => {
     expect(report.arms.every((arm) => arm.scored === 3)).toBe(true);
   });
 
-  it('reports a third arm without letting it change the go/no-go', () => {
-    const report = buildReport([...runs('flat', 'a', [true, true, true]), ...runs('product', 'a', [true, true, true]), ...runs('flat-plus', 'a', [false, false, false])]);
+  it('reports flat-plus as a separate routing check, without letting it change the go/no-go or its cases', () => {
+    const report = buildReport([
+      ...runs('flat', 'a', [true, true, true]),
+      ...runs('product', 'a', [true, true, true]),
+      ...runs('flat-plus', 'a', [true, true, true], { tokens: 500 }),
+      ...runs('flat', 'b', [false, false, false]),
+      ...runs('product', 'b', [true, true, true]),
+    ]);
     expect(report.arms.map((arm) => arm.arm)).toEqual(['flat', 'flat-plus', 'product']);
-    expect(report.verdict.go).toBe(true);
+    expect(report.incomplete).toEqual(['b']);
+    expect(report.verdict).toMatchObject({ go: true });
+    expect(report.verdict.reason).toMatch(/^over 2 cases/);
+    expect(report.routing).toMatchObject({ go: false, costRatio: 2 });
+    expect(report.routing?.reason).toMatch(/^over 1 cases.*flat-plus/);
+    expect(formatReport(report)).toMatch(/^routing check vs flat-plus, NO-GO: /m);
+  });
+
+  it('counts excluded and out-of-budget runs per arm', () => {
+    const report = buildReport([
+      ...runs('flat', 'a', [true, false, true]).map((r, i) => (i === 1 ? { ...r, ended: 'max-steps' } : r)),
+      row({ arm: 'flat', case: 'a', repeat: 3, passed: null }),
+      ...runs('product', 'a', [true, true, true]),
+    ]);
+    expect(report.arms[0]).toMatchObject({ arm: 'flat', excluded: 1, outOfBudget: 1 });
   });
 
   it('refuses rows from more than one model', () => {
     expect(() => buildReport([row(), row({ model: 'other' })])).toThrow(/mix models/);
+    expect(() => buildReport([row(), row({ budget: 'other' })])).toThrow(/mix budgets/);
   });
 
   it('gives no decision without both arms', () => {
@@ -120,6 +142,6 @@ describe('buildReport', () => {
     const text = formatReport(buildReport([...runs('flat', 'a', [true, true, true]), ...runs('product', 'a', [true, true, true])]));
     expect(text).toMatch(/^flat\s+1\.000/m);
     expect(text).toMatch(/^a\s+flat 3\/3\s+product 3\/3/m);
-    expect(text).toMatch(/^GO: product pass\^k 1\.000 >= flat 1\.000; cost 1\.00x flat \(tokens\) <= 1\.3x$/m);
+    expect(text).toMatch(/^GO: over 1 cases, product pass\^k 1\.000 >= flat 1\.000; cost 1\.00x flat \(tokens\) <= 1\.3x$/m);
   });
 });

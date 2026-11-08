@@ -8,7 +8,7 @@ const ARMS =['flat', 'flat-plus', 'product'] as const;
 export type ArmName = (typeof ARMS)[number];
 
 export const PRODUCT_DIR = path.join(__dirname, 'coding-product');
-export const MAX_STEPS = 15;
+export const DEFAULT_MAX_STEPS = 40;
 
 export const PAGE_TOOLS: Readonly<Record<string, readonly string[]>> = {
   investigate: ['read_file', 'list_dir', 'grep', 'run_tests'],
@@ -21,6 +21,7 @@ export const LEAD_TOOLS: readonly string[] = ['read_file', 'list_dir', 'grep', '
 export interface ArmSettings {
   model: string;
   maxTokens: number;
+  maxSteps: number;
   hooks: AgentHook[];
   provider?: () => LLMProvider;
 }
@@ -34,9 +35,21 @@ export interface Built {
 
 const pageDir = (page: string) => path.join(PRODUCT_DIR, 'subagents', page);
 
+const pageText = (page: string) => readFileSync(path.join(pageDir(page), 'instructions.md'), 'utf8');
+
 export function houseRules(page = 'fix'): string {
-  const text = readFileSync(path.join(pageDir(page), 'instructions.md'), 'utf8');
+  const text = pageText(page);
   return text.slice(text.indexOf('## House rules')).trim();
+}
+
+export function pageGuidance(page: string): string {
+  const text = pageText(page);
+  return text.slice(text.indexOf('\n\n'), text.indexOf('## House rules')).trim();
+}
+
+export function flatPlusInstructions(flat: string): string {
+  const steps = Object.keys(PAGE_TOOLS).map((page) => `### ${page[0].toUpperCase()}${page.slice(1)}\n\n${pageGuidance(page)}`);
+  return [flat, 'Work in three steps: investigate, then fix, then review. If your review finds a problem, fix it and review again, at most twice.', ...steps, houseRules()].join('\n\n');
 }
 
 function pick(tools: readonly DefinedTool[], names: readonly string[]): DefinedTool[] {
@@ -58,7 +71,7 @@ async function pageSkills() {
 async function buildProduct(tools: readonly DefinedTool[], settings: ArmSettings): Promise<SimpleAgent> {
   const model = modelOption(settings);
   const pages = Object.fromEntries(
-    await Promise.all(Object.entries(PAGE_TOOLS).map(async ([page, names]) => [page, await loadAgentDir(pageDir(page), { ...model, tools: pick(tools, names), description: description(page) })] as const))
+    await Promise.all(Object.entries(PAGE_TOOLS).map(async ([page, names]) => [page, await loadAgentDir(pageDir(page), { ...model, tools: pick(tools, names), description: description(page), maxSteps: settings.maxSteps })] as const))
   );
   return loadAgentDir(PRODUCT_DIR, {
     ...model,
@@ -66,6 +79,7 @@ async function buildProduct(tools: readonly DefinedTool[], settings: ArmSettings
     tools: pick(tools, LEAD_TOOLS),
     subagents: pages,
     subagentOptions: { background: false },
+    maxSteps: settings.maxSteps,
     limits: { maxTokens: settings.maxTokens },
     hooks: settings.hooks,
   });
@@ -76,10 +90,10 @@ async function buildSingle(arm: ArmName, project: ReturnType<typeof codingAgent>
   return createAgent({
     ...modelOption(settings),
     name: arm,
-    instructions: plus ? `${project.instructions}\n\n${houseRules()}` : project.instructions,
+    instructions: plus ? flatPlusInstructions(project.instructions) : project.instructions,
     tools: project.tools,
     ...(plus && { skills: await pageSkills() }),
-    maxSteps: MAX_STEPS,
+    maxSteps: settings.maxSteps,
     limits: { maxTokens: settings.maxTokens },
     hooks: settings.hooks,
   });

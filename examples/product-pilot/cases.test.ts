@@ -67,6 +67,16 @@ describe('pilot cases', () => {
     }
   });
 
+  it('accepts other correct fixes, not only the reference one', () => {
+    const alternatives: [string, Record<string, string>][] = [
+      ['group-by', { 'src/group.js': 'exports.groupBy = (items, key) =>\n  items.reduce((groups, item) => {\n    (groups[key(item)] ??= []).push(item);\n    return groups;\n  }, Object.create(null));\n' }],
+      ['pick-falsy', { 'src/pick.js': 'exports.pick = (source, keys) => Object.fromEntries(keys.filter((key) => key in source).map((key) => [key, source[key]]));\n' }],
+      ['card-title', { 'src/text.js': "exports.truncate = (text, n, keep = n) => (text.length > n ? text.slice(0, keep) + '...' : text);\n", 'src/title.js': "const { truncate } = require('./text');\n\nexports.cardTitle = (text) => truncate(text, 10, 7);\n" }],
+      ['top-scores', { 'src/rank.js': 'exports.topScores = (scores, n) => scores.slice().sort((a, b) => b - a).slice(0, n);\n' }],
+    ];
+    for (const [id, seed] of alternatives) expect(caseOf(id, seed).failure?.(), id).toBeUndefined();
+  });
+
   it('fails a run that edits a test or a file the case does not allow', () => {
     expect(caseOf('clamp-range', { ...PILOT_FIXES['clamp-range'], 'test/clamp.test.js': "require('node:test')('x', () => {});\n" }).check('')).toBe(false);
     expect(caseOf('clamp-range', { ...PILOT_FIXES['clamp-range'], 'src/new.js': 'exports.x = 1;\n' }).check('')).toBe(false);

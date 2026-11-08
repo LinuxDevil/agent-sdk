@@ -1,4 +1,3 @@
 {
-  "description": "Checks a fix against the bug report, the project conventions, other callers and edge cases. Answers APPROVED or CHANGES NEEDED. Changes nothing.",
-  "maxSteps": 15
+  "description": "Checks a fix against the bug report, the project conventions, other callers and edge cases. Answers APPROVED or CHANGES NEEDED. Changes nothing."
 }

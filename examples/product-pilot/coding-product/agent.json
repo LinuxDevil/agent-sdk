@@ -1,4 +1,3 @@
 {
-  "description": "Fixes bugs in a small JavaScript project by delegating to investigate, fix and review pages",
-  "maxSteps": 15
+  "description": "Fixes bugs in a small JavaScript project by delegating to investigate, fix and review pages"
 }
