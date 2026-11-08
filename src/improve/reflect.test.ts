@@ -135,12 +135,64 @@ describe('reflect', () => {
     expect(outcome.tokens).toBe(0);
   });
 
+  it('reports the tokens already spent when a later step fails', async () => {
+    const outcome = await run([{ toolCalls: [{ name: 'list_dir', args: { path: 'context' } }], usage: { inputTokens: 80, outputTokens: 20 } }, { error: new Error('provider down') }]);
+    expect(outcome.error).toMatch(/provider down/);
+    expect(outcome.tokens).toBe(100);
+  });
+
   it('caps its spend at maxTokens', async () => {
     const provider = mockModel([{ toolCalls: [{ name: 'list_dir', args: { path: 'context' } }], usage: { inputTokens: 80, outputTokens: 20 } }, reply(EXPERIENCE)]);
     const outcome = await reflect({ dir, domain: 'support', result: result(), outcome: 'kept', revision: 'rev-1', editor: { provider }, maxTokens: 50 });
     expect(provider.calls).toHaveLength(1);
     expect(outcome.entry).toBeUndefined();
     expect(outcome.tokens).toBe(100);
+    expect(outcome.error).toMatch(/budget/);
+  });
+
+  it('drops a final reply that goes over maxTokens', async () => {
+    const outcome = await run([{ text: EXPERIENCE, usage: { inputTokens: 80, outputTokens: 20 } }], { maxTokens: 50 });
+    expect(outcome.entry).toBeUndefined();
+    expect(outcome.error).toMatch(/budget/);
+    expect(entries()).toEqual([]);
+  });
+
+  it('stores nothing when the session ends early', async () => {
+    const stuck = Array.from({ length: 12 }, (): MockTurn => ({ toolCalls: [{ name: 'list_dir', args: { path: 'context' } }] }));
+    const outcome = await run(stuck);
+    expect(outcome.error).toMatch(/max-steps/);
+    const controller = new AbortController();
+    controller.abort();
+    expect((await run([reply(EXPERIENCE)], { signal: controller.signal })).entry).toBeUndefined();
+    expect(entries()).toEqual([]);
+  });
+
+  it('reads CRLF replies, and writes nothing from an ambiguous one', async () => {
+    expect((await run([reply(EXPERIENCE.replace(/\n/g, '\r\n'))])).entry?.cue).toBe('The user asks for a document the agent may not open.');
+    const ambiguous = [
+      `${EXPERIENCE}\n${EXPERIENCE}`,
+      `${EXPERIENCE}\nNO_ENTRY`,
+      EXPERIENCE.replace('confidence:', 'cue: Another cue.\nconfidence:'),
+      EXPERIENCE.replace('confidence:', 'unless the user is an admin\nconfidence:'),
+    ];
+    for (const text of ambiguous) expect((await run([reply(text)])).entry, text).toBeUndefined();
+    expect(entries()).toHaveLength(1);
+  });
+
+  it('never shows held-out case ids to the reflection', async () => {
+    const withHoldout = result({
+      reason: 'Held-out case secret-case-7 held.',
+      cases: [
+        { caseId: 'stuck', role: 'training', base: { passed: 0, scored: 3 }, final: { passed: 3, scored: 3 }, reasons: ['Improved.'] },
+        { caseId: 'secret-case-7', role: 'holdout', base: { passed: 3, scored: 3 }, final: { passed: 3, scored: 3 }, reasons: ['secret-case-7 held.'] },
+      ],
+    });
+    const provider = mockModel([{ toolCalls: ['card.md', 'cases.md'].map((name) => ({ name: 'read_file', args: { path: `context/${name}` } })) }, reply('NO_ENTRY')]);
+    await reflect({ dir, domain: 'support', result: withHoldout, outcome: 'kept', revision: 'rev-1', editor: { provider }, hooks: [] });
+    const seen = JSON.stringify(provider.calls[1]);
+    expect(seen).not.toContain('secret-case-7');
+    expect(seen).toContain('held-out case 1');
+    expect(seen).toContain('stuck');
   });
 
   it('asks for an experience block or NO_ENTRY, and keeps the untrusted-data rules', () => {
@@ -166,7 +218,7 @@ describe('votes', () => {
     const cited = lesson('Cited cue.');
     const other = lesson('Other cue.');
     const kept = result({ stages: [{ label: 'compose', status: 'edited', notes: `kept: rule: helped: per ${cited.id}`, tokens: 1 }, { label: 'domain', status: 'edited', notes: `see ${other.id}`, tokens: 1 }] });
-    const voted = voteOnOutcome(dir, { outcome: 'kept', result: kept });
+    const voted = voteOnOutcome(dir, { outcome: 'kept', result: kept, domain: 'support' });
     expect(voted.map((entry) => [entry.id, entry.votes])).toEqual([[cited.id, { helped: 1, hurt: 0 }]]);
   });
 
@@ -176,20 +228,35 @@ describe('votes', () => {
       gate: [{ label: 'compose', passed: false, reason: 'No.' }, { label: 'domain', passed: true, reason: 'Yes.' }],
       stages: [{ label: 'domain', status: 'edited', notes: `per ${cited.id}`, tokens: 1 }, { label: 'compose', status: 'edited', notes: 'nothing cited', tokens: 1 }],
     });
-    expect(voteOnOutcome(dir, { outcome: 'kept', result: fallback }).map((entry) => entry.id)).toEqual([cited.id]);
+    expect(voteOnOutcome(dir, { outcome: 'kept', result: fallback, domain: 'support' }).map((entry) => entry.id)).toEqual([cited.id]);
   });
 
   it("rollback votes hurt on the cycle's entry", () => {
     const own = lesson('Own cue.');
     const cited = lesson('Cited cue.');
     const rolled = result({ stages: [{ label: 'compose', status: 'edited', notes: `per ${cited.id} and lib-99999999`, tokens: 1 }] });
-    const voted = voteOnOutcome(dir, { outcome: 'rolled-back', result: rolled, entryId: own.id });
+    const voted = voteOnOutcome(dir, { outcome: 'rolled-back', result: rolled, entryId: own.id, domain: 'support' });
     expect(voted.map((entry) => [entry.id, entry.votes.hurt])).toEqual([
       [own.id, 1],
       [cited.id, 1],
     ]);
-    voteOnOutcome(dir, { outcome: 'rolled-back', result: rolled, entryId: own.id });
+    voteOnOutcome(dir, { outcome: 'rolled-back', result: rolled, entryId: own.id, domain: 'support' });
     expect(Object.keys(libraryFiles(dir, 'support'))).toEqual([]);
     expect(voteEntry(dir, own.id, 'helped').status).toBe('retired');
+  });
+
+  it("leaves the cycle's own lesson alone when it was written about the rollback", () => {
+    const { entry } = addEntry(dir, { domain: 'support', revision: 'rev-0', outcome: 'rolled-back', cue: 'Rolled cue.', lesson: 'Do not add the stop rule.', evidence: 'It broke case stuck.', confidence: 'low' });
+    expect(voteOnOutcome(dir, { outcome: 'rolled-back', result: result({ stages: [] }), entryId: entry?.id, domain: 'support' })).toEqual([]);
+  });
+
+  it('counts only up to three cited entries the editors were shown, in this domain', () => {
+    const shown = [lesson('One.'), lesson('Two.'), lesson('Three.'), lesson('Four.')];
+    const hidden = lesson('Hidden.');
+    const { entry: foreign } = addEntry(dir, { domain: 'billing', revision: 'rev-0', outcome: 'kept', cue: 'Foreign cue.', lesson: 'Say so.', evidence: 'Case x passed.', confidence: 'low' });
+    const library = Object.fromEntries([...shown, foreign as LibraryEntry].map((entry) => [`context/library/${entry.id}.md`, 'x']));
+    const notes = [foreign?.id, hidden.id, ...shown.map((entry) => entry.id)].join(' ');
+    const voted = voteOnOutcome(dir, { outcome: 'kept', result: result({ stages: [{ label: 'compose', status: 'edited', notes, tokens: 1 }] }), domain: 'support', library });
+    expect(voted.map((entry) => entry.id)).toEqual(shown.slice(0, 3).map((entry) => entry.id));
   });
 });

@@ -12967,11 +12967,13 @@ import { libraryHome, reflect, voteOnOutcome, type ImproveResult } from 'lousho/
 declare const result: ImproveResult;
 
 const home = libraryHome('./agents/support');
-const reflection = await reflect({ ...home, result, outcome: 'rejected', revision: 'rev-12', editor: { model: 'openrouter/<model>' }, maxTokens: 50_000 });
-voteOnOutcome(home.dir, { outcome: 'rolled-back', result, entryId: reflection.entry?.id });
+const reflection = await reflect({ ...home, result, outcome: 'kept', revision: 'rev-12', editor: { model: 'openrouter/<model>' }, maxTokens: 50_000 });
+voteOnOutcome(home.dir, { outcome: 'rolled-back', result, domain: home.domain, entryId: reflection.entry?.id });
 ```
 
-Editors that used a lesson cite its id (`lib-…`) in their notes, and `citedEntries(notes)` finds those ids. `voteOnOutcome` votes once an applied edit's fate is known. When the edit is kept, each entry the winning editor cited gets a helped vote. When it's rolled back, the cycle's own entry and every cited entry get a hurt vote. An id that names no entry is skipped.
+Editors that used a lesson cite its id (`lib-…`) in their notes, and `citedEntries(notes)` finds those ids. Once an applied edit's fate is known, `voteOnOutcome` votes on up to three entries the winning editor cited, counting only entries in the library's domain and, when you pass the editors' `library`, only entries they were shown. Those entries get a helped vote when the edit is kept and a hurt vote when it's rolled back. On a rollback, the cycle's own entry also gets a hurt vote, but only if it was written as `kept`. A lesson written about the rollback is left alone.
+
+The session never sees a held-out case's id: each held-out case appears as `held-out case 1`, `held-out case 2` and so on. A reply that isn't exactly one `<experience>` block stores nothing. That covers several blocks, a repeated field, a line that isn't a field, and a block alongside `NO_ENTRY`. Nothing is stored either when the session ends early or goes over `maxTokens`.
 
 ## From the command line
 
