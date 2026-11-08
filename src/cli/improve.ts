@@ -29,7 +29,7 @@ import { detectTarget, agentModuleConfig, type DevTarget } from './devReload';
 import { dbPathOf, resolveAgent, sinceMs } from './observe';
 
 const USAGE =
-  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--out file]';
+  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file]';
 
 const HELP = `${USAGE}
 
@@ -52,6 +52,10 @@ Options:
   --protect traceId         a run that went well and must keep passing (repeatable); joins
                             the gate only after it passes 6 of 6 fresh runs
   --read-only tool          a tool that is safe to run for real while replaying (repeatable)
+  --max-tokens n            stop once n tokens are spent on agent runs and editor calls,
+                            checked after each, so the last one can go over; the result is
+                            then budget-exceeded with nothing proposed (exit 0). Unset by
+                            default: no cap. Admitting --protect traces is not counted
   --out file                also write the proposal to this new file: the review card, or the
                             JSON result for a .json path
   -h, --help                show this help
@@ -72,6 +76,7 @@ const SPEC: CommandSpec = {
     protect: { type: 'string', multiple: true },
     'read-only': { type: 'string', multiple: true },
     out: { type: 'string' },
+    'max-tokens': { type: 'string' },
   },
 };
 
@@ -87,6 +92,7 @@ export interface ImproveArgs {
   protect: string[];
   readOnly: string[];
   out?: string;
+  maxTokens?: number;
   help?: boolean;
 }
 
@@ -101,7 +107,14 @@ export interface ImproveIo {
 
 const listValue = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
 
-/** Parses the arguments after `improve`; throws `LOUSHO_CONFIG_INVALID` for a missing path or `--check`, an unknown flag or a bad `--since`. */
+function maxTokensOf(text: string | undefined): number | undefined {
+  if (text === undefined) return undefined;
+  const tokens = Number(text);
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(tokens) || tokens < 1) throw usageError(SPEC, `--max-tokens must be a positive integer, not '${text}'.`);
+  return tokens;
+}
+
+/** Parses the arguments after `improve`; throws `LOUSHO_CONFIG_INVALID` for a missing path or `--check`, an unknown flag, a bad `--since` or a bad `--max-tokens`. */
 export function parseImproveArgs(args: string[]): ImproveArgs {
   const { values, positionals, help } = parseCommand(SPEC, args);
   if (help) return { path: '', check: '', protect: [], readOnly: [], help };
@@ -121,6 +134,7 @@ export function parseImproveArgs(args: string[]): ImproveArgs {
     protect: listValue(values.protect),
     readOnly: listValue(values['read-only']),
     out: stringValue(values.out),
+    maxTokens: maxTokensOf(stringValue(values['max-tokens'])),
   };
 }
 
@@ -305,15 +319,16 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
     io.stdout.write('lousho improve: No failed runs with a recorded input match, so there is nothing to learn from.\n');
     return 0;
   }
+  const budget = args.maxTokens === undefined ? 'no token budget; pass --max-tokens <n> to cap the spend' : `stops once ${args.maxTokens} tokens are spent (--max-tokens)`;
   io.stderr.write(
-    `lousho improve: ${failures.length} failed run(s) to learn from and ${passes.length} to protect: at least ${3 * failures.length + 6 * passes.length} agent runs plus the editors' calls, all billed to your models.\n`
+    `lousho improve: ${failures.length} failed run(s) to learn from and ${passes.length} to protect: at least ${3 * failures.length + 6 * passes.length} agent runs plus the editors' calls, all billed to your models; ${budget}.\n`
   );
   const errors = new Set<string>();
   const probe = unscoredOnError(probeCapturedCases([...failures, ...passes], runCaseWith(config, args, io, decoded), check), errors);
   const result = await withoutObserve(async () => {
     const { admitted, refused } = await admitProtectedCases({ harness, cases: passes, probe });
     for (const { id, passed, scored } of refused) io.stderr.write(`lousho improve: ${id} was not protected: it passed ${passed} of ${scored} scored runs.\n`);
-    return improveAgent({ harness, cases: failures.map((c) => c.id), holdout: admitted.map((c) => c.id), probe, editor });
+    return improveAgent({ harness, cases: failures.map((c) => c.id), holdout: admitted.map((c) => c.id), probe, editor, ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }) });
   });
   const card = formatImproveResult(result);
   io.stdout.write(card);
@@ -322,6 +337,7 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
     io.stderr.write(`lousho improve: wrote the proposal to ${args.out}. Nothing was applied.\n`);
   }
   for (const message of errors) io.stderr.write(`lousho improve: a run failed and was left unscored: ${message}\n`);
+  if (result.outcome === 'budget-exceeded') io.stderr.write(`lousho improve: the --max-tokens ${args.maxTokens} budget ran out before a result; nothing was proposed. Raise --max-tokens to let it finish.\n`);
   return result.outcome === 'outage' ? 1 : 0;
 }
 

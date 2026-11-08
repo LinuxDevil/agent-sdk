@@ -117,7 +117,10 @@ npx lousho improve ./my-agent --check ./check.mjs --since 7d --out proposal.md
 
 It reads cases only from your local observe database, needs a module whose
 default export is your `CaseCheck`, simulates tools other than loading skills
-unless `--read-only` names them, and prints the review card. It applies nothing. See
+unless `--read-only` names them, and prints the review card. It applies nothing.
+`--max-tokens <n>` sets `maxTokens`; it has no default, so without it there is no
+cap. It is checked after each run or editor call, so the last one can go over,
+and a run that hits it ends `budget-exceeded`. See
 [CLI](./cli.md#lousho-improve) for every flag.
 
 ## Safety
