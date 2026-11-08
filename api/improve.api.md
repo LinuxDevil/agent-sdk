@@ -190,7 +190,7 @@ export function approvePending(dir: string, id: string, approvedBy: string): Pro
 
 // @public
 export interface AuditEntry {
-    action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'unverified' | 'pause' | 'resume' | 'canary-start' | 'canary-end';
+    action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'unverified' | 'pause' | 'resume' | 'canary-start' | 'canary-end' | 'reflect-fail';
     actor: 'gate' | 'canary' | 'monitor' | 'guard' | 'scheduler' | `person:${string}`;
     at: string;
     cycle?: string;
@@ -303,14 +303,12 @@ export function casesFromFailures(db: SqlDatabase, filter?: {
     since?: number;
     agent?: string;
     minScore?: number;
+    traceIds?: readonly string[];
+    recurring?: boolean;
 }): CapturedCase[];
 
 // @public
-export function casesFromRecoveries(db: SqlDatabase, filter?: {
-    since?: number;
-    agent?: string;
-    minScore?: number;
-}): CapturedCase[];
+export function casesFromRecoveries(db: SqlDatabase, filter?: Parameters<typeof casesFromFailures>[1]): CapturedCase[];
 
 // @public
 export interface CaseVerdict {
@@ -591,6 +589,54 @@ interface HealActionEvent extends AgentEventBase<'heal.action'> {
 }
 
 // @public
+export interface HealCycle {
+    approval: ImproveSettings['approval'];
+    canary?: CanaryReplayResult;
+    endedAt?: string;
+    errors?: string[];
+    from?: string;
+    guard?: GuardCorpusResult;
+    id: string;
+    outcome: 'idle' | 'paused' | 'busy' | 'budget' | 'cooldown' | Exclude<ImproveOutcome, 'proposal'> | 'canary-failed' | 'applied' | 'pending' | 'guard-rolled-back' | 'stale' | 'refused' | 'interrupted';
+    pending?: string;
+    reason: string;
+    result?: ImproveResult;
+    rolledBackTo?: string;
+    startedAt: string;
+    to?: string;
+    tokens: number;
+    trigger: 'failures' | 'score' | 'manual';
+}
+
+// @public
+export function healOnce(options: HealOptions): Promise<HealCycle>;
+
+// @public
+export interface HealOptions {
+    agent?: string;
+    check: CaseCheck;
+    db: SqlDatabase;
+    dir: string;
+    editor: ImproveOptions['editor'];
+    editorHooks?: readonly AgentHook[];
+    editorTimeoutMs?: number;
+    maxTokens?: number;
+    protect?: readonly string[];
+    reflect?: boolean;
+    runCase: (harness: Harness, input: string) => Promise<{
+        answer: string;
+        transcript: string;
+        tokens: number;
+        ended: string;
+    }>;
+    settings: ImproveSettings;
+    signal?: AbortSignal;
+    since?: number;
+    trigger?: HealCycle['trigger'];
+    withRecoveries?: boolean;
+}
+
+// @public
 interface HookContext {
     agentId?: string;
     agentName?: string;
@@ -675,6 +721,7 @@ export interface ImproveOptions {
         model: string;
     };
     editorHooks?: readonly AgentHook[];
+    editorTimeoutMs?: number;
     harness: Harness;
     holdout?: readonly string[];
     library?: Readonly<Record<string, string>>;
