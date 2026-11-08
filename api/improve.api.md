@@ -166,6 +166,7 @@ export interface CapturedCase {
     id: string;
     input: string;
     kind: 'failure' | 'protected';
+    recovery?: RecoveryEvidence;
     traceId: string;
 }
 
@@ -180,6 +181,13 @@ export interface CaseCount {
 
 // @public
 export function casesFromFailures(db: SqlDatabase, filter?: {
+    since?: number;
+    agent?: string;
+    minScore?: number;
+}): CapturedCase[];
+
+// @public
+export function casesFromRecoveries(db: SqlDatabase, filter?: {
     since?: number;
     agent?: string;
     minScore?: number;
@@ -479,6 +487,7 @@ export interface ImproveOptions {
     maxEditorSteps?: number;
     maxTokens?: number;
     probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
+    recoveries?: readonly RecoveryEvidence[];
     repeats?: number;
     signal?: AbortSignal;
 }
@@ -765,6 +774,15 @@ interface ReasoningSettings {
 
 // @public
 type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
+
+// @public
+export interface RecoveryEvidence {
+    answer: string;
+    caseId: string;
+    diagnosis: string;
+    traceId: string;
+    transcript: string;
+}
 
 // @public
 export function renderTranscript(messages: readonly Message[], options?: {

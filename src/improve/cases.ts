@@ -2,7 +2,7 @@ import { ConfigurationError } from '../execution/errors';
 import { exampleFromTrace } from '../observe/datasets';
 import { failureReportFromDb } from '../observe/failures';
 import type { SqlDatabase } from '../storage/sqlite/driver';
-import type { Harness, ImproveOptions } from './types';
+import type { Harness, ImproveOptions, RecoveryEvidence } from './types';
 
 const DEFAULT_ADMISSION_RUNS = 6;
 
@@ -19,6 +19,8 @@ export interface CapturedCase {
   traceId: string;
   /** `failure` for a case to learn from, `protected` for one that must keep passing. */
   kind: 'failure' | 'protected';
+  /** From {@link casesFromRecoveries}: the `.heal` retry that passed, for `ImproveOptions.recoveries`. It never makes the case protected. */
+  recovery?: RecoveryEvidence;
 }
 
 function captureCase(db: SqlDatabase, traceId: string, prefix: string, kind: CapturedCase['kind']): CapturedCase | undefined {

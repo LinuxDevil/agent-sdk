@@ -31,6 +31,20 @@ export interface ProbeRun {
   failure?: string;
 }
 
+/** A retry of a training case that passed after a diagnosis was added, shown to the editors as evidence and never scored. */
+export interface RecoveryEvidence {
+  /** The training case it retried. */
+  caseId: string;
+  /** The retry's trace. It must not be a held-out case's trace, or that case would reach the editors. */
+  traceId: string;
+  /** The diagnosis the retry was given. */
+  diagnosis: string;
+  /** The retry's final answer, to score with your `CaseCheck` before you trust it. */
+  answer: string;
+  /** What the retry did. Build it with {@link renderTranscript}, so tool results stay marked as untrusted. */
+  transcript: string;
+}
+
 /** Options for {@link improveAgent}. */
 export interface ImproveOptions {
   /** The current harness. It is never changed. */
@@ -39,6 +53,8 @@ export interface ImproveOptions {
   cases: readonly string[];
   /** Ids of cases that gate the result, kept away from the editors. */
   holdout?: readonly string[];
+  /** Retries of training cases that passed after a diagnosis, for the editors to read. They don't count as runs, each must name a training case, and none may be a held-out case's trace. */
+  recoveries?: readonly RecoveryEvidence[];
   /** Runs one case under a harness, where `repeat` goes up to `2 × repeats − 1` for the base harness. It owns side effects: use {@link createShadowHook} unless its tools are safe to run. */
   probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
   /** The editors' model. */

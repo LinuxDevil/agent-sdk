@@ -5539,7 +5539,7 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
-lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file]
+lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]
 lousho --version
 ```
 
@@ -5906,6 +5906,11 @@ and apply what you accept by hand.
   stderr suggests raising it. `n` must be a positive integer; anything else is
   a usage error (exit 2). It is unset by default, so there is no cap. The runs
   that admit `--protect` traces happen before and don't count toward it.
+- `--with-recoveries` also shows the editors, for each failed run, the
+  `<id>.heal` fork from `agent.recover()` that finished and whose answer passes
+  `--check`, if there is one. It's evidence only: it never counts as a run and
+  never protects a case, and a fork you `--protect` is left out. See
+  [Recovery forks as evidence](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/improve.md#recovery-forks-as-evidence).
 
 Before the first run it prints how many runs it will make at least, and the
 token budget if any. Every run and every editor call is billed to your models.
@@ -12903,6 +12908,30 @@ gate changes: it judges the harness, not the reasons.
 
 `db` is your observe database (default `~/.lousho/observe.db`), opened with `new DatabaseSync(path)` from `node:sqlite`; it matches the exported `SqlDatabase` type. Build each transcript your `runCase` returns with `renderTranscript`, so tool results reach the editors marked as untrusted.
 
+### Recovery forks as evidence
+
+With `retryWithDiagnosis`, [`agent.recover()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/self-healing.md#recover-a-run-now) forks a run that kept failing into a `<id>.heal` session told why it failed. When that fork passes, you hold a pair on the same input: the failed run and a retry that passed. `casesFromRecoveries(db, filter)` finds those pairs in your local database and returns the failed runs as cases, each with a `recovery`: the retry's transcript, rendered with `renderTranscript`, the diagnosis it was given, and its final answer. A fork counts only when it carries the diagnosis and finished with no recorded error, no answer cut short and no low score. That isn't your check, so score each `recovery.answer` with your `CaseCheck` and keep only the ones that pass, then pass them on as `recoveries`:
+
+```ts
+import { casesFromRecoveries, improveAgent, type CaseCheck, type Harness, type ImproveOptions, type SqlDatabase } from 'lousho/improve';
+
+declare const db: SqlDatabase;
+declare const harness: Harness;
+declare const probe: ImproveOptions['probe'];
+declare const check: CaseCheck;
+
+const cases = casesFromRecoveries(db, { since: Date.now() - 7 * 86_400_000 });
+const result = await improveAgent({
+  harness,
+  cases: cases.map((c) => c.id),
+  recoveries: cases.flatMap((c) => (c.recovery && check(c.input, c.recovery.answer) === true ? [c.recovery] : [])),
+  probe,
+  editor: { model: 'openrouter/<model>' },
+});
+```
+
+Each editor reads a recovery as `context/recoveries/<case>.md`, labelled as a retry that passed after this diagnosis, with the diagnosis between untrusted markers and forged markers removed. A recovery is evidence only. It's never a run: the case is still scored by your `CaseCheck`, and the gate never counts the retry. It never makes a case protected either. Every recovery must name a training case, and its `traceId` must not be a held-out case's trace, so nothing held out reaches the editors. When the loop retried a run several times before forking, the pair uses the latest of those failed runs that `casesFromFailures` captured (at most 5 per failure class).
+
 ## From the command line
 
 `lousho improve` runs the same steps on an agent directory or module:
@@ -12916,7 +12945,8 @@ default export is your `CaseCheck`, simulates tools other than loading skills
 unless `--read-only` names them, and prints the review card. It applies nothing.
 `--max-tokens <n>` sets `maxTokens`; it has no default, so without it there is no
 cap. It is checked after each run or editor call, so the last one can go over,
-and a run that hits it ends `budget-exceeded`. See
+and a run that hits it ends `budget-exceeded`.
+`--with-recoveries` also shows the editors each failed run's `.heal` fork whose answer passes your check. See
 [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#lousho-improve) for every flag.
 
 ## Safety
@@ -18322,7 +18352,9 @@ What the loop does with failures:
   original is deleted and `onRecovered` reports the original's id. If the fork
   also reaches the cap, both are quarantined. This applies to `send()` runs, not
   session turns, and the store must keep a
-  [checkpoint history](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#checkpoint-history).
+  [checkpoint history](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/durable-execution.md#checkpoint-history). A fork that
+  passed can later be evidence for `improveAgent()`: see
+  [Recovery forks as evidence](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/improve.md#recovery-forks-as-evidence).
 - **Errors that won't go away.** A run whose last error has `retryable: false`,
   such as a 400 from the provider, is left alone.
 - **Provider outages.** After 3 provider failures in a row, across any runs, the
