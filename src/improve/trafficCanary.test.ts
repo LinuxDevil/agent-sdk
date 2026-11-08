@@ -300,6 +300,22 @@ describe('canaryVerdict and settleCanary', () => {
     expect(read('instructions.md')).toBe('Edited by a person.\n');
   });
 
+  it('retires early when the monitor judges the candidate scores a regression', async () => {
+    writeFileSync(path.join(dir, 'improve.json'), JSON.stringify({ canary: { traffic: { share: 0.1, sessions: 30 } } }));
+    const baseRevision = harnessHash(readAgentHarness(dir));
+    const scored = (revision: string, at: number, value: number): IngestEvent[] => {
+      const events = run(revision, at);
+      const trace = (events[0].data as { trace_id: string }).trace_id;
+      return [...events, { type: 'score', data: { score_id: `s-${trace}`, trace_id: trace, name: 'quality', value, source: 'online', agent_id: 'support', ts: at } } as IngestEvent];
+    };
+    const past = Date.now() - 1_000_000;
+    ingestBatch(db, Array.from({ length: 20 }, (_, i) => scored(baseRevision, past + i * 1000, 0.95)).flat());
+    const canary = await start();
+    const later = Date.now() + 1000;
+    ingestBatch(db, Array.from({ length: 20 }, (_, i) => scored(canary.revision, later + i * 1000, 0.55)).flat());
+    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'retire', sessions: 20, flagged: 0, reason: expect.stringMatching(/mean score fell/) });
+  });
+
   it('settle with no canary does nothing', async () => {
     expect(await settleCanary(db, dir, settings())).toMatchObject({ outcome: 'none' });
     expect(readAudit(dir)).toEqual([]);

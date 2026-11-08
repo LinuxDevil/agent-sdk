@@ -3,7 +3,8 @@ import { closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, ren
 import path from 'node:path';
 import { ConfigurationError } from '../execution/errors';
 import { failureReportFromDb } from '../observe/failures';
-import { runsByRevision, type RevisionRun } from '../observe/store';
+import { pointOf, significantDrop } from '../observe/continuousScore';
+import { finishedRuns, type RevisionRun } from '../observe/store';
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import { withFileLock } from '../storage/fileLock';
 import { applyProposal, type ApplyResult } from './apply';
@@ -13,6 +14,7 @@ import { CANARY_FILE, DEFAULT_MAX_ALWAYS_ON, isPaused, MAX_CANARY_SESSIONS, MAX_
 import { formatImproveResult } from './format';
 import { validateHarness } from './harness';
 import { savePending, type PendingProposal } from './pending';
+import { judgeApplied } from './monitor';
 import { harnessHash, readAgentHarness } from './revisions';
 import type { ImproveSettings } from './settings';
 import type { Harness, ImproveResult } from './types';
@@ -145,7 +147,7 @@ function newCanary(input: StartCanaryInput, traffic: { share: number; sessions: 
 async function startLocked(db: SqlDatabase, dir: string, input: StartCanaryInput, settings: ImproveSettings, now: number): Promise<TrafficCanary> {
   const traffic = checkedTraffic(dir, settings);
   const candidate = checkedCandidate(dir, input, settings, now);
-  const history = runsByRevision(db, { revision: harnessHash(input.base), ...(input.agent && { agent: input.agent }), limit: HISTORY });
+  const history = finishedRuns(db, { revision: harnessHash(input.base), ...(input.agent && { agent: input.agent }), endedBefore: now, byEnd: true, limit: HISTORY });
   const canary = newCanary(input, traffic, candidate, flaggedRate(history), now);
   rmSync(path.join(dir, SESSIONS_FILE), { force: true });
   await appendAudit(dir, { actor: 'canary', action: 'canary-start', from: canary.baseRevision, to: canary.revision, ...(canary.cycle && { cycle: canary.cycle }), reason: `Serving the candidate to ${Math.round(canary.share * 100)}% of new sessions for ${canary.sessions} sessions (base flagged rate ${canary.p0.toFixed(2)}).` });
@@ -188,13 +190,29 @@ function firstSessions(db: SqlDatabase, runs: readonly RevisionRun[], limit: num
   return [...sessions.values()];
 }
 
-function trial(db: SqlDatabase, canary: TrafficCanary): Omit<CanaryVerdict, 'state' | 'reason'> {
+interface Trial {
+  counts: Omit<CanaryVerdict, 'state' | 'reason'>;
+  base: RevisionRun[];
+  sessions: RevisionRun[][];
+}
+
+function trial(db: SqlDatabase, canary: TrafficCanary): Trial {
   const agent = canary.agent ? { agent: canary.agent } : {};
-  const runs = runsByRevision(db, { revision: canary.revision, ...agent, since: Date.parse(canary.startedAt), limit: TRIAL_LIMIT }).reverse();
+  const runs = finishedRuns(db, { revision: canary.revision, ...agent, since: Date.parse(canary.startedAt), byEnd: true, limit: TRIAL_LIMIT }).reverse();
   const sessions = firstSessions(db, runs, canary.sessions);
-  const baseClasses = classesOf(db, runsByRevision(db, { revision: canary.baseRevision, ...agent, limit: HISTORY }));
+  const base = finishedRuns(db, { revision: canary.baseRevision, ...agent, byEnd: true, limit: HISTORY }).reverse();
+  const baseClasses = classesOf(db, base);
   const newClasses = [...classesOf(db, sessions.flat())].filter((name) => !baseClasses.has(name)).sort();
-  return { sessions: sessions.length, flagged: sessions.filter((group) => group.some((run) => run.failed)).length, p0: canary.p0, newClasses };
+  const counts = { sessions: sessions.length, flagged: sessions.filter((group) => group.some((run) => run.failed)).length, p0: canary.p0, newClasses };
+  return { counts, base, sessions };
+}
+
+function regressedAgainstBase(found: Trial, monitor: ImproveSettings['monitor']): string | undefined {
+  const basePasses = found.base.map((run) => (run.failed ? 0 : 1));
+  const sessionPasses = found.sessions.map((group) => (group.some((run) => run.failed) ? 0 : 1));
+  if (significantDrop(basePasses, sessionPasses)) return 'The candidate sessions pass significantly less often than the base runs.';
+  const judged = judgeApplied(found.base.map(pointOf), found.sessions.flat().map(pointOf), monitor);
+  return judged.verdict === 'regressed' ? judged.reason : undefined;
 }
 
 function decide(counts: Omit<CanaryVerdict, 'state' | 'reason'>, canary: TrafficCanary, giveUpDays: number, now: number): CanaryVerdict {
@@ -210,10 +228,10 @@ function decide(counts: Omit<CanaryVerdict, 'state' | 'reason'>, canary: Traffic
 }
 
 function verdictOf(db: SqlDatabase, dir: string, canary: TrafficCanary, settings: ImproveSettings, now: number): CanaryVerdict {
-  const closed = closedReason(dir, canary, settings);
-  const counts = trial(db, canary);
-  if (closed) return { ...counts, state: 'retire', reason: closed };
-  return decide(counts, canary, settings.monitor.giveUpDays, now);
+  const found = trial(db, canary);
+  const closed = closedReason(dir, canary, settings) ?? regressedAgainstBase(found, settings.monitor);
+  if (closed) return { ...found.counts, state: 'retire', reason: closed };
+  return decide(found.counts, canary, settings.monitor.giveUpDays, now);
 }
 
 const NONE: CanaryVerdict = { state: 'none', sessions: 0, flagged: 0, p0: 1, newClasses: [], reason: 'No traffic canary is running.' };
