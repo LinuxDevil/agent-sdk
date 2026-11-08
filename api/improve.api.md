@@ -267,6 +267,9 @@ export interface CaseVerdict {
 }
 
 // @public
+export function citedEntries(notes: string): string[];
+
+// @public
 type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'model-unloaded' | 'unknown';
 
 // @public
@@ -881,6 +884,24 @@ export interface RecoveryEvidence {
 }
 
 // @public
+export function reflect(options: {
+    dir: string;
+    domain: string;
+    result: ImproveResult;
+    outcome: LibraryEntry['outcome'];
+    revision: string;
+    editor: ImproveOptions['editor'];
+    maxTokens?: number;
+    hooks?: readonly AgentHook[];
+    signal?: AbortSignal;
+}): Promise<{
+    entry?: LibraryEntry;
+    refused?: string[];
+    tokens: number;
+    error?: string;
+}>;
+
+// @public
 export function renderTranscript(messages: readonly Message[], options?: {
     maxResultChars?: number;
 }): string;
@@ -1200,6 +1221,15 @@ export function verifyAudit(dir: string): number | undefined;
 
 // @public
 export function voteEntry(dir: string, id: string, vote: 'helped' | 'hurt'): LibraryEntry;
+
+// @public
+export function voteOnOutcome(dir: string, options: {
+    outcome: 'kept' | 'rolled-back';
+    result: ImproveResult;
+    domain: string;
+    library?: ImproveOptions['library'];
+    entryId?: string;
+}): LibraryEntry[];
 
 // (No @packageDocumentation comment for this package)
 

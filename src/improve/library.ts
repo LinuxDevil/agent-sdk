@@ -306,6 +306,15 @@ export function isLibraryFile(content: string): boolean {
   return (entry || index) && lines.at(-1) === '</untrusted>' && content.match(/<\s*\/?\s*untrusted\b/gi)?.length === 2;
 }
 
+/** The stored entry with this id and its votes, or `undefined` when there is none, it is in several domains, or it can't be read. */
+export function findEntry(dir: string, id: string): LibraryEntry | undefined {
+  if (!ID.test(id)) return undefined;
+  const [domain, ...others] = domainsWith(dir, id);
+  if (domain === undefined || others.length > 0) return undefined;
+  const stored = readStored(dir, domain, id);
+  return stored && withVotes(stored, readVotes(dir, domain).get(id));
+}
+
 function domainFor(dir: string, id: string): string {
   if (!ID.test(id)) throw new ConfigurationError(`"${id}" is not a library entry id.`, 'id');
   const domains = domainsWith(dir, id);

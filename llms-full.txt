@@ -12957,6 +12957,24 @@ const result = await improveAgent({ harness, cases: ['stuck'], probe, editor: { 
 
 `libraryHome(agentDir)` keeps a library per agent, named after its directory. `libraryHome(agentDir, domain)` shares one library in the parent directory with the other agents there that name the same domain. Library text reaches the harness only through an editor's edit, which still passes every check.
 
+### Reflecting on a decided cycle
+
+Once a cycle is decided, `reflect` turns it into at most one lesson. A cycle is decided when its edit was kept, rejected, or applied and then rolled back. A rejected or rolled-back edit teaches as much as a kept one. The reflection session reads four files and nothing else: the review card, the diff, the case verdicts and the outcome. It never sees a raw transcript, and the text that models wrote reaches it between untrusted markers. It replies with an `<experience>` block (cue, lesson, evidence, confidence) or `NO_ENTRY`, and the lesson goes through `addEntry` with the cycle's failed checks, so a refused lesson is reported and never stored. `reflect` never throws. A failure comes back as `error` for you to record, and `tokens` is what it spent, to count toward the cycle's budget, which `maxTokens` caps.
+
+```ts
+import { libraryHome, reflect, voteOnOutcome, type ImproveResult } from 'lousho/improve';
+
+declare const result: ImproveResult;
+
+const home = libraryHome('./agents/support');
+const reflection = await reflect({ ...home, result, outcome: 'kept', revision: 'rev-12', editor: { model: 'openrouter/<model>' }, maxTokens: 50_000 });
+voteOnOutcome(home.dir, { outcome: 'rolled-back', result, domain: home.domain, entryId: reflection.entry?.id });
+```
+
+Editors that used a lesson cite its id (`lib-…`) in their notes, and `citedEntries(notes)` finds those ids. Once an applied edit's fate is known, `voteOnOutcome` votes on up to three entries the winning editor cited, counting only entries in the library's domain and, when you pass the editors' `library`, only entries they were shown. Those entries get a helped vote when the edit is kept and a hurt vote when it's rolled back. Call it once per cycle: each call casts new votes. On a rollback, the cycle's own entry also gets a hurt vote, but only if it was written as `kept`. A lesson written about the rollback is left alone.
+
+The session never sees a held-out case's id: each held-out case appears as `held-out case 1`, `held-out case 2` and so on. A reply that isn't exactly one `<experience>` block stores nothing. That covers several blocks, a repeated field, a line that isn't a field, and a block alongside `NO_ENTRY`. Nothing is stored either when the session ends early or goes over `maxTokens`.
+
 ## From the command line
 
 `lousho improve` runs the same steps on an agent directory or module:
