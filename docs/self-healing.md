@@ -59,7 +59,9 @@ What the loop does with failures:
   original is deleted and `onRecovered` reports the original's id. If the fork
   also reaches the cap, both are quarantined. This applies to `send()` runs, not
   session turns, and the store must keep a
-  [checkpoint history](./durable-execution.md#checkpoint-history).
+  [checkpoint history](./durable-execution.md#checkpoint-history). A fork that
+  passed can later be evidence for `improveAgent()`: see
+  [Recovery forks as evidence](./improve.md#recovery-forks-as-evidence).
 - **Errors that won't go away.** A run whose last error has `retryable: false`,
   such as a 400 from the provider, is left alone.
 - **Provider outages.** After 3 provider failures in a row, across any runs, the

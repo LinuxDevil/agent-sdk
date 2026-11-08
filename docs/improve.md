@@ -127,6 +127,30 @@ gate changes: it judges the harness, not the reasons.
 
 `db` is your observe database (default `~/.lousho/observe.db`), opened with `new DatabaseSync(path)` from `node:sqlite`; it matches the exported `SqlDatabase` type. Build each transcript your `runCase` returns with `renderTranscript`, so tool results reach the editors marked as untrusted.
 
+### Recovery forks as evidence
+
+With `retryWithDiagnosis`, [`agent.recover()`](./self-healing.md#recover-a-run-now) forks a run that kept failing into a `<id>.heal` session told why it failed. When that fork passes, you hold a pair on the same input: the failed run and a retry that passed. `casesFromRecoveries(db, filter)` finds those pairs in your local database and returns the failed runs as cases, each with a `recovery`: the retry's transcript, rendered with `renderTranscript`, the diagnosis it was given, and its final answer. A fork counts only when it carries the diagnosis and finished with no recorded error, no answer cut short and no low score. That isn't your check, so score each `recovery.answer` with your `CaseCheck` and keep only the ones that pass, then pass them on as `recoveries`:
+
+```ts
+import { casesFromRecoveries, improveAgent, type CaseCheck, type Harness, type ImproveOptions, type SqlDatabase } from 'lousho/improve';
+
+declare const db: SqlDatabase;
+declare const harness: Harness;
+declare const probe: ImproveOptions['probe'];
+declare const check: CaseCheck;
+
+const cases = casesFromRecoveries(db, { since: Date.now() - 7 * 86_400_000 });
+const result = await improveAgent({
+  harness,
+  cases: cases.map((c) => c.id),
+  recoveries: cases.flatMap((c) => (c.recovery && check(c.input, c.recovery.answer) === true ? [c.recovery] : [])),
+  probe,
+  editor: { model: 'openrouter/<model>' },
+});
+```
+
+Each editor reads a recovery as `context/recoveries/<case>.md`, labelled as a retry that passed after this diagnosis, with the diagnosis between untrusted markers and forged markers removed. A recovery is evidence only. It's never a run: the case is still scored by your `CaseCheck`, and the gate never counts the retry. It never makes a case protected either. Every recovery must name a training case, and its `traceId` must not be a held-out case's trace, so nothing held out reaches the editors. When the loop retried a run several times before forking, the pair uses the latest of those failed runs that `casesFromFailures` captured (at most 5 per failure class).
+
 ## From the command line
 
 `lousho improve` runs the same steps on an agent directory or module:
@@ -140,7 +164,8 @@ default export is your `CaseCheck`, simulates tools other than loading skills
 unless `--read-only` names them, and prints the review card. It applies nothing.
 `--max-tokens <n>` sets `maxTokens`; it has no default, so without it there is no
 cap. It is checked after each run or editor call, so the last one can go over,
-and a run that hits it ends `budget-exceeded`. See
+and a run that hits it ends `budget-exceeded`.
+`--with-recoveries` also shows the editors each failed run's `.heal` fork whose answer passes your check. See
 [CLI](./cli.md#lousho-improve) for every flag.
 
 ## Safety

@@ -168,23 +168,35 @@ function lowScoreSamples(db: SqlDatabase, since: number, agent: string, minScore
   }));
 }
 
-export function failureReportFromDb(db: SqlDatabase, filter: { since?: number; agent?: string; minScore?: number }): FailureReport {
+type FailureFilter = { since?: number; agent?: string; minScore?: number };
+
+const FILTERS = "o.start >= ? AND (? = '' OR o.agent_id = ?)";
+const LEAF = `o.kind IN ('tool', 'generation') AND ${FILTERS}`;
+
+function failureSamples(db: SqlDatabase, filter: FailureFilter): { failed: FailureSample[]; roots: FailureSample[]; lowScores: FailureSample[] } {
   const since = filter.since ?? 0;
   const agent = filter.agent ?? '';
-  const filters = "o.start >= ? AND (? = '' OR o.agent_id = ?)";
   const args = [since, agent, agent];
-  const leaf = `o.kind IN ('tool', 'generation') AND ${filters}`;
-  const counts = db.prepare(`SELECT COUNT(DISTINCT o.trace_id) AS traces, COUNT(*) AS spans FROM observations o WHERE ${leaf}`).get(...args);
-  const failed = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${leaf} AND o.status = 'error'`).all(...args).flatMap((row) => {
-    const fields = rowFields(row);
-    const sample = sampleFrom(fields);
+  const failed = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${LEAF} AND o.status = 'error'`).all(...args).flatMap((row) => {
+    const sample = sampleFrom(rowFields(row));
     return sample ? [sample] : [];
   });
-  const roots = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE o.kind = 'span' AND o.parent_obs_id IS NULL AND ${filters}`).all(...args).flatMap((row) => {
+  const roots = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE o.kind = 'span' AND o.parent_obs_id IS NULL AND ${FILTERS}`).all(...args).flatMap((row) => {
     const sample = rootSample(row);
     return sample ? [sample] : [];
   });
-  const lowScores = lowScoreSamples(db, since, agent, filter.minScore ?? DEFAULT_MIN_SCORE);
+  return { failed, roots, lowScores: lowScoreSamples(db, since, agent, filter.minScore ?? DEFAULT_MIN_SCORE) };
+}
+
+export function failedTraceIdsFromDb(db: SqlDatabase, filter: FailureFilter): Set<string> {
+  const { failed, roots, lowScores } = failureSamples(db, filter);
+  return new Set([...failed, ...roots, ...lowScores].map((sample) => sample.traceId));
+}
+
+export function failureReportFromDb(db: SqlDatabase, filter: FailureFilter): FailureReport {
+  const agent = filter.agent ?? '';
+  const counts = db.prepare(`SELECT COUNT(DISTINCT o.trace_id) AS traces, COUNT(*) AS spans FROM observations o WHERE ${LEAF}`).get(filter.since ?? 0, agent, agent);
+  const { failed, roots, lowScores } = failureSamples(db, filter);
   const interrupted = roots.filter((sample) => sample.error === INTERRUPTED_EXAMPLE).length;
   return {
     scanned: { traces: Number(counts?.traces ?? 0), spans: Number(counts?.spans ?? 0), failed: failed.length, noAnswer: roots.length - interrupted, interrupted, lowScores: lowScores.length },

@@ -4,7 +4,7 @@ import { evidenceFiles, type LabelledRun } from './evidence';
 import { summarize } from './gate';
 import { diffHarness, harnessFiles } from './harness';
 import { judgeWithFallback } from './judge';
-import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT } from './prompts';
+import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, RECOVERIES_NOTE } from './prompts';
 import { ImproveRun, StopRun } from './run';
 import type { Harness, ImproveOptions, ImproveResult, ImproveStage, ProbeSummary } from './types';
 
@@ -13,6 +13,13 @@ function assertOptions(options: ImproveOptions, repeats: number): void {
   if (!Number.isInteger(repeats) || repeats <= 0) throw new ConfigurationError(`improveAgent: repeats must be a positive whole number, got ${repeats}.`, 'repeats');
   const overlap = (options.holdout ?? []).filter((id) => options.cases.includes(id));
   if (overlap.length > 0) throw new ConfigurationError(`improveAgent: ${overlap.join(', ')} can't be both a case and held out.`, 'holdout');
+  const stray = (options.recoveries ?? []).filter((recovery) => !options.cases.includes(recovery.caseId)).map((recovery) => recovery.caseId);
+  if (stray.length > 0) throw new ConfigurationError(`improveAgent: recoveries must name training cases, not ${stray.join(', ')}.`, 'recoveries');
+}
+
+function promptsFor(options: ImproveOptions): { invariant: string; domain: string; compose: string } {
+  const note = options.recoveries?.length ? RECOVERIES_NOTE : '';
+  return { invariant: INVARIANT_PROMPT + note, domain: DOMAIN_PROMPT + note, compose: COMPOSE_PROMPT + note };
 }
 
 function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined): boolean {
@@ -44,19 +51,21 @@ interface Stages {
 }
 
 async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: readonly LabelledRun[]): Promise<Stages> {
-  const { harness: base, cases } = options;
-  const shared = evidenceFiles({ harness: base, runs: baseRuns });
-  const invariant = await run.edit('invariant', INVARIANT_PROMPT, shared, base);
-  const domain = await run.edit('domain', DOMAIN_PROMPT, shared, base);
+  const { harness: base, cases, recoveries } = options;
+  const prompts = promptsFor(options);
+  const shared = evidenceFiles({ harness: base, runs: baseRuns, recoveries });
+  const invariant = await run.edit('invariant', prompts.invariant, shared, base);
+  const domain = await run.edit('domain', prompts.domain, shared, base);
   const probeIfEdited = (candidate: Harness, label: string) => (diffHarness(base, candidate) === '' ? Promise.resolve([]) : run.probe(candidate, label, cases));
   const invariantRuns = await probeIfEdited(invariant, 'invariant');
   const domainRuns = await probeIfEdited(domain, 'domain');
   const composeFiles = evidenceFiles({
     harness: base,
     runs: [...baseRuns, ...invariantRuns, ...domainRuns],
+    recoveries,
     extra: { ...candidateFiles('invariant', base, invariant), ...candidateFiles('domain', base, domain) },
   });
-  const composed = await run.edit('compose', COMPOSE_PROMPT, composeFiles, base);
+  const composed = await run.edit('compose', prompts.compose, composeFiles, base);
   run.candidates = { invariant, domain, compose: composed };
   const stages = { composed, invariant, domain, invariantRuns, domainRuns };
   if (diffHarness(base, composed) === '') return { ...stages, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };

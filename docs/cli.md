@@ -39,7 +39,7 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
-lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file]
+lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]
 lousho --version
 ```
 
@@ -406,6 +406,11 @@ and apply what you accept by hand.
   stderr suggests raising it. `n` must be a positive integer; anything else is
   a usage error (exit 2). It is unset by default, so there is no cap. The runs
   that admit `--protect` traces happen before and don't count toward it.
+- `--with-recoveries` also shows the editors, for each failed run, the
+  `<id>.heal` fork from `agent.recover()` that finished and whose answer passes
+  `--check`, if there is one. It's evidence only: it never counts as a run and
+  never protects a case, and a fork you `--protect` is left out. See
+  [Recovery forks as evidence](./improve.md#recovery-forks-as-evidence).
 
 Before the first run it prints how many runs it will make at least, and the
 token budget if any. Every run and every editor call is billed to your models.

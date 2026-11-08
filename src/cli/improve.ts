@@ -9,6 +9,7 @@ import { ConfigurationError } from '../execution/errors';
 import {
   admitProtectedCases,
   casesFromFailures,
+  casesFromRecoveries,
   createShadowHook,
   formatImproveResult,
   improveAgent,
@@ -19,9 +20,11 @@ import {
   type CaseCheck,
   type Harness,
   type ImproveOptions,
+  type RecoveryEvidence,
 } from '../improve';
+import { recordedTurns } from '../improve/recoveries';
 import { openDb } from '../observe/store';
-import type { AgentInput, LLMProvider, Message } from '../providers';
+import type { AgentInput, LLMProvider } from '../providers';
 import { defineSkill } from '../skills/defineSkill';
 import { memoryStore } from '../storage/agentStore';
 import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
@@ -29,7 +32,7 @@ import { detectTarget, agentModuleConfig, type DevTarget } from './devReload';
 import { dbPathOf, resolveAgent, sinceMs } from './observe';
 
 const USAGE =
-  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file]';
+  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]';
 
 const HELP = `${USAGE}
 
@@ -56,6 +59,9 @@ Options:
                             checked after each, so the last one can go over; the result is
                             then budget-exceeded with nothing proposed (exit 0). Unset by
                             default: no cap. Admitting --protect traces is not counted
+  --with-recoveries         also show the editors each failed run's .heal retry from
+                            agent.recover() whose answer passes --check, as evidence
+                            only: it never counts as a run and never protects a case
   --out file                also write the proposal to this new file: the review card, or the
                             JSON result for a .json path
   -h, --help                show this help
@@ -77,6 +83,7 @@ const SPEC: CommandSpec = {
     'read-only': { type: 'string', multiple: true },
     out: { type: 'string' },
     'max-tokens': { type: 'string' },
+    'with-recoveries': { type: 'boolean' },
   },
 };
 
@@ -93,6 +100,7 @@ export interface ImproveArgs {
   readOnly: string[];
   out?: string;
   maxTokens?: number;
+  withRecoveries?: boolean;
   help?: boolean;
 }
 
@@ -135,6 +143,7 @@ export function parseImproveArgs(args: string[]): ImproveArgs {
     readOnly: listValue(values['read-only']),
     out: stringValue(values.out),
     maxTokens: maxTokensOf(stringValue(values['max-tokens'])),
+    withRecoveries: values['with-recoveries'] === true,
   };
 }
 
@@ -183,23 +192,6 @@ function assertOutUsable(out: string, target: DevTarget, config: CreateAgentConf
   if (guarded.some((dir) => inside(file, fs.realpathSync(dir)))) throw usageError(SPEC, `--out must be outside the agent's files; ${out} is not.`);
 }
 
-function textOfParts(parts: unknown): string {
-  if (!Array.isArray(parts)) return '';
-  return parts
-    .flatMap((part: { type?: unknown; content?: unknown } | null) => (part?.type === 'text' && typeof part.content === 'string' ? [part.content] : []))
-    .join('\n');
-}
-
-const REPLAYED_ROLES = new Set(['user', 'assistant']);
-
-function recordedMessages(parsed: unknown[]): { role: string; content: string }[] {
-  return parsed
-    .map((item) => item as { role?: unknown; parts?: unknown } | null)
-    .filter((message) => REPLAYED_ROLES.has(String(message?.role)))
-    .map((message) => ({ role: String(message?.role), content: textOfParts(message?.parts) }))
-    .filter((message) => message.content !== '');
-}
-
 function messageOf(input: string): AgentInput {
   let parsed: unknown;
   try {
@@ -208,9 +200,9 @@ function messageOf(input: string): AgentInput {
     return input;
   }
   if (typeof parsed === 'string') return parsed;
-  const messages = Array.isArray(parsed) ? recordedMessages(parsed) : [];
+  const messages = Array.isArray(parsed) ? recordedTurns(parsed) : [];
   if (messages.length === 0) return input;
-  return messages.length === 1 && messages[0].role === 'user' ? messages[0].content : (messages as Message[]);
+  return messages.length === 1 && messages[0].role === 'user' ? messages[0].content : messages;
 }
 
 function readable(captured: CapturedCase, decoded: Map<string, AgentInput>): CapturedCase {
@@ -271,7 +263,10 @@ function readCases(args: ImproveArgs): { failures: CapturedCase[]; passes: Captu
   const db = openDb(file);
   try {
     const agent = args.agent === undefined ? undefined : resolveAgent(SPEC, db, args.agent);
-    return { failures: casesFromFailures(db, { since: args.since, agent }), passes: protectedCasesFromPasses(db, args.protect) };
+    const filter = { since: args.since, agent };
+    const recovered = new Map(args.withRecoveries ? casesFromRecoveries(db, filter).map((captured) => [captured.id, captured]) : []);
+    const failures = casesFromFailures(db, filter).map((captured) => recovered.get(captured.id) ?? captured);
+    return { failures, passes: protectedCasesFromPasses(db, args.protect) };
   } finally {
     db.close();
   }
@@ -287,6 +282,11 @@ function capture(args: ImproveArgs, io: ImproveIo): { failures: CapturedCase[]; 
   const decoded = new Map<string, AgentInput>();
   const protectable = passes.filter((captured) => !failed.has(captured.traceId));
   return { failures: failures.map((captured) => readable(captured, decoded)), passes: protectable.map((captured) => readable(captured, decoded)), decoded };
+}
+
+function checkedRecoveries(failures: readonly CapturedCase[], passes: readonly CapturedCase[], check: CaseCheck): RecoveryEvidence[] {
+  const protectedTraces = new Set(passes.map((captured) => captured.traceId));
+  return failures.flatMap(({ input, recovery }) => (recovery && !protectedTraces.has(recovery.traceId) && check(input, recovery.answer) === true ? [recovery] : []));
 }
 
 function editorOf(args: ImproveArgs, config: CreateAgentConfig, io: ImproveIo): ImproveOptions['editor'] {
@@ -323,12 +323,22 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
   io.stderr.write(
     `lousho improve: ${failures.length} failed run(s) to learn from and ${passes.length} to protect: at least ${3 * failures.length + 6 * passes.length} agent runs plus the editors' calls, all billed to your models; ${budget}.\n`
   );
+  const recoveries = checkedRecoveries(failures, passes, check);
+  if (args.withRecoveries) io.stderr.write(`lousho improve: ${recoveries.length} with a .heal retry that passed your check, shown to the editors as evidence only.\n`);
   const errors = new Set<string>();
   const probe = unscoredOnError(probeCapturedCases([...failures, ...passes], runCaseWith(config, args, io, decoded), check), errors);
   const result = await withoutObserve(async () => {
     const { admitted, refused } = await admitProtectedCases({ harness, cases: passes, probe });
     for (const { id, passed, scored } of refused) io.stderr.write(`lousho improve: ${id} was not protected: it passed ${passed} of ${scored} scored runs.\n`);
-    return improveAgent({ harness, cases: failures.map((c) => c.id), holdout: admitted.map((c) => c.id), probe, editor, ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }) });
+    return improveAgent({
+      harness,
+      cases: failures.map((c) => c.id),
+      holdout: admitted.map((c) => c.id),
+      probe,
+      editor,
+      ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
+      ...(recoveries.length > 0 && { recoveries }),
+    });
   });
   const card = formatImproveResult(result);
   io.stdout.write(card);
