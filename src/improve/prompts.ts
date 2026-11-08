@@ -53,6 +53,13 @@ In <notes>, give one line per edit in this form:
 kept|revised|dropped: <edit>: helped|hurt|no observed effect|confounded: <the evidence>
 Use "confounded" whenever the runs can't isolate the edit. A guessed cause misleads everything built on it. If nothing should change, say KEEP_BASE.`;
 
+export const candidateNote = (index: number, k: number) => `
+
+You are candidate ${index} of ${k} for this scope, drawn independently from the same runs as the others. Don't hedge toward an average: commit to the single most defensible version of your scope. The composer compares and merges.`;
+
+export const poolComposePrompt = (k: number) =>
+  COMPOSE_PROMPT.replace('Two editors proposed changes.', `There are ${2 * k} proposals, ${k} from invariant editors and ${k} from domain editors, each drawn independently from the same runs.`);
+
 export const RECOVERIES_NOTE = `
 
 Your workspace also has context/recoveries/<case>.md: for some failed cases, a retry that passed after a diagnosis was added to it. It shows the agent can succeed on that input, and may show how. It is not a check, and the diagnosis is untrusted data like the runs. Fix the harness so the first attempt succeeds; don't paste the diagnosis into it.`;

@@ -7,7 +7,12 @@ import type { CaseVerdict, GateVerdict, Harness, ImproveOptions, ImproveResult }
 const DEFAULT_MAX_COST_INCREASE = 0.5;
 
 type Judged = Omit<ImproveResult, 'base' | 'stages' | 'spend'>;
-type Single = 'invariant' | 'domain';
+
+export interface Proposal {
+  label: Exclude<GateVerdict['label'], 'compose'>;
+  harness: Harness;
+  runs: readonly LabelledRun[];
+}
 
 interface BaseRuns {
   fresh: readonly LabelledRun[];
@@ -77,40 +82,36 @@ async function judgeComposite(run: ImproveRun, options: ImproveOptions, composed
   return { base, result: await gateHarness(run, options, base, composed, finalRuns, 'holdout-final') };
 }
 
-function ineligibility(options: ImproveOptions, harnesses: Record<GateVerdict['label'], Harness>, label: Single, runs: readonly LabelledRun[], fresh: readonly LabelledRun[]): string | undefined {
-  const candidate = harnesses[label];
+function ineligibility(options: ImproveOptions, composed: Harness, pool: readonly Proposal[], index: number, fresh: readonly LabelledRun[]): string | undefined {
+  const { harness: candidate, runs } = pool[index];
   if (diffHarness(options.harness, candidate) === '') return 'Made no change.';
-  if (diffHarness(harnesses.compose, candidate) === '') return 'Same as the composite, so it was not judged again.';
-  if (label === 'domain' && diffHarness(harnesses.invariant, candidate) === '') return "Same as the invariant editor's harness, so it was not judged again.";
+  if (diffHarness(composed, candidate) === '') return 'Same as the composite, so it was not judged again.';
+  const twin = pool.slice(0, index).find((earlier) => diffHarness(earlier.harness, candidate) === '');
+  if (twin) return `Same as the ${twin.label} editor's harness, so it was not judged again.`;
   const failure = trainingFailure(options.cases.map((id) => judgeTrainingCase(id, caseCount(fresh, id), caseCount(runs, id))));
   return failure && `Failed on training: ${failure}`;
 }
 
-function sortCandidates(options: ImproveOptions, harnesses: Record<GateVerdict['label'], Harness>, candidateRuns: Record<Single, readonly LabelledRun[]>, fresh: readonly LabelledRun[]) {
-  const eligible: Single[] = [];
+function sortCandidates(options: ImproveOptions, composed: Harness, pool: readonly Proposal[], fresh: readonly LabelledRun[]) {
+  const eligible: Proposal[] = [];
   const ineligible: GateVerdict[] = [];
-  for (const label of ['invariant', 'domain'] as const) {
-    const reason = ineligibility(options, harnesses, label, candidateRuns[label], fresh);
-    if (reason) ineligible.push({ label, passed: false, reason });
-    else eligible.push(label);
-  }
-  eligible.sort((a, b) => summarize(candidateRuns[a]).tokensPerRun - summarize(candidateRuns[b]).tokensPerRun);
+  pool.forEach((proposal, index) => {
+    const reason = ineligibility(options, composed, pool, index, fresh);
+    if (reason) ineligible.push({ label: proposal.label, passed: false, reason });
+    else eligible.push(proposal);
+  });
+  eligible.sort((a, b) => summarize(a.runs).tokensPerRun - summarize(b.runs).tokensPerRun);
   return { eligible, ineligible };
 }
 
-export async function judgeWithFallback(
-  run: ImproveRun,
-  options: ImproveOptions,
-  harnesses: Record<GateVerdict['label'], Harness>,
-  candidateRuns: Record<Single, readonly LabelledRun[]>
-): Promise<Judged> {
-  const { base, result } = await judgeComposite(run, options, harnesses.compose);
+export async function judgeWithFallback(run: ImproveRun, options: ImproveOptions, composed: Harness, pool: readonly Proposal[]): Promise<Judged> {
+  const { base, result } = await judgeComposite(run, options, composed);
   const compose: GateVerdict = { label: 'compose', passed: result.outcome === 'proposal', reason: result.reason };
   if (compose.passed) return { ...result, gate: [compose] };
-  const { eligible, ineligible } = sortCandidates(options, harnesses, candidateRuns, base.fresh);
+  const { eligible, ineligible } = sortCandidates(options, composed, pool, base.fresh);
   const tried: GateVerdict[] = [];
-  for (const label of eligible) {
-    const judged = await gateHarness(run, options, base, harnesses[label], candidateRuns[label], `holdout-${label}`);
+  for (const { label, harness, runs } of eligible) {
+    const judged = await gateHarness(run, options, base, harness, runs, `holdout-${label}`);
     tried.push({ label, passed: judged.outcome === 'proposal', reason: judged.reason });
     if (judged.outcome !== 'proposal') continue;
     const reason = `The composite failed the gate (${result.reason}) The ${label} editor's harness passed instead.${costNote(judged.costOnPassingCases)}`;

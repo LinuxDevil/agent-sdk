@@ -91,6 +91,21 @@ the fix less often.
 `candidates` holds each editor's harness from before the gate, so you can review
 or replay one the gate rejected.
 
+### Several proposers
+
+Set `proposers` (default 1, at most 4) to have k invariant and k domain editors
+propose independently from the same runs, labelled `invariant-1` to
+`invariant-k` and `domain-1` to `domain-k`. Each proposal that changes the
+harness is probed, and one composer reads them all. If the composite fails the
+gate, every proposal is a fallback, cheapest first, and one identical to an
+earlier proposal is not judged again. `candidates.pool` holds every proposal,
+and `diversity` reports how alike they were: `meanJaccard` is the mean pairwise
+overlap of their non-blank lines (1 means identical) and `distinct` counts the
+different ones. It costs about k times the editor sessions and proposal runs of
+the default, so with k = 3 a cycle runs 7 editor sessions instead of 3. More
+fallbacks are also more chances for noise to pass the gate, so confirm a
+proposal on fresh runs before you apply it.
+
 ## Caching and the ledger
 
 A loop that runs every day sees the same failures again. Two caches stop it

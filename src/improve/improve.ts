@@ -4,9 +4,10 @@ import { changeItems } from './changes';
 import { evidenceFiles, type LabelledRun } from './evidence';
 import { summarize } from './gate';
 import { diffHarness, harnessFiles } from './harness';
-import { judgeWithFallback } from './judge';
+import { diversity } from './diversity';
+import { judgeWithFallback, type Proposal } from './judge';
 import { isLibraryFile } from './library';
-import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, LIBRARY_NOTE, RECOVERIES_NOTE } from './prompts';
+import { candidateNote, COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, LIBRARY_NOTE, poolComposePrompt, RECOVERIES_NOTE } from './prompts';
 import { ImproveRun, StopRun } from './run';
 import type { Harness, ImproveOptions, ImproveResult, ImproveStage, ProbeSummary } from './types';
 
@@ -19,13 +20,38 @@ function assertOptions(options: ImproveOptions, repeats: number): void {
   if (stray.length > 0) throw new ConfigurationError(`improveAgent: recoveries must name training cases, not ${stray.join(', ')}.`, 'recoveries');
   const outside = Object.entries(options.library ?? {}).filter(([path, content]) => !LIBRARY_PATH.test(path) || !isLibraryFile(content));
   if (outside.length > 0) throw new ConfigurationError(`improveAgent: library must hold files from libraryFiles, named context/library/<name>.md, not ${outside.map(([path]) => path).join(', ')}.`, 'library');
+  assertProposers(options);
 }
 
 const LIBRARY_PATH = /^context\/library\/[A-Za-z0-9_-][A-Za-z0-9._-]*\.md$/;
 
-function promptsFor(options: ImproveOptions): { invariant: string; domain: string; compose: string } {
+const MAX_PROPOSERS = 4;
+
+function assertProposers(options: ImproveOptions): void {
+  const k = options.proposers ?? 1;
+  if (!Number.isInteger(k) || k < 1 || k > MAX_PROPOSERS) throw new ConfigurationError(`improveAgent: proposers must be a whole number from 1 to ${MAX_PROPOSERS}, got ${k}.`, 'proposers');
+}
+
+interface Proposer {
+  label: Proposal['label'];
+  system: string;
+}
+
+function promptsFor(options: ImproveOptions): { proposers: Proposer[]; compose: string } {
+  const k = options.proposers ?? 1;
   const note = (options.recoveries?.length ? RECOVERIES_NOTE : '') + (Object.keys(options.library ?? {}).length > 0 ? LIBRARY_NOTE : '');
-  return { invariant: INVARIANT_PROMPT + note, domain: DOMAIN_PROMPT + note, compose: COMPOSE_PROMPT + note };
+  if (k === 1) return { proposers: [{ label: 'invariant', system: INVARIANT_PROMPT + note }, { label: 'domain', system: DOMAIN_PROMPT + note }], compose: COMPOSE_PROMPT + note };
+  const proposers = Array.from({ length: k }, (_, i): Proposer[] => [
+    { label: `invariant-${i + 1}`, system: INVARIANT_PROMPT + note + candidateNote(i + 1, k) },
+    { label: `domain-${i + 1}`, system: DOMAIN_PROMPT + note + candidateNote(i + 1, k) },
+  ]).flat();
+  return { proposers, compose: poolComposePrompt(k) + note };
+}
+
+function candidatesOf(pool: readonly Proposal[], compose: Harness): NonNullable<ImproveResult['candidates']> {
+  const first = (scope: string) => pool.find((proposal) => proposal.label.startsWith(scope))?.harness ?? pool[0].harness;
+  const candidates = { invariant: first('invariant'), domain: first('domain'), compose };
+  return pool.length === 2 ? candidates : { ...candidates, pool: Object.fromEntries(pool.map(({ label, harness }) => [label, harness])) };
 }
 
 function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined): boolean {
@@ -49,43 +75,36 @@ function candidateFiles(name: string, base: Harness, candidate: Harness): Record
 
 interface Stages {
   composed: Harness;
-  invariant: Harness;
-  domain: Harness;
-  invariantRuns: LabelledRun[];
-  domainRuns: LabelledRun[];
+  pool: Proposal[];
   result?: Omit<ImproveResult, 'base' | 'stages' | 'spend'>;
 }
 
-async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: readonly LabelledRun[]): Promise<Stages> {
-  const { harness: base, cases, recoveries, library } = options;
-  const prompts = promptsFor(options);
-  const shared = evidenceFiles({ harness: base, runs: baseRuns, recoveries, extra: library });
-  const editors = [run.stage('invariant'), run.stage('domain')];
+async function propose(run: ImproveRun, options: ImproveOptions, proposers: readonly Proposer[], baseRuns: readonly LabelledRun[], shared: Record<string, string>): Promise<Proposal[]> {
+  const { harness: base, cases } = options;
+  const stages = proposers.map(({ label }) => run.stage(label));
   const seen = failedChecks(baseRuns);
-  const [invariant, domain] = await run.concurrently([
-    (signal: AbortSignal) => run.edit(editors[0], prompts.invariant, shared, base, { signal, failedChecks: seen }),
-    (signal: AbortSignal) => run.edit(editors[1], prompts.domain, shared, base, { signal, failedChecks: seen }),
-  ]);
+  const harnesses = await run.concurrently(proposers.map(({ system }, i) => (signal: AbortSignal) => run.edit(stages[i], system, shared, base, { signal, failedChecks: seen })));
   const probeIfEdited = (candidate: Harness, label: string, signal: AbortSignal) =>
     diffHarness(base, candidate) === '' ? Promise.resolve([]) : run.probe(candidate, label, cases, 0, run.repeats, signal);
-  const [invariantRuns, domainRuns] = await run.concurrently([(signal: AbortSignal) => probeIfEdited(invariant, 'invariant', signal), (signal: AbortSignal) => probeIfEdited(domain, 'domain', signal)]);
-  const composeRuns = [...baseRuns, ...invariantRuns, ...domainRuns];
+  const runs = await run.concurrently(proposers.map(({ label }, i) => (signal: AbortSignal) => probeIfEdited(harnesses[i], label, signal)));
+  return proposers.map(({ label }, i) => ({ label, harness: harnesses[i], runs: runs[i] }));
+}
+
+async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: readonly LabelledRun[]): Promise<Stages> {
+  const { harness: base, recoveries, library } = options;
+  const prompts = promptsFor(options);
+  const pool = await propose(run, options, prompts.proposers, baseRuns, evidenceFiles({ harness: base, runs: baseRuns, recoveries, extra: library }));
+  const composeRuns = [...baseRuns, ...pool.flatMap((proposal) => proposal.runs)];
   const composeFiles = evidenceFiles({
     harness: base,
     runs: composeRuns,
     recoveries,
-    extra: { ...library, ...candidateFiles('invariant', base, invariant), ...candidateFiles('domain', base, domain) },
+    extra: Object.assign({ ...library }, ...pool.map((proposal) => candidateFiles(proposal.label, base, proposal.harness))),
   });
   const composed = await run.edit(run.stage('compose'), prompts.compose, composeFiles, base, { failedChecks: failedChecks(composeRuns) });
-  run.candidates = { invariant, domain, compose: composed };
-  const stages = { composed, invariant, domain, invariantRuns, domainRuns };
-  if (diffHarness(base, composed) === '') return { ...stages, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };
-  return stages;
-}
-
-function judgeStages(run: ImproveRun, options: ImproveOptions, stages: Stages): Promise<Omit<ImproveResult, 'base' | 'stages' | 'spend'>> {
-  const harnesses = { compose: stages.composed, invariant: stages.invariant, domain: stages.domain };
-  return judgeWithFallback(run, options, harnesses, { invariant: stages.invariantRuns, domain: stages.domainRuns });
+  run.candidates = candidatesOf(pool, composed);
+  if (diffHarness(base, composed) === '') return { composed, pool, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };
+  return { composed, pool };
 }
 
 /**
@@ -104,6 +123,7 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
     ...(checks.length > 0 && { failedChecks: checks }),
     base,
     ...(run.candidates && { candidates: run.candidates }),
+    ...(run.candidates?.pool && { diversity: diversity(Object.values(run.candidates.pool)) }),
     stages: run.stages,
     ledger: { ...run.ledger },
     spend: { tokens: run.tokens },
@@ -115,8 +135,8 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
     if (needsNoEdit(base, options.alwaysPropose)) return finish({ outcome: 'no-failures', reason: 'Every case passed, so no editor ran.' });
     checks = failedChecks(baseRuns);
     const stages = await runStages(run, options, baseRuns);
-    checks = failedChecks([...baseRuns, ...stages.invariantRuns, ...stages.domainRuns]);
-    return finish(stages.result ?? (await judgeStages(run, options, stages)));
+    checks = failedChecks([...baseRuns, ...stages.pool.flatMap((proposal) => proposal.runs)]);
+    return finish(stages.result ?? (await judgeWithFallback(run, options, stages.composed, stages.pool)));
   } catch (error) {
     if (error instanceof StopRun) return finish({ outcome: error.outcome, reason: error.message });
     throw error;

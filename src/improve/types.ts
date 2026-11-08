@@ -91,6 +91,8 @@ export interface ImproveOptions {
   cacheDir?: string;
   /** Runs the invariant and domain editors, and then their probes, two at a time (default `true`). Set `false` for a rate-limited model. */
   parallelEditors?: boolean;
+  /** How many invariant and how many domain editors propose from the same runs (default 1, at most 4). Each proposal that changes the harness is probed, so k costs about k times the editor sessions and proposal runs. */
+  proposers?: number;
   /** Stops the run when aborted. */
   signal?: AbortSignal;
 }
@@ -145,8 +147,8 @@ export interface CaseVerdict {
 
 /** The gate's verdict on one harness. */
 export interface GateVerdict {
-  /** Which editor's harness. */
-  label: 'compose' | 'invariant' | 'domain';
+  /** Which editor's harness: `invariant-<n>` and `domain-<n>` when there are several proposers. */
+  label: 'compose' | 'invariant' | 'domain' | `invariant-${number}` | `domain-${number}`;
   /** Whether it passed the gate. */
   passed: boolean;
   /** Why, in a sentence. */
@@ -155,8 +157,8 @@ export interface GateVerdict {
 
 /** What one editor session did. */
 export interface ImproveStage {
-  /** Which editor. */
-  label: 'invariant' | 'domain' | 'compose';
+  /** Which editor: `invariant-<n>` and `domain-<n>` when there are several proposers. */
+  label: GateVerdict['label'];
   /** What came of it. `fell-back` means its edits failed validation twice and were dropped. */
   status: 'edited' | 'no-change' | 'fell-back';
   /** The editor's reasons, including its verdict on each edit. */
@@ -240,6 +242,15 @@ export interface ImproveResult {
     domain: Harness;
     /** The composer's harness, or the base if it changed nothing. */
     compose: Harness;
+    /** Every proposal by label, with several proposers; `invariant` and `domain` then hold the first of each. */
+    pool?: Record<string, Harness>;
+  };
+  /** How alike the proposals were, with several proposers: mean pairwise line overlap (1 means identical) and how many differed. */
+  diversity?: {
+    /** Mean pairwise Jaccard similarity of the proposals' non-blank lines. */
+    meanJaccard: number;
+    /** How many distinct proposals there were. */
+    distinct: number;
   };
   /** What each editor did. */
   stages: ImproveStage[];
