@@ -19,6 +19,9 @@ export { currentRevision, harnessHash, listRevisions, readAgentHarness, snapshot
 export type { HarnessRevision } from './revisions';
 export { applyProposal, lastGoodRevision, rollbackHarness } from './apply';
 export type { ApplyInput, ApplyResult, Approval, RollbackBy, RollbackResult } from './apply';
+export { checkApplied } from './monitor';
+export type { MonitorVerdict } from './monitor';
+export type { WindowStat } from '../observe/continuousScore';
 export { loadImproveSettings } from './settings';
 export type { ImproveSettings } from './settings';
 export { approvePending, listPending, rejectPending, savePending } from './pending';

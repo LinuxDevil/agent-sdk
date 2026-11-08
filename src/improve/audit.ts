@@ -13,7 +13,7 @@ export interface AuditEntry {
   /** Who or what made the change: a loop stage, or `person:<name>`. */
   actor: 'gate' | 'canary' | 'monitor' | 'guard' | 'scheduler' | `person:${string}`;
   /** What happened. */
-  action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'pause' | 'resume' | 'canary-start' | 'canary-end';
+  action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'unverified' | 'pause' | 'resume' | 'canary-start' | 'canary-end';
   /** The revision before the change. */
   from?: string;
   /** The revision after the change. */

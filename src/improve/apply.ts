@@ -222,7 +222,10 @@ export async function rollbackHarness(dir: string, to: string, by: RollbackBy): 
 export function lastGoodRevision(dir: string): string | undefined {
   const revisions = listRevisions(dir);
   const latestGuard = new Map<string, AuditEntry['action']>();
-  for (const entry of readAudit(dir)) if ((entry.action === 'guard-pass' || entry.action === 'guard-fail') && entry.to !== undefined) latestGuard.set(entry.to, entry.action);
+  for (const entry of readAudit(dir)) {
+    if ((entry.action === 'guard-pass' || entry.action === 'guard-fail') && entry.to !== undefined) latestGuard.set(entry.to, entry.action);
+    if (entry.action === 'retire' && entry.from !== undefined) latestGuard.set(entry.from, 'guard-fail');
+  }
   const passed = revisions.find((revision) => latestGuard.get(revision.id) === 'guard-pass')?.id;
   return passed ?? revisions.filter((revision) => revision.source === 'baseline').at(-1)?.id;
 }
