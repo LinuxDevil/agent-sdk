@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { closeSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
+import { closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readFileSync, renameSync, rmSync, statSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError } from '../execution/errors';
 import { failureReportFromDb } from '../observe/failures';
@@ -9,7 +9,7 @@ import { withFileLock } from '../storage/fileLock';
 import { applyProposal, type ApplyResult } from './apply';
 import { appendAudit, cleanActor, readAudit, type AuditEntry } from './audit';
 import type { CanaryReplayResult } from './canary';
-import { CANARY_FILE, DEFAULT_MAX_ALWAYS_ON, isPaused, MAX_CANARY_SESSIONS, MAX_CANARY_SHARE, readCanary, type TrafficCanary } from './canaryArm';
+import { CANARY_FILE, DEFAULT_MAX_ALWAYS_ON, isPaused, MAX_CANARY_SESSIONS, MAX_CANARY_SHARE, readCanary, SESSIONS_FILE, type TrafficCanary } from './canaryArm';
 import { formatImproveResult } from './format';
 import { validateHarness } from './harness';
 import { savePending, type PendingProposal } from './pending';
@@ -38,11 +38,11 @@ export interface StartCanaryInput {
 
 /** What the forward trial says about the running canary. */
 export interface CanaryVerdict {
-  /** `none` with no canary, `pending` until enough runs, else `promote` or `retire`. */
+  /** `none` with no canary, `pending` until enough sessions, else `promote` or `retire`. */
   state: 'none' | 'pending' | 'promote' | 'retire';
-  /** Candidate runs counted so far. */
-  runs: number;
-  /** Candidate runs that failed or scored low. */
+  /** Candidate sessions counted so far; a run without a session id counts as its own session. */
+  sessions: number;
+  /** Candidate sessions with a run that failed or scored low. */
   flagged: number;
   /** The base's flagged rate the trial is compared against. */
   p0: number;
@@ -69,13 +69,18 @@ export interface CanarySettlement {
 const PROMOTE_MARGIN = 0.05;
 const HISTORY = 20;
 const HOUR = 3_600_000;
+const EPSILON = 1e-9;
+const TRIAL_LIMIT = 5000;
+const SESSION_OF = "SELECT trace_id, CASE WHEN json_valid(attrs) THEN json_extract(attrs, '$.\"gen_ai.conversation.id\"') END AS session FROM observations WHERE kind = 'span' AND parent_obs_id IS NULL AND trace_id IN (SELECT value FROM json_each(?))";
 
 function refuse(message: string, field = 'canary'): never {
   throw new ConfigurationError(`startCanary: ${message}`, field);
 }
 
 async function withCanaryLock<T>(dir: string, task: () => Promise<T>): Promise<T> {
-  mkdirSync(path.join(dir, '.lousho'), { recursive: true });
+  const lousho = path.join(dir, '.lousho');
+  if (lstatSync(lousho, { throwIfNoEntry: false })?.isSymbolicLink()) throw new ConfigurationError(`${lousho} is a symlink; the canary, its lock and the audit log must live inside the agent directory.`, 'canary');
+  mkdirSync(lousho, { recursive: true });
   return withFileLock(path.join(dir, '.lousho', 'canary.lock'), task);
 }
 
@@ -126,8 +131,7 @@ function checkedCandidate(dir: string, input: StartCanaryInput, settings: Improv
   if (cooldownUntil(dir, settings.cooldownHours) > now) refuse('a rollback cooldown is active; no canary starts until it ends.', 'cooldown');
   if (harnessHash(readAgentHarness(dir)) !== harnessHash(base)) refuse('the proposal is stale: the agent directory changed after it was made.', 'base');
   if (harnessHash(result.harness) === harnessHash(base)) refuse('the proposal changes nothing.', 'result');
-  const failedChecks = settings.approval === 'auto' ? result.failedChecks : undefined;
-  const errors = validateHarness(result.harness, base, { maxAlwaysOnChars: input.maxAlwaysOnChars ?? DEFAULT_MAX_ALWAYS_ON, ...(failedChecks && { failedChecks }) });
+  const errors = validateHarness(result.harness, base, { maxAlwaysOnChars: input.maxAlwaysOnChars ?? DEFAULT_MAX_ALWAYS_ON, failedChecks: result.failedChecks ?? [] });
   if (errors.length > 0) refuse(`the candidate fails validation: ${errors.join(' ')}`, 'result');
   return result.harness;
 }
@@ -143,13 +147,9 @@ async function startLocked(db: SqlDatabase, dir: string, input: StartCanaryInput
   const candidate = checkedCandidate(dir, input, settings, now);
   const history = runsByRevision(db, { revision: harnessHash(input.base), ...(input.agent && { agent: input.agent }), limit: HISTORY });
   const canary = newCanary(input, traffic, candidate, flaggedRate(history), now);
+  rmSync(path.join(dir, SESSIONS_FILE), { force: true });
+  await appendAudit(dir, { actor: 'canary', action: 'canary-start', from: canary.baseRevision, to: canary.revision, ...(canary.cycle && { cycle: canary.cycle }), reason: `Serving the candidate to ${Math.round(canary.share * 100)}% of new sessions for ${canary.sessions} sessions (base flagged rate ${canary.p0.toFixed(2)}).` });
   writeCanary(dir, canary);
-  try {
-    await appendAudit(dir, { actor: 'canary', action: 'canary-start', from: canary.baseRevision, to: canary.revision, ...(canary.cycle && { cycle: canary.cycle }), reason: `Serving the candidate to ${Math.round(canary.share * 100)}% of new sessions for ${canary.sessions} runs (base flagged rate ${canary.p0.toFixed(2)}).` });
-  } catch (error) {
-    rmSync(path.join(dir, CANARY_FILE), { force: true });
-    throw error;
-  }
   return canary;
 }
 
@@ -176,24 +176,37 @@ function closedReason(dir: string, canary: TrafficCanary, settings: ImproveSetti
   return current === canary.baseRevision ? undefined : 'the agent directory changed since the canary started.';
 }
 
+function firstSessions(db: SqlDatabase, runs: readonly RevisionRun[], limit: number): RevisionRun[][] {
+  const sessionOf = new Map(db.prepare(SESSION_OF).all(JSON.stringify(runs.map((run) => run.traceId))).map((row) => [String(row.trace_id), row.session === null || row.session === undefined ? undefined : String(row.session)]));
+  const sessions = new Map<string, RevisionRun[]>();
+  for (const run of runs) {
+    const key = sessionOf.get(run.traceId) ?? `trace:${run.traceId}`;
+    const group = sessions.get(key);
+    if (group) group.push(run);
+    else if (sessions.size < limit) sessions.set(key, [run]);
+  }
+  return [...sessions.values()];
+}
+
 function trial(db: SqlDatabase, canary: TrafficCanary): Omit<CanaryVerdict, 'state' | 'reason'> {
   const agent = canary.agent ? { agent: canary.agent } : {};
-  const runs = runsByRevision(db, { revision: canary.revision, ...agent, since: Date.parse(canary.startedAt), limit: 1000 }).reverse().slice(0, canary.sessions);
+  const runs = runsByRevision(db, { revision: canary.revision, ...agent, since: Date.parse(canary.startedAt), limit: TRIAL_LIMIT }).reverse();
+  const sessions = firstSessions(db, runs, canary.sessions);
   const baseClasses = classesOf(db, runsByRevision(db, { revision: canary.baseRevision, ...agent, limit: HISTORY }));
-  const newClasses = [...classesOf(db, runs)].filter((name) => !baseClasses.has(name)).sort();
-  return { runs: runs.length, flagged: runs.filter((run) => run.failed).length, p0: canary.p0, newClasses };
+  const newClasses = [...classesOf(db, sessions.flat())].filter((name) => !baseClasses.has(name)).sort();
+  return { sessions: sessions.length, flagged: sessions.filter((group) => group.some((run) => run.failed)).length, p0: canary.p0, newClasses };
 }
 
 function decide(counts: Omit<CanaryVerdict, 'state' | 'reason'>, canary: TrafficCanary, giveUpDays: number, now: number): CanaryVerdict {
-  const { runs, flagged, p0, newClasses } = counts;
+  const { sessions, flagged, p0, newClasses } = counts;
   const bar = p0 - PROMOTE_MARGIN;
   if (newClasses.length > 0) return { ...counts, state: 'retire', reason: `A failure class the base did not have appeared under the candidate: ${newClasses.join(', ')}.` };
-  if (flagged > 0 && flagged / canary.sessions > bar) return { ...counts, state: 'retire', reason: `${flagged} of ${canary.sessions} trial runs flagged already rules out beating the base rate ${p0.toFixed(2)} by ${PROMOTE_MARGIN}.` };
-  if (runs < canary.sessions) {
-    if (now - Date.parse(canary.startedAt) > giveUpDays * 24 * HOUR) return { ...counts, state: 'retire', reason: `too few runs: ${runs} of ${canary.sessions} after ${giveUpDays} days.` };
-    return { ...counts, state: 'pending', reason: `${runs} of ${canary.sessions} trial runs so far.` };
+  if (flagged > 0 && flagged / canary.sessions > bar + EPSILON) return { ...counts, state: 'retire', reason: `${flagged} of ${canary.sessions} trial sessions flagged already rules out beating the base rate ${p0.toFixed(2)} by ${PROMOTE_MARGIN}.` };
+  if (sessions < canary.sessions) {
+    if (now - Date.parse(canary.startedAt) > giveUpDays * 24 * HOUR) return { ...counts, state: 'retire', reason: `too few sessions: ${sessions} of ${canary.sessions} after ${giveUpDays} days.` };
+    return { ...counts, state: 'pending', reason: `${sessions} of ${canary.sessions} trial sessions so far.` };
   }
-  return { ...counts, state: 'promote', reason: `${flagged} of ${runs} trial runs flagged against a base rate of ${p0.toFixed(2)}, and no new failure class.` };
+  return { ...counts, state: 'promote', reason: `${flagged} of ${sessions} trial sessions flagged against a base rate of ${p0.toFixed(2)}, and no new failure class.` };
 }
 
 function verdictOf(db: SqlDatabase, dir: string, canary: TrafficCanary, settings: ImproveSettings, now: number): CanaryVerdict {
@@ -203,7 +216,7 @@ function verdictOf(db: SqlDatabase, dir: string, canary: TrafficCanary, settings
   return decide(counts, canary, settings.monitor.giveUpDays, now);
 }
 
-const NONE: CanaryVerdict = { state: 'none', runs: 0, flagged: 0, p0: 1, newClasses: [], reason: 'No traffic canary is running.' };
+const NONE: CanaryVerdict = { state: 'none', sessions: 0, flagged: 0, p0: 1, newClasses: [], reason: 'No traffic canary is running.' };
 
 function invalidVerdict(error: unknown): CanaryVerdict {
   return { ...NONE, state: 'retire', reason: error instanceof Error ? error.message : String(error) };
@@ -222,6 +235,7 @@ export function canaryVerdict(db: SqlDatabase, dir: string, settings: ImproveSet
 
 async function endCanary(dir: string, canary: TrafficCanary | undefined, actor: AuditEntry['actor'], reason: string): Promise<void> {
   rmSync(path.join(dir, CANARY_FILE), { force: true });
+  rmSync(path.join(dir, SESSIONS_FILE), { force: true });
   await appendAudit(dir, { actor, action: 'canary-end', ...(canary && { from: canary.baseRevision, to: canary.revision, ...(canary.cycle && { cycle: canary.cycle }) }), reason });
 }
 

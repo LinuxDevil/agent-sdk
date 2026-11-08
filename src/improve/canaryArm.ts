@@ -1,9 +1,9 @@
-import { lstatSync, readFileSync, statSync } from 'node:fs';
+import { appendFileSync, lstatSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError } from '../execution/errors';
 import { harnessRevisionOf, sha256Hex } from '../execution/harnessRevision';
 import type { Skill } from '../skills/defineSkill';
-import { readAudit } from './audit';
+import { readAudit, verifyAudit } from './audit';
 import { validateHarness } from './harness';
 import { harnessHash, isHarness } from './revisions';
 import { loadImproveSettings, type ImproveSettings } from './settings';
@@ -21,7 +21,7 @@ export interface TrafficCanary {
   baseRevision: string;
   /** The share of new sessions that run the candidate, at most 0.25. */
   share: number;
-  /** Candidate runs in the forward trial, at most 50. */
+  /** Candidate sessions in the forward trial, at most 50. */
   sessions: number;
   /** When the canary started, as an ISO timestamp. */
   startedAt: string;
@@ -42,6 +42,8 @@ export const MAX_CANARY_SESSIONS = 50;
 
 export const CANARY_FILE = path.join('.lousho', 'canary.json');
 const STOP_FILE = path.join('.lousho', 'improve.stop');
+export const SESSIONS_FILE = path.join('.lousho', 'canary-sessions.txt');
+const AUDIT_FILE = path.join('.lousho', 'audit.jsonl');
 export const DEFAULT_MAX_ALWAYS_ON = 8000;
 
 const SHA = /^[0-9a-f]{64}$/;
@@ -63,15 +65,16 @@ function isShaped(value: TrafficCanary): boolean {
 
 function startedInAudit(dir: string, canary: TrafficCanary): boolean {
   const last = readAudit(dir).filter((entry) => entry.action === 'canary-start' || entry.action === 'canary-end').at(-1);
-  return last?.action === 'canary-start' && last.from === canary.baseRevision && last.to === canary.revision;
+  return last?.action === 'canary-start' && last.from === canary.baseRevision && last.to === canary.revision && verifyAudit(dir) === undefined;
 }
 
 function checked(dir: string, value: TrafficCanary): TrafficCanary {
   if (!isShaped(value)) refuse('canary.json does not match its revisions; it was edited or is corrupted.');
   if (!isTrial(value)) refuse(`canary.json asks for more than the caps allow (share ≤ ${MAX_CANARY_SHARE}, sessions ≤ ${MAX_CANARY_SESSIONS}).`);
-  const errors = validateHarness(value.candidate, value.base, { maxAlwaysOnChars: value.maxAlwaysOnChars ?? DEFAULT_MAX_ALWAYS_ON });
+  const failedChecks = Array.isArray(value.result.failedChecks) ? value.result.failedChecks : [];
+  const errors = validateHarness(value.candidate, value.base, { maxAlwaysOnChars: value.maxAlwaysOnChars ?? DEFAULT_MAX_ALWAYS_ON, failedChecks });
   if (errors.length > 0) refuse(`the candidate fails validation: ${errors.join(' ')}`);
-  if (!startedInAudit(dir, value)) refuse('the audit log has no matching canary-start entry.');
+  if (!startedInAudit(dir, value)) refuse('the audit log has no matching canary-start entry, or its hash chain is broken.');
   return value;
 }
 
@@ -162,18 +165,43 @@ function refreshed(router: Router): Serving {
   return router.state;
 }
 
+function servedSessions(dir: string, trial: string): Set<string> {
+  let text = '';
+  try {
+    text = readFileSync(path.join(dir, SESSIONS_FILE), 'utf8');
+  } catch {
+    text = '';
+  }
+  const prefix = `${trial} `;
+  return new Set(text.split('\n').filter((line) => line.startsWith(prefix)).map((line) => line.slice(prefix.length)));
+}
+
+function admitted(router: Router, sessionId: string, cap: number): boolean {
+  const id = sha256Hex(`lousho-canary-session:${sessionId}`).slice(0, 32);
+  const served = servedSessions(router.dir, router.trial);
+  if (!served.has(id)) {
+    if (served.size >= cap) return false;
+    appendFileSync(path.join(router.dir, SESSIONS_FILE), `${router.trial} ${id}\n`);
+  }
+  router.served.add(sessionId);
+  return true;
+}
+
 function pick(router: Router, sessionId: string | undefined): { instructions: string; skills: Skill[] } | undefined {
   const { arm, cap, share } = refreshed(router);
   if (!arm || sessionId === undefined || sessionId === '') return undefined;
   if (router.served.has(sessionId)) return arm;
-  if (router.served.size >= cap || !routesToCandidate(sessionId, share)) return undefined;
-  router.served.add(sessionId);
-  return arm;
+  if (!routesToCandidate(sessionId, share)) return undefined;
+  try {
+    return admitted(router, sessionId, cap) ? arm : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Per run, the candidate harness a routed session serves while a valid, opted-in canary runs; undefined otherwise, and on any error. */
 export function canaryArm(dir: string, base: { instructions: string; skills: readonly Skill[] }, env: NodeJS.ProcessEnv = process.env): (ctx: { sessionId?: string }) => { instructions: string; skills: Skill[] } | undefined {
-  const files = [CANARY_FILE, STOP_FILE, 'improve.json'].map((name) => path.join(dir, name));
+  const files = [CANARY_FILE, STOP_FILE, AUDIT_FILE, 'improve.json'].map((name) => path.join(dir, name));
   const router: Router = { dir, baseRevision: harnessRevisionOf(base.instructions, base.skills), skills: base.skills, env, files, state: { key: '', share: 0, cap: 0, trial: '' }, trial: '', served: new Set() };
   return (ctx) => pick(router, ctx.sessionId);
 }

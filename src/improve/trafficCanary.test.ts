@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -25,12 +25,12 @@ const optIn = (extra: Record<string, unknown> = {}) => writeFileSync(path.join(d
 const settings = (): ImproveSettings => loadImproveSettings(dir, {}, {});
 
 let seq = 0;
-function run(revision: string, at: number, failure?: 'tool' | 'no-answer'): IngestEvent[] {
+function run(revision: string, at: number, failure?: 'tool' | 'no-answer', session?: string): IngestEvent[] {
   const trace = `t${++seq}`;
   const finish = failure === 'no-answer' ? 'max-steps' : 'stop';
   const root = {
     type: 'observation',
-    data: { obs_id: `root-${trace}`, trace_id: trace, agent_id: 'support', kind: 'span', name: 'invoke_agent support', start: at, end: at + 10, status: 'ok', attrs: { 'gen_ai.operation.name': 'invoke_agent', 'lousho.run.finish_reason': finish, 'lousho.harness.revision': revision } },
+    data: { obs_id: `root-${trace}`, trace_id: trace, agent_id: 'support', kind: 'span', name: 'invoke_agent support', start: at, end: at + 10, status: 'ok', attrs: { 'gen_ai.operation.name': 'invoke_agent', 'lousho.run.finish_reason': finish, 'lousho.harness.revision': revision, ...(session && { 'gen_ai.conversation.id': session }) } },
   } as IngestEvent;
   if (failure !== 'tool') return [root];
   const tool = {
@@ -46,9 +46,9 @@ function seedBase(failed: number, total = 20): void {
   ingestBatch(db, Array.from({ length: total }, (_, i) => run(revision, start + i * 1000, i < failed ? 'tool' : undefined)).flat());
 }
 
-function seedCandidate(revision: string, outcomes: readonly (undefined | 'tool' | 'no-answer')[]): void {
+function seedCandidate(revision: string, outcomes: readonly (undefined | 'tool' | 'no-answer')[], sessions: readonly string[] = []): void {
   const start = Date.now() + 1000;
-  ingestBatch(db, outcomes.map((failure, i) => run(revision, start + i * 1000, failure)).flat());
+  ingestBatch(db, outcomes.map((failure, i) => run(revision, start + i * 1000, failure, sessions[i])).flat());
 }
 
 async function start(instructions = 'Be very careful.') {
@@ -136,6 +136,25 @@ describe('startCanary', () => {
     expect(existsSync(path.join(dir, CANARY))).toBe(false);
   });
 
+  it('refuses a symlinked .lousho', async () => {
+    optIn();
+    const elsewhere = mkdtempSync(path.join(tmpdir(), 'lousho-elsewhere-'));
+    try {
+      symlinkSync(elsewhere, path.join(dir, '.lousho'));
+      await expect(start()).rejects.toThrow(/symlink/);
+      expect(existsSync(path.join(elsewhere, 'canary.json'))).toBe(false);
+    } finally {
+      rmSync(elsewhere, { recursive: true, force: true });
+    }
+  });
+
+  it('audits canary-start before canary.json appears', async () => {
+    optIn();
+    const canary = await start();
+    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'canary-start', to: canary.revision });
+    expect(readCanary(dir)).toBeDefined();
+  });
+
   it('refuses while paused by the stop file', async () => {
     optIn();
     mkdirSync(path.join(dir, '.lousho'), { recursive: true });
@@ -150,7 +169,7 @@ describe('canaryVerdict and settleCanary', () => {
     seedBase(10);
     const canary = await start();
     seedCandidate(canary.revision, [undefined, undefined]);
-    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'pending', runs: 2, flagged: 0 });
+    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'pending', sessions: 2, flagged: 0 });
     expect(await settleCanary(db, dir, settings())).toMatchObject({ outcome: 'pending' });
     expect(existsSync(path.join(dir, CANARY))).toBe(true);
   });
@@ -160,7 +179,7 @@ describe('canaryVerdict and settleCanary', () => {
     seedBase(10);
     const canary = await start();
     seedCandidate(canary.revision, ['tool', undefined, undefined, undefined]);
-    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'promote', runs: 4, flagged: 1, p0: 0.5 });
+    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'promote', sessions: 4, flagged: 1, p0: 0.5 });
     const settled = await settleCanary(db, dir, settings());
     expect(settled).toMatchObject({ outcome: 'applied', applied: { to: canary.revision } });
     expect(read('instructions.md')).toBe('Be very careful.\n');
@@ -197,12 +216,36 @@ describe('canaryVerdict and settleCanary', () => {
     expect(readAudit(dir).at(-1)).toMatchObject({ action: 'canary-end', actor: 'canary', to: canary.revision });
   });
 
+  it('counts sessions, not runs: one chatty session fills one slot', async () => {
+    optIn();
+    seedBase(10);
+    const canary = await start();
+    seedCandidate(canary.revision, [undefined, undefined, undefined, undefined, undefined], ['a', 'a', 'a', 'a', 'b']);
+    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'pending', sessions: 2, flagged: 0 });
+  });
+
+  it('a session with any flagged run counts as flagged', async () => {
+    optIn();
+    seedBase(10);
+    const canary = await start();
+    seedCandidate(canary.revision, [undefined, 'tool', undefined, undefined, undefined], ['a', 'a', 'b', 'c', 'd']);
+    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'promote', sessions: 4, flagged: 1 });
+  });
+
+  it('promotes exactly at the bar despite floating point (p0 0.15, 1 of 10 flagged)', async () => {
+    writeFileSync(path.join(dir, 'improve.json'), JSON.stringify({ canary: { traffic: { share: 0.1, sessions: 10 } } }));
+    seedBase(3);
+    const canary = await start();
+    seedCandidate(canary.revision, ['tool', ...Array.from({ length: 9 }, () => undefined)]);
+    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'promote', sessions: 10, flagged: 1, p0: 0.15 });
+  });
+
   it('aborts early once the flagged runs rule out a promotion', async () => {
     optIn();
     seedBase(4);
     const canary = await start();
     seedCandidate(canary.revision, ['tool']);
-    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'retire', runs: 1, flagged: 1 });
+    expect(canaryVerdict(db, dir, settings())).toMatchObject({ state: 'retire', sessions: 1, flagged: 1 });
   });
 
   it('with no base history, any flagged run retires', async () => {
@@ -301,6 +344,38 @@ describe('canaryArm', () => {
     for (const id of ids.slice(0, 4)) expect(arm({ sessionId: id })).toBeDefined();
     expect(arm({ sessionId: ids[4] })).toBeUndefined();
     expect(arm({ sessionId: ids[0] })).toBeDefined();
+  });
+
+  it('holds the session cap across routers, as after a restart or a second process', async () => {
+    optIn();
+    await start();
+    const ids = routed(0.1);
+    const first = canaryArm(dir, base);
+    for (const id of ids.slice(0, 3)) expect(first({ sessionId: id })).toBeDefined();
+    const second = canaryArm(dir, base);
+    expect(second({ sessionId: ids[0] })).toBeDefined();
+    expect(second({ sessionId: ids[3] })).toBeDefined();
+    expect(second({ sessionId: ids[4] })).toBeUndefined();
+    expect(first({ sessionId: ids[5] })).toBeUndefined();
+  });
+
+  it('a new canary starts with an empty session count', async () => {
+    optIn();
+    await start();
+    const ids = routed(0.1);
+    const arm = canaryArm(dir, base);
+    for (const id of ids.slice(0, 4)) arm({ sessionId: id });
+    await stopCanary(dir, { actor: 'scheduler', reason: 'Done.' });
+    await start('Be even more careful.');
+    expect(arm({ sessionId: ids[4] })).toMatchObject({ instructions: 'Be even more careful.' });
+  });
+
+  it('serves nothing when the audit chain is broken', async () => {
+    optIn();
+    await start();
+    const log = path.join(dir, '.lousho', 'audit.jsonl');
+    writeFileSync(log, readFileSync(log, 'utf8').replace('Serving', 'Servinf'));
+    expect(canaryArm(dir, base)({ sessionId: routed(0.1)[0] })).toBeUndefined();
   });
 
   it('aborts live: a stop file, a deleted canary.json or an opt-out serves the base on the next run', async () => {
