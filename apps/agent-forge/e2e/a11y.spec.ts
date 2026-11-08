@@ -49,9 +49,9 @@ test('drawer and rail tabs are tablists driven by the arrow keys', async ({ page
   await openBuilder(page);
   const drawerTabs = page.getByRole('tablist', { name: 'Run panels' });
   await expect(drawerTabs.getByRole('tab')).toHaveCount(6);
-  const chat = drawerTabs.getByRole('tab', { name: 'Chat' });
-  await expect(chat).toHaveAttribute('aria-selected', 'true');
-  await chat.focus();
+  const testTab = drawerTabs.getByRole('tab', { name: 'Test' });
+  await expect(testTab).toHaveAttribute('aria-selected', 'true');
+  await testTab.focus();
   await page.keyboard.press('ArrowRight');
   const logs = drawerTabs.getByRole('tab', { name: 'Logs' });
   await expect(logs).toHaveAttribute('aria-selected', 'true');

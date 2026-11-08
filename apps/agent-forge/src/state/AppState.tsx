@@ -24,7 +24,7 @@ import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
 
 type RailTab = 'agents' | 'nodes';
-export type DrawerTab = 'chat' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
+export type DrawerTab = 'test' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
 
 interface AppState {
   store: AgentStore;
@@ -152,9 +152,9 @@ interface AppState {
   startNewChat: () => Promise<void>;
   /** A past session's full transcript, loaded for read-only browsing (undefined = viewing the live session). */
   viewedChatSession: ChatSessionRecord | undefined;
-  /** Loads a past session for read-only viewing in the Chat tab. */
+  /** Loads a past session for read-only viewing in the Test tab. */
   viewChatSession: (sessionId: string) => Promise<void>;
-  /** Switches the Chat tab back to the live session. */
+  /** Switches the Test tab back to the live session. */
   returnToLiveChat: () => void;
 
   /**
@@ -174,7 +174,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   // Agents live in the server workspace (.lousho/agents/), not the browser.
   const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
   const [railTab, setRailTab] = useState<RailTab>('agents');
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>('test');
   // A reload of an agents URL (`#/agents/:id`, `#/agents/:id/canvas`, `#/agents/:id/:tab`) reopens that agent.
   const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
   const doc = useAgentDocument(store, initialAgentId);

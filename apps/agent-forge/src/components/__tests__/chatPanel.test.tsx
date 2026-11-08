@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../ui/__tests__/render';
 import type { ChatMessage } from '../../../shared/wireTypes';
 
@@ -19,9 +19,10 @@ const MESSAGES: ChatMessage[] = [
   { id: 'a2', role: 'assistant', content: 'This is a mock response.', timestamp: at },
 ];
 
+const state = vi.hoisted(() => ({ messages: [] as ChatMessage[] }));
 vi.mock('../../state/AppState', () => ({
   useAppState: () => ({
-    chat: { sessionId: 's1', messages: MESSAGES },
+    chat: { sessionId: 's1', messages: state.messages },
     chatSessions: [],
     viewedChatSession: undefined,
     runStatus: undefined,
@@ -38,6 +39,28 @@ import { logTitle } from '../debug/LogsPanel';
 import { stepTone } from '../debug/TonePill';
 
 describe('ChatPanel', () => {
+  beforeEach(() => {
+    state.messages = MESSAGES;
+  });
+
+  it('shows the test empty-state copy when the thread has no messages', () => {
+    state.messages = [];
+    // jsdom has no scrolling; the thread scrolls itself to the newest message.
+    Element.prototype.scrollTo = () => {};
+    const container = render(<ChatPanel />);
+    expect(container.querySelector('.chat-empty')?.textContent).toBe(
+      'Send a message to test this agent. Nodes light up on the canvas as it runs.',
+    );
+  });
+
+  it('renders aboveComposer between the thread and the composer', () => {
+    Element.prototype.scrollTo = () => {};
+    const container = render(<ChatPanel aboveComposer={<div className="test-slot">steer box</div>} />);
+    const slot = container.querySelector('.test-slot')!;
+    expect(slot.previousElementSibling?.classList.contains('chat-messages')).toBe(true);
+    expect(slot.nextElementSibling?.classList.contains('chat-composer')).toBe(true);
+  });
+
   it('draws a paired tool result under its call, an unpaired one as a tool block, and names every sender', () => {
     // jsdom has no scrolling; the thread scrolls itself to the newest message.
     Element.prototype.scrollTo = () => {};
