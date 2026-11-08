@@ -82,8 +82,7 @@
 .rail-section-title {
   margin: var(--space-4) var(--space-1) 6px;
 }
-.rail-body > .rail-section-title:first-child,
-.palette-group:first-child .rail-section-title {
+.rail-body > .rail-section-title:first-child {
   margin-top: var(--space-1);
 }
 .rail-head {

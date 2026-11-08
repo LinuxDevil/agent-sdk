@@ -167,9 +167,13 @@ export function NodePalette() {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(readCollapsedGroups);
   const [rovingId, setRovingId] = useState<string | undefined>(undefined);
   const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   const searching = query.trim().length > 0;
   const visible = searching ? filterPalette(sections, query) : sections;
+  // Only expanded groups render items (a search expands every match), so the
+  // roving list - and its single tab stop - must be computed from these.
+  const expandedSections = visible.filter((section) => searching || !collapsed.has(section.group));
   // The hint uses a representative non-note kind: ownerForNewNode only reads
   // the kind for notes and root-only sections, so 'tool' gives the real owner.
   const owner = ownerForNewNode(graph, 'tool', selectedNodeId);
@@ -188,16 +192,14 @@ export function NodePalette() {
   }, []);
 
   function toggleGroup(group: PaletteGroup) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(group)) next.delete(group);
-      else next.add(group);
-      writeStored(COLLAPSED_KEY, JSON.stringify([...next]));
-      return next;
-    });
+    const next = new Set(collapsed);
+    if (next.has(group)) next.delete(group);
+    else next.add(group);
+    writeStored(COLLAPSED_KEY, JSON.stringify([...next]));
+    setCollapsed(next);
   }
 
-  const itemIds = visible.flatMap((section) => section.entries.map((entry) => entry.id));
+  const itemIds = expandedSections.flatMap((section) => section.entries.map((entry) => entry.id));
   const tabbableId = rovingId !== undefined && itemIds.includes(rovingId) ? rovingId : itemIds[0];
 
   return (
@@ -211,7 +213,22 @@ export function NodePalette() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') setQuery('');
+            if (e.key === 'Escape') {
+              setQuery('');
+              return;
+            }
+            // "/, type, Down, Enter" (the acceptance flow): ArrowDown lands on
+            // the first rendered item, ArrowUp on the last.
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+              const items = listRef.current
+                ? [...listRef.current.querySelectorAll<HTMLElement>('[data-roving]')]
+                : [];
+              const target = e.key === 'ArrowDown' ? items[0] : items[items.length - 1];
+              if (target !== undefined) {
+                e.preventDefault();
+                target.focus();
+              }
+            }
           }}
         />
       </div>
@@ -226,7 +243,7 @@ export function NodePalette() {
           </button>
         </div>
       ) : (
-        <div className="palette-list" onKeyDown={onRovingKeyDown}>
+        <div className="palette-list" ref={listRef} onKeyDown={onRovingKeyDown}>
           {visible.map((section) => (
             <PaletteGroupSection
               key={section.group}

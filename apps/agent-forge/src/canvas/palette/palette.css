@@ -22,7 +22,7 @@
 .palette-group-head {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   width: 100%;
   margin: var(--space-3) var(--space-1) 6px;
   padding: 0;

@@ -166,6 +166,36 @@ describe('NodePalette', () => {
     expect(dataTransfer.setData).toHaveBeenCalledWith('application/agent-forge-node-type', 'note');
   });
 
+  it('ArrowDown/ArrowUp in the search box move focus into the item list', () => {
+    const container = mount();
+    const input = searchInput(container);
+    const first = itemByLabel(container, 'Chat');
+    const last = paletteItems(container)[paletteItems(container).length - 1];
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    });
+    expect(document.activeElement).toBe(first);
+    act(() => {
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    });
+    expect(document.activeElement).toBe(last);
+  });
+
+  it('keeps exactly one tab stop when the first group is collapsed', () => {
+    const container = mount();
+    const startHead = [...container.querySelectorAll<HTMLButtonElement>('.palette-group-head')].find(
+      (h) => h.querySelector('.palette-group-name')?.textContent === 'Start',
+    )!;
+    act(() => startHead.click());
+    const tabbable = [...container.querySelectorAll<HTMLButtonElement>('.node-palette-item')].filter(
+      (el) => el.tabIndex === 0,
+    );
+    expect(tabbable).toHaveLength(1);
+    // The tab stop belongs to a rendered (expanded) item, not the collapsed Start group.
+    expect(tabbable[0].closest('.palette-group-items')).not.toBeNull();
+    expect(tabbable[0].getAttribute('aria-label')).not.toBe('Chat');
+  });
+
   it('/ focuses the search box but not from an editable target', () => {
     const container = mount();
     const input = searchInput(container);
