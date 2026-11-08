@@ -5,7 +5,16 @@
  * `addLabels`, Backspace on an empty input removes the last chip, paste with
  * commas adds all) and Save PATCHes `meta.labels`.
  */
-import { useId, useRef, useState, type ClipboardEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import {
+  useId,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type Dispatch,
+  type KeyboardEvent,
+  type MouseEvent,
+  type SetStateAction,
+} from 'react';
 import { Pencil, Tag, X } from 'lucide-react';
 
 import type { AgentRecord } from '../../../shared/wireTypes';
@@ -75,19 +84,23 @@ interface LabelsDialogProps {
   onClose(): void;
 }
 
-/** The "Edit labels" dialog: a chip input over a draft list plus Cancel/Save. */
-function LabelsDialog({ record, open, onClose }: LabelsDialogProps): JSX.Element {
-  const { setRecord } = useAgentDetail();
-  const toast = useToast();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const problemId = useId();
-  const [draft, setDraft] = useState<string[]>(() => [...record.meta.labels]);
+interface LabelsDraft {
+  draft: string[];
+  setDraft: Dispatch<SetStateAction<string[]>>;
+  text: string;
+  setText(text: string): void;
+  problem: string | undefined;
+  setProblem(problem: string | undefined): void;
+  saving: boolean;
+  setSaving(saving: boolean): void;
+}
+
+function useLabelsDraft(saved: string[], open: boolean): LabelsDraft {
+  const [draft, setDraft] = useState<string[]>(() => [...saved]);
   const [text, setText] = useState('');
   const [problem, setProblem] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
-  const saved = record.meta.labels;
 
-  // Re-seed the draft each time the dialog opens.
   const wasOpen = useRef(open);
   if (open !== wasOpen.current) {
     wasOpen.current = open;
@@ -99,7 +112,14 @@ function LabelsDialog({ record, open, onClose }: LabelsDialogProps): JSX.Element
     }
   }
 
-  const unchanged = draft.length === saved.length && draft.every((label, i) => label === saved[i]);
+  return { draft, setDraft, text, setText, problem, setProblem, saving, setSaving };
+}
+
+type LabelsChipInputProps = Pick<LabelsDraft, 'draft' | 'setDraft' | 'text' | 'setText' | 'problem' | 'setProblem'>;
+
+function LabelsChipInput({ draft, setDraft, text, setText, problem, setProblem }: LabelsChipInputProps): JSX.Element {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const problemId = useId();
 
   const focusInput = () => inputRef.current?.focus();
 
@@ -134,6 +154,57 @@ function LabelsDialog({ record, open, onClose }: LabelsDialogProps): JSX.Element
       focusInput();
     }
   };
+
+  return (
+    <>
+      <div className="labels-input" role="group" aria-label="Labels" onClick={onInputClick}>
+        {draft.map((label) => (
+          <span key={label} className="labels-chip">
+            {label}
+            <button
+              type="button"
+              className="labels-chip-remove"
+              aria-label={`Remove label ${label}`}
+              onClick={() => remove(label)}
+            >
+              <X size={12} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          className="labels-input-field"
+          type="text"
+          value={text}
+          placeholder={draft.length > 0 ? '' : 'Add a label'}
+          aria-label="Add a label"
+          aria-describedby={problem !== undefined ? problemId : undefined}
+          onChange={(event) => {
+            setText(event.target.value);
+            setProblem(undefined);
+          }}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+        />
+      </div>
+      {problem !== undefined ? (
+        <p className="hint field-error" id={problemId} role="alert">
+          {problem}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** The "Edit labels" dialog: a chip input over a draft list plus Cancel/Save. */
+function LabelsDialog({ record, open, onClose }: LabelsDialogProps): JSX.Element {
+  const { setRecord } = useAgentDetail();
+  const toast = useToast();
+  const saved = record.meta.labels;
+  const labels = useLabelsDraft(saved, open);
+  const { draft, setProblem, saving, setSaving } = labels;
+
+  const unchanged = draft.length === saved.length && draft.every((label, i) => label === saved[i]);
 
   const save = async () => {
     if (saving || unchanged) return;
@@ -173,41 +244,7 @@ function LabelsDialog({ record, open, onClose }: LabelsDialogProps): JSX.Element
         </>
       }
     >
-      <div className="labels-input" role="group" aria-label="Labels" onClick={onInputClick}>
-        {draft.map((label) => (
-          <span key={label} className="labels-chip">
-            {label}
-            <button
-              type="button"
-              className="labels-chip-remove"
-              aria-label={`Remove label ${label}`}
-              onClick={() => remove(label)}
-            >
-              <X size={12} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </span>
-        ))}
-        <input
-          ref={inputRef}
-          className="labels-input-field"
-          type="text"
-          value={text}
-          placeholder={draft.length > 0 ? '' : 'Add a label'}
-          aria-label="Add a label"
-          aria-describedby={problem !== undefined ? problemId : undefined}
-          onChange={(event) => {
-            setText(event.target.value);
-            setProblem(undefined);
-          }}
-          onKeyDown={onKeyDown}
-          onPaste={onPaste}
-        />
-      </div>
-      {problem !== undefined ? (
-        <p className="hint field-error" id={problemId} role="alert">
-          {problem}
-        </p>
-      ) : null}
+      <LabelsChipInput {...labels} />
     </Dialog>
   );
 }
