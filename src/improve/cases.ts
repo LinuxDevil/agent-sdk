@@ -52,10 +52,23 @@ function captureCase(db: SqlDatabase, traceId: string, prefix: string, kind: Cap
 }
 
 /** Turns failed runs in your local trace database into cases to learn from, at most 5 traces per failure class, skipping traces with no recorded input. */
-export function casesFromFailures(db: SqlDatabase, filter: { since?: number; agent?: string; minScore?: number } = {}): CapturedCase[] {
+export function casesFromFailures(
+  db: SqlDatabase,
+  filter: {
+    since?: number;
+    agent?: string;
+    minScore?: number;
+    /** Only these traces, such as the runs of one harness revision. */
+    traceIds?: readonly string[];
+    /** Only failure groups seen in two or more traces. */
+    recurring?: boolean;
+  } = {}
+): CapturedCase[] {
   const seen = new Set<string>();
   const cases: CapturedCase[] = [];
-  for (const group of failureReportFromDb(db, filter).groups) {
+  const { recurring, ...report } = filter;
+  for (const group of failureReportFromDb(db, report).groups) {
+    if (recurring && !group.recurring) continue;
     for (const traceId of group.traceIds) {
       if (seen.has(traceId)) continue;
       seen.add(traceId);

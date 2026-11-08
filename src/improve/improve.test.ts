@@ -571,6 +571,13 @@ describe('improveAgent', () => {
     expect(sequential.stages).toEqual(result.stages);
   });
 
+  it('ends as an outage when an editor session runs past editorTimeoutMs', async () => {
+    const slow: MockTurn = () => new Promise((resolve) => setTimeout(() => resolve('<notes>KEEP_BASE.</notes>'), 200));
+    const result = await improveAgent(options({ editor: { provider: mockModel([slow], { onExhausted: 'repeat-last' }) }, editorTimeoutMs: 20 }));
+    expect(result).toMatchObject({ outcome: 'outage', reason: expect.stringMatching(/20 ms wall timeout/) });
+    await expect(improveAgent(options({ editorTimeoutMs: 0 }))).rejects.toThrow(/editorTimeoutMs/);
+  });
+
   it('reports an outage when no probe could be scored, instead of a score of zero', async () => {
     const result = await improveAgent(options({ probe: async () => run(null) }));
     expect(result.outcome).toBe('outage');

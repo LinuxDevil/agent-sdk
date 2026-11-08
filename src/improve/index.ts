@@ -30,3 +30,6 @@ export { addToCorpus, readCorpus } from './corpus';
 export type { CorpusCase } from './corpus';
 export { guardCorpus } from './corpusGuard';
 export type { GuardCorpusOptions, GuardCorpusResult, GuardedCase } from './corpusGuard';
+export { healOnce } from './heal';
+export type { HealOptions } from './heal';
+export type { HealCycle } from './cycles';

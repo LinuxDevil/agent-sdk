@@ -9,6 +9,9 @@ import type { IngestEvent } from '../observe/envelope';
 import { ingestBatch, openDb } from '../observe/store';
 import { mockModel, type MockTurn } from '../testing';
 import { defineTool } from '../tools/defineTool';
+import { readAudit } from '../improve/audit';
+import { listPending } from '../improve/pending';
+import { currentRevision } from '../improve/revisions';
 import { parseImproveArgs, runImprove, type ImproveIo } from './improve';
 
 const T0 = Date.now() - 60_000;
@@ -80,6 +83,10 @@ function snapshot(dir: string): Record<string, string> {
 const fixedWhenForbidden = (request: { messages: readonly unknown[] }) => ({ text: JSON.stringify(request.messages).includes('forbidden') ? 'ok, that is forbidden' : 'here is the doc' });
 
 async function improve(args: string[], over: Partial<ImproveIo> = {}) {
+  return run(args.includes('--help') || args[0] === undefined ? args : [...args, '--dry-run'], over);
+}
+
+async function run(args: string[], over: Partial<ImproveIo> = {}) {
   const out = sink();
   const err = sink();
   const io: ImproveIo = {
@@ -203,7 +210,8 @@ describe('lousho improve', () => {
     const { code, stdout } = await improve(['--help']);
     expect(code).toBe(0);
     expect(stdout).toContain('Experimental');
-    expect(stdout).toContain('never changes');
+    expect(stdout).toContain('--dry-run');
+    expect(stdout).not.toContain('never changes');
     expect(stdout).toContain('[--max-tokens n]');
     expect(stdout).toMatch(/--max-tokens n {2,}stop once n tokens are spent/);
     expect(stdout).toContain('no cap');
@@ -539,5 +547,76 @@ describe('lousho improve', () => {
     expect(code).toBe(0);
     expect(stdout).not.toContain('pass:p1');
     expect(stderr).toMatch(/pass:p1 was not protected: it passed 0 of 6 scored runs/);
+  });
+});
+
+describe('lousho improve, one self-healing cycle', () => {
+  const editorFor = (instructions: string) =>
+    mockModel(
+      [
+        (request) => {
+          if (request.messages.at(-1)?.role === 'tool') return '<notes>Traced to a failed run.</notes>';
+          return { toolCalls: [{ name: 'write_file', args: { path: 'harness/instructions.md', content: instructions } }] };
+        },
+      ],
+      { onExhausted: 'repeat-last' }
+    );
+
+  function stamped(trace: string): IngestEvent[] {
+    const revision = currentRevision(agentDir);
+    return failedTrace(trace, JSON.stringify([{ role: 'user', parts: [{ type: 'text', content: 'can I read the secret doc?' }] }])).map((event) =>
+      event.type === 'observation' && event.data.kind === 'span' ? { ...event, data: { ...event.data, attrs: { ...event.data.attrs, 'lousho.harness.revision': revision } } } : event
+    );
+  }
+
+  beforeEach(() => {
+    const db = openDb(dbPath);
+    ingestBatch(db, [...stamped('s1'), ...stamped('s2')]);
+    db.close();
+  });
+
+  const instructions = () => fs.readFileSync(path.join(agentDir, 'instructions.md'), 'utf8').trim();
+
+  it('auto: applies a fix that passes the gate and the canary, and audits it', async () => {
+    const { code, stdout } = await run([agentDir, '--check', checkPath, '--db', dbPath], { editor: editorFor(FIX) });
+    expect(code).toBe(0);
+    expect(stdout).toMatch(/lousho improve: applied: Applied [0-9a-f]{12}/);
+    expect(instructions()).toBe(FIX);
+    expect(readAudit(agentDir).map((entry) => entry.action)).toEqual(['canary-end', 'apply']);
+  });
+
+  it('manual: queues the fix for a person and writes nothing to the agent', async () => {
+    const { code, stdout } = await run([agentDir, '--check', checkPath, '--db', dbPath, '--approval', 'manual'], { editor: editorFor(FIX) });
+    expect(code).toBe(0);
+    expect(stdout).toMatch(/lousho improve: pending: Queued for approval as [0-9a-f]{12}/);
+    expect(instructions()).toBe('You answer refund questions.');
+    expect(listPending(agentDir)).toHaveLength(1);
+  });
+
+  it('--dry-run writes nothing', async () => {
+    const before = snapshot(root);
+    const { code, stdout } = await run([agentDir, '--check', checkPath, '--db', dbPath, '--dry-run'], { editor: editorFor(FIX) });
+    expect(code).toBe(0);
+    expect(stdout).toContain('# Improve result: proposal');
+    const after = snapshot(root);
+    expect(Object.keys(after).filter((file) => after[file] !== before[file] && !file.startsWith('observe.db'))).toEqual([]);
+  });
+
+  it('a module target is forced to dry run', async () => {
+    const file = path.join(root, 'agent.mjs');
+    fs.writeFileSync(file, "export default { name: 'support', instructions: 'You answer refund questions.' };\n");
+    const { code, stderr } = await run([file, '--check', checkPath, '--db', dbPath], { editor: editorFor(FIX) });
+    expect(code).toBe(0);
+    expect(stderr).toMatch(/this is a dry run, because .*agent module/);
+    expect(fs.existsSync(path.join(root, '.lousho'))).toBe(false);
+  });
+
+  it('an agent whose instructions are not in instructions.md is forced to dry run', async () => {
+    fs.mkdirSync(path.join(agentDir, 'instructions'));
+    fs.writeFileSync(path.join(agentDir, 'instructions', 'claude.md'), 'You answer refund questions for Claude.');
+    const { code, stderr } = await run([agentDir, '--check', checkPath, '--db', dbPath], { editor: editorFor(FIX) });
+    expect(code).toBe(0);
+    expect(stderr).toMatch(/this is a dry run, because .*model-specific instructions/);
+    expect(instructions()).toBe('You answer refund questions.');
   });
 });
