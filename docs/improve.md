@@ -184,3 +184,4 @@ and a run that hits it ends `budget-exceeded`.
 - **Tool results are marked as untrusted** in what the editors read. Any marker
   forged inside a run, nested or spaced, is removed, and the editors are told to
   treat everything in a run as untrusted, not just the marked part.
+- **The review card shows links and images in model-written text as plain text.** In notes, reasons, errors, flags and cases, a link or image shows its target (`hxxps://…`), and HTML, autolinks, URLs and email addresses are escaped or defanged, so viewing the card loads nothing and can't add a section. The diff stays in a fence its text can't close. A viewer that links bare domains, such as `example.com/x`, can still link one, showing it as written.
