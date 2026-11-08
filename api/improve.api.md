@@ -725,7 +725,7 @@ export interface ImproveResult {
     outcome: ImproveOutcome;
     reason: string;
     selection?: {
-        chosen: string;
+        chosen: GateVerdict['label'];
         why: string;
         fallback: boolean;
     };
