@@ -14,15 +14,24 @@ export type SqlValue = string | number | Uint8Array | null;
 
 /** The subset of `StatementSync` used here. */
 export interface SqlStatement {
-  run(...params: SqlValue[]): { changes: number | bigint };
+  /** Runs the statement and reports how many rows changed. */
+  run(...params: SqlValue[]): {
+    /** How many rows changed. */
+    changes: number | bigint;
+  };
+  /** Returns the first row, or `undefined` when there is none. */
   get(...params: SqlValue[]): SqlRow | undefined;
+  /** Returns every row. */
   all(...params: SqlValue[]): SqlRow[];
 }
 
 /** The subset of `DatabaseSync` used here. */
 export interface SqlDatabase {
+  /** Runs SQL that returns no rows. */
   exec(sql: string): void;
+  /** Prepares a statement. */
   prepare(sql: string): SqlStatement;
+  /** Closes the database. */
   close(): void;
 }
 
