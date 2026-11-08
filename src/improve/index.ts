@@ -3,6 +3,8 @@ export { createShadowHook, renderTranscript } from './evidence';
 export { formatImproveResult } from './format';
 export { admitProtectedCases, casesFromFailures, probeCapturedCases, protectedCasesFromPasses } from './cases';
 export { casesFromRecoveries } from './recoveries';
+export { canaryReplay } from './canary';
+export type { CanaryReplayOptions, CanaryReplayResult } from './canary';
 export type { CapturedCase, CaseCheck } from './cases';
 export type { SqlDatabase, SqlRow, SqlStatement, SqlValue } from '../storage/sqlite/driver';
 export type { CaseCount, CaseVerdict, GateVerdict, Harness, ImproveChange, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeRun, ProbeSummary, RecoveryEvidence } from './types';

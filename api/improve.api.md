@@ -162,6 +162,29 @@ interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetE
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
 
 // @public
+export function canaryReplay(options: CanaryReplayOptions): Promise<CanaryReplayResult>;
+
+// @public
+export interface CanaryReplayOptions {
+    base: Harness;
+    candidate: Harness;
+    firstRepeat?: number;
+    probe: ImproveOptions['probe'];
+    protected: readonly string[];
+    runs?: number;
+    signal?: AbortSignal;
+    training: readonly string[];
+}
+
+// @public
+export interface CanaryReplayResult {
+    cases: CaseVerdict[];
+    passed: boolean;
+    reason: string;
+    tokens: number;
+}
+
+// @public
 export interface CapturedCase {
     id: string;
     input: string;
