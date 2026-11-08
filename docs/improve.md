@@ -162,7 +162,7 @@ A library keeps lessons from earlier attempts, so later editors can read them. E
 - goes over 200 characters for the cue, 600 for the lesson or 400 for the evidence;
 - quotes one of the cycle's failed checks.
 
-`libraryFiles(dir, domain)` returns up to 20 active lessons as files under `context/library/`, highest-voted first, then newest. Each file is labelled as data with the lesson between untrusted markers, and you pass them to `improveAgent` as `library`. Entries are checked again when read, so an entry file edited by hand that no longer passes is skipped. `voteEntry(dir, id, 'helped' | 'hurt')` counts an outcome, and retires a lesson once its hurt votes outnumber its helped votes by two. Votes are appended to `votes.jsonl` next to the entries, so votes cast at once aren't lost. `improveAgent` accepts only files shaped like `libraryFiles` output, named `context/library/<name>.md`.
+`libraryFiles(dir, domain)` returns up to 20 active lessons as files under `context/library/`, highest-voted first, then newest. Each file is labelled as data with the lesson between untrusted markers, and you pass them to `improveAgent` as `library`. Entries are checked again when read, so an entry file edited by hand that no longer passes is skipped. `voteEntry(dir, id, 'helped' | 'hurt')` counts an outcome, and retires a lesson for good once its hurt votes outnumber its helped votes by two. Votes are appended to `votes.jsonl` next to the entries, so votes cast at once aren't lost. `improveAgent` accepts only files shaped like `libraryFiles` output, named `context/library/<name>.md`.
 
 ```ts
 import { improveAgent, libraryFiles, libraryHome, type Harness, type ImproveOptions } from 'lousho/improve';
