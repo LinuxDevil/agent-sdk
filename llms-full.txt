@@ -6012,6 +6012,13 @@ Three outages in a row write the stop file. Editor calls are limited to
 `rateLimit.rpm` a minute. Ctrl-C stops after the current step. `pause` writes
 the stop file and `resume` removes it; both are audited.
 
+`lousho improve status <dir> [--json]` prints the mode and active revision, the
+last 5 audit entries, pending proposals, the monitor's verdict (with a warning
+while it waits for runs or kept an edit unverified), what is left of today's
+budget, the cooldown, the kill switch and the canary. The watcher's events go
+to the `alerts.json` webhooks beside the observe db (see
+[Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md)).
+
 ### `improve.json`
 
 Self-healing settings live in `improve.json` beside the agent. Every key is
@@ -15661,6 +15668,16 @@ the daemon. Alerts on `down` transitions,
 error-rate thresholds and score regressions (see
 [Continuous score](#continuous-score)) POST to `--webhook` URLs or an
 `alerts.json` next to the db.
+
+`lousho improve --watch` posts to the same `alerts.json` webhooks:
+`improve.pending`, `improve.applied`, `improve.rolled_back`,
+`improve.guard_failed`, `improve.paused` and `improve.canary`. `details` holds
+`{ agent, dir, from, to, reason, cycle }`, plus `card`, the local path of a
+pending proposal. A regression the monitor or a scheduled guard saw but did
+not roll back (automatic rollback off, or refused) is `improve.guard_failed`,
+posted once per revision. The reason is plain text: links, images and markup are
+stripped. Each event is also one stderr line, and a webhook that fails never
+fails the cycle.
 
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an

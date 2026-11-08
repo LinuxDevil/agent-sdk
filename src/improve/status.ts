@@ -11,6 +11,14 @@ import { readState } from './state';
 const RECENT = 5;
 const MAX_REASON = 500;
 
+/** A count used so far today and its daily cap. */
+export interface StatusCount {
+  /** Used so far today (UTC). */
+  used: number;
+  /** The daily cap. */
+  max: number;
+}
+
 /** What `lousho improve status` shows for one agent directory. */
 export interface ImproveStatus {
   /** The agent directory. */
@@ -37,23 +45,44 @@ export interface ImproveStatus {
   /** What is left of today's budget (UTC). */
   budget: {
     /** Cycles run and allowed today. */
-    cycles: { used: number; max: number };
+    cycles: StatusCount;
     /** Automatic applies made and allowed today. */
-    applies: { used: number; max: number };
+    applies: StatusCount;
     /** Tokens spent and allowed today. */
-    tokens: { used: number; max: number };
+    tokens: StatusCount;
   };
   /** When the cooldown after a rollback ends, or `null`. */
   cooldownUntil: string | null;
   /** The canary: the opt-in traffic canary's settings, and the last replay canary's verdict. */
   canary: {
     /** The traffic canary, or `null` when it is off. */
-    traffic: { share: number; sessions: number } | null;
+    traffic: {
+      /** The share of new sessions that run the candidate. */
+      share: number;
+      /** Sessions before a verdict. */
+      sessions: number;
+    } | null;
     /** The last replay canary, or `null`. */
-    last: { cycle: string; passed: boolean; reason: string } | null;
+    last: {
+      /** The cycle it ran in. */
+      cycle: string;
+      /** Whether it passed. */
+      passed: boolean;
+      /** Why, as plain text. */
+      reason: string;
+    } | null;
   };
   /** The newest cycle record, or `null`. */
-  lastCycle: { id: string; outcome: string; reason: string; startedAt: string } | null;
+  lastCycle: {
+    /** The cycle id. */
+    id: string;
+    /** How it ended. */
+    outcome: string;
+    /** Why, as plain text. */
+    reason: string;
+    /** When it started. */
+    startedAt: string;
+  } | null;
   /** Things a person should know, such as a monitor that can't judge yet. */
   warnings: string[];
 }
