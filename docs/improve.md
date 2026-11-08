@@ -84,9 +84,10 @@ fallback. Confirm a proposal on fresh runs before you apply it.
 
 A failed run looks fine to an editor when the agent never saw the check it
 missed. Return `failure` from `probe` to name that check. Name the requirement,
-not the fix. On one coding benchmark task, naming the real check did not help
-more than naming no check, but naming the wrong check hurt: the editors found
-the fix less often.
+not the fix. On two coding benchmark tasks, naming the wrong check always hurt:
+on the harder one the editors proposed nothing in 5 of 5 tries. Naming the real
+check helped on the harder task (5 of 5 proposals against 4 of 5 with no name)
+and matched no name on the easier one. Name a check only when you know it.
 
 `candidates` holds each editor's harness from before the gate, so you can review
 or replay one the gate rejected.
