@@ -1,5 +1,5 @@
 import { promptInjectionSignals } from '../execution/guardrailStarterSet';
-import type { CaseCount, CaseVerdict, ImproveResult, ImproveStage } from './types';
+import type { CaseCount, CaseVerdict, ImproveChange, ImproveResult, ImproveStage } from './types';
 
 const CASES_HEADER = '| Case | Role | Base | Result | pass^3 base | pass^3 result | Why |\n| --- | --- | --- | --- | --- | --- | --- |';
 
@@ -72,17 +72,31 @@ const quoted = (text: string) =>
     .map((line) => `> ${line}`)
     .join('\n');
 
+const marked = (prefix: string, text: string | undefined) => (text === undefined ? [] : text.split('\n').map((line) => `${prefix} ${line}`));
+
+function change(item: ImproveChange, index: number): string {
+  const target = item.target.replace(/[`\n]/g, '');
+  const lines = [...marked('-', item.before), ...marked('+', item.after)];
+  return `${index + 1}. ${item.kind} \`${target}\`\n\n${fenced(lines.join('\n'))}\n\n${quoted(`Reason: ${item.reason ?? 'no reason given.'}`)}`;
+}
+
+function changes(items: readonly ImproveChange[] | undefined, diff: string | undefined): string {
+  if (items && items.length > 0) return items.map(change).join('\n\n');
+  return diff ? 'Only blank lines, spacing or line order changed; see the diff.' : 'No change proposed.';
+}
+
 function editor(stage: ImproveStage): string {
   const parts = [`### ${stage.label} (${stage.status})`, quoted(stage.notes || 'No notes.')];
   if (stage.error) parts.push(quoted(`Error: ${stage.error}`));
   return parts.join('\n\n');
 }
 
-/** Turns a result into Markdown for a person to review: the diff, each case before and after, the editors' notes, and flags. */
+/** Turns a result into Markdown for a person to review: each change with its reason, the diff, each case before and after, the editors' notes, and flags. */
 export function formatImproveResult(result: ImproveResult): string {
   const sections = [
     `# Improve result: ${result.outcome}\n\n${result.reason}`,
     `## Flags\n\n${flags(result)}`,
+    `## Changes\n\n${changes(result.changes, result.diff)}`,
     `## Diff\n\n${result.diff ? fenced(result.diff) : 'No change proposed.'}`,
     `## Cases\n\n${cases(result.cases)}`,
   ];

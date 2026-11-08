@@ -12879,6 +12879,24 @@ or replay one the gate rejected.
 
 `formatImproveResult(result)` turns a result into Markdown for review: the diff, each case before and after with pass^3, the editors' notes, and flags for an edit that quotes a failed check word for word, adds text that looks like prompt injection, or adds a skill the instructions never name.
 
+Above the diff, a Changes list shows each change on its own. A proposal's
+`changes` holds the same list: each item is an `add`, `modify` or `remove` of a
+line in the instructions or a skill (`skill:<name>`), or of a whole skill file
+it adds or removes, with the text before and after. The list comes from the same
+two harnesses as the diff, not from the editors, in order: instructions first,
+then skills by name. It lines the files up in order and skips blank lines, so a
+moved line shows as a remove and an add, and a change to blank lines or spacing
+alone shows only in the diff.
+
+Editors are asked for one line per change, such as
+`reason: instructions: "document is forbidden": run stuck/0 kept reading it.`
+A reason is attached to each change whose text contains its quoted words, which
+must be at least 8 characters; when several match, the longest quote wins. The
+reasons come from the composer, or from the editor whose harness passed instead.
+A change with no matching reason says "no reason given". Reasons are editor text,
+so the card quotes them, and they can't add sections to it. Nothing about the
+gate changes: it judges the harness, not the reasons.
+
 ## Cases from your own traces
 
 `casesFromFailures(db)` turns failed runs in your local trace database into cases. `protectedCasesFromPasses(db, traceIds)` turns good runs into protected cases. You must supply the check that scores an answer, through `probeCapturedCases`. Admit protected cases with `admitProtectedCases` before they gate: only a case that passed 6 of 6 fresh runs can join. Use only your own agents' traces, and keep them local.

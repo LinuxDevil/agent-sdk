@@ -1,11 +1,12 @@
 import { ConfigurationError } from '../execution/errors';
+import { changeItems } from './changes';
 import { evidenceFiles, type LabelledRun } from './evidence';
 import { summarize } from './gate';
 import { diffHarness, harnessFiles } from './harness';
 import { judgeWithFallback } from './judge';
 import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT } from './prompts';
 import { ImproveRun, StopRun } from './run';
-import type { Harness, ImproveOptions, ImproveResult, ProbeSummary } from './types';
+import type { Harness, ImproveOptions, ImproveResult, ImproveStage, ProbeSummary } from './types';
 
 function assertOptions(options: ImproveOptions, repeats: number): void {
   if (options.cases.length === 0) throw new ConfigurationError('improveAgent: cases must name at least one case.', 'cases');
@@ -20,6 +21,11 @@ function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined):
 
 function failedChecks(runs: readonly LabelledRun[]): string[] {
   return [...new Set(runs.flatMap(({ run }) => (run.failure ? run.failure.split('; ') : [])))];
+}
+
+function winningNotes(result: Pick<ImproveResult, 'gate'>, stages: readonly ImproveStage[]): string {
+  const label = result.gate?.find((verdict) => verdict.passed)?.label ?? 'compose';
+  return stages.find((stage) => stage.label === label)?.notes ?? '';
 }
 
 function candidateFiles(name: string, base: Harness, candidate: Harness): Record<string, string> {
@@ -73,6 +79,7 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
   let checks: string[] = [];
   const finish = (result: Omit<ImproveResult, 'base' | 'stages' | 'spend'>): ImproveResult => ({
     ...result,
+    ...(result.harness && { changes: changeItems(options.harness, result.harness, winningNotes(result, run.stages)) }),
     ...(checks.length > 0 && { failedChecks: checks }),
     base,
     ...(run.candidates && { candidates: run.candidates }),
