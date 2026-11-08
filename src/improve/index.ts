@@ -40,3 +40,5 @@ export type { WatchOptions, WatchTick } from './watch';
 export { pauseImprove, resumeImprove } from './pause';
 export { improveStatus } from './status';
 export type { ImproveStatus, StatusCount } from './status';
+export { canaryVerdict, readCanary, routesToCandidate, settleCanary, startCanary, stopCanary } from './trafficCanary';
+export type { CanarySettlement, CanaryVerdict, StartCanaryInput, TrafficCanary } from './trafficCanary';

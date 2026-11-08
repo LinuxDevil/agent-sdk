@@ -380,6 +380,26 @@ Editors that used a lesson cite its id (`lib-…`) in their notes, and `citedEnt
 
 The session never sees a held-out case's id: each held-out case appears as `held-out case 1`, `held-out case 2` and so on. A reply that isn't exactly one `<experience>` block stores nothing. That covers several blocks, a repeated field, a line that isn't a field, and a block alongside `NO_ENTRY`. Nothing is stored either when the session ends early or goes over `maxTokens`.
 
+### Live traffic canary (opt-in)
+
+**This serves an unproven harness to real users.** It is off unless `improve.json` sets `canary.traffic` (`share` up to 0.25, `sessions` up to 50). Use it only for failures that `canaryReplay` can't replay, and run `canaryReplay` first when you can.
+
+`startCanary` takes a proposal that passed the gate and writes `.lousho/canary.json`. While that file exists, an agent loaded with `loadAgentDir` serves the candidate to a stable share of new sessions (by a hash of the session id; a run without a session id always gets the base) and stamps those runs with the candidate's revision. `settleCanary` reads the trial: after `sessions` candidate runs it promotes when the flagged rate is 0 or at least 0.05 below the base's rate over its last 20 runs, and no failure class appeared that the base didn't have. It retires early once a promotion is ruled out, and when the directory changed, the loop is paused, the opt-in is removed or `monitor.giveUpDays` pass. A promote goes through `applyProposal` (auto) or the pending queue (manual), which check the proposal again.
+
+```ts
+import { loadImproveSettings, settleCanary, startCanary, type Harness, type ImproveResult, type SqlDatabase } from 'lousho/improve';
+
+declare const db: SqlDatabase;
+declare const result: ImproveResult;
+declare const base: Harness;
+
+const settings = loadImproveSettings('./agents/support');
+await startCanary(db, './agents/support', { result, base }, settings);
+const settled = await settleCanary(db, './agents/support', settings);
+```
+
+Deleting `.lousho/canary.json`, `stopCanary`, the `.lousho/improve.stop` file, `LOUSHO_IMPROVE=off` or `"enabled": false` stops it on the next run. A session that already started on the candidate keeps the candidate's instructions in its history.
+
 ## The self-healing loop
 
 The loop turns an agent directory's failed runs into an applied edit, checks
