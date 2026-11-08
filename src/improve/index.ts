@@ -13,3 +13,5 @@ export type { SqlDatabase, SqlRow, SqlStatement, SqlValue } from '../storage/sql
 export type { CaseCount, CaseVerdict, GateVerdict, Harness, ImproveChange, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeRun, ProbeSummary, RecoveryEvidence } from './types';
 export { appendAudit, readAudit, verifyAudit } from './audit';
 export type { AuditEntry, AuditInput } from './audit';
+export { currentRevision, harnessHash, listRevisions, readAgentHarness, snapshotRevision } from './revisions';
+export type { HarnessRevision } from './revisions';

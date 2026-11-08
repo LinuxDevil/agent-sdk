@@ -319,6 +319,9 @@ export function createShadowHook(options: {
 }): AgentHook;
 
 // @public
+export function currentRevision(dir: string): string;
+
+// @public
 type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail';
 
 // @public
@@ -464,6 +467,19 @@ export interface Harness {
         description: string;
         content: string;
     }>;
+}
+
+// @public
+export function harnessHash(harness: Harness): string;
+
+// @public
+export interface HarnessRevision {
+    at: string;
+    harness: Harness;
+    id: string;
+    parent?: string;
+    readOnly?: string[];
+    source: 'baseline' | 'apply' | 'rollback';
 }
 
 // @public
@@ -664,6 +680,9 @@ export function libraryHome(agentDir: string, domain?: string): {
 };
 
 // @public
+export function listRevisions(dir: string): HarnessRevision[];
+
+// @public
 interface LLMProvider {
     readonly defaultModel?: string;
     generate(options: GenerateOptions): Promise<GenerateResult>;
@@ -835,6 +854,9 @@ interface ProviderUsage {
 }
 
 // @public
+export function readAgentHarness(dir: string): Harness;
+
+// @public
 export function readAudit(dir: string): AuditEntry[];
 
 // @public
@@ -954,6 +976,9 @@ interface ServedBy {
     // (undocumented)
     provider: string;
 }
+
+// @public
+export function snapshotRevision(dir: string, source: HarnessRevision['source'], parent?: string): HarnessRevision;
 
 // @public
 export interface SqlDatabase {
