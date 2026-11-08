@@ -167,4 +167,46 @@ describe('HeaderLabels', () => {
     // The header fact picked up the saved labels.
     expect(factLabels(host)).toEqual(['alpha', 'beta']);
   });
+
+  it('adds on comma and comma paste, removes a chip, shows a save error and re-seeds on reopen', async () => {
+    mocks.patchAgentMeta.mockRejectedValue(new Error('daemon down'));
+    const host = render(<Harness initial={record(['alpha'])} />);
+    openDialog(host);
+
+    type('beta');
+    key(',');
+    expect(dialogChips()).toEqual(['alpha', 'beta']);
+
+    const paste = (text: string) => {
+      const event = new Event('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: { getData: () => text } });
+      act(() => {
+        dialogInput().dispatchEvent(event);
+      });
+      return event;
+    };
+    expect(paste('plain').defaultPrevented).toBe(false);
+    expect(dialogChips()).toEqual(['alpha', 'beta']);
+    expect(paste('gamma, delta').defaultPrevented).toBe(true);
+    expect(dialogChips()).toEqual(['alpha', 'beta', 'gamma', 'delta']);
+
+    click(document.querySelector('button[aria-label="Remove label beta"]')!);
+    expect(dialogChips()).toEqual(['alpha', 'gamma', 'delta']);
+
+    click(saveButton());
+    await flush();
+    expect(mocks.patchAgentMeta).toHaveBeenCalledWith('support-bot', { labels: ['alpha', 'gamma', 'delta'] });
+    expect(problem()).toBe('daemon down');
+    expect(dialog()).not.toBeNull();
+    expect(saveButton().textContent).toBe('Save');
+    expect(dialogInput().getAttribute('aria-describedby')).toBe(document.querySelector('.field-error')!.id);
+
+    click([...document.querySelectorAll<HTMLButtonElement>('.dialog-footer button')].find((b) => b.textContent === 'Cancel')!);
+    expect(dialog()).toBeNull();
+    openDialog(host);
+    expect(dialogChips()).toEqual(['alpha']);
+    expect(problem()).toBeUndefined();
+    expect(dialogInput().value).toBe('');
+    expect(saveButton().disabled).toBe(true);
+  });
 });
