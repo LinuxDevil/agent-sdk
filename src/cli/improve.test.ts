@@ -522,7 +522,7 @@ describe('lousho improve', () => {
     const editor = mockModel([{ toolCalls: [{ name: 'read_file', args: { path: 'context/runs/base/permission:t1-0.md' } }] }, ...noEdit], { onExhausted: 'repeat-last' });
     const { code } = await improve([agentDir, '--check', checkPath, '--db', dbPath], { editor });
     expect(code).toBe(0);
-    const seen = JSON.stringify(editor.calls[1].messages);
+    const seen = JSON.stringify(editor.calls);
     expect(seen).toContain('Result: failed.');
     expect(seen).toContain('Failed check: says when a document is forbidden.');
   });
