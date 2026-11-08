@@ -74,6 +74,8 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * The `lousho/spec` subpath (S23: dist/spec/{index.js,index.mjs,index.d.ts,
  * index.d.mts}) pushed the packed size to 5,276,320 bytes (~5.03 MiB);
  * packed budget raised to 5.5 MiB (~9% headroom).
+ * CI counted 1041 entries on 2026-11-08 (M4 improve modules); entry budget
+ * raised to 1150 (~10% headroom).
  */
 const MAX_ENTRIES = 1150;
 const MAX_UNPACKED_BYTES = 20 * 1024 * 1024;
