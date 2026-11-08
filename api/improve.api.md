@@ -454,6 +454,15 @@ interface ImageContentPart {
 export function improveAgent(options: ImproveOptions): Promise<ImproveResult>;
 
 // @public
+export interface ImproveChange {
+    after?: string;
+    before?: string;
+    kind: 'add' | 'modify' | 'remove';
+    reason?: string;
+    target: string;
+}
+
+// @public
 export interface ImproveOptions {
     alwaysPropose?: boolean;
     cases: readonly string[];
@@ -486,6 +495,7 @@ export interface ImproveResult {
         compose: Harness;
     };
     cases?: CaseVerdict[];
+    changes?: ImproveChange[];
     costOnPassingCases?: {
         cases: number;
         base: number;

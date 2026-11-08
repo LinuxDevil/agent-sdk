@@ -51,6 +51,18 @@ describe('improveAgent', () => {
     ]);
   });
 
+  it("itemises the proposal's changes with the composer's reasons, and none without a proposal", async () => {
+    const composed = [write('harness/instructions.md', FIX), '<notes>kept: stop rule: helped: stuck\nreason: instructions: "document is forbidden": run stuck/0 read a forbidden file.</notes>'];
+    const result = await improveAgent(options({ turns: [...noEdit, ...edit(FIX), ...composed] }));
+    expect(result.changes).toEqual([{ kind: 'modify', target: 'instructions', before: 'You answer questions.', after: FIX, reason: 'run stuck/0 read a forbidden file.' }]);
+    const kept = await improveAgent(options({ probe: async () => run(false), turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(kept.changes).toBeUndefined();
+  });
+
+  it('asks every editor for a one-line reason per change', () => {
+    for (const prompt of [INVARIANT_PROMPT, DOMAIN_PROMPT, COMPOSE_PROMPT]) expect(prompt).toContain('reason: instructions|skill:<name>: "<a few words copied exactly from the changed line>": <why, in one line>');
+  });
+
   it('runs no editors when nothing failed, unless told to', async () => {
     const provider = mockModel([]);
     const healthy = await improveAgent(options({ probe: fixable([]), editor: { provider } }));
@@ -345,6 +357,14 @@ describe('improveAgent', () => {
         { passed: 2, scored: 2 },
       ]);
       expect(JSON.stringify(provider.calls)).not.toContain('held-out');
+    });
+
+    it("itemises a fallback with the winning editor's reasons, not the composer's", async () => {
+      const domainEdit = [write('harness/instructions.md', FIX), '<notes>reason: instructions: "is forbidden": domain saw it.</notes>'];
+      const composeEdit = [write('harness/instructions.md', `${FIX} Always double-check.`), '<notes>reason: instructions: "is forbidden": composer saw it.</notes>'];
+      const result = await improveAgent(options({ probe: gated(), turns: [...noEdit, ...domainEdit, ...composeEdit] }));
+      expect(result.outcome).toBe('proposal');
+      expect(result.changes).toEqual([{ kind: 'modify', target: 'instructions', before: 'You answer questions.', after: FIX, reason: 'domain saw it.' }]);
     });
 
     it('keeps the base and records every verdict when no candidate passes', async () => {

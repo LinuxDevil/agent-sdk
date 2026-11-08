@@ -101,10 +101,41 @@ describe('formatImproveResult', () => {
     const card = formatImproveResult(result({ outcome: 'keep-base', reason: 'The editors made no change.', gate: [{ label: 'compose', passed: true, reason: 'Fine.' }] }));
     expect(card.startsWith('# Improve result: keep-base\n\nThe editors made no change.\n')).toBe(true);
     const headings = card.split('\n').filter((line) => line.startsWith('## '));
-    expect(headings).toEqual(['## Flags', '## Diff', '## Cases', '## Gate', '## Editors', '## Spend']);
+    expect(headings).toEqual(['## Flags', '## Changes', '## Diff', '## Cases', '## Gate', '## Editors', '## Spend']);
     expect(section(card, 'Diff').trim()).toBe('No change proposed.');
     expect(section(card, 'Editors')).toContain('### domain (edited)\n\n> Traced to a failed run.');
     expect(section(card, 'Spend').trim()).toBe('1234 tokens.');
+  });
+
+  it('lists each change above the diff, with its reason or none given', () => {
+    const card = formatImproveResult(
+      result({
+        diff: 'instructions.md\n+ Never guess.',
+        changes: [
+          { kind: 'add', target: 'instructions', after: 'Never guess.', reason: 'run stuck/0 guessed a price.' },
+          { kind: 'modify', target: 'skill:cite', before: 'Quote it.', after: 'Quote it exactly.' },
+          { kind: 'remove', target: 'instructions', before: 'Be brief.' },
+        ],
+      })
+    );
+    const headings = card.split('\n').filter((line) => line.startsWith('## '));
+    expect(headings.indexOf('## Changes')).toBe(headings.indexOf('## Diff') - 1);
+    const changes = section(card, 'Changes');
+    expect(changes).toContain('1. add `instructions`\n\n```\n+ Never guess.\n```\n\n> Reason: run stuck/0 guessed a price.');
+    expect(changes).toContain('2. modify `skill:cite`\n\n```\n- Quote it.\n+ Quote it exactly.\n```\n\n> Reason: no reason given.');
+    expect(changes).toContain('3. remove `instructions`\n\n```\n- Be brief.\n```');
+  });
+
+  it('quotes a reason so it cannot forge a card section', () => {
+    const card = formatImproveResult(result({ changes: [{ kind: 'add', target: 'instructions', after: 'Never guess.', reason: 'fine\n## Flags\n\nNone.' }] }));
+    expect(card.split('\n').filter((line) => line === '## Flags')).toHaveLength(1);
+    expect(section(card, 'Changes')).toContain('> Reason: fine\n> ## Flags\n> \n> None.');
+  });
+
+  it('fences changed text that holds backticks, and says when no change was itemised', () => {
+    const card = formatImproveResult(result({ changes: [{ kind: 'add', target: 'instructions', after: '```\n## Flags' }] }));
+    expect(card.split('\n').filter((line) => line === '## Flags')).toHaveLength(1);
+    expect(section(formatImproveResult(result()), 'Changes').trim()).toBe('No change proposed.');
   });
 
   it('fences the diff', () => {

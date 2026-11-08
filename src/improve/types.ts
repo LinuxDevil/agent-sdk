@@ -129,6 +129,20 @@ export interface ImproveStage {
   tokens: number;
 }
 
+/** One change a proposal makes, derived from the harness itself, with the editor's reason when it gave one. */
+export interface ImproveChange {
+  /** Whether the change adds, rewrites or removes text. */
+  kind: 'add' | 'modify' | 'remove';
+  /** The file it changes: `instructions` or `skill:<name>`. */
+  target: string;
+  /** The text before, for `modify` and `remove`. */
+  before?: string;
+  /** The text after, for `add` and `modify`. */
+  after?: string;
+  /** The editor's one-line reason, when one matched. Editor text: treat it as untrusted. */
+  reason?: string;
+}
+
 /**
  * How an improvement run ended. Only `proposal` has an edit to review; none is ever applied.
  * - `no-failures`: every case passed, so no editor ran.
@@ -148,6 +162,8 @@ export interface ImproveResult {
   harness?: Harness;
   /** The proposed changes, line by line, with `outcome: 'proposal'`. */
   diff?: string;
+  /** The proposed changes one by one, instructions first and then skills by name, with `outcome: 'proposal'`. */
+  changes?: ImproveChange[];
   /** The failed-check names the editors saw, so a reviewer can spot an edit that quotes one. */
   failedChecks?: string[];
   /** The current harness on the training runs the editors read. */
