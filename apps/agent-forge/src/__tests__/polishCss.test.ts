@@ -70,6 +70,21 @@ describe('U01 tokens', () => {
   });
 });
 
+describe('A12 builder tab strip', () => {
+  it('.app.app-builder-tabs adds the 40px strip row above the 52px toolbar', () => {
+    expect(rulesFor(sheet('components/layout.css'), '.app.app-builder-tabs')).toMatch(
+      /grid-template-rows:\s*40px 52px minmax\(0, 1fr\) auto/,
+    );
+  });
+
+  it('.builder-tabs aligns its tabs to the bottom edge over a surface background', () => {
+    const rules = rulesFor(sheet('screens/agents/builderTabs.css'), '.builder-tabs');
+    expect(rules).toMatch(/align-items:\s*flex-end/);
+    expect(rules).toMatch(/background:\s*var\(--surface\)/);
+    expect(rules).toMatch(/border-bottom:\s*1px solid var\(--border\)/);
+  });
+});
+
 describe('U02 floating content card', () => {
   const css = sheet('shell/shell.css');
   it('frames the shell on --nav-bg', () => {

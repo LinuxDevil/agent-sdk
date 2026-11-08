@@ -3,7 +3,7 @@ import { CircleAlert, CircleCheck, CircleDashed, Clock, Cpu, Play, Wrench, Zap, 
 
 import type { AgentRecord, Requirement } from '../../../shared/wireTypes';
 import { fmtAge } from '../../observe/format';
-import { agentTabPath, AGENT_TAB_LABELS, AGENT_TABS, BUILT_AGENT_TABS, type AgentTab } from '../agents/agentTabs';
+import { agentTabItems, agentTabPath, type AgentTab } from '../agents/agentTabs';
 import { AgentTile } from '../../ui/AgentTile';
 import { StatusBadge } from '../../ui/StatusBadge';
 import { Tabs } from '../../ui/Tabs';
@@ -172,18 +172,7 @@ export function AgentDetailHeader({ record, tab, menu, enabledControl }: AgentDe
         ))}
       </ul>
       <div className="agent-detail-tabs">
-        <Tabs
-          label="Agent"
-          currentId={tab}
-          items={AGENT_TABS.map((t) => ({
-            id: t,
-            label: AGENT_TAB_LABELS[t],
-            href: `#${agentTabPath(id, t)}`,
-            disabled: !BUILT_AGENT_TABS.has(t),
-            disabledReason: 'Coming in a later release',
-          }))}
-          trailing={<ReadinessChips requirements={record.requirements} agentId={id} />}
-        />
+        <Tabs label="Agent" currentId={tab} items={agentTabItems(id)} trailing={<ReadinessChips requirements={record.requirements} agentId={id} />} />
       </div>
     </header>
   );
