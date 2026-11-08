@@ -3,6 +3,34 @@ import { renderTranscript, type Harness, type ProbeRun } from 'lousho/improve';
 import { mockModel } from 'lousho/testing';
 import { AGENTS, type BenchmarkAgent } from './agents';
 
+export type FailureNames = 'real' | 'none' | 'shuffled';
+
+export const SHUFFLED_FAILURES: Readonly<Record<string, string>> = { 'add-months': 'other callers keep their behaviour', 'invoice-rounding': 'follows project conventions' };
+
+const FAILURE_NAMES: readonly FailureNames[] = ['real', 'none', 'shuffled'];
+
+export function parseFailureNames(value: string): FailureNames {
+  const mode = FAILURE_NAMES.find((candidate) => candidate === value);
+  if (!mode) throw new Error(`--failure-names must be real, none or shuffled, not '${value}'.`);
+  return mode;
+}
+
+function shuffledFor(caseId: string): string {
+  const swapped = SHUFFLED_FAILURES[caseId];
+  if (swapped === undefined) throw new Error(`--failure-names shuffled is defined only for add-months and invoice-rounding, not '${caseId}'.`);
+  return swapped;
+}
+
+export function failureFor(mode: FailureNames, caseId: string, real: string | undefined): string | undefined {
+  if (mode === 'real') return real;
+  if (mode === 'none' || real === undefined) return undefined;
+  return shuffledFor(caseId);
+}
+
+export function checkFailureNames(mode: FailureNames, caseIds: readonly string[]): void {
+  if (mode === 'shuffled') caseIds.forEach(shuffledFor);
+}
+
 export interface ProbeSettings {
   agent: string;
   model: string;
@@ -23,6 +51,14 @@ export function buildAgent(name: string): BenchmarkAgent {
 function failedCheck(task: BenchmarkAgent['tasks'][number]): { failure?: string } {
   const failure = task.failure?.();
   return failure ? { failure } : {};
+}
+
+export function nameFailures(probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>, mode: FailureNames): (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun> {
+  return async (harness, caseId, repeat) => {
+    const { failure: real, ...rest } = await probe(harness, caseId, repeat);
+    const failure = failureFor(mode, caseId, real);
+    return failure ? { ...rest, failure } : rest;
+  };
 }
 
 export function benchmarkProbe(settings: ProbeSettings): (harness: Harness, caseId: string, repeat?: number) => Promise<ProbeRun> {

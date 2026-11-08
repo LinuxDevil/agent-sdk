@@ -13,8 +13,8 @@ const graph = specToGraph({
   tools: [{ builtin: 'http' }],
   skills: [{ dir: 'skills/review' }],
   guardrails: [{ id: 'g1', name: 'max-length', on: 'input' }],
-  output: { jsonSchema: { type: 'object' } },
-} as Parameters<typeof specToGraph>[0]);
+  abortListeners: [{ id: 'a1', triggerId: 't1', when: 'event.x', match: 'run.y', scope: 'both' }],
+} as unknown as Parameters<typeof specToGraph>[0]);
 const nodeOf = (kind: GraphNode['kind']) => graph.nodes.find((n) => n.kind === kind)!;
 
 /** The `agent` node of a spec built just for this test (fields as given). */
@@ -111,7 +111,7 @@ describe('AgentNode card', () => {
   });
 
   it('draws both ports and the neutral kind tile of the generic view', () => {
-    const card = renderCard(nodeOf('output'), { status: 'done' });
+    const card = renderCard(nodeOf('abort'), { status: 'done' });
     expect(card.querySelector('.rf-port-in')).not.toBeNull();
     expect(card.querySelector('.rf-port-out')).not.toBeNull();
     expect(card.querySelector('.node-kind')?.classList.contains('kind-neutral')).toBe(true);
@@ -133,7 +133,7 @@ describe('AgentNode card', () => {
   });
 
   it('renders the generic card markup', () => {
-    const card = renderCard(nodeOf('output'), { status: 'paused' });
+    const card = renderCard(nodeOf('abort'), { status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();
   });
 });
@@ -178,7 +178,7 @@ describe('agent card (KindView)', () => {
       model: 'mock/mock-1',
       instructions: 'x',
       subagents: { research: { inline: { name: 'nope', description: 'd', model: 'mock/mock-1', instructions: 'x' } } },
-    } as Parameters<typeof specToGraph>[0]);
+    } as unknown as Parameters<typeof specToGraph>[0]);
     const sub = graph.nodes.find((n) => n.id === 'sub:research')!;
     const card = renderCard(sub);
     expect(card.querySelector('.rf-node-title')?.textContent).toBe('research');

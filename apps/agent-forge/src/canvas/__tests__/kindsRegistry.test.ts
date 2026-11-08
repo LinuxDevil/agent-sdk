@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { KIND_VIEWS, viewFor } from '../kinds';
 
 describe('viewFor', () => {
-  it('falls back to the generic view while KIND_VIEWS.output is unset', () => {
-    const view = viewFor('output');
-    expect(KIND_VIEWS.output).toBeUndefined();
-    expect(view.label).toBe('output');
+  it('falls back to the generic view while KIND_VIEWS.abort is unset', () => {
+    const view = viewFor('abort');
+    expect(KIND_VIEWS.abort).toBeUndefined();
+    expect(view.label).toBe('abort');
     expect(view.tone).toBe('neutral');
     expect(view.ports).toEqual({ in: true, out: true });
     expect(view.palette).toEqual([]);
-    expect(view.title({ id: 'output' } as never)).toBe('output');
+    expect(view.title({ id: 'abort' } as never)).toBe('abort');
     expect(view.title({ id: 'agent' } as never)).toBe('agent');
   });
 

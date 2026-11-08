@@ -1,0 +1,166 @@
+/* Agent detail header + readiness chips (A05). Tokens from theme.css only. */
+/* The loading state keeps the header's frame but pads all round (no tabs yet). */
+.agent-detail-header-loading {
+  padding-bottom: var(--space-4);
+}
+.agent-detail-loading-top {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.agent-detail-loading-top > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.agent-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--page-gutter) 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  container-type: inline-size;
+}
+.agent-detail-top {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--space-3) var(--space-4);
+  align-items: start;
+}
+.agent-detail-heading {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.agent-detail-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.agent-detail-name {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-display);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--text);
+}
+.agent-detail-description {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.agent-detail-description.is-expanded {
+  display: block;
+}
+.agent-detail-more {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.agent-detail-more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.agent-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+.agent-detail-actions a.btn {
+  text-decoration: none;
+}
+.agent-detail-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.agent-detail-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+}
+.agent-detail-fact svg {
+  color: var(--text-faint);
+}
+.agent-detail-tabs {
+  margin-bottom: -1px;
+}
+.readiness-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.readiness-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+.readiness-ok {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: var(--success-border);
+}
+.readiness-missing {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: var(--warning-border);
+}
+.readiness-unknown {
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+}
+a.readiness-chip:hover {
+  border-color: currentColor;
+}
+a.readiness-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+@container (max-width: 640px) {
+  .agent-detail-top {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .agent-detail-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}

@@ -5,6 +5,21 @@
 ```ts
 
 // @public
+export function admitProtectedCases(options: {
+    harness: Harness;
+    cases: readonly CapturedCase[];
+    probe: ImproveOptions['probe'];
+    runs?: number;
+}): Promise<{
+    admitted: CapturedCase[];
+    refused: {
+        id: string;
+        passed: number;
+        scored: number;
+    }[];
+}>;
+
+// @public
 const AGENT_EVENT_SCHEMA_VERSION: 1;
 
 // @public
@@ -147,6 +162,39 @@ interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetE
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
 
 // @public
+export interface CapturedCase {
+    id: string;
+    input: string;
+    kind: 'failure' | 'protected';
+    traceId: string;
+}
+
+// @public
+export type CaseCheck = (input: string, answer: string) => boolean | null;
+
+// @public
+export interface CaseCount {
+    passed: number;
+    scored: number;
+}
+
+// @public
+export function casesFromFailures(db: SqlDatabase, filter?: {
+    since?: number;
+    agent?: string;
+    minScore?: number;
+}): CapturedCase[];
+
+// @public
+export interface CaseVerdict {
+    base: CaseCount;
+    caseId: string;
+    final: CaseCount;
+    reasons: string[];
+    role: 'training' | 'holdout';
+}
+
+// @public
 type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'model-unloaded' | 'unknown';
 
 // @public
@@ -205,6 +253,16 @@ interface FileContentPart {
     mimeType: string;
     // (undocumented)
     type: 'file';
+}
+
+// @public
+export function formatImproveResult(result: ImproveResult): string;
+
+// @public
+export interface GateVerdict {
+    label: 'compose' | 'invariant' | 'domain';
+    passed: boolean;
+    reason: string;
 }
 
 // @public
@@ -427,6 +485,7 @@ export interface ImproveResult {
         domain: Harness;
         compose: Harness;
     };
+    cases?: CaseVerdict[];
     costOnPassingCases?: {
         cases: number;
         base: number;
@@ -434,7 +493,10 @@ export interface ImproveResult {
         noise: number;
     };
     diff?: string;
+    failedChecks?: string[];
     final?: ProbeSummary;
+    freshBase?: ProbeSummary;
+    gate?: GateVerdict[];
     harness?: Harness;
     holdout?: {
         base: ProbeSummary;
@@ -585,6 +647,14 @@ interface Principal {
 }
 
 // @public
+export function probeCapturedCases(cases: readonly CapturedCase[], runCase: (harness: Harness, input: string) => Promise<{
+    answer: string;
+    transcript: string;
+    tokens: number;
+    ended: string;
+}>, check: CaseCheck): ImproveOptions['probe'];
+
+// @public
 export interface ProbeRun {
     ended: string;
     failure?: string;
@@ -604,6 +674,9 @@ export interface ProbeSummary {
 
 // @public
 type PromptCachingOption = 'auto' | false;
+
+// @public
+export function protectedCasesFromPasses(db: SqlDatabase, traceIds: readonly string[]): CapturedCase[];
 
 // @public
 interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
@@ -733,6 +806,28 @@ interface ServedBy {
     // (undocumented)
     provider: string;
 }
+
+// @public
+export interface SqlDatabase {
+    close(): void;
+    exec(sql: string): void;
+    prepare(sql: string): SqlStatement;
+}
+
+// @public
+export type SqlRow = Record<string, unknown>;
+
+// @public
+export interface SqlStatement {
+    all(...params: SqlValue[]): SqlRow[];
+    get(...params: SqlValue[]): SqlRow | undefined;
+    run(...params: SqlValue[]): {
+        changes: number | bigint;
+    };
+}
+
+// @public
+export type SqlValue = string | number | Uint8Array | null;
 
 // @public (undocumented)
 type StandardResult<Output> = {

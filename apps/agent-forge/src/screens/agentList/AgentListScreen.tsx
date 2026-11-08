@@ -1,45 +1,32 @@
 /**
  * `#/agents` - the agents list (A02): a card grid of every agent in the
- * workspace under a header with the Blank agent action, a FilterBar whose
+ * workspace under a header with the New agent menu (A04), a FilterBar whose
  * search/labels/status state lives in the URL (`agentListUrl.ts`), and the
  * loading / error / empty / no-match states. A card opens the agent's
  * overview tab; its switch toggles `meta.enabled` optimistically through
- * `useAgentList`. The New agent menu (A04) replaces the single Blank agent
- * button in the header.
+ * `useAgentList`.
  */
-import { useCallback, useMemo, useState } from 'react';
-import { Bot, CircleAlert, Plus, SearchX } from 'lucide-react';
+import { useCallback, useMemo } from 'react';
+import { Bot, CircleAlert, SearchX } from 'lucide-react';
 import type { AgentListItem } from '../../../shared/wireTypes';
-import { runtimeClient } from '../../runtime/runtimeClient';
 import { navigate } from '../../router/router';
 import { ScreenHeader } from '../../shell/ScreenHeader';
 import { Card } from '../../ui/Card';
 import { EmptyState } from '../../ui/EmptyState';
 import { FilterBar, type FacetDef } from '../../ui/FilterBar';
 import { Skeleton } from '../../ui/Skeleton';
-import { useToast } from '../../ui/Toast';
 import { facet } from '../listFilters';
 import { agentTabPath } from '../agents/agentTabs';
 import { AgentCard } from './AgentCard';
 import { filterAgents, labelOptions, useAgentListFilter, type AgentListFilter } from './agentListUrl';
+import { NewAgentMenu, StartOptions } from './NewAgentMenu';
+import { useNewAgentActions, type NewAgentActions } from './newAgent';
 import { useAgentList, type AgentListState } from './useAgentList';
 import './agentList.css';
 
 const SKELETON_CARDS = 6;
 
 const plural = (n: number): string => (n === 1 ? 'agent' : 'agents');
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
-
-/** The header's (and empty state's) primary action until A04's New agent menu lands. */
-function BlankAgentButton({ pending, onCreate }: { pending: boolean; onCreate: () => void }) {
-  return (
-    <button type="button" className="btn btn-primary" disabled={pending} onClick={onCreate}>
-      <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
-      {pending ? 'Creating…' : 'Blank agent'}
-    </button>
-  );
-}
 
 /** One shimmer card standing in for an agent while the list loads. */
 function SkeletonCard() {
@@ -120,15 +107,14 @@ interface ListBodyProps {
   list: AgentListState;
   items: AgentListItem[];
   visible: AgentListItem[];
-  creating: boolean;
-  onCreateBlank(): void;
+  newAgent: NewAgentActions;
   onClearFilters(): void;
   onOpen(id: string): void;
   onToggle(id: string, enabled: boolean): void;
 }
 
 /** Exactly one of: error card, loading grid, empty state, no-match state, card grid. */
-function AgentListBody({ list, items, visible, creating, onCreateBlank, onClearFilters, onOpen, onToggle }: ListBodyProps) {
+function AgentListBody({ list, items, visible, newAgent, onClearFilters, onOpen, onToggle }: ListBodyProps) {
   if (list.error !== undefined && list.items === undefined) {
     return <ErrorCard error={list.error} onRetry={list.refresh} />;
   }
@@ -138,8 +124,8 @@ function AgentListBody({ list, items, visible, creating, onCreateBlank, onClearF
       <EmptyState
         icon={Bot}
         title="No agents yet"
-        hint="Create one to get started."
-        action={<BlankAgentButton pending={creating} onCreate={onCreateBlank} />}
+        hint="Pick a way to start."
+        action={<StartOptions {...newAgent} />}
       />
     );
   }
@@ -158,21 +144,6 @@ function AgentListBody({ list, items, visible, creating, onCreateBlank, onClearF
     );
   }
   return <AgentGrid items={visible} pendingIds={list.pendingIds} onOpen={onOpen} onToggle={onToggle} />;
-}
-
-/** `POST /agents { from: 'blank' }` then into the new agent's canvas; failures toast. */
-function useCreateBlankAgent(): { creating: boolean; create(): void } {
-  const toast = useToast();
-  const [creating, setCreating] = useState(false);
-  const create = useCallback(() => {
-    setCreating(true);
-    runtimeClient
-      .createAgentRecord({ from: 'blank' })
-      .then((record) => navigate(agentTabPath(record.id, 'canvas')))
-      .catch((error: unknown) => toast.show({ message: messageOf(error), tone: 'error' }))
-      .finally(() => setCreating(false));
-  }, [toast]);
-  return { creating, create };
 }
 
 /** The two FilterBar facets: Labels (multi) over every item's labels, Status (single) over on/off. */
@@ -210,7 +181,10 @@ function useAgentListFacets(
 export function AgentListScreen() {
   const list = useAgentList();
   const [filter, setFilter] = useAgentListFilter();
-  const { creating, create } = useCreateBlankAgent();
+  // One instance shared by the header menu and the empty state's start buttons:
+  // a second useNewAgentActions would track `creating` separately and let a
+  // second blank create slip through while the first is in flight.
+  const newAgent = useNewAgentActions();
 
   const items = list.items ?? [];
   const visible = useMemo(() => filterAgents(items, filter), [items, filter]);
@@ -234,7 +208,7 @@ export function AgentListScreen() {
       <ScreenHeader
         title="Agents"
         description="Every agent in this workspace. Open one to edit it, test it and ship it."
-        actions={<BlankAgentButton pending={creating} onCreate={create} />}
+        actions={<NewAgentMenu {...newAgent} />}
       />
       <div className="agent-list-screen">
         <FilterBar
@@ -250,8 +224,7 @@ export function AgentListScreen() {
           list={list}
           items={items}
           visible={visible}
-          creating={creating}
-          onCreateBlank={create}
+          newAgent={newAgent}
           onClearFilters={onClearFilters}
           onOpen={onOpen}
           onToggle={onToggle}

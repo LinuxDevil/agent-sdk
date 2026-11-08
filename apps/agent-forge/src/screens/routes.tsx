@@ -70,7 +70,6 @@ function ScreenFrame({ children }: { children: ReactNode }) {
 /** The screens that render with no props, by id (Agents and Settings are handled in `Screens`). */
 const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   agentList: AgentListScreen,
-  agentDetail: AgentDetailRoute,
   traces: TracesScreen,
   trace: TraceRoute,
   monitoring: MonitoringScreen,
@@ -90,6 +89,8 @@ const SETTINGS_DESCRIPTION = 'Appearance, provider keys, profiles and the collec
 export function Screens() {
   const screen = useLeaveAgentsGuard(useScreen());
   if (screen === 'agents') return <AgentsScreen />;
+  // The detail header is the page's header: no ScreenFrame around it (A05).
+  if (screen === 'agentDetail') return <AgentDetailRoute />;
 
   const Screen = SCREENS[screen];
   let content: ReactNode;

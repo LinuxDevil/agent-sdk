@@ -73,7 +73,11 @@ describe('improveAgent', () => {
   it('keeps the base when the edit does not beat it', async () => {
     const result = await improveAgent(options({ probe: async () => run(false), turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
     expect(result.outcome).toBe('keep-base');
-    expect(result.reason).toMatch(/did not beat/i);
+    expect(result.reason).toMatch(/no training case improved/i);
+    expect(result.cases).toEqual([
+      { caseId: 'stuck', role: 'training', base: { passed: 0, scored: 2 }, final: { passed: 0, scored: 2 }, reasons: ['Failed under both harnesses.'] },
+      { caseId: 'held-out', role: 'holdout', base: { passed: 0, scored: 2 }, final: { passed: 0, scored: 2 }, reasons: ["Failed under both harnesses, so it can't show a regression."] },
+    ]);
     expect(result.harness).toBeUndefined();
   });
 
@@ -102,6 +106,50 @@ describe('improveAgent', () => {
     expect(result.candidates).toBeUndefined();
   });
 
+  it('reports a verdict for each training case', async () => {
+    const result = await improveAgent(options({ turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(result.cases).toEqual([
+      { caseId: 'stuck', role: 'training', base: { passed: 0, scored: 2 }, final: { passed: 2, scored: 2 }, reasons: ['Improved from 0/2 to 2/2.'] },
+      { caseId: 'held-out', role: 'holdout', base: { passed: 2, scored: 2 }, final: { passed: 2, scored: 2 }, reasons: ['Held: 2/2 before, 2/2 after.'] },
+    ]);
+  });
+
+  it('judges the edit against fresh base runs, not the ones that triggered editing', async () => {
+    let baseCalls = 0;
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      if (caseId === 'held-out' || harness.instructions.includes('forbidden')) return run(true);
+      baseCalls += 1;
+      return run(baseCalls > 2);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(result.base.passRate).toBe(0);
+    expect(result.freshBase?.passRate).toBe(1);
+    expect(result.outcome).toBe('keep-base');
+    expect(result.reason).toMatch(/no training case improved/i);
+  });
+
+  it('gives the probe new repeat numbers for the fresh base runs', async () => {
+    const repeats: number[] = [];
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      if (harness === BASE && caseId === 'stuck') repeats.push(repeat);
+      return fixable()(harness, caseId, repeat);
+    };
+    await improveAgent(options({ probe, repeats: 2, turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(repeats).toEqual([0, 1, 2, 3]);
+  });
+
+  it('never sends fresh base runs to an editor', async () => {
+    const provider = mockModel([...noEdit, ...edit(FIX), ...edit(FIX)]);
+    const editorCallsAtFreshRuns: number[] = [];
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      if (harness === BASE && caseId === 'stuck' && repeat >= 2) editorCallsAtFreshRuns.push(provider.calls.length);
+      return fixable()(harness, caseId, repeat);
+    };
+    const result = await improveAgent(options({ probe, editor: { provider } }));
+    expect(result.freshBase).toBeDefined();
+    expect(editorCallsAtFreshRuns).toEqual([provider.calls.length, provider.calls.length]);
+  });
+
   it('keeps the base when a held-out case gets worse, even if training cases improve', async () => {
     const probe: ImproveOptions['probe'] = async (harness, caseId) => {
       if (caseId === 'held-out') return run(!harness.instructions.includes('forbidden'));
@@ -110,6 +158,66 @@ describe('improveAgent', () => {
     const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
     expect(result.outcome).toBe('keep-base');
     expect(result.reason).toMatch(/held-out/i);
+  });
+
+  it('reruns a held-out case that dropped, and keeps a result whose drop was chance', async () => {
+    const heldOut: [string, number][] = [];
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      const fixed = harness.instructions.includes('forbidden');
+      if (caseId !== 'held-out') return run(fixed);
+      heldOut.push([fixed ? 'final' : 'base', repeat]);
+      return run(!fixed || repeat !== 0);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(heldOut).toHaveLength(10);
+    expect(heldOut.slice(4)).toEqual([
+      ['base', 2],
+      ['base', 3],
+      ['base', 4],
+      ['final', 2],
+      ['final', 3],
+      ['final', 4],
+    ]);
+    expect(result.cases?.[1]).toMatchObject({ caseId: 'held-out', role: 'holdout', base: { passed: 5, scored: 5 }, final: { passed: 4, scored: 5 } });
+    expect(result.cases?.[1].reasons).toEqual([expect.stringMatching(/ran 3 more times/), expect.stringMatching(/within chance/)]);
+    expect(result.holdout?.final.passRate).toBe(0.5);
+  });
+
+  it('spends no reruns when training already failed', async () => {
+    let heldOutCalls = 0;
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      if (caseId !== 'held-out') return run(false);
+      heldOutCalls += 1;
+      return run(!harness.instructions.includes('forbidden'));
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('keep-base');
+    expect(result.reason).toMatch(/no training case improved/i);
+    expect(heldOutCalls).toBe(4);
+    expect(result.cases?.map((verdict) => verdict.reasons)).toEqual([['Failed under both harnesses.'], [expect.stringMatching(/not rerun, because training failed/)]]);
+  });
+
+  it('gates on training alone when there are no held-out cases', async () => {
+    const result = await improveAgent(options({ holdout: [], turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.holdout).toBeUndefined();
+    expect(result.cases).toHaveLength(1);
+  });
+
+  it('stops with budget-exceeded during a rerun, and proposes nothing', async () => {
+    const heldOutRepeats: number[] = [];
+    const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      const fixed = harness.instructions.includes('forbidden');
+      if (caseId !== 'held-out') return run(fixed, 10);
+      heldOutRepeats.push(repeat);
+      return run(!fixed, 10_000);
+    };
+    const result = await improveAgent(options({ probe, maxTokens: 45_000, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('budget-exceeded');
+    expect(result.harness).toBeUndefined();
+    expect(result.cases).toBeUndefined();
+    expect(heldOutRepeats).toEqual([0, 1, 0, 1, 2]);
   });
 
   it('keeps the base when the edit makes passing runs much more expensive', async () => {
@@ -121,6 +229,47 @@ describe('improveAgent', () => {
     expect(result.outcome).toBe('keep-base');
     expect(result.reason).toMatch(/cost/i);
     expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 100, noise: 0 });
+  });
+
+  it('reports a 40% cost rise by default without rejecting it', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      const fixed = harness.instructions.includes('forbidden');
+      return caseId === 'held-out' ? run(true, fixed ? 14 : 10) : run(fixed, 10);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.reason).toMatch(/from 10 to 14 tokens/);
+  });
+
+  it('rejects a rise over 50% that is outside noise, by default', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      const fixed = harness.instructions.includes('forbidden');
+      return caseId === 'held-out' ? run(true, fixed ? 16 : 10) : run(fixed, 10);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('keep-base');
+    expect(result.reason).toMatch(/cost/i);
+    expect(result.costOnPassingCases).toEqual({ cases: 1, base: 10, final: 16, noise: 0 });
+  });
+
+  it('does not reject a rise of exactly 50% by default', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      const fixed = harness.instructions.includes('forbidden');
+      return caseId === 'held-out' ? run(true, fixed ? 15 : 10) : run(fixed, 10);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.reason).toMatch(/from 10 to 15 tokens/);
+  });
+
+  it('rejects a rise just over 50% by default', async () => {
+    const probe: ImproveOptions['probe'] = async (harness, caseId) => {
+      const fixed = harness.instructions.includes('forbidden');
+      return caseId === 'held-out' ? run(true, fixed ? 15.1 : 10) : run(fixed, 10);
+    };
+    const result = await improveAgent(options({ probe, turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
+    expect(result.outcome).toBe('keep-base');
+    expect(result.reason).toMatch(/cost/i);
   });
 
   it('does not reject on cost when the rise is within the spread between runs', async () => {
@@ -165,9 +314,169 @@ describe('improveAgent', () => {
     expect(result.reason).toMatch(/cost could not be compared/i);
   });
 
+  describe('fallback to one editor', () => {
+    const gated =
+      (tokens: (harness: Harness) => number = () => 10, flaky = 'Flaky'): ImproveOptions['probe'] =>
+      async (harness, caseId, repeat) => {
+        const { instructions } = harness;
+        if (caseId !== 'held-out') return run(instructions.includes('forbidden'), tokens(harness));
+        if (instructions.includes(flaky)) return run(repeat !== 0, tokens(harness));
+        return run(!instructions.includes('Always'), tokens(harness));
+      };
+
+    it("falls back to the domain editor's harness when the composite fails the held-out check", async () => {
+      const provider = mockModel([...noEdit, ...edit(FIX), ...edit(`${FIX} Always double-check.`)]);
+      const harness = structuredClone(BASE);
+      const result = await improveAgent(options({ harness, probe: gated(), editor: { provider } }));
+      expect(result.outcome).toBe('proposal');
+      expect(result.harness?.instructions).toBe(FIX);
+      expect(result.diff).toBe(diffHarness(BASE, { instructions: FIX, skills: {} }));
+      expect(harness).toEqual(BASE);
+      expect(result.reason).toMatch(/^The composite failed the gate \(A held-out case got worse.*\) The domain editor's harness passed instead\. Cost/);
+      expect(result.gate).toEqual([
+        { label: 'compose', passed: false, reason: expect.stringMatching(/held-out/) },
+        { label: 'domain', passed: true, reason: expect.any(String) },
+        { label: 'invariant', passed: false, reason: 'Made no change.' },
+      ]);
+      expect(result.final?.passRate).toBe(1);
+      expect(result.holdout?.final.passRate).toBe(1);
+      expect(result.cases?.map((verdict) => verdict.final)).toEqual([
+        { passed: 2, scored: 2 },
+        { passed: 2, scored: 2 },
+      ]);
+      expect(JSON.stringify(provider.calls)).not.toContain('held-out');
+    });
+
+    it('keeps the base and records every verdict when no candidate passes', async () => {
+      const turns = [...edit(`${FIX} Always check.`), ...edit(`${FIX} Always test.`), ...edit(`${FIX} Always both.`)];
+      const result = await improveAgent(options({ probe: gated(), turns }));
+      expect(result.outcome).toBe('keep-base');
+      expect(result.reason).toMatch(/^A held-out case got worse/);
+      expect(result.harness).toBeUndefined();
+      expect(result.final?.passRate).toBe(1);
+      expect(result.gate).toHaveLength(3);
+      expect(result.gate?.map((verdict) => [verdict.label, verdict.passed])).toEqual([
+        ['compose', false],
+        ['invariant', false],
+        ['domain', false],
+      ]);
+      expect(result.candidates?.domain.instructions).toBe(`${FIX} Always test.`);
+    });
+
+    it('tries the cheaper candidate first', async () => {
+      const tokens = (harness: Harness) => (harness.instructions.includes('Invariant') ? 50 : 10);
+      const turns = [...edit(`${FIX} Invariant.`), ...edit(`${FIX} Domain.`), ...edit(`${FIX} Always.`)];
+      const heldOutHarnesses: string[] = [];
+      const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+        if (caseId === 'held-out') heldOutHarnesses.push(harness.instructions);
+        return gated(tokens)(harness, caseId, repeat);
+      };
+      const result = await improveAgent(options({ probe, turns }));
+      expect(result.outcome).toBe('proposal');
+      expect(result.gate?.[1].label).toBe('domain');
+      expect(result.harness?.instructions).toBe(`${FIX} Domain.`);
+      expect(result.gate).toHaveLength(2);
+      expect(heldOutHarnesses).not.toContain(`${FIX} Invariant.`);
+    });
+
+    it("skips a domain harness identical to the invariant one", async () => {
+      const turns = [...edit(`${FIX} Always a.`), ...edit(`${FIX} Always a.`), ...edit(`${FIX} Always b.`)];
+      const result = await improveAgent(options({ probe: gated(), turns }));
+      expect(result.outcome).toBe('keep-base');
+      expect(result.gate).toEqual([
+        { label: 'compose', passed: false, reason: expect.stringMatching(/held-out/) },
+        { label: 'invariant', passed: false, reason: expect.stringMatching(/held-out/) },
+        { label: 'domain', passed: false, reason: "Same as the invariant editor's harness, so it was not judged again." },
+      ]);
+    });
+
+    it('does not fall back when the composite passes', async () => {
+      const result = await improveAgent(options({ turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+      expect(result.outcome).toBe('proposal');
+      expect(result.gate).toEqual([{ label: 'compose', passed: true, reason: expect.any(String) }]);
+    });
+
+    it('skips a candidate identical to the composite', async () => {
+      const probe: ImproveOptions['probe'] = async (harness, caseId) => run(harness.instructions.includes('forbidden') === (caseId !== 'held-out'));
+      const result = await improveAgent(options({ probe, turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+      expect(result.outcome).toBe('keep-base');
+      expect(result.gate).toEqual([
+        { label: 'compose', passed: false, reason: expect.stringMatching(/held-out/) },
+        { label: 'invariant', passed: false, reason: 'Made no change.' },
+        { label: 'domain', passed: false, reason: expect.stringMatching(/same as the composite/i) },
+      ]);
+    });
+
+    it('does not judge a candidate that failed on training', async () => {
+      const probe = vi.fn(gated());
+      const turns = [...edit('You answer questions. Be brief.'), ...edit(FIX), ...edit(`${FIX} Always.`)];
+      const result = await improveAgent(options({ probe, turns }));
+      expect(result.gate?.find((verdict) => verdict.label === 'invariant')).toEqual({
+        label: 'invariant',
+        passed: false,
+        reason: 'Failed on training: No training case improved by at least 2 in 3 runs.',
+      });
+      expect(probe.mock.calls.filter(([harness, caseId]) => caseId === 'held-out' && harness.instructions.includes('brief'))).toHaveLength(0);
+    });
+
+    it('reuses held-out base reruns the composite already made', async () => {
+      const baseReruns: number[] = [];
+      const inner = gated();
+      const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+        if (harness === BASE && caseId === 'held-out' && repeat >= 2) baseReruns.push(repeat);
+        return inner(harness, caseId, repeat);
+      };
+      const result = await improveAgent(options({ probe, turns: [...noEdit, ...edit(`${FIX} Flaky.`), ...edit(`${FIX} Always.`)] }));
+      expect(result.outcome).toBe('proposal');
+      expect(result.harness?.instructions).toBe(`${FIX} Flaky.`);
+      expect(result.cases?.[1].reasons).toEqual([expect.stringMatching(/ran 3 more times/), expect.stringMatching(/within chance/)]);
+      expect(baseReruns).toEqual([2, 3, 4]);
+    });
+
+    it('judges the fallback on training and cost alone when there are no held-out cases', async () => {
+      const probe: ImproveOptions['probe'] = async (harness, caseId) =>
+        run(caseId === 'easy' || harness.instructions.includes('forbidden'), harness.instructions.includes('verbose') ? 100 : 10);
+      const turns = [...noEdit, ...edit(FIX), ...edit(`${FIX} Be verbose.`)];
+      const result = await improveAgent(options({ probe, cases: ['stuck', 'easy'], holdout: [], maxCostIncrease: 0.2, turns }));
+      expect(result.outcome).toBe('proposal');
+      expect(result.harness?.instructions).toBe(FIX);
+      expect(result.holdout).toBeUndefined();
+      expect(result.gate?.[0].reason).toMatch(/raised cost/);
+    });
+
+    it('stops with budget-exceeded during the fallback, with no gate, and keeps the candidates', async () => {
+      const inner = gated();
+      const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+        const result = await inner(harness, caseId, repeat);
+        return harness.instructions === FIX && caseId === 'held-out' ? { ...result, tokens: 1e9 } : result;
+      };
+      const result = await improveAgent(options({ probe, maxTokens: 1e8, turns: [...noEdit, ...edit(FIX), ...edit(`${FIX} Always.`)] }));
+      expect(result.outcome).toBe('budget-exceeded');
+      expect(result.harness).toBeUndefined();
+      expect(result.gate).toBeUndefined();
+      expect(result.candidates?.domain.instructions).toBe(FIX);
+    });
+  });
+
   it('shows editors which check failed', () => {
     const files = evidenceFiles({ harness: BASE, runs: [{ label: 'base', caseId: 'stuck', repeat: 0, run: { ...run(false), failure: 'follows project conventions' } }] });
     expect(files['context/runs/base/stuck-0.md']).toContain('Failed check: follows project conventions.');
+  });
+
+  it('records the failed checks the editors saw', async () => {
+    const result = await improveAgent(options({ probe: async () => ({ ...run(false), failure: 'a; b' }), turns: [...noEdit, ...noEdit, ...noEdit] }));
+    expect(result.failedChecks).toEqual(['a', 'b']);
+  });
+
+  it("adds the failed checks of an editor's candidate runs, which the composer reads", async () => {
+    const probe: ImproveOptions['probe'] = async (harness) => ({ ...run(false), failure: harness.instructions.includes('forbidden') ? 'c' : 'a' });
+    const result = await improveAgent(options({ probe, turns: [...edit(FIX), ...noEdit, ...noEdit] }));
+    expect(result.failedChecks).toEqual(['a', 'c']);
+  });
+
+  it('leaves failed checks out when no run named one', async () => {
+    const result = await improveAgent(options({ turns: [...noEdit, ...noEdit, ...noEdit] }));
+    expect(result).not.toHaveProperty('failedChecks');
   });
 
   it('never shows held-out cases to an editor', async () => {
