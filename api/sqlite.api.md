@@ -808,11 +808,8 @@ interface SetVariableNode extends NodeRunOptions {
 
 // @public
 interface SqlDatabase {
-    // (undocumented)
     close(): void;
-    // (undocumented)
     exec(sql: string): void;
-    // (undocumented)
     prepare(sql: string): SqlStatement;
 }
 
@@ -847,11 +844,8 @@ type SqlRow = Record<string, unknown>;
 
 // @public
 interface SqlStatement {
-    // (undocumented)
     all(...params: SqlValue[]): SqlRow[];
-    // (undocumented)
     get(...params: SqlValue[]): SqlRow | undefined;
-    // (undocumented)
     run(...params: SqlValue[]): {
         changes: number | bigint;
     };

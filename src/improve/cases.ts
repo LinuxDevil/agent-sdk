@@ -27,8 +27,8 @@ function captureCase(db: SqlDatabase, traceId: string, prefix: string, kind: Cap
   return { id: `${prefix}:${traceId}`, input: example.input, traceId, kind };
 }
 
-/** Turns failed runs in your local trace database into cases to learn from, skipping traces with no recorded input. */
-export function casesFromFailures(db: SqlDatabase, filter: { since?: number; agent?: string; minScore?: number }): CapturedCase[] {
+/** Turns failed runs in your local trace database into cases to learn from, at most 5 traces per failure class, skipping traces with no recorded input. */
+export function casesFromFailures(db: SqlDatabase, filter: { since?: number; agent?: string; minScore?: number } = {}): CapturedCase[] {
   const seen = new Set<string>();
   const cases: CapturedCase[] = [];
   for (const group of failureReportFromDb(db, filter).groups) {
@@ -47,7 +47,7 @@ export function protectedCasesFromPasses(db: SqlDatabase, traceIds: readonly str
   return [...new Set(traceIds)].flatMap((traceId) => captureCase(db, traceId, 'pass', 'protected') ?? []);
 }
 
-/** Builds a probe for captured cases from a function that runs your agent, scoring each answer with your check. */
+/** Builds a probe for captured cases from a function that runs your agent, scoring each answer with your check. Build each transcript with `renderTranscript`, so tool results reach the editors marked as untrusted. */
 export function probeCapturedCases(
   cases: readonly CapturedCase[],
   runCase: (harness: Harness, input: string) => Promise<{ answer: string; transcript: string; tokens: number; ended: string }>,
@@ -82,6 +82,7 @@ export async function admitProtectedCases(options: {
   }[];
 }> {
   const runs = options.runs ?? DEFAULT_ADMISSION_RUNS;
+  if (!Number.isInteger(runs) || runs < 1) throw new ConfigurationError(`runs must be a whole number of 1 or more, not ${runs}`, 'runs');
   const admitted: CapturedCase[] = [];
   const refused: { id: string; passed: number; scored: number }[] = [];
   for (const captured of options.cases) {

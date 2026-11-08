@@ -35,11 +35,16 @@ function clipped(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max)}\n[cut by the renderer at ${max} characters; the agent saw the full text]`;
 }
 
-const unmark = (text: string) => text.replace(/<\/?untrusted>/gi, '');
+const FORGED_TAG = /<\s*\/?\s*untrusted\b[^>]*>/gi;
+
+function unmark(text: string): string {
+  const stripped = text.replace(FORGED_TAG, '');
+  return stripped === text ? text : unmark(stripped);
+}
 
 function callLines(message: Message): string[] {
   if (message.role !== 'assistant') return [];
-  return (message.toolCalls ?? []).map((call) => `call ${call.function.name} ${call.function.arguments}`);
+  return (message.toolCalls ?? []).map((call) => `call ${call.function.name} ${unmark(call.function.arguments)}`);
 }
 
 /** Renders a run's messages as text for the editors to read, with long tool results cut and marked as cut. */
@@ -49,7 +54,7 @@ export function renderTranscript(messages: readonly Message[], options: { maxRes
     .filter((message) => message.role !== 'system')
     .flatMap((message) => {
       if (message.role === 'tool') return [`result ${message.toolName ?? ''}:\n<untrusted>\n${clipped(unmark(textOf(message)), max)}\n</untrusted>`];
-      const text = textOf(message);
+      const text = unmark(textOf(message));
       return [...(text ? [`${message.role}: ${text}`] : []), ...callLines(message)];
     })
     .join('\n');

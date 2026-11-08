@@ -179,7 +179,7 @@ export interface CaseCount {
 }
 
 // @public
-export function casesFromFailures(db: SqlDatabase, filter: {
+export function casesFromFailures(db: SqlDatabase, filter?: {
     since?: number;
     agent?: string;
     minScore?: number;
@@ -808,32 +808,26 @@ interface ServedBy {
 }
 
 // @public
-interface SqlDatabase {
-    // (undocumented)
+export interface SqlDatabase {
     close(): void;
-    // (undocumented)
     exec(sql: string): void;
-    // (undocumented)
     prepare(sql: string): SqlStatement;
 }
 
 // @public
-type SqlRow = Record<string, unknown>;
+export type SqlRow = Record<string, unknown>;
 
 // @public
-interface SqlStatement {
-    // (undocumented)
+export interface SqlStatement {
     all(...params: SqlValue[]): SqlRow[];
-    // (undocumented)
     get(...params: SqlValue[]): SqlRow | undefined;
-    // (undocumented)
     run(...params: SqlValue[]): {
         changes: number | bigint;
     };
 }
 
 // @public
-type SqlValue = string | number | Uint8Array | null;
+export type SqlValue = string | number | Uint8Array | null;
 
 // @public (undocumented)
 type StandardResult<Output> = {
