@@ -47,6 +47,7 @@ const PALETTE: PaletteEntry[] = [
     group: 'Safety',
     label: 'Permission rule',
     description: 'Allows, denies or asks per tool',
+    keywords: ['approval', 'allow', 'deny'],
     kind: 'permission',
     create: (graph) => ({
       kind: 'permission',

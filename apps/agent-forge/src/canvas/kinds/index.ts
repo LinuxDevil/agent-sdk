@@ -20,19 +20,8 @@ import { GenericFields } from './GenericFields';
 /** A kind tile's colour family: `kind-<tone>` in screens/agents/agents.css (also the MiniMap's node fill). */
 export type KindTone = 'accent' | 'violet' | 'info' | 'warning' | 'success' | 'neutral';
 
-/** The fixed palette groups, in the order the Nodes tab renders them. */
+/** The fixed palette groups; their render order lives in `canvas/palette/paletteModel.ts` (`PALETTE_GROUP_ORDER`, C18). */
 export type PaletteGroup = 'Start' | 'Agents' | 'Capabilities' | 'Safety' | 'Output' | 'Flow' | 'Canvas';
-
-/** The order `PaletteGroup`s render in the Nodes tab (empty groups are hidden). */
-export const PALETTE_GROUP_ORDER: readonly PaletteGroup[] = [
-  'Start',
-  'Agents',
-  'Capabilities',
-  'Safety',
-  'Output',
-  'Flow',
-  'Canvas',
-];
 
 /** One key/value row under a node card's title (`.node-row` in agents.css). */
 export interface NodeRow {

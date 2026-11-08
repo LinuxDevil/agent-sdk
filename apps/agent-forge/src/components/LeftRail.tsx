@@ -1,15 +1,8 @@
 import { useState } from 'react';
-import type { DragEvent } from 'react';
-import { useStoreApi } from '@xyflow/react';
-import { Pencil, Plus, Trash2, type LucideIcon } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useAppState } from '../state/AppState';
-import { PALETTE_DRAG_MIME } from '../canvas/dnd';
 import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
-import { addNode, ownerForNewNode } from '../graph/v2/mutations';
-import { positionFor } from '../graph/v2/reown';
-import { viewportCentrePosition } from '../canvas/paletteActions';
-import { KIND_VIEWS, PALETTE_GROUP_ORDER, type KindTone, type PaletteEntry, type PaletteGroup } from '../canvas/kinds';
-import { viewFor } from '../canvas/kinds';
+import { NodePalette } from '../canvas/palette/NodePalette';
 import { StatusPill, statusTone } from '../ui/StatusPill';
 import { navigate } from '../router/router';
 import { agentPath } from '../screens/agents/agentRoute';
@@ -329,131 +322,6 @@ function AgentsTab({ draft }: { draft: NewAgentDraft }) {
   );
 }
 
-interface PaletteItemProps {
-  id: string;
-  label: string;
-  description: string;
-  tone: KindTone;
-  Icon: LucideIcon;
-  title: string;
-  /** Set when the entry cannot be added for the current owner: the button is disabled and `title` says why. */
-  disabled?: boolean;
-  onDragStart: (e: DragEvent<HTMLButtonElement>) => void;
-  onActivate: () => void;
-}
-
-/**
- * A palette entry is a real button - drag it onto the canvas as
- * before, or activate it (click, Enter, Space) to add it without a mouse.
- * A card: the kind's icon tile, its name, and a one-line description.
- * `disabled` (an `unavailable` reason) greys it out and the reason becomes
- * the tooltip, per the "disabled controls say why" copy rule.
- */
-function PaletteItem({ id, label, description, tone, Icon, title, disabled, onDragStart, onActivate }: PaletteItemProps) {
-  const descriptionId = `palette-${id}-desc`;
-  return (
-    <button
-      type="button"
-      className="node-palette-item"
-      draggable={!disabled}
-      disabled={disabled}
-      onDragStart={onDragStart}
-      onClick={onActivate}
-      title={title}
-      // The card's name stays the bare label; the one-line description is its description.
-      aria-label={label}
-      aria-describedby={descriptionId}
-    >
-      <span className={`node-kind kind-${tone}`} aria-hidden="true">
-        <Icon size={14} strokeWidth={1.75} />
-      </span>
-      <span className="palette-text">
-        <span className="palette-name">{label}</span>
-        <span className="palette-desc" id={descriptionId}>
-          {description}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-function startPaletteDrag(e: DragEvent<HTMLButtonElement>, mime: string, payload: string) {
-  e.dataTransfer.setData(mime, payload);
-  e.dataTransfer.effectAllowed = 'move';
-}
-
-/** Every `PaletteEntry` registered in `KIND_VIEWS`, grouped under `PaletteGroup` in display order. */
-function paletteGroups(): { group: PaletteGroup; entries: PaletteEntry[] }[] {
-  const all = Object.values(KIND_VIEWS).flatMap((view) => view?.palette ?? []);
-  return PALETTE_GROUP_ORDER.map((group) => ({
-    group,
-    entries: all.filter((entry) => entry.group === group),
-  })).filter(({ entries }) => entries.length > 0);
-}
-
-/** Click/keyboard equivalents of the palette's drag-and-drop. */
-function usePaletteActions() {
-  const { graph, setGraph, selectedNodeId, setSelectedNodeId } = useAppState();
-  const flow = useStoreApi();
-  const [notice, setNotice] = useState<string | undefined>(undefined);
-
-  function addAtViewportCentre(entry: PaletteEntry) {
-    const { transform, width, height } = flow.getState();
-    const position = viewportCentrePosition(transform, width, height);
-    const owner = ownerForNewNode(graph, entry.kind, selectedNodeId);
-    // Same refusal the drop applies: an `unavailable` entry cannot be added for this owner.
-    const reason = entry.unavailable?.(graph, owner);
-    if (reason !== undefined) {
-      setNotice(reason);
-      return;
-    }
-    // A selected group owns the new node - its position must be group-relative.
-    const { graph: next, nodeId } = addNode(graph, entry.create(graph, owner), positionFor(graph, position, owner), owner);
-    setGraph(() => next);
-    setSelectedNodeId(nodeId);
-    setNotice(`Added ${entry.label} to the canvas.`);
-  }
-
-  return { notice, addAtViewportCentre };
-}
-
-function NodesTab() {
-  const { notice, addAtViewportCentre } = usePaletteActions();
-  const { graph, selectedNodeId } = useAppState();
-  const groups = paletteGroups();
-  return (
-    <div className="rail-body">
-      {groups.length === 0 && <div className="hint">Node types arrive with the next updates.</div>}
-      {groups.map(({ group, entries }) => (
-        <div key={group} className="palette-group">
-          <div className="rail-section-title overline">{group}</div>
-          {entries.map((entry) => {
-            const { tone, Icon } = viewFor(entry.kind);
-            const reason = entry.unavailable?.(graph, ownerForNewNode(graph, entry.kind, selectedNodeId));
-            return (
-              <PaletteItem
-                key={entry.id}
-                id={entry.id}
-                label={entry.label}
-                description={entry.description}
-                tone={tone}
-                Icon={Icon}
-                title={reason ?? 'Drag onto the canvas, or press to add at the centre'}
-                disabled={reason !== undefined}
-                onDragStart={(e) => startPaletteDrag(e, PALETTE_DRAG_MIME, entry.id)}
-                onActivate={() => addAtViewportCentre(entry)}
-              />
-            );
-          })}
-        </div>
-      ))}
-      <div className="hint palette-notice" role="status">
-        {notice}
-      </div>
-    </div>
-  );
-}
-
 const RAIL_TABS = [
   { id: 'agents', label: 'Agents' },
   { id: 'nodes', label: 'Nodes' },
@@ -498,7 +366,7 @@ export function LeftRail() {
       </div>
 
       <div className="rail-panel" id={ids.panel} role="tabpanel" aria-labelledby={ids.tab}>
-        {railTab === 'agents' ? <AgentsTab draft={draft} /> : <NodesTab />}
+        {railTab === 'agents' ? <AgentsTab draft={draft} /> : <NodePalette />}
       </div>
     </nav>
   );

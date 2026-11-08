@@ -46,6 +46,7 @@ const PALETTE: PaletteEntry[] = [
     group: 'Capabilities',
     label: 'Tool',
     description: 'Runs a built-in tool',
+    keywords: ['function', 'api'],
     kind: 'tool',
     create: () => ({ kind: 'tool', data: { item: { builtin: '' } } }),
   },
