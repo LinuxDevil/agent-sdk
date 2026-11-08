@@ -285,6 +285,7 @@ npx lousho observe prune --older-than 30d       # delete finished runs older tha
 npx lousho observe export --since 7d --out runs.jsonl # traces as JSONL, one per line
 npx lousho observe failures --since 7d          # recurring tool and model failures, by agent
 npx lousho observe failures --traces .lousho/traces --json # the same from trace files, no database
+npx lousho observe score --agent support        # continuous score, pass rate and trajectory gate state
 npx lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
 

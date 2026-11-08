@@ -47,6 +47,7 @@ import {
   setAgentStatus,
   transaction,
 } from './store';
+import { scoreSeries, trajectoryGate, windowSummary } from './continuousScore';
 
 /** How often the daemon sweeps; shorter than any freshness threshold. */
 const SWEEP_INTERVAL_MS = 30_000;
@@ -76,6 +77,31 @@ export interface SweepPassOptions {
   errorRateThreshold?: number;
   /** Edge memory for that alert - `agent_id` -> the day bucket already alerted on. */
   errorRateState?: Map<string, number>;
+  /** Edge memory for `agent.score_regression`: `agent_id` -> the revision already alerted on. */
+  scoreRegressionState?: Map<string, string>;
+}
+
+const SCORE_POINTS = 50;
+
+function scoreRegressionAlerts(db: SqlDatabase, now: number, seen: Map<string, string>): AlertEvent[] {
+  const alerts: AlertEvent[] = [];
+  for (const row of db.prepare('SELECT agent_id, project, name, status FROM agents').all()) {
+    const agentId = String(row.agent_id);
+    const points = scoreSeries(db, { agent: agentId, limit: SCORE_POINTS });
+    const gate = trajectoryGate(points);
+    const revision = points.at(-1)?.revision ?? '';
+    if (gate.state !== 'regression' || seen.get(agentId) === revision) continue;
+    seen.set(agentId, revision);
+    alerts.push({
+      type: 'agent.score_regression',
+      agent_id: agentId,
+      project: (row.project as string | null) ?? null,
+      status: String(row.status ?? 'unknown'),
+      at: now,
+      details: { revision, peak: gate.peak, since_gain: gate.sinceGain, runs: points.length, recent: windowSummary(points.slice(-10)), ...(row.name != null ? { name: row.name } : {}) },
+    });
+  }
+  return alerts;
 }
 
 /**
@@ -206,6 +232,7 @@ export function sweepAgents(db: SqlDatabase, now: number = Date.now(), options: 
       });
     }
   }
+  alerts.push(...scoreRegressionAlerts(db, now, options.scoreRegressionState ?? new Map<string, string>()));
   return { transitions, alerts };
 }
 
@@ -267,6 +294,7 @@ export function startStatusSweep(db: SqlDatabase, options: StatusSweepOptions = 
   const intervalMs = options.intervalMs ?? SWEEP_INTERVAL_MS;
   const now = options.now ?? Date.now;
   const errorRateSeen = new Map<string, number>();
+  const scoreRegressionSeen = new Map<string, string>();
   const days = options.retentionDays;
   // Anything but a finite positive number (unset, 0, negative, NaN) disables retention.
   const retentionMs = days !== undefined && Number.isFinite(days) && days > 0 ? days * DAY_MS : 0;
@@ -289,6 +317,7 @@ export function startStatusSweep(db: SqlDatabase, options: StatusSweepOptions = 
     const result = sweepAgents(db, at, {
       ...(options.errorRateThreshold !== undefined ? { errorRateThreshold: options.errorRateThreshold } : {}),
       errorRateState: errorRateSeen,
+      scoreRegressionState: scoreRegressionSeen,
     });
     if (result.alerts.length > 0) options.onAlerts?.(result.alerts);
     return result;

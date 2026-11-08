@@ -501,9 +501,10 @@ Traces and Trace (trace trees with latency waterfalls), Threads, Monitoring
 sessions flip to `interrupted` — over per-agent charts of runs, p95 latency,
 error rate, cost and tokens), Scores, Datasets, Evaluators, Annotation
 queues, Prompts and Context Hub. The Studio's nav shows whether it can reach
-the daemon. Alerts on `down` transitions or
-error-rate thresholds POST to `--webhook` URLs or an `alerts.json` next to
-the db.
+the daemon. Alerts on `down` transitions,
+error-rate thresholds and score regressions (see
+[Continuous score](#continuous-score)) POST to `--webhook` URLs or an
+`alerts.json` next to the db.
 
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an
@@ -863,6 +864,41 @@ shapes as the trace list and detail APIs, oldest trace first and not capped.
 count goes to stderr) unless `--out` names a file, which is overwritten. It
 reads the db directly and works without a running daemon. Captured content is
 exported as stored, so treat the file like the db.
+
+### Continuous score
+
+Each finished run of an agent becomes one point in a series, oldest first:
+
+- the mean of the run's finished online evaluator scores, when it has any;
+- otherwise 0 when the run is in the failure report (a failed call, no
+  answer, an interrupted process or a low score), and 1 when it is not.
+
+A point of 0.5 or more counts as a pass. Scores still without a value, and
+runs still in flight, are left out. Each point carries the run's
+`lousho.harness.revision`, so a series can be cut to one revision.
+
+The trajectory gate from the Self-Healing Harness paper judges the shape of
+the series rather than one number. It takes the rolling mean of the last 10
+points. The first full window sets a running peak, and a later mean at least
+0.02 above the peak is a gain that raises it. Then:
+
+| State | When |
+| --- | --- |
+| `regression` | The rolling mean falls more than 0.15 below the peak |
+| `stall` | 10 points pass without a gain while the peak is below 0.5 |
+| `ok` | Neither; a low start that keeps improving, or a plateau above 0.5 |
+
+On every sweep the daemon runs the gate over each agent's last 50 points.
+On a `regression` it raises an `agent.score_regression` alert. The alert
+fires at most once per agent per revision, where the revision is that of the
+newest point. Its `details` carry the `revision`, the `peak`, `since_gain`,
+the number of `runs`, and a `recent` summary of the last 10 points.
+
+`lousho observe score [--agent X] [--revision R] [--limit N] [--json]` prints
+the same view for each agent from the db: runs, mean, pass rate with its
+one-sided 95% Wilson lower bound, pass^3 (the chance three runs in a row
+all pass), and the gate state. It reads the db directly and works without a
+running daemon.
 
 ### Trace list API
 

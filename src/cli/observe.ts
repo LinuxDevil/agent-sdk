@@ -37,8 +37,11 @@ import { createToken, hasTokens, listTraces, openDb, pruneBefore, rebuildRollups
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import { OBSERVE_DEFAULT_PORT, OBSERVE_SERVICE } from '../observe/envelope';
 import { failureReportFromDb, failureReportFromTraces, formatFailureReport, type FailureReport } from '../observe/failures';
+import { scoreSeries, trajectoryGate, windowSummary, type TrajectoryVerdict, type WindowStat } from '../observe/continuousScore';
 import { VERSION } from '../version';
 import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
+
+const SCORE_LIMIT_DEFAULT = 50;
 
 const USAGE = `Usage: lousho observe <command> [options]
   observe start [--port N] [--db path] [--host H] [--require-token] [--webhook URL] [--retention-days N] [--session-idle-minutes N]
@@ -48,6 +51,7 @@ const USAGE = `Usage: lousho observe <command> [options]
   observe prune --older-than <N>d [--db path]
   observe export [--since <N>d|<N>h|<N>m] [--agent X] [--out file] [--db path]
   observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--min-score N] [--json] [--db path] [--traces dir]...
+  observe score [--agent X] [--revision R] [--limit N] [--json] [--db path]
   observe token create --project X [--db path]`;
 
 const HELP = `${USAGE}
@@ -74,12 +78,14 @@ Options:
   --older-than <N>d 'prune': delete finished traces older than N days now, then VACUUM the db
   --since <N>d      'export': only traces that started within the last N days (or <N>h / <N>m)
   --agent X         'export': only this agent (its agent_id, or its name when that names one agent)
+  --revision R      'score': only runs stamped with this harness revision (lousho.harness.revision)
+  --limit N         'score': judge the last N finished runs (default ${SCORE_LIMIT_DEFAULT})
   --out file        'export': write the JSONL to this file instead of stdout
   --url U           'status': the daemon's base URL (default http://127.0.0.1:<port>)
   --project X       'token create': the project the token is labeled for
   -h, --help        show this help`;
 
-type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'prune' | 'export' | 'failures' | 'token';
+type ObserveSubcommand = 'start' | 'status' | 'stop' | 'rebuild-rollups' | 'prune' | 'export' | 'failures' | 'score' | 'token';
 
 const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
   start: {
@@ -124,6 +130,11 @@ const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
     command: 'observe failures',
     usage: 'Usage: lousho observe failures [--since <N>d|<N>h|<N>m] [--agent X] [--min-score N] [--json] [--db path] [--traces dir]...',
     options: { db: { type: 'string' }, since: { type: 'string' }, agent: { type: 'string' }, json: { type: 'boolean' }, traces: { type: 'string', multiple: true }, 'min-score': { type: 'string' } },
+  },
+  score: {
+    command: 'observe score',
+    usage: 'Usage: lousho observe score [--agent X] [--revision R] [--limit N] [--json] [--db path]',
+    options: { db: { type: 'string' }, agent: { type: 'string' }, revision: { type: 'string' }, limit: { type: 'string' }, json: { type: 'boolean' } },
   },
   token: {
     command: 'observe token',
@@ -524,6 +535,64 @@ async function runFailures(args: string[]): Promise<number> {
   return 0;
 }
 
+interface AgentScore {
+  agent: string;
+  revision?: string;
+  summary: WindowStat;
+  gate: TrajectoryVerdict;
+}
+
+function scoreLimit(spec: CommandSpec, given: string | undefined): number {
+  if (given === undefined) return SCORE_LIMIT_DEFAULT;
+  const limit = Number(given);
+  if (!Number.isInteger(limit) || limit <= 0) throw usageError(spec, `--limit must be a positive whole number, got '${given}'.`);
+  return limit;
+}
+
+function agentScore(db: SqlDatabase, agent: { id: string; label: string }, filter: { revision?: string; limit: number }): AgentScore {
+  const points = scoreSeries(db, { agent: agent.id, ...filter });
+  const revision = filter.revision ?? points.at(-1)?.revision;
+  return { agent: agent.label, ...(revision !== undefined && { revision }), summary: windowSummary(points), gate: trajectoryGate(points) };
+}
+
+const percent = (value: number): string => `${Math.round(value * 100)}%`;
+
+function formatAgentScore(score: AgentScore): string {
+  const { summary, gate } = score;
+  if (summary.runs === 0) return `${score.agent}: no finished runs`;
+  const revision = score.revision === undefined ? 'no revision' : `revision ${score.revision.slice(0, 12)}`;
+  const pass3 = summary.pass3 === undefined ? '' : `  pass^3 ${summary.pass3.toFixed(2)}`;
+  return (
+    `${score.agent}  ${revision}  runs ${summary.runs}  mean ${summary.mean.toFixed(2)}  pass ${percent(summary.passRate)} (95% lower ${percent(summary.lower)})${pass3}` +
+    `  gate ${gate.state} (peak ${gate.peak.toFixed(2)}, ${gate.sinceGain} since gain)`
+  );
+}
+
+async function runScore(args: string[]): Promise<number> {
+  const spec = SUB_SPECS.score;
+  const { values, help } = parseCommand(spec, args);
+  if (help) {
+    console.log(HELP);
+    return 0;
+  }
+  const limit = scoreLimit(spec, stringValue(values.limit));
+  const revision = stringValue(values.revision);
+  const db = openDb(dbPathOf(values.db));
+  try {
+    const given = stringValue(values.agent);
+    const agents =
+      given === undefined
+        ? db.prepare('SELECT agent_id, name FROM agents ORDER BY name, agent_id').all().map((row) => ({ id: String(row.agent_id), label: String(row.name ?? row.agent_id) }))
+        : [{ id: resolveAgent(spec, db, given), label: given }];
+    const scores = agents.map((agent) => agentScore(db, agent, { ...(revision !== undefined && { revision }), limit }));
+    if (values.json === true) console.log(JSON.stringify(scores, null, 2));
+    else console.log(scores.length === 0 ? 'No agents have reported yet.' : scores.map(formatAgentScore).join('\n'));
+    return 0;
+  } finally {
+    db.close();
+  }
+}
+
 async function runToken(args: string[]): Promise<number> {
   const spec = SUB_SPECS.token;
   const { values, positionals, help } = parseCommand(spec, args);
@@ -576,6 +645,8 @@ export async function runObserve(rest: string[]): Promise<number> {
         return await runExport(subArgs);
       case 'failures':
         return await runFailures(subArgs);
+      case 'score':
+        return await runScore(subArgs);
       case 'token':
         return await runToken(subArgs);
     }

@@ -1276,19 +1276,22 @@ export interface RevisionRun {
   score?: number;
 }
 
-const REVISION_ROOTS =
-  'SELECT o.trace_id, o.start FROM observations o LEFT JOIN agents a ON a.agent_id = o.agent_id ' +
+const ROOT_REVISION = "(CASE WHEN json_valid(o.attrs) THEN json_extract(o.attrs, '$.\"lousho.harness.revision\"') END)";
+
+const FINISHED_ROOTS =
+  `SELECT o.trace_id, o.start, ${ROOT_REVISION} AS revision FROM observations o LEFT JOIN agents a ON a.agent_id = o.agent_id ` +
   "WHERE o.kind = 'span' AND o.parent_obs_id IS NULL AND o.end IS NOT NULL AND o.start >= ? AND (? = '' OR o.agent_id = ? OR a.name = ?) " +
-  "AND instr(o.attrs, ?) > 0 AND (CASE WHEN json_valid(o.attrs) THEN json_extract(o.attrs, '$.\"lousho.harness.revision\"') END) = ? " +
+  `AND (? IS NULL OR (instr(o.attrs, ?) > 0 AND ${ROOT_REVISION} = ?)) ` +
   'ORDER BY o.start DESC, o.trace_id DESC LIMIT ?';
 
 const ONLINE_MEANS =
   "SELECT trace_id, AVG(value) AS mean FROM scores WHERE source = 'online' AND value IS NOT NULL AND trace_id IN (SELECT value FROM json_each(?)) GROUP BY trace_id";
 
-/** Finished root runs stamped with `revision` (`lousho.harness.revision`), newest first; `agent` matches an agent id or its registered name. */
-export function runsByRevision(db: SqlDatabase, filter: { revision: string; agent?: string; since?: number; limit: number }): RevisionRun[] {
+/** Finished root runs, newest first, with the harness revision each was stamped with; `agent` matches an agent id or its registered name. */
+export function finishedRuns(db: SqlDatabase, filter: { revision?: string; agent?: string; since?: number; limit: number }): (RevisionRun & { revision?: string })[] {
   const agent = filter.agent ?? '';
-  const roots = db.prepare(REVISION_ROOTS).all(filter.since ?? 0, agent, agent, agent, filter.revision, filter.revision, filter.limit);
+  const revision = filter.revision ?? null;
+  const roots = db.prepare(FINISHED_ROOTS).all(filter.since ?? 0, agent, agent, agent, revision, revision, revision, filter.limit);
   if (roots.length === 0) return [];
   const traceIds = roots.map((row) => String(row.trace_id));
   const failed = failedTraceIdsFromDb(db, { since: Math.min(...roots.map((row) => Number(row.start))), traceIds });
@@ -1296,8 +1299,14 @@ export function runsByRevision(db: SqlDatabase, filter: { revision: string; agen
   return roots.map((row, i) => {
     const traceId = traceIds[i];
     const score = means.get(traceId);
-    return { traceId, startedAt: Number(row.start), failed: failed.has(traceId), ...(score !== undefined && { score }) };
+    const stamped = typeof row.revision === 'string' ? row.revision : undefined;
+    return { traceId, startedAt: Number(row.start), ...(stamped !== undefined && { revision: stamped }), failed: failed.has(traceId), ...(score !== undefined && { score }) };
   });
+}
+
+/** Finished root runs stamped with `revision` (`lousho.harness.revision`), newest first; `agent` matches an agent id or its registered name. */
+export function runsByRevision(db: SqlDatabase, filter: { revision: string; agent?: string; since?: number; limit: number }): RevisionRun[] {
+  return finishedRuns(db, filter).map(({ revision: _revision, ...run }) => run);
 }
 
 /**

@@ -11,6 +11,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defaultPidPath, startObserveDaemon, type ObserveDaemon } from '../observe/daemon';
+import type { IngestEvent } from '../observe/envelope';
 import { ingestBatch, openDb } from '../observe/store';
 import { loadDatabaseSync, type SqlDatabase } from '../storage/sqlite/driver';
 import { reporterHint, runObserve } from './observe';
@@ -74,6 +75,40 @@ describe('lousho observe', () => {
     logs.length = 0;
     expect(await runObserve(['failures', '--db', dbPath, '--json'])).toBe(0);
     expect(JSON.parse(logs.join('\n')).scanned.failed).toBe(1);
+  });
+
+  it('score prints the series summary and the gate state per agent, as text or JSON', async () => {
+    const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cli-score-')), 'o.db');
+    const db = openDb(dbPath);
+    const revision = 'c'.repeat(64);
+    ingestBatch(db, [
+      { type: 'agent.heartbeat', data: { agent_id: 'uuid-1', name: 'support', ts: 1 } },
+      ...Array.from(
+        { length: 20 },
+        (_, i): IngestEvent => ({
+          type: 'observation',
+          data: { obs_id: `r${i}`, trace_id: `t${i}`, agent_id: 'uuid-1', kind: 'span', name: 'invoke_agent support', start: 10 + i, end: 11 + i, status: 'ok', attrs: { 'gen_ai.operation.name': 'invoke_agent', 'lousho.run.finish_reason': i < 4 ? 'max-steps' : 'stop', 'lousho.harness.revision': revision } },
+        })
+      ),
+    ]);
+    db.close();
+
+    expect(await runObserve(['score', '--db', dbPath])).toBe(0);
+    expect(logs.join('\n')).toContain('support');
+    expect(logs.join('\n')).toContain('revision cccccccccccc');
+    expect(logs.join('\n')).toContain('pass 80%');
+    expect(logs.join('\n')).toContain('gate ok');
+    logs.length = 0;
+    expect(await runObserve(['score', '--db', dbPath, '--agent', 'support', '--revision', revision, '--json'])).toBe(0);
+    const [row] = JSON.parse(logs.join('\n')) as { agent: string; revision: string; summary: { runs: number; passRate: number }; gate: { state: string } }[];
+    expect(row).toMatchObject({ agent: 'support', revision, summary: { runs: 20, passRate: 0.8 }, gate: { state: 'ok' } });
+  });
+
+  it('score says when an agent has no runs, and rejects a bad --limit', async () => {
+    const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cli-score-')), 'o.db');
+    expect(await runObserve(['score', '--db', dbPath, '--agent', 'nobody'])).toBe(0);
+    expect(logs.join('\n')).toContain('nobody: no finished runs');
+    expect(await runObserve(['score', '--db', dbPath, '--limit', '0'])).toBe(2);
   });
 
   it('failures rejects a --min-score that is not a number', async () => {
