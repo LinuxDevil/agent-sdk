@@ -1,9 +1,12 @@
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import type { AlertEvent } from './alerts';
 import type { IngestEvent } from './envelope';
 import { ingestBatch, openDb } from './store';
-import { startStatusSweep, sweepAgents, type ScoreRegressionMemory } from './sweep';
+import { scoreRegressionsSince, startStatusSweep, sweepAgents, type ScoreRegressionMemory } from './sweep';
 
 const T0 = 1_700_000_000_000;
 const R1 = 'a'.repeat(64);
@@ -154,7 +157,7 @@ describe('the agent.score_regression alert', () => {
     db.close();
   });
 
-  it('the daemon sweep keeps edge memory only when it delivers alerts', () => {
+  it('the daemon sweep delivers a regression alert once', () => {
     const db = openDb(':memory:');
     ingestBatch(db, [heartbeat(), ...runs(0, 15, R1, 0.9), ...runs(15, 15, R2, 0.6)]);
     const delivered: AlertEvent[] = [];
@@ -167,6 +170,46 @@ describe('the agent.score_regression alert', () => {
     expect(regressions(delivered)).toHaveLength(1);
     expect(regressions(startStatusSweep(db, { intervalMs: 0, now: () => NOW }).run(NOW).alerts)).toEqual([]);
     db.close();
+  });
+
+  it('records no marker for a steady series', () => {
+    const db = openDb(':memory:');
+    ingestBatch(db, [heartbeat(), ...runs(0, 60, R1, 0.9)]);
+    const sweep = startStatusSweep(db, { intervalMs: 0, now: () => NOW });
+    sweep.run(NOW + 1);
+    sweep.stop();
+    expect(scoreRegressionsSince(db, 'support', 0)).toEqual([]);
+    db.close();
+  });
+
+  it('records each regression as a marker a watcher polls, even without an alert sink, and writes nothing else', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'lousho-sweep-'));
+    const agentDir = path.join(root, 'support');
+    mkdirSync(agentDir);
+    writeFileSync(path.join(agentDir, 'instructions.md'), 'Be brief.\n');
+    const db = openDb(path.join(root, 'observe.db'));
+    ingestBatch(db, [heartbeat(), ...runs(0, 15, R1, 0.9), ...runs(15, 15, R2, 0.6)]);
+    const before = readdirSync(root, { recursive: true }).map(String).sort();
+    const sweep = startStatusSweep(db, { intervalMs: 0, now: () => NOW });
+    ingestBatch(db, runs(30, 10, R2, 0.6));
+    sweep.run(NOW + 1);
+    ingestBatch(db, runs(40, 10, R2, 0.6));
+    sweep.run(NOW + 2);
+    sweep.stop();
+    expect(scoreRegressionsSince(db, 'support', 0)).toEqual([{ at: NOW + 2, revision: R2 }]);
+    expect(scoreRegressionsSince(db, 'uuid-1', 0)).toEqual([{ at: NOW + 2, revision: R2 }]);
+    expect(scoreRegressionsSince(db, 'uuid-1', NOW + 2)).toEqual([]);
+    const restarted = startStatusSweep(db, { intervalMs: 0, now: () => NOW });
+    for (let i = 0; i < 4; i++) {
+      ingestBatch(db, runs(50 + i * 10, 10, R2, 0.6));
+      restarted.run(NOW + 10 + i);
+    }
+    restarted.stop();
+    expect(scoreRegressionsSince(db, 'support', 0)).toHaveLength(1);
+    expect(readdirSync(agentDir)).toEqual(['instructions.md']);
+    expect(readdirSync(root, { recursive: true }).map(String).sort().filter((name) => !name.startsWith('observe.db'))).toEqual(before.filter((name) => !name.startsWith('observe.db')));
+    db.close();
+    rmSync(root, { recursive: true, force: true });
   });
 
   it('reads each agent through its root index and stays under 50 ms per agent at 10k scores', () => {

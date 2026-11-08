@@ -516,6 +516,17 @@ posted once per revision. The reason is plain text: links, images and markup are
 stripped. Each event is also one stderr line, and a webhook that fails never
 fails the cycle.
 
+The sweep also records each `agent.score_regression` in the db's
+`score_regressions` table, with or without webhooks. A running
+`lousho improve --watch` polls it every tick and starts a cycle with
+`trigger: 'score'` for a regression of the agent's current revision, instead
+of waiting for new failed runs; every budget, the cooldown and the kill switch
+still apply. The daemon never writes to an agent directory. A watcher lists
+itself in `watchers.json` beside the db while it runs (informational: the sweep
+records every regression, once per agent and revision, across daemon restarts).
+A score cycle learns from the revision's failed and low-scored runs; a
+regression with neither ends `idle`.
+
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an
 agent first seen today with 12 runs reports 12/day, not 12/7. The per-bucket

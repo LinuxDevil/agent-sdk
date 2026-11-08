@@ -4,6 +4,7 @@ import type { CheckpointStore } from '../execution/checkpoint';
 import { ConfigurationError } from '../execution/errors';
 import { failureReportFromDb } from '../observe/failures';
 import { runsByRevision } from '../observe/store';
+import { scoreRegressionsSince } from '../observe/sweep';
 import type { LLMProvider } from '../providers';
 import { createRateLimiter, withRateLimit } from '../providers/rateLimit';
 import { resolveProvider } from '../providers/resolveProvider';
@@ -21,7 +22,8 @@ import { harnessHash, readAgentHarness } from './revisions';
 import { loadImproveSettings, type ImproveSettings } from './settings';
 import { readState, updateState } from './state';
 import type { ImproveOptions } from './types';
-import { budgetLeft, guardScheduled, harvest, saveWatch, watchOf, type WatchContext, type WatchState } from './watchSteps';
+import { registerWatcher, unregisterWatcher } from './watchers';
+import { budgetLeft, guardScheduled, harvest, saveWatch, watchOf, type WatchContext, type WatchMemory, type WatchState } from './watchSteps';
 
 /** Options for {@link watchAgent} and {@link improveSchedule}. */
 export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' | 'agent'> {
@@ -41,6 +43,8 @@ export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' 
   alerter?: Alerter;
   /** Writes one line per `improve.*` event (default stderr). */
   log?: (line: string) => void;
+  /** A `watchers.json` beside the observe db, where the watcher registers `{ agent, dir }` while it runs. */
+  registry?: string;
 }
 
 /** What one watch tick did. */
@@ -145,16 +149,23 @@ async function countOutage(dir: string, cycle: HealCycle, notify: Notify): Promi
   notify({ type: 'improve.paused', reason, cycle: cycle.id });
 }
 
+function sameFailures(last: WatchMemory, key: ReturnType<typeof failureKey>): boolean {
+  if (last.signatures === undefined) return false;
+  return last.revision === key.revision && last.failed === key.failed && last.newest === key.newest && last.signatures.join('\n') === key.signatures.join('\n');
+}
+
 async function runCycle(options: WatchOptions, context: WatchContext, trigger: HealCycle['trigger'], now: number): Promise<WatchTick> {
   const until = cooldownUntil(options.dir, now);
   if (until) return { state: 'cooldown', reason: `The monitor's cooldown runs until ${until}, so no cycle ran.` };
   const key = failureKey(options);
   const last = watchOf(options.dir);
-  const same = last.revision === key.revision && last.failed === key.failed && last.newest === key.newest && (last.signatures ?? []).join('\n') === key.signatures.join('\n');
-  if (same && last.signatures !== undefined) return { state: 'deduped', reason: 'The same failures as the last cycle and nothing new, so no cycle ran.' };
-  const { intervalMs: _interval, reloadSettings: _reload, onCycle, onError: _onError, store: _store, alerter: _alerter, log: _log, ...heal } = options;
-  const cycle = await healOnce({ ...heal, editor: context.editor, trigger, maxTokens: budgetLeft(options.dir, options.settings, now), ...(context.signal && { signal: context.signal }) });
-  if (!NOT_WORKED.includes(cycle.outcome)) await saveWatch(options.dir, { revision: key.revision, signatures: key.signatures, failed: key.failed, ...(key.newest && { newest: key.newest }) });
+  const marked = scoreRegressionsSince(options.db, options.agent, last.scoreAt ?? 0)
+    .filter((mark) => mark.revision === null || mark.revision === key.revision)
+    .at(-1)?.at;
+  if (marked === undefined && sameFailures(last, key)) return { state: 'deduped', reason: 'The same failures as the last cycle and nothing new, so no cycle ran.' };
+  const { intervalMs: _interval, reloadSettings: _reload, onCycle, onError: _onError, store: _store, alerter: _alerter, log: _log, registry: _registry, ...heal } = options;
+  const cycle = await healOnce({ ...heal, editor: context.editor, trigger: marked === undefined ? trigger : 'score', maxTokens: budgetLeft(options.dir, options.settings, now), ...(context.signal && { signal: context.signal }) });
+  if (!NOT_WORKED.includes(cycle.outcome)) await saveWatch(options.dir, { revision: key.revision, signatures: key.signatures, failed: key.failed, ...(key.newest && { newest: key.newest }), ...(marked !== undefined && { scoreAt: marked }) });
   await countOutage(options.dir, cycle, context.notify);
   const notice = cycleNotice(cycle, options.dir);
   if (notice) context.notify(notice);
@@ -228,6 +239,7 @@ export function watchAgent(options: WatchOptions): {
         if (!stopped) timer = setTimeout(loop, options.intervalMs ?? DEFAULT_INTERVAL_MS);
       });
   };
+  const registered = options.registry ? registerWatcher(options.registry, { agent: options.agent, dir: options.dir, owner: context.owner }).catch(report) : Promise.resolve();
   loop();
   return {
     async stop() {
@@ -236,6 +248,8 @@ export function watchAgent(options: WatchOptions): {
       controller.abort();
       await running;
       await context.store.releaseLease?.(context.leaseId, context.owner);
+      await registered;
+      if (options.registry) await unregisterWatcher(options.registry, context.owner).catch(report);
     },
   };
 }
