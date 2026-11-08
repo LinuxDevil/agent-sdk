@@ -5941,8 +5941,12 @@ npx lousho improve audit ./my-agent --verify
   saved revision through the same writer as an apply: it changes only
   instructions and skills, makes a new revision and writes one `rollback` audit
   entry. It never rewrites history. Without `--to` it goes to the parent of the
-  current revision; `--to` takes an id or a unique prefix of one. `--by` is
-  required.
+  current revision. It refuses instead when the current revision came from a
+  rollback, or when the directory holds hand edits that match no revision; pass
+  `--to` then. A hand edit that a rollback replaces is saved as a revision
+  first. `--to` takes an id or a unique prefix of at least 4 characters. `--by`
+  is required. If an apply lands between your command and the write, the
+  rollback is refused as stale.
 - `audit <dir> [--verify] [--json]` prints the audit log, oldest first.
   `--verify` checks the hash chain and exits 1 at the first edited, removed or
   truncated line.
