@@ -8,7 +8,7 @@ const MAX_LINES = 8;
 function placeholderFor(viewing: boolean, isPausedForApproval: boolean): string {
   if (viewing) return 'Return to the live chat to send a message';
   if (isPausedForApproval) return 'Resolve the approval above to continue';
-  return 'Message this agent...';
+  return 'Message the agent to test it';
 }
 
 /** Fits the textarea's height to its content, capped at MAX_LINES lines. */
@@ -35,7 +35,7 @@ export interface ChatComposerProps {
 }
 
 /**
- * The Chat tab's composer: a rounded card holding a textarea that grows
+ * The Test tab's composer: a rounded card holding a textarea that grows
  * with its text (up to eight lines), the accent Send icon button, and a
  * "Shift+Enter for newline" hint. Enter sends; Shift+Enter adds a line.
  */

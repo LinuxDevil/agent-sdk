@@ -18,18 +18,18 @@ describe('viewportCentrePosition', () => {
 });
 
 describe('tab keyboard model', () => {
-  const ids = ['chat', 'logs', 'trace'] as const;
+  const ids = ['test', 'logs', 'trace'] as const;
 
   it('moves with the arrow keys, wrapping, and jumps with Home/End', () => {
-    expect(nextTabId(ids, 'chat', 'ArrowRight')).toBe('logs');
-    expect(nextTabId(ids, 'trace', 'ArrowRight')).toBe('chat');
-    expect(nextTabId(ids, 'chat', 'ArrowLeft')).toBe('trace');
-    expect(nextTabId(ids, 'logs', 'Home')).toBe('chat');
+    expect(nextTabId(ids, 'test', 'ArrowRight')).toBe('logs');
+    expect(nextTabId(ids, 'trace', 'ArrowRight')).toBe('test');
+    expect(nextTabId(ids, 'test', 'ArrowLeft')).toBe('trace');
+    expect(nextTabId(ids, 'logs', 'Home')).toBe('test');
     expect(nextTabId(ids, 'logs', 'End')).toBe('trace');
     expect(nextTabId(ids, 'logs', 'a')).toBeUndefined();
   });
 
   it('pairs each tab with its panel id', () => {
-    expect(tabIds('drawer', 'chat')).toEqual({ tab: 'drawer-tab-chat', panel: 'drawer-panel-chat' });
+    expect(tabIds('drawer', 'test')).toEqual({ tab: 'drawer-tab-test', panel: 'drawer-panel-test' });
   });
 });
