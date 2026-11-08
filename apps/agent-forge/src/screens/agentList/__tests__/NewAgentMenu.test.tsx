@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
 
 // The route table is mocked so tests can switch '/templates' on and off; the
-// real table has no '/templates' entry until A10 lands.
+// real table gained the entry in A10, but the mock keeps both states testable.
 const routesState = vi.hoisted(() => ({
   routes: [] as Array<{ pattern: string; screen: string; example: string }>,
 }));
