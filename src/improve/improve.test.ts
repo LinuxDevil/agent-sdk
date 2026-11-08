@@ -73,7 +73,8 @@ describe('improveAgent', () => {
   it('keeps the base when the edit does not beat it', async () => {
     const result = await improveAgent(options({ probe: async () => run(false), turns: [...noEdit, ...noEdit, ...edit(FIX)] }));
     expect(result.outcome).toBe('keep-base');
-    expect(result.reason).toMatch(/did not beat/i);
+    expect(result.reason).toMatch(/no training case improved/i);
+    expect(result.cases).toEqual([{ caseId: 'stuck', role: 'training', base: { passed: 0, scored: 2 }, final: { passed: 0, scored: 2 }, reasons: ['Failed under both harnesses.'] }]);
     expect(result.harness).toBeUndefined();
   });
 
@@ -102,6 +103,11 @@ describe('improveAgent', () => {
     expect(result.candidates).toBeUndefined();
   });
 
+  it('reports a verdict for each training case', async () => {
+    const result = await improveAgent(options({ turns: [...noEdit, ...edit(FIX), ...edit(FIX)] }));
+    expect(result.cases).toEqual([{ caseId: 'stuck', role: 'training', base: { passed: 0, scored: 2 }, final: { passed: 2, scored: 2 }, reasons: ['Improved from 0/2 to 2/2.'] }]);
+  });
+
   it('judges the edit against fresh base runs, not the ones that triggered editing', async () => {
     let baseCalls = 0;
     const probe: ImproveOptions['probe'] = async (harness, caseId) => {
@@ -113,7 +119,7 @@ describe('improveAgent', () => {
     expect(result.base.passRate).toBe(0);
     expect(result.freshBase?.passRate).toBe(1);
     expect(result.outcome).toBe('keep-base');
-    expect(result.reason).toMatch(/did not beat/i);
+    expect(result.reason).toMatch(/no training case improved/i);
   });
 
   it('gives the probe new repeat numbers for the fresh base runs', async () => {

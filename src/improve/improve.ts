@@ -3,6 +3,7 @@ import { CompactedLLMProviderError, ConfigurationError } from '../execution/erro
 import { MemoryWorkspace } from '../tools/workspace/MemoryWorkspace';
 import { createFsTools } from '../tools/workspace/fsTools';
 import { evidenceFiles, type LabelledRun } from './evidence';
+import { caseCount, costOnPassingCases, gateFailure, judgeTrainingCase, summarize } from './gate';
 import { diffHarness, harnessFiles, readHarness, validateHarness } from './harness';
 import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, rejectedNote } from './prompts';
 import type { Harness, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeSummary } from './types';
@@ -12,8 +13,6 @@ const DEFAULT_MAX_ALWAYS_ON = 8000;
 const DEFAULT_MAX_COST_INCREASE = 0.2;
 const DEFAULT_MAX_EDITOR_STEPS = 30;
 const STAGE_ATTEMPTS = 2;
-
-type CostComparison = NonNullable<ImproveResult['costOnPassingCases']>;
 
 class StopRun extends Error {
   constructor(
@@ -31,61 +30,8 @@ function assertOptions(options: ImproveOptions, repeats: number): void {
   if (overlap.length > 0) throw new ConfigurationError(`improveAgent: ${overlap.join(', ')} can't be both a case and held out.`, 'holdout');
 }
 
-const mean = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
-
-function spread(values: readonly number[]): number {
-  if (values.length < 2) return 0;
-  const middle = mean(values);
-  return Math.sqrt(values.reduce((sum, value) => sum + (value - middle) ** 2, 0) / values.length);
-}
-
-function summarize(runs: readonly LabelledRun[]): ProbeSummary {
-  const scored = runs.filter(({ run }) => run.passed !== null);
-  const passed = scored.filter(({ run }) => run.passed).length;
-  const repeats = [...new Set(scored.map(({ repeat }) => repeat))].map((repeat) => {
-    const own = scored.filter((entry) => entry.repeat === repeat);
-    return own.filter(({ run }) => run.passed).length / own.length;
-  });
-  return {
-    runs: runs.length,
-    excluded: runs.length - scored.length,
-    passRate: scored.length === 0 ? null : passed / scored.length,
-    noise: spread(repeats),
-    tokensPerRun: runs.length === 0 ? 0 : runs.reduce((sum, { run }) => sum + run.tokens, 0) / runs.length,
-  };
-}
-
 function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined): boolean {
   return summary.passRate === 1 && !alwaysPropose;
-}
-
-const passingTokens = (runs: readonly LabelledRun[], caseId: string) => runs.filter((entry) => entry.caseId === caseId && entry.run.passed).map((entry) => entry.run.tokens);
-
-function costOnPassingCases(before: readonly LabelledRun[], after: readonly LabelledRun[]): CostComparison | undefined {
-  const pairs = [...new Set(before.map(({ caseId }) => caseId))].flatMap((caseId) => {
-    const base = passingTokens(before, caseId);
-    const final = passingTokens(after, caseId);
-    if (base.length === 0 || final.length === 0) return [];
-    return [{ base: mean(base), final: mean(final), noise: Math.max(spread(base), spread(final)) }];
-  });
-  if (pairs.length === 0) return undefined;
-  return { cases: pairs.length, base: mean(pairs.map((pair) => pair.base)), final: mean(pairs.map((pair) => pair.final)), noise: mean(pairs.map((pair) => pair.noise)) };
-}
-
-function costFailure(cost: CostComparison, maxCostIncrease: number): string | undefined {
-  const rise = cost.final - cost.base;
-  if (cost.base <= 0 || rise <= cost.base * maxCostIncrease || rise <= cost.noise) return undefined;
-  return `The edit raised cost per passing run by more than ${Math.round(maxCostIncrease * 100)}% and more than noise (${Math.round(cost.base)} to ${Math.round(cost.final)} tokens, noise ${Math.round(cost.noise)}).`;
-}
-
-function gateFailure(base: ProbeSummary, final: ProbeSummary, holdout: { base: ProbeSummary; final: ProbeSummary } | undefined, cost: CostComparison | undefined, maxCostIncrease: number): string | undefined {
-  if (final.passRate === null || base.passRate === null) return 'The edit could not be scored.';
-  const gain = final.passRate - base.passRate;
-  if (gain <= 0 || gain <= Math.max(base.noise, final.noise)) return `The edit did not beat the base by more than noise (gain ${gain.toFixed(2)}, noise ${Math.max(base.noise, final.noise).toFixed(2)}).`;
-  if (holdout && holdout.base.passRate !== null && holdout.final.passRate !== null && holdout.final.passRate < holdout.base.passRate) {
-    return `A held-out case got worse (${holdout.base.passRate.toFixed(2)} to ${holdout.final.passRate.toFixed(2)}).`;
-  }
-  return cost && costFailure(cost, maxCostIncrease);
 }
 
 const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.trim() ?? text.trim();
@@ -200,10 +146,11 @@ async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness
   const holdout = holdoutIds.length === 0 ? undefined : { base: summarize(holdoutBaseRuns), final: summarize(holdoutFinalRuns) };
   const freshBase = summarize(freshBaseRuns);
   const cost = costOnPassingCases([...freshBaseRuns, ...holdoutBaseRuns], [...finalRuns, ...holdoutFinalRuns]);
-  const failure = gateFailure(freshBase, final, holdout, cost, options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE);
-  const shared = { freshBase, final, ...(holdout && { holdout }), ...(cost && { costOnPassingCases: cost }) };
+  const training = options.cases.map((id) => judgeTrainingCase(id, caseCount(freshBaseRuns, id), caseCount(finalRuns, id)));
+  const failure = gateFailure({ training, ...(holdout && { holdout }), ...(cost && { cost }), maxCostIncrease: options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE });
+  const shared = { freshBase, final, ...(holdout && { holdout }), ...(cost && { costOnPassingCases: cost }), cases: training.map((judged) => judged.verdict) };
   if (failure) return { outcome: 'keep-base', reason: failure, ...shared };
-  const reason = `The edit beat the base by more than noise, with no held-out regression.${cost ? '' : ' Cost could not be compared, because no case passed under both harnesses.'}`;
+  const reason = `A training case improved by at least 2 in 3 runs, none got worse, and no held-out case got worse.${cost ? '' : ' Cost could not be compared, because no case passed under both harnesses.'}`;
   return { outcome: 'proposal', reason, harness: composed, diff: diffHarness(options.harness, composed), ...shared };
 }
 
