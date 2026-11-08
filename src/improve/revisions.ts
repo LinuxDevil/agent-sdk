@@ -108,7 +108,7 @@ function readSkills(dir: string): ReadSkill[] {
   return found;
 }
 
-function readDirectory(dir: string): { harness: Harness; readOnly: string[] } {
+export function readHarnessState(dir: string): { harness: Harness; readOnly: string[] } {
   const instructions = readInstructions(dir);
   const found = readSkills(dir);
   const skills = Object.fromEntries(found.map(({ skill }) => [skill.name, { description: skill.description, content: skill.content }]));
@@ -123,7 +123,7 @@ export function harnessHash(harness: Harness): string {
 
 /** Reads instructions.md and skills/<name>/SKILL.md from an agent directory. Throws when instructions come from elsewhere. */
 export function readAgentHarness(dir: string): Harness {
-  return readDirectory(dir).harness;
+  return readHarnessState(dir).harness;
 }
 
 function isHarness(value: unknown): value is Harness {
@@ -176,7 +176,7 @@ const sameList = (a: readonly string[] = [], b: readonly string[] = []): boolean
 
 /** Saves the directory's current harness as a revision; does nothing when that revision is already the newest. */
 export function snapshotRevision(dir: string, source: HarnessRevision['source'], parent?: string): HarnessRevision {
-  const { harness, readOnly } = readDirectory(dir);
+  const { harness, readOnly } = readHarnessState(dir);
   const id = harnessHash(harness);
   const folder = path.join(dir, REVISIONS);
   const latest = readEvents(folder).at(-1);
