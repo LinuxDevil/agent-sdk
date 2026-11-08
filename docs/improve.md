@@ -10,6 +10,8 @@ and it can't change tools, permissions or limits.
 
 It's experimental: its results so far come from a small benchmark.
 
+For how this fits with recovering failed runs while the agent serves traffic, see [Self-healing and self-improvement](./self-healing.md).
+
 ```ts
 import { createAgent, defineTool } from 'lousho';
 import { formatImproveResult, improveAgent, renderTranscript, type Harness } from 'lousho/improve';
