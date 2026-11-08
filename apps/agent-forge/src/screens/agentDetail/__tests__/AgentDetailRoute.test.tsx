@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRecord, Requirement } from '../../../../shared/wireTypes';
 import { render } from '../../../ui/__tests__/render';
+import { ToastProvider } from '../../../ui/Toast';
 
 const mocks = vi.hoisted(() => {
   class MockRuntimeApiError extends Error {
@@ -23,6 +24,13 @@ vi.mock('../../../runtime/runtimeClient', () => ({
 }));
 
 import { AgentDetailRoute } from '../AgentDetailRoute';
+
+/** The detail header's enabled pill and labels editor toast, so the route renders under a provider. */
+const renderRoute = () => render(
+  <ToastProvider>
+    <AgentDetailRoute />
+  </ToastProvider>,
+);
 
 function meta(over: Partial<AgentRecord['meta']> = {}): AgentRecord['meta'] {
   return {
@@ -81,7 +89,7 @@ describe('AgentDetailRoute', () => {
   it('shows a loading status while the record is in flight', () => {
     mocks.loadAgent.mockReturnValue(new Promise(() => {}));
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     const status = host.querySelector('[role="status"]');
     expect(status?.textContent).toBe('Loading agent');
   });
@@ -89,7 +97,7 @@ describe('AgentDetailRoute', () => {
   it('renders the header, badge, Test link and tab strip for a loaded agent', async () => {
     mocks.loadAgent.mockResolvedValue(record());
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
 
     expect(host.querySelector('h1.agent-detail-name')?.textContent).toBe('Support bot');
@@ -111,7 +119,7 @@ describe('AgentDetailRoute', () => {
   it('shows the published badge with the version number', async () => {
     mocks.loadAgent.mockResolvedValue(record({ meta: { publishedVersion: 3 } }));
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
     expect(host.querySelector('.status-badge-label')?.textContent).toBe('Published v3');
   });
@@ -120,7 +128,7 @@ describe('AgentDetailRoute', () => {
     const long = 'x'.repeat(200);
     mocks.loadAgent.mockResolvedValue(record({ spec: { description: long } }));
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
 
     const more = host.querySelector<HTMLButtonElement>('button.agent-detail-more')!;
@@ -137,7 +145,7 @@ describe('AgentDetailRoute', () => {
   it('offers no Show more for a short description', async () => {
     mocks.loadAgent.mockResolvedValue(record());
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
     expect(host.querySelector('button.agent-detail-more')).toBeNull();
   });
@@ -149,7 +157,7 @@ describe('AgentDetailRoute', () => {
     ];
     mocks.loadAgent.mockResolvedValue(record({ requirements }));
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
 
     const chip = host.querySelector<HTMLAnchorElement>('a.readiness-chip.readiness-missing')!;
@@ -163,7 +171,7 @@ describe('AgentDetailRoute', () => {
       record({ requirements: [{ id: 'm', kind: 'model', status: 'ok', label: 'Model' }] }),
     );
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
 
     const chips = host.querySelectorAll('.readiness-chip');
@@ -175,7 +183,7 @@ describe('AgentDetailRoute', () => {
   it('renders no readiness chips when the record has no requirements', async () => {
     mocks.loadAgent.mockResolvedValue(record());
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
     expect(host.querySelector('.readiness-chips')).toBeNull();
   });
@@ -183,7 +191,7 @@ describe('AgentDetailRoute', () => {
   it('shows Agent not found on a 404', async () => {
     mocks.loadAgent.mockRejectedValue(new mocks.MockRuntimeApiError('not found', 404));
     go('#/agents/nope/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
     expect(host.textContent).toContain('Agent not found');
     expect(host.textContent).toContain('No agent called “nope” in this workspace.');
@@ -193,7 +201,7 @@ describe('AgentDetailRoute', () => {
   it('shows a retryable error on other failures', async () => {
     mocks.loadAgent.mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(record());
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
 
     expect(host.textContent).toContain('Could not load this agent');
@@ -209,7 +217,7 @@ describe('AgentDetailRoute', () => {
     const instructions = Array.from({ length: 15 }, (_, i) => `line ${i + 1}`).join('\n');
     mocks.loadAgent.mockResolvedValue(record({ spec: { instructions } }));
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
 
     const pre = host.querySelector('pre.agent-overview-instructions')!;
@@ -221,7 +229,7 @@ describe('AgentDetailRoute', () => {
   it('names the prompt file when instructions is a { file } ref', async () => {
     mocks.loadAgent.mockResolvedValue(record({ spec: { instructions: { file: 'prompts/support.md' } } }));
     go('#/agents/support-bot/overview');
-    const host = render(<AgentDetailRoute />);
+    const host = renderRoute();
     await flush();
     expect(host.textContent).toContain('Loaded from prompts/support.md');
   });
