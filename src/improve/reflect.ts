@@ -38,7 +38,8 @@ const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function withoutHoldout(result: ImproveResult): ImproveResult {
   const ids = (result.cases ?? []).filter((verdict) => verdict.role === 'holdout').map((verdict) => verdict.caseId);
   if (ids.length === 0) return result;
-  const names = ids.map((id, index) => [new RegExp(`(?<![\\w-])${escaped(id)}(?![\\w-])`, 'g'), `held-out case ${index + 1}`] as const);
+  const named = ids.map((id, index) => [id, `held-out case ${index + 1}`] as const).sort(([a], [b]) => b.length - a.length);
+  const names = named.map(([id, name]) => [new RegExp(`(?<![\\w-])${escaped(id)}(?![\\w-])`, 'gi'), name] as const);
   const hide = (text: string) => names.reduce((out, [pattern, name]) => out.replace(pattern, name), text);
   return JSON.parse(JSON.stringify(result), (_key, value: unknown) => (typeof value === 'string' ? hide(value) : value)) as ImproveResult;
 }
@@ -155,7 +156,7 @@ function tryVote(dir: string, id: string, vote: 'helped' | 'hurt'): LibraryEntry
   }
 }
 
-/** Votes on an applied edit's fate: helped on entries the winning editor cited when kept; hurt on the cycle's entry and cited entries when rolled back. Returns the entries voted on. */
+/** Votes once per cycle on an applied edit's fate: helped on entries the winning editor cited when kept; hurt on the cycle's entry and cited entries when rolled back. Returns the entries voted on. */
 export function voteOnOutcome(
   dir: string,
   options: {

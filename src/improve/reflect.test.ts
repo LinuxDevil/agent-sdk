@@ -184,7 +184,8 @@ describe('reflect', () => {
       reason: 'Held-out case secret-case-7 held.',
       cases: [
         { caseId: 'stuck', role: 'training', base: { passed: 0, scored: 3 }, final: { passed: 3, scored: 3 }, reasons: ['Improved.'] },
-        { caseId: 'secret-case-7', role: 'holdout', base: { passed: 3, scored: 3 }, final: { passed: 3, scored: 3 }, reasons: ['secret-case-7 held.'] },
+        { caseId: 'secret', role: 'holdout', base: { passed: 3, scored: 3 }, final: { passed: 3, scored: 3 }, reasons: ['secret held.'] },
+        { caseId: 'secret-case-7', role: 'holdout', base: { passed: 3, scored: 3 }, final: { passed: 3, scored: 3 }, reasons: ['SECRET-CASE-7 held.'] },
       ],
     });
     const provider = mockModel([{ toolCalls: ['card.md', 'cases.md'].map((name) => ({ name: 'read_file', args: { path: `context/${name}` } })) }, reply('NO_ENTRY')]);
