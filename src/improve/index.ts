@@ -7,6 +7,7 @@ export { canaryReplay } from './canary';
 export type { CanaryReplayOptions, CanaryReplayResult } from './canary';
 export { addEntry, libraryFiles, libraryHome, voteEntry } from './library';
 export type { LibraryEntry } from './library';
+export { citedEntries, reflect, voteOnOutcome } from './reflect';
 export type { CapturedCase, CaseCheck } from './cases';
 export type { SqlDatabase, SqlRow, SqlStatement, SqlValue } from '../storage/sqlite/driver';
 export type { CaseCount, CaseVerdict, GateVerdict, Harness, ImproveChange, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeRun, ProbeSummary, RecoveryEvidence } from './types';

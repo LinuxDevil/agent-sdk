@@ -35,7 +35,7 @@ function failedChecks(runs: readonly LabelledRun[]): string[] {
   return [...new Set(runs.flatMap(({ run }) => (run.failure ? run.failure.split('; ') : [])))];
 }
 
-function winningNotes(result: Pick<ImproveResult, 'gate'>, stages: readonly ImproveStage[]): string {
+export function winningNotes(result: Pick<ImproveResult, 'gate'>, stages: readonly ImproveStage[]): string {
   const label = result.gate?.find((verdict) => verdict.passed)?.label ?? 'compose';
   return stages.find((stage) => stage.label === label)?.notes ?? '';
 }

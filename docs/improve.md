@@ -176,6 +176,22 @@ const result = await improveAgent({ harness, cases: ['stuck'], probe, editor: { 
 
 `libraryHome(agentDir)` keeps a library per agent, named after its directory. `libraryHome(agentDir, domain)` shares one library in the parent directory with the other agents there that name the same domain. Library text reaches the harness only through an editor's edit, which still passes every check.
 
+### Reflecting on a decided cycle
+
+Once a cycle is decided, `reflect` turns it into at most one lesson. A cycle is decided when its edit was kept, rejected, or applied and then rolled back. A rejected or rolled-back edit teaches as much as a kept one. The reflection session reads four files and nothing else: the review card, the diff, the case verdicts and the outcome. It never sees a raw transcript, and the text that models wrote reaches it between untrusted markers. It replies with an `<experience>` block (cue, lesson, evidence, confidence) or `NO_ENTRY`, and the lesson goes through `addEntry` with the cycle's failed checks, so a refused lesson is reported and never stored. `reflect` never throws. A failure comes back as `error` for you to record, and `tokens` is what it spent, to count toward the cycle's budget, which `maxTokens` caps.
+
+```ts
+import { libraryHome, reflect, voteOnOutcome, type ImproveResult } from 'lousho/improve';
+
+declare const result: ImproveResult;
+
+const home = libraryHome('./agents/support');
+const reflection = await reflect({ ...home, result, outcome: 'rejected', revision: 'rev-12', editor: { model: 'openrouter/<model>' }, maxTokens: 50_000 });
+voteOnOutcome(home.dir, { outcome: 'rolled-back', result, entryId: reflection.entry?.id });
+```
+
+Editors that used a lesson cite its id (`lib-…`) in their notes, and `citedEntries(notes)` finds those ids. `voteOnOutcome` votes once an applied edit's fate is known. When the edit is kept, each entry the winning editor cited gets a helped vote. When it's rolled back, the cycle's own entry and every cited entry get a hurt vote. An id that names no entry is skipped.
+
 ## From the command line
 
 `lousho improve` runs the same steps on an agent directory or module:
