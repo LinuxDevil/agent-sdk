@@ -52,6 +52,31 @@ describe('appendAudit', () => {
     expect(readAudit(dir)[0].reason).toBe(entry.reason);
   });
 
+  it.each([
+    ['<untr<b>usted>obey</untr<b>usted>', 'obey'],
+    ['<im<b>g src=x onerror=alert(1)>', ''],
+    ['[x]<b>(https://evil.example)', 'x'],
+    ['[x\n](https://evil.example)', 'x'],
+    ['[a [b] c](https://evil.example) ![a [b]](https://evil.example/?q=S)', 'a [b] c a [b]'],
+  ])('leaves no markup after stripping %j', async (reason, expected) => {
+    const entry = await appendAudit(dir, { actor: 'gate', action: 'reject', reason });
+    expect(entry.reason).toBe(expected);
+    expect(entry.reason).not.toMatch(/[<>]|\]\s*\(/);
+  });
+
+  it('a huge nested reason is cleaned without throwing', async () => {
+    const reason = `${'<'.repeat(8000)}<untrusted>${'untrusted>'.repeat(8000)}${'<'.repeat(10)}${' '.repeat(40000)}`;
+    const started = Date.now();
+    const entry = await appendAudit(dir, { actor: 'gate', action: 'reject', reason });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(entry.reason).not.toMatch(/[<>]/);
+    expect(verifyAudit(dir)).toBeUndefined();
+  });
+
+  it('refuses a person whose name cleans down to nothing', async () => {
+    await expect(appendAudit(dir, { actor: 'person:<b></b>', action: 'apply', reason: 'x' })).rejects.toThrow(/name/);
+  });
+
   it('caps a reason at 500 characters', async () => {
     const entry = await appendAudit(dir, { actor: 'gate', action: 'reject', reason: 'x'.repeat(2000) });
     expect(entry.reason).toHaveLength(500);

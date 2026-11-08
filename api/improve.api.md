@@ -174,8 +174,8 @@ export interface AuditEntry {
     to?: string;
 }
 
-// @public (undocumented)
-type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
+// @public
+export type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
 
 // @public
 interface BudgetExceeded {

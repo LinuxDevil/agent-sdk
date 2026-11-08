@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { ConfigurationError } from '../execution/errors';
 import { withFileLock } from '../storage/fileLock';
 
 /** One change to an agent's harness or its self-healing state. */
@@ -53,19 +54,25 @@ export interface AuditEntry {
 const LOG = path.join('.lousho', 'audit.jsonl');
 const MAX_REASON = 500;
 const MAX_NAME = 100;
-const FORGED_TAG = /<\s*\/?\s*untrusted\b[^>]*>/gi;
-const IMAGE = /!\[([^\]\n]{0,500})\]\([^)\n]{0,2000}\)/g;
-const LINK = /\[([^\]\n]{0,500})\]\([^)\n]{0,2000}\)/g;
-const HTML_TAG = /<\/?[a-z][^<>\n]{0,500}>/gi;
+const MAX_PASSES = 8;
+const FORGED_TAG = /<[\s/]*untrusted\b[^<>]{0,200}>/gi;
+const LABEL = String.raw`((?:[^[\]]|\[[^[\]]{0,200}\]){0,500})`;
+const IMAGE = new RegExp(String.raw`!\[${LABEL}\]\([^)]{0,2000}\)`, 'g');
+const LINK = new RegExp(String.raw`\[${LABEL}\]\([^)]{0,2000}\)`, 'g');
+const HTML_TAG = /<\/?[a-z][^<>]{0,500}>/gi;
 
-function unmark(text: string): string {
-  const stripped = text.replace(FORGED_TAG, '');
-  return stripped === text ? text : unmark(stripped);
+function stripOnce(text: string): string {
+  return text.replace(FORGED_TAG, '').replace(HTML_TAG, '').replace(IMAGE, '$1').replace(LINK, '$1').replace(/!\[/g, '[');
 }
 
 function plain(text: string, max: number): string {
-  const flat = unmark(text).replace(IMAGE, '$1').replace(LINK, '$1').replace(HTML_TAG, '');
-  return flat.replace(/\s+/g, ' ').trim().slice(0, max);
+  let current = text.slice(0, max * 4).replace(/\s+/g, ' ');
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    const next = stripOnce(current);
+    if (next === current) break;
+    current = next;
+  }
+  return current.replace(/[<>]/g, '').replace(/\]\s*\(/g, '] ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
 function sha(text: string): string {
@@ -83,14 +90,18 @@ function linesOf(text: string): string[] {
   return lines;
 }
 
-type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
+/** What a caller gives {@link appendAudit}; the log fills in `seq`, `at`, `prev` and `hash`. */
+export type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
 
 function present<T extends object>(fields: T): T {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as T;
 }
 
 function cleanActor(actor: AuditEntry['actor']): AuditEntry['actor'] {
-  return actor.startsWith('person:') ? `person:${plain(actor.slice('person:'.length), MAX_NAME)}` : actor;
+  if (!actor.startsWith('person:')) return actor;
+  const name = plain(actor.slice('person:'.length), MAX_NAME);
+  if (name === '') throw new ConfigurationError(`appendAudit: the person's name in '${actor}' is empty once markup is removed. Pass a plain name.`, 'actor');
+  return `person:${name}`;
 }
 
 function cleanEvidence(evidence: AuditEntry['evidence']): AuditEntry['evidence'] {
