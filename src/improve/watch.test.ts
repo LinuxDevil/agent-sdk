@@ -6,9 +6,10 @@ import type { IngestEvent } from '../observe/envelope';
 import { ingestBatch, openDb } from '../observe/store';
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import { mockModel, type MockRequest } from '../testing';
-import { readAudit } from './audit';
+import { appendAudit, readAudit } from './audit';
 import { readCorpus } from './corpus';
-import { readCycles } from './cycles';
+import { readCycles, usageToday } from './cycles';
+import { budgetLeft } from './watchSteps';
 import { healOnce, type HealOptions } from './heal';
 import { checkApplied } from './monitor';
 import { currentRevision } from './revisions';
@@ -183,15 +184,50 @@ describe('watchTick', () => {
     const down: HealOptions['runCase'] = async () => {
       throw new Error('provider down');
     };
-    for (let i = 0; i < 3; i++) {
-      seedFailures();
-      expect((await watchTick(options({ runCase: down }), context)).cycle?.outcome).toBe('outage');
-    }
+    seedFailures();
+    for (let i = 0; i < 3; i++) expect((await watchTick(options({ runCase: down, settings: settings({ trigger: { minNewFailures: 3, requireRecurring: true } }) }), context, 'manual')).cycle?.outcome).toBe('outage');
     expect(existsSync(path.join(dir, '.lousho', 'improve.stop'))).toBe(true);
     expect(actions()).toEqual(['pause']);
-    seedFailures();
     expect((await watchTick(options({ runCase: down }), context)).state).toBe('paused');
     expect(actions()).toEqual(['pause']);
+  });
+
+  it('maxCyclesPerDay, the daily token cap and an audited rollback each stop the cycle', async () => {
+    const context = watchContext(options());
+    seedFailures();
+    expect((await watchTick(options({ settings: settings({ budget: { maxTokensPerDay: 10, maxCyclesPerDay: 4, maxAppliesPerDay: 1 } }) }), context)).cycle).toMatchObject({ outcome: 'budget-exceeded' });
+    expect((await watchTick(options({ settings: settings({ budget: { maxTokensPerDay: 2_000_000, maxCyclesPerDay: 1, maxAppliesPerDay: 1 } }) }), context, 'manual')).cycle).toMatchObject({ outcome: 'budget', reason: expect.stringMatching(/cycles have run/) });
+    await appendAudit(dir, { actor: 'monitor', action: 'rollback', reason: 'Regressed.' });
+    expect((await watchTick(options(), context, 'manual')).cycle).toMatchObject({ outcome: 'cooldown' });
+  });
+
+  it("counts the watcher's own guard runs toward the day's tokens", async () => {
+    const context = watchContext(options());
+    seedFailures();
+    await watchTick(options({ protect: ['p1'] }), context);
+    const before = usageToday(dir, Date.now()).tokens;
+    const guarded = await watchTick(options(), context);
+    expect(guarded.guard?.tokens).toBeGreaterThan(0);
+    expect(usageToday(dir, Date.now()).tokens).toBe(before + (guarded.guard?.tokens ?? 0));
+    expect(budgetLeft(dir, settings(), Date.now())).toBe(2_000_000 - usageToday(dir, Date.now()).tokens);
+  });
+
+  it('renews its lease while a long tick runs, so a second watcher stays out', async () => {
+    seedFailures();
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const slow: HealOptions['runCase'] = async (harness, input) => {
+      await gate;
+      return runCase(harness, input);
+    };
+    const short = { intervalMs: 30 };
+    const first = watchTick(options({ ...short, runCase: slow }), watchContext(options(short)));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect((await watchTick(options(short), watchContext(options(short)))).state).toBe('leased');
+    release();
+    expect((await first).cycle?.outcome).toBe('applied');
   });
 
   it('runs the corpus guard once guard.everyHours have passed', async () => {
@@ -217,6 +253,10 @@ describe('watchTick', () => {
     const fixed = readCorpus(dir).filter((item) => item.origin === 'fixed');
     expect(fixed.length).toBeGreaterThan(0);
     expect(fixed.every((item) => item.revision === currentRevision(dir))).toBe(true);
+    await watchTick(options(), context);
+    expect(readCorpus(dir).filter((item) => item.origin === 'fixed')).toHaveLength(fixed.length);
+    vi.mocked(checkApplied).mockResolvedValueOnce({ state: 'rolled-back' });
+    await updateState(dir, { monitor: undefined });
     await watchTick(options(), context);
     expect(readCorpus(dir).filter((item) => item.origin === 'fixed')).toHaveLength(fixed.length);
   });

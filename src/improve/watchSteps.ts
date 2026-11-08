@@ -6,7 +6,7 @@ import { addToCorpus, readCorpus, type CorpusCase } from './corpus';
 import { guardCorpus, type GuardCorpusResult } from './corpusGuard';
 import { dayStart, readCycles, usageToday, type HealCycle } from './cycles';
 import { corpusCases } from './healApply';
-import { caseProbe, libraryOf, unscored } from './healState';
+import { BudgetSpent, caseProbe, libraryOf, unscored } from './healState';
 import type { MonitorVerdict } from './monitor';
 import { voteOnOutcome } from './reflect';
 import { harnessHash, readAgentHarness } from './revisions';
@@ -17,6 +17,7 @@ import type { WatchOptions } from './watch';
 
 export interface WatchContext {
   owner: string;
+  leaseId: string;
   store: CheckpointStore;
   editor: ImproveOptions['editor'];
   signal?: AbortSignal;
@@ -24,9 +25,10 @@ export interface WatchContext {
 
 export interface WatchMemory {
   paused?: string;
-  signatures?: string[];
   revision?: string;
+  signatures?: string[];
   failed?: number;
+  newest?: string;
   outages?: number;
   guardAt?: number;
   spentDay?: number;
@@ -52,9 +54,7 @@ export async function saveWatch(dir: string, change: Partial<WatchMemory>): Prom
 }
 
 export function budgetLeft(dir: string, settings: ImproveSettings, now: number): number {
-  const watch = watchOf(dir);
-  const spent = watch.spentDay === dayStart(now) ? (watch.spent ?? 0) : 0;
-  return settings.budget.maxTokensPerDay - spent - usageToday(dir, now).tokens;
+  return settings.budget.maxTokensPerDay - usageToday(dir, now).tokens;
 }
 
 async function addSpent(dir: string, tokens: number, now: number): Promise<void> {
@@ -66,16 +66,35 @@ async function addSpent(dir: string, tokens: number, now: number): Promise<void>
   });
 }
 
-function counting(probe: ImproveOptions['probe'], spent: { tokens: number }): ImproveOptions['probe'] {
+interface Spend {
+  tokens: number;
+  limit: number;
+}
+
+function metered(probe: ImproveOptions['probe'], spend: Spend): ImproveOptions['probe'] {
   return async (harness, caseId, repeat) => {
+    if (spend.tokens >= spend.limit) throw new BudgetSpent();
     const run = await probe(harness, caseId, repeat);
-    spent.tokens += run.tokens;
+    spend.tokens += run.tokens;
     return run;
   };
 }
 
-function corpusProbe(options: WatchOptions, cases: readonly CapturedCase[], spent: { tokens: number }): ImproveOptions['probe'] {
-  return counting(unscored(caseProbe(cases, options.runCase, options.check), new Set(), undefined), spent);
+async function withSpend<T>(options: WatchOptions, now: number, task: (spend: Spend) => Promise<T>): Promise<T | undefined> {
+  const spend: Spend = { tokens: 0, limit: budgetLeft(options.dir, options.settings, now) };
+  if (spend.limit <= 0) return undefined;
+  try {
+    return await task(spend);
+  } catch (error) {
+    if (error instanceof BudgetSpent) return undefined;
+    throw error;
+  } finally {
+    await addSpent(options.dir, spend.tokens, now);
+  }
+}
+
+function corpusProbe(options: WatchOptions, cases: readonly CapturedCase[], spend: Spend, signal: AbortSignal | undefined): ImproveOptions['probe'] {
+  return metered(unscored(caseProbe(cases, options.runCase, options.check), new Set(), signal), spend);
 }
 
 function cycleOfApply(dir: string, applySeq: number): HealCycle | undefined {
@@ -93,45 +112,53 @@ function fixedCases(options: WatchOptions, cycle: HealCycle): CapturedCase[] {
   });
 }
 
-async function admitFixed(options: WatchOptions, cycle: HealCycle, now: number): Promise<void> {
+async function admitFixed(options: WatchOptions, cycle: HealCycle, now: number, signal: AbortSignal | undefined): Promise<void> {
   const cases = fixedCases(options, cycle);
-  if (cases.length === 0 || budgetLeft(options.dir, options.settings, now) <= 0) return;
-  const spent = { tokens: 0 };
+  if (cases.length === 0) return;
   const harness = readAgentHarness(options.dir);
-  const { admitted } = await admitProtectedCases({ harness, cases, probe: corpusProbe(options, cases, spent), runs: ADMISSION_RUNS });
-  await addSpent(options.dir, spent.tokens, now);
+  const admitted = await withSpend(options, now, async (spend) => (await admitProtectedCases({ harness, cases, probe: corpusProbe(options, cases, spend, signal), runs: ADMISSION_RUNS })).admitted);
+  if (!admitted || admitted.length === 0) return;
   const revision = harnessHash(harness);
   const addedAt = new Date(now).toISOString();
   const fixed = admitted.map((item): CorpusCase => ({ id: item.id, traceId: item.traceId, input: item.input, addedAt, revision, origin: 'fixed', baseline: { passed: ADMISSION_RUNS, scored: ADMISSION_RUNS } }));
-  if (fixed.length > 0) await addToCorpus(options.dir, fixed, options.settings.guard.maxCases);
+  await addToCorpus(options.dir, fixed, options.settings.guard.maxCases);
 }
 
-/** Votes once on the library entries behind an apply the monitor decided, and adds the cases a kept edit fixed to the corpus once they pass 6 of 6. */
-export async function harvest(options: WatchOptions, monitor: MonitorVerdict, now: number): Promise<void> {
+function harvestClaim(current: Partial<WatchState>): number | undefined {
+  const applySeq = current.monitor?.applySeq;
+  return applySeq !== undefined && current.watch?.harvested !== applySeq ? applySeq : undefined;
+}
+
+async function claimHarvest(dir: string): Promise<number | undefined> {
+  let claimed: number | undefined;
+  await updateState<WatchState>(dir, (current) => {
+    claimed = harvestClaim(current);
+    return claimed === undefined ? {} : { watch: { ...current.watch, harvested: claimed } };
+  });
+  return claimed;
+}
+
+export async function harvest(options: WatchOptions, monitor: MonitorVerdict, now: number, signal?: AbortSignal): Promise<void> {
   if (monitor.state !== 'kept' && monitor.state !== 'rolled-back') return;
-  const state = readState<WatchState>(options.dir);
-  const applySeq = state.monitor?.applySeq;
-  if (applySeq === undefined || state.watch?.harvested === applySeq) return;
-  await saveWatch(options.dir, { harvested: applySeq });
+  const applySeq = await claimHarvest(options.dir);
+  if (applySeq === undefined) return;
   const cycle = cycleOfApply(options.dir, applySeq);
   if (!cycle?.result) return;
   const library = libraryOf(options.dir, options.settings);
   if (library) voteOnOutcome(library.dir, { outcome: monitor.state, result: cycle.result, domain: library.domain });
-  if (monitor.state === 'kept') await admitFixed(options, cycle, now);
+  if (monitor.state === 'kept') await admitFixed(options, cycle, now, signal);
 }
 
-/** Replays the corpus under the current revision once `guard.everyHours` have passed, rolling back on a regression. */
-export async function guardScheduled(options: WatchOptions, now: number): Promise<GuardCorpusResult | undefined> {
+export async function guardScheduled(options: WatchOptions, now: number, signal?: AbortSignal): Promise<GuardCorpusResult | undefined> {
   const { dir, settings } = options;
   const last = watchOf(dir).guardAt;
   if (last !== undefined && now - last < settings.guard.everyHours * HOUR_MS) return undefined;
   const corpus = readCorpus(dir);
-  if (corpus.length === 0 || budgetLeft(dir, settings, now) <= 0) return undefined;
+  if (corpus.length === 0) return undefined;
   const revision = harnessHash(readAgentHarness(dir));
   const earlier = readAudit(dir).filter((entry) => (entry.action === 'guard-pass' || entry.action === 'guard-fail') && entry.to === revision).length;
-  const spent = { tokens: 0 };
-  const guard = await guardCorpus(dir, { probe: corpusProbe(options, corpusCases(corpus), spent), runs: settings.guard.runs, rollback: true, firstRepeat: GUARD_FIRST_REPEAT + earlier * GUARD_RANGE });
-  await addSpent(dir, spent.tokens, now);
-  await saveWatch(dir, { guardAt: now });
+  const firstRepeat = GUARD_FIRST_REPEAT + earlier * GUARD_RANGE;
+  const guard = await withSpend(options, now, (spend) => guardCorpus(dir, { probe: corpusProbe(options, corpusCases(corpus), spend, signal), runs: settings.guard.runs, rollback: true, firstRepeat, ...(signal && { signal }) }));
+  if (guard) await saveWatch(dir, { guardAt: now });
   return guard;
 }

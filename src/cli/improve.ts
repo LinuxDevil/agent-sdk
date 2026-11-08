@@ -525,6 +525,7 @@ async function watchDir(args: ImproveArgs, io: ImproveIo, dir: string, config: C
         runCase: runCaseWith(config, args, io, new Map()),
         editor,
         settings,
+        reloadSettings: () => loadImproveSettings(dir, args.approval ? { approval: args.approval } : {}),
         agent,
         protect: args.protect,
         withRecoveries: args.withRecoveries === true,
@@ -543,13 +544,22 @@ async function watchDir(args: ImproveArgs, io: ImproveIo, dir: string, config: C
   }
 }
 
+function assertWatchArgs(args: ImproveArgs, target: DevTarget, forced: string | undefined): void {
+  if (!args.watch) {
+    if (args.intervalMs !== undefined) throw usageError(SPEC, '--interval only applies with --watch.');
+    return;
+  }
+  if (args.maxTokens !== undefined || args.out !== undefined) throw usageError(SPEC, '--watch takes its token budget from improve.json and writes no --out file; drop --max-tokens and --out.');
+  if (args.dryRun || forced || target.kind !== 'dir') throw usageError(SPEC, `--watch needs an agent directory whose instructions live in instructions.md, and can't be a dry run${forced ? `: ${forced}` : ''}.`);
+}
+
 async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
   const target = detectTarget(args.path, 'improve');
   const config = await loadConfig(target);
   if (args.out !== undefined) assertOutUsable(args.out, target, config);
   const harness = baseHarness(config);
   const forced = args.dryRun ? undefined : dryRunReason(target, harness);
-  if (args.watch && (args.dryRun || forced || target.kind !== 'dir')) throw usageError(SPEC, `--watch needs an agent directory whose instructions live in instructions.md, and can't be a dry run${forced ? `: ${forced}` : ''}.`);
+  assertWatchArgs(args, target, forced);
   if (forced) io.stderr.write(`lousho improve: this is a dry run, because ${forced}. Nothing will be applied.\n`);
   if (args.dryRun || forced || target.kind !== 'dir') return proposeOnly(args, io, target, config, harness);
   return args.watch ? watchDir(args, io, target.path, config) : healDir(args, io, target.path, config);

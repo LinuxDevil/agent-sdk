@@ -34,6 +34,31 @@ export function admitProtectedCases(options: {
 const AGENT_EVENT_SCHEMA_VERSION: 1;
 
 // @public
+interface AgentApprovals {
+    answer(reply: {
+        id: string;
+        answer: string;
+    }, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    get(id: string): Promise<PendingApproval | undefined>;
+    list(): Promise<PendingApproval[]>;
+    resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    resolveAll(decisions: readonly ApprovalDecision[], options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    streamAnswer(reply: {
+        id: string;
+        answer: string;
+    }, options?: ResolveApprovalOptions): AgentRun;
+    streamResolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): AgentRun;
+}
+
+// @public
+type AgentCompaction = boolean | AgentCompactionOptions;
+
+// @public
+interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
+    summarizer?: LLMProvider | string;
+}
+
+// @public
 interface AgentDrift {
     instructions: boolean;
     model?: {
@@ -112,12 +137,70 @@ interface AgentEventUsage {
 }
 
 // @public
+interface AgentFingerprint {
+    hash: string;
+    instructions: string;
+    model?: string;
+    tools: Record<string, string>;
+    // (undocumented)
+    version: number;
+}
+
+// @public
 interface AgentHook {
     name: string;
     postGenerate?(ctx: GenerateHookContext, result: GenerateResult): void | Promise<void>;
     postToolCall?(ctx: ToolCallHookContext, result: ToolCallHookResult): MaybePromise<PostToolCallOutcome | void>;
     preGenerate?(ctx: GenerateHookContext): void | Promise<void>;
     preToolCall?(ctx: ToolCallHookContext): MaybePromise<PreToolCallOutcome | void>;
+}
+
+// @public
+type AgentInput = string | ContentPart[] | Message[];
+
+// @public
+interface AgentOAuth {
+    complete(params: OAuthCallbackParams): Promise<OAuthCompleteResult>;
+    mcpSignInUrl(server: string): Promise<string>;
+    signInUrl(provider: OAuthProvider): Promise<string>;
+}
+
+// @public
+interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
+    enqueue(input: AgentInput): EnqueueResult;
+    readonly result: Promise<ExecutionResult<TObject>>;
+    readonly runId: string;
+    steer(input: AgentInput): SteerResult;
+}
+
+// @public
+class AgentSession<TObject = unknown> {
+    constructor(run: SessionRunner, options?: SessionOptions, streamRun?: SessionStreamRunner, spawn?: SessionSpawner);
+    protected readonly checkpointStore: CheckpointStore | undefined;
+    clear(): Promise<void>;
+    compact(options?: SessionCompactOptions): Promise<SessionCompactResult>;
+    protected continueTurn(next: () => Promise<ExecutionResult>): Promise<ExecutionResult>;
+    protected readonly currentPermissionMode: () => PermissionMode;
+    discardPending(): Promise<void>;
+    fork(options: SessionForkOptions): Promise<AgentSession<TObject>>;
+    protected readonly forwardToListeners: (event: AgentEvent) => void;
+    history(): Promise<SessionHistoryStep[]>;
+    // (undocumented)
+    readonly id: string;
+    load(): Promise<readonly Message[]>;
+    get messages(): readonly Message[];
+    on(listener: (event: AgentEvent) => void): () => void;
+    protected pausedTurnFound(_approvalId: string): void;
+    pending(): Promise<PendingTurn | null>;
+    protected pendingTurnDiscarded(_approvalIds: string[]): Promise<void>;
+    get permissionMode(): PermissionMode;
+    resume(options?: {
+        signal?: AbortSignal;
+    }): Promise<ExecutionResult | null>;
+    send(input: AgentInput, options?: SessionSendOptions): Promise<ExecutionResult<TObject>>;
+    setPermissionMode(mode: PermissionMode): void;
+    stream(input: AgentInput, options?: SessionSendOptions): AgentRun<TObject>;
+    protected get turnEvents(): ((event: AgentEvent) => void) | undefined;
 }
 
 // @public
@@ -149,6 +232,18 @@ export type Approval = {
     mode: 'manual';
     approvedBy: string;
 };
+
+// @public
+interface ApprovalDecision {
+    // (undocumented)
+    approved: boolean;
+    args?: Record<string, unknown>;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    note?: string;
+    remember?: 'session';
+}
 
 // @public
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
@@ -219,6 +314,25 @@ export interface AuditEntry {
 export type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
 
 // @public
+type BackgroundTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'awaiting-approval';
+
+// @public
+interface BackgroundTaskView {
+    // (undocumented)
+    agent: string;
+    approvalId?: string;
+    elapsedMs: number;
+    error?: string;
+    result?: string;
+    // (undocumented)
+    status: BackgroundTaskStatus | 'timeout';
+    // (undocumented)
+    taskId: string;
+    // (undocumented)
+    toolName?: string;
+}
+
+// @public
 interface BudgetExceeded {
     // (undocumented)
     limit: BudgetLimit;
@@ -234,6 +348,22 @@ interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetE
 
 // @public
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
+
+// @public
+interface BudgetSpent {
+    // (undocumented)
+    costUsd?: number;
+    // (undocumented)
+    durationMs: number;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    outputTokens: number;
+    // (undocumented)
+    steps: number;
+    // (undocumented)
+    totalTokens: number;
+}
 
 // @public
 export function cachedProbe(probe: ImproveOptions['probe'], options: CachedProbeOptions): ImproveOptions['probe'];
@@ -326,6 +456,98 @@ export function checkApplied(db: SqlDatabase, dir: string, settings: Pick<Improv
 }): Promise<MonitorVerdict>;
 
 // @public
+interface Checkpoint {
+    agentFingerprint?: AgentFingerprint;
+    // (undocumented)
+    agentId: string;
+    approvalId?: string;
+    approvalIds?: string[];
+    approvalKind?: ApprovalKind;
+    attempts?: number;
+    businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
+    // (undocumented)
+    finishReason?: string;
+    flow?: FlowCheckpointState;
+    lastError?: CheckpointError;
+    // (undocumented)
+    messages: Message[];
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+    runConfig?: unknown;
+    // (undocumented)
+    sessionId: string;
+    startedToolCallIds?: string[];
+    status?: CheckpointStatus;
+    // (undocumented)
+    stepIndex: number;
+    stepUsage?: StepUsage[];
+    // (undocumented)
+    toolCalls: unknown[];
+    unstarted?: boolean;
+    usage: CheckpointUsage;
+}
+
+// @public
+interface CheckpointDeleteOptions {
+    keepHistory?: boolean;
+}
+
+// @public
+interface CheckpointError {
+    at: string;
+    category?: string;
+    code?: string;
+    // (undocumented)
+    message: string;
+    retryable: boolean;
+}
+
+// @public
+interface CheckpointHistoryEntry {
+    checkpoint: Checkpoint;
+    savedAt: string;
+    status: CheckpointStatus;
+    step: number;
+}
+
+// @public
+interface CheckpointHistoryOptions {
+    limit?: number;
+}
+
+// @public
+interface CheckpointListEntry {
+    checkpoint: Checkpoint;
+    sessionId: string;
+    status: CheckpointStatus;
+}
+
+// @public
+interface CheckpointListOptions {
+    status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+// @public
+type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
+
+// @public
+interface CheckpointStore {
+    acquireLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
+    delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
+    history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
+    list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
+    load(sessionId: string): Promise<Checkpoint | null>;
+    releaseLease?(sessionId: string, owner: string): Promise<void>;
+    renewLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
+    save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+    saveIfLeased?(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean>;
+}
+
+// @public
+type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
+
+// @public
 export function citedEntries(notes: string): string[];
 
 // @public
@@ -350,12 +572,75 @@ interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
 }
 
 // @public
+interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'model'> {
+    onCompaction?: (info: CompactionInfo) => void;
+}
+
+// @public
+interface CompactionInfo {
+    appliedStrategy?: string;
+    error?: Error;
+    // (undocumented)
+    prunedToolCallIds: string[];
+    strategy: string;
+    summary?: string;
+    // (undocumented)
+    tokensAfter: number;
+    // (undocumented)
+    tokensBefore: number;
+}
+
+// @public
+interface CompactionInput {
+    contextWindow: number;
+    estimateTokens: CompactionTokenCounter;
+    generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
+    messages: Message[];
+    protectedTokens: number;
+    signal?: AbortSignal;
+    thresholdTokens: number;
+}
+
+// @public
+interface CompactionResult {
+    error?: Error;
+    messages: Message[];
+    prunedToolCallIds: string[];
+    summary?: string;
+    // (undocumented)
+    tokensAfter: number;
+    // (undocumented)
+    tokensBefore: number;
+}
+
+// @public
 interface CompactionStartEvent extends AgentEventBase<'compaction.start'> {
     contextWindow: number;
     strategy: string;
     thresholdTokens: number;
     tokensBefore: number;
     trigger?: 'manual';
+}
+
+// @public
+interface CompactionStrategy {
+    // (undocumented)
+    compact(input: CompactionInput): CompactionResult | Promise<CompactionResult>;
+    // (undocumented)
+    name: string;
+}
+
+// @public
+type CompactionTokenCounter = (input: Message | Message[]) => number;
+
+// @public
+interface CompactMessagesOptions {
+    contextWindow?: number;
+    model?: string;
+    protectedTokens?: number;
+    reserveOutputTokens?: number;
+    strategy?: CompactionStrategy;
+    thresholdPercent?: number;
 }
 
 // @public
@@ -386,13 +671,74 @@ export function createShadowHook(options: {
 }): AgentHook;
 
 // @public
+type CredentialOwner = 'app' | 'user';
+
+// @public
 export function currentRevision(dir: string): string;
+
+// @public
+type DefinedSchedule = Readonly<ScheduleInput>;
+
+// @public
+interface DelegatedUsage {
+    costPartial?: boolean;
+    costUsd: number | undefined;
+    // (undocumented)
+    estimated: boolean;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    runs: number;
+    toolErrors?: number;
+    // (undocumented)
+    totalTokens: number;
+}
 
 // @public
 export const emptyLedger: () => ImproveLedger;
 
 // @public
+interface EnqueueResult {
+    applied: false | Promise<boolean>;
+    id: string;
+}
+
+// @public
 type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail';
+
+// @public
+interface ExecutionResult<TObject = unknown> {
+    abortReason?: {
+        name: string;
+        message: string;
+    };
+    agentName?: string;
+    approvalId?: string;
+    approvalIds?: string[];
+    backgroundTasks?: BackgroundTaskView[];
+    budget?: BudgetExceeded;
+    // (undocumented)
+    finishReason: ExecutionFinishReason;
+    guardrail?: GuardrailTrip;
+    // (undocumented)
+    messages: Message[];
+    object?: TObject;
+    outputError?: OutputError;
+    outputRepaired?: true;
+    reasoning?: string;
+    // (undocumented)
+    steps: number;
+    stepUsage?: StepUsage[];
+    // (undocumented)
+    text: string;
+    // (undocumented)
+    toolCalls: ToolCall[];
+    toolErrors?: number;
+    usage: RunUsage;
+}
 
 // @public
 interface FileContentPart {
@@ -404,6 +750,57 @@ interface FileContentPart {
     mimeType: string;
     // (undocumented)
     type: 'file';
+}
+
+// @public
+interface FlowCheckpointState {
+    choices: Record<string, number>;
+    code: string;
+    completedNodeIds: string[];
+    nodeResults: Record<string, unknown>;
+    output?: unknown;
+    pendingApproval?: FlowPendingApproval;
+    steps: number;
+    structure?: string;
+    usage: ProviderUsage;
+    variables: Record<string, unknown>;
+}
+
+// @public
+interface FlowPendingApproval {
+    approvalId: string;
+    args: Record<string, unknown>;
+    nodeId: string;
+    toolName: string;
+}
+
+// @public
+interface ForkOptions {
+    checkpointStore: CheckpointStore;
+    fromStep: number;
+    newSessionId?: string;
+    // (undocumented)
+    patch?: ForkPatch;
+    sessionId: string;
+}
+
+// @public
+interface ForkPatch {
+    appendInput?: string;
+    businessState?: unknown;
+    messages?: (messages: Message[]) => Message[];
+    toolResult?: {
+        toolCallId: string;
+        result: unknown;
+    };
+}
+
+// @public
+interface ForkResult {
+    checkpoint: Checkpoint;
+    // (undocumented)
+    sessionId: string;
+    step: number;
 }
 
 // @public
@@ -789,6 +1186,12 @@ export interface ImproveResult {
 }
 
 // @public
+export function improveSchedule(options: WatchOptions & {
+    cron?: string;
+    name?: string;
+}): DefinedSchedule;
+
+// @public
 export interface ImproveSettings {
     approval: 'auto' | 'manual';
     budget: {
@@ -822,6 +1225,9 @@ export interface ImproveSettings {
         autoRollback: boolean;
         giveUpDays: number;
     };
+    rateLimit: {
+        rpm: number;
+    };
     trigger: {
         minNewFailures: number;
         requireRecurring: boolean;
@@ -843,6 +1249,30 @@ interface InputAppliedEvent extends AgentEventBase<'input.applied'> {
     id: string;
     // (undocumented)
     step: number;
+}
+
+// @public
+class InputQueue {
+    // @internal
+    callOutput(): void;
+    // @internal
+    close(): void;
+    // @internal
+    closeAfter(run: Promise<unknown>): void;
+    // @internal
+    endPhase(): void;
+    // @internal
+    listen(listener: (input: QueuedInput) => void): void;
+    // @internal
+    get messages(): Message[];
+    push(input: AgentInput): EnqueueResult;
+    // @internal
+    startBatch(): AbortSignal;
+    // @internal
+    startCall(): AbortSignal;
+    steer(input: AgentInput): SteerResult;
+    // @internal
+    take(): QueuedInput[];
 }
 
 // @public
@@ -936,6 +1366,34 @@ interface Message {
 type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // @public
+interface ModelSettings {
+    frequencyPenalty?: number;
+    maxTokens?: number;
+    presencePenalty?: number;
+    seed?: number;
+    stop?: string[];
+    temperature?: number;
+    toolChoice?: 'auto' | 'required' | 'none' | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    };
+    topP?: number;
+}
+
+// @public
+interface ModelUsage {
+    calls: number;
+    costPartial?: boolean;
+    costUsd?: number;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    outputTokens: number;
+}
+
+// @public
 type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexual-minors' | 'violence' | 'illicit';
 
 // @public
@@ -950,8 +1408,100 @@ export interface MonitorVerdict {
 }
 
 // @public
+interface OAuthCallbackParams {
+    // (undocumented)
+    code?: string;
+    error?: string;
+    principal?: Principal;
+    // (undocumented)
+    state: string;
+}
+
+// @public
+type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
+
+// @public
+interface OAuthCompleteResult {
+    approvalId?: string;
+    displayName?: string;
+    // (undocumented)
+    outcome: 'signed-in' | 'declined';
+    provider: string;
+    // (undocumented)
+    sessionId?: string;
+}
+
+// @public
+interface OAuthProvider extends Readonly<Omit<OAuthProviderOptions, 'displayName' | 'credentialOwner' | 'clientAuth' | 'scopes'>> {
+    // (undocumented)
+    readonly clientAuth: OAuthClientAuth;
+    // (undocumented)
+    readonly credentialOwner: CredentialOwner;
+    // (undocumented)
+    readonly displayName: string;
+    // (undocumented)
+    readonly kind: 'oauth-provider';
+    // (undocumented)
+    readonly scopes: readonly string[];
+}
+
+// @public
+interface OAuthProviderOptions {
+    authorizationParams?: Record<string, string>;
+    authorizationUrl: string;
+    clientAuth?: OAuthClientAuth;
+    // (undocumented)
+    clientId: string;
+    clientSecret?: string;
+    credentialOwner?: CredentialOwner;
+    displayName?: string;
+    fetch?: typeof fetch;
+    name: string;
+    redirectUri: string;
+    // (undocumented)
+    scopes?: readonly string[];
+    tokenUrl: string;
+}
+
+// @public
 interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
     object: unknown;
+}
+
+// @public
+interface OutputError {
+    issues: ToolArgumentIssue[];
+    kind: 'invalid' | 'truncated';
+    message: string;
+}
+
+// @public
+export function pauseImprove(dir: string, options?: {
+    by?: string;
+    reason?: string;
+}): Promise<boolean>;
+
+// @public
+interface PendingApproval {
+    // (undocumented)
+    agentId?: string;
+    // (undocumented)
+    args: Record<string, unknown>;
+    // (undocumented)
+    createdAt: string;
+    expiresAt?: string;
+    // (undocumented)
+    id: string;
+    kind?: ApprovalKind;
+    principal?: Principal;
+    question?: ApprovalQuestion;
+    sessionId?: string;
+    signIn?: ApprovalSignIn;
+    subagentPath?: string[];
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
 }
 
 // @public
@@ -968,7 +1518,48 @@ export interface PendingProposal {
 }
 
 // @public
+interface PendingRun {
+    approvalId?: string;
+    approvalIds?: string[];
+    approvalKind?: ApprovalKind;
+    attempts?: number;
+    checkpointId: string;
+    kind: 'session' | 'run';
+    lastError?: CheckpointError;
+    sessionId: string;
+    status: 'in-progress' | 'awaiting-approval';
+    step: number;
+}
+
+// @public
+interface PendingTurn {
+    // (undocumented)
+    approvalId?: string;
+    approvalIds?: string[];
+    approvalKind?: ApprovalKind;
+    idempotencyKey?: string;
+    status: 'in-progress' | 'awaiting-approval';
+}
+
+// @public
 type PermissionAction = 'allow' | 'deny' | 'ask';
+
+// @public
+interface PermissionAuditContext {
+    // (undocumented)
+    principal?: Readonly<Principal>;
+}
+
+// @public
+interface PermissionContext {
+    principal?: Readonly<Principal>;
+    // (undocumented)
+    sessionId?: string;
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
+}
 
 // @public
 type PermissionDecision = PermissionAction | 'default';
@@ -998,6 +1589,39 @@ interface PermissionDecisionEvent extends AgentEventBase<'permission.decision'>,
 
 // @public
 type PermissionMode = 'default' | 'plan' | 'acceptEdits' | 'dontAsk';
+
+// @public
+interface PermissionModeChange {
+    at: string;
+    // (undocumented)
+    from: PermissionMode;
+    // (undocumented)
+    sessionId: string;
+    // (undocumented)
+    to: PermissionMode;
+}
+
+// @public
+interface PermissionOptions {
+    onPermissionDecision?: (entry: PermissionDecisionEntry, context: PermissionAuditContext) => void;
+    onPermissionModeChange?: (change: PermissionModeChange) => void;
+    permissionMode?: PermissionMode | (() => PermissionMode);
+    permissions?: readonly PermissionRule[];
+}
+
+// @public
+interface PermissionRule {
+    // (undocumented)
+    action: PermissionAction;
+    reason?: string;
+    // (undocumented)
+    tool: PermissionToolMatcher;
+    ttlMs?: number;
+    when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
+}
+
+// @public
+type PermissionToolMatcher = string | readonly string[] | RegExp;
 
 // @public
 type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
@@ -1068,6 +1692,15 @@ export interface ProbeSummary {
 type PromptCachingOption = 'auto' | false;
 
 // @public
+interface PromptScheduleInput extends ScheduleBase {
+    // (undocumented)
+    prompt: string;
+    // (undocumented)
+    run?: never;
+    sharedSession?: boolean;
+}
+
+// @public
 export function protectedCasesFromPasses(db: SqlDatabase, traceIds: readonly string[]): CapturedCase[];
 
 // @public
@@ -1110,6 +1743,16 @@ interface ProviderUsage {
 
 // @public
 export function pruneCache(dir: string, limits?: CacheLimits): void;
+
+// @public
+interface QueuedInput {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    messages: Message[];
+    steered?: 'immediate' | 'queued';
+    text: string;
+}
 
 // @public
 export function readAgentHarness(dir: string): Harness;
@@ -1161,6 +1804,18 @@ interface ReasoningSettings {
 type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 
 // @public
+interface RecoverOptions<TResult = unknown> {
+    intervalMs?: number;
+    maxAttempts?: number;
+    onError?: (error: unknown, run?: PendingRun) => void;
+    onOutage?: (paused: boolean) => void;
+    onQuarantined?: (run: PendingRun) => void;
+    onRecovered?: (run: PendingRun, result: TResult) => void;
+    retryWithDiagnosis?: boolean;
+    signal?: AbortSignal;
+}
+
+// @public
 export interface RecoveryEvidence {
     answer: string;
     caseId: string;
@@ -1194,6 +1849,18 @@ export function rejectPending(dir: string, id: string, by: string, reason: strin
 export function renderTranscript(messages: readonly Message[], options?: {
     maxResultChars?: number;
 }): string;
+
+// @public
+interface ResolveApprovalOptions {
+    principal?: Principal;
+    // (undocumented)
+    signal?: AbortSignal;
+}
+
+// @public
+export function resumeImprove(dir: string, options?: {
+    by?: string;
+}): Promise<boolean>;
 
 // @public
 export interface RollbackBy {
@@ -1235,10 +1902,50 @@ interface RunLimits {
 }
 
 // @public
+interface RunRecovery {
+    readonly done: Promise<void>;
+    stop(): Promise<void>;
+}
+
+// @public
+interface RunScheduleInput extends ScheduleBase {
+    // (undocumented)
+    prompt?: never;
+    // (undocumented)
+    run: (ctx: ScheduleContext) => Promise<void>;
+    // (undocumented)
+    sharedSession?: never;
+}
+
+// @public
 interface RunStartEvent extends AgentEventBase<'run.start'> {
     agentId?: string;
     // (undocumented)
     agentName: string;
+}
+
+// @public
+interface RunUsage {
+    byModel: Record<string, ModelUsage>;
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    // @deprecated (undocumented)
+    completionTokens: number;
+    costPartial?: boolean;
+    costUsd: number | undefined;
+    delegated?: DelegatedUsage;
+    estimated: boolean;
+    hostedToolCalls?: Partial<Record<string, number>>;
+    // (undocumented)
+    inputTokens: number;
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    // @deprecated (undocumented)
+    promptTokens: number;
+    reasoningTokens?: number;
+    // (undocumented)
+    totalTokens: number;
 }
 
 // @public
@@ -1249,6 +1956,23 @@ export function savePending(dir: string, input: {
     cycle?: string;
     maxAlwaysOnChars?: number;
 }): Promise<PendingProposal>;
+
+// @public (undocumented)
+interface ScheduleBase {
+    cron: string;
+    name?: string;
+    timezone?: string;
+}
+
+// @public
+interface ScheduleContext {
+    agent: SimpleAgent;
+    firedAt: Date;
+    name: string;
+}
+
+// @public
+type ScheduleInput = PromptScheduleInput | RunScheduleInput;
 
 // @public
 interface SchemaIssue {
@@ -1261,10 +1985,166 @@ interface SchemaIssue {
 }
 
 // @public
+interface SendOptions {
+    approvalTtlMs?: number;
+    instructions?: string;
+    maxSteps?: number;
+    metadata?: Record<string, unknown>;
+    modelSettings?: ModelSettings;
+    onEvent?: (event: AgentEvent) => void;
+    parentSpanId?: string;
+    permissionMode?: PermissionMode;
+    principal?: Principal;
+    reasoning?: ReasoningOption;
+    sessionId?: string;
+    signal?: AbortSignal;
+    throwOnError?: boolean;
+}
+
+// @public
 interface ServedBy {
     model?: string;
     // (undocumented)
     provider: string;
+}
+
+// @public
+interface SessionBudget {
+    // (undocumented)
+    limits: RunLimits;
+    // (undocumented)
+    spent: BudgetSpent;
+}
+
+// @public
+interface SessionCompactOptions extends Pick<CompactMessagesOptions, 'strategy' | 'protectedTokens' | 'contextWindow'> {
+    // (undocumented)
+    signal?: AbortSignal;
+}
+
+// @public
+interface SessionCompactResult {
+    error?: {
+        message: string;
+    };
+    // (undocumented)
+    messagesAfter: number;
+    // (undocumented)
+    messagesBefore: number;
+    strategy: string;
+    // (undocumented)
+    tokensAfter: number;
+    // (undocumented)
+    tokensBefore: number;
+}
+
+// @public
+interface SessionForkOptions {
+    fromStep: number;
+    id?: string;
+    patch?: Pick<ForkPatch, 'toolResult'>;
+}
+
+// @public
+interface SessionHistoryStep {
+    messageIndex: number;
+    step: number;
+    text: string;
+    // (undocumented)
+    toolCalls: Array<{
+        id: string;
+        name: string;
+        args: unknown;
+        result?: string;
+    }>;
+    turn: number;
+}
+
+// @public
+interface SessionOptions {
+    checkpointStore?: CheckpointStore;
+    compaction?: AgentCompaction;
+    id?: string;
+    limits?: RunLimits;
+    onPermissionModeChange?: PermissionOptions['onPermissionModeChange'];
+    permissionMode?: PermissionOptions['permissionMode'];
+    store?: SessionStore | SessionStores;
+    turnHistoryLimit?: number;
+    turnPolicy?: 'queue' | 'steer' | 'wait';
+}
+
+// @public
+type SessionRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnOptions, call?: SessionTurnCall) => Promise<ExecutionResult>;
+
+// @public
+interface SessionSendOptions {
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+    // (undocumented)
+    signal?: AbortSignal;
+}
+
+// @public
+type SessionSpawner = (options: SessionOptions) => AgentSession;
+
+// @public
+interface SessionStore {
+    delete(id: string): Promise<void>;
+    load(id: string): Promise<Message[] | undefined>;
+    save(id: string, messages: readonly Message[]): Promise<void>;
+    saveIf?(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
+}
+
+// @public
+interface SessionStores {
+    // (undocumented)
+    checkpoints?: CheckpointStore;
+    // (undocumented)
+    sessions: SessionStore;
+}
+
+// @public
+type SessionStreamRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnOptions, call?: SessionTurnCall) => AgentRun;
+
+// @public
+interface SessionTurnCall {
+    // (undocumented)
+    input: AgentInput;
+    // (undocumented)
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+}
+
+// @public
+interface SessionTurnCheckpoint {
+    // (undocumented)
+    checkpointStore: CheckpointStore;
+    sessionId: string;
+}
+
+// @public
+type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
+    sessionBudget?: SessionBudget;
+    inputQueue?: InputQueue;
+    permissionMode?: PermissionOptions['permissionMode'];
+    onAgentEvent?: (event: AgentEvent) => void;
+};
+
+// @public
+interface SimpleAgent<TObject = unknown> {
+    approvals: AgentApprovals;
+    close: () => Promise<void>;
+    fork: (sessionId: string, options: Omit<ForkOptions, 'sessionId' | 'checkpointStore'>) => Promise<ForkResult>;
+    oauth: AgentOAuth;
+    pending: () => Promise<PendingRun[]>;
+    ready: () => Promise<void>;
+    recover: (options?: RecoverOptions<ExecutionResult<TObject>>) => RunRecovery;
+    resume: (sessionId: string, options?: {
+        signal?: AbortSignal;
+    }) => Promise<ExecutionResult<TObject> | null>;
+    send: (message: AgentInput, options?: SendOptions) => Promise<ExecutionResult<TObject>>;
+    session: (options?: SessionOptions) => AgentSession<TObject>;
+    stream: (message: AgentInput, options?: SendOptions) => AgentRun<TObject>;
 }
 
 // @public
@@ -1314,6 +2194,14 @@ interface StandardSchemaV1<Input = unknown, Output = Input> {
 }
 
 // @public
+interface SteerResult {
+    // (undocumented)
+    applied: 'immediate' | 'queued' | false;
+    id: string;
+    joined: Promise<boolean>;
+}
+
+// @public
 interface StepDoneEvent extends AgentEventBase<'step.done'> {
     finishReason: ExecutionFinishReason | 'steered';
     // (undocumented)
@@ -1325,6 +2213,16 @@ interface StepDoneEvent extends AgentEventBase<'step.done'> {
 interface StepStartEvent extends AgentEventBase<'step.start'> {
     // (undocumented)
     step: number;
+}
+
+// @public
+interface StepUsage {
+    costUsd?: number;
+    estimated: boolean;
+    model: string;
+    step: number;
+    // (undocumented)
+    usage: Usage;
 }
 
 // @public
@@ -1425,6 +2323,12 @@ interface TodoUpdatedEvent extends AgentEventBase<'todo.updated'> {
     // (undocumented)
     todos: Todo[];
     toolCallId: string;
+}
+
+// @public
+interface ToolArgumentIssue {
+    message: string;
+    path: string;
 }
 
 // @public
@@ -1535,6 +2439,16 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 }
 
 // @public
+interface Usage {
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens?: number;
+    totalTokens: number;
+}
+
+// @public
 export function verifyAudit(dir: string): number | undefined;
 
 // @public
@@ -1548,6 +2462,30 @@ export function voteOnOutcome(dir: string, options: {
     library?: ImproveOptions['library'];
     entryId?: string;
 }): LibraryEntry[];
+
+// @public
+export function watchAgent(options: WatchOptions): {
+    stop(): Promise<void>;
+};
+
+// @public
+export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' | 'agent'> {
+    agent: string;
+    intervalMs?: number;
+    onCycle?: (cycle: HealCycle) => void;
+    onError?: (error: unknown) => void;
+    reloadSettings?: () => ImproveSettings;
+    store?: CheckpointStore;
+}
+
+// @public
+export interface WatchTick {
+    cycle?: HealCycle;
+    guard?: GuardCorpusResult;
+    monitor?: MonitorVerdict;
+    reason: string;
+    state: 'paused' | 'stopped' | 'leased' | 'cooldown' | 'deduped' | 'ran';
+}
 
 // @public
 export interface WindowStat {

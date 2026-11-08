@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
-import { lstatSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { CheckpointStore } from '../execution/checkpoint';
+import { ConfigurationError } from '../execution/errors';
 import { failureReportFromDb } from '../observe/failures';
 import { runsByRevision } from '../observe/store';
 import type { LLMProvider } from '../providers';
@@ -10,34 +10,37 @@ import { resolveProvider } from '../providers/resolveProvider';
 import { defineSchedule, type DefinedSchedule } from '../schedules/defineSchedule';
 import { fileStore } from '../storage/fileStore';
 import { appendAudit } from './audit';
+import type { GuardCorpusResult } from './corpusGuard';
 import { pausedBy, type HealCycle } from './cycles';
 import { healOnce, type HealOptions } from './heal';
-import { budgetLeft, guardScheduled, harvest, saveWatch, watchOf, type WatchContext, type WatchState } from './watchSteps';
 import { checkApplied, type MonitorVerdict } from './monitor';
+import { pauseImprove } from './pause';
 import { harnessHash, readAgentHarness } from './revisions';
-import { loadImproveSettings } from './settings';
+import { loadImproveSettings, type ImproveSettings } from './settings';
 import { readState, updateState } from './state';
-import type { GuardCorpusResult } from './corpusGuard';
 import type { ImproveOptions } from './types';
+import { budgetLeft, guardScheduled, harvest, saveWatch, watchOf, type WatchContext, type WatchState } from './watchSteps';
 
 /** Options for {@link watchAgent} and {@link improveSchedule}. */
 export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' | 'agent'> {
   /** The agent's id or registered name in the observe database; the monitor judges its runs. */
   agent: string;
-  /** Milliseconds between ticks (default 15 minutes). */
+  /** Milliseconds between ticks (default 15 minutes); the lease lasts twice this and is renewed while a tick runs. */
   intervalMs?: number;
+  /** Reads the settings afresh each tick, such as `() => loadImproveSettings(dir)`; without it `settings` is used, with `enabled` re-read from improve.json. */
+  reloadSettings?: () => ImproveSettings;
   /** Called with each cycle that ran. */
   onCycle?: (cycle: HealCycle) => void;
   /** Called with an error a tick threw; the watcher keeps running (default: printed to stderr). */
   onError?: (error: unknown) => void;
-  /** Holds the one-watcher-per-directory lease (default a file store in `.lousho/watch`). */
+  /** Holds the one-watcher-per-directory lease; it must support leases (default a file store in `.lousho/watch`). */
   store?: CheckpointStore;
 }
 
 /** What one watch tick did. */
 export interface WatchTick {
-  /** `paused` by the kill switch, `leased` when another watcher holds the directory, `deduped` when nothing new arrived, else `ran`. */
-  state: 'paused' | 'leased' | 'deduped' | 'ran';
+  /** `paused` by the kill switch, `stopped` when the watcher was stopped, `leased` when another watcher holds the directory, `cooldown` after a rollback, `deduped` when nothing new arrived, else `ran`. */
+  state: 'paused' | 'stopped' | 'leased' | 'cooldown' | 'deduped' | 'ran';
   /** Why, as plain text. */
   reason: string;
   /** The monitor's verdict on the last apply. */
@@ -50,26 +53,32 @@ export interface WatchTick {
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
 const MAX_OUTAGES = 3;
-const LEASE_ID = 'improve-watch';
 const MAX_RUNS = 1000;
-const STOP_FILE = path.join('.lousho', 'improve.stop');
+const RENEW_FRACTION = 3;
+const MIN_RENEW_MS = 10;
+const NOT_WORKED: readonly HealCycle['outcome'][] = ['outage', 'busy', 'budget', 'budget-exceeded', 'cooldown', 'paused', 'interrupted'];
+const UNCOUNTED: readonly HealCycle['outcome'][] = ['idle', 'paused', 'busy', 'budget', 'cooldown'];
+
+const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 function rateLimited(editor: ImproveOptions['editor'], rpm: number): ImproveOptions['editor'] {
   const provider: LLMProvider = 'provider' in editor ? editor.provider : resolveProvider(editor.model);
   return { provider: withRateLimit(provider, createRateLimiter({ requestsPerMinute: rpm })) };
 }
 
-/** The tick's shared parts: the lease owner and the rate-limited editor. */
 export function watchContext(options: WatchOptions, signal?: AbortSignal): WatchContext {
   const store = options.store ?? fileStore(path.join(options.dir, '.lousho', 'watch')).checkpoints;
-  return { owner: `${process.pid}:watch:${randomUUID()}`, store, editor: rateLimited(options.editor, options.settings.rateLimit.rpm), ...(signal && { signal }) };
+  if (!store.acquireLease) throw new ConfigurationError('watchAgent: the store must support leases (acquireLease), so only one watcher runs per agent directory.', 'store');
+  const leaseId = `improve-${createHash('sha256').update(path.resolve(options.dir)).digest('hex').slice(0, 32)}`;
+  return { owner: `${process.pid}:watch:${randomUUID()}`, leaseId, store, editor: rateLimited(options.editor, options.settings.rateLimit.rpm), ...(signal && { signal }) };
 }
 
-function pausedReason(options: WatchOptions): string | undefined {
+function settingsOf(options: WatchOptions): ImproveSettings | string {
   try {
-    return pausedBy(options.dir, { enabled: options.settings.enabled && loadImproveSettings(options.dir).enabled });
+    if (options.reloadSettings) return options.reloadSettings();
+    return { ...options.settings, enabled: options.settings.enabled && loadImproveSettings(options.dir).enabled };
   } catch (error) {
-    return `improve.json can't be read (${error instanceof Error ? error.message : String(error)})`;
+    return `improve.json can't be read (${messageOf(error)})`;
   }
 }
 
@@ -90,77 +99,118 @@ async function resumeIfPaused(dir: string): Promise<void> {
   });
 }
 
-function failureSignatures(options: WatchOptions): { revision: string; signatures: string[]; failed: number } {
+function halted(options: WatchOptions, signal: AbortSignal | undefined): WatchTick | undefined {
+  if (signal?.aborted) return { state: 'stopped', reason: 'The watcher stopped, or lost its lease, before the next step.' };
+  const settings = settingsOf(options);
+  const paused = typeof settings === 'string' ? settings : pausedBy(options.dir, settings);
+  return paused ? { state: 'paused', reason: `Paused before the next step: ${paused}.` } : undefined;
+}
+
+function failureKey(options: WatchOptions): { revision: string; signatures: string[]; failed: number; newest?: string } {
   const revision = harnessHash(readAgentHarness(options.dir));
   const runs = runsByRevision(options.db, { revision, agent: options.agent, limit: MAX_RUNS });
   const traceIds = runs.map((run) => run.traceId);
   const signatures = traceIds.length === 0 ? [] : [...new Set(failureReportFromDb(options.db, { traceIds }).groups.map((group) => group.signature))].sort();
-  return { revision, signatures, failed: runs.filter((run) => run.failed).length };
+  const failed = runs.filter((run) => run.failed);
+  return { revision, signatures, failed: failed.length, ...(failed[0] && { newest: failed[0].traceId }) };
 }
 
-function stateCooldown(dir: string, now: number): boolean {
-  const until = Date.parse(readState<WatchState>(dir).cooldownUntil ?? '');
-  return Number.isFinite(until) && until > now;
+function cooldownUntil(dir: string, now: number): string | undefined {
+  const until = readState<WatchState>(dir).cooldownUntil;
+  const at = Date.parse(until ?? '');
+  return Number.isFinite(at) && at > now ? until : undefined;
 }
 
 async function countOutage(dir: string, cycle: HealCycle): Promise<void> {
+  if (UNCOUNTED.includes(cycle.outcome)) return;
   if (cycle.outcome !== 'outage') {
-    if (['idle', 'paused', 'busy', 'budget', 'cooldown'].includes(cycle.outcome)) return;
     await saveWatch(dir, { outages: 0 });
     return;
   }
   const outages = (watchOf(dir).outages ?? 0) + 1;
   await saveWatch(dir, { outages });
   if (outages < MAX_OUTAGES) return;
-  const reason = `${MAX_OUTAGES} cycles in a row ended in a provider outage`;
-  mkdirSync(path.join(dir, '.lousho'), { recursive: true });
-  if (!lstatSync(path.join(dir, STOP_FILE), { throwIfNoEntry: false })) writeFileSync(path.join(dir, STOP_FILE), `${reason}\n`, { flag: 'wx' });
-  await appendAudit(dir, { actor: 'scheduler', action: 'pause', reason: `The self-healing loop paused itself: ${reason}.` });
-  await saveWatch(dir, { paused: `${STOP_FILE} exists`, outages: 0 });
+  await pauseImprove(dir, { reason: `The self-healing loop paused itself: ${MAX_OUTAGES} cycles in a row ended in a provider outage.` });
+  await saveWatch(dir, { outages: 0 });
 }
 
 async function runCycle(options: WatchOptions, context: WatchContext, trigger: HealCycle['trigger'], now: number): Promise<WatchTick> {
-  if (stateCooldown(options.dir, now)) return { state: 'ran', reason: `The monitor's cooldown runs until ${readState<WatchState>(options.dir).cooldownUntil}, so no cycle ran.` };
-  const { revision, signatures, failed } = failureSignatures(options);
-  const watch = watchOf(options.dir);
-  const same = watch.signatures !== undefined && watch.signatures.join('\n') === signatures.join('\n');
-  if (same && watch.revision === revision && watch.failed === failed) return { state: 'deduped', reason: 'The same failures as the last cycle and nothing new, so no cycle ran.' };
-  const { intervalMs: _interval, onCycle, onError: _onError, store: _store, ...heal } = options;
+  const until = cooldownUntil(options.dir, now);
+  if (until) return { state: 'cooldown', reason: `The monitor's cooldown runs until ${until}, so no cycle ran.` };
+  const key = failureKey(options);
+  const last = watchOf(options.dir);
+  const same = last.revision === key.revision && last.failed === key.failed && last.newest === key.newest && (last.signatures ?? []).join('\n') === key.signatures.join('\n');
+  if (same && last.signatures !== undefined) return { state: 'deduped', reason: 'The same failures as the last cycle and nothing new, so no cycle ran.' };
+  const { intervalMs: _interval, reloadSettings: _reload, onCycle, onError: _onError, store: _store, ...heal } = options;
   const cycle = await healOnce({ ...heal, editor: context.editor, trigger, maxTokens: budgetLeft(options.dir, options.settings, now), ...(context.signal && { signal: context.signal }) });
-  await saveWatch(options.dir, { revision, signatures, failed });
+  if (!NOT_WORKED.includes(cycle.outcome)) await saveWatch(options.dir, { revision: key.revision, signatures: key.signatures, failed: key.failed, ...(key.newest && { newest: key.newest }) });
   await countOutage(options.dir, cycle);
   onCycle?.(cycle);
   return { state: 'ran', reason: cycle.reason, cycle };
 }
 
-/** Runs one watch tick: the kill switch, the lease, the monitor, the scheduled corpus guard, then a cycle within the budgets. */
-export async function watchTick(options: WatchOptions, context: WatchContext, trigger: HealCycle['trigger'] = 'failures'): Promise<WatchTick> {
-  const now = Date.now();
-  const paused = pausedReason(options);
-  if (paused) return pauseOnce(options.dir, paused);
-  await resumeIfPaused(options.dir);
-  const ttl = 2 * (options.intervalMs ?? DEFAULT_INTERVAL_MS);
-  if (context.store.acquireLease && !(await context.store.acquireLease(LEASE_ID, context.owner, ttl))) {
-    return { state: 'leased', reason: 'Another watcher holds this agent directory.' };
-  }
+function holdLease(context: WatchContext, ttl: number): { signal: AbortSignal; release(): void } {
+  const lost = new AbortController();
+  const renew = () => {
+    context.store.acquireLease?.(context.leaseId, context.owner, ttl).then(
+      (held) => (held ? undefined : lost.abort()),
+      () => lost.abort()
+    );
+  };
+  const timer = setInterval(renew, Math.max(MIN_RENEW_MS, Math.floor(ttl / RENEW_FRACTION)));
+  (timer as { unref?: () => void }).unref?.();
+  return { signal: context.signal ? AbortSignal.any([context.signal, lost.signal]) : lost.signal, release: () => clearInterval(timer) };
+}
+
+async function steps(options: WatchOptions, context: WatchContext, trigger: HealCycle['trigger'], now: number): Promise<WatchTick> {
   const monitor = await checkApplied(options.db, options.dir, options.settings, { agent: options.agent, now });
-  await harvest(options, monitor, now);
-  const guard = await guardScheduled(options, now);
+  const stopAfterMonitor = halted(options, context.signal);
+  if (stopAfterMonitor) return { ...stopAfterMonitor, monitor };
+  await harvest(options, monitor, now, context.signal);
+  const stopAfterHarvest = halted(options, context.signal);
+  if (stopAfterHarvest) return { ...stopAfterHarvest, monitor };
+  const guard = await guardScheduled(options, now, context.signal);
+  const stopAfterGuard = halted(options, context.signal);
+  if (stopAfterGuard) return { ...stopAfterGuard, monitor, ...(guard && { guard }) };
   const ran = await runCycle(options, context, trigger, now);
   return { ...ran, monitor, ...(guard && { guard }) };
 }
 
+/** Runs one watch tick: the kill switch, the lease, the monitor, the scheduled corpus guard, then a cycle within the budgets. */
+export async function watchTick(options: WatchOptions, context: WatchContext, trigger: HealCycle['trigger'] = 'failures'): Promise<WatchTick> {
+  const now = Date.now();
+  const settings = settingsOf(options);
+  const paused = typeof settings === 'string' ? settings : pausedBy(options.dir, settings);
+  if (paused) return pauseOnce(options.dir, paused);
+  await resumeIfPaused(options.dir);
+  if (context.signal?.aborted) return { state: 'stopped', reason: 'The watcher stopped.' };
+  const ttl = 2 * (options.intervalMs ?? DEFAULT_INTERVAL_MS);
+  if (!(await context.store.acquireLease?.(context.leaseId, context.owner, ttl))) return { state: 'leased', reason: 'Another watcher holds this agent directory.' };
+  const lease = holdLease(context, ttl);
+  try {
+    return await steps({ ...options, settings: settings as ImproveSettings }, { ...context, signal: lease.signal }, trigger, now);
+  } finally {
+    lease.release();
+  }
+}
+
 /** Runs healOnce, the monitor and the corpus guard on a timer, within the settings' budgets; stops on the kill switch. */
-export function watchAgent(options: WatchOptions): { stop(): Promise<void> } {
+export function watchAgent(options: WatchOptions): {
+  /** Stops after the current step, waits for the tick in progress and releases the lease. */
+  stop(): Promise<void>;
+} {
   const controller = new AbortController();
   const context = watchContext(options, controller.signal);
-  const report = options.onError ?? ((error: unknown) => process.stderr.write(`lousho improve --watch: a tick failed: ${error instanceof Error ? error.message : String(error)}\n`));
+  const report = options.onError ?? ((error: unknown) => process.stderr.write(`lousho improve --watch: a tick failed: ${messageOf(error)}\n`));
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
   let running: Promise<void> = Promise.resolve();
   const loop = (): void => {
     running = watchTick(options, context)
-      .then(() => undefined, (error: unknown) => (controller.signal.aborted ? undefined : report(error)))
+      .then(
+        () => undefined,
+        (error: unknown) => (controller.signal.aborted ? undefined : report(error))
+      )
       .finally(() => {
         if (!stopped) timer = setTimeout(loop, options.intervalMs ?? DEFAULT_INTERVAL_MS);
       });
@@ -172,7 +222,7 @@ export function watchAgent(options: WatchOptions): { stop(): Promise<void> } {
       if (timer) clearTimeout(timer);
       controller.abort();
       await running;
-      await context.store.releaseLease?.(LEASE_ID, context.owner);
+      await context.store.releaseLease?.(context.leaseId, context.owner);
     },
   };
 }
@@ -180,7 +230,7 @@ export function watchAgent(options: WatchOptions): { stop(): Promise<void> } {
 /** A defineSchedule() schedule that runs one watch tick, for agents that already use schedules/. */
 export function improveSchedule(
   options: WatchOptions & {
-    /** When to tick (default every 15 minutes). */
+    /** When to tick (default every 15 minutes); set `intervalMs` to the same spacing so the lease spans two ticks. */
     cron?: string;
     /** The schedule's name (default `improve`). */
     name?: string;

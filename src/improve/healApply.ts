@@ -65,7 +65,6 @@ function guardShortfall(state: HealState): string | undefined {
   return `The corpus guard that must follow an apply needs about ${needed} tokens, more than the ${Math.max(0, left)} left, so nothing was applied.`;
 }
 
-/** Applies a proposal that passed the gate and the canary, then guards it with the corpus and undoes it on a regression or a guard that can't judge. */
 export async function applyAndGuard(state: HealState, result: ImproveResult): Promise<HealCycle> {
   const shortfall = guardShortfall(state);
   if (shortfall) return finish(state, 'budget-exceeded', shortfall);
@@ -82,7 +81,6 @@ export async function applyAndGuard(state: HealState, result: ImproveResult): Pr
   return guardApplied(state, to);
 }
 
-/** Guards an apply whose cycle stopped before its guard ran, when the directory still holds that revision. */
 export async function guardUnfinished(options: HealOptions, harness: Harness, cap: number): Promise<HealCycle | undefined> {
   const last = readCycles(options.dir)[0];
   if (last?.outcome !== 'interrupted' || last.to === undefined || last.guard !== undefined || harnessHash(harness) !== last.to) return undefined;
