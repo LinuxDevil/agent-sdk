@@ -1,9 +1,8 @@
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { improveAgent, type Harness, type ImproveOptions } from 'lousho/improve';
+import { cachedProbe, emptyLedger, improveAgent, type Harness, type ImproveOptions } from 'lousho/improve';
 import { mockModel } from 'lousho/testing';
 import { benchmarkProbe, buildAgent, checkFailureNames, nameFailures, parseFailureNames, throttleHook, type FailureNames } from './probe';
-import { cachedProbe, emptyCounts } from './probeCache';
 import { confirmHarness, replayRow, type RecordedRow, type ReplayLine } from './replayRows';
 
 const { values } = parseArgs({
@@ -41,7 +40,7 @@ const scripted = mockModel(["<notes>KEEP_BASE. The runs don't argue for a change
 function probeFor(salt: string, distinct = false): ImproveOptions['probe'] {
   if (values.cache === undefined) return nameFailures(probe, failureNames);
   const model = live ? values.model : `mock:${values.model}`;
-  return nameFailures(cachedProbe(probe, { dir: values.cache, model, salt, counts: emptyCounts(), distinct }), failureNames);
+  return nameFailures(cachedProbe(probe, { dir: values.cache, model, salt, ledger: emptyLedger(), distinct }), failureNames);
 }
 
 async function confirmCandidates(row: RecordedRow): Promise<Partial<Record<ReplayLine['label'], { passed: number; scored: number }>>> {

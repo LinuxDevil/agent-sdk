@@ -1,4 +1,5 @@
 import { ConfigurationError } from '../execution/errors';
+import { pruneCache } from './cache';
 import { changeItems } from './changes';
 import { evidenceFiles, type LabelledRun } from './evidence';
 import { summarize } from './gate';
@@ -94,6 +95,7 @@ function judgeStages(run: ImproveRun, options: ImproveOptions, stages: Stages): 
 export async function improveAgent(options: ImproveOptions): Promise<ImproveResult> {
   const run = new ImproveRun(options);
   assertOptions(options, run.repeats);
+  if (options.cacheDir) pruneCache(options.cacheDir);
   let base: ProbeSummary = summarize([]);
   let checks: string[] = [];
   const finish = (result: Omit<ImproveResult, 'base' | 'stages' | 'spend'>): ImproveResult => ({
@@ -103,6 +105,7 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
     base,
     ...(run.candidates && { candidates: run.candidates }),
     stages: run.stages,
+    ledger: { ...run.ledger },
     spend: { tokens: run.tokens },
   });
   try {

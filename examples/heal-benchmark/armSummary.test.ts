@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bars, renderReport, trueFixAttempts } from './armSummary';
 import type { Arm, ArmRow } from './gates';
-import { emptyCounts } from './probeCache';
+import { emptyLedger } from 'lousho/improve';
 
 const row = (arm: Arm, attempt: number, accepted: boolean, passK: ArmRow['passK'] = {}): ArmRow => ({ attempt, arm, accepted, reason: 'r', model: 'm', date: 'd', passK });
 const many = (arm: Arm, accepted: readonly boolean[]) => accepted.map((value, attempt) => row(arm, attempt, value));
@@ -79,7 +79,7 @@ describe('arm summary', () => {
 
   it('renders accepted counts, bars, pass^3 per case and probe counts per arm', () => {
     const rows = [...passing.rows, row('D', 5, true, { 'add-months': 1, 'page-count': null })];
-    const counts = { 'A-D': { ...emptyCounts(), planned: 30, cached: 30 }, N: emptyCounts(), P: emptyCounts() };
+    const counts = { 'A-D': { ...emptyLedger(), planned: 30, cached: 30 }, N: emptyLedger(), P: emptyLedger() };
     const text = renderReport({ ...passing, rows }, counts);
     expect(text).toContain('| D | 4/6 | 3/5 |');
     expect(text).toContain('| Arm D accepts at least 3/5 recorded true fixes | 3/5 | met |');
