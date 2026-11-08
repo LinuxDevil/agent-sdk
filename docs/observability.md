@@ -501,9 +501,10 @@ Traces and Trace (trace trees with latency waterfalls), Threads, Monitoring
 sessions flip to `interrupted` — over per-agent charts of runs, p95 latency,
 error rate, cost and tokens), Scores, Datasets, Evaluators, Annotation
 queues, Prompts and Context Hub. The Studio's nav shows whether it can reach
-the daemon. Alerts on `down` transitions or
-error-rate thresholds POST to `--webhook` URLs or an `alerts.json` next to
-the db.
+the daemon. Alerts on `down` transitions,
+error-rate thresholds and score regressions (see
+[Continuous score](#continuous-score)) POST to `--webhook` URLs or an
+`alerts.json` next to the db.
 
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an
@@ -863,6 +864,90 @@ shapes as the trace list and detail APIs, oldest trace first and not capped.
 count goes to stderr) unless `--out` names a file, which is overwritten. It
 reads the db directly and works without a running daemon. Captured content is
 exported as stored, so treat the file like the db.
+
+### Continuous score
+
+Each finished run of an agent becomes one point in a series, oldest first:
+
+- the mean of the run's finished online evaluator scores, when it has any;
+- otherwise 0 when the run is in the failure report (a failed call, no
+  answer, an interrupted process or a low score), and 1 when it is not.
+
+A point of 0.5 or more counts as a pass. Scores still without a value, and
+runs still in flight, are left out. Each point carries the run's
+`lousho.harness.revision`, so a series can be cut to one revision.
+
+The trajectory gate from the Self-Healing Harness paper judges the shape of
+the series rather than one number. It works on the rolling mean of 10
+points:
+
+- The first full window (10 points) sets a running peak.
+- A later window mean at least 0.02 above the peak is a gain, which raises
+  the peak.
+
+The gate judges the newest window:
+
+| State | When |
+| --- | --- |
+| `regression` | The newest window's mean is more than 0.15 below the peak, **and** the newest window sits significantly below the points before it (one-sided 95%, on the pass rate or on the mean value) |
+| `stall` | 10 windows have passed since the last gain while the peak is below 0.5, so a stall needs at least 20 points |
+| `ok` | Neither. This covers a low start that keeps improving, a plateau above 0.5, and a dip that has recovered |
+
+The significance check is the paper's corroboration step. A drop of 0.15 is
+only one or two failures in a window of pass/fail runs, so the shape alone
+would fire on most healthy agents. The test depends on the values:
+
+- for pass/fail values it compares pass rates (Newcombe's interval from
+  Wilson bounds);
+- otherwise it compares means (Welch's t).
+
+One judgement of a stable series reads `regression` about 5% of the time.
+Before the first full window the gate reports `ok` with `ready: false`.
+
+The daemon does not judge on every run, because repeating the test would add
+up to false alarms. It waits until an agent has 20 finished runs. After
+that, each time 10 new runs have arrived, it runs the gate over the last 200
+points at a stricter z of 1.96. The long lookback keeps the old baseline in
+view when a lasting drop fills recent runs. It raises an
+`agent.score_regression` alert only after three judgements in a row read
+`regression`.
+
+These are simulated figures for pass/fail agents (1,000 seeded streams each).
+
+A stable agent with a pass rate between 0.6 and 0.95 raised a false alert in
+under 1% of 1,000-run stretches.
+
+When 200 runs at the old rate were followed by 100 at the new one, the fall
+was caught within those 100 runs this often:
+
+| Fall | Caught |
+| --- | --- |
+| 0.9 → 0.1 | always |
+| 0.9 → 0.5 | about 80% |
+| 0.9 → 0.6 | about half |
+| 0.7 → 0.4 | about 1 in 5 |
+
+The alert fires at most once per agent per revision. The revision is that of
+the newest run, and `null` when that run has no stamp.
+The alert's `details` carry:
+
+- `revision`, `peak`, `mean` and `drop`;
+- `since_gain` and the number of `runs`;
+- `recent`: a summary of the newest 10 runs.
+
+The daemon keeps this memory only while it delivers alerts, and starts it
+afresh on restart. A failure in this pass is logged and never costs the
+sweep its other alerts.
+
+`lousho observe score [--agent X] [--revision R] [--limit N] [--json]` prints
+the same view for each agent from the db:
+
+- runs, mean, and the pass rate with its one-sided 95% Wilson lower bound;
+- pass^3, the chance that three independent runs all pass;
+- the gate state.
+
+Without `--revision`, the line covers every revision in the window and names
+the latest one. It reads the db directly and works without a running daemon.
 
 ### Trace list API
 

@@ -26,7 +26,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { loadDatabaseSync, type SqlDatabase } from '../storage/sqlite/driver';
+import { loadDatabaseSync, type SqlDatabase, type SqlRow } from '../storage/sqlite/driver';
 import { SDKError } from '../execution/errors';
 import { migrateObserve } from './schema';
 import { failedTraceIdsFromDb } from './failures';
@@ -1276,28 +1276,55 @@ export interface RevisionRun {
   score?: number;
 }
 
-const REVISION_ROOTS =
-  'SELECT o.trace_id, o.start FROM observations o LEFT JOIN agents a ON a.agent_id = o.agent_id ' +
-  "WHERE o.kind = 'span' AND o.parent_obs_id IS NULL AND o.end IS NOT NULL AND o.start >= ? AND (? = '' OR o.agent_id = ? OR a.name = ?) " +
-  "AND instr(o.attrs, ?) > 0 AND (CASE WHEN json_valid(o.attrs) THEN json_extract(o.attrs, '$.\"lousho.harness.revision\"') END) = ? " +
-  'ORDER BY o.start DESC, o.trace_id DESC LIMIT ?';
+const ROOT_REVISION = "(CASE WHEN json_valid(o.attrs) THEN json_extract(o.attrs, '$.\"lousho.harness.revision\"') END)";
+
+const ROOTS_WHERE = "o.kind = 'span' AND o.parent_obs_id IS NULL AND o.end IS NOT NULL AND o.start >= ? ";
+const REVISION_WHERE = `AND (? IS NULL OR (instr(o.attrs, ?) > 0 AND ${ROOT_REVISION} = ?)) ORDER BY o.start DESC LIMIT ?`;
+const ROOTS_BY_AGENT_ID = `SELECT o.obs_id, o.trace_id, o.start FROM observations o WHERE ${ROOTS_WHERE}AND o.agent_id = ? ${REVISION_WHERE}`;
+const ROOTS_BY_AGENT =
+  `SELECT o.obs_id, o.trace_id, o.start FROM observations o LEFT JOIN agents a ON a.agent_id = o.agent_id WHERE ${ROOTS_WHERE}` +
+  `AND (? = '' OR o.agent_id = ? OR a.name = ?) ${REVISION_WHERE}`;
+const ROOT_REVISIONS = `SELECT o.obs_id, ${ROOT_REVISION} AS revision FROM observations o WHERE o.obs_id IN (SELECT value FROM json_each(?))`;
 
 const ONLINE_MEANS =
-  "SELECT trace_id, AVG(value) AS mean FROM scores WHERE source = 'online' AND value IS NOT NULL AND trace_id IN (SELECT value FROM json_each(?)) GROUP BY trace_id";
+  "SELECT trace_id, AVG(value) AS mean FROM scores WHERE trace_id IN (SELECT value FROM json_each(?)) AND source = 'online' AND value IS NOT NULL GROUP BY trace_id";
 
-/** Finished root runs stamped with `revision` (`lousho.harness.revision`), newest first; `agent` matches an agent id or its registered name. */
-export function runsByRevision(db: SqlDatabase, filter: { revision: string; agent?: string; since?: number; limit: number }): RevisionRun[] {
+type RunFilter = { revision?: string; agent?: string; agentId?: string; since?: number; limit: number };
+
+function rootRows(db: SqlDatabase, filter: RunFilter): SqlRow[] {
+  const revision = filter.revision ?? null;
+  const tail = [revision, revision, revision, filter.limit];
+  if (filter.agentId !== undefined) return db.prepare(ROOTS_BY_AGENT_ID).all(filter.since ?? 0, filter.agentId, ...tail);
   const agent = filter.agent ?? '';
-  const roots = db.prepare(REVISION_ROOTS).all(filter.since ?? 0, agent, agent, agent, filter.revision, filter.revision, filter.limit);
+  return db.prepare(ROOTS_BY_AGENT).all(filter.since ?? 0, agent, agent, agent, ...tail);
+}
+
+const ROOTS_AFTER = `SELECT COUNT(*) AS n FROM observations o WHERE ${ROOTS_WHERE.replace('o.start >= ?', 'o.start > ?')}AND o.agent_id = ?`;
+
+/** How many finished root runs of the agent (its exact id) started after `after`. */
+export function finishedRootsAfter(db: SqlDatabase, agentId: string, after: number): number {
+  return Number(db.prepare(ROOTS_AFTER).get(after, agentId)?.n ?? 0);
+}
+
+/** Finished root runs, newest first, with the harness revision each was stamped with; `agentId` matches exactly, `agent` an agent id or its registered name. */
+export function finishedRuns(db: SqlDatabase, filter: RunFilter): (RevisionRun & { revision?: string })[] {
+  const roots = rootRows(db, filter);
   if (roots.length === 0) return [];
   const traceIds = roots.map((row) => String(row.trace_id));
   const failed = failedTraceIdsFromDb(db, { since: Math.min(...roots.map((row) => Number(row.start))), traceIds });
   const means = new Map(db.prepare(ONLINE_MEANS).all(JSON.stringify(traceIds)).map((row) => [String(row.trace_id), Number(row.mean)]));
+  const revisions = new Map(db.prepare(ROOT_REVISIONS).all(JSON.stringify(roots.map((row) => String(row.obs_id)))).map((row) => [String(row.obs_id), row.revision]));
   return roots.map((row, i) => {
     const traceId = traceIds[i];
     const score = means.get(traceId);
-    return { traceId, startedAt: Number(row.start), failed: failed.has(traceId), ...(score !== undefined && { score }) };
+    const stamped = revisions.get(String(row.obs_id));
+    return { traceId, startedAt: Number(row.start), ...(typeof stamped === 'string' && { revision: stamped }), failed: failed.has(traceId), ...(score !== undefined && { score }) };
   });
+}
+
+/** Finished root runs stamped with `revision` (`lousho.harness.revision`), newest first; `agent` matches an agent id or its registered name. */
+export function runsByRevision(db: SqlDatabase, filter: { revision: string; agent?: string; since?: number; limit: number }): RevisionRun[] {
+  return finishedRuns(db, filter).map(({ revision: _revision, ...run }) => run);
 }
 
 /**

@@ -274,6 +274,9 @@ export const OBSERVE_MIGRATIONS: readonly string[] = [
   );
   CREATE INDEX annotation_items_by_status ON annotation_items (queue_id, status, created_at);
   `,
+  `
+  CREATE INDEX observations_agent_roots ON observations (agent_id, start) WHERE parent_obs_id IS NULL AND kind = 'span';
+  `,
 ];
 
 /**

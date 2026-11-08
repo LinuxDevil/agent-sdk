@@ -34,11 +34,12 @@
  * one on ingest (store.ts).
  */
 
-import type { SqlDatabase } from '../storage/sqlite/driver';
+import type { SqlDatabase, SqlRow } from '../storage/sqlite/driver';
 import type { AlertEvent } from './alerts';
 import {
   HEARTBEAT_INTERVAL_DEFAULT_MS,
   endIdleSessions,
+  finishedRootsAfter,
   freshnessStatus,
   heartbeatIntervalFromMeta,
   interruptAgentWork,
@@ -47,6 +48,7 @@ import {
   setAgentStatus,
   transaction,
 } from './store';
+import { scoreSeries, trajectoryGate, windowSummary, type ScorePoint, type TrajectoryVerdict } from './continuousScore';
 
 /** How often the daemon sweeps; shorter than any freshness threshold. */
 const SWEEP_INTERVAL_MS = 30_000;
@@ -76,6 +78,77 @@ export interface SweepPassOptions {
   errorRateThreshold?: number;
   /** Edge memory for that alert - `agent_id` -> the day bucket already alerted on. */
   errorRateState?: Map<string, number>;
+  /** Edge memory for `agent.score_regression`, per `agent_id`: the revisions already alerted on, when the gate last judged and its streak. Without it the score pass is skipped. */
+  scoreRegressionState?: Map<string, ScoreRegressionMemory>;
+}
+
+/** What the sweep remembers about one agent's score regressions. */
+export interface ScoreRegressionMemory {
+  /** Revisions already alerted on; `null` stands for runs with no revision stamp. */
+  alerted: Set<string | null>;
+  /** When the newest run the gate judged started; the gate judges again only after a full window of newer runs. */
+  judgedAt?: number;
+  /** Consecutive judgements that read `regression`. */
+  streak: number;
+}
+
+const SCORE_POINTS = 200;
+const SCORE_WINDOW = 10;
+const SCORE_DROP = 0.15;
+const SCORE_Z = 1.959963984540054;
+const SCORE_STREAK = 3;
+
+function judgedRegression(db: SqlDatabase, agentId: string, memory: ScoreRegressionMemory): { points: ScorePoint[]; gate: TrajectoryVerdict } | undefined {
+  if (memory.judgedAt !== undefined && finishedRootsAfter(db, agentId, memory.judgedAt) < SCORE_WINDOW) return undefined;
+  const points = scoreSeries(db, { agent: agentId, limit: SCORE_POINTS });
+  const newest = points.at(-1);
+  if (newest === undefined || points.length < 2 * SCORE_WINDOW) return undefined;
+  memory.judgedAt = newest.at;
+  const gate = trajectoryGate(points, { window: SCORE_WINDOW, drop: SCORE_DROP, z: SCORE_Z });
+  memory.streak = gate.state === 'regression' ? memory.streak + 1 : 0;
+  return memory.streak >= SCORE_STREAK ? { points, gate } : undefined;
+}
+
+function scoreRegressionAlert(db: SqlDatabase, row: SqlRow, now: number, state: Map<string, ScoreRegressionMemory>): AlertEvent | undefined {
+  const agentId = String(row.agent_id);
+  const memory = state.get(agentId) ?? { alerted: new Set<string | null>(), streak: 0 };
+  state.set(agentId, memory);
+  const judged = judgedRegression(db, agentId, memory);
+  if (judged === undefined) return undefined;
+  const { points, gate } = judged;
+  const revision = points.at(-1)?.revision ?? null;
+  if (memory.alerted.has(revision)) return undefined;
+  memory.alerted.add(revision);
+  return {
+    type: 'agent.score_regression',
+    agent_id: agentId,
+    project: (row.project as string | null) ?? null,
+    status: String(row.status ?? 'unknown'),
+    at: now,
+    details: {
+      revision,
+      peak: gate.peak,
+      mean: gate.mean,
+      drop: SCORE_DROP,
+      since_gain: gate.sinceGain,
+      runs: points.length,
+      recent: windowSummary(points.slice(-SCORE_WINDOW)),
+      ...(row.name != null ? { name: row.name } : {}),
+    },
+  };
+}
+
+function scoreRegressionAlerts(db: SqlDatabase, now: number, state: Map<string, ScoreRegressionMemory> | undefined): AlertEvent[] {
+  if (state === undefined) return [];
+  try {
+    return db
+      .prepare("SELECT agent_id, project, name, status FROM agents WHERE status IS NOT 'stopped'")
+      .all()
+      .flatMap((row) => scoreRegressionAlert(db, row, now, state) ?? []);
+  } catch (error) {
+    console.error('[lousho observe] score regression pass failed:', error);
+    return [];
+  }
 }
 
 /**
@@ -206,6 +279,7 @@ export function sweepAgents(db: SqlDatabase, now: number = Date.now(), options: 
       });
     }
   }
+  alerts.push(...scoreRegressionAlerts(db, now, options.scoreRegressionState));
   return { transitions, alerts };
 }
 
@@ -267,6 +341,7 @@ export function startStatusSweep(db: SqlDatabase, options: StatusSweepOptions = 
   const intervalMs = options.intervalMs ?? SWEEP_INTERVAL_MS;
   const now = options.now ?? Date.now;
   const errorRateSeen = new Map<string, number>();
+  const scoreRegressionSeen = new Map<string, ScoreRegressionMemory>();
   const days = options.retentionDays;
   // Anything but a finite positive number (unset, 0, negative, NaN) disables retention.
   const retentionMs = days !== undefined && Number.isFinite(days) && days > 0 ? days * DAY_MS : 0;
@@ -289,6 +364,7 @@ export function startStatusSweep(db: SqlDatabase, options: StatusSweepOptions = 
     const result = sweepAgents(db, at, {
       ...(options.errorRateThreshold !== undefined ? { errorRateThreshold: options.errorRateThreshold } : {}),
       errorRateState: errorRateSeen,
+      ...(options.onAlerts !== undefined && { scoreRegressionState: scoreRegressionSeen }),
     });
     if (result.alerts.length > 0) options.onAlerts?.(result.alerts);
     return result;
