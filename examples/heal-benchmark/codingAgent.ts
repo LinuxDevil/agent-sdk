@@ -39,12 +39,17 @@ const FIXTURE: Readonly<Record<string, string>> = {
   'test/pool.test.js': `${TEST_HEAD}const { mapLimit } = require('../src/pool');\n\ntest('starts the next item as soon as a slot is free', async () => {\n  const done = [];\n  await mapLimit([60, 5, 5], 2, async (ms) => {\n    await new Promise((resolve) => setTimeout(resolve, ms));\n    done.push(ms);\n  });\n  assert.deepStrictEqual(done, [5, 5, 60]);\n});\n`,
 };
 
-interface CodingTask {
+export interface CodingTask {
   id: string;
   input: string;
   mayChange: readonly string[];
   hidden: string;
   fix: Record<string, string>;
+}
+
+export interface CodingProject {
+  fixture: Readonly<Record<string, string>>;
+  tasks: readonly CodingTask[];
 }
 
 const TASKS: readonly CodingTask[] = [
@@ -160,12 +165,14 @@ export function runProjectTests(files: Readonly<Record<string, string>>, file?: 
   }
 }
 
-function changedFiles(files: Readonly<Record<string, string>>): string[] {
-  return [...new Set([...Object.keys(FIXTURE), ...Object.keys(files)])].filter((name) => files[name] !== FIXTURE[name]);
+export const CODING_PROJECT: CodingProject = { fixture: FIXTURE, tasks: TASKS };
+
+function changedFiles(fixture: Readonly<Record<string, string>>, files: Readonly<Record<string, string>>): string[] {
+  return [...new Set([...Object.keys(fixture), ...Object.keys(files)])].filter((name) => files[name] !== fixture[name]);
 }
 
-function failedChecks(files: Readonly<Record<string, string>>, { mayChange, hidden }: CodingTask): string[] {
-  if (changedFiles(files).some((name) => !mayChange.includes(name))) return ['changed only the files this task allows'];
+function failedChecks(fixture: Readonly<Record<string, string>>, files: Readonly<Record<string, string>>, { mayChange, hidden }: CodingTask): string[] {
+  if (changedFiles(fixture, files).some((name) => !mayChange.includes(name))) return ['changed only the files this task allows'];
   const { exitCode, output } = runProjectTests({ ...files, 'test/hidden.test.js': hidden }, 'test/hidden.test.js');
   if (exitCode === 0) return [];
   const names = [...output.matchAll(/^\s*✖ (.+?) \(\d/gm)].map((match) => match[1]);
@@ -173,8 +180,8 @@ function failedChecks(files: Readonly<Record<string, string>>, { mayChange, hidd
 }
 
 /** A coding agent with a real test runner, scored by hidden tests and by which files it changed. */
-export function codingAgent(seed: Readonly<Record<string, string>> = {}): BenchmarkAgent & { readonly files: Record<string, string> } {
-  const workspace = new MemoryWorkspace({ files: { ...FIXTURE, ...seed } });
+export function codingAgent(seed: Readonly<Record<string, string>> = {}, { fixture, tasks }: CodingProject = CODING_PROJECT): BenchmarkAgent & { readonly files: Record<string, string> } {
+  const workspace = new MemoryWorkspace({ files: { ...fixture, ...seed } });
   const fileTools = createFsTools(workspace).filter((tool) => ['read_file', 'list_dir', 'grep', 'edit_file', 'write_file'].includes(tool.name));
   const runTests = defineTool({
     name: 'run_tests',
@@ -189,11 +196,11 @@ export function codingAgent(seed: Readonly<Record<string, string>> = {}): Benchm
     get files() {
       return workspace.snapshot();
     },
-    tasks: TASKS.map((task) => ({
+    tasks: tasks.map((task) => ({
       id: task.id,
       input: task.input,
-      check: () => failedChecks(workspace.snapshot(), task).length === 0,
-      failure: () => failedChecks(workspace.snapshot(), task).join('; ') || undefined,
+      check: () => failedChecks(fixture, workspace.snapshot(), task).length === 0,
+      failure: () => failedChecks(fixture, workspace.snapshot(), task).join('; ') || undefined,
     })),
   };
 }

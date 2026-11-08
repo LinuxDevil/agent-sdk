@@ -361,6 +361,8 @@
     "example:heal-benchmark:replay": "tsx examples/heal-benchmark/replay.ts",
     "example:heal-benchmark:experiment": "tsx examples/heal-benchmark/experiment.ts",
     "example:heal-benchmark:simulate": "tsx examples/heal-benchmark/simulate.ts",
+    "example:product-pilot": "tsx examples/product-pilot/run.ts",
+    "example:product-pilot:report": "tsx examples/product-pilot/report.ts",
     "example:support-desk": "tsx examples/support-desk/index.ts",
     "example:deep-research": "tsx examples/deep-research/index.ts",
     "example:data-analyst": "tsx examples/data-analyst/index.ts",
