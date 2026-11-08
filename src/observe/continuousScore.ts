@@ -41,8 +41,11 @@ export interface TrajectoryOptions {
 
 /** A window's summary; a value of 0.5 or more is a pass. */
 export interface WindowStat {
+  /** How many runs the window holds. */
   runs: number;
+  /** The mean point value. */
   mean: number;
+  /** The share of runs that passed. */
   passRate: number;
   /** pass^3, the chance that three independent runs all pass, estimated as C(passes, 3) / C(runs, 3); absent below three runs. */
   pass3?: number;
@@ -57,10 +60,10 @@ const PASS = 0.5;
 const EPSILON = 1e-9;
 const SERIES_DEFAULT_LIMIT = 1000;
 
-/** The series for one agent (its exact agent id), oldest first. */
-export function scoreSeries(db: SqlDatabase, filter: { agent: string; revision?: string; since?: number; limit?: number }): ScorePoint[] {
+/** The series for one agent (its exact agent id), or for every agent when it is left out, oldest first. */
+export function scoreSeries(db: SqlDatabase, filter: { agent?: string; revision?: string; since?: number; limit?: number }): ScorePoint[] {
   const { agent, ...rest } = filter;
-  return finishedRuns(db, { ...rest, agentId: agent, limit: filter.limit ?? SERIES_DEFAULT_LIMIT })
+  return finishedRuns(db, { ...rest, ...(agent !== undefined && { agentId: agent }), limit: filter.limit ?? SERIES_DEFAULT_LIMIT })
     .reverse()
     .map((run) => ({ traceId: run.traceId, at: run.startedAt, ...(run.revision !== undefined && { revision: run.revision }), value: run.score ?? (run.failed ? 0 : 1) }));
 }

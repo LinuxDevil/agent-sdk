@@ -190,7 +190,7 @@ export function approvePending(dir: string, id: string, approvedBy: string): Pro
 
 // @public
 export interface AuditEntry {
-    action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'pause' | 'resume' | 'canary-start' | 'canary-end';
+    action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'unverified' | 'pause' | 'resume' | 'canary-start' | 'canary-end';
     actor: 'gate' | 'canary' | 'monitor' | 'guard' | 'scheduler' | `person:${string}`;
     at: string;
     cycle?: string;
@@ -320,6 +320,13 @@ export interface CaseVerdict {
     reasons: string[];
     role: 'training' | 'holdout';
 }
+
+// @public
+export function checkApplied(db: SqlDatabase, dir: string, settings: MonitorSettings, options?: {
+    now?: number;
+    cooldownHours?: number;
+    agent?: string;
+}): Promise<MonitorVerdict>;
 
 // @public
 export function citedEntries(notes: string): string[];
@@ -850,6 +857,20 @@ type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // @public
 type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexual-minors' | 'violence' | 'illicit';
+
+// @public (undocumented)
+type MonitorSettings = ImproveSettings['monitor'];
+
+// @public
+export interface MonitorVerdict {
+    after?: WindowStat;
+    baselineRuns?: number;
+    before?: WindowStat;
+    reason?: string;
+    runs?: number;
+    state: 'idle' | 'pending' | 'kept' | 'kept-unverified' | 'regressed' | 'rolled-back';
+    to?: string;
+}
 
 // @public
 interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
@@ -1449,6 +1470,16 @@ export function voteOnOutcome(dir: string, options: {
     library?: ImproveOptions['library'];
     entryId?: string;
 }): LibraryEntry[];
+
+// @public
+export interface WindowStat {
+    lower: number;
+    mean: number;
+    pass3?: number;
+    passRate: number;
+    runs: number;
+    upper: number;
+}
 
 // (No @packageDocumentation comment for this package)
 
