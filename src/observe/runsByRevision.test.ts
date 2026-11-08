@@ -66,13 +66,14 @@ describe('runsByRevision', () => {
     db.close();
   });
 
-  it('answers within 200 ms over 10k runs without an index', () => {
+  it('answers within 200 ms over 10k runs without an index, while the other revision fails', () => {
     const db = openDb(':memory:');
-    ingestBatch(db, Array.from({ length: 10_000 }, (_, i) => root(`t${i}`, i % 2 === 0 ? R1 : R2, T0 + i)));
+    ingestBatch(db, Array.from({ length: 10_000 }, (_, i) => (i % 2 === 0 ? root(`t${i}`, R1, T0 + i) : root(`t${i}`, R2, T0 + i, {}, { 'lousho.run.finish_reason': 'max-steps' }))));
     const started = performance.now();
     const runs = runsByRevision(db, { revision: R1, limit: 40 });
     expect(performance.now() - started).toBeLessThan(200);
     expect(runs).toHaveLength(40);
+    expect(runs.every((run) => !run.failed)).toBe(true);
     db.close();
   });
 

@@ -21,6 +21,8 @@ import { defineTool } from './tools/defineTool';
 import { defineSkill } from './skills/defineSkill';
 import { loadAgentDir } from './agentDir/loadAgentDir';
 import { currentRevision, harnessHash } from './improve/revisions';
+import { parseIngestEnvelope } from './observe/envelope';
+import { ingestBatch, openDb, runsByRevision } from './observe/store';
 
 /** An exporter that keeps the spans it was told about. */
 function recording(): TraceExporter & { ended: Span[] } {
@@ -113,6 +115,19 @@ describe('createAgent({ exporter })', () => {
       expect(run.parentId).toBeUndefined();
       // the tool ran before the continued model call
       expect(tool.startTime).toBeLessThanOrEqual(spans.find((span) => op(span) === 'chat')!.startTime);
+    });
+
+    it("stamps the continued run with the paused run's harness revision", async () => {
+      const exporter = recording();
+      const agent = emailAgent({ exporter, instructions: 'Send what you are asked to.' });
+      const paused = await agent.send('Email Sam');
+      const before = exporter.ended.length;
+      await agent.approvals.resolve({ id: paused.approvalId!, approved: true });
+
+      const revisions = exporter.ended.filter((span) => op(span) === 'invoke_agent').map((span) => span.attributes['lousho.harness.revision']);
+      expect(revisions).toHaveLength(2);
+      expect(revisions[0]).toBe(harnessHash({ instructions: 'Send what you are asked to.', skills: {} }));
+      expect(exporter.ended.slice(before).find((span) => op(span) === 'invoke_agent')!.attributes['lousho.harness.revision']).toBe(revisions[0]);
     });
 
     it('records the call arguments and result with captureContent', async () => {
@@ -462,6 +477,27 @@ describe('captureContent default on a local collector', () => {
     await createAgent({ name, provider: mockModel(['Done.']), tools: [flaky], store, exporter }).resume('job');
     expect(exporter.ended.find((span) => op(span) === 'chat')!.attributes['gen_ai.output.messages']).toBeUndefined();
     expect(await daemonText(name)).toContain('Done.');
+  });
+
+  it('a run of a directory agent reaches the observe store under the directory revision', async () => {
+    observe('1');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-revision-observe-'));
+    const db = openDb(':memory:');
+    try {
+      fs.writeFileSync(path.join(dir, 'instructions.md'), 'Answer refund questions.\n');
+      const name = `content-default-${++names}`;
+      await (await loadAgentDir(dir, { name, provider: mockModel(['Hi.']) })).send('Hello');
+      await daemonText(name);
+      for (const body of posted) {
+        const parsed = parseIngestEnvelope(JSON.parse(body));
+        if (parsed.ok) ingestBatch(db, parsed.envelope.batch);
+      }
+
+      expect(runsByRevision(db, { revision: currentRevision(dir), limit: 10 })).toHaveLength(1);
+    } finally {
+      db.close();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

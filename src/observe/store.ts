@@ -1291,7 +1291,7 @@ export function runsByRevision(db: SqlDatabase, filter: { revision: string; agen
   const roots = db.prepare(REVISION_ROOTS).all(filter.since ?? 0, agent, agent, agent, filter.revision, filter.revision, filter.limit);
   if (roots.length === 0) return [];
   const traceIds = roots.map((row) => String(row.trace_id));
-  const failed = failedTraceIdsFromDb(db, { since: Math.min(...roots.map((row) => Number(row.start))) });
+  const failed = failedTraceIdsFromDb(db, { since: Math.min(...roots.map((row) => Number(row.start))), traceIds });
   const means = new Map(db.prepare(ONLINE_MEANS).all(JSON.stringify(traceIds)).map((row) => [String(row.trace_id), Number(row.mean)]));
   return roots.map((row, i) => {
     const traceId = traceIds[i];

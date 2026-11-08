@@ -181,7 +181,7 @@ function chatDetail(span: Span): string[] {
 
 const labelled = (label: string, value: unknown, chars = Infinity): string[] => (typeof value === 'string' ? [`${label} ${value.slice(0, chars)}`] : []);
 
-/** Model and tokens of a `chat` span, tool name of an `execute_tool` span, harness revision of an `invoke_agent` span, and any cost. */
+/** Model, tokens and cost of a `chat` span; tool name of an `execute_tool` span. */
 function details(span: Span): string {
   const op = attr(span, 'gen_ai.operation.name');
   const parts: string[] = [];

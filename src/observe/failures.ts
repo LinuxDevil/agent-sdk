@@ -1,6 +1,6 @@
 import { classifyToolFailure, failureSignature, type ToolFailureClass } from '../execution/progressGuard';
 import type { Span } from '../execution/tracing';
-import type { SqlDatabase } from '../storage/sqlite/driver';
+import type { SqlDatabase, SqlValue } from '../storage/sqlite/driver';
 import { listTraces, readTrace } from '../traces/readTraces';
 
 const MAX_TRACE_IDS = 5;
@@ -151,13 +151,13 @@ function rootSample(row: Record<string, unknown>): FailureSample | undefined {
   return { agent: typeof name === 'string' ? name : fields.agent, source: 'run', operation: 'invoke_agent', error: INTERRUPTED_EXAMPLE, traceId: fields.traceId, at: fields.at };
 }
 
-function lowScoreSamples(db: SqlDatabase, since: number, agent: string, minScore: number): FailureSample[] {
+function lowScoreSamples(db: SqlDatabase, filterArgs: readonly SqlValue[], minScore: number): FailureSample[] {
   const rows = db
     .prepare(
       'SELECT s.name, s.value, s.trace_id, s.created_at, s.agent_id, a.name AS agent_name FROM scores s LEFT JOIN agents a ON a.agent_id = s.agent_id ' +
-        "WHERE s.value IS NOT NULL AND s.value < ? AND s.created_at >= ? AND (? = '' OR s.agent_id = ?)"
+        "WHERE s.value IS NOT NULL AND s.value < ? AND s.created_at >= ? AND (? = '' OR s.agent_id = ?) AND (? IS NULL OR s.trace_id IN (SELECT value FROM json_each(?)))"
     )
-    .all(minScore, since, agent, agent);
+    .all(minScore, ...filterArgs);
   return rows.map((row) => ({
     agent: agentOf(row),
     source: `score ${String(row.name)}`,
@@ -168,15 +168,19 @@ function lowScoreSamples(db: SqlDatabase, since: number, agent: string, minScore
   }));
 }
 
-type FailureFilter = { since?: number; agent?: string; minScore?: number };
+type FailureFilter = { since?: number; agent?: string; minScore?: number; traceIds?: readonly string[] };
 
-const FILTERS = "o.start >= ? AND (? = '' OR o.agent_id = ?)";
+const FILTERS = "o.start >= ? AND (? = '' OR o.agent_id = ?) AND (? IS NULL OR o.trace_id IN (SELECT value FROM json_each(?)))";
 const LEAF = `o.kind IN ('tool', 'generation') AND ${FILTERS}`;
 
-function failureSamples(db: SqlDatabase, filter: FailureFilter): { failed: FailureSample[]; roots: FailureSample[]; lowScores: FailureSample[] } {
-  const since = filter.since ?? 0;
+function filterArgs(filter: FailureFilter): SqlValue[] {
   const agent = filter.agent ?? '';
-  const args = [since, agent, agent];
+  const traces = filter.traceIds === undefined ? null : JSON.stringify(filter.traceIds);
+  return [filter.since ?? 0, agent, agent, traces, traces];
+}
+
+function failureSamples(db: SqlDatabase, filter: FailureFilter): { failed: FailureSample[]; roots: FailureSample[]; lowScores: FailureSample[] } {
+  const args = filterArgs(filter);
   const failed = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${LEAF} AND o.status = 'error'`).all(...args).flatMap((row) => {
     const sample = sampleFrom(rowFields(row));
     return sample ? [sample] : [];
@@ -185,7 +189,7 @@ function failureSamples(db: SqlDatabase, filter: FailureFilter): { failed: Failu
     const sample = rootSample(row);
     return sample ? [sample] : [];
   });
-  return { failed, roots, lowScores: lowScoreSamples(db, since, agent, filter.minScore ?? DEFAULT_MIN_SCORE) };
+  return { failed, roots, lowScores: lowScoreSamples(db, args, filter.minScore ?? DEFAULT_MIN_SCORE) };
 }
 
 export function failedTraceIdsFromDb(db: SqlDatabase, filter: FailureFilter): Set<string> {
@@ -194,8 +198,7 @@ export function failedTraceIdsFromDb(db: SqlDatabase, filter: FailureFilter): Se
 }
 
 export function failureReportFromDb(db: SqlDatabase, filter: FailureFilter): FailureReport {
-  const agent = filter.agent ?? '';
-  const counts = db.prepare(`SELECT COUNT(DISTINCT o.trace_id) AS traces, COUNT(*) AS spans FROM observations o WHERE ${LEAF}`).get(filter.since ?? 0, agent, agent);
+  const counts = db.prepare(`SELECT COUNT(DISTINCT o.trace_id) AS traces, COUNT(*) AS spans FROM observations o WHERE ${LEAF}`).get(...filterArgs(filter));
   const { failed, roots, lowScores } = failureSamples(db, filter);
   const interrupted = roots.filter((sample) => sample.error === INTERRUPTED_EXAMPLE).length;
   return {
