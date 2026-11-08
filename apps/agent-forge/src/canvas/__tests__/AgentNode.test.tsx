@@ -138,6 +138,39 @@ describe('AgentNode card', () => {
   });
 });
 
+describe('flow card (KindView)', () => {
+  const flowNodeOf = (flow: unknown) =>
+    specToGraph({
+      version: 2,
+      name: 'a',
+      model: 'mock/mock-1',
+      instructions: 'x',
+      flow,
+    } as Parameters<typeof specToGraph>[0]).nodes.find((n) => n.kind === 'flow')!;
+
+  it('titles the card by step type, chips the step id and tones it violet', () => {
+    const card = renderCard(
+      flowNodeOf({ code: 'f', name: 'F', flow: { type: 'llmCall', id: 's7', prompt: 'Hi', outputVariable: 'text' } })
+    );
+    expect(card.querySelector('.rf-node-title')?.textContent).toBe('Model call');
+    expect(card.querySelector('.node-chip')?.textContent).toBe('s7');
+    expect(card.querySelector('.node-kind')?.classList.contains('kind-violet')).toBe(true);
+    expect(card.getAttribute('data-node-kind')).toBe('flow');
+  });
+
+  it('summarises a sequence by its child count', () => {
+    const card = renderCard(
+      flowNodeOf({
+        code: 'f',
+        name: 'F',
+        flow: { type: 'sequence', id: 's1', steps: [{ type: 'end', id: 's2' }, { type: 'end', id: 's3' }] },
+      })
+    );
+    const row = [...card.querySelectorAll('.node-row')].find((r) => r.firstElementChild?.textContent === 'steps');
+    expect(row?.querySelector('code')?.textContent).toBe('2');
+  });
+});
+
 describe('agent card (KindView)', () => {
   const rowText = (card: HTMLElement, key: string) =>
     [...card.querySelectorAll('.node-row')].find((r) => r.firstElementChild?.textContent === key)

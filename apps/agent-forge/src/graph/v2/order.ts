@@ -6,6 +6,7 @@
  * (`orderedNodes`) that `specToGraph`'s push order, `graphToSpec`'s
  * `nodeIdMap` and every consumer share.
  */
+import { flowTree } from './flow';
 import type { AgentNodeData, Graph, GraphNode, McpNodeData, SectionKey, SubagentNodeData } from './types';
 import { ROOT_AGENT_ID, SECTION_KIND, SECTION_ORDER } from './types';
 
@@ -18,10 +19,8 @@ export const SPEC_KEY_ORDER: readonly string[] = [
   'toolSearch', 'codeMode', 'triggers', 'abortListeners', 'flow', 'evals',
 ];
 
-/** Sections specToGraph turns into nodes. C15 adds 'flow'. Anything else lands in AgentNodeData.extra. */
-export const HANDLED_SECTIONS: ReadonlySet<SectionKey> = new Set(
-  SECTION_ORDER.filter((key) => key !== 'flow')
-);
+/** Sections specToGraph turns into nodes — every `SECTION_ORDER` key (`flow` included since C15). */
+export const HANDLED_SECTIONS: ReadonlySet<SectionKey> = new Set(SECTION_ORDER);
 
 /**
  * Keys of `obj` reordered: keys present in `previous` first in previous's
@@ -140,6 +139,16 @@ export function orderedNodes(graph: Graph): GraphNode[] {
   const emit = (ownerId: string) => {
     for (const key of SECTION_ORDER) {
       if (!HANDLED_SECTIONS.has(key)) continue;
+      // Flow nodes form a tree, not a section list: emit them pre-order from
+      // the flow root (orphans are excluded, like `proposed: 'remove'`).
+      if (key === 'flow') {
+        if (ownerId === ROOT_AGENT_ID) {
+          for (const node of flowTree(graph)) {
+            if (node.owner === ownerId) result.push(node);
+          }
+        }
+        continue;
+      }
       for (const child of sectionChildren(graph, ownerId, key)) {
         result.push(child);
         if (child.kind === 'agent') emit(child.id);

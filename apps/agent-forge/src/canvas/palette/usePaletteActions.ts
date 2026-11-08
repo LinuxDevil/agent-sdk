@@ -36,7 +36,8 @@ export function usePaletteActions() {
     }
     // A selected group owns the new node - its position must be group-relative.
     const { graph: next, nodeId } = addNode(graph, entry.create(graph, owner), positionFor(graph, position, owner), owner);
-    setGraph(() => next);
+    // Flow steps link into the step tree here; every other entry ignores it.
+    setGraph(() => entry.afterAdd?.(next, nodeId, selectedNodeId) ?? next);
     setSelectedNodeId(nodeId);
     setNotice(`Added ${entry.label} to ${paletteOwnerTitle(graph, owner)}.`);
   }

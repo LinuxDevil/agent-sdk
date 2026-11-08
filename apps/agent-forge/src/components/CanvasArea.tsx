@@ -451,7 +451,8 @@ function useDropHandlers(
         }
         const result = addNode(g, entry.create(g, owner), positionFor(g, position, owner), owner);
         addedId = result.nodeId;
-        return result.graph;
+        // Flow steps link into the step tree here; every other entry ignores it.
+        return entry.afterAdd?.(result.graph, result.nodeId, selectedNodeId) ?? result.graph;
       });
       if (refusal !== undefined) {
         flashError(refusal);

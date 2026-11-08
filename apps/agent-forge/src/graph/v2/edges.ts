@@ -4,11 +4,13 @@
  * data"). A reload or a spec edit changes the nodes, and the edges follow
  * for free.
  */
+import { flowRoot } from './flow';
 import { toolNodeName } from './nodeIds';
 import { subagentEntryKey } from './order';
 import type {
   AbortNodeData,
   EdgeKind,
+  FlowNodeData,
   Graph,
   GraphEdge,
   GraphNode,
@@ -69,11 +71,45 @@ export function ruleCoversServer(patterns: readonly string[], key: string): bool
 }
 
 /** One derived edge: id `${kind}:${source}->${target}`, label only when `EDGE_LABELS` names one. */
-function edge(kind: EdgeKind, source: string, target: string): GraphEdge {
-  const label = EDGE_LABELS[kind];
+function edge(kind: EdgeKind, source: string, target: string, label?: string, condition?: string): GraphEdge {
   const e: GraphEdge = { id: `${kind}:${source}->${target}`, kind, source, target };
-  if (label !== '') e.label = label;
+  const text = label ?? EDGE_LABELS[kind];
+  if (text !== '') e.label = text;
+  if (condition !== undefined) e.condition = condition;
   return e;
+}
+
+/** A router option's edge label: the condition (≤ 24 chars + `…`) or `default`. */
+function optionLabel(condition: string | undefined): string {
+  if (condition === undefined) return 'default';
+  return condition.length > 24 ? `${condition.slice(0, 24)}…` : condition;
+}
+
+/**
+ * The `next` edges of one flow node: sequence children labelled `1`, `2`, …;
+ * parallel children `parallel`; a router's options by condition/`default`
+ * (carrying the condition); a loop's body `each`.
+ */
+function flowEdges(node: GraphNode, ids: ReadonlySet<string>): GraphEdge[] {
+  const { step, children } = node.data as FlowNodeData;
+  const edges: GraphEdge[] = [];
+  // A dangling child reference (invalid graph) draws no edge — validation reports it.
+  const live = (id: string | null): id is string => id !== null && ids.has(id);
+  if (children.shape === 'steps') {
+    const parallel = step.type === 'parallel';
+    children.ids.forEach((id, i) => {
+      if (live(id)) edges.push(edge('next', node.id, id, parallel ? 'parallel' : String(i + 1)));
+    });
+  } else if (children.shape === 'options') {
+    for (const option of children.options) {
+      if (live(option.id)) {
+        edges.push(edge('next', node.id, option.id, optionLabel(option.condition), option.condition));
+      }
+    }
+  } else if (children.shape === 'step' && live(children.id)) {
+    edges.push(edge('next', node.id, children.id, 'each'));
+  }
+  return edges;
 }
 
 /** Owner → node edge kinds for capability nodes. */
@@ -142,8 +178,10 @@ function edgesFor(node: GraphNode, nodes: GraphNode[], ids: ReadonlySet<string>)
     }
     case 'permission':
       return permissionEdges(node, nodes);
+    case 'flow':
+      return flowEdges(node, ids);
     default:
-      return []; // flow (C15), note
+      return []; // note
   }
 }
 
@@ -151,9 +189,15 @@ function edgesFor(node: GraphNode, nodes: GraphNode[], ids: ReadonlySet<string>)
 export function deriveEdges(graph: Graph): GraphEdge[] {
   const nodes = graph.nodes.filter((n) => n.proposed !== 'remove');
   const ids = new Set(nodes.map((n) => n.id));
+  const flowRootId = flowRoot(graph)?.id;
   const edges: GraphEdge[] = [];
   for (const node of nodes) {
     edges.push(...edgesFor(node, nodes, ids));
+    // The root agent's `runs` edge to the flow root is derived like every
+    // other edge — emitted once, when the root agent node is visited.
+    if (node.id === ROOT_AGENT_ID && node.kind === 'agent' && flowRootId !== undefined) {
+      edges.push(edge('runs', ROOT_AGENT_ID, flowRootId));
+    }
   }
   return edges;
 }

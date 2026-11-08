@@ -57,7 +57,7 @@ function InspectorHead({ node }: { node: GraphNode }) {
   const { Icon } = view;
   return (
     <div className="inspector-head">
-      <span className={`node-kind node-kind-lg kind-${view.tone}`} aria-hidden="true">
+      <span className={`node-kind node-kind-lg kind-${view.toneFor?.(node as never) ?? view.tone}`} aria-hidden="true">
         <Icon size={16} strokeWidth={1.75} />
       </span>
       <div className="inspector-head-text">

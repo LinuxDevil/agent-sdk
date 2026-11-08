@@ -57,7 +57,10 @@ interface PaletteItemProps {
  */
 function PaletteItem({ entry, tabbable, onFocusItem, onActivate }: PaletteItemProps) {
   const { graph, selectedNodeId } = useAppState();
-  const { tone, Icon } = viewFor(entry.kind);
+  const view = viewFor(entry.kind);
+  // Per-entry overrides let flow steps show their own icon/tone per step type.
+  const tone = entry.tone ?? view.tone;
+  const Icon = entry.Icon ?? view.Icon;
   const reason = entry.unavailable?.(graph, ownerForNewNode(graph, entry.kind, selectedNodeId));
   const descriptionId = `palette-${entry.id}-desc`;
   return (

@@ -76,7 +76,7 @@ export function NodeCardHead({
   const { Icon } = view;
   return (
     <div className={['rf-node-head', className].filter(Boolean).join(' ')}>
-      <span className={`node-kind kind-${view.tone}`} aria-hidden="true">
+      <span className={`node-kind kind-${view.toneFor?.(node as never) ?? view.tone}`} aria-hidden="true">
         <Icon size={14} strokeWidth={1.75} />
       </span>
       <span className="rf-node-title" title={title}>

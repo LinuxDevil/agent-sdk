@@ -8,6 +8,7 @@
  * ids at save time instead.
  */
 import { canConnect } from './connectionRules';
+import { flowChildRefs, removeFlowChild } from './flow';
 import type { ConnectResult, KindRules } from './kindRules';
 import { KIND_RULES } from './kindRules';
 import { baseNodeId, dedupeId } from './nodeIds';
@@ -108,10 +109,35 @@ export function descendantsOf(graph: Graph, rootId: string): ReadonlySet<string>
 export function removeNode(graph: Graph, nodeId: string): Graph {
   const node = graph.nodes.find((n) => n.id === nodeId);
   if (node === undefined || (node.id === ROOT_AGENT_ID && node.kind === 'agent')) return graph;
-  const removed = descendantsOf(graph, nodeId);
+  const removed = new Set(descendantsOf(graph, nodeId));
+  // Flow children are not owner-descendants: removing a flow container also
+  // removes its whole step subtree (fixpoint over `FlowNodeData.children`).
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const n of graph.nodes) {
+      if (n.kind === 'flow' && removed.has(n.id)) {
+        for (const ref of flowChildRefs(n)) {
+          if (!removed.has(ref.id)) {
+            removed.add(ref.id);
+            grew = true;
+          }
+        }
+      }
+    }
+  }
+  // Surviving flow parents drop references to the removed steps.
+  const nodes = graph.nodes
+    .filter((n) => !removed.has(n.id))
+    .map((n) => {
+      if (n.kind !== 'flow') return n;
+      let out: GraphNode = n;
+      for (const id of removed) out = removeFlowChild(out, id);
+      return out;
+    });
   return {
     ...graph,
-    nodes: graph.nodes.filter((n) => !removed.has(n.id)),
+    nodes,
     emptySections: graph.emptySections.filter((section) => !removed.has(section.owner)),
     unplaced: graph.unplaced.filter((id) => !removed.has(id)),
   };

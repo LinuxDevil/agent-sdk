@@ -6,11 +6,13 @@
  * kind ticket). Spec paths for `fieldPath` come from one `graphToSpec`
  * call, never one per node.
  */
+import { flowChildRefs, flowRoot, flowSpecPaths, flowTree } from './flow';
 import { graphToSpec } from './graphToSpec';
 import { KIND_RULES } from './kindRules';
 import { orderedNodes, sectionChildren, subagentEntryKey, HANDLED_SECTIONS } from './order';
 import type {
   AgentNodeData,
+  FlowChildren,
   Graph,
   GraphNode,
   McpNodeData,
@@ -218,6 +220,103 @@ function duplicateItemIds(graph: Graph, paths: Readonly<Record<string, string>>)
   return problems;
 }
 
+/** The `FlowChildren.shape` each step type is allowed to have (`none` = leaf or empty container). */
+const FLOW_CHILD_SHAPE: Record<string, FlowChildren['shape'] | undefined> = {
+  sequence: 'steps',
+  parallel: 'steps',
+  oneOf: 'options',
+  forEach: 'step',
+};
+
+/** `problem` for a flow node, with its `flowSpecPaths` path (`flow.flow.steps[1]`). */
+function flowProblem(
+  nodeId: string,
+  paths: Readonly<Record<string, string>>,
+  severity: Problem['severity'],
+  message: string,
+  suffix?: string
+): Problem {
+  const base = paths[nodeId];
+  const fieldPath = base === undefined ? undefined : suffix === undefined ? base : `${base}.${suffix}`;
+  return fieldPath === undefined
+    ? { nodeId, severity, message }
+    : { nodeId, severity, message, fieldPath };
+}
+
+/**
+ * Flow-tree structure (C15): exactly one root, every node reachable from it,
+ * every child reference pointing at a live flow node, no step referenced
+ * twice, `children.shape` matching the step type, and `flowMeta` only on
+ * the root. Per-step field rules live in `kinds/flow.ts`; this check covers
+ * what needs the whole tree — including orphans `orderedNodes` never walks.
+ */
+function flowStructure(graph: Graph, paths: Readonly<Record<string, string>>): Problem[] {
+  const flows = liveNodes(graph).filter((n) => n.kind === 'flow');
+  if (flows.length === 0) return [];
+  const flowPaths = { ...paths, ...flowSpecPaths(graph) };
+  const byId = new Map(flows.map((n) => [n.id, n]));
+  const tree = new Set(flowTree(graph).map((n) => n.id));
+  const root = flowRoot(graph);
+  const refCount = new Map<string, number>();
+  for (const n of flows) {
+    for (const ref of flowChildRefs(n)) refCount.set(ref.id, (refCount.get(ref.id) ?? 0) + 1);
+  }
+  const problems: Problem[] = [];
+  for (const node of flows) {
+    const data = node.data as { children: FlowChildren; flowMeta?: unknown; step: { type?: unknown } };
+    const refs = flowChildRefs(node);
+    if ((refCount.get(node.id) ?? 0) > 1) {
+      problems.push(flowProblem(node.id, flowPaths, 'error', 'This step is in the flow more than once'));
+    }
+    const isRoot = root !== undefined && node.id === root.id;
+    if (!isRoot && (refCount.get(node.id) ?? 0) === 0) {
+      problems.push(
+        flowProblem(node.id, flowPaths, 'error', 'The flow has more than one first step')
+      );
+    } else if (!tree.has(node.id)) {
+      problems.push(flowProblem(node.id, flowPaths, 'error', 'This step is not connected to the flow'));
+    }
+    const seen = new Set<string>();
+    for (const ref of refs) {
+      if (seen.has(ref.id)) {
+        problems.push(
+          flowProblem(node.id, flowPaths, 'error', 'This step lists the same step twice', ref.segment)
+        );
+      }
+      seen.add(ref.id);
+      const target = byId.get(ref.id);
+      if (target === undefined || target.kind !== 'flow') {
+        problems.push(
+          flowProblem(node.id, flowPaths, 'error', 'This step points at a step that does not exist', ref.segment)
+        );
+      }
+    }
+    const expected = FLOW_CHILD_SHAPE[String(data.step.type)] ?? 'none';
+    if (data.children.shape !== expected && !(expected !== 'none' && data.children.shape === 'none')) {
+      problems.push(
+        flowProblem(node.id, flowPaths, 'error', "This step's children do not match its type", 'type')
+      );
+    }
+    if (data.flowMeta !== undefined && !isRoot) {
+      problems.push(flowProblem(node.id, flowPaths, 'error', 'Only the first step carries the flow details'));
+    }
+  }
+  const rootNode = root as GraphNode | undefined;
+  if (rootNode === undefined) return problems;
+  {
+    const meta = (rootNode.data as { flowMeta?: unknown }).flowMeta;
+    if (meta === undefined) {
+      problems.push(flowProblem(rootNode.id, flowPaths, 'warning', 'The flow has no code or name'));
+    } else if (typeof meta === 'object' && meta !== null) {
+      const record = meta as Record<string, unknown>;
+      if (typeof record.code !== 'string' || record.code.trim() === '' || typeof record.name !== 'string' || record.name.trim() === '') {
+        problems.push(flowProblem(rootNode.id, flowPaths, 'warning', 'The flow needs a code and a name'));
+      }
+    }
+  }
+  return problems;
+}
+
 /** A spec carries at most one `output` per agent. */
 function duplicateOutputs(graph: Graph, paths: Readonly<Record<string, string>>): Problem[] {
   const nodes = liveNodes(graph).filter((n) => n.kind === 'output');
@@ -237,6 +336,7 @@ const CORE_CHECKS: readonly CoreCheck[] = [
   duplicateMemoryNames,
   duplicateItemIds,
   duplicateOutputs,
+  flowStructure,
 ];
 
 /** Checks whose problems are graph-level (emitted before any node problem). */
