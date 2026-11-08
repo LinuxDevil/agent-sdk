@@ -253,26 +253,26 @@ describe('improveAgent with several proposers', () => {
         "outcome": "proposal",
         "reason": "A training case improved by at least 2 in 3 runs, none got worse, and no held-out case got worse. Cost per passing run went from 10 to 10 tokens (noise 0).",
         "spend": {
-          "tokens": 4347,
+          "tokens": 4502,
         },
         "stages": [
           {
             "label": "invariant",
             "notes": "KEEP_BASE. Nothing in the runs argues for a change.",
             "status": "no-change",
-            "tokens": 761,
+            "tokens": 792,
           },
           {
             "label": "domain",
             "notes": "Traced to a failed run.",
             "status": "edited",
-            "tokens": 1566,
+            "tokens": 1628,
           },
           {
             "label": "compose",
             "notes": "Traced to a failed run.",
             "status": "edited",
-            "tokens": 1900,
+            "tokens": 1962,
           },
         ],
       }
