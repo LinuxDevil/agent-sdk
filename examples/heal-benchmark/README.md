@@ -58,6 +58,7 @@ change what's measured:
 | `--cache <dir>` | Stores each scored run by harness, case, repeat, model and attempt, so a replay reuses it. Offline mock runs are kept apart from live ones, and the gate never reuses a run the editors were shown |
 | `--confirm-candidates` | Confirms every editor's harness, not only a proposal, with `--confirm` fresh runs. Needs `--confirm` above 0 |
 | `--first-attempt <n>` | Starts numbering attempts at `n`, to continue a run on another day |
+| `--failure-names <real\|none\|shuffled>` | Shows editors the real failed check, none, or another task's, to test whether the name itself helps |
 
 ## Gate experiment
 
