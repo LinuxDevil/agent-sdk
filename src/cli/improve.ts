@@ -533,6 +533,7 @@ async function watchDir(args: ImproveArgs, io: ImproveIo, dir: string, config: C
         editor,
         settings,
         reloadSettings: () => loadImproveSettings(dir, args.approval ? { approval: args.approval } : {}),
+        registry: path.join(path.dirname(dbPathOf(args.db)), 'watchers.json'),
         agent,
         protect: args.protect,
         withRecoveries: args.withRecoveries === true,

@@ -37,6 +37,7 @@ export interface WatchMemory {
   spent?: number;
   harvested?: number;
   guardNotified?: string;
+  scoreAt?: number;
 }
 
 export interface WatchState {

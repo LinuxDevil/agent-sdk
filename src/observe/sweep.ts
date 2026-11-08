@@ -279,7 +279,9 @@ export function sweepAgents(db: SqlDatabase, now: number = Date.now(), options: 
       });
     }
   }
-  alerts.push(...scoreRegressionAlerts(db, now, options.scoreRegressionState));
+  const regressions = scoreRegressionAlerts(db, now, options.scoreRegressionState);
+  recordRegressions(db, regressions);
+  alerts.push(...regressions);
   return { transitions, alerts };
 }
 
@@ -331,6 +333,21 @@ function idleSessionPass(db: SqlDatabase, idleMs: number | undefined): (at: numb
   };
 }
 
+function recordRegressions(db: SqlDatabase, alerts: readonly AlertEvent[]): void {
+  const insert = db.prepare('INSERT OR IGNORE INTO score_regressions (agent_id, revision, at, details) VALUES (?, ?, ?, ?)');
+  for (const alert of alerts) {
+    const revision = alert.details.revision;
+    insert.run(alert.agent_id, typeof revision === 'string' ? revision : null, alert.at, JSON.stringify(alert.details));
+  }
+}
+
+export function scoreRegressionsSince(db: SqlDatabase, agent: string, since: number): { at: number; revision: string | null }[] {
+  return db
+    .prepare("SELECT at, revision FROM score_regressions WHERE at > ? AND (agent_id = ? OR agent_id IN (SELECT agent_id FROM agents WHERE name = ?)) ORDER BY at")
+    .all(since, agent, agent)
+    .map((row) => ({ at: Number(row.at), revision: row.revision === null ? null : String(row.revision) }));
+}
+
 /**
  * The daemon's sweep loop. The first pass runs immediately: agents that died
  * while the daemon was down are marked (and reported) at boot, not one
@@ -364,7 +381,7 @@ export function startStatusSweep(db: SqlDatabase, options: StatusSweepOptions = 
     const result = sweepAgents(db, at, {
       ...(options.errorRateThreshold !== undefined ? { errorRateThreshold: options.errorRateThreshold } : {}),
       errorRateState: errorRateSeen,
-      ...(options.onAlerts !== undefined && { scoreRegressionState: scoreRegressionSeen }),
+      scoreRegressionState: scoreRegressionSeen,
     });
     if (result.alerts.length > 0) options.onAlerts?.(result.alerts);
     return result;

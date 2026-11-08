@@ -19,6 +19,7 @@ import { updateState } from './state';
 import type { Harness } from './types';
 import { isDefinedSchedule } from '../schedules/defineSchedule';
 import { noticeEvent } from './notify';
+import { readWatchers } from './watchers';
 import { improveSchedule, watchAgent, watchContext, watchTick, type WatchOptions } from './watch';
 
 vi.mock('./heal', async (original) => {
@@ -261,6 +262,45 @@ describe('watchTick', () => {
     await updateState(dir, { monitor: undefined });
     await watchTick(options(), context);
     expect(readCorpus(dir).filter((item) => item.origin === 'fixed')).toHaveLength(fixed.length);
+  });
+});
+
+describe('the score regression trigger', () => {
+  const mark = (at: number, revision: string | null = currentRevision(dir)) => db.prepare('INSERT INTO score_regressions (agent_id, revision, at, details) VALUES (?, ?, ?, ?)').run('support', revision, at, '{}');
+
+  it('a regression marker triggers a cycle with trigger score', async () => {
+    const context = watchContext(options());
+    seedFailures(1);
+    expect((await watchTick(options(), context)).cycle?.outcome).toBe('idle');
+    mark(Date.now());
+    const scored = await watchTick(options(), context);
+    expect(vi.mocked(healOnce).mock.calls.at(-1)?.[0].trigger).toBe('score');
+    expect(scored.cycle).toMatchObject({ trigger: 'score', outcome: 'applied' });
+    await watchTick(options(), context);
+    expect(vi.mocked(healOnce).mock.calls.at(-1)?.[0].trigger).toBe('failures');
+  });
+
+  it("ignores a marker for another revision, and the trigger respects the watcher's budgets", async () => {
+    const context = watchContext(options());
+    seedFailures(1);
+    mark(Date.now(), 'f'.repeat(64));
+    await watchTick(options(), context);
+    expect(vi.mocked(healOnce).mock.calls.at(-1)?.[0].trigger).toBe('failures');
+    mark(Date.now() + 1);
+    expect((await watchTick(options(), context)).cycle).toMatchObject({ trigger: 'score', outcome: 'applied' });
+    mark(Date.now() + 2, null);
+    expect((await watchTick(options(), context)).cycle).toMatchObject({ trigger: 'score', outcome: 'budget' });
+    await appendAudit(dir, { actor: 'monitor', action: 'rollback', reason: 'Regressed.' });
+    mark(Date.now() + 3, null);
+    expect((await watchTick(options(), context)).cycle).toMatchObject({ trigger: 'score', outcome: 'cooldown' });
+  });
+
+  it('registers the watcher beside the observe db while it runs', async () => {
+    const registry = path.join(root, 'watchers.json');
+    const watcher = watchAgent(options({ registry, intervalMs: 60_000 }));
+    await vi.waitFor(() => expect(readWatchers(registry)).toEqual([expect.objectContaining({ agent: 'support', dir })]));
+    await watcher.stop();
+    expect(readWatchers(registry)).toEqual([]);
   });
 });
 
