@@ -21,7 +21,7 @@ import {
   type ImproveOptions,
 } from '../improve';
 import { openDb } from '../observe/store';
-import type { LLMProvider } from '../providers';
+import type { AgentInput, LLMProvider, Message } from '../providers';
 import { defineSkill } from '../skills/defineSkill';
 import { memoryStore } from '../storage/agentStore';
 import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
@@ -37,8 +37,9 @@ Experimental. Proposes edits to an agent's instructions and skills from failed r
 local observe database, using improveAgent(). It never changes the agent: it prints a review card,
 and --out writes the proposal to a file for a person to review and apply by hand.
 
-Runs replay each case's recorded input through the agent. Tools are simulated and never run unless
---read-only names them, so only name tools that are safe to call again.
+Runs replay each case's recorded input through the agent and are not traced. Tools other than
+load_skill and read_skill_file are simulated and never run unless --read-only names them, so only
+name tools that are safe to call again. Every run and editor call is billed to your models.
 
 Options:
   --check <module>          required: a .js/.ts module whose default export is a CaseCheck,
@@ -51,7 +52,8 @@ Options:
   --protect traceId         a run that went well and must keep passing (repeatable); joins
                             the gate only after it passes 6 of 6 fresh runs
   --read-only tool          a tool that is safe to run for real while replaying (repeatable)
-  --out file                also write the proposal: the review card, or the JSON result for a .json path
+  --out file                also write the proposal to this new file: the review card, or the
+                            JSON result for a .json path
   -h, --help                show this help
 
 See docs/improve.md.`;
@@ -157,16 +159,52 @@ const inside = (file: string, dir: string): boolean => {
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
 };
 
-function assertOutOutside(out: string, target: DevTarget, config: CreateAgentConfig): void {
-  const file = path.resolve(out);
+function assertOutUsable(out: string, target: DevTarget, config: CreateAgentConfig): void {
+  const resolved = path.resolve(out);
+  if (fs.existsSync(resolved)) throw usageError(SPEC, `--out ${out} already exists; pick a new file, so nothing is overwritten.`);
+  const parent = path.dirname(resolved);
+  if (!fs.existsSync(parent)) throw usageError(SPEC, `--out ${out}: the folder ${parent} does not exist.`);
+  const file = path.join(fs.realpathSync(parent), path.basename(resolved));
   const guarded = target.kind === 'dir' ? [target.path] : [target.path, ...(config.skills ?? []).flatMap((skill) => (skill.directory ? [skill.directory] : []))];
-  if (guarded.some((dir) => inside(file, dir))) throw usageError(SPEC, `--out must be outside the agent's files; ${out} is not.`);
+  if (guarded.some((dir) => inside(file, fs.realpathSync(dir)))) throw usageError(SPEC, `--out must be outside the agent's files; ${out} is not.`);
 }
 
-function messageOf(input: string): string {
-  const parsed: unknown = JSON.parse(input);
-  return typeof parsed === 'string' ? parsed : input;
+function textOfParts(parts: unknown): string {
+  if (!Array.isArray(parts)) return '';
+  return parts
+    .flatMap((part: { type?: unknown; content?: unknown } | null) => (part?.type === 'text' && typeof part.content === 'string' ? [part.content] : []))
+    .join('\n');
 }
+
+const REPLAYED_ROLES = new Set(['user', 'assistant']);
+
+function recordedMessages(parsed: unknown[]): { role: string; content: string }[] {
+  return parsed
+    .map((item) => item as { role?: unknown; parts?: unknown } | null)
+    .filter((message) => REPLAYED_ROLES.has(String(message?.role)))
+    .map((message) => ({ role: String(message?.role), content: textOfParts(message?.parts) }))
+    .filter((message) => message.content !== '');
+}
+
+function messageOf(input: string): AgentInput {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(input);
+  } catch {
+    return input;
+  }
+  if (typeof parsed === 'string') return parsed;
+  const messages = Array.isArray(parsed) ? recordedMessages(parsed) : [];
+  if (messages.length === 0) return input;
+  return messages.length === 1 && messages[0].role === 'user' ? messages[0].content : (messages as Message[]);
+}
+
+function readable(captured: CapturedCase): CapturedCase {
+  const message = messageOf(captured.input);
+  return typeof message === 'string' ? { ...captured, input: message } : captured;
+}
+
+const SKILL_TOOLS = ['load_skill', 'read_skill_file'];
 
 function skillsOf(harness: Harness, directories: ReadonlyMap<string, string | undefined>) {
   return Object.entries(harness.skills).map(([name, skill]) => {
@@ -176,9 +214,15 @@ function skillsOf(harness: Harness, directories: ReadonlyMap<string, string | un
 }
 
 function runCaseWith(config: CreateAgentConfig, args: ImproveArgs, io: ImproveIo) {
-  const { store: _store, approvalStore: _approvalStore, ...rest } = { ...config, ...io.overrides, ...(args.model && { model: args.model, provider: undefined }) };
+  const {
+    store: _store,
+    approvalStore: _approvalStore,
+    exporter: _exporter,
+    onEvent: _onEvent,
+    ...rest
+  } = { ...config, ...io.overrides, ...(args.model && { model: args.model, provider: undefined }) };
   const directories = new Map((config.skills ?? []).map((skill) => [skill.name, skill.directory]));
-  const hooks = [createShadowHook({ readOnly: args.readOnly }), ...(rest.hooks ?? [])];
+  const hooks = [createShadowHook({ readOnly: [...SKILL_TOOLS, ...args.readOnly] }), ...(rest.hooks ?? [])];
   return async (harness: Harness, input: string) => {
     const agent = createAgent({ ...rest, instructions: harness.instructions, skills: skillsOf(harness, directories), hooks } as CreateAgentConfig);
     try {
@@ -202,7 +246,7 @@ function unscoredOnError(probe: ImproveOptions['probe'], errors: Set<string>): I
   };
 }
 
-function capture(args: ImproveArgs): { failures: CapturedCase[]; passes: CapturedCase[] } {
+function readCases(args: ImproveArgs): { failures: CapturedCase[]; passes: CapturedCase[] } {
   const file = dbPathOf(args.db);
   if (!fs.existsSync(file)) throw new ConfigurationError(`lousho improve: no observe database at ${file}. Run your agent with LOUSHO_OBSERVE=1 and 'lousho observe start' first, or pass --db.`, 'db');
   const db = openDb(file);
@@ -214,6 +258,16 @@ function capture(args: ImproveArgs): { failures: CapturedCase[]; passes: Capture
   }
 }
 
+function capture(args: ImproveArgs, io: ImproveIo): { failures: CapturedCase[]; passes: CapturedCase[] } {
+  const { failures, passes } = readCases(args);
+  const failed = new Set(failures.map((captured) => captured.traceId));
+  for (const id of args.protect) {
+    if (failed.has(id)) io.stderr.write(`lousho improve: ${id} is a failed run, so it can't be protected; it stays a case to learn from.\n`);
+    else if (!passes.some((captured) => captured.traceId === id)) io.stderr.write(`lousho improve: no trace ${id} with a recorded input to protect.\n`);
+  }
+  return { failures: failures.map(readable), passes: passes.filter((captured) => !failed.has(captured.traceId)).map(readable) };
+}
+
 function editorOf(args: ImproveArgs, config: CreateAgentConfig, io: ImproveIo): ImproveOptions['editor'] {
   if (io.editor) return { provider: io.editor };
   const model = args.editor ?? args.model ?? (typeof config.model === 'string' ? config.model : undefined);
@@ -221,28 +275,43 @@ function editorOf(args: ImproveArgs, config: CreateAgentConfig, io: ImproveIo): 
   return { model };
 }
 
+async function withoutObserve<T>(run: () => Promise<T>): Promise<T> {
+  const saved = process.env.LOUSHO_OBSERVE;
+  process.env.LOUSHO_OBSERVE = '0';
+  try {
+    return await run();
+  } finally {
+    if (saved === undefined) delete process.env.LOUSHO_OBSERVE;
+    else process.env.LOUSHO_OBSERVE = saved;
+  }
+}
+
 async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
   const target = detectTarget(args.path, 'improve');
   const config = await loadConfig(target);
-  if (args.out !== undefined) assertOutOutside(args.out, target, config);
+  if (args.out !== undefined) assertOutUsable(args.out, target, config);
   const harness = baseHarness(config);
   const editor = editorOf(args, config, io);
   const check = await loadCheck(args.check);
-  const { failures, passes } = capture(args);
+  const { failures, passes } = capture(args, io);
   if (failures.length === 0) {
     io.stdout.write('lousho improve: No failed runs with a recorded input match, so there is nothing to learn from.\n');
     return 0;
   }
-  for (const missing of args.protect.filter((id) => !passes.some((captured) => captured.traceId === id))) io.stderr.write(`lousho improve: no trace ${missing} with a recorded input to protect.\n`);
+  io.stderr.write(
+    `lousho improve: ${failures.length} failed run(s) to learn from and ${passes.length} to protect: at least ${(failures.length + passes.length) * 6} agent runs plus the editors' calls, all billed to your models.\n`
+  );
   const errors = new Set<string>();
   const probe = unscoredOnError(probeCapturedCases([...failures, ...passes], runCaseWith(config, args, io), check), errors);
-  const { admitted, refused } = await admitProtectedCases({ harness, cases: passes, probe });
-  for (const { id, passed, scored } of refused) io.stderr.write(`lousho improve: ${id} was not protected: it passed ${passed} of ${scored} scored runs.\n`);
-  const result = await improveAgent({ harness, cases: failures.map((c) => c.id), holdout: admitted.map((c) => c.id), probe, editor });
+  const result = await withoutObserve(async () => {
+    const { admitted, refused } = await admitProtectedCases({ harness, cases: passes, probe });
+    for (const { id, passed, scored } of refused) io.stderr.write(`lousho improve: ${id} was not protected: it passed ${passed} of ${scored} scored runs.\n`);
+    return improveAgent({ harness, cases: failures.map((c) => c.id), holdout: admitted.map((c) => c.id), probe, editor });
+  });
   const card = formatImproveResult(result);
   io.stdout.write(card);
   if (args.out !== undefined) {
-    fs.writeFileSync(path.resolve(args.out), args.out.toLowerCase().endsWith('.json') ? `${JSON.stringify(result, null, 2)}\n` : card);
+    fs.writeFileSync(path.resolve(args.out), args.out.toLowerCase().endsWith('.json') ? `${JSON.stringify(result, null, 2)}\n` : card, { flag: 'wx' });
     io.stderr.write(`lousho improve: wrote the proposal to ${args.out}. Nothing was applied.\n`);
   }
   for (const message of errors) io.stderr.write(`lousho improve: a run failed and was left unscored: ${message}\n`);

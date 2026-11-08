@@ -116,8 +116,8 @@ npx lousho improve ./my-agent --check ./check.mjs --since 7d --out proposal.md
 ```
 
 It reads cases only from your local observe database, needs a module whose
-default export is your `CaseCheck`, simulates tools unless `--read-only` names
-them, and prints the review card. It applies nothing. See
+default export is your `CaseCheck`, simulates tools other than loading skills
+unless `--read-only` names them, and prints the review card. It applies nothing. See
 [CLI](./cli.md#lousho-improve) for every flag.
 
 ## Safety

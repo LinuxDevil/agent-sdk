@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { Writable } from 'node:stream';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import type { CreateAgentConfig } from '../createAgent';
 import type { IngestEvent } from '../observe/envelope';
@@ -102,7 +102,7 @@ beforeEach(() => {
   fs.writeFileSync(path.join(agentDir, 'skills', 'refunds', 'SKILL.md'), '---\nname: refunds\ndescription: How refunds work\n---\nRefunds take 5 days.');
   dbPath = path.join(root, 'observe.db');
   const db = openDb(dbPath);
-  ingestBatch(db, [...failedTrace('t1', '"can I read the secret doc?"'), ...passedTrace('p1', '"what is the refund window?"')]);
+  ingestBatch(db, [...failedTrace('t1', JSON.stringify([{ role: 'user', parts: [{ type: 'text', content: 'can I read the secret doc?' }] }])), ...passedTrace('p1', '"what is the refund window?"')]);
   db.close();
   checkPath = path.join(root, 'check.mjs');
   fs.writeFileSync(checkPath, "export default (input, answer) => input.includes('refund window') || answer.startsWith('ok');\n");
@@ -230,13 +230,28 @@ describe('lousho improve', () => {
     expect(Object.keys(result.harness.skills)).toEqual(['refunds']);
   });
 
-  it('refuses --out inside the agent directory', async () => {
+  it('refuses --out inside the agent directory, even through a symlink', async () => {
     const editor = mockModel([]);
-    const { code, stderr } = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--out', path.join(agentDir, 'instructions.md')], { editor });
-    expect(code).toBe(2);
-    expect(stderr).toMatch(/--out must be outside the agent/);
+    const link = path.join(root, 'link');
+    fs.symlinkSync(agentDir, link);
+    for (const out of [path.join(agentDir, 'notes.md'), path.join(link, 'notes.md')]) {
+      const { code, stderr } = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--out', out], { editor });
+      expect(code).toBe(2);
+      expect(stderr).toMatch(/--out must be outside the agent/);
+    }
     expect(editor.calls).toHaveLength(0);
-    expect(fs.readFileSync(path.join(agentDir, 'instructions.md'), 'utf8')).toBe('You answer refund questions.');
+    expect(fs.existsSync(path.join(agentDir, 'notes.md'))).toBe(false);
+  });
+
+  it('refuses an --out file that already exists, before any run', async () => {
+    const editor = mockModel([]);
+    const existing = path.join(root, 'instructions.md');
+    fs.writeFileSync(existing, 'keep me');
+    const { code, stderr } = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--out', existing], { editor });
+    expect(code).toBe(2);
+    expect(stderr).toMatch(/already exists/);
+    expect(editor.calls).toHaveLength(0);
+    expect(fs.readFileSync(existing, 'utf8')).toBe('keep me');
   });
 
   it('reports an outage with exit 1 and says why the runs failed', async () => {
@@ -245,6 +260,85 @@ describe('lousho improve', () => {
     expect(code).toBe(1);
     expect(stdout).toContain('# Improve result: outage');
     expect(stderr).toContain('no API key');
+  });
+
+  it('keeps replays out of the observe database, and restores LOUSHO_OBSERVE', async () => {
+    const seen = new Set<string | undefined>();
+    const provider = mockModel([() => (seen.add(process.env.LOUSHO_OBSERVE), { text: 'here is the doc' })], { onExhausted: 'repeat-last' });
+    process.env.LOUSHO_OBSERVE = 'http://127.0.0.1:9';
+    try {
+      await improve([agentDir, '--check', checkPath, '--db', dbPath], { overrides: { provider }, editor: mockModel(noEdit, { onExhausted: 'repeat-last' }) });
+      expect([...seen]).toEqual(['0']);
+      expect(process.env.LOUSHO_OBSERVE).toBe('http://127.0.0.1:9');
+    } finally {
+      delete process.env.LOUSHO_OBSERVE;
+    }
+  });
+
+  it("replays the user's recorded message, and hands the check its text", async () => {
+    const asked = new Set<string>();
+    const provider = mockModel([(request) => (asked.add(JSON.stringify(request.messages.filter((m) => m.role === 'user'))), { text: 'here is the doc' })], { onExhausted: 'repeat-last' });
+    const inputs = path.join(root, 'inputs.txt');
+    fs.writeFileSync(checkPath, `import { appendFileSync } from 'node:fs';\nexport default (input) => (appendFileSync(${JSON.stringify(inputs)}, input + '\\n'), false);\n`);
+    await improve([agentDir, '--check', checkPath, '--db', dbPath], { overrides: { provider }, editor: mockModel(noEdit, { onExhausted: 'repeat-last' }) });
+    expect([...asked]).toEqual([JSON.stringify([{ role: 'user', content: 'can I read the secret doc?' }])]);
+    expect(new Set(fs.readFileSync(inputs, 'utf8').trim().split('\n'))).toEqual(new Set(['can I read the secret doc?']));
+  });
+
+  it('replays a recorded conversation as messages, without its tool turns', async () => {
+    const recorded = [
+      { role: 'user', parts: [{ type: 'text', content: 'hi' }] },
+      { role: 'assistant', parts: [{ type: 'text', content: 'hello' }, { type: 'tool_call', id: 'c1', name: 'lookup' }] },
+      { role: 'tool', parts: [{ type: 'tool_call_response', id: 'c1', response: 'x' }] },
+      { role: 'assistant', parts: [] },
+      { role: 'user', parts: [{ type: 'text', content: 'the secret doc?' }] },
+    ];
+    const db = openDb(dbPath);
+    ingestBatch(db, failedTrace('t2', JSON.stringify(recorded)));
+    db.close();
+    const asked = new Set<string>();
+    const provider = mockModel([(request) => (asked.add(JSON.stringify(request.messages.filter((m) => m.role !== 'system'))), { text: 'here is the doc' })], { onExhausted: 'repeat-last' });
+    await improve([agentDir, '--check', checkPath, '--db', dbPath], { overrides: { provider }, editor: mockModel(noEdit, { onExhausted: 'repeat-last' }) });
+    expect(asked).toContain(
+      JSON.stringify([
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: 'hello' },
+        { role: 'user', content: 'the secret doc?' },
+      ])
+    );
+  });
+
+  it('lets the agent load its skills while replaying', async () => {
+    const provider = mockModel(
+      [
+        (request) => {
+          const last = request.messages[request.messages.length - 1];
+          if (last.role !== 'tool') return { toolCalls: [{ name: 'load_skill', args: { name: 'refunds' } }] };
+          return { text: JSON.stringify(last.content).includes('Refunds take 5 days') ? 'ok' : 'no skill' };
+        },
+      ],
+      { onExhausted: 'repeat-last' }
+    );
+    const { code, stdout } = await improve([agentDir, '--check', checkPath, '--db', dbPath], { overrides: { provider }, editor: mockModel([]) });
+    expect(code).toBe(0);
+    expect(stdout).toContain('# Improve result: no-failures');
+  });
+
+  it("doesn't protect a trace that is also a failed run", async () => {
+    const { stdout, stderr } = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--protect', 't1']);
+    expect(stderr).toMatch(/t1 is a failed run, so it can't be protected/);
+    expect(stdout).not.toContain('| pass:t1 |');
+  });
+
+  it("sends no replay to the agent's own exporter or event listener, and says how much it will run", async () => {
+    const exporter = { onSpanStart: vi.fn(), onSpanEnd: vi.fn() };
+    const onEvent = vi.fn();
+    const { stderr } = await improve([agentDir, '--check', checkPath, '--db', dbPath], {
+      overrides: { provider: mockModel([fixedWhenForbidden], { onExhausted: 'repeat-last' }), exporter, onEvent },
+    });
+    expect(exporter.onSpanStart).not.toHaveBeenCalled();
+    expect(onEvent).not.toHaveBeenCalled();
+    expect(stderr).toMatch(/1 failed run\(s\) to learn from and 0 to protect: at least 6 agent runs/);
   });
 
   it('says so when the database has no failed runs', async () => {

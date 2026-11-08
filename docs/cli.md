@@ -383,17 +383,24 @@ and apply what you accept by hand.
   skills.
 - `--check <module>` is required. Its default export is a `CaseCheck`,
   `(input, answer) => boolean | null`; `null` means the answer can't be scored.
+  `input` is the user's message for a one-message run, else the recorded
+  messages as JSON text.
 - `--since` and `--agent` pick which failed runs become cases, as for
   `lousho observe export`.
 - `--protect <traceId>` names a run that went well. It joins the gate only
   after it passes 6 of 6 fresh runs; otherwise stderr says why it was left out.
-- Tools are simulated during replays. `--read-only <tool>` lets a tool that is
-  safe to call again run for real.
+  A trace that is also a failed run stays a case to learn from.
+- Tools are simulated during replays, except `load_skill` and
+  `read_skill_file`. `--read-only <tool>` lets a tool that is safe to call
+  again run for real. Replays aren't traced: `LOUSHO_OBSERVE`, the agent's
+  `exporter` and `onEvent` are off while it runs, so they never reach your
+  database.
 - `--model` runs the agent on another model; `--editor` picks the editors'
   model (default `--model`, else the agent's own).
 - `--out file` also writes the card, or the JSON result for a `.json` path. It
-  must be outside the agent's files.
+  must be a new file, outside the agent's files.
 
-It exits 1 when no run could be scored (`outage`), with each run's error on
-stderr. It reads nothing but your own database and makes model calls for each
-run, so it costs tokens. See [Improving an agent](./improve.md#from-the-command-line).
+Before the first run it prints how many runs it will make at least. Every run
+and every editor call is billed to your models. It exits 1 on an `outage`: no
+run could be scored, or the editors' provider failed. Each run's error goes to
+stderr. It reads nothing but your own database. See [Improving an agent](./improve.md#from-the-command-line).
