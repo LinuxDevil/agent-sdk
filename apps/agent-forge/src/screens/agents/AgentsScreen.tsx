@@ -8,6 +8,7 @@ import { NARROW_QUERY, useMediaQuery } from '../../components/useMediaQuery';
 import { useShell } from '../../shell/AppShell';
 import { useAppState } from '../../state/AppState';
 import { useAgentRouteSync } from './useAgentRouteSync';
+import { BuilderTabs } from './BuilderTabs';
 import { useInspectorCollapsed } from './useInspectorCollapsed';
 import { useSaveVersionShortcut } from './useSaveVersionShortcut';
 
@@ -51,10 +52,14 @@ export function AgentsScreen() {
   // Ctrl/Cmd+S saves a version - bound only on the builder screen.
   useSaveVersionShortcut();
   const panels = useSidePanels();
-  const inspector = useInspectorCollapsed(useAppState().selectedNodeId);
+  const { agentId, agents, selectedNodeId } = useAppState();
+  const inspector = useInspectorCollapsed(selectedNodeId);
+  // The agent tab strip shows only for a saved agent (BuilderTabs renders null otherwise).
+  const showBuilderTabs = agents.some((a) => a.id === agentId);
   const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}${inspector.collapsed ? ' inspector-collapsed' : ''}`;
   return (
-    <div className="app">
+    <div className={`app${showBuilderTabs ? ' app-builder-tabs' : ''}`}>
+      {showBuilderTabs && <BuilderTabs />}
       <h1 className="visually-hidden">Agent Forge</h1>
       <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} />
       <div className={shellClass}>

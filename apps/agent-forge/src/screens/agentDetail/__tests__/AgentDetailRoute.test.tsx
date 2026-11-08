@@ -5,6 +5,13 @@ import type { AgentRecord, Requirement } from '../../../../shared/wireTypes';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
 
+const appState = vi.hoisted(() => ({
+  agentId: 'support-bot',
+  agents: [{ id: 'support-bot' }],
+  switchAgent: vi.fn<[string], Promise<void>>(() => Promise.resolve()),
+}));
+vi.mock('../../../state/AppState', () => ({ useAppState: () => appState }));
+
 const mocks = vi.hoisted(() => {
   class MockRuntimeApiError extends Error {
     constructor(
@@ -25,12 +32,14 @@ vi.mock('../../../runtime/runtimeClient', () => ({
 
 import { AgentDetailRoute } from '../AgentDetailRoute';
 
-/** The detail header's enabled pill and labels editor toast, so the route renders under a provider. */
-const renderRoute = () => render(
-  <ToastProvider>
-    <AgentDetailRoute />
-  </ToastProvider>,
-);
+/** The route with the providers its header controls need (toast + app state). */
+function renderRoute() {
+  return render(
+    <ToastProvider>
+      <AgentDetailRoute />
+    </ToastProvider>,
+  );
+}
 
 function meta(over: Partial<AgentRecord['meta']> = {}): AgentRecord['meta'] {
   return {

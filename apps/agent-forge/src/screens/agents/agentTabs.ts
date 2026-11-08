@@ -1,13 +1,14 @@
 import { matchRoute } from '../../router/router';
+import type { TabItem } from '../../ui/Tabs';
 
 /** The agent detail tabs, in the order the tab bar shows them. */
-export const AGENT_TABS = ['overview', 'canvas', 'configure', 'code', 'runs', 'versions', 'suggestions'] as const;
+const AGENT_TABS = ['overview', 'canvas', 'configure', 'code', 'runs', 'versions', 'suggestions'] as const;
 
 /** A tab of the agent detail screen (`#/agents/:id/<tab>`). */
 export type AgentTab = (typeof AGENT_TABS)[number];
 
 /** The tab bar's label for each tab. */
-export const AGENT_TAB_LABELS: Record<AgentTab, string> = {
+const AGENT_TAB_LABELS: Record<AgentTab, string> = {
   overview: 'Overview',
   canvas: 'Canvas',
   configure: 'Configure',
@@ -33,6 +34,22 @@ export function isAgentTab(s: string): s is AgentTab {
 /** The hash path of one agent tab: `/agents/<encoded id>/<tab>`. */
 export function agentTabPath(id: string, tab: AgentTab): string {
   return `/agents/${encodeURIComponent(id)}/${tab}`;
+}
+
+/**
+ * The tab strip's items for agent `id`, in `AGENT_TABS` order: every tab is
+ * a hash link to its `agentTabPath`, unbuilt tabs disabled with the shared
+ * "Coming in a later release" reason. Shared by the detail header (A05) and
+ * the builder's tab strip (A12).
+ */
+export function agentTabItems(id: string): TabItem[] {
+  return AGENT_TABS.map((t) => ({
+    id: t,
+    label: AGENT_TAB_LABELS[t],
+    href: `#${agentTabPath(id, t)}`,
+    disabled: !BUILT_AGENT_TABS.has(t),
+    disabledReason: 'Coming in a later release',
+  }));
 }
 
 /**
