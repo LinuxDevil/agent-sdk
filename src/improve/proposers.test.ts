@@ -250,6 +250,12 @@ describe('improveAgent with several proposers', () => {
             "tokensPerRun": 10,
           },
         },
+        "ledger": {
+          "cached": 0,
+          "excluded": 0,
+          "planned": 12,
+          "run": 12,
+        },
         "outcome": "proposal",
         "reason": "A training case improved by at least 2 in 3 runs, none got worse, and no held-out case got worse. Cost per passing run went from 10 to 10 tokens (noise 0).",
         "spend": {

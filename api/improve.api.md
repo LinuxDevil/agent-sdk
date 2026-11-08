@@ -363,7 +363,7 @@ export function formatImproveResult(result: ImproveResult): string;
 
 // @public
 export interface GateVerdict {
-    label: 'compose' | 'invariant' | 'domain';
+    label: 'compose' | 'invariant' | 'domain' | `invariant-${number}` | `domain-${number}`;
     passed: boolean;
     reason: string;
 }
@@ -606,6 +606,7 @@ export interface ImproveOptions {
     maxTokens?: number;
     parallelEditors?: boolean;
     probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
+    proposers?: number;
     quotedChecks?: 'reject' | 'flag';
     recoveries?: readonly RecoveryEvidence[];
     repeats?: number;
@@ -622,6 +623,7 @@ export interface ImproveResult {
         invariant: Harness;
         domain: Harness;
         compose: Harness;
+        pool?: Record<string, Harness>;
     };
     cases?: CaseVerdict[];
     changes?: ImproveChange[];
@@ -632,6 +634,10 @@ export interface ImproveResult {
         noise: number;
     };
     diff?: string;
+    diversity?: {
+        meanJaccard: number;
+        distinct: number;
+    };
     failedChecks?: string[];
     final?: ProbeSummary;
     freshBase?: ProbeSummary;
@@ -653,7 +659,7 @@ export interface ImproveResult {
 // @public
 export interface ImproveStage {
     error?: string;
-    label: 'invariant' | 'domain' | 'compose';
+    label: GateVerdict['label'];
     notes: string;
     status: 'edited' | 'no-change' | 'fell-back';
     tokens: number;
