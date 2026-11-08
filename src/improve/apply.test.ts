@@ -212,7 +212,7 @@ describe('applyProposal', () => {
   it('removes a planted temp-file symlink instead of writing through it', async () => {
     const target = path.join(outside, 'bashrc');
     writeFileSync(target, 'keep me\n');
-    symlinkSync(target, path.join(dir, '.instructions.md.1.abcd.lousho-tmp'));
+    symlinkSync(target, path.join(dir, '.instructions.md.1.abcdef12.lousho-tmp'));
     const base = readAgentHarness(dir);
     await applyProposal(dir, { result: proposal({ ...base, instructions: 'Pwned?' }), base }, { mode: 'auto', by: 'gate' });
     expect(readFileSync(target, 'utf8')).toBe('keep me\n');
@@ -285,7 +285,7 @@ describe('applyProposal', () => {
   it('undoes a write a crash interrupted before the next apply', async () => {
     const base = readAgentHarness(dir);
     write('instructions.md', 'Half written.\n');
-    const journal = { action: 'apply', actor: 'gate', from: harnessHash(base), to: 'f'.repeat(64), files: [{ rel: 'instructions.md', prev: Buffer.from('Be careful.\n').toString('base64'), next: createHash('sha256').update('Half written.\n').digest('hex') }] };
+    const journal = { action: 'apply', actor: 'gate', auditSeq: 0, from: harnessHash(base), to: 'f'.repeat(64), files: [{ rel: 'instructions.md', prev: Buffer.from('Be careful.\n').toString('base64'), next: createHash('sha256').update('Half written.\n').digest('hex') }] };
     write('.lousho/apply.pending.json', JSON.stringify(journal));
     const applied = await applyProposal(dir, { result: proposal({ ...base, instructions: 'Changed.' }), base }, { mode: 'auto', by: 'gate' });
     expect(applied.from).toBe(harnessHash(base));
@@ -300,7 +300,7 @@ describe('applyProposal', () => {
     const base = readAgentHarness(dir);
     write('instructions.md', 'Done.\n');
     const done = readAgentHarness(dir);
-    write('.lousho/apply.pending.json', JSON.stringify({ action: 'apply', actor: 'gate', from: harnessHash(base), to: harnessHash(done), files: [] }));
+    write('.lousho/apply.pending.json', JSON.stringify({ action: 'apply', actor: 'gate', auditSeq: 0, from: harnessHash(base), to: harnessHash(done), files: [] }));
     await applyProposal(dir, { result: proposal({ ...done, instructions: 'Done.\nMore.' }), base: done }, { mode: 'auto', by: 'gate' });
     expect(readAudit(dir).map((entry) => entry.action)).toEqual(['apply', 'apply']);
     expect(readAudit(dir)[0]).toMatchObject({ from: harnessHash(base), to: harnessHash(done), reason: expect.stringMatching(/interruption/) });
@@ -325,5 +325,27 @@ describe('applyProposal', () => {
     const base = readAgentHarness(dir);
     const next = { ...base, instructions: 'x'.repeat(50) };
     await expect(applyProposal(dir, { result: proposal(next), base, maxAlwaysOnChars: 20 }, { mode: 'auto', by: 'gate' })).rejects.toThrow(/limit/);
+  });
+  it('records rather than undoes a committed apply that a person edited afterwards', async () => {
+    const base = readAgentHarness(dir);
+    write('instructions.md', 'Applied.\n');
+    write('skills/alpha/SKILL.md', skillText('alpha', 'Use for alpha work', 'Edited by a person.'));
+    const journal = { action: 'apply', actor: 'gate', auditSeq: 0, committed: true, from: harnessHash(base), to: 'e'.repeat(64), files: [{ rel: 'instructions.md', prev: Buffer.from('Be careful.\n').toString('base64'), next: createHash('sha256').update('Applied.\n').digest('hex') }] };
+    write('.lousho/apply.pending.json', JSON.stringify(journal));
+    const now = readAgentHarness(dir);
+    await applyProposal(dir, { result: proposal({ ...now, instructions: 'Applied.\nMore.' }), base: now }, { mode: 'auto', by: 'gate' });
+    expect(readAudit(dir)[0]).toMatchObject({ action: 'apply', to: 'e'.repeat(64), reason: expect.stringMatching(/kept/) });
+    expect(read('skills/alpha/SKILL.md')).toContain('Edited by a person.');
+  });
+
+  it('records an interrupted apply that repeats an earlier one', async () => {
+    const base = readAgentHarness(dir);
+    const first = await applyProposal(dir, { result: proposal({ ...base, instructions: 'Changed.' }), base }, { mode: 'auto', by: 'gate' });
+    write('instructions.md', 'Be careful.\n');
+    write('instructions.md', 'Changed.\n');
+    write('.lousho/apply.pending.json', JSON.stringify({ action: 'apply', actor: 'gate', auditSeq: 1, committed: true, from: first.from, to: first.to, files: [] }));
+    const now = readAgentHarness(dir);
+    await applyProposal(dir, { result: proposal({ ...now, instructions: 'Changed.\nMore.' }), base: now }, { mode: 'auto', by: 'gate' });
+    expect(readAudit(dir).map((entry) => entry.action)).toEqual(['apply', 'apply', 'apply']);
   });
 });

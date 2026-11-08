@@ -47,19 +47,26 @@ export interface ApplyResult {
 
 const DEFAULT_MAX_ALWAYS_ON = 8000;
 
+function recordedSince(dir: string, record: { action: string; from: string; to: string; auditSeq: number }): boolean {
+  return readAudit(dir)
+    .filter((entry) => entry.seq > record.auditSeq)
+    .some((entry) => entry.action === record.action && entry.from === record.from && entry.to === record.to);
+}
+
 async function recordRecovery(dir: string): Promise<void> {
   const recovery = recoverInterruptedWrite(dir);
   if (!recovery) return;
   const { record } = recovery;
   if (recovery.state === 'completed') {
-    const last = readAudit(dir).filter((entry) => entry.action === record.action).at(-1);
-    if (last?.to === record.to && last.from === record.from) return;
-    snapshotRevision(dir, record.action, record.from);
-    await appendAudit(dir, { actor: record.actor, action: record.action, from: record.from, to: record.to, reason: `Recorded after an interruption: the ${record.action} had finished writing.` });
+    if (recovery.intact && listRevisions(dir)[0]?.id !== record.to) snapshotRevision(dir, record.action, record.from);
+    const edited = recovery.intact ? '' : ' Files changed by hand since then were kept.';
+    if (!recordedSince(dir, record)) await appendAudit(dir, { actor: record.actor, action: record.action, from: record.from, to: record.to, reason: `Recorded after an interruption: the ${record.action} had finished writing.${edited}` });
+    recovery.finish();
     return;
   }
   const kept = recovery.kept.length > 0 ? ` ${recovery.kept.join(', ')} changed after the interruption and was kept.` : '';
   await appendAudit(dir, { actor: record.actor, action: 'reject', from: record.from, reason: `Undid an interrupted ${record.action}: the old files were put back.${kept}` });
+  recovery.finish();
 }
 
 async function withApplyLock<T>(dir: string, task: () => Promise<T>): Promise<T> {
@@ -104,6 +111,7 @@ function caseEvidence(result: ImproveResult): NonNullable<AuditEntry['evidence']
 
 function failureReason(error: unknown, undone: boolean): string {
   const message = error instanceof Error ? error.message : String(error);
+  if (error instanceof AggregateError) return `Partly written: putting the old files back failed, so the next apply undoes it from the journal. ${message}`;
   if (error instanceof ConfigurationError) return message;
   return `Not written, the write failed: ${message}${undone ? ' The old files were put back.' : ''}`;
 }
@@ -134,7 +142,7 @@ async function applyLocked(dir: string, input: ApplyInput, approval: Approval, a
     from = harnessHash(current.harness);
     const next = checkedProposal(input, current.harness, approval);
     from = snapshotBefore(dir, current.harness);
-    write = writeHarnessFiles(dir, next, current, { action: 'apply', actor, from });
+    write = writeHarnessFiles(dir, next, current, { action: 'apply', actor, from, auditSeq: readAudit(dir).length });
     const to = snapshotRevision(dir, 'apply', from).id;
     return { from, to, written: write.written, write };
   } catch (error) {

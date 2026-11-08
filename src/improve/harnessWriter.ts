@@ -24,6 +24,8 @@ export interface WriteRecord {
   actor: AuditEntry['actor'];
   /** The revision before the write. */
   from: string;
+  /** How many audit entries existed when the write began, so recovery looks only at newer ones. */
+  auditSeq: number;
 }
 
 /** A finished write: the files it touched, and how to undo it or mark it recorded. */
@@ -42,10 +44,14 @@ export interface HarnessWrite {
 export interface Recovery {
   /** `undone` put the old files back; `completed` found the write whole and only lacked its records. */
   state: 'undone' | 'completed';
+  /** Whether the directory still holds exactly what the completed write wrote. */
+  intact: boolean;
   /** The interrupted write's record. */
   record: WriteRecord & { to: string };
   /** Files it could not put back because they changed after the interruption. */
   kept: string[];
+  /** Drops the journal; call it once the recovery is audited. */
+  finish(): void;
 }
 
 interface Step {
@@ -65,6 +71,7 @@ interface JournalFile {
 
 interface Journal extends WriteRecord {
   to: string;
+  committed?: boolean;
   files: JournalFile[];
 }
 
@@ -138,7 +145,8 @@ function guardPath(root: string, rel: string): string {
   return at;
 }
 
-const isTemp = (entry: string): boolean => entry.startsWith('.') && entry.endsWith(TEMP);
+const TEMP_NAME = /^\..+\.\d+\.[0-9a-f]{8}\.lousho-tmp$/;
+const isTemp = (entry: string): boolean => TEMP_NAME.test(entry);
 
 function guardFolder(root: string, name: string): void {
   const folder = path.join(root, 'skills', name);
@@ -188,12 +196,26 @@ function durableTemp(file: string, data: Buffer | string, mode = 0o644): string 
   const temp = path.join(path.dirname(file), `.${path.basename(file)}.${process.pid}.${randomBytes(4).toString('hex')}${TEMP}`);
   const fd = fs.openSync(temp, 'wx', mode);
   try {
+    fs.fchmodSync(fd, mode);
     fs.writeSync(fd, typeof data === 'string' ? Buffer.from(data) : data);
     fs.fsyncSync(fd);
   } finally {
     fs.closeSync(fd);
   }
   return temp;
+}
+
+function syncDir(folder: string): void {
+  try {
+    const fd = fs.openSync(folder, 'r');
+    try {
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return;
+  }
 }
 
 function makeDirs(folder: string, created: string[]): void {
@@ -269,6 +291,7 @@ function sweepTemps(root: string): void {
 function writeJournal(dir: string, journal: Journal): void {
   const file = path.join(dir, JOURNAL);
   fs.renameSync(durableTemp(file, `${JSON.stringify(journal)}\n`), file);
+  syncDir(path.dirname(file));
 }
 
 function journalOf(steps: readonly Step[], record: WriteRecord, to: string): Journal {
@@ -294,6 +317,7 @@ function commit(dir: string, steps: Step[], journal: Journal): void {
       done.push(item);
       swap(item);
     }
+    for (const folder of new Set(steps.map((item) => path.dirname(item.file)))) syncDir(folder);
   } catch (error) {
     try {
       restore(done);
@@ -337,9 +361,11 @@ export function writeHarnessFiles(dir: string, next: Harness, current: HarnessSt
   sweepTemps(root);
   const steps = planWrites(root, next, current.harness);
   const to = writtenHash(next);
-  commit(dir, steps, journalOf(steps, record, to));
+  const journal = journalOf(steps, record, to);
+  commit(dir, steps, journal);
   const undo = (): void => {
     restore(steps);
+    for (const item of steps) if (item.prev === undefined) tidy([], [path.dirname(item.file)]);
     fs.rmSync(path.join(dir, JOURNAL), { force: true });
   };
   const written = readBack(dir);
@@ -347,6 +373,7 @@ export function writeHarnessFiles(dir: string, next: Harness, current: HarnessSt
     undo();
     throw refusal('the written files read back as a different harness, so the old files were put back.');
   }
+  writeJournal(dir, { ...journal, committed: true });
   const finish = (): void => {
     tidyRemoved(steps);
     fs.rmSync(path.join(dir, JOURNAL), { force: true });
@@ -356,7 +383,8 @@ export function writeHarnessFiles(dir: string, next: Harness, current: HarnessSt
 
 function isJournal(value: unknown): value is Journal {
   const journal = value as Journal | null;
-  if (typeof journal?.to !== 'string' || typeof journal.from !== 'string' || !Array.isArray(journal.files)) return false;
+  if (typeof journal?.to !== 'string' || typeof journal.from !== 'string' || typeof journal.actor !== 'string' || !Array.isArray(journal.files)) return false;
+  if ((journal.action !== 'apply' && journal.action !== 'rollback') || !Number.isSafeInteger(journal.auditSeq)) return false;
   return journal.files.every((file) => file.rel === 'instructions.md' || SKILL_PATH.test(String(file?.rel)));
 }
 
@@ -385,19 +413,18 @@ function undoEntry(root: string, entry: JournalFile): string | undefined {
 
 /** Finishes or undoes a write that a crash interrupted, from `.lousho/apply.pending.json`; undefined when there is none. Call it holding the apply lock. */
 export function recoverInterruptedWrite(dir: string): Recovery | undefined {
+  const file = path.join(dir, JOURNAL);
   const journal = readJournal(dir);
   if (!journal) {
-    fs.rmSync(path.join(dir, JOURNAL), { force: true });
+    fs.rmSync(file, { force: true });
     return undefined;
   }
-  const record = { action: journal.action, actor: journal.actor, from: journal.from, to: journal.to };
+  const record = { action: journal.action, actor: journal.actor, from: journal.from, to: journal.to, auditSeq: journal.auditSeq };
+  const finish = (): void => fs.rmSync(file, { force: true });
   const now = readBack(dir);
-  if (now && writtenHash(now) === journal.to) {
-    fs.rmSync(path.join(dir, JOURNAL), { force: true });
-    return { state: 'completed', record, kept: [] };
-  }
+  const intact = now !== undefined && writtenHash(now) === journal.to;
+  if (intact || journal.committed === true) return { state: 'completed', intact, record, kept: [], finish };
   const root = fs.realpathSync(dir);
   const kept = journal.files.flatMap((entry) => undoEntry(root, entry) ?? []);
-  fs.rmSync(path.join(dir, JOURNAL), { force: true });
-  return { state: 'undone', record, kept };
+  return { state: 'undone', intact: false, record, kept, finish };
 }
