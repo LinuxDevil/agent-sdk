@@ -1,5 +1,5 @@
 ---
-description: How Lousho recovers a failed run now (agent.recover(), a diagnosis retry, outage pauses, a progress guard) and proposes instruction and skill edits for later (improveAgent), which a person always approves.
+description: How Lousho recovers a failed run now (agent.recover(), a diagnosis retry, outage pauses, a progress guard) and heals the agent itself (healOnce, lousho improve), which applies tested instruction and skill edits by default and rolls them back on a regression.
 ---
 
 # Self-healing and self-improvement
@@ -9,10 +9,12 @@ Lousho handles failures in two layers:
 | Layer | What it does | When it acts | Who decides |
 | --- | --- | --- | --- |
 | [Recover a run now](#recover-a-run-now) | Resumes interrupted runs, retries with backoff, tries once more with a note about the error, pauses during a provider outage, stops a run that makes no progress | While the agent serves traffic | The loop, within limits you set. A run it gives up on waits for a person |
-| [Propose edits for later](#propose-edits-for-later) | Looks for better instructions and skills using failing cases, and tests them against the current ones | Offline, when you run it | A person. Nothing is applied for you |
+| [Heal the agent itself](#heal-the-agent-itself) | Turns failed runs into edits to the instructions and skills, tests them, applies one that passes, checks it again on real runs, and rolls it back if it hurts | On each `lousho improve` cycle, or on a timer with `--watch` | The gate, by default (auto mode). In manual mode, a person approves each edit |
 
 The first layer never changes the agent. It only finishes runs or stops them.
-The second layer suggests changes to the agent but never makes them.
+The second layer changes the agent's instructions and skills, and nothing else.
+It is experimental, and it can be stopped at any time: see
+[the kill switch](#heal-the-agent-itself).
 
 This page is an overview. Each section links to the page with the full details.
 
@@ -113,10 +115,49 @@ for both, and [Stream events](./stream-events.md) for the `heal.action` fields.
   See [Tracing and observability](./observability.md) for spans and the local
   observe daemon.
 
-## Propose edits for later
+## Heal the agent itself
 
-`improveAgent()` from `lousho/improve` looks for better instructions and skills
-using failing cases you give it. It's experimental.
+The self-healing loop works on an agent directory whose instructions live in
+`instructions.md` and whose skills live in `skills/<name>/SKILL.md`. It's
+experimental.
+
+```bash
+npx lousho improve ./my-agent --check ./check.mjs
+npx lousho improve ./my-agent --check ./check.mjs --watch --interval 15m
+```
+
+Each cycle:
+
+1. takes the failed runs of the agent's current revision from your local
+   observe database;
+2. has editors propose edits to the instructions and skills, and gates them
+   against fresh runs and held-out cases;
+3. replays the winner on fresh runs (the canary);
+4. in **auto mode (the default)** applies it, and in **manual mode** queues it
+   for `lousho improve approve`;
+5. replays the protected cases right away (the corpus guard) and rolls back on
+   a regression.
+
+With `--watch`, a monitor then compares the agent's real runs before and after
+the edit and rolls it back on a significant drop, in both modes. Every change
+is saved as a revision and recorded in a hash-chained audit log, and
+`lousho improve rollback <dir> --by <name>` undoes one by hand. By default it
+makes at most 1 automatic apply, 4 cycles and 2,000,000 tokens a day, and
+waits 24 hours after a rollback.
+
+**Kill switch.** `lousho improve pause <dir>` (the file `.lousho/improve.stop`),
+`LOUSHO_IMPROVE=off`, or `"enabled": false` in `improve.json` stops it.
+`--dry-run` prints the proposal and writes nothing.
+
+See [The self-healing loop](./improve.md#the-self-healing-loop) for each step,
+[Approval modes](./improve.md#approval-modes), and
+[Safety](./improve.md#safety) for what it can and can't change.
+
+### The engine: `improveAgent()`
+
+Each cycle runs `improveAgent()` from `lousho/improve`. On its own, it looks for
+better instructions and skills using failing cases you give it, and returns a
+proposal without writing anything.
 
 ```ts
 import { createAgent } from 'lousho';
@@ -140,9 +181,9 @@ if (result.outcome === 'proposal') console.log(formatImproveResult(result));
 
 What it will and won't do:
 
-- **It only returns a proposal.** An `outcome` of `proposal` comes with a `diff`.
-  A person reviews it, with `formatImproveResult()` for a readable card, and
-  applies it by hand.
+- **It only returns a proposal.** An `outcome` of `proposal` comes with a `diff`,
+  and `formatImproveResult()` turns it into a readable card. The loop applies
+  it after the canary, or `applyProposal()` does when you call it.
 - **It can only change instructions and skills.** It can't change tools,
   permissions or limits.
 - **It tests before it proposes.** Each candidate runs your cases again and must
@@ -156,7 +197,8 @@ Cases can come from your own traces: `casesFromFailures(db)` turns failed runs i
 your local observe database into cases. Tool results in them reach the editors
 marked as untrusted.
 
-From the command line, `lousho improve <agent> --check <module>` does this and prints the proposal for review; see [CLI](./cli.md#lousho-improve).
+`lousho improve <agent> --check <module> --dry-run` runs it alone and prints the
+proposal for review; see [CLI](./cli.md#lousho-improve).
 
 See [Improving an agent](./improve.md) for the gate, the outcomes and the safety
 notes.
@@ -165,6 +207,8 @@ notes.
 
 A run the first layer gives up on, quarantined or stopped with
 `LOUSHO_RUN_NO_PROGRESS`, is a sign that something in the agent needs to change.
-Fix the tool, or change the instructions. If the cause is in the instructions or
-skills, those failures can become cases for `improveAgent()`, and a person
-decides whether to apply what it proposes.
+If the cause is a tool, fix the tool: the second layer can't. If the cause is in
+the instructions or skills, those failed runs become cases for the next cycle.
+In auto mode the loop applies an edit that passes its checks; in manual mode a
+person decides. The second layer also reads the first layer's `.heal` forks
+that passed as evidence, with `--with-recoveries`.
