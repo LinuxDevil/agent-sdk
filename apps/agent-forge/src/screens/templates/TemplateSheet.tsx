@@ -33,11 +33,9 @@ export interface TemplateSheetProps {
   onClose(): void;
 }
 
-export function TemplateSheet({ templateId, summary, onClose }: TemplateSheetProps) {
-  const toast = useToast();
+function useTemplateDetail(templateId: string | null) {
   const [detailState, setDetailState] = useState<DetailState>({ for: '', status: 'loading' });
   const [reload, setReload] = useState(0);
-  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (templateId === null) return;
@@ -62,14 +60,19 @@ export function TemplateSheet({ templateId, summary, onClose }: TemplateSheetPro
   // Until the fetch for THIS id lands, the sheet shows its loading state - a
   // previous template's detail never leaks into the next sheet.
   const current = templateId !== null && detailState.for === templateId ? detailState : undefined;
-  const status = current?.status ?? 'loading';
-  const detail = current?.status === 'loaded' ? current.detail : undefined;
-  const detailError = current?.status === 'error' ? current.message : undefined;
+  return {
+    status: current?.status ?? 'loading',
+    detail: current?.status === 'loaded' ? current.detail : undefined,
+    detailError: current?.status === 'error' ? current.message : undefined,
+    retry: () => setReload((n) => n + 1),
+  };
+}
 
-  const title = detail?.summary.title ?? summary?.title ?? templateId ?? '';
-  const category = detail?.summary.category ?? summary?.category;
+function useCreateFromTemplate(templateId: string | null, title: string) {
+  const toast = useToast();
+  const [creating, setCreating] = useState(false);
 
-  const useTemplate = () => {
+  const create = () => {
     if (templateId === null || creating) return;
     const id = templateId;
     setCreating(true);
@@ -83,7 +86,42 @@ export function TemplateSheet({ templateId, summary, onClose }: TemplateSheetPro
       .finally(() => setCreating(false));
   };
 
-  const requires = detail?.summary.requires ?? [];
+  return { creating, create };
+}
+
+function TemplateSheetDetail({ detail }: { detail: TemplateDetail }) {
+  const requires = detail.summary.requires ?? [];
+  return (
+    <>
+      <section className="template-sheet-section" aria-label="Requirements">
+        <h3 className="overline">What it needs</h3>
+        {requires.length === 0 ? (
+          <p className="template-sheet-note">Nothing extra. It runs with your default model.</p>
+        ) : (
+          <ul className="template-requirements">
+            {requires.map((kind) => (
+              <li key={kind}>
+                <CircleAlert size={14} strokeWidth={1.75} aria-hidden="true" />
+                {REQUIRE_LABELS[kind]}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="template-sheet-section" aria-label="About">
+        <h3 className="overline">About</h3>
+        <pre className="template-readme">{detail.readme}</pre>
+      </section>
+    </>
+  );
+}
+
+export function TemplateSheet({ templateId, summary, onClose }: TemplateSheetProps) {
+  const { status, detail, detailError, retry } = useTemplateDetail(templateId);
+
+  const title = detail?.summary.title ?? summary?.title ?? templateId ?? '';
+  const category = detail?.summary.category ?? summary?.category;
+  const { creating, create } = useCreateFromTemplate(templateId, title);
 
   return (
     <Sheet
@@ -97,7 +135,7 @@ export function TemplateSheet({ templateId, summary, onClose }: TemplateSheetPro
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary" disabled={creating} onClick={useTemplate}>
+          <button type="button" className="btn btn-primary" disabled={creating} onClick={create}>
             {creating ? 'Creating…' : 'Use template'}
           </button>
         </>
@@ -109,34 +147,12 @@ export function TemplateSheet({ templateId, summary, onClose }: TemplateSheetPro
           <p className="template-sheet-error" role="alert">
             {detailError}
           </p>
-          <button type="button" className="btn btn-sm" onClick={() => setReload((n) => n + 1)}>
+          <button type="button" className="btn btn-sm" onClick={retry}>
             Retry
           </button>
         </div>
       )}
-      {detail !== undefined && (
-        <>
-          <section className="template-sheet-section" aria-label="Requirements">
-            <h3 className="overline">What it needs</h3>
-            {requires.length === 0 ? (
-              <p className="template-sheet-note">Nothing extra. It runs with your default model.</p>
-            ) : (
-              <ul className="template-requirements">
-                {requires.map((kind) => (
-                  <li key={kind}>
-                    <CircleAlert size={14} strokeWidth={1.75} aria-hidden="true" />
-                    {REQUIRE_LABELS[kind]}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-          <section className="template-sheet-section" aria-label="About">
-            <h3 className="overline">About</h3>
-            <pre className="template-readme">{detail.readme}</pre>
-          </section>
-        </>
-      )}
+      {detail !== undefined && <TemplateSheetDetail detail={detail} />}
     </Sheet>
   );
 }

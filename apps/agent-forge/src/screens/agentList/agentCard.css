@@ -11,18 +11,6 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition:
-    border-color var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease);
-}
-
-.agent-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
-  box-shadow: var(--shadow);
 }
 
 .agent-card:has(.agent-card-link:focus-visible) {
@@ -176,9 +164,3 @@
 
 /* A disabled agent greys only the tile (U11 .agent-tile-muted); no opacity
    fade, which would drop the card's text below AA contrast. */
-
-@media (prefers-reduced-motion: reduce) {
-  .agent-card {
-    transition: none;
-  }
-}

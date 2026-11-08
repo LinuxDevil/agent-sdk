@@ -5,6 +5,7 @@
  */
 import { LayoutTemplate } from 'lucide-react';
 import type { TemplateSummary } from '../../../shared/wireTypes';
+import '../../ui/tileCard.css';
 import { requiresLine } from './templatesModel';
 
 /** At most this many tags show on a card. */
@@ -14,7 +15,7 @@ export function TemplateCard({ summary, onOpen }: { summary: TemplateSummary; on
   const titleId = `template-card-title-${summary.id}`;
   const needs = requiresLine(summary.requires);
   return (
-    <article className="template-card agent-tile-host" aria-labelledby={titleId}>
+    <article className="template-card tile-card agent-tile-host" aria-labelledby={titleId}>
       <span className="template-card-tile">
         <LayoutTemplate size={18} strokeWidth={1.75} aria-hidden="true" />
       </span>
