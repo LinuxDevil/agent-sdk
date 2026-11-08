@@ -29,7 +29,7 @@ export interface AlertEvent {
   type: 'agent.status' | 'agent.error_rate' | 'agent.score_regression';
   agent_id: string;
   project: string | null;
-  /** 'down' for status alerts; the agent's current status for error-rate alerts. */
+  /** 'down' for status alerts; the agent's current status for error-rate and score-regression alerts. */
   status: string;
   /** Epoch milliseconds when the sweep fired it. */
   at: number;

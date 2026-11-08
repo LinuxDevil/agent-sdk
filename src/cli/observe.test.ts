@@ -95,7 +95,7 @@ describe('lousho observe', () => {
 
     expect(await runObserve(['score', '--db', dbPath])).toBe(0);
     expect(logs.join('\n')).toContain('support');
-    expect(logs.join('\n')).toContain('revision cccccccccccc');
+    expect(logs.join('\n')).toContain('latest revision cccccccccccc');
     expect(logs.join('\n')).toContain('pass 80%');
     expect(logs.join('\n')).toContain('gate ok');
     logs.length = 0;
@@ -104,11 +104,16 @@ describe('lousho observe', () => {
     expect(row).toMatchObject({ agent: 'support', revision, summary: { runs: 20, passRate: 0.8 }, gate: { state: 'ok' } });
   });
 
-  it('score says when an agent has no runs, and rejects a bad --limit', async () => {
+  it('score says when an agent has no runs, and rejects an unknown agent or a bad --limit', async () => {
     const dbPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-cli-score-')), 'o.db');
-    expect(await runObserve(['score', '--db', dbPath, '--agent', 'nobody'])).toBe(0);
-    expect(logs.join('\n')).toContain('nobody: no finished runs');
-    expect(await runObserve(['score', '--db', dbPath, '--limit', '0'])).toBe(2);
+    const db = openDb(dbPath);
+    ingestBatch(db, [{ type: 'agent.heartbeat', data: { agent_id: 'uuid-2', name: 'quiet', ts: 1 } }]);
+    db.close();
+    expect(await runObserve(['score', '--db', dbPath, '--agent', 'quiet'])).toBe(0);
+    expect(logs.join('\n')).toContain('quiet: no finished runs');
+    expect(await runObserve(['score', '--db', dbPath, '--agent', 'nobody'])).toBe(2);
+    expect(errors.join('\n')).toContain("--agent 'nobody' names no agent");
+    for (const limit of ['0', 'abc', '1.5']) expect(await runObserve(['score', '--db', dbPath, '--limit', limit])).toBe(2);
   });
 
   it('failures rejects a --min-score that is not a number', async () => {

@@ -151,13 +151,25 @@ function rootSample(row: Record<string, unknown>): FailureSample | undefined {
   return { agent: typeof name === 'string' ? name : fields.agent, source: 'run', operation: 'invoke_agent', error: INTERRUPTED_EXAMPLE, traceId: fields.traceId, at: fields.at };
 }
 
-function lowScoreSamples(db: SqlDatabase, filterArgs: readonly SqlValue[], minScore: number): FailureSample[] {
+type FailureFilter = { since?: number; agent?: string; minScore?: number; traceIds?: readonly string[] };
+
+function filterOf(filter: FailureFilter, alias: 'o' | 's'): { sql: string; args: SqlValue[] } {
+  const agent = filter.agent ?? '';
+  const time = alias === 'o' ? 'o.start' : 's.created_at';
+  const traces = filter.traceIds === undefined ? '' : `${alias}.trace_id IN (SELECT value FROM json_each(?)) AND `;
+  const args: SqlValue[] = [filter.since ?? 0, agent, agent];
+  return { sql: `${traces}${time} >= ? AND (? = '' OR ${alias}.agent_id = ?)`, args: filter.traceIds === undefined ? args : [JSON.stringify(filter.traceIds), ...args] };
+}
+
+function lowScoreSamples(db: SqlDatabase, filter: FailureFilter): FailureSample[] {
+  const where = filterOf(filter, 's');
+  const minScore = filter.minScore ?? DEFAULT_MIN_SCORE;
   const rows = db
     .prepare(
       'SELECT s.name, s.value, s.trace_id, s.created_at, s.agent_id, a.name AS agent_name FROM scores s LEFT JOIN agents a ON a.agent_id = s.agent_id ' +
-        "WHERE s.value IS NOT NULL AND s.value < ? AND s.created_at >= ? AND (? = '' OR s.agent_id = ?) AND (? IS NULL OR s.trace_id IN (SELECT value FROM json_each(?)))"
+        `WHERE ${where.sql} AND s.value IS NOT NULL AND s.value < ?`
     )
-    .all(minScore, ...filterArgs);
+    .all(...where.args, minScore);
   return rows.map((row) => ({
     agent: agentOf(row),
     source: `score ${String(row.name)}`,
@@ -168,28 +180,19 @@ function lowScoreSamples(db: SqlDatabase, filterArgs: readonly SqlValue[], minSc
   }));
 }
 
-type FailureFilter = { since?: number; agent?: string; minScore?: number; traceIds?: readonly string[] };
-
-const FILTERS = "o.start >= ? AND (? = '' OR o.agent_id = ?) AND (? IS NULL OR o.trace_id IN (SELECT value FROM json_each(?)))";
-const LEAF = `o.kind IN ('tool', 'generation') AND ${FILTERS}`;
-
-function filterArgs(filter: FailureFilter): SqlValue[] {
-  const agent = filter.agent ?? '';
-  const traces = filter.traceIds === undefined ? null : JSON.stringify(filter.traceIds);
-  return [filter.since ?? 0, agent, agent, traces, traces];
-}
+const LEAF = "o.kind IN ('tool', 'generation')";
 
 function failureSamples(db: SqlDatabase, filter: FailureFilter): { failed: FailureSample[]; roots: FailureSample[]; lowScores: FailureSample[] } {
-  const args = filterArgs(filter);
-  const failed = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${LEAF} AND o.status = 'error'`).all(...args).flatMap((row) => {
+  const where = filterOf(filter, 'o');
+  const failed = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${where.sql} AND ${LEAF} AND o.status = 'error'`).all(...where.args).flatMap((row) => {
     const sample = sampleFrom(rowFields(row));
     return sample ? [sample] : [];
   });
-  const roots = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE o.kind = 'span' AND o.parent_obs_id IS NULL AND ${FILTERS}`).all(...args).flatMap((row) => {
+  const roots = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${where.sql} AND o.kind = 'span' AND o.parent_obs_id IS NULL`).all(...where.args).flatMap((row) => {
     const sample = rootSample(row);
     return sample ? [sample] : [];
   });
-  return { failed, roots, lowScores: lowScoreSamples(db, args, filter.minScore ?? DEFAULT_MIN_SCORE) };
+  return { failed, roots, lowScores: lowScoreSamples(db, filter) };
 }
 
 export function failedTraceIdsFromDb(db: SqlDatabase, filter: FailureFilter): Set<string> {
@@ -198,7 +201,8 @@ export function failedTraceIdsFromDb(db: SqlDatabase, filter: FailureFilter): Se
 }
 
 export function failureReportFromDb(db: SqlDatabase, filter: FailureFilter): FailureReport {
-  const counts = db.prepare(`SELECT COUNT(DISTINCT o.trace_id) AS traces, COUNT(*) AS spans FROM observations o WHERE ${LEAF}`).get(...filterArgs(filter));
+  const where = filterOf(filter, 'o');
+  const counts = db.prepare(`SELECT COUNT(DISTINCT o.trace_id) AS traces, COUNT(*) AS spans FROM observations o WHERE ${where.sql} AND ${LEAF}`).get(...where.args);
   const { failed, roots, lowScores } = failureSamples(db, filter);
   const interrupted = roots.filter((sample) => sample.error === INTERRUPTED_EXAMPLE).length;
   return {

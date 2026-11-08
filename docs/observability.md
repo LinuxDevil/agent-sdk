@@ -878,27 +878,50 @@ runs still in flight, are left out. Each point carries the run's
 `lousho.harness.revision`, so a series can be cut to one revision.
 
 The trajectory gate from the Self-Healing Harness paper judges the shape of
-the series rather than one number. It takes the rolling mean of the last 10
-points. The first full window sets a running peak, and a later mean at least
-0.02 above the peak is a gain that raises it. Then:
+the series rather than one number. It works on the rolling mean of 10
+points:
+
+- The first full window (10 points) sets a running peak.
+- A later window mean at least 0.02 above the peak is a gain, which raises
+  the peak.
+
+The gate judges the newest window:
 
 | State | When |
 | --- | --- |
-| `regression` | The rolling mean falls more than 0.15 below the peak |
-| `stall` | 10 points pass without a gain while the peak is below 0.5 |
-| `ok` | Neither; a low start that keeps improving, or a plateau above 0.5 |
+| `regression` | The newest window's mean is more than 0.15 below the peak, **and** the newest window sits significantly below the points before it (one-sided 95%, on the pass rate or on the mean value) |
+| `stall` | 10 windows have passed since the last gain while the peak is below 0.5, so a stall needs at least 20 points |
+| `ok` | Neither. This covers a low start that keeps improving, a plateau above 0.5, and a dip that has recovered |
 
-On every sweep the daemon runs the gate over each agent's last 50 points.
-On a `regression` it raises an `agent.score_regression` alert. The alert
-fires at most once per agent per revision, where the revision is that of the
-newest point. Its `details` carry the `revision`, the `peak`, `since_gain`,
-the number of `runs`, and a `recent` summary of the last 10 points.
+The significance check is the paper's corroboration step. A drop of 0.15 is
+only one or two failures in a window of pass/fail runs, so the shape alone
+would fire on most healthy agents. With the check, a stable series fires on
+about 5% of evaluations, and a fall from 0.9 to 0.3 is caught. Before the
+first full window the gate reports `ok` with `ready: false`.
+
+When a sweep finds new finished runs, the daemon runs the gate over each
+agent's last 50 points. On a `regression` it raises an
+`agent.score_regression` alert, at most once per agent per revision. The
+revision is that of the newest run, and `null` when that run has no stamp.
+The alert's `details` carry:
+
+- `revision`, `peak`, `mean` and `drop`;
+- `since_gain` and the number of `runs`;
+- `recent`: a summary of the newest 10 runs.
+
+The daemon keeps this memory only while it delivers alerts, and starts it
+afresh on restart. A failure in this pass is logged and never costs the
+sweep its other alerts.
 
 `lousho observe score [--agent X] [--revision R] [--limit N] [--json]` prints
-the same view for each agent from the db: runs, mean, pass rate with its
-one-sided 95% Wilson lower bound, pass^3 (the chance three runs in a row
-all pass), and the gate state. It reads the db directly and works without a
-running daemon.
+the same view for each agent from the db:
+
+- runs, mean, and the pass rate with its one-sided 95% Wilson lower bound;
+- pass^3, the chance that three independent runs all pass;
+- the gate state.
+
+Without `--revision`, the line covers every revision in the window and names
+the latest one. It reads the db directly and works without a running daemon.
 
 ### Trace list API
 

@@ -560,12 +560,18 @@ const percent = (value: number): string => `${Math.round(value * 100)}%`;
 function formatAgentScore(score: AgentScore): string {
   const { summary, gate } = score;
   if (summary.runs === 0) return `${score.agent}: no finished runs`;
-  const revision = score.revision === undefined ? 'no revision' : `revision ${score.revision.slice(0, 12)}`;
+  const revision = score.revision === undefined ? 'no revision' : `latest revision ${score.revision.slice(0, 12)}`;
   const pass3 = summary.pass3 === undefined ? '' : `  pass^3 ${summary.pass3.toFixed(2)}`;
   return (
     `${score.agent}  ${revision}  runs ${summary.runs}  mean ${summary.mean.toFixed(2)}  pass ${percent(summary.passRate)} (95% lower ${percent(summary.lower)})${pass3}` +
     `  gate ${gate.state} (peak ${gate.peak.toFixed(2)}, ${gate.sinceGain} since gain)`
   );
+}
+
+function knownAgent(spec: CommandSpec, db: SqlDatabase, given: string): string {
+  const id = resolveAgent(spec, db, given);
+  if (db.prepare('SELECT 1 AS hit FROM agents WHERE agent_id = ?').get(id) === undefined) throw usageError(spec, `--agent '${given}' names no agent that has reported to this db.`);
+  return id;
 }
 
 async function runScore(args: string[]): Promise<number> {
@@ -583,7 +589,7 @@ async function runScore(args: string[]): Promise<number> {
     const agents =
       given === undefined
         ? db.prepare('SELECT agent_id, name FROM agents ORDER BY name, agent_id').all().map((row) => ({ id: String(row.agent_id), label: String(row.name ?? row.agent_id) }))
-        : [{ id: resolveAgent(spec, db, given), label: given }];
+        : [{ id: knownAgent(spec, db, given), label: given }];
     const scores = agents.map((agent) => agentScore(db, agent, { ...(revision !== undefined && { revision }), limit }));
     if (values.json === true) console.log(JSON.stringify(scores, null, 2));
     else console.log(scores.length === 0 ? 'No agents have reported yet.' : scores.map(formatAgentScore).join('\n'));

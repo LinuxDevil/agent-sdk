@@ -12,13 +12,31 @@ export interface ScorePoint {
   value: number;
 }
 
-/** Paper B's trajectory gate verdict: `stall` is a long flat run below the floor, `regression` a fall below the running peak. */
+/** Paper B's trajectory gate verdict on the newest window of a series. */
 export interface TrajectoryVerdict {
   state: 'ok' | 'stall' | 'regression';
-  /** The best rolling mean seen, or the mean of the points before the first full window. */
+  /** False until the series holds one full window; the state is then always `ok`. */
+  ready: boolean;
+  /** The best rolling mean since the first full window, or the mean so far before one. */
   peak: number;
-  /** Points since the last gain (since the first full window, or all points before it). */
+  /** The rolling mean of the newest window. */
+  mean: number;
+  /** Windows since the last gain, counted from the first full window. */
   sinceGain: number;
+}
+
+/** Options of {@link trajectoryGate}; the defaults follow Paper B. */
+export interface TrajectoryOptions {
+  /** Points per rolling window, and the windows without a gain that make a stall; default 10. */
+  window?: number;
+  /** A stall needs the peak below this; default 0.5. */
+  floor?: number;
+  /** A rise above the peak by at least this is a gain; default 0.02. */
+  gain?: number;
+  /** A fall below the peak by more than this is a regression, when the newest window is also significantly below the points before it; default 0.15. */
+  drop?: number;
+  /** The z of that significance test; default a one-sided 95% bound. */
+  z?: number;
 }
 
 /** A window's summary; a value of 0.5 or more is a pass. */
@@ -26,7 +44,7 @@ export interface WindowStat {
   runs: number;
   mean: number;
   passRate: number;
-  /** pass^3, the chance that three runs all pass, estimated as C(passes, 3) / C(runs, 3); absent below three runs. */
+  /** pass^3, the chance that three independent runs all pass, estimated as C(passes, 3) / C(runs, 3); absent below three runs. */
   pass3?: number;
   /** One-sided 95% Wilson lower bound on the pass rate. */
   lower: number;
@@ -35,53 +53,84 @@ export interface WindowStat {
 }
 
 const ONE_SIDED_95 = 1.6448536269514722;
-
 const PASS = 0.5;
 const EPSILON = 1e-9;
 const SERIES_DEFAULT_LIMIT = 1000;
 
-/** The series for one agent, oldest first. */
+/** The series for one agent (its exact agent id), oldest first. */
 export function scoreSeries(db: SqlDatabase, filter: { agent: string; revision?: string; since?: number; limit?: number }): ScorePoint[] {
-  return finishedRuns(db, { ...filter, limit: filter.limit ?? SERIES_DEFAULT_LIMIT })
+  const { agent, ...rest } = filter;
+  return finishedRuns(db, { ...rest, agentId: agent, limit: filter.limit ?? SERIES_DEFAULT_LIMIT })
     .reverse()
     .map((run) => ({ traceId: run.traceId, at: run.startedAt, ...(run.revision !== undefined && { revision: run.revision }), value: run.score ?? (run.failed ? 0 : 1) }));
 }
 
-function rollingMeans(values: readonly number[], window: number): number[] {
-  let sum = 0;
-  return values.map((value, i) => {
-    sum += value - (i >= window ? values[i - window] : 0);
-    return sum / Math.min(i + 1, window);
-  });
+const meanOf = (values: readonly number[]): number => (values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length);
+
+const passesOf = (values: readonly number[]): number => values.filter((value) => value >= PASS).length;
+
+function variance(values: readonly number[]): number {
+  const mean = meanOf(values);
+  return values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / Math.max(1, values.length - 1);
 }
 
-/** Paper B's trajectory gate over a series. */
-export function trajectoryGate(points: readonly ScorePoint[], options: { window?: number; floor?: number; gain?: number; drop?: number } = {}): TrajectoryVerdict {
-  const { window = 10, floor = 0.5, gain = 0.02, drop = 0.15 } = options;
-  const means = rollingMeans(
-    points.map((point) => point.value),
-    window
-  );
-  if (means.length < window) return { state: 'ok', peak: means.at(-1) ?? 0, sinceGain: means.length };
-  let peak = means[window - 1];
+function rateDropIsSignificant(before: readonly number[], after: readonly number[], z: number): boolean {
+  const rateBefore = passesOf(before) / before.length;
+  const rateAfter = passesOf(after) / after.length;
+  const upperAfter = wilsonBounds(passesOf(after), after.length, z).upper;
+  const lowerBefore = wilsonBounds(passesOf(before), before.length, z).lower;
+  return rateAfter - rateBefore + Math.sqrt((upperAfter - rateAfter) ** 2 + (rateBefore - lowerBefore) ** 2) < 0;
+}
+
+function meanDropIsSignificant(before: readonly number[], after: readonly number[], z: number): boolean {
+  const difference = meanOf(before) - meanOf(after);
+  const error = Math.sqrt(variance(before) / before.length + variance(after) / after.length);
+  return error === 0 ? difference > EPSILON : difference / error > z;
+}
+
+/** Whether `after` sits significantly below `before`, on the pass rate (Newcombe's interval from Wilson bounds) or on the mean value (Welch). */
+export function significantDrop(before: readonly number[], after: readonly number[], z: number = ONE_SIDED_95): boolean {
+  if (before.length === 0 || after.length === 0) return false;
+  return rateDropIsSignificant(before, after, z) || meanDropIsSignificant(before, after, z);
+}
+
+function windowMeans(values: readonly number[], window: number): number[] {
+  return values.slice(window - 1).map((_, i) => meanOf(values.slice(i, i + window)));
+}
+
+function peakOf(means: readonly number[], gain: number): { peak: number; sinceGain: number } {
+  let peak = means[0];
   let sinceGain = 0;
-  for (const mean of means.slice(window)) {
+  for (const mean of means.slice(1)) {
     if (mean - peak >= gain - EPSILON) {
       peak = mean;
       sinceGain = 0;
-      continue;
+    } else {
+      sinceGain += 1;
     }
-    sinceGain += 1;
-    if (mean < peak - drop - EPSILON) return { state: 'regression', peak, sinceGain };
-    if (sinceGain >= window && peak < floor) return { state: 'stall', peak, sinceGain };
   }
-  return { state: 'ok', peak, sinceGain };
+  return { peak, sinceGain };
+}
+
+/** Paper B's trajectory gate over a series, judged on its newest window. */
+export function trajectoryGate(points: readonly ScorePoint[], options: TrajectoryOptions = {}): TrajectoryVerdict {
+  const { floor = 0.5, gain = 0.02, drop = 0.15, z = ONE_SIDED_95 } = options;
+  const window = Math.max(1, Math.floor(options.window ?? 10));
+  const values = points.map((point) => point.value);
+  if (values.length < window) return { state: 'ok', ready: false, peak: meanOf(values), mean: meanOf(values), sinceGain: 0 };
+  const { peak, sinceGain } = peakOf(windowMeans(values, window), gain);
+  const newest = values.slice(-window);
+  const mean = meanOf(newest);
+  const earlier = values.slice(0, -window);
+  const fell = mean < peak - drop - EPSILON && earlier.length >= window && significantDrop(earlier, newest, z);
+  const state = fell ? 'regression' : sinceGain >= window && peak < floor ? 'stall' : 'ok';
+  return { state, ready: true, peak, mean, sinceGain };
 }
 
 /** The Wilson score bounds on a pass rate; `z` defaults to a one-sided 95% bound. */
 export function wilsonBounds(passes: number, runs: number, z: number = ONE_SIDED_95): { lower: number; upper: number } {
-  if (runs === 0) return { lower: 0, upper: 1 };
-  const rate = passes / runs;
+  if (runs <= 0) return { lower: 0, upper: 1 };
+  const rate = Math.min(1, Math.max(0, passes / runs));
   const z2 = z * z;
   const scale = 1 + z2 / runs;
   const centre = (rate + z2 / (2 * runs)) / scale;
@@ -93,11 +142,11 @@ function passCubed(passes: number, runs: number): number {
   return (passes * (passes - 1) * (passes - 2)) / (runs * (runs - 1) * (runs - 2));
 }
 
-/** Windowed summary: mean, pass rate, pass^k over repeated inputs, and a one-sided 95% Wilson lower bound on the pass rate. */
+/** Windowed summary: mean, pass rate, pass^3, and one-sided 95% Wilson bounds on the pass rate. */
 export function windowSummary(points: readonly ScorePoint[]): WindowStat {
   const runs = points.length;
   if (runs === 0) return { runs: 0, mean: 0, passRate: 0, lower: 0, upper: 1 };
-  const passes = points.filter((point) => point.value >= PASS).length;
-  const mean = points.reduce((sum, point) => sum + point.value, 0) / runs;
-  return { runs, mean, passRate: passes / runs, ...(runs >= 3 && { pass3: passCubed(passes, runs) }), ...wilsonBounds(passes, runs) };
+  const values = points.map((point) => point.value);
+  const passes = passesOf(values);
+  return { runs, mean: meanOf(values), passRate: passes / runs, ...(runs >= 3 && { pass3: passCubed(passes, runs) }), ...wilsonBounds(passes, runs) };
 }

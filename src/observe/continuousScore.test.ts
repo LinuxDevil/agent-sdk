@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IngestEvent } from './envelope';
-import { scoreSeries, trajectoryGate, wilsonBounds, windowSummary, type ScorePoint } from './continuousScore';
+import { scoreSeries, significantDrop, trajectoryGate, wilsonBounds, windowSummary, type ScorePoint } from './continuousScore';
 import { ingestBatch, openDb } from './store';
 
 const T0 = 1_790_000_000_000;
@@ -9,6 +9,14 @@ const R2 = 'b'.repeat(64);
 
 const series = (values: readonly number[]): ScorePoint[] => values.map((value, i) => ({ traceId: `t${i}`, at: T0 + i, value }));
 const repeat = (value: number, times: number): number[] => Array.from({ length: times }, () => value);
+
+function seeded(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
 
 function root(trace: string, at: number, attrs: Record<string, unknown> = {}, over: Record<string, unknown> = {}): IngestEvent {
   return {
@@ -34,18 +42,40 @@ const score = (id: string, trace: string, value: number | undefined, source = 'o
 describe('trajectoryGate', () => {
   it.each([
     ['steady passing series is ok', repeat(1, 30), 'ok', 1, 20],
-    ['ten points below 0.5 with no gain is a stall', repeat(0.3, 20), 'stall', 0.3, 10],
-    ['nine such points are not yet a stall', repeat(0.3, 19), 'ok', 0.3, 9],
+    ['ten windows below 0.5 with no gain after the first (20 points) is a stall', repeat(0.3, 20), 'stall', 0.3, 10],
+    ['nine such windows are not yet a stall', repeat(0.3, 19), 'ok', 0.3, 9],
     ['a plateau above the floor is not a stall', repeat(0.6, 40), 'ok', 0.6, 30],
-    ['a drop of 0.15 below the peak is a regression', [...repeat(0.9, 10), ...repeat(0.7, 10)], 'regression', 0.9, 8],
+    ['a drop of 0.15 below the peak is a regression', [...repeat(0.9, 10), ...repeat(0.7, 10)], 'regression', 0.9, 10],
     ['a drop of exactly 0.15 is not', [...repeat(0.9, 10), ...repeat(0.75, 10)], 'ok', 0.9, 10],
+    ['a dip that has recovered is not a regression', [...repeat(0.9, 10), ...repeat(0.6, 10), ...repeat(0.9, 10)], 'ok', 0.9, 20],
     ['a low start that keeps improving is not a stall', [...repeat(0.2, 9), ...repeat(0.9, 11)], 'ok', 0.9, 1],
-    ['fewer points than one window are ok', repeat(0, 9), 'ok', 0, 9],
   ] as const)('%s', (_name, values, state, peak, sinceGain) => {
     const result = trajectoryGate(series(values));
     expect(result.state).toBe(state);
+    expect(result.ready).toBe(true);
     expect(result.peak).toBeCloseTo(peak, 10);
     expect(result.sinceGain).toBe(sinceGain);
+  });
+
+  it('is not ready, and ok, before one full window', () => {
+    expect(trajectoryGate(series(repeat(0, 9)))).toEqual({ state: 'ok', ready: false, peak: 0, mean: 0, sinceGain: 0 });
+    expect(trajectoryGate([])).toEqual({ state: 'ok', ready: false, peak: 0, mean: 0, sinceGain: 0 });
+  });
+
+  it('needs the newest window to sit significantly below the points before it', () => {
+    expect(trajectoryGate(series([...repeat(1, 10), ...repeat(0.7, 10)])).state).toBe('regression');
+    expect(trajectoryGate(series(repeat(0.7, 10)), { window: 5 }).state).toBe('ok');
+    expect(trajectoryGate(series([1, 1, 1, 1, 1, 0.7, 0.7, 0.7, 0.7, 0.7]), { window: 5 }).mean).toBeCloseTo(0.7, 10);
+    expect(trajectoryGate(series([...repeat(1, 4), ...repeat(0.7, 10)])).state).toBe('ok');
+  });
+
+  it('rarely fires on a stable pass/fail series, and catches a real fall', () => {
+    const random = seeded(7);
+    const flips = (rates: (i: number) => number) => series(Array.from({ length: 50 }, (_, i) => (random() < rates(i) ? 1 : 0)));
+    const fired = (rates: (i: number) => number) => Array.from({ length: 500 }, () => trajectoryGate(flips(rates)).state === 'regression').filter(Boolean).length / 500;
+    expect(fired(() => 0.9)).toBeLessThan(0.08);
+    expect(fired(() => 0.8)).toBeLessThan(0.1);
+    expect(fired((i) => (i < 40 ? 0.9 : 0.3))).toBeGreaterThan(0.95);
   });
 
   it('a gain resets the counter', () => {
@@ -60,14 +90,18 @@ describe('trajectoryGate', () => {
     expect(trajectoryGate(series([...repeat(1, 12), 0, ...repeat(1, 5)])).state).toBe('ok');
   });
 
-  it('takes the window, floor, gain and drop as options', () => {
+  it('takes the window, floor, gain, drop and z as options', () => {
     expect(trajectoryGate(series([1, 1, 0.5]), { window: 1, drop: 0.4 }).state).toBe('regression');
     expect(trajectoryGate(series(repeat(0.7, 20)), { floor: 0.8 }).state).toBe('stall');
     expect(trajectoryGate(series([...repeat(0.5, 10), 0.51]), { gain: 0.001 }).sinceGain).toBe(0);
+    expect(trajectoryGate(series([...repeat(0.9, 10), ...repeat(0.7, 10)]), { drop: 0.25 }).state).toBe('ok');
+    const noisy = series([...repeat(1, 10), 1, 1, 1, 0, 1, 1, 0, 1, 1, 1]);
+    expect(trajectoryGate(noisy, { z: 0.5 }).state).toBe('regression');
+    expect(trajectoryGate(noisy).state).toBe('ok');
   });
 
-  it('is ok with no points', () => {
-    expect(trajectoryGate([])).toEqual({ state: 'ok', peak: 0, sinceGain: 0 });
+  it('treats a window below 1 as 1', () => {
+    expect(trajectoryGate(series([1, 1, 0.5]), { window: 0, drop: 0.4 })).toMatchObject({ state: 'regression', ready: true });
   });
 });
 
@@ -86,6 +120,31 @@ describe('wilsonBounds', () => {
   it('takes another z, and says nothing for no runs', () => {
     expect(wilsonBounds(16, 20, 1.959963984540054).lower).toBeCloseTo(0.58398, 4);
     expect(wilsonBounds(0, 0)).toEqual({ lower: 0, upper: 1 });
+  });
+});
+
+describe('significantDrop', () => {
+  const flips = (passes: number, runs: number): number[] => Array.from({ length: runs }, (_, i) => (i < passes ? 1 : 0));
+
+  it.each([
+    [18, 12, 1.959963984540054, true],
+    [17, 13, 1.959963984540054, false],
+    [17, 13, 1.6448536269514722, false],
+    [17, 11, 1.6448536269514722, true],
+    [17, 16, 1.6448536269514722, false],
+    [16, 16, 1.6448536269514722, false],
+  ])('%i/20 before, %i/20 after, z %f: %s', (before, after, z, expected) => {
+    expect(significantDrop(flips(before, 20), flips(after, 20), z)).toBe(expected);
+  });
+
+  it('reads a fall in continuous values that never crosses 0.5', () => {
+    expect(significantDrop(repeat(0.9, 20), [...repeat(0.7, 19), 0.75])).toBe(true);
+    expect(significantDrop([0.9, 0.7, 0.9, 0.7], [0.8, 0.8, 0.8, 0.8])).toBe(false);
+  });
+
+  it('says nothing without points on either side', () => {
+    expect(significantDrop([], [0])).toBe(false);
+    expect(significantDrop([1], [])).toBe(false);
   });
 });
 
