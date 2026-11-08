@@ -80,8 +80,9 @@ function change(item: ImproveChange, index: number): string {
   return `${index + 1}. ${item.kind} \`${target}\`\n\n${fenced(lines.join('\n'))}\n\n${quoted(`Reason: ${item.reason ?? 'no reason given.'}`)}`;
 }
 
-function changes(items: readonly ImproveChange[] | undefined): string {
-  return items && items.length > 0 ? items.map(change).join('\n\n') : 'No change proposed.';
+function changes(items: readonly ImproveChange[] | undefined, diff: string | undefined): string {
+  if (items && items.length > 0) return items.map(change).join('\n\n');
+  return diff ? 'Only blank lines, spacing or line order changed; see the diff.' : 'No change proposed.';
 }
 
 function editor(stage: ImproveStage): string {
@@ -95,7 +96,7 @@ export function formatImproveResult(result: ImproveResult): string {
   const sections = [
     `# Improve result: ${result.outcome}\n\n${result.reason}`,
     `## Flags\n\n${flags(result)}`,
-    `## Changes\n\n${changes(result.changes)}`,
+    `## Changes\n\n${changes(result.changes, result.diff)}`,
     `## Diff\n\n${result.diff ? fenced(result.diff) : 'No change proposed.'}`,
     `## Cases\n\n${cases(result.cases)}`,
   ];

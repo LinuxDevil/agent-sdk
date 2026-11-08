@@ -138,6 +138,11 @@ describe('formatImproveResult', () => {
     expect(section(formatImproveResult(result()), 'Changes').trim()).toBe('No change proposed.');
   });
 
+  it('says only blank lines or spacing changed when the diff has edits but no item', () => {
+    const card = formatImproveResult(result({ diff: 'instructions.md\n+ ', changes: [] }));
+    expect(section(card, 'Changes').trim()).toBe('Only blank lines, spacing or line order changed; see the diff.');
+  });
+
   it('fences the diff', () => {
     const card = formatImproveResult(proposal({ instructions: 'You answer questions. Cite the document.', skills: {} }));
     expect(section(card, 'Diff')).toContain('```\ninstructions.md\n- You answer questions.\n+ You answer questions. Cite the document.\n```');

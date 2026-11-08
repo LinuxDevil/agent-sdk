@@ -31,6 +31,15 @@ describe('changeItems', () => {
     ]);
   });
 
+  it('keeps edits on either side of an unchanged line as separate items', () => {
+    const base: Harness = { instructions: 'Start.\nKeep me.\nFinish.', skills: {} };
+    const after: Harness = { instructions: 'Begin.\nKeep me.\nEnd.', skills: {} };
+    expect(changeItems(base, after)).toEqual([
+      { kind: 'modify', target: 'instructions', before: 'Start.', after: 'Begin.' },
+      { kind: 'modify', target: 'instructions', before: 'Finish.', after: 'End.' },
+    ]);
+  });
+
   it('ignores blank lines and whitespace-only moves', () => {
     const after: Harness = { instructions: 'You answer questions.\nBe brief.\n', skills: {} };
     expect(changeItems(BASE, after)).toEqual([]);
@@ -81,9 +90,34 @@ describe('changeItems', () => {
   });
 });
 
+describe('reason matching', () => {
+  const after: Harness = { instructions: 'You answer questions.\n\nBe brief.\nStop when a document is forbidden.', skills: {} };
+
+  it('ignores a quote too short to pick out a line', () => {
+    expect(changeItems(BASE, after, 'reason: instructions: "a": too vague.')[0]).not.toHaveProperty('reason');
+  });
+
+  it('prefers the longest matching quote, wherever it appears', () => {
+    const notes = 'reason: instructions: "Stop when": general.\nreason: instructions: "a document is forbidden": specific.';
+    expect(changeItems(BASE, after, notes)[0].reason).toBe('specific.');
+  });
+
+  it('reads capitalised and backticked reason lines', () => {
+    expect(changeItems(BASE, after, 'Reason: Instructions: "document is forbidden": capitalised.')[0].reason).toBe('capitalised.');
+    expect(changeItems(BASE, after, '`reason: instructions: "document is forbidden": backticked.`')[0].reason).toBe('backticked.');
+  });
+
+  it('aligns long instructions that share most lines', () => {
+    const lines = Array.from({ length: 3000 }, (_, i) => `Rule ${i}.`);
+    const base: Harness = { instructions: lines.join('\n'), skills: {} };
+    const edited: Harness = { instructions: [...lines.slice(0, 1500), 'Never guess.', ...lines.slice(1500)].join('\n'), skills: {} };
+    expect(changeItems(base, edited)).toEqual([{ kind: 'add', target: 'instructions', after: 'Never guess.' }]);
+  });
+});
+
 describe('editorReasons', () => {
   it('reads only well-formed reason lines', () => {
-    const notes = 'reason: instructions: "a": one\nreason instructions "b" two\nreason: skill:x-1: "c d": three\nreason: skill:X: "e": bad name\nreason: instructions: "": empty';
+    const notes = 'reason: instructions: "a": one\nreason instructions "b" two\nreason: Skill:X-1: "c d": three\nreason: skill:<name>: "e": placeholder\nreason: instructions: "": empty';
     expect(editorReasons(notes)).toEqual([
       { target: 'instructions', quote: 'a', why: 'one' },
       { target: 'skill:x-1', quote: 'c d', why: 'three' },

@@ -10,7 +10,8 @@ interface Reason {
 
 const END: Op = { kind: 'same', line: '' };
 
-const REASON_LINE = /^\s*(?:[-*]\s*)?reason:\s*(instructions|skill:[a-z0-9][a-z0-9-]*)\s*:\s*"([^"]+)"\s*:\s*(.+?)\s*$/;
+const REASON_LINE = /^\s*(?:[-*]\s*)?`?reason:\s*(instructions|skill:[a-z0-9][a-z0-9-]*)\s*:\s*"([^"]+)"\s*:\s*(.+?)`?\s*$/i;
+const MIN_QUOTE = 8;
 
 const linesOf = (text: string) =>
   text
@@ -28,7 +29,22 @@ function suffixLengths(a: readonly string[], b: readonly string[]): number[][] {
   return table;
 }
 
+function sharedEnds(a: readonly string[], b: readonly string[]): { head: number; tail: number } {
+  let head = 0;
+  while (head < a.length && head < b.length && a[head] === b[head]) head += 1;
+  let tail = 0;
+  while (tail < a.length - head && tail < b.length - head && a[a.length - 1 - tail] === b[b.length - 1 - tail]) tail += 1;
+  return { head, tail };
+}
+
 function align(a: readonly string[], b: readonly string[]): Op[] {
+  const { head, tail } = sharedEnds(a, b);
+  const middle = alignMiddle(a.slice(head, a.length - tail), b.slice(head, b.length - tail));
+  const same = (lines: readonly string[]) => lines.map((line): Op => ({ kind: 'same', line }));
+  return [...same(a.slice(0, head)), ...middle, ...same(a.slice(a.length - tail))];
+}
+
+function alignMiddle(a: readonly string[], b: readonly string[]): Op[] {
   const table = suffixLengths(a, b);
   const ops: Op[] = [];
   let i = 0;
@@ -87,13 +103,14 @@ function skillItems(name: string, before: Harness['skills'][string] | undefined,
 export function editorReasons(notes: string): Reason[] {
   return notes.split('\n').flatMap((line) => {
     const match = REASON_LINE.exec(line);
-    return match ? [{ target: match[1], quote: match[2].trim(), why: match[3] }] : [];
+    return match ? [{ target: match[1].toLowerCase(), quote: match[2].trim(), why: match[3] }] : [];
   });
 }
 
 function reasonFor(item: ImproveChange, reasons: readonly Reason[]): string | undefined {
   const text = [item.before, item.after].filter((part) => part !== undefined).join('\n').toLowerCase();
-  return reasons.find((reason) => reason.target === item.target && reason.quote !== '' && text.includes(reason.quote.toLowerCase()))?.why;
+  const matches = reasons.filter((reason) => reason.target === item.target && reason.quote.length >= MIN_QUOTE && text.includes(reason.quote.toLowerCase()));
+  return matches.reduce<Reason | undefined>((best, reason) => (best && best.quote.length >= reason.quote.length ? best : reason), undefined)?.why;
 }
 
 export function changeItems(before: Harness, after: Harness, notes = ''): ImproveChange[] {

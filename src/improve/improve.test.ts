@@ -60,7 +60,7 @@ describe('improveAgent', () => {
   });
 
   it('asks every editor for a one-line reason per change', () => {
-    for (const prompt of [INVARIANT_PROMPT, DOMAIN_PROMPT, COMPOSE_PROMPT]) expect(prompt).toContain('reason: instructions|skill:<name>: "<a few words copied exactly from the changed line>": <why, in one line>');
+    for (const prompt of [INVARIANT_PROMPT, DOMAIN_PROMPT, COMPOSE_PROMPT]) expect(prompt).toContain('reason: instructions: "If a document is forbidden": run stuck/0 kept reading a forbidden file.');
   });
 
   it('runs no editors when nothing failed, unless told to', async () => {

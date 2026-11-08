@@ -106,13 +106,16 @@ or replay one the gate rejected.
 Above the diff, a Changes list shows each change on its own. A proposal's
 `changes` holds the same list: each item is an `add`, `modify` or `remove` of a
 line in the instructions or a skill (`skill:<name>`), or of a whole skill file
-it adds or removes, with the text before and after. The list comes from the two
-harnesses, not from the editors, so it always matches the diff, in order:
-instructions first, then skills by name.
+it adds or removes, with the text before and after. The list comes from the same
+two harnesses as the diff, not from the editors, in order: instructions first,
+then skills by name. It lines the files up in order and skips blank lines, so a
+moved line shows as a remove and an add, and a change to blank lines or spacing
+alone shows only in the diff.
 
 Editors are asked for one line per change, such as
 `reason: instructions: "document is forbidden": run stuck/0 kept reading it.`
-A reason is attached to each change whose text contains its quoted words; the
+A reason is attached to each change whose text contains its quoted words, which
+must be at least 8 characters; when several match, the longest quote wins. The
 reasons come from the composer, or from the editor whose harness passed instead.
 A change with no matching reason says "no reason given". Reasons are editor text,
 so the card quotes them, and they can't add sections to it. Nothing about the
