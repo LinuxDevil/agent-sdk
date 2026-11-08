@@ -62,7 +62,8 @@ async function runAttempt(attempt: number, base: Harness): Promise<void> {
   const confirmed = result.harness && confirmRuns > 0 ? await confirmHarness(probeFor(`confirm-${attempt}`), result.harness, values.case, confirmRuns) : undefined;
   const recorded: RecordedRow = { attempt, cases: values.case, holdout: values.holdout, model: values.model, date: new Date().toISOString().slice(0, 10), baseHarness: base };
   const candidatesConfirmed = values['confirm-candidates'] && confirmRuns > 0 ? await confirmCandidates({ ...recorded, ...(result.candidates && { candidates: result.candidates }) }) : undefined;
-  const row = { ...recorded, ...result, confirmed, candidatesConfirmed };
+  const { cases: caseVerdicts, holdout: holdoutSummary, ...rest } = result;
+  const row = { ...rest, ...recorded, caseVerdicts, holdoutSummary, confirmed, candidatesConfirmed };
   if (values.out !== undefined) appendFileSync(values.out, `${JSON.stringify(row)}\n`);
   console.log(`attempt ${attempt}: ${result.outcome}. ${result.reason} ${result.spend.tokens} tokens.`);
   if (result.diff) console.log(result.diff);
