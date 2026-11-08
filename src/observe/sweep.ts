@@ -39,6 +39,7 @@ import type { AlertEvent } from './alerts';
 import {
   HEARTBEAT_INTERVAL_DEFAULT_MS,
   endIdleSessions,
+  finishedRootsAfter,
   freshnessStatus,
   heartbeatIntervalFromMeta,
   interruptAgentWork,
@@ -47,7 +48,7 @@ import {
   setAgentStatus,
   transaction,
 } from './store';
-import { scoreSeries, trajectoryGate, windowSummary } from './continuousScore';
+import { scoreSeries, trajectoryGate, windowSummary, type ScorePoint, type TrajectoryVerdict } from './continuousScore';
 
 /** How often the daemon sweeps; shorter than any freshness threshold. */
 const SWEEP_INTERVAL_MS = 30_000;
@@ -77,7 +78,7 @@ export interface SweepPassOptions {
   errorRateThreshold?: number;
   /** Edge memory for that alert - `agent_id` -> the day bucket already alerted on. */
   errorRateState?: Map<string, number>;
-  /** Edge memory for `agent.score_regression`, per `agent_id`: the revisions already alerted on and the newest run already judged. Without it the score pass is skipped. */
+  /** Edge memory for `agent.score_regression`, per `agent_id`: the revisions already alerted on, when the gate last judged and its streak. Without it the score pass is skipped. */
   scoreRegressionState?: Map<string, ScoreRegressionMemory>;
 }
 
@@ -85,25 +86,38 @@ export interface SweepPassOptions {
 export interface ScoreRegressionMemory {
   /** Revisions already alerted on; `null` stands for runs with no revision stamp. */
   alerted: Set<string | null>;
-  /** The trace id of the newest run the gate has judged. */
-  judged?: string;
+  /** When the newest run the gate judged started; the gate judges again only after a full window of newer runs. */
+  judgedAt?: number;
+  /** Consecutive judgements that read `regression`. */
+  streak: number;
 }
 
 const SCORE_POINTS = 50;
 const SCORE_WINDOW = 10;
 const SCORE_DROP = 0.15;
+const SCORE_Z = 1.959963984540054;
+const SCORE_STREAK = 2;
+
+function judgedRegression(db: SqlDatabase, agentId: string, memory: ScoreRegressionMemory): { points: ScorePoint[]; gate: TrajectoryVerdict } | undefined {
+  if (memory.judgedAt !== undefined && finishedRootsAfter(db, agentId, memory.judgedAt) < SCORE_WINDOW) return undefined;
+  const points = scoreSeries(db, { agent: agentId, limit: SCORE_POINTS });
+  const newest = points.at(-1);
+  if (newest === undefined || points.length < 2 * SCORE_WINDOW) return undefined;
+  memory.judgedAt = newest.at;
+  const gate = trajectoryGate(points, { window: SCORE_WINDOW, drop: SCORE_DROP, z: SCORE_Z });
+  memory.streak = gate.state === 'regression' ? memory.streak + 1 : 0;
+  return memory.streak >= SCORE_STREAK ? { points, gate } : undefined;
+}
 
 function scoreRegressionAlert(db: SqlDatabase, row: SqlRow, now: number, state: Map<string, ScoreRegressionMemory>): AlertEvent | undefined {
   const agentId = String(row.agent_id);
-  const memory = state.get(agentId) ?? { alerted: new Set<string | null>() };
+  const memory = state.get(agentId) ?? { alerted: new Set<string | null>(), streak: 0 };
   state.set(agentId, memory);
-  const points = scoreSeries(db, { agent: agentId, limit: SCORE_POINTS });
-  const newest = points.at(-1);
-  if (newest === undefined || newest.traceId === memory.judged) return undefined;
-  memory.judged = newest.traceId;
-  const gate = trajectoryGate(points, { window: SCORE_WINDOW, drop: SCORE_DROP });
-  const revision = newest.revision ?? null;
-  if (gate.state !== 'regression' || memory.alerted.has(revision)) return undefined;
+  const judged = judgedRegression(db, agentId, memory);
+  if (judged === undefined) return undefined;
+  const { points, gate } = judged;
+  const revision = points.at(-1)?.revision ?? null;
+  if (memory.alerted.has(revision)) return undefined;
   memory.alerted.add(revision);
   return {
     type: 'agent.score_regression',

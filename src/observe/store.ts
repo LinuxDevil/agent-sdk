@@ -1299,6 +1299,13 @@ function rootRows(db: SqlDatabase, filter: RunFilter): SqlRow[] {
   return db.prepare(ROOTS_BY_AGENT).all(filter.since ?? 0, agent, agent, agent, ...tail);
 }
 
+const ROOTS_AFTER = `SELECT COUNT(*) AS n FROM observations o WHERE ${ROOTS_WHERE.replace('o.start >= ?', 'o.start > ?')}AND o.agent_id = ?`;
+
+/** How many finished root runs of the agent (its exact id) started after `after`. */
+export function finishedRootsAfter(db: SqlDatabase, agentId: string, after: number): number {
+  return Number(db.prepare(ROOTS_AFTER).get(after, agentId)?.n ?? 0);
+}
+
 /** Finished root runs, newest first, with the harness revision each was stamped with; `agentId` matches exactly, `agent` an agent id or its registered name. */
 export function finishedRuns(db: SqlDatabase, filter: RunFilter): (RevisionRun & { revision?: string })[] {
   const roots = rootRows(db, filter);

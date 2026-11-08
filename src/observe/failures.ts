@@ -188,7 +188,7 @@ function failureSamples(db: SqlDatabase, filter: FailureFilter): { failed: Failu
     const sample = sampleFrom(rowFields(row));
     return sample ? [sample] : [];
   });
-  const roots = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${where.sql} AND o.kind = 'span' AND o.parent_obs_id IS NULL`).all(...where.args).flatMap((row) => {
+  const roots = db.prepare(`SELECT ${OBSERVATION_COLUMNS} ${FROM_OBSERVATIONS} WHERE ${where.sql} AND o.kind = 'span' AND ${filter.traceIds === undefined ? '' : '+'}o.parent_obs_id IS NULL`).all(...where.args).flatMap((row) => {
     const sample = rootSample(row);
     return sample ? [sample] : [];
   });

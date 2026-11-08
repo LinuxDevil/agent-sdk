@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { SqlDatabase } from '../storage/sqlite/driver';
 import type { AlertEvent } from './alerts';
 import type { IngestEvent } from './envelope';
 import { ingestBatch, openDb } from './store';
@@ -41,70 +42,96 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('the agent.score_regression alert', () => {
-  it('fires when the trajectory gate sees a regression, with the revision and the gate state', () => {
-    const db = openDb(':memory:');
-    ingestBatch(db, [heartbeat(), ...runs(0, 15, R1, 0.9), ...runs(15, 15, R2, 0.6)]);
+type Stream = { db: SqlDatabase; state: Map<string, ScoreRegressionMemory>; next: number; fired: AlertEvent[] };
 
-    expect(regressions(sweepAgents(db, NOW, { scoreRegressionState: memory() }).alerts)).toEqual([
+function stream(): Stream {
+  const db = openDb(':memory:');
+  ingestBatch(db, [heartbeat()]);
+  return { db, state: memory(), next: 0, fired: [] };
+}
+
+function feed(target: Stream, count: number, revision: string | undefined, value: number | (() => number)): AlertEvent[] {
+  const before = target.fired.length;
+  for (let i = 0; i < count; i++) {
+    ingestBatch(target.db, run(target.next, revision, typeof value === 'number' ? value : value()));
+    target.next += 1;
+    target.fired.push(...regressions(sweepAgents(target.db, NOW + target.next, { scoreRegressionState: target.state }).alerts));
+  }
+  return target.fired.slice(before);
+}
+
+function seeded(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1_664_525 + 1_013_904_223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
+
+describe('the agent.score_regression alert', () => {
+  it('fires after two regression judgements in a row, a window of new runs apart, with the gate state', () => {
+    const target = stream();
+    feed(target, 30, R1, 0.9);
+    expect(feed(target, 10, R2, 0.6)).toEqual([]);
+    const fired = feed(target, 10, R2, 0.6);
+
+    expect(fired).toEqual([
       {
         type: 'agent.score_regression',
         agent_id: 'uuid-1',
         project: null,
         status: 'healthy',
-        at: NOW,
-        details: expect.objectContaining({ name: 'support', revision: R2, peak: expect.closeTo(0.9, 10), mean: expect.closeTo(0.6, 10), drop: 0.15, runs: 30 }) as unknown as Record<string, unknown>,
+        at: NOW + 50,
+        details: expect.objectContaining({ name: 'support', revision: R2, peak: expect.closeTo(0.9, 10), mean: expect.closeTo(0.6, 10), drop: 0.15, runs: 50 }) as unknown as Record<string, unknown>,
       },
     ]);
-    db.close();
+    target.db.close();
   });
 
   it('the alert fires once per revision', () => {
-    const db = openDb(':memory:');
-    const state = memory();
-    ingestBatch(db, [heartbeat(), ...runs(0, 15, R1, 0.9), ...runs(15, 15, R2, 0.6)]);
-
-    expect(regressions(sweepAgents(db, NOW, { scoreRegressionState: state }).alerts)).toHaveLength(1);
-    expect(regressions(sweepAgents(db, NOW + 30_000, { scoreRegressionState: state }).alerts)).toHaveLength(0);
-    ingestBatch(db, runs(30, 3, R2, 0.6));
-    expect(regressions(sweepAgents(db, NOW + 60_000, { scoreRegressionState: state }).alerts)).toHaveLength(0);
-    ingestBatch(db, runs(33, 3, R1, 0.6));
-    expect(regressions(sweepAgents(db, NOW + 90_000, { scoreRegressionState: state }).alerts).map((alert) => alert.details.revision)).toEqual([R1]);
-    db.close();
+    const target = stream();
+    feed(target, 30, R1, 0.9);
+    expect(feed(target, 20, R2, 0.6)).toHaveLength(1);
+    expect(feed(target, 20, R2, 0.6)).toEqual([]);
+    expect(feed(target, 10, R1, 0.3).map((alert) => alert.details.revision)).toEqual([R1]);
+    target.db.close();
   });
 
-  it('does not repeat while revisions interleave, and names an unstamped run null', () => {
-    const db = openDb(':memory:');
-    const state = memory();
-    ingestBatch(db, [heartbeat(), ...runs(0, 20, undefined, 0.9), ...runs(20, 10, undefined, 0.5)]);
-    expect(regressions(sweepAgents(db, NOW, { scoreRegressionState: state }).alerts).map((alert) => alert.details.revision)).toEqual([null]);
-
-    const fired: unknown[] = [];
-    for (let i = 0; i < 6; i++) {
-      ingestBatch(db, run(30 + i, i % 2 === 0 ? R1 : R2, 0.5));
-      fired.push(...regressions(sweepAgents(db, NOW + i, { scoreRegressionState: state }).alerts).map((alert) => alert.details.revision));
-    }
-    expect(fired).toEqual([R1, R2]);
-    db.close();
+  it('never repeats a revision while revisions interleave, and names an unstamped run null', () => {
+    const target = stream();
+    feed(target, 30, undefined, 0.9);
+    expect(feed(target, 20, undefined, 0.5).map((alert) => alert.details.revision)).toEqual([null]);
+    let flip = 0;
+    for (let i = 0; i < 6; i++) feed(target, 7, (flip++ % 2 === 0 ? R1 : R2), 0.5);
+    const revisions = target.fired.map((alert) => alert.details.revision);
+    expect(new Set(revisions).size).toBe(revisions.length);
+    target.db.close();
   });
 
-  it('a recovered dip does not fire when a new revision starts', () => {
+  it('a recovered dip read at once does not fire for the new revision', () => {
     const db = openDb(':memory:');
+    const state = memory();
     ingestBatch(db, [heartbeat(), ...runs(0, 15, R1, 0.9), ...runs(15, 10, R1, 0.5), ...runs(25, 15, R2, 0.9)]);
 
-    expect(regressions(sweepAgents(db, NOW, { scoreRegressionState: memory() }).alerts)).toEqual([]);
+    expect(regressions(sweepAgents(db, NOW, { scoreRegressionState: state }).alerts)).toEqual([]);
+    expect(regressions(sweepAgents(db, NOW + 1, { scoreRegressionState: state }).alerts)).toEqual([]);
     db.close();
+  });
+
+  it('a stable pass/fail stream of 1000 runs, judged run by run, raises no alert, and a collapse alerts within 40 runs', () => {
+    const target = stream();
+    const random = seeded(2026);
+    expect(feed(target, 1000, R1, () => (random() < 0.9 ? 1 : 0))).toEqual([]);
+    expect(feed(target, 40, R1, () => (random() < 0.1 ? 1 : 0))).toHaveLength(1);
+    target.db.close();
   });
 
   it('stays quiet on a steady series, and skips the pass without edge memory', () => {
-    const db = openDb(':memory:');
-    ingestBatch(db, [heartbeat(), ...runs(0, 50, R1, 0.9)]);
-    expect(regressions(sweepAgents(db, NOW, { scoreRegressionState: memory() }).alerts)).toEqual([]);
-
-    ingestBatch(db, runs(50, 10, R1, 0.3));
-    expect(regressions(sweepAgents(db, NOW).alerts)).toEqual([]);
-    expect(regressions(sweepAgents(db, NOW, { scoreRegressionState: memory() }).alerts)).toHaveLength(1);
-    db.close();
+    const target = stream();
+    expect(feed(target, 50, R1, 0.9)).toEqual([]);
+    ingestBatch(target.db, runs(50, 30, R1, 0.3));
+    expect(regressions(sweepAgents(target.db, NOW).alerts)).toEqual([]);
+    target.db.close();
   });
 
   it('a failing score pass never costs the sweep its down alert', () => {
@@ -124,6 +151,7 @@ describe('the agent.score_regression alert', () => {
     ingestBatch(db, [heartbeat(), ...runs(0, 15, R1, 0.9), ...runs(15, 15, R2, 0.6)]);
     const delivered: AlertEvent[] = [];
     const sweep = startStatusSweep(db, { intervalMs: 0, now: () => NOW, onAlerts: (alerts) => delivered.push(...alerts) });
+    ingestBatch(db, runs(30, 10, R2, 0.6));
     sweep.run(NOW + 1);
     sweep.stop();
     expect(regressions(delivered)).toHaveLength(1);

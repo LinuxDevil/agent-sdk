@@ -895,14 +895,25 @@ The gate judges the newest window:
 
 The significance check is the paper's corroboration step. A drop of 0.15 is
 only one or two failures in a window of pass/fail runs, so the shape alone
-would fire on most healthy agents. With the check, a stable series fires on
-about 5% of evaluations, and a fall from 0.9 to 0.3 is caught. Before the
-first full window the gate reports `ok` with `ready: false`.
+would fire on most healthy agents. The test depends on the values:
 
-When a sweep finds new finished runs, the daemon runs the gate over each
-agent's last 50 points. On a `regression` it raises an
-`agent.score_regression` alert, at most once per agent per revision. The
-revision is that of the newest run, and `null` when that run has no stamp.
+- for pass/fail values it compares pass rates (Newcombe's interval from
+  Wilson bounds);
+- otherwise it compares means (Welch's t).
+
+One judgement of a stable series reads `regression` about 5% of the time.
+Before the first full window the gate reports `ok` with `ready: false`.
+
+The daemon does not judge on every run, because repeating the test would add
+up to false alarms. It waits until an agent has 20 finished runs. After
+that, it runs the gate over the last 50 points each time 10 new runs have
+arrived, at a stricter z of 1.96. It raises an `agent.score_regression` alert
+only after two judgements in a row read `regression`. In simulation, a
+stable agent at a 0.8–0.95 pass rate raises a false alert in about 3–5% of
+1,000-run stretches. A collapse to 0.1 alerts within 40 runs, and a fall from
+0.9 to 0.3 is caught within 60 runs about three times in four. The alert
+fires at most once per agent per revision. The revision is that of the newest
+run, and `null` when that run has no stamp.
 The alert's `details` carry:
 
 - `revision`, `peak`, `mean` and `drop`;

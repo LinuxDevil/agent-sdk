@@ -557,10 +557,10 @@ function agentScore(db: SqlDatabase, agent: { id: string; label: string }, filte
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
 
-function formatAgentScore(score: AgentScore): string {
+function formatAgentScore(score: AgentScore, scoped: boolean): string {
   const { summary, gate } = score;
   if (summary.runs === 0) return `${score.agent}: no finished runs`;
-  const revision = score.revision === undefined ? 'no revision' : `latest revision ${score.revision.slice(0, 12)}`;
+  const revision = score.revision === undefined ? 'no revision' : `${scoped ? 'revision' : 'latest revision'} ${score.revision.slice(0, 12)}`;
   const pass3 = summary.pass3 === undefined ? '' : `  pass^3 ${summary.pass3.toFixed(2)}`;
   return (
     `${score.agent}  ${revision}  runs ${summary.runs}  mean ${summary.mean.toFixed(2)}  pass ${percent(summary.passRate)} (95% lower ${percent(summary.lower)})${pass3}` +
@@ -592,7 +592,7 @@ async function runScore(args: string[]): Promise<number> {
         : [{ id: knownAgent(spec, db, given), label: given }];
     const scores = agents.map((agent) => agentScore(db, agent, { ...(revision !== undefined && { revision }), limit }));
     if (values.json === true) console.log(JSON.stringify(scores, null, 2));
-    else console.log(scores.length === 0 ? 'No agents have reported yet.' : scores.map(formatAgentScore).join('\n'));
+    else console.log(scores.length === 0 ? 'No agents have reported yet.' : scores.map((score) => formatAgentScore(score, revision !== undefined)).join('\n'));
     return 0;
   } finally {
     db.close();

@@ -82,16 +82,25 @@ function rateDropIsSignificant(before: readonly number[], after: readonly number
   return rateAfter - rateBefore + Math.sqrt((upperAfter - rateAfter) ** 2 + (rateBefore - lowerBefore) ** 2) < 0;
 }
 
-function meanDropIsSignificant(before: readonly number[], after: readonly number[], z: number): boolean {
-  const difference = meanOf(before) - meanOf(after);
-  const error = Math.sqrt(variance(before) / before.length + variance(after) / after.length);
-  return error === 0 ? difference > EPSILON : difference / error > z;
+function studentT(z: number, df: number): number {
+  return z + (z ** 3 + z) / (4 * df) + (5 * z ** 5 + 16 * z ** 3 + 3 * z) / (96 * df * df);
 }
 
-/** Whether `after` sits significantly below `before`, on the pass rate (Newcombe's interval from Wilson bounds) or on the mean value (Welch). */
+function meanDropIsSignificant(before: readonly number[], after: readonly number[], z: number): boolean {
+  const difference = meanOf(before) - meanOf(after);
+  const a = variance(before) / before.length;
+  const b = variance(after) / after.length;
+  if (a + b === 0) return difference > EPSILON;
+  const df = (a + b) ** 2 / (a ** 2 / Math.max(1, before.length - 1) + b ** 2 / Math.max(1, after.length - 1));
+  return difference / Math.sqrt(a + b) > studentT(z, df);
+}
+
+const binary = (values: readonly number[]): boolean => values.every((value) => value === 0 || value === 1);
+
+/** Whether `after` sits significantly below `before`: on the pass rate (Newcombe's interval from Wilson bounds) for pass/fail values, else on the mean (Welch's t). */
 export function significantDrop(before: readonly number[], after: readonly number[], z: number = ONE_SIDED_95): boolean {
   if (before.length === 0 || after.length === 0) return false;
-  return rateDropIsSignificant(before, after, z) || meanDropIsSignificant(before, after, z);
+  return binary(before) && binary(after) ? rateDropIsSignificant(before, after, z) : meanDropIsSignificant(before, after, z);
 }
 
 function windowMeans(values: readonly number[], window: number): number[] {

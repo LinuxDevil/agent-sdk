@@ -99,6 +99,10 @@ describe('lousho observe', () => {
     expect(logs.join('\n')).toContain('pass 80%');
     expect(logs.join('\n')).toContain('gate ok');
     logs.length = 0;
+    expect(await runObserve(['score', '--db', dbPath, '--revision', revision])).toBe(0);
+    expect(logs.join('\n')).toContain('  revision cccccccccccc');
+    expect(logs.join('\n')).not.toContain('latest revision');
+    logs.length = 0;
     expect(await runObserve(['score', '--db', dbPath, '--agent', 'support', '--revision', revision, '--json'])).toBe(0);
     const [row] = JSON.parse(logs.join('\n')) as { agent: string; revision: string; summary: { runs: number; passRate: number }; gate: { state: string } }[];
     expect(row).toMatchObject({ agent: 'support', revision, summary: { runs: 20, passRate: 0.8 }, gate: { state: 'ok' } });
