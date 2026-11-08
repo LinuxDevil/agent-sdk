@@ -129,6 +129,19 @@ gate changes: it judges the harness, not the reasons.
 
 `db` is your observe database (default `~/.lousho/observe.db`), opened with `new DatabaseSync(path)` from `node:sqlite`; it matches the exported `SqlDatabase` type. Build each transcript your `runCase` returns with `renderTranscript`, so tool results reach the editors marked as untrusted.
 
+A `CaseCheck` returns `true`, `false`, `null` when it can't score the answer, or `{ passed, failure }`. Return `failure` on a failed answer to name the check it missed, as a custom `probe` does: each editor reads it in that run's record, after `Result: failed`, on one line with forged untrusted markers removed. A check must be synchronous; any other return value throws a `ConfigurationError`. Without it, a failed run whose answer looks right gives the editors nothing to fix. Name the real check; a wrong name is worse than none. A `failure` on a passed answer is dropped.
+
+```ts
+import type { CaseCheck } from 'lousho/improve';
+
+declare function failedTests(input: string, answer: string): string[];
+
+const check: CaseCheck = (input, answer) => {
+  const failed = failedTests(input, answer);
+  return failed.length === 0 ? true : { passed: false, failure: failed.join('; ') };
+};
+```
+
 ### Recovery forks as evidence
 
 With `retryWithDiagnosis`, [`agent.recover()`](./self-healing.md#recover-a-run-now) forks a run that kept failing into a `<id>.heal` session told why it failed. When that fork passes, you hold a pair on the same input: the failed run and a retry that passed. `casesFromRecoveries(db, filter)` finds those pairs in your local database and returns the failed runs as cases, each with a `recovery`: the retry's transcript, rendered with `renderTranscript`, the diagnosis it was given, and its final answer. A fork counts only when it carries the diagnosis and finished with no recorded error, no answer cut short and no low score. That isn't your check, so score each `recovery.answer` with your `CaseCheck` and keep only the ones that pass, then pass them on as `recoveries`:
@@ -141,11 +154,15 @@ declare const harness: Harness;
 declare const probe: ImproveOptions['probe'];
 declare const check: CaseCheck;
 
+const passes = (input: string, answer: string) => {
+  const verdict = check(input, answer);
+  return (verdict !== null && typeof verdict === 'object' ? verdict.passed : verdict) === true;
+};
 const cases = casesFromRecoveries(db, { since: Date.now() - 7 * 86_400_000 });
 const result = await improveAgent({
   harness,
   cases: cases.map((c) => c.id),
-  recoveries: cases.flatMap((c) => (c.recovery && check(c.input, c.recovery.answer) === true ? [c.recovery] : [])),
+  recoveries: cases.flatMap((c) => (c.recovery && passes(c.input, c.recovery.answer) ? [c.recovery] : [])),
   probe,
   editor: { model: 'openrouter/<model>' },
 });
@@ -203,7 +220,8 @@ npx lousho improve ./my-agent --check ./check.mjs --since 7d --out proposal.md
 ```
 
 It reads cases only from your local observe database, needs a module whose
-default export is your `CaseCheck`, simulates tools other than loading skills
+default export is your `CaseCheck` (return `failure` to name the check a failed
+answer missed), simulates tools other than loading skills
 unless `--read-only` names them, and prints the review card. It applies nothing.
 `--max-tokens <n>` sets `maxTokens`; it has no default, so without it there is no
 cap. It is checked after each run or editor call, so the last one can go over,

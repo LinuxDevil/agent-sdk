@@ -508,6 +508,23 @@ describe('lousho improve', () => {
       const second = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--with-recoveries', '--protect', 'h1'], { editor: guarded });
       expect(second.stderr).toMatch(/0 with a \.heal retry/);
     });
+
+    it('reads a check that returns a verdict object', async () => {
+      addFork('ok, that doc is forbidden');
+      fs.writeFileSync(checkPath, "export default (input, answer) => ({ passed: answer.startsWith('ok'), failure: 'says when a document is forbidden' });\n");
+      const { stderr } = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--with-recoveries'], { editor: reader() });
+      expect(stderr).toMatch(/1 with a \.heal retry that passed your check/);
+    });
+  });
+
+  it('shows the editors each run as passed or failed, with the check a failed one missed', async () => {
+    fs.writeFileSync(checkPath, "export default (input, answer) => (answer.startsWith('ok') ? true : { passed: false, failure: 'says when a document is forbidden' });\n");
+    const editor = mockModel([{ toolCalls: [{ name: 'read_file', args: { path: 'context/runs/base/permission:t1-0.md' } }] }, ...noEdit], { onExhausted: 'repeat-last' });
+    const { code } = await improve([agentDir, '--check', checkPath, '--db', dbPath], { editor });
+    expect(code).toBe(0);
+    const seen = JSON.stringify(editor.calls);
+    expect(seen).toContain('Result: failed.');
+    expect(seen).toContain('Failed check: says when a document is forbidden.');
   });
 
   it('leaves out a protected trace that misses a fresh run, and says so', async () => {

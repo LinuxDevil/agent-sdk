@@ -22,6 +22,7 @@ import {
   type ImproveOptions,
   type RecoveryEvidence,
 } from '../improve';
+import { scoreCase } from '../improve/cases';
 import { recordedTurns } from '../improve/recoveries';
 import { openDb } from '../observe/store';
 import type { AgentInput, LLMProvider } from '../providers';
@@ -46,7 +47,8 @@ name tools that are safe to call again. Every run and editor call is billed to y
 
 Options:
   --check <module>          required: a .js/.ts module whose default export is a CaseCheck,
-                            (input, answer) => boolean | null, that scores each answer
+                            (input, answer) => boolean | null | { passed, failure? }, that
+                            scores each answer; failure names the check a failed one missed
   --model provider/model    run the agent on another model
   --editor provider/model   the editors' model (default: --model, else the agent's model)
   --db path                 the observe database (default ~/.lousho/observe.db)
@@ -173,7 +175,7 @@ async function loadCheck(file: string): Promise<CaseCheck> {
   } catch (error) {
     throw explainImportError(resolved, error);
   }
-  if (typeof mod.default !== 'function') throw new ConfigurationError(`lousho improve: ${file}'s default export must be a CaseCheck function, (input, answer) => boolean | null.`, 'check');
+  if (typeof mod.default !== 'function') throw new ConfigurationError(`lousho improve: ${file}'s default export must be a CaseCheck function, (input, answer) => boolean | null | { passed, failure? }.`, 'check');
   return mod.default as CaseCheck;
 }
 
@@ -286,7 +288,7 @@ function capture(args: ImproveArgs, io: ImproveIo): { failures: CapturedCase[]; 
 
 function checkedRecoveries(failures: readonly CapturedCase[], passes: readonly CapturedCase[], check: CaseCheck): RecoveryEvidence[] {
   const protectedTraces = new Set(passes.map((captured) => captured.traceId));
-  return failures.flatMap(({ input, recovery }) => (recovery && !protectedTraces.has(recovery.traceId) && check(input, recovery.answer) === true ? [recovery] : []));
+  return failures.flatMap(({ input, recovery }) => (recovery && !protectedTraces.has(recovery.traceId) && scoreCase(check, input, recovery.answer).passed === true ? [recovery] : []));
 }
 
 function editorOf(args: ImproveArgs, config: CreateAgentConfig, io: ImproveIo): ImproveOptions['editor'] {
