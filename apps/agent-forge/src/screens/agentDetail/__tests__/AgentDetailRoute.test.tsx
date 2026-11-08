@@ -14,11 +14,11 @@ const mocks = vi.hoisted(() => {
       this.name = 'RuntimeApiError';
     }
   }
-  return { loadAgent: vi.fn(), MockRuntimeApiError };
+  return { loadAgent: vi.fn(), listTraces: vi.fn(), MockRuntimeApiError };
 });
 
 vi.mock('../../../runtime/runtimeClient', () => ({
-  runtimeClient: { loadAgent: mocks.loadAgent },
+  runtimeClient: { loadAgent: mocks.loadAgent, listTraces: mocks.listTraces },
   RuntimeApiError: mocks.MockRuntimeApiError,
 }));
 
@@ -72,6 +72,8 @@ function go(hash: string) {
 
 beforeEach(() => {
   mocks.loadAgent.mockReset();
+  mocks.listTraces.mockReset();
+  mocks.listTraces.mockResolvedValue([]);
   window.location.hash = '';
 });
 
