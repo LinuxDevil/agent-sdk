@@ -199,9 +199,11 @@ function messageOf(input: string): AgentInput {
   return messages.length === 1 && messages[0].role === 'user' ? messages[0].content : (messages as Message[]);
 }
 
-function readable(captured: CapturedCase): CapturedCase {
+function readable(captured: CapturedCase, decoded: Map<string, AgentInput>): CapturedCase {
   const message = messageOf(captured.input);
-  return typeof message === 'string' ? { ...captured, input: message } : captured;
+  const input = typeof message === 'string' ? message : captured.input;
+  decoded.set(input, message);
+  return { ...captured, input };
 }
 
 const SKILL_TOOLS = ['load_skill', 'read_skill_file'];
@@ -213,7 +215,7 @@ function skillsOf(harness: Harness, directories: ReadonlyMap<string, string | un
   });
 }
 
-function runCaseWith(config: CreateAgentConfig, args: ImproveArgs, io: ImproveIo) {
+function runCaseWith(config: CreateAgentConfig, args: ImproveArgs, io: ImproveIo, decoded: ReadonlyMap<string, AgentInput>) {
   const {
     store: _store,
     approvalStore: _approvalStore,
@@ -226,12 +228,15 @@ function runCaseWith(config: CreateAgentConfig, args: ImproveArgs, io: ImproveIo
   return async (harness: Harness, input: string) => {
     const agent = createAgent({ ...rest, instructions: harness.instructions, skills: skillsOf(harness, directories), hooks } as CreateAgentConfig);
     try {
-      const run = await agent.send(messageOf(input));
-      return { answer: run.text ?? '', transcript: renderTranscript(run.messages), tokens: run.usage?.totalTokens ?? 0, ended: run.finishReason };
+      return caseRun(await agent.send(decoded.get(input) ?? input));
     } finally {
       await agent.close().catch(() => undefined);
     }
   };
+}
+
+function caseRun(run: Awaited<ReturnType<ReturnType<typeof createAgent>['send']>>) {
+  return { answer: run.text ?? '', transcript: renderTranscript(run.messages), tokens: run.usage?.totalTokens ?? 0, ended: run.finishReason };
 }
 
 function unscoredOnError(probe: ImproveOptions['probe'], errors: Set<string>): ImproveOptions['probe'] {
@@ -258,14 +263,16 @@ function readCases(args: ImproveArgs): { failures: CapturedCase[]; passes: Captu
   }
 }
 
-function capture(args: ImproveArgs, io: ImproveIo): { failures: CapturedCase[]; passes: CapturedCase[] } {
+function capture(args: ImproveArgs, io: ImproveIo): { failures: CapturedCase[]; passes: CapturedCase[]; decoded: Map<string, AgentInput> } {
   const { failures, passes } = readCases(args);
   const failed = new Set(failures.map((captured) => captured.traceId));
   for (const id of args.protect) {
     if (failed.has(id)) io.stderr.write(`lousho improve: ${id} is a failed run, so it can't be protected; it stays a case to learn from.\n`);
     else if (!passes.some((captured) => captured.traceId === id)) io.stderr.write(`lousho improve: no trace ${id} with a recorded input to protect.\n`);
   }
-  return { failures: failures.map(readable), passes: passes.filter((captured) => !failed.has(captured.traceId)).map(readable) };
+  const decoded = new Map<string, AgentInput>();
+  const protectable = passes.filter((captured) => !failed.has(captured.traceId));
+  return { failures: failures.map((captured) => readable(captured, decoded)), passes: protectable.map((captured) => readable(captured, decoded)), decoded };
 }
 
 function editorOf(args: ImproveArgs, config: CreateAgentConfig, io: ImproveIo): ImproveOptions['editor'] {
@@ -293,16 +300,16 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
   const harness = baseHarness(config);
   const editor = editorOf(args, config, io);
   const check = await loadCheck(args.check);
-  const { failures, passes } = capture(args, io);
+  const { failures, passes, decoded } = capture(args, io);
   if (failures.length === 0) {
     io.stdout.write('lousho improve: No failed runs with a recorded input match, so there is nothing to learn from.\n');
     return 0;
   }
   io.stderr.write(
-    `lousho improve: ${failures.length} failed run(s) to learn from and ${passes.length} to protect: at least ${(failures.length + passes.length) * 6} agent runs plus the editors' calls, all billed to your models.\n`
+    `lousho improve: ${failures.length} failed run(s) to learn from and ${passes.length} to protect: at least ${3 * failures.length + 6 * passes.length} agent runs plus the editors' calls, all billed to your models.\n`
   );
   const errors = new Set<string>();
-  const probe = unscoredOnError(probeCapturedCases([...failures, ...passes], runCaseWith(config, args, io), check), errors);
+  const probe = unscoredOnError(probeCapturedCases([...failures, ...passes], runCaseWith(config, args, io, decoded), check), errors);
   const result = await withoutObserve(async () => {
     const { admitted, refused } = await admitProtectedCases({ harness, cases: passes, probe });
     for (const { id, passed, scored } of refused) io.stderr.write(`lousho improve: ${id} was not protected: it passed ${passed} of ${scored} scored runs.\n`);

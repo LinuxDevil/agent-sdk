@@ -285,6 +285,16 @@ describe('lousho improve', () => {
     expect(new Set(fs.readFileSync(inputs, 'utf8').trim().split('\n'))).toEqual(new Set(['can I read the secret doc?']));
   });
 
+  it('replays a message that is itself quoted JSON as it was sent', async () => {
+    const db = openDb(dbPath);
+    ingestBatch(db, failedTrace('t3', JSON.stringify([{ role: 'user', parts: [{ type: 'text', content: '"yes"' }] }])));
+    db.close();
+    const asked = new Set<string>();
+    const provider = mockModel([(request) => (asked.add(JSON.stringify(request.messages.filter((m) => m.role === 'user'))), { text: 'here is the doc' })], { onExhausted: 'repeat-last' });
+    await improve([agentDir, '--check', checkPath, '--db', dbPath], { overrides: { provider }, editor: mockModel(noEdit, { onExhausted: 'repeat-last' }) });
+    expect(asked).toContain(JSON.stringify([{ role: 'user', content: '"yes"' }]));
+  });
+
   it('replays a recorded conversation as messages, without its tool turns', async () => {
     const recorded = [
       { role: 'user', parts: [{ type: 'text', content: 'hi' }] },
@@ -338,7 +348,7 @@ describe('lousho improve', () => {
     });
     expect(exporter.onSpanStart).not.toHaveBeenCalled();
     expect(onEvent).not.toHaveBeenCalled();
-    expect(stderr).toMatch(/1 failed run\(s\) to learn from and 0 to protect: at least 6 agent runs/);
+    expect(stderr).toMatch(/1 failed run\(s\) to learn from and 0 to protect: at least 3 agent runs/);
   });
 
   it('says so when the database has no failed runs', async () => {
