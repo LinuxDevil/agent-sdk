@@ -62,8 +62,8 @@ function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined):
   return summary.passRate === 1 && !alwaysPropose;
 }
 
-export function winningNotes(result: Pick<ImproveResult, 'gate'>, stages: readonly ImproveStage[]): string {
-  const label = result.gate?.find((verdict) => verdict.passed)?.label ?? 'compose';
+export function winningNotes(result: Pick<ImproveResult, 'gate' | 'selection'>, stages: readonly ImproveStage[]): string {
+  const label = result.selection?.chosen ?? result.gate?.find((verdict) => verdict.passed)?.label ?? 'compose';
   return stages.find((stage) => stage.label === label)?.notes ?? '';
 }
 

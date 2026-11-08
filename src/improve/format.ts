@@ -120,6 +120,7 @@ export function formatImproveResult(result: ImproveResult): string {
     `## Cases\n\n${cases(result.cases)}`,
   ];
   if (result.gate && result.gate.length > 0) sections.push(`## Gate\n\n${result.gate.map((verdict) => `- ${inline(verdict.label)}: ${verdict.passed ? 'passed' : 'failed'}. ${inline(verdict.reason)}`).join('\n')}`);
+  if (result.selection) sections.push(`## Selection\n\n${inline(result.selection.chosen)}${result.selection.fallback ? ' (fallback)' : ''}: ${inline(result.selection.why)}`);
   if (result.diversity) sections.push(`## Proposals\n\n${Object.keys(result.candidates?.pool ?? {}).filter((label) => !isCheckpoint(label)).length} proposals, ${result.diversity.distinct} distinct, mean line overlap ${result.diversity.meanJaccard}.`);
   sections.push(`## Editors\n\n${result.stages.length > 0 ? result.stages.map(editor).join('\n\n') : 'No editor ran.'}`, `## Spend\n\n${result.spend.tokens} tokens.`);
   return `${sections.join('\n\n')}\n`;

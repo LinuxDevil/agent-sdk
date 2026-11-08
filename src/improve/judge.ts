@@ -2,6 +2,7 @@ import type { LabelledRun } from './evidence';
 import { caseCount, costNote, costOnPassingCases, gateFailure, HOLDOUT_RERUNS, judgeHoldoutCase, judgePooledHoldout, judgeTrainingCase, summarize, trainingFailure } from './gate';
 import { diffHarness } from './harness';
 import type { ImproveRun } from './run';
+import { selectAmong, type Passer } from './select';
 import type { CaseVerdict, GateVerdict, Harness, ImproveOptions, ImproveResult } from './types';
 
 const DEFAULT_MAX_COST_INCREASE = 0.5;
@@ -76,12 +77,12 @@ async function gateHarness(run: ImproveRun, options: ImproveOptions, base: BaseR
   return { outcome: 'proposal', reason, harness: candidate, diff: diffHarness(options.harness, candidate), ...shared };
 }
 
-async function judgeComposite(run: ImproveRun, options: ImproveOptions, composed: Harness): Promise<{ base: BaseRuns; result: Judged }> {
+async function judgeComposite(run: ImproveRun, options: ImproveOptions, composed: Harness): Promise<{ base: BaseRuns; result: Judged; finalRuns: LabelledRun[] }> {
   const fresh = await run.probe(options.harness, 'fresh-base', options.cases, run.repeats);
   const finalRuns = await run.probe(composed, 'final', options.cases);
   const holdout = await run.probe(options.harness, 'holdout-base', options.holdout ?? []);
   const base: BaseRuns = { fresh, holdout, reruns: new Map() };
-  return { base, result: await gateHarness(run, options, base, composed, finalRuns, 'holdout-final') };
+  return { base, result: await gateHarness(run, options, base, composed, finalRuns, 'holdout-final'), finalRuns };
 }
 
 function ineligibility(options: ImproveOptions, composed: Harness | undefined, pool: readonly Proposal[], index: number, fresh: readonly LabelledRun[]): string | undefined {
@@ -106,20 +107,45 @@ function sortCandidates(options: ImproveOptions, composed: Harness | undefined, 
   return { eligible, ineligible };
 }
 
-export async function judgeWithFallback(run: ImproveRun, options: ImproveOptions, composed: Harness, pool: readonly Proposal[]): Promise<Judged> {
-  const { base, result } = await judgeComposite(run, options, composed);
-  const compose: GateVerdict = { label: 'compose', passed: result.outcome === 'proposal', reason: result.reason };
-  if (compose.passed) return { ...result, gate: [compose] };
-  const { eligible, ineligible } = sortCandidates(options, composed, pool, base.fresh);
-  const tried: GateVerdict[] = [];
+interface Gated {
+  tried: GateVerdict[];
+  passers: Passer[];
+  failed?: { label: string; judged: Judged };
+}
+
+async function gateEach(run: ImproveRun, options: ImproveOptions, base: BaseRuns, eligible: readonly Proposal[], passedReason: (label: string, judged: Judged) => string): Promise<Gated> {
+  const gated: Gated = { tried: [], passers: [] };
   for (const { label, harness, runs } of eligible) {
     const judged = await gateHarness(run, options, base, harness, runs, `holdout-${label}`);
-    tried.push({ label, passed: judged.outcome === 'proposal', reason: judged.reason });
-    if (judged.outcome !== 'proposal') continue;
-    const reason = `The composite failed the gate (${result.reason}) The ${label} editor's harness passed instead.${costNote(judged.costOnPassingCases)}`;
-    return { ...judged, reason, gate: [compose, ...tried, ...ineligible] };
+    gated.tried.push({ label, passed: judged.outcome === 'proposal', reason: judged.reason });
+    if (judged.outcome !== 'proposal') {
+      gated.failed ??= { label, judged };
+      continue;
+    }
+    gated.passers.push({ label, harness, runs, judged: { ...judged, reason: passedReason(label, judged) } });
+    if (!options.select) break;
   }
-  return { ...result, gate: [compose, ...tried, ...ineligible] };
+  return gated;
+}
+
+async function settle(run: ImproveRun, options: ImproveOptions, passers: readonly Passer[]): Promise<Judged> {
+  if (passers.length === 1) return passers[0].judged;
+  const { chosen, selection } = await selectAmong(run, options, passers);
+  const how = selection.fallback ? `the selector gave no usable choice, so the cheapest, ${chosen.label}, was kept` : `the advisory selector chose ${chosen.label}`;
+  return { ...chosen.judged, reason: `${chosen.judged.reason} ${passers.length} harnesses passed the gate; ${how}.`, selection };
+}
+
+export async function judgeWithFallback(run: ImproveRun, options: ImproveOptions, composed: Harness, pool: readonly Proposal[]): Promise<Judged> {
+  const { base, result, finalRuns } = await judgeComposite(run, options, composed);
+  const compose: GateVerdict = { label: 'compose', passed: result.outcome === 'proposal', reason: result.reason };
+  if (compose.passed && !options.select) return { ...result, gate: [compose] };
+  const { eligible, ineligible } = sortCandidates(options, composed, pool, base.fresh);
+  const fallbackReason = (label: string, judged: Judged) =>
+    compose.passed ? judged.reason : `The composite failed the gate (${result.reason}) The ${label} editor's harness passed instead.${costNote(judged.costOnPassingCases)}`;
+  const { tried, passers } = await gateEach(run, options, base, eligible, fallbackReason);
+  const all: Passer[] = compose.passed ? [{ label: 'compose', harness: composed, runs: finalRuns, judged: result }, ...passers] : passers;
+  const gate = [compose, ...tried, ...ineligible];
+  return { ...(all.length > 0 ? await settle(run, options, all) : result), gate };
 }
 
 export async function judgeCheckpoints(run: ImproveRun, options: ImproveOptions, checkpoints: readonly Proposal[]): Promise<Judged> {
@@ -127,14 +153,9 @@ export async function judgeCheckpoints(run: ImproveRun, options: ImproveOptions,
   const holdout = await run.probe(options.harness, 'holdout-base', options.holdout ?? []);
   const base: BaseRuns = { fresh, holdout, reruns: new Map() };
   const { eligible, ineligible } = sortCandidates(options, undefined, checkpoints, fresh);
-  const tried: GateVerdict[] = [];
-  let first: Judged | undefined;
-  for (const { label, harness, runs } of eligible) {
-    const judged = await gateHarness(run, options, base, harness, runs, `holdout-${label}`);
-    tried.push({ label, passed: judged.outcome === 'proposal', reason: judged.reason });
-    first ??= { ...judged, reason: `The ${label} checkpoint failed the gate: ${judged.reason}` };
-    if (judged.outcome === 'proposal') return { ...judged, reason: `The ${label} checkpoint passed the gate. ${judged.reason}`, gate: [...tried, ...ineligible] };
-  }
-  const none: Judged = { outcome: 'keep-base', reason: "No round's checkpoint improved a training case.", freshBase: summarize(fresh) };
-  return { ...(first ?? none), gate: [...tried, ...ineligible] };
+  const { tried, passers, failed } = await gateEach(run, options, base, eligible, (label, judged) => `The ${label} checkpoint passed the gate. ${judged.reason}`);
+  const gate = [...tried, ...ineligible];
+  if (passers.length > 0) return { ...(await settle(run, options, passers)), gate };
+  if (failed) return { ...failed.judged, reason: `The ${failed.label} checkpoint failed the gate: ${failed.judged.reason}`, gate };
+  return { outcome: 'keep-base', reason: "No round's checkpoint improved a training case.", freshBase: summarize(fresh), gate };
 }

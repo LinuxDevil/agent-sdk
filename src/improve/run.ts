@@ -112,13 +112,19 @@ export class ImproveRun {
     return 'model' in editor ? editor.model : `${editor.provider.name}/${editor.provider.defaultModel ?? ''}`;
   }
 
-  private async session(system: string, input: string, workspace: MemoryWorkspace, signal: AbortSignal | undefined): Promise<{ text: string; tokens: number }> {
+  async ask(system: string, input: string, files: Record<string, string>): Promise<string> {
+    const { text, tokens } = await this.session(system, input, new MemoryWorkspace({ files }), this.options.signal, true);
+    this.spend(tokens);
+    return text;
+  }
+
+  private async session(system: string, input: string, workspace: MemoryWorkspace, signal: AbortSignal | undefined, readOnly = false): Promise<{ text: string; tokens: number }> {
     const { editor, editorHooks, maxEditorSteps } = this.options;
     const agent = createAgent({
       name: 'harness-editor',
       ...editor,
       instructions: system,
-      tools: createFsTools(workspace),
+      tools: createFsTools(workspace, { readOnly }),
       maxSteps: maxEditorSteps ?? DEFAULT_MAX_EDITOR_STEPS,
       ...(editorHooks && { hooks: [...editorHooks] }),
     });

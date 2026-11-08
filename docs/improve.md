@@ -134,6 +134,38 @@ gated, each with its own held-out runs, so as with several proposers a no-op is
 more likely to pass by chance: confirm with `canaryReplay`. With k = 1, `seq` is
 the same as the default.
 
+### An advisory selector
+
+The gate is pass or fail per run, so it can't tell a clean answer from a sloppy
+one that still passes the check. Set `select: true` to add a second opinion. The
+gate then judges every candidate instead of stopping at the first that passes:
+the composite and each proposal in the default mode, or each checkpoint in `seq`.
+When two or more pass, one selector session reads each one's final answers on
+the training cases and picks one. It works from these rules, in order:
+delivery, conformance, fidelity, consistency, fitness and finish.
+
+- **Blind.** The candidates are labelled A, B, … in a shuffled order, so the same
+  cycle always gets the same labels. The seed is taken from the harness and the
+  training and held-out case ids.
+- **Safe input.** The selector sees only candidates that passed the gate, and
+  never a held-out case or a run that couldn't be scored. Answers are wrapped as
+  untrusted data. Return `answer` from `probe` to show the final answer;
+  otherwise it reads the last assistant message of the transcript, without its
+  tool calls. Each answer is cut at 4,000 characters and each candidate's file at
+  about 40,000.
+- **Fallback.** If the selector fails, its provider is down, or its choice isn't
+  one of the labels, the cheapest candidate that passed is kept: the one with
+  the fewest tokens per training run.
+- **Result.** `selection` gives the label it `chosen`, its reason `why` as plain
+  text, and whether it fell back (`fallback`).
+
+The selector never overrides the gate. A harness that failed can't be chosen,
+and with one passer no selector runs. Its tokens count toward `maxTokens`, and
+gating every candidate costs held-out runs that stopping at the first pass would
+have saved. A run that runs out of `maxTokens` while gating or selecting ends
+with `budget-exceeded`, even if a candidate had already passed, so allow for
+both. With `select` off, nothing changes.
+
 ## Caching and the ledger
 
 A loop that runs every day sees the same failures again. Two caches stop it
