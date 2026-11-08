@@ -4,7 +4,8 @@ import { evidenceFiles, type LabelledRun } from './evidence';
 import { summarize } from './gate';
 import { diffHarness, harnessFiles } from './harness';
 import { judgeWithFallback } from './judge';
-import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, RECOVERIES_NOTE } from './prompts';
+import { isLibraryFile } from './library';
+import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, LIBRARY_NOTE, RECOVERIES_NOTE } from './prompts';
 import { ImproveRun, StopRun } from './run';
 import type { Harness, ImproveOptions, ImproveResult, ImproveStage, ProbeSummary } from './types';
 
@@ -15,10 +16,14 @@ function assertOptions(options: ImproveOptions, repeats: number): void {
   if (overlap.length > 0) throw new ConfigurationError(`improveAgent: ${overlap.join(', ')} can't be both a case and held out.`, 'holdout');
   const stray = (options.recoveries ?? []).filter((recovery) => !options.cases.includes(recovery.caseId)).map((recovery) => recovery.caseId);
   if (stray.length > 0) throw new ConfigurationError(`improveAgent: recoveries must name training cases, not ${stray.join(', ')}.`, 'recoveries');
+  const outside = Object.entries(options.library ?? {}).filter(([path, content]) => !LIBRARY_PATH.test(path) || !isLibraryFile(content));
+  if (outside.length > 0) throw new ConfigurationError(`improveAgent: library must hold files from libraryFiles, named context/library/<name>.md, not ${outside.map(([path]) => path).join(', ')}.`, 'library');
 }
 
+const LIBRARY_PATH = /^context\/library\/[A-Za-z0-9_-][A-Za-z0-9._-]*\.md$/;
+
 function promptsFor(options: ImproveOptions): { invariant: string; domain: string; compose: string } {
-  const note = options.recoveries?.length ? RECOVERIES_NOTE : '';
+  const note = (options.recoveries?.length ? RECOVERIES_NOTE : '') + (Object.keys(options.library ?? {}).length > 0 ? LIBRARY_NOTE : '');
   return { invariant: INVARIANT_PROMPT + note, domain: DOMAIN_PROMPT + note, compose: COMPOSE_PROMPT + note };
 }
 
@@ -51,9 +56,9 @@ interface Stages {
 }
 
 async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: readonly LabelledRun[]): Promise<Stages> {
-  const { harness: base, cases, recoveries } = options;
+  const { harness: base, cases, recoveries, library } = options;
   const prompts = promptsFor(options);
-  const shared = evidenceFiles({ harness: base, runs: baseRuns, recoveries });
+  const shared = evidenceFiles({ harness: base, runs: baseRuns, recoveries, extra: library });
   const editors = [run.stage('invariant'), run.stage('domain')];
   const [invariant, domain] = await run.concurrently([
     (signal: AbortSignal) => run.edit(editors[0], prompts.invariant, shared, base, signal),
@@ -66,7 +71,7 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
     harness: base,
     runs: [...baseRuns, ...invariantRuns, ...domainRuns],
     recoveries,
-    extra: { ...candidateFiles('invariant', base, invariant), ...candidateFiles('domain', base, domain) },
+    extra: { ...library, ...candidateFiles('invariant', base, invariant), ...candidateFiles('domain', base, domain) },
   });
   const composed = await run.edit(run.stage('compose'), prompts.compose, composeFiles, base);
   run.candidates = { invariant, domain, compose: composed };
