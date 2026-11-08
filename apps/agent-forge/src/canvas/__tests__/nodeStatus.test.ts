@@ -1,74 +1,115 @@
 import { describe, it, expect } from 'vitest';
 import { nodeRunStatuses } from '../nodeStatus';
-import { specToGraph } from '../../graph/v2/specToGraph';
-import { graphToSpec } from '../../graph/v2/graphToSpec';
-import type { AgentRunStatusPayload, SpanEvent } from '../../../shared/wireTypes';
+import type { NodeStates } from '../../state/nodeStateReducer';
+import type { AgentRunStatusPayload, NodeStatePayload, NodeRunState } from '../../../shared/wireTypes';
 
-const graph = specToGraph({
-  version: 2,
-  name: 'bot',
-  model: 'mock/mock-1',
-  instructions: 'p',
-  tools: [{ builtin: 'http' }],
-});
-const nodeIdMap = graphToSpec(graph).nodeIdMap;
-const toolId = 'tool:http';
-
-const chat = (over: Partial<SpanEvent> = {}): SpanEvent => ({
-  id: 'chat-1',
-  name: 'chat',
-  parentId: 'root',
-  startTime: 1,
-  attributes: { 'gen_ai.operation.name': 'chat' },
-  ...over,
-});
-const tool = (over: Partial<SpanEvent> = {}): SpanEvent => ({
-  id: 'tool-1',
-  name: 'execute_tool http',
-  parentId: 'root',
-  startTime: 2,
-  attributes: { 'gen_ai.operation.name': 'execute_tool', 'gen_ai.tool.name': 'http' },
-  ...over,
-});
 const status = (s: AgentRunStatusPayload['status'], over: Partial<AgentRunStatusPayload> = {}): AgentRunStatusPayload =>
   ({ agentId: 'bot', status: s, updatedAt: '', ...over }) as AgentRunStatusPayload;
 
+const frame = (nodeId: string, state: NodeRunState, at = '2026-01-01T00:00:00.000Z'): NodeStatePayload => ({
+  nodeId,
+  state,
+  spanId: `${nodeId}:${state}`,
+  at,
+});
+
+const states = (...frames: NodeStatePayload[]): NodeStates =>
+  Object.fromEntries(frames.map((f) => [f.nodeId, f]));
+
+// A flat graph's ids plus a collapsed subagent group and one of its children.
+const NODE_IDS = ['agent', 'tool:http', 'sub:research', 'sub:research/tool:web_fetch'];
+
 describe('nodeRunStatuses', () => {
   it('is idle for every node before any run', () => {
-    const statuses = nodeRunStatuses(graph, [], undefined, nodeIdMap);
-    expect(graph.nodes.every((n) => statuses[n.id] === 'idle')).toBe(true);
+    const statuses = nodeRunStatuses(NODE_IDS, {}, undefined);
+    expect(NODE_IDS.every((id) => statuses[id] === 'idle')).toBe(true);
   });
 
-  it('a span stamped with lousho.node.id lands on the graph node the id maps from', () => {
-    const stamped = chat({ attributes: { 'lousho.node.id': 'tool:http', 'gen_ai.operation.name': 'chat' } });
-    const statuses = nodeRunStatuses(graph, [stamped], status('running'), nodeIdMap);
-    expect(statuses[toolId]).toBe('running');
-    expect(statuses['agent']).toBe('idle');
+  it('lights the run up frame by frame: agent running, tool running, tool done, agent done', () => {
+    const ids = ['agent', 'tool:web-fetch'];
+    let s = nodeRunStatuses(ids, states(frame('agent', 'running')), status('running'));
+    expect(s.agent).toBe('running');
+    expect(s['tool:web-fetch']).toBe('idle');
+
+    s = nodeRunStatuses(ids, states(frame('agent', 'running'), frame('tool:web-fetch', 'running', '2026-01-01T00:00:01.000Z')), status('running'));
+    expect(s['tool:web-fetch']).toBe('running');
+
+    s = nodeRunStatuses(
+      ids,
+      states(frame('agent', 'running'), frame('tool:web-fetch', 'done', '2026-01-01T00:00:02.000Z')),
+      status('running')
+    );
+    expect(s['tool:web-fetch']).toBe('done');
+    expect(s.agent).toBe('running');
+
+    s = nodeRunStatuses(
+      ids,
+      states(frame('agent', 'done', '2026-01-01T00:00:03.000Z'), frame('tool:web-fetch', 'done', '2026-01-01T00:00:02.000Z')),
+      status('done')
+    );
+    expect(s.agent).toBe('done');
+    expect(s['tool:web-fetch']).toBe('done');
   });
 
-  it('marks the node of an open span running, and a finished one done', () => {
-    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5 }), tool()], status('running'), nodeIdMap);
-    expect(statuses['agent']).toBe('done');
-    expect(statuses[toolId]).toBe('running');
+  it.each<[NodeRunState, AgentRunStatusPayload['status'] | undefined, string]>([
+    ['running', 'running', 'running'],
+    ['running', 'paused', 'paused'],
+    ['running', 'stopped', 'idle'],
+    ['running', 'done', 'idle'],
+    ['running', undefined, 'idle'],
+    ['waiting', 'paused', 'paused'],
+    ['waiting', 'running', 'paused'],
+    ['done', 'done', 'done'],
+    ['error', 'error', 'error'],
+  ])('frame %s with run %s maps to %s', (state, run, expected) => {
+    const runStatus = run === undefined ? undefined : status(run);
+    expect(nodeRunStatuses(['agent'], states(frame('agent', state)), runStatus).agent).toBe(expected);
   });
 
-  it('reads an open span as running only while the run is running', () => {
-    for (const s of ['stopped', 'done', 'error', 'idle'] as const) {
-      expect(nodeRunStatuses(graph, [tool()], status(s), nodeIdMap)[toolId]).toBe('idle');
-    }
-    expect(nodeRunStatuses(graph, [tool()], undefined, nodeIdMap)[toolId]).toBe('idle');
-    expect(nodeRunStatuses(graph, [tool()], status('paused'), nodeIdMap)[toolId]).toBe('paused');
+  it('a waiting frame shows the node paused (the warning ring status)', () => {
+    const s = nodeRunStatuses(['tool:http'], states(frame('tool:http', 'waiting')), status('paused'));
+    expect(s['tool:http']).toBe('paused');
   });
 
-  it('marks a failed span error', () => {
-    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5, status: { code: 'error' } })], status('error'), nodeIdMap);
-    expect(statuses['agent']).toBe('error');
-    expect(statuses[toolId]).toBe('idle');
+  it('raises the subagent group node from a child frame', () => {
+    const s = nodeRunStatuses(NODE_IDS, states(frame('sub:research/tool:web_fetch', 'running')), status('running'));
+    expect(s['sub:research/tool:web_fetch']).toBe('running');
+    expect(s['sub:research']).toBe('running');
+    expect(s.agent).toBe('idle');
   });
 
-  it('marks the tool awaiting approval paused', () => {
-    const paused = status('paused', { pendingApproval: { toolName: 'http', args: {} } as AgentRunStatusPayload['pendingApproval'] });
-    const statuses = nodeRunStatuses(graph, [chat({ endTime: 5 })], paused, nodeIdMap);
-    expect(statuses[toolId]).toBe('paused');
+  it('raises a nested group path only to its immediate owner', () => {
+    const s = nodeRunStatuses(
+      ['sub:a', 'sub:a/sub:b', 'sub:a/sub:b/tool:x'],
+      states(frame('sub:a/sub:b/tool:x', 'error')),
+      status('error')
+    );
+    expect(s['sub:a/sub:b']).toBe('error');
+    expect(s['sub:a']).toBe('idle');
+  });
+
+  it('the highest rank wins when several child frames raise one group', () => {
+    // done (1) vs error (2) vs running (4) on children of the same group.
+    const group = nodeRunStatuses(
+      ['sub:g', 'sub:g/tool:a', 'sub:g/tool:b'],
+      states(
+        frame('sub:g/tool:a', 'done'),
+        frame('sub:g/tool:b', 'error', '2026-01-01T00:00:01.000Z')
+      ),
+      status('error')
+    );
+    expect(group['sub:g']).toBe('error');
+    const running = nodeRunStatuses(
+      ['sub:g', 'sub:g/tool:a', 'sub:g/tool:b'],
+      states(frame('sub:g/tool:a', 'done'), frame('sub:g/tool:b', 'running', '2026-01-01T00:00:01.000Z')),
+      status('running')
+    );
+    expect(running['sub:g']).toBe('running');
+  });
+
+  it('ignores frames for node ids the graph does not have', () => {
+    const s = nodeRunStatuses(['agent'], states(frame('ghost:node', 'error'), frame('agent', 'done')), status('done'));
+    expect(s.agent).toBe('done');
+    expect(Object.keys(s)).toEqual(['agent']);
   });
 });

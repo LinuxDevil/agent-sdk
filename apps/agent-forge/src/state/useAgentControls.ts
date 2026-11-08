@@ -12,6 +12,7 @@ import type {
   SpanEvent,
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
+import type { NodeStates } from './nodeStateReducer';
 
 interface RunControlDeps {
   agentId: string;
@@ -19,11 +20,12 @@ interface RunControlDeps {
   runStatus: AgentRunStatusPayload | undefined;
   setLogs: Dispatch<SetStateAction<LogEntry[]>>;
   setSpans: Dispatch<SetStateAction<SpanEvent[]>>;
+  setNodeStates: Dispatch<SetStateAction<NodeStates>>;
   setDebugState: Dispatch<SetStateAction<DebugStatePayload | undefined>>;
 }
 
 /** Run/stop/approve and the step-debugger actions for `agentId`. */
-export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, setDebugState }: RunControlDeps) {
+export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, setNodeStates, setDebugState }: RunControlDeps) {
   const [debugMode, setDebugMode] = useState(false);
 
   const runAgent = useCallback(
@@ -34,6 +36,7 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
       // preferable to conflating it with the aborted run's).
       setLogs([]);
       setSpans([]);
+      setNodeStates({});
       await runtimeClient.run(agentId, input, spec);
     },
     [agentId, spec]
