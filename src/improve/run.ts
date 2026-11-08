@@ -23,6 +23,12 @@ export class StopRun extends Error {
   }
 }
 
+function sessionFailure(error: unknown, timedOut: boolean, timeout: number | undefined): unknown {
+  if (timedOut) return new StopRun('outage', `An editor session ran past its ${timeout} ms wall timeout.`);
+  if (error instanceof CompactedLLMProviderError && error.compacted.retryable) return new StopRun('outage', `The editor's provider failed: ${error.message}`);
+  return error;
+}
+
 const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.trim() ?? text.trim();
 
 interface EditContext {
@@ -112,23 +118,31 @@ export class ImproveRun {
     return 'model' in editor ? editor.model : `${editor.provider.name}/${editor.provider.defaultModel ?? ''}`;
   }
 
-  private async session(system: string, input: string, workspace: MemoryWorkspace, signal: AbortSignal | undefined): Promise<{ text: string; tokens: number }> {
+  async ask(system: string, input: string, files: Record<string, string>): Promise<string> {
+    const { text, tokens } = await this.session(system, input, new MemoryWorkspace({ files }), this.options.signal, true);
+    this.spend(tokens);
+    return text;
+  }
+
+  private async session(system: string, input: string, workspace: MemoryWorkspace, signal: AbortSignal | undefined, readOnly = false): Promise<{ text: string; tokens: number }> {
     const { editor, editorHooks, maxEditorSteps } = this.options;
     const agent = createAgent({
       name: 'harness-editor',
       ...editor,
       instructions: system,
-      tools: createFsTools(workspace),
+      tools: createFsTools(workspace, { readOnly }),
       maxSteps: maxEditorSteps ?? DEFAULT_MAX_EDITOR_STEPS,
       ...(editorHooks && { hooks: [...editorHooks] }),
     });
+    const timeout = this.options.editorTimeoutMs;
+    const timer = timeout === undefined ? undefined : AbortSignal.timeout(timeout);
+    const stop = timer && signal ? AbortSignal.any([signal, timer]) : (timer ?? signal);
     try {
-      const result = await agent.send(input, signal ? { signal } : undefined);
-      signal?.throwIfAborted();
+      const result = await agent.send(input, stop ? { signal: stop } : undefined);
+      stop?.throwIfAborted();
       return { text: result.text ?? '', tokens: result.usage?.totalTokens ?? 0 };
     } catch (error) {
-      if (error instanceof CompactedLLMProviderError && error.compacted.retryable) throw new StopRun('outage', `The editor's provider failed: ${error.message}`);
-      throw error;
+      throw sessionFailure(error, timer?.aborted === true && signal?.aborted !== true, timeout);
     }
   }
 

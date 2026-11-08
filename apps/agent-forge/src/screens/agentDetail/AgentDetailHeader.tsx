@@ -98,6 +98,10 @@ export interface AgentDetailHeaderProps {
   menu?: ReactNode;
   /** The enabled-state control (A09 passes its switch); a status badge by default. */
   enabledControl?: ReactNode;
+  /** The labels fact (A09's `HeaderLabels`), rendered as the facts row's last item. */
+  labelsItem?: ReactNode;
+  /** Notices under the facts row (A09's auto-disable notice). */
+  notices?: ReactNode;
 }
 
 /**
@@ -106,7 +110,7 @@ export interface AgentDetailHeaderProps {
  * actions row (enabled state, Test, overflow menu), the facts row and the
  * tab strip with the readiness chips pinned right.
  */
-export function AgentDetailHeader({ record, tab, menu, enabledControl }: AgentDetailHeaderProps): JSX.Element {
+export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsItem, notices }: AgentDetailHeaderProps): JSX.Element {
   const { id, spec, meta } = record;
   const [expanded, setExpanded] = useState(false);
   const description = spec.description ?? '';
@@ -170,7 +174,9 @@ export function AgentDetailHeader({ record, tab, menu, enabledControl }: AgentDe
             <span>{fact.value}</span>
           </li>
         ))}
+        {labelsItem}
       </ul>
+      {notices}
       <div className="agent-detail-tabs">
         <Tabs label="Agent" currentId={tab} items={agentTabItems(id)} trailing={<ReadinessChips requirements={record.requirements} agentId={id} />} />
       </div>

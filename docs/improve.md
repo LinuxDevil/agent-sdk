@@ -84,9 +84,10 @@ fallback. Confirm a proposal on fresh runs before you apply it.
 
 A failed run looks fine to an editor when the agent never saw the check it
 missed. Return `failure` from `probe` to name that check. Name the requirement,
-not the fix. On one coding benchmark task, naming the real check did not help
-more than naming no check, but naming the wrong check hurt: the editors found
-the fix less often.
+not the fix. On two coding benchmark tasks, naming the wrong check always hurt:
+on the harder one the editors proposed nothing in 5 of 5 tries. Naming the real
+check helped on the harder task (5 of 5 proposals against 4 of 5 with no name)
+and matched no name on the easier one. Name a check only when you know it.
 
 `candidates` holds each editor's harness from before the gate, so you can review
 or replay one the gate rejected.
@@ -132,6 +133,38 @@ checkpoint, so k rounds cost about k times as much. Up to k checkpoints are
 gated, each with its own held-out runs, so as with several proposers a no-op is
 more likely to pass by chance: confirm with `canaryReplay`. With k = 1, `seq` is
 the same as the default.
+
+### An advisory selector
+
+The gate is pass or fail per run, so it can't tell a clean answer from a sloppy
+one that still passes the check. Set `select: true` to add a second opinion. The
+gate then judges every candidate instead of stopping at the first that passes:
+the composite and each proposal in the default mode, or each checkpoint in `seq`.
+When two or more pass, one selector session reads each one's final answers on
+the training cases and picks one. It works from these rules, in order:
+delivery, conformance, fidelity, consistency, fitness and finish.
+
+- **Blind.** The candidates are labelled A, B, … in a shuffled order, so the same
+  cycle always gets the same labels. The seed is taken from the harness and the
+  training and held-out case ids.
+- **Safe input.** The selector sees only candidates that passed the gate, and
+  never a held-out case or a run that couldn't be scored. Answers are wrapped as
+  untrusted data. Return `answer` from `probe` to show the final answer;
+  otherwise it reads the last assistant message of the transcript, without its
+  tool calls. Each answer is cut at 4,000 characters and each candidate's file at
+  about 40,000.
+- **Fallback.** If the selector fails, its provider is down, or its choice isn't
+  one of the labels, the cheapest candidate that passed is kept: the one with
+  the fewest tokens per training run.
+- **Result.** `selection` gives the label it `chosen`, its reason `why` as plain
+  text, and whether it fell back (`fallback`).
+
+The selector never overrides the gate. A harness that failed can't be chosen,
+and with one passer no selector runs. Its tokens count toward `maxTokens`, and
+gating every candidate costs held-out runs that stopping at the first pass would
+have saved. A run that runs out of `maxTokens` while gating or selecting ends
+with `budget-exceeded`, even if a candidate had already passed, so allow for
+both. With `select` off, nothing changes.
 
 ## Caching and the ledger
 
@@ -313,7 +346,10 @@ npx lousho improve ./my-agent --check ./check.mjs --since 7d --out proposal.md
 It reads cases only from your local observe database, needs a module whose
 default export is your `CaseCheck` (return `failure` to name the check a failed
 answer missed), simulates tools other than loading skills
-unless `--read-only` names them, and prints the review card. It applies nothing.
+unless `--read-only` names them, and prints the review card. On an agent
+directory it runs one self-healing cycle (`healOnce()`): in auto mode a proposal
+that passes the gate and a replay canary is applied and guarded, and in manual
+mode it is queued for approval. `--dry-run` applies nothing.
 `--max-tokens <n>` sets `maxTokens`; it has no default, so without it there is no
 cap. It is checked after each run or editor call, so the last one can go over,
 and a run that hits it ends `budget-exceeded`.

@@ -18,7 +18,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | `lousho traces [id]` | List the recent runs saved by `fileTraceExporter()` (duration, model and tool calls, tokens, cost), or print one run as a span tree. | [Observability](./observability.md#local-traces) |
 | `lousho build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](./deployment.md) |
 | `lousho studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](./agent-forge.md) |
-| `lousho improve <path> --check <module>` | Experimental. Propose edits to an agent's instructions and skills from failed runs in your local observe database. Prints a review card and applies nothing. | [Below](#lousho-improve) |
+| `lousho improve <path> --check <module>` | Experimental. Run one self-healing cycle on an agent directory: propose edits to its instructions and skills from failed runs in your local observe database, gate them, replay them on fresh runs, and apply (auto mode) or queue (manual mode) one that passes. `--dry-run` prints the review card and applies nothing. | [Below](#lousho-improve) |
 
 Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 `.yml` or `.json`, see [Configuration](./configuration.md#agent-spec-files-agentspec)).
@@ -39,7 +39,7 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
-lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]
+lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual]
 lousho --version
 ```
 
@@ -285,6 +285,7 @@ npx lousho observe prune --older-than 30d       # delete finished runs older tha
 npx lousho observe export --since 7d --out runs.jsonl # traces as JSONL, one per line
 npx lousho observe failures --since 7d          # recurring tool and model failures, by agent
 npx lousho observe failures --traces .lousho/traces --json # the same from trace files, no database
+npx lousho observe score --agent support        # continuous score, pass rate and trajectory gate state
 npx lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
 
@@ -374,9 +375,17 @@ export default (input, answer) => !answer.includes('I cannot help');
 It takes the failed runs in your local observe database (default
 `~/.lousho/observe.db`, or `--db`), replays each recorded input through the
 agent, scores each answer with your check, and prints the review card from
-`formatImproveResult()`. It never changes the agent: no file in the agent
-directory is written, and there is no flag to apply a proposal. Review the card
-and apply what you accept by hand.
+`formatImproveResult()`. On an agent directory it then runs one self-healing
+cycle with `healOnce()`: only failed runs of the current harness revision count,
+a proposal that passes the gate is replayed on fresh runs (the canary), and in
+auto mode (the default) it is written to `instructions.md` and
+`skills/<name>/SKILL.md`, after which the corpus guard replays the protected
+cases and rolls back on a regression. In manual mode it is queued for
+`lousho improve approve`. Every step is audited, and `improve.json`'s daily caps,
+the cooldown after a rollback and the `.lousho/improve.stop` kill switch apply.
+`--dry-run` keeps the old behaviour: every failed run counts, the card is
+printed, and nothing is written. An agent module, or an agent whose instructions
+don't live in `instructions.md`, always runs dry.
 
 - `<path>` is an agent directory or a `.ts`/`.js` agent module whose
   instructions are plain text. Editors may change only the instructions and
@@ -414,9 +423,99 @@ and apply what you accept by hand.
   `--check`, if there is one. It's evidence only: it never counts as a run and
   never protects a case, and a fork you `--protect` is left out. See
   [Recovery forks as evidence](./improve.md#recovery-forks-as-evidence).
+- `--approval auto|manual` sets the approval mode, over the
+  `LOUSHO_IMPROVE_APPROVAL` variable, which wins over `"approval"` in
+  `improve.json` beside the agent. The default is `auto`. In `manual` mode an
+  edit that quotes a failed check word for word is kept and flagged on the card
+  for the person who approves it; in `auto` mode it is sent back to the editor
+  once and then dropped. Without `--approval`, an `improve.json` that doesn't
+  validate stops the run. Applying proposals from this command arrives with the
+  self-healing cycle.
 
 Before the first run it prints how many runs it will make at least, and the
 token budget if any. Every run and every editor call is billed to your models.
 It exits 1 on an `outage`: no run could be scored, or the editors' provider
 failed. A `budget-exceeded` run exits 0, since you set the cap. Each run's error goes to
 stderr. It reads nothing but your own database. See [Improving an agent](./improve.md#from-the-command-line).
+
+### Revisions, rollback and the audit log
+
+Every change to an agent directory's `instructions.md` and
+`skills/<name>/SKILL.md` made through `applyProposal()` is saved as a revision
+under `.lousho/revisions/` and recorded in the hash-chained
+`.lousho/audit.jsonl`. Three subcommands read and undo that history:
+
+```bash
+npx lousho improve revisions ./my-agent
+npx lousho improve rollback ./my-agent --by ali --reason "answers got worse"
+npx lousho improve audit ./my-agent --verify
+```
+
+- `revisions <dir> [--json]` lists the saved revisions, newest first, with their
+  source (`baseline`, `apply` or `rollback`), who made them and when. `*` marks
+  the one the directory holds now.
+- `rollback <dir> --by <name> [--to <revision>] [--reason text]` restores a
+  saved revision through the same writer as an apply: it changes only
+  instructions and skills, makes a new revision and writes one `rollback` audit
+  entry. It never rewrites history. Without `--to` it goes to the parent of the
+  current revision. It refuses instead when the current revision came from a
+  rollback, or when the directory holds hand edits that match no revision; pass
+  `--to` then. A hand edit that a rollback replaces is saved as a revision
+  first. `--to` takes an id or a unique prefix of at least 4 characters. `--by`
+  is required. If an apply lands between your command and the write, the
+  rollback is refused as stale.
+- `audit <dir> [--verify] [--json]` prints the audit log, oldest first.
+  `--verify` checks the hash chain and exits 1 at the first edited, removed or
+  truncated line.
+
+A directory literally named `revisions`, `rollback`, `audit`, `pending`,
+`approve` or `reject` must be passed as `./revisions` and so on.
+
+### Pending proposals (manual mode)
+
+In manual mode a proposal that passed the gate waits in
+`.lousho/proposals/<id>.json` until a person decides:
+
+```bash
+npx lousho improve pending ./my-agent
+npx lousho improve approve ./my-agent 3f9c0a1b2d4e --by ali
+npx lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
+```
+
+- `pending <dir> [--show <id>] [--json]` lists the queue, newest first, marking
+  stale and refused entries. The id is the first 12 characters of the proposed
+  harness's hash, and a file whose content doesn't match its id is left out.
+  `--show <id>` prints that proposal's review card.
+- `approve <dir> <id> --by <name>` applies the proposal through
+  `applyProposal()` as that person's approval and removes it from the queue. A
+  proposal whose agent directory changed since it was made is refused and
+  marked stale; run improve again. Any other refusal is recorded on the entry
+  and shown by `pending`.
+- `reject <dir> <id> --by <name> [--reason text]` records a `reject` audit entry
+  and moves the file to `.lousho/proposals/rejected/`. A rejected proposal is
+  never queued again.
+
+### `improve.json`
+
+Self-healing settings live in `improve.json` beside the agent. Every key is
+optional, and an unknown key or a bad value is an error
+(`LOUSHO_CONFIG_INVALID`):
+
+```json
+{
+  "approval": "auto",
+  "budget": { "maxTokensPerDay": 2000000, "maxCyclesPerDay": 4, "maxAppliesPerDay": 1 },
+  "trigger": { "minNewFailures": 3, "requireRecurring": true },
+  "canary": { "replayRuns": 6 },
+  "monitor": { "minRuns": 20, "window": 20, "maxDrop": 0.05, "autoRollback": true, "giveUpDays": 7 },
+  "guard": { "runs": 3, "everyHours": 24, "maxCases": 30 },
+  "cooldownHours": 24,
+  "library": { "enabled": true }
+}
+```
+
+These are the defaults. Counts are whole numbers of 1 or more, and `maxDrop` is
+between 0 and 1. `requireRecurring` defaults to `false` in manual mode.
+`"enabled": false` stops the loop for this agent. `budget.maxTokensPerCycle`,
+`canary.traffic` (`share` up to 0.25, `sessions` up to 50) and `library.domain`
+are unset unless you set them. `loadImproveSettings()` reads the file.

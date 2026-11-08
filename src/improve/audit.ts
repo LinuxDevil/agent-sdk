@@ -13,7 +13,7 @@ export interface AuditEntry {
   /** Who or what made the change: a loop stage, or `person:<name>`. */
   actor: 'gate' | 'canary' | 'monitor' | 'guard' | 'scheduler' | `person:${string}`;
   /** What happened. */
-  action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'pause' | 'resume' | 'canary-start' | 'canary-end';
+  action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'unverified' | 'pause' | 'resume' | 'canary-start' | 'canary-end' | 'reflect-fail';
   /** The revision before the change. */
   from?: string;
   /** The revision after the change. */
@@ -65,8 +65,10 @@ function stripOnce(text: string): string {
   return text.replace(FORGED_TAG, '').replace(HTML_TAG, '').replace(IMAGE, '$1').replace(LINK, '$1').replace(/!\[/g, '[');
 }
 
-function plain(text: string, max: number): string {
-  let current = text.slice(0, max * 4).replace(/\s+/g, ' ');
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
+
+export function plain(text: string, max: number): string {
+  let current = text.slice(0, max * 4).replace(CONTROL, '').replace(/\s+/g, ' ');
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     const next = stripOnce(current);
     if (next === current) break;
@@ -97,7 +99,7 @@ function present<T extends object>(fields: T): T {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as T;
 }
 
-function cleanActor(actor: AuditEntry['actor']): AuditEntry['actor'] {
+export function cleanActor(actor: AuditEntry['actor']): AuditEntry['actor'] {
   if (!actor.startsWith('person:')) return actor;
   const name = plain(actor.slice('person:'.length), MAX_NAME);
   if (name === '') throw new ConfigurationError(`appendAudit: the person's name in '${actor}' is empty once markup is removed. Pass a plain name.`, 'actor');

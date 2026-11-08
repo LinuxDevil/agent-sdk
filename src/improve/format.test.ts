@@ -28,6 +28,14 @@ describe('formatImproveResult', () => {
     expect(formatImproveResult(result())).not.toContain('## Proposals');
   });
 
+  it("shows the advisory selector's choice, only when it ran", () => {
+    const card = formatImproveResult(result({ selection: { chosen: 'domain', why: 'Delivery decided it.', fallback: false } }));
+    expect(section(card, 'Selection').trim()).toBe('domain: Delivery decided it.');
+    const fell = formatImproveResult(result({ selection: { chosen: 'compose', why: 'No valid choice.', fallback: true } }));
+    expect(section(fell, 'Selection').trim()).toBe('compose (fallback): No valid choice.');
+    expect(formatImproveResult(result())).not.toContain('## Selection');
+  });
+
   it("doesn't count seq checkpoints as proposals", () => {
     const pool = { 'invariant-1': BASE, 'domain-1': BASE, 'compose-1': BASE, 'invariant-2': BASE, 'domain-2': BASE, 'compose-2': BASE };
     const card = formatImproveResult(result({ candidates: { invariant: BASE, domain: BASE, compose: BASE, pool }, diversity: { meanJaccard: 1, distinct: 1 } }));

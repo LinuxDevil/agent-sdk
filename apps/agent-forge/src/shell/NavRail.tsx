@@ -1,4 +1,4 @@
-import { Activity, Bot, ClipboardCheck, FileText, FlaskConical, Library, LineChart, MessagesSquare, Settings, type LucideIcon } from 'lucide-react';
+import { Activity, Bot, ClipboardCheck, FileText, FlaskConical, LayoutTemplate, Library, LineChart, MessagesSquare, Settings, type LucideIcon } from 'lucide-react';
 import { useRoute } from '../router/useRoute';
 import { DaemonStatus } from './DaemonStatus';
 import { NavBrand } from './NavBrand';
@@ -16,6 +16,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: 'agents', label: 'Agents', href: '#/agents', section: 'Build', icon: Bot },
+  { id: 'templates', label: 'Templates', href: '#/templates', section: 'Build', icon: LayoutTemplate },
   { id: 'playground', label: 'Playground', href: '#/playground', section: 'Build', icon: FlaskConical },
   { id: 'traces', label: 'Traces', href: '#/traces', section: 'Observe', icon: Activity },
   { id: 'threads', label: 'Threads', href: '#/threads', section: 'Observe', icon: MessagesSquare },

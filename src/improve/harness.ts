@@ -2,7 +2,7 @@ import { promptInjectionSignals } from '../execution/guardrailStarterSet';
 import type { FsProvider } from '../tools/workspace/types';
 import type { Harness } from './types';
 
-const SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
+export const SKILL_NAME = /^[a-z0-9][a-z0-9-]*$/;
 const INSTRUCTIONS_PATH = 'harness/instructions.md';
 const SKILLS_DIR = 'harness/skills';
 

@@ -23,23 +23,38 @@ import {
   type RecoveryEvidence,
 } from '../improve';
 import { scoreCase } from '../improve/cases';
-import { recordedTurns } from '../improve/recoveries';
+import { agentInputOf } from '../improve/recoveries';
+import type { HealCycle } from '../improve/cycles';
+import { healOnce } from '../improve/heal';
+import { writtenHash } from '../improve/harnessWriter';
+import { readAgentHarness } from '../improve/revisions';
+import { loadImproveSettings, type ImproveSettings } from '../improve/settings';
 import { openDb } from '../observe/store';
 import type { AgentInput, LLMProvider } from '../providers';
 import { defineSkill } from '../skills/defineSkill';
 import { memoryStore } from '../storage/agentStore';
 import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { detectTarget, agentModuleConfig, type DevTarget } from './devReload';
+import { isImproveAdmin, runImproveAdmin } from './improveAdmin';
 import { dbPathOf, resolveAgent, sinceMs } from './observe';
 
 const USAGE =
-  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]';
+  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--dry-run]\n       lousho improve revisions|rollback|audit|pending|approve|reject <agent-dir> ...';
 
 const HELP = `${USAGE}
 
-Experimental. Proposes edits to an agent's instructions and skills from failed runs in your own
-local observe database, using improveAgent(). It never changes the agent: it prints a review card,
-and --out writes the proposal to a file for a person to review and apply by hand.
+Experimental. Runs one self-healing cycle on an agent directory. It captures failed runs of the
+agent's current harness revision from your own local observe database, has editors propose edits
+to its instructions and skills with improveAgent(), gates them, and replays the winner on fresh
+runs (the canary). In auto mode (the default) a proposal that passes is written to instructions.md
+and skills/<name>/SKILL.md, then the corpus guard replays the protected cases and rolls back on a
+regression. In manual mode it is queued for 'lousho improve approve'. Every step is audited in
+.lousho/audit.jsonl, and improve.json's daily caps, the cooldown after a rollback and the
+.lousho/improve.stop kill switch apply. In auto mode only a failure seen in two or more runs
+becomes a case (improve.json trigger.requireRecurring). Ctrl-C stops the cycle between steps; an
+apply and its guard always finish. --dry-run only prints the review card and writes nothing; it
+reads every failed run, whatever its revision, and ignores the kill switch and the daily caps.
+An agent module, or instructions that don't live in instructions.md, always run dry.
 
 Runs replay each case's recorded input through the agent and are not traced. Tools other than
 load_skill and read_skill_file are simulated and never run unless --read-only names them, so only
@@ -66,7 +81,20 @@ Options:
                             only: it never counts as a run and never protects a case
   --out file                also write the proposal to this new file: the review card, or the
                             JSON result for a .json path
+  --approval auto|manual    the approval mode, over LOUSHO_IMPROVE_APPROVAL and improve.json
+                            (default auto). Manual queues a passing proposal for a person, and
+                            keeps an edit that quotes a failed check, flagged on the card
+  --dry-run                 print the review card and change nothing, from every failed run
+                            whatever its revision, as before self-healing
   -h, --help                show this help
+
+Revisions, rollback, the audit log and pending proposals (run one with --help for its flags):
+  lousho improve revisions <agent-dir> [--json]
+  lousho improve rollback <agent-dir> --by <name> [--to <revision>] [--reason text]
+  lousho improve audit <agent-dir> [--verify] [--json]
+  lousho improve pending <agent-dir> [--json]
+  lousho improve approve <agent-dir> <id> --by <name>
+  lousho improve reject <agent-dir> <id> --by <name> [--reason text]
 
 See docs/improve.md.`;
 
@@ -86,6 +114,8 @@ const SPEC: CommandSpec = {
     out: { type: 'string' },
     'max-tokens': { type: 'string' },
     'with-recoveries': { type: 'boolean' },
+    approval: { type: 'string' },
+    'dry-run': { type: 'boolean' },
   },
 };
 
@@ -103,6 +133,10 @@ export interface ImproveArgs {
   out?: string;
   maxTokens?: number;
   withRecoveries?: boolean;
+  /** The approval mode from `--approval`. */
+  approval?: ImproveSettings['approval'];
+  /** `--dry-run`: print the card and write nothing. */
+  dryRun?: boolean;
   help?: boolean;
 }
 
@@ -122,6 +156,12 @@ function maxTokensOf(text: string | undefined): number | undefined {
   const tokens = Number(text);
   if (!/^\d+$/.test(text) || !Number.isSafeInteger(tokens) || tokens < 1) throw usageError(SPEC, `--max-tokens must be a positive integer, not '${text}'.`);
   return tokens;
+}
+
+function approvalOf(text: string | undefined): Pick<ImproveArgs, 'approval'> {
+  if (text === undefined) return {};
+  if (text !== 'auto' && text !== 'manual') throw usageError(SPEC, `--approval must be 'auto' or 'manual', not '${text}'.`);
+  return { approval: text };
 }
 
 /** Parses the arguments after `improve`; throws `LOUSHO_CONFIG_INVALID` for a missing path or `--check`, an unknown flag, a bad `--since` or a bad `--max-tokens`. */
@@ -146,6 +186,8 @@ export function parseImproveArgs(args: string[]): ImproveArgs {
     out: stringValue(values.out),
     maxTokens: maxTokensOf(stringValue(values['max-tokens'])),
     withRecoveries: values['with-recoveries'] === true,
+    dryRun: values['dry-run'] === true,
+    ...approvalOf(stringValue(values.approval)),
   };
 }
 
@@ -194,21 +236,8 @@ function assertOutUsable(out: string, target: DevTarget, config: CreateAgentConf
   if (guarded.some((dir) => inside(file, fs.realpathSync(dir)))) throw usageError(SPEC, `--out must be outside the agent's files; ${out} is not.`);
 }
 
-function messageOf(input: string): AgentInput {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(input);
-  } catch {
-    return input;
-  }
-  if (typeof parsed === 'string') return parsed;
-  const messages = Array.isArray(parsed) ? recordedTurns(parsed) : [];
-  if (messages.length === 0) return input;
-  return messages.length === 1 && messages[0].role === 'user' ? messages[0].content : messages;
-}
-
 function readable(captured: CapturedCase, decoded: Map<string, AgentInput>): CapturedCase {
-  const message = messageOf(captured.input);
+  const message = agentInputOf(captured.input);
   const input = typeof message === 'string' ? message : captured.input;
   decoded.set(input, message);
   return { ...captured, input };
@@ -236,7 +265,7 @@ function runCaseWith(config: CreateAgentConfig, args: ImproveArgs, io: ImproveIo
   return async (harness: Harness, input: string) => {
     const agent = createAgent({ ...rest, instructions: harness.instructions, skills: skillsOf(harness, directories), hooks } as CreateAgentConfig);
     try {
-      return caseRun(await agent.send(decoded.get(input) ?? input));
+      return caseRun(await agent.send(decoded.get(input) ?? agentInputOf(input)));
     } finally {
       await agent.close().catch(() => undefined);
     }
@@ -259,10 +288,14 @@ function unscoredOnError(probe: ImproveOptions['probe'], errors: Set<string>): I
   };
 }
 
-function readCases(args: ImproveArgs): { failures: CapturedCase[]; passes: CapturedCase[] } {
+function openObserveDb(args: ImproveArgs) {
   const file = dbPathOf(args.db);
   if (!fs.existsSync(file)) throw new ConfigurationError(`lousho improve: no observe database at ${file}. Run your agent with LOUSHO_OBSERVE=1 and 'lousho observe start' first, or pass --db.`, 'db');
-  const db = openDb(file);
+  return openDb(file);
+}
+
+function readCases(args: ImproveArgs): { failures: CapturedCase[]; passes: CapturedCase[] } {
+  const db = openObserveDb(args);
   try {
     const agent = args.agent === undefined ? undefined : resolveAgent(SPEC, db, args.agent);
     const filter = { since: args.since, agent };
@@ -309,11 +342,9 @@ async function withoutObserve<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
-  const target = detectTarget(args.path, 'improve');
-  const config = await loadConfig(target);
-  if (args.out !== undefined) assertOutUsable(args.out, target, config);
-  const harness = baseHarness(config);
+async function proposeOnly(args: ImproveArgs, io: ImproveIo, target: DevTarget, config: CreateAgentConfig, harness: Harness): Promise<number> {
+  const approval = args.approval ?? loadImproveSettings(target.kind === 'dir' ? target.path : path.dirname(target.path)).approval;
+  const quotedChecks = approval === 'manual' ? 'flag' : 'reject';
   const editor = editorOf(args, config, io);
   const check = await loadCheck(args.check);
   const { failures, passes, decoded } = capture(args, io);
@@ -338,6 +369,7 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
       holdout: admitted.map((c) => c.id),
       probe,
       editor,
+      quotedChecks,
       ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
       ...(recoveries.length > 0 && { recoveries }),
     });
@@ -353,9 +385,95 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
   return result.outcome === 'outage' ? 1 : 0;
 }
 
+function dryRunReason(target: DevTarget, harness: Harness): string | undefined {
+  if (target.kind !== 'dir') return `${target.path} is an agent module, whose files can't be changed in place`;
+  try {
+    if (writtenHash(readAgentHarness(target.path)) !== writtenHash(harness)) return "the agent's instructions or skills don't all come from instructions.md and skills/<name>/SKILL.md";
+  } catch (error) {
+    if (error instanceof ConfigurationError) return error.message;
+    throw error;
+  }
+  return undefined;
+}
+
+const NEXT_STEP: Partial<Record<HealCycle['outcome'], string>> = {
+  pending: "Approve it with 'lousho improve approve <agent-dir> <id> --by <name>', or reject it with 'lousho improve reject'.",
+  applied: "See 'lousho improve audit <agent-dir>'; undo it with 'lousho improve rollback <agent-dir> --by <name>'.",
+  paused: "Remove .lousho/improve.stop, unset LOUSHO_IMPROVE=off or set enabled to true in improve.json to resume.",
+};
+
+function reportCycle(cycle: HealCycle, args: ImproveArgs, io: ImproveIo): void {
+  if (cycle.result) io.stdout.write(formatImproveResult(cycle.result));
+  const next = NEXT_STEP[cycle.outcome];
+  io.stdout.write(`lousho improve: ${cycle.outcome}: ${cycle.reason}${next ? ` ${next}` : ''}\n`);
+  for (const message of cycle.errors ?? []) io.stderr.write(`lousho improve: a run failed and was left unscored: ${message}\n`);
+  if (args.out === undefined) return;
+  if (!cycle.result) {
+    io.stderr.write(`lousho improve: no proposal was made, so ${args.out} was not written.\n`);
+    return;
+  }
+  const card = formatImproveResult(cycle.result);
+  try {
+    fs.writeFileSync(path.resolve(args.out), args.out.toLowerCase().endsWith('.json') ? `${JSON.stringify(cycle.result, null, 2)}\n` : card, { flag: 'wx' });
+    io.stderr.write(`lousho improve: wrote the proposal to ${args.out}.\n`);
+  } catch (error) {
+    io.stderr.write(`lousho improve: could not write ${args.out}: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
+}
+
+async function healDir(args: ImproveArgs, io: ImproveIo, dir: string, config: CreateAgentConfig): Promise<number> {
+  const settings = loadImproveSettings(dir, args.approval ? { approval: args.approval } : {});
+  const editor = editorOf(args, config, io);
+  const check = await loadCheck(args.check);
+  const db = openObserveDb(args);
+  const controller = new AbortController();
+  const interrupt = () => controller.abort();
+  process.once('SIGINT', interrupt);
+  try {
+    const agent = args.agent === undefined ? undefined : resolveAgent(SPEC, db, args.agent);
+    const budget = args.maxTokens === undefined ? "within improve.json's token caps" : `stopping once ${args.maxTokens} tokens are spent (--max-tokens)`;
+    const write = settings.approval === 'auto' ? 'applies a proposal that passes the gate and the canary' : 'queues a proposal that passes the gate and the canary for a person';
+    io.stderr.write(`lousho improve: running one self-healing cycle in ${settings.approval} mode, which ${write}; agent runs and editor calls are billed to your models, ${budget}. Pass --dry-run to change nothing.\n`);
+    const cycle = await withoutObserve(() =>
+      healOnce({
+        dir,
+        db,
+        check,
+        runCase: runCaseWith(config, args, io, new Map()),
+        editor,
+        settings,
+        trigger: 'manual',
+        protect: args.protect,
+        withRecoveries: args.withRecoveries === true,
+        ...(agent !== undefined && { agent }),
+        ...(args.since !== undefined && { since: args.since }),
+        ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
+        signal: controller.signal,
+      })
+    );
+    reportCycle(cycle, args, io);
+    return cycle.outcome === 'outage' ? 1 : 0;
+  } finally {
+    process.off('SIGINT', interrupt);
+    db.close();
+  }
+}
+
+async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
+  const target = detectTarget(args.path, 'improve');
+  const config = await loadConfig(target);
+  if (args.out !== undefined) assertOutUsable(args.out, target, config);
+  const harness = baseHarness(config);
+  const forced = args.dryRun ? undefined : dryRunReason(target, harness);
+  if (forced) io.stderr.write(`lousho improve: this is a dry run, because ${forced}. Nothing will be applied.\n`);
+  if (args.dryRun || forced || target.kind !== 'dir') return proposeOnly(args, io, target, config, harness);
+  return healDir(args, io, target.path, config);
+}
+
 /** Runs `lousho improve` with the arguments after `improve`; resolves with the exit code. */
 export async function runImprove(args: string[], io: ImproveIo = { stdout: process.stdout, stderr: process.stderr }): Promise<number> {
   try {
+    if (isImproveAdmin(args)) return await runImproveAdmin(args, io);
     const parsed = parseImproveArgs(args);
     if (parsed.help) {
       io.stdout.write(`${HELP}\n`);

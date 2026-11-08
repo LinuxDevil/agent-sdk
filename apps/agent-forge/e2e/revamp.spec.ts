@@ -120,6 +120,8 @@ const FILTERS: Record<ScreenId, string> = {
   agents: '',
   agentList: '',
   agentDetail: '',
+  // The shipped templates' categories are lowercase slugs ('engineering', 'support', …).
+  templates: '?category=engineering',
   playground: '?trace=e2e-trace&fromObs=e2e-obs',
   traces: `?agent=orders-bot&status=error&q=order&from=${FROM}&to=${TO}&sort=duration&order=desc`,
   trace: '?obs=e2e-obs',

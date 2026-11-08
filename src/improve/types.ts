@@ -29,6 +29,8 @@ export interface ProbeRun {
   ended: string;
   /** Which check a failed run missed, for the editors to read. Name the requirement, not the fix. */
   failure?: string;
+  /** The run's final answer. The advisory selector reads it instead of the transcript when it's set. */
+  answer?: string;
   /** Set by {@link cachedProbe} when the run was replayed from its cache rather than run; keep it when you wrap a probe, so `ledger` counts it. */
   cached?: boolean;
 }
@@ -81,6 +83,8 @@ export interface ImproveOptions {
   maxCostIncrease?: number;
   /** Most steps per editor session (default 30). */
   maxEditorSteps?: number;
+  /** Most milliseconds one editor session may run; a session past it ends the run as an `outage` (default: no limit). */
+  editorTimeoutMs?: number;
   /** Runs the editors even when every case passed, to test whether they rightly change nothing. */
   alwaysPropose?: boolean;
   /** Hooks for the editor sessions, such as a rate-limit delay. */
@@ -95,6 +99,8 @@ export interface ImproveOptions {
   proposers?: number;
   /** `agg` (default) proposes k of each editor side by side; `seq` runs k rounds, each editing the checkpoint the last round's composer wrote, and gates every checkpoint against the original harness. */
   mode?: 'agg' | 'seq';
+  /** Gates every candidate instead of stopping at the first pass, and when two or more pass, has an advisory selector choose among them by their training answers (default `false`). The gate stays the authority: the selector only sees harnesses that passed. */
+  select?: boolean;
   /** Stops the run when aborted. */
   signal?: AbortSignal;
 }
@@ -246,6 +252,15 @@ export interface ImproveResult {
     compose: Harness;
     /** Every proposal by label, with several proposers, and in `seq` mode each round's checkpoint as `compose-<round>`; `invariant` and `domain` then hold the first of each. */
     pool?: Record<string, Harness>;
+  };
+  /** The advisory selector's choice, when `select` was set and two or more harnesses passed the gate. */
+  selection?: {
+    /** The label of the harness kept. */
+    chosen: GateVerdict['label'];
+    /** The selector's reason, as plain text, or why it fell back. */
+    why: string;
+    /** Whether the selector failed or gave no valid choice, so the cheapest harness that passed was kept. */
+    fallback: boolean;
   };
   /** How alike the proposals were, with several proposers: mean pairwise line overlap (1 means identical) and how many differed. */
   diversity?: {

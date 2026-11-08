@@ -20,11 +20,11 @@ const AGENT_TAB_LABELS: Record<AgentTab, string> = {
 
 /**
  * Tabs with a screen behind them. 'canvas' is the builder screen, 'overview'
- * the detail screen's first tab (A05); 'configure' lands in A07, 'code' in
- * A08, 'runs' in A11, 'versions' in L01 and 'suggestions' in R06. An unbuilt
- * tab's URL redirects to canvas.
+ * the detail screen's first tab (A05), 'runs' its runs table (A11);
+ * 'configure' lands in A07, 'code' in A08, 'versions' in L01 and 'suggestions'
+ * in R06. An unbuilt tab's URL redirects to canvas.
  */
-export const BUILT_AGENT_TABS: ReadonlySet<AgentTab> = new Set<AgentTab>(['canvas', 'overview']);
+export const BUILT_AGENT_TABS: ReadonlySet<AgentTab> = new Set<AgentTab>(['canvas', 'overview', 'runs']);
 
 /** Whether `s` names an agent detail tab. */
 export function isAgentTab(s: string): s is AgentTab {

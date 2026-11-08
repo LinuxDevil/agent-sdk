@@ -32,7 +32,7 @@ vi.mock('../../../runtime/runtimeClient', () => ({
 
 import { AgentDetailRoute } from '../AgentDetailRoute';
 
-/** The route with the providers its header menu needs (toast + app state). */
+/** The route with the providers its header controls need (toast + app state). */
 function renderRoute() {
   return render(
     <ToastProvider>
