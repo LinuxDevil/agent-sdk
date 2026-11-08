@@ -111,8 +111,8 @@ function lastApply(dir: string, current: string): AuditEntry | string {
 
 function seriesAround(db: SqlDatabase, apply: AuditEntry, settings: MonitorSettings, agent: string): { before: ScorePoint[]; after: ScorePoint[] } {
   const appliedAt = Date.parse(apply.at);
-  const before = finishedRuns(db, { agent, revision: apply.from, endedBefore: appliedAt, byEnd: true, limit: LOOKS * settings.window }).reverse().map(pointOf);
-  const after = finishedRuns(db, { agent, revision: apply.to, since: appliedAt, byEnd: true, limit: SERIES_LIMIT }).reverse().map(pointOf);
+  const before = finishedRuns(db, { agentId: agent, revision: apply.from, endedBefore: appliedAt, byEnd: true, limit: LOOKS * settings.window }).reverse().map(pointOf);
+  const after = finishedRuns(db, { agentId: agent, revision: apply.to, since: appliedAt, byEnd: true, limit: SERIES_LIMIT }).reverse().map(pointOf);
   return { before, after };
 }
 
@@ -129,8 +129,7 @@ async function rollBack(dir: string, apply: AuditEntry, judged: Extract<MonitorJ
   try {
     to = (await rollbackHarness(dir, apply.from as string, { actor: 'monitor', reason: judged.reason, expectedFrom: apply.to })).to;
   } catch (error) {
-    if (!(error instanceof ConfigurationError)) throw error;
-    await appendAudit(dir, { actor: 'monitor', action: 'guard-fail', from: apply.from, to: apply.to, reason: `${judged.reason} The rollback was refused: ${error.message}`, evidence: score(judged.before, judged.after) });
+    await appendAudit(dir, { actor: 'monitor', action: 'guard-fail', from: apply.from, to: apply.to, reason: `${judged.reason} The rollback was refused: ${error instanceof Error ? error.message : String(error)}`, evidence: score(judged.before, judged.after) });
     return settle(dir, apply, { state: 'regressed', before: judged.before, after: judged.after, reason: `${judged.reason} The rollback was refused.` }, now);
   }
   await appendAudit(dir, { actor: 'monitor', action: 'retire', from: apply.to, to, reason: judged.reason, evidence: score(judged.before, judged.after) });
@@ -154,7 +153,16 @@ function unverifiedReason(after: number, before: number, settings: MonitorSettin
   return `Kept unverified: after ${settings.giveUpDays} days the ${after} runs neither held nor clearly fell.`;
 }
 
-async function check(db: SqlDatabase, dir: string, settings: CheckSettings, now: number, agent: string): Promise<MonitorVerdict> {
+function agentIdOf(db: SqlDatabase, agent: string): string {
+  if (agent.trim() === '') throw new ConfigurationError('checkApplied needs the agent whose runs it judges; got an empty name.', 'agent');
+  if (db.prepare('SELECT 1 AS hit FROM agents WHERE agent_id = ?').get(agent) !== undefined) return agent;
+  const named = db.prepare('SELECT agent_id FROM agents WHERE name = ?').all(agent).map((row) => String(row.agent_id));
+  if (named.length > 1) throw new ConfigurationError(`'${agent}' names ${named.length} agents (${named.join(', ')}); pass the agent_id.`, 'agent');
+  return named[0] ?? agent;
+}
+
+async function check(db: SqlDatabase, dir: string, settings: CheckSettings, now: number, name: string): Promise<MonitorVerdict> {
+  const agent = agentIdOf(db, name);
   const apply = lastApply(dir, currentRevision(dir));
   if (typeof apply === 'string') return { state: 'idle', reason: apply };
   const stored = readState(dir).monitor;

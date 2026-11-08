@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ScorePoint } from '../observe/continuousScore';
 import type { IngestEvent } from '../observe/envelope';
 import { ingestBatch, openDb } from '../observe/store';
 import type { SqlDatabase } from '../storage/sqlite/driver';
+import * as applyModule from './apply';
 import { applyProposal, lastGoodRevision } from './apply';
 import { readAudit, verifyAudit } from './audit';
 import { checkApplied, judgeApplied } from './monitor';
@@ -216,6 +217,30 @@ describe('checkApplied', () => {
     expect(await check({ now: applied.at + DAY + 1 })).toMatchObject({ state: 'regressed' });
     expect(readAudit(dir).filter((entry) => entry.actor === 'monitor').map((entry) => entry.action)).toEqual(['reject', 'guard-fail']);
     expect(currentRevision(dir)).toBe(applied.to);
+  });
+
+  it('refuses an empty agent and a name two agents share', async () => {
+    const applied = await apply();
+    ingestBatch(db, [
+      { type: 'agent.heartbeat', data: { agent_id: 'a1', name: 'twin', ts: applied.at } },
+      { type: 'agent.heartbeat', data: { agent_id: 'a2', name: 'twin', ts: applied.at } },
+    ]);
+
+    await expect(check({ now: applied.at + DAY, agent: ' ' })).rejects.toThrow('empty name');
+    await expect(check({ now: applied.at + DAY, agent: 'twin' })).rejects.toThrow("'twin' names 2 agents");
+  });
+
+  it('settles any rollback failure once instead of retrying it every tick', async () => {
+    const applied = await apply();
+    runs(applied.from, rate(18, 20), applied.at - 100_000);
+    runs(applied.to, rate(12, 20), applied.at + 1000);
+    const failing = vi.spyOn(applyModule, 'rollbackHarness').mockRejectedValue(new Error('disk full'));
+
+    expect(await check({ now: applied.at + DAY })).toMatchObject({ state: 'regressed' });
+    expect(await check({ now: applied.at + DAY + 1 })).toMatchObject({ state: 'regressed' });
+    expect(failing).toHaveBeenCalledTimes(1);
+    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'guard-fail', reason: expect.stringContaining('disk full') as unknown as string });
+    failing.mockRestore();
   });
 
   it('two concurrent checks audit one decision', async () => {
