@@ -8,8 +8,9 @@ import type { SqlDatabase } from '../storage/sqlite/driver';
 import { mockModel, type MockRequest, type MockTurn } from '../testing';
 import { readAudit } from './audit';
 import { canaryReplay } from './canary';
+import { guardCorpus } from './corpusGuard';
 import { readCorpus } from './corpus';
-import { readCycles } from './cycles';
+import { readCycles, writeCycle } from './cycles';
 import { healOnce, type HealOptions } from './heal';
 import { listPending, rejectPending } from './pending';
 import { currentRevision } from './revisions';
@@ -19,6 +20,11 @@ import type { Harness } from './types';
 vi.mock('./canary', async (original) => {
   const actual = await original<typeof import('./canary')>();
   return { ...actual, canaryReplay: vi.fn(actual.canaryReplay) };
+});
+
+vi.mock('./corpusGuard', async (original) => {
+  const actual = await original<typeof import('./corpusGuard')>();
+  return { ...actual, guardCorpus: vi.fn(actual.guardCorpus) };
 });
 
 const BASE = 'You answer refund questions.';
@@ -115,6 +121,7 @@ beforeEach(() => {
 afterEach(() => {
   db.close();
   vi.mocked(canaryReplay).mockClear();
+  vi.mocked(guardCorpus).mockClear();
   vi.unstubAllEnvs();
   rmSync(root, { recursive: true, force: true });
 });
@@ -292,6 +299,77 @@ describe('healOnce', () => {
     const cycle = heal({ signal: controller.signal, editor: editor(FIX, { compose: () => controller.abort() }) });
     await expect(cycle).rejects.toThrow();
     expect(readCycles(dir)[0]?.outcome).toBe('interrupted');
+    expect(instructions()).toBe(BASE);
+  });
+
+  it('undoes the apply when the guard throws, or cannot judge, without a library vote', async () => {
+    seedFailures();
+    vi.mocked(guardCorpus).mockRejectedValueOnce(new Error('disk full'));
+    const thrown = await heal({ protect: ['p1'] });
+    expect(thrown).toMatchObject({ outcome: 'guard-rolled-back', reason: expect.stringMatching(/could not run \(disk full\)/) });
+    expect(instructions()).toBe(BASE);
+    expect(actions()).toEqual(['canary-end', 'apply', 'rollback']);
+  });
+
+  it('a guard that cannot judge counts as a failure', async () => {
+    seedFailures();
+    vi.mocked(guardCorpus).mockResolvedValueOnce({ passed: false, cases: [], revision: 'x', runs: 0, tokens: 0, reason: 'Too few scored runs to judge pass:p1.' });
+    const cycle = await heal({ protect: ['p1'] });
+    expect(cycle).toMatchObject({ outcome: 'guard-rolled-back', reason: expect.stringMatching(/can't judge counts as a failure/) });
+    expect(instructions()).toBe(BASE);
+  });
+
+  it('keeps the edit and says so when the rollback is refused', async () => {
+    seedFailures();
+    vi.mocked(guardCorpus).mockImplementationOnce(async () => {
+      appendFileSync(path.join(dir, 'instructions.md'), 'A person edited this.\n');
+      return { passed: false, cases: [{ caseId: 'pass:p1', role: 'holdout', base: { passed: 6, scored: 6 }, final: { passed: 0, scored: 6 }, reasons: [], class: 'regressed' }], revision: 'x', runs: 6, tokens: 0, reason: 'Corpus cases regressed.' };
+    });
+    const cycle = await heal({ protect: ['p1'] });
+    expect(cycle).toMatchObject({ outcome: 'applied', reason: expect.stringMatching(/was refused/) });
+    expect(instructions()).toContain('A person edited this.');
+  });
+
+  it('guards an apply whose cycle stopped before its guard, at the start of the next cycle', async () => {
+    seedFailures();
+    const first = await heal({ protect: ['p1'] });
+    const { guard: _guard, ...unguarded } = first;
+    writeCycle(dir, { ...unguarded, outcome: 'interrupted' });
+    const regressing: HealOptions['runCase'] = async (harness, input) => {
+      const run = await runCase(harness, input);
+      return input.includes('refund window') && harness.instructions.includes('forbidden') ? { ...run, answer: 'no idea' } : run;
+    };
+    const checkAnswer: HealOptions['check'] = (input, answer) => (input.includes('refund window') ? answer === 'five days' : answer.startsWith('ok'));
+    const next = await heal({ runCase: regressing, check: checkAnswer });
+    expect(next.outcome).toBe('cooldown');
+    expect(readCycles(dir).find((item) => item.id === first.id)).toMatchObject({ outcome: 'guard-rolled-back', reason: expect.stringMatching(/^Guarded after an interruption/) });
+    expect(instructions()).toBe(BASE);
+  });
+
+  it('stops before the editors when the kill switch flips during admission', async () => {
+    seedFailures();
+    const pausing: HealOptions['runCase'] = async (harness, input) => {
+      mkdirSync(path.join(dir, '.lousho'), { recursive: true });
+      writeFileSync(path.join(dir, '.lousho', 'improve.stop'), '');
+      return runCase(harness, input);
+    };
+    const cycle = await heal({ protect: ['p1'], runCase: pausing });
+    expect(cycle).toMatchObject({ outcome: 'paused', reason: expect.stringMatching(/before the editors ran/) });
+    expect(cycle.result).toBeUndefined();
+  });
+
+  it('queues instead of applying when improve.json switches to manual mid-cycle', async () => {
+    seedFailures();
+    const cycle = await heal({ editor: editor(FIX, { compose: () => writeFileSync(path.join(dir, 'improve.json'), '{ "approval": "manual" }') }) });
+    expect(cycle).toMatchObject({ outcome: 'pending', approval: 'manual' });
+    expect(instructions()).toBe(BASE);
+  });
+
+  it('applies nothing when the budget left cannot pay for the corpus guard', async () => {
+    seedFailures();
+    vi.mocked(canaryReplay).mockResolvedValueOnce({ passed: true, cases: [{ caseId: 'x', role: 'training', base: { passed: 0, scored: 0 }, final: { passed: 6, scored: 6 }, reasons: [] }], reason: 'Held.', tokens: 1_000_000 });
+    const cycle = await heal({ protect: ['p1'], maxTokens: 100_000 });
+    expect(cycle).toMatchObject({ outcome: 'budget-exceeded', reason: expect.stringMatching(/corpus guard/) });
     expect(instructions()).toBe(BASE);
   });
 

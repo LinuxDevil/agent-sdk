@@ -23,7 +23,7 @@ import {
   type RecoveryEvidence,
 } from '../improve';
 import { scoreCase } from '../improve/cases';
-import { messageOf } from '../improve/recoveries';
+import { agentInputOf } from '../improve/recoveries';
 import type { HealCycle } from '../improve/cycles';
 import { healOnce } from '../improve/heal';
 import { writtenHash } from '../improve/harnessWriter';
@@ -50,7 +50,10 @@ runs (the canary). In auto mode (the default) a proposal that passes is written 
 and skills/<name>/SKILL.md, then the corpus guard replays the protected cases and rolls back on a
 regression. In manual mode it is queued for 'lousho improve approve'. Every step is audited in
 .lousho/audit.jsonl, and improve.json's daily caps, the cooldown after a rollback and the
-.lousho/improve.stop kill switch apply. --dry-run only prints the review card and writes nothing.
+.lousho/improve.stop kill switch apply. In auto mode only a failure seen in two or more runs
+becomes a case (improve.json trigger.requireRecurring). Ctrl-C stops the cycle between steps; an
+apply and its guard always finish. --dry-run only prints the review card and writes nothing; it
+reads every failed run, whatever its revision, and ignores the kill switch and the daily caps.
 An agent module, or instructions that don't live in instructions.md, always run dry.
 
 Runs replay each case's recorded input through the agent and are not traced. Tools other than
@@ -234,7 +237,7 @@ function assertOutUsable(out: string, target: DevTarget, config: CreateAgentConf
 }
 
 function readable(captured: CapturedCase, decoded: Map<string, AgentInput>): CapturedCase {
-  const message = messageOf(captured.input);
+  const message = agentInputOf(captured.input);
   const input = typeof message === 'string' ? message : captured.input;
   decoded.set(input, message);
   return { ...captured, input };
@@ -262,7 +265,7 @@ function runCaseWith(config: CreateAgentConfig, args: ImproveArgs, io: ImproveIo
   return async (harness: Harness, input: string) => {
     const agent = createAgent({ ...rest, instructions: harness.instructions, skills: skillsOf(harness, directories), hooks } as CreateAgentConfig);
     try {
-      return caseRun(await agent.send(decoded.get(input) ?? messageOf(input)));
+      return caseRun(await agent.send(decoded.get(input) ?? agentInputOf(input)));
     } finally {
       await agent.close().catch(() => undefined);
     }
@@ -410,8 +413,12 @@ function reportCycle(cycle: HealCycle, args: ImproveArgs, io: ImproveIo): void {
     return;
   }
   const card = formatImproveResult(cycle.result);
-  fs.writeFileSync(path.resolve(args.out), args.out.toLowerCase().endsWith('.json') ? `${JSON.stringify(cycle.result, null, 2)}\n` : card, { flag: 'wx' });
-  io.stderr.write(`lousho improve: wrote the proposal to ${args.out}.\n`);
+  try {
+    fs.writeFileSync(path.resolve(args.out), args.out.toLowerCase().endsWith('.json') ? `${JSON.stringify(cycle.result, null, 2)}\n` : card, { flag: 'wx' });
+    io.stderr.write(`lousho improve: wrote the proposal to ${args.out}.\n`);
+  } catch (error) {
+    io.stderr.write(`lousho improve: could not write ${args.out}: ${error instanceof Error ? error.message : String(error)}\n`);
+  }
 }
 
 async function healDir(args: ImproveArgs, io: ImproveIo, dir: string, config: CreateAgentConfig): Promise<number> {
@@ -419,6 +426,9 @@ async function healDir(args: ImproveArgs, io: ImproveIo, dir: string, config: Cr
   const editor = editorOf(args, config, io);
   const check = await loadCheck(args.check);
   const db = openObserveDb(args);
+  const controller = new AbortController();
+  const interrupt = () => controller.abort();
+  process.once('SIGINT', interrupt);
   try {
     const agent = args.agent === undefined ? undefined : resolveAgent(SPEC, db, args.agent);
     const budget = args.maxTokens === undefined ? "within improve.json's token caps" : `stopping once ${args.maxTokens} tokens are spent (--max-tokens)`;
@@ -438,11 +448,13 @@ async function healDir(args: ImproveArgs, io: ImproveIo, dir: string, config: Cr
         ...(agent !== undefined && { agent }),
         ...(args.since !== undefined && { since: args.since }),
         ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
+        signal: controller.signal,
       })
     );
     reportCycle(cycle, args, io);
     return cycle.outcome === 'outage' ? 1 : 0;
   } finally {
+    process.off('SIGINT', interrupt);
     db.close();
   }
 }

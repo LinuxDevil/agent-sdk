@@ -5,23 +5,37 @@ import type { AgentHook } from '../execution/hooks';
 import { runsByRevision } from '../observe/store';
 import { withFileLock } from '../storage/fileLock';
 import type { SqlDatabase } from '../storage/sqlite/driver';
-import { applyProposal, rollbackHarness } from './apply';
 import { appendAudit } from './audit';
 import { canaryReplay, type CanaryReplayResult } from './canary';
-import { admitProtectedCases, casesFromFailures, probeCapturedCases, protectedCasesFromPasses, scoreCase, type CapturedCase, type CaseCheck } from './cases';
+import { admitProtectedCases, casesFromFailures, protectedCasesFromPasses, scoreCase, type CapturedCase, type CaseCheck } from './cases';
 import { addToCorpus, readCorpus, type CorpusCase } from './corpus';
-import { guardCorpus, type GuardCorpusResult } from './corpusGuard';
 import { cooldownEnds, newCycleId, pausedBy, readCycles, usageToday, writeCycle, type HealCycle } from './cycles';
 import { formatImproveResult } from './format';
-import { STALE_FIELD } from './harnessWriter';
+import { applyAndGuard, corpusCases, guardUnfinished } from './healApply';
+import {
+  BudgetSpent,
+  caseProbe,
+  checkpoint,
+  counts,
+  DEFAULT_EDITOR_TIMEOUT_MS,
+  fileApprovalOf,
+  finish,
+  libraryOf,
+  MAX_ALWAYS_ON,
+  messageOf,
+  metered,
+  recheck,
+  rejected,
+  shortId,
+  unscored,
+  type HealState,
+} from './healState';
 import { improveAgent } from './improve';
-import { libraryFiles, libraryHome, type LibraryEntry } from './library';
 import { savePending } from './pending';
 import { casesFromRecoveries, readableInput } from './recoveries';
-import { reflect, voteOnOutcome } from './reflect';
 import { harnessHash, readAgentHarness } from './revisions';
-import { loadImproveSettings, type ImproveSettings } from './settings';
-import type { CaseVerdict, Harness, ImproveOptions, ImproveResult, RecoveryEvidence } from './types';
+import type { ImproveSettings } from './settings';
+import type { Harness, ImproveOptions, ImproveResult, RecoveryEvidence } from './types';
 
 /** Options for {@link healOnce}. */
 export interface HealOptions {
@@ -29,9 +43,9 @@ export interface HealOptions {
   dir: string;
   /** The local observe database the failed runs come from. */
   db: SqlDatabase;
-  /** Scores each answer. */
+  /** Scores each answer; it gets the user's text for a one-message run, else the recorded messages as JSON. */
   check: CaseCheck;
-  /** Runs the agent on one recorded input under a harness. */
+  /** Runs the agent on one recorded input, as captured (JSON text), under a harness. */
   runCase: (
     harness: Harness,
     input: string
@@ -67,39 +81,15 @@ export interface HealOptions {
   editorTimeoutMs?: number;
   /** Reflect on a decided outcome and store the lesson (default `settings.library.enabled`). */
   reflect?: boolean;
-  /** Stops the cycle when aborted; an apply that has started always finishes. */
+  /** Stops the cycle between steps; an apply and its corpus guard always finish. */
   signal?: AbortSignal;
 }
 
 const LOUSHO = '.lousho';
 const MAX_RUNS = 1000;
-const MAX_ERRORS = 10;
 const ADMISSION_RUNS = 6;
 const CANARY_FIRST_REPEAT = 100;
-const MAX_ALWAYS_ON = 8000;
-const DEFAULT_EDITOR_TIMEOUT_MS = 10 * 60 * 1000;
 const UNLIMITED = Number.POSITIVE_INFINITY;
-
-class BudgetSpent extends Error {}
-
-interface Library {
-  dir: string;
-  domain: string;
-  files: Record<string, string>;
-}
-
-interface State {
-  options: HealOptions;
-  dir: string;
-  settings: ImproveSettings;
-  cycle: HealCycle;
-  harness: Harness;
-  cap: number;
-  spent: number;
-  errors: Set<string>;
-  probe: ImproveOptions['probe'];
-  library?: Library;
-}
 
 interface Captured {
   failures: CapturedCase[];
@@ -108,8 +98,6 @@ interface Captured {
 }
 
 type Start = Pick<HealCycle, 'id' | 'trigger' | 'approval' | 'startedAt' | 'tokens'>;
-
-const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 function ended(start: Start, outcome: HealCycle['outcome'], reason: string): HealCycle {
   return { ...start, outcome, reason, endedAt: new Date().toISOString() };
@@ -120,14 +108,6 @@ function lockFile(dir: string): string {
   if (lstatSync(lousho, { throwIfNoEntry: false })?.isSymbolicLink()) throw new ConfigurationError(`${lousho} is a symlink; the self-healing state must live inside the agent directory.`, 'dir');
   mkdirSync(lousho, { recursive: true });
   return path.join(lousho, 'cycle.lock');
-}
-
-function pausedNow(dir: string, settings: ImproveSettings): string | undefined {
-  try {
-    return pausedBy(dir, { enabled: settings.enabled && loadImproveSettings(dir).enabled });
-  } catch (error) {
-    return `improve.json can't be read (${messageOf(error)})`;
-  }
 }
 
 function blocked(options: HealOptions, start: Start, now: number): HealCycle | number {
@@ -154,69 +134,29 @@ function enoughNewFailures(options: HealOptions, revision: string): boolean {
   return failed >= options.settings.trigger.minNewFailures;
 }
 
-const readable = (captured: CapturedCase): CapturedCase => ({ ...captured, input: readableInput(captured.input) });
+const recurringOnly = (options: HealOptions, trigger: HealCycle['trigger']): boolean => options.settings.trigger.requireRecurring && trigger !== 'score';
 
 function capture(options: HealOptions, trigger: HealCycle['trigger'], revision: string): Captured {
   const corpus = readCorpus(options.dir);
   const traceIds = revisionTraces(options, revision, options.since).map((run) => run.traceId);
   if (traceIds.length === 0) return { failures: [], passes: [], corpus };
-  const filter = { traceIds, recurring: options.settings.trigger.requireRecurring && trigger !== 'score', ...(options.since !== undefined && { since: options.since }) };
+  const filter = { traceIds, recurring: recurringOnly(options, trigger), ...(options.since !== undefined && { since: options.since }) };
   const inCorpus = new Set(corpus.map((item) => item.traceId));
   const recovered = new Map(options.withRecoveries ? casesFromRecoveries(options.db, filter).map((captured) => [captured.id, captured]) : []);
   const failures = casesFromFailures(options.db, filter)
     .filter((captured) => !inCorpus.has(captured.traceId))
-    .map((captured) => readable(recovered.get(captured.id) ?? captured));
+    .map((captured) => recovered.get(captured.id) ?? captured);
   const failed = new Set(failures.map((captured) => captured.traceId));
-  const passes = protectedCasesFromPasses(options.db, options.protect ?? [])
-    .filter((captured) => !failed.has(captured.traceId) && !inCorpus.has(captured.traceId))
-    .map(readable);
+  const passes = protectedCasesFromPasses(options.db, options.protect ?? []).filter((captured) => !failed.has(captured.traceId) && !inCorpus.has(captured.traceId));
   return { failures, passes, corpus };
-}
-
-function unscored(probe: ImproveOptions['probe'], errors: Set<string>, signal: AbortSignal | undefined): ImproveOptions['probe'] {
-  return async (harness, caseId, repeat) => {
-    try {
-      return await probe(harness, caseId, repeat);
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      errors.add(messageOf(error));
-      return { passed: null, transcript: '', tokens: 0, ended: `error: ${messageOf(error)}` };
-    }
-  };
-}
-
-function metered(state: State): ImproveOptions['probe'] {
-  return async (harness, caseId, repeat) => {
-    if (state.spent >= state.cap) throw new BudgetSpent();
-    const run = await state.probe(harness, caseId, repeat);
-    state.spent += run.tokens;
-    return run;
-  };
-}
-
-function corpusProbeCases(corpus: readonly CorpusCase[]): CapturedCase[] {
-  return corpus.map((item) => ({ id: item.id, input: item.input, traceId: item.traceId, kind: 'protected' }));
-}
-
-function libraryOf(dir: string, settings: ImproveSettings): Library | undefined {
-  if (!settings.library.enabled) return undefined;
-  const home = libraryHome(dir, settings.library.domain);
-  return { ...home, files: libraryFiles(home.dir, home.domain) };
 }
 
 function checkedRecoveries(captured: Captured, check: CaseCheck): RecoveryEvidence[] {
   const guarded = new Set([...captured.passes, ...captured.corpus].map((item) => item.traceId));
-  return captured.failures.flatMap(({ input, recovery }) => (recovery && !guarded.has(recovery.traceId) && scoreCase(check, input, recovery.answer).passed === true ? [recovery] : []));
+  return captured.failures.flatMap(({ input, recovery }) => (recovery && !guarded.has(recovery.traceId) && scoreCase(check, readableInput(input), recovery.answer).passed === true ? [recovery] : []));
 }
 
-function finish(state: State, outcome: HealCycle['outcome'], reason: string, extra: Partial<HealCycle> = {}): HealCycle {
-  const errors = [...state.errors].slice(0, MAX_ERRORS);
-  return Object.assign(state.cycle, extra, { outcome, reason, endedAt: new Date().toISOString(), tokens: state.spent, ...(errors.length > 0 && { errors }) });
-}
-
-const counts = (cases: readonly CaseVerdict[] | undefined) => cases?.map((verdict) => ({ caseId: verdict.caseId, base: `${verdict.base.passed}/${verdict.base.scored}`, final: `${verdict.final.passed}/${verdict.final.scored}` }));
-
-async function admit(state: State, captured: Captured): Promise<CorpusCase[]> {
+async function admit(state: HealState, captured: Captured): Promise<CorpusCase[]> {
   if (captured.passes.length === 0) return captured.corpus;
   const { admitted } = await admitProtectedCases({ harness: state.harness, cases: captured.passes, probe: metered(state), runs: ADMISSION_RUNS });
   if (admitted.length === 0) return captured.corpus;
@@ -226,7 +166,7 @@ async function admit(state: State, captured: Captured): Promise<CorpusCase[]> {
   return addToCorpus(state.dir, cases, state.settings.guard.maxCases);
 }
 
-function propose(state: State, captured: Captured, holdout: readonly string[]): Promise<ImproveResult> {
+function propose(state: HealState, captured: Captured, holdout: readonly string[]): Promise<ImproveResult> {
   const { options, settings } = state;
   const recoveries = checkedRecoveries(captured, options.check);
   const library = state.library?.files ?? {};
@@ -248,45 +188,14 @@ function propose(state: State, captured: Captured, holdout: readonly string[]): 
   });
 }
 
-function sessionSignal(options: HealOptions): AbortSignal {
-  const timer = AbortSignal.timeout(options.editorTimeoutMs ?? DEFAULT_EDITOR_TIMEOUT_MS);
-  return options.signal ? AbortSignal.any([options.signal, timer]) : timer;
-}
-
-async function learn(state: State, outcome: LibraryEntry['outcome']): Promise<string | undefined> {
-  const { options, library, cycle } = state;
-  const result = cycle.result;
-  const remaining = state.cap - state.spent;
-  if (!library || !result || !(options.reflect ?? true) || remaining <= 0 || options.signal?.aborted) return undefined;
-  const reflection = await reflect({
-    dir: library.dir,
-    domain: library.domain,
-    result,
-    outcome,
-    revision: cycle.from as string,
-    editor: options.editor,
-    ...(Number.isFinite(remaining) && { maxTokens: remaining }),
-    ...(options.editorHooks && { hooks: options.editorHooks }),
-    signal: sessionSignal(options),
-  });
-  state.spent += reflection.tokens;
-  if (reflection.error !== undefined) await appendAudit(state.dir, { actor: 'scheduler', action: 'reflect-fail', from: cycle.from, cycle: cycle.id, reason: `The reflection failed, so no lesson was stored: ${reflection.error}` });
-  return reflection.entry?.id;
-}
-
-async function rejected(state: State, outcome: HealCycle['outcome'], reason: string, extra: Partial<HealCycle> = {}): Promise<HealCycle> {
-  await learn(state, 'rejected');
-  return finish(state, outcome, reason, extra);
-}
-
-async function noProposal(state: State, result: ImproveResult & { outcome: Exclude<ImproveResult['outcome'], 'proposal'> }): Promise<HealCycle> {
+async function noProposal(state: HealState, result: ImproveResult & { outcome: Exclude<ImproveResult['outcome'], 'proposal'> }): Promise<HealCycle> {
   if (result.outcome !== 'keep-base' || !result.gate?.length) return finish(state, result.outcome, result.reason);
   const { cycle } = state;
   await appendAudit(state.dir, { actor: 'gate', action: 'reject', from: cycle.from, cycle: cycle.id, reason: `Not applied, the gate rejected it: ${result.reason}`, evidence: { gate: result.reason, cases: counts(result.cases) } });
   return rejected(state, result.outcome, result.reason);
 }
 
-async function runCanary(state: State, result: ImproveResult, candidate: Harness, holdout: readonly string[]): Promise<CanaryReplayResult> {
+async function runCanary(state: HealState, result: ImproveResult, candidate: Harness, holdout: readonly string[]): Promise<CanaryReplayResult> {
   const training = (result.cases ?? []).filter((verdict) => verdict.role === 'training').map((verdict) => verdict.caseId);
   const canary = await canaryReplay({
     base: state.harness,
@@ -303,54 +212,7 @@ async function runCanary(state: State, result: ImproveResult, candidate: Harness
   return canary;
 }
 
-async function undoApply(state: State, to: string, reason: string): Promise<string | undefined> {
-  try {
-    return (await rollbackHarness(state.dir, state.cycle.from as string, { actor: 'guard', reason, expectedFrom: to })).to;
-  } catch (error) {
-    if (error instanceof ConfigurationError) return undefined;
-    throw error;
-  }
-}
-
-async function runGuard(state: State, to: string): Promise<{ guard?: GuardCorpusResult; rolledBackTo?: string; reason: string }> {
-  let guard: GuardCorpusResult;
-  try {
-    guard = await guardCorpus(state.dir, { probe: state.probe, runs: state.settings.guard.runs, rollback: true });
-  } catch (error) {
-    const reason = `The corpus guard could not run, so the edit was undone: ${messageOf(error)}`;
-    return { reason, rolledBackTo: await undoApply(state, to, reason) };
-  }
-  if (guard.rolledBackTo || !guard.cases.some((item) => item.class === 'regressed')) return { guard, reason: guard.reason, ...(guard.rolledBackTo && { rolledBackTo: guard.rolledBackTo }) };
-  const rolledBackTo = await undoApply(state, to, guard.reason);
-  return { guard, reason: guard.reason, ...(rolledBackTo && { rolledBackTo }) };
-}
-
-async function rolledBack(state: State, reason: string, extra: Partial<HealCycle>): Promise<HealCycle> {
-  const entryId = await learn(state, 'rolled-back');
-  const { library, cycle } = state;
-  if (library && cycle.result) voteOnOutcome(library.dir, { outcome: 'rolled-back', result: cycle.result, domain: library.domain, library: library.files, ...(entryId && { entryId }) });
-  return finish(state, 'guard-rolled-back', reason, extra);
-}
-
-async function applyAndGuard(state: State, result: ImproveResult): Promise<HealCycle> {
-  let to: string;
-  try {
-    to = (await applyProposal(state.dir, { result, base: state.harness, cycle: state.cycle.id, maxAlwaysOnChars: MAX_ALWAYS_ON }, { mode: 'auto', by: 'canary' })).to;
-  } catch (error) {
-    if (!(error instanceof ConfigurationError)) throw error;
-    return rejected(state, error.field === STALE_FIELD ? 'stale' : 'refused', error.message);
-  }
-  state.cycle.to = to;
-  const { guard, rolledBackTo, reason } = await runGuard(state, to);
-  state.spent += guard?.tokens ?? 0;
-  const extra = { ...(guard && { guard }), ...(rolledBackTo && { rolledBackTo }) };
-  if (rolledBackTo) return rolledBack(state, `Applied ${to.slice(0, 12)}, then rolled back to ${rolledBackTo.slice(0, 12)}: ${reason}`, extra);
-  const held = guard !== undefined && !guard.cases.some((item) => item.class === 'regressed');
-  const note = held ? reason : `${reason} The rollback was refused, so the edit stays and the monitor still checks it.`;
-  return finish(state, 'applied', `Applied ${to.slice(0, 12)}. ${note}`, extra);
-}
-
-async function queue(state: State, result: ImproveResult): Promise<HealCycle> {
+async function queue(state: HealState, result: ImproveResult): Promise<HealCycle> {
   try {
     const pending = await savePending(state.dir, { result, base: state.harness, card: formatImproveResult(result), cycle: state.cycle.id, maxAlwaysOnChars: MAX_ALWAYS_ON });
     return finish(state, 'pending', `Queued for approval as ${pending.id}; approve it with lousho improve approve.`, { pending: pending.id });
@@ -360,23 +222,36 @@ async function queue(state: State, result: ImproveResult): Promise<HealCycle> {
   }
 }
 
-async function decide(state: State, result: ImproveResult, candidate: Harness, holdout: readonly string[]): Promise<HealCycle> {
-  const canary = await runCanary(state, result, candidate, holdout);
-  state.cycle.canary = canary;
-  if (!canary.passed) return rejected(state, 'canary-failed', canary.reason);
-  const paused = pausedNow(state.dir, state.settings);
-  if (paused) return finish(state, 'paused', `Paused before the write: ${paused}. Nothing was applied.`);
-  return state.settings.approval === 'auto' ? applyAndGuard(state, result) : queue(state, result);
+function pausedStop(state: HealState, when: string): HealCycle | undefined {
+  const { paused } = recheck(state);
+  return paused ? finish(state, 'paused', `Paused ${when}: ${paused}. Nothing was applied.`) : undefined;
 }
 
-async function work(state: State, captured: Captured): Promise<HealCycle> {
+async function decide(state: HealState, result: ImproveResult, candidate: Harness, holdout: readonly string[]): Promise<HealCycle> {
+  const before = pausedStop(state, 'before the canary');
+  if (before) return before;
+  const canary = await runCanary(state, result, candidate, holdout);
+  state.cycle.canary = canary;
+  checkpoint(state);
+  if (!canary.passed) return rejected(state, 'canary-failed', canary.reason);
+  const now = recheck(state);
+  if (now.paused) return finish(state, 'paused', `Paused before the write: ${now.paused}. Nothing was applied.`);
+  state.cycle.approval = now.approval;
+  return now.approval === 'auto' ? applyAndGuard(state, result) : queue(state, result);
+}
+
+async function work(state: HealState, captured: Captured): Promise<HealCycle> {
   try {
     const corpus = await admit(state, captured);
+    checkpoint(state);
     const holdout = [...new Set(corpus.map((item) => item.id))];
+    const paused = pausedStop(state, 'before the editors ran');
+    if (paused) return paused;
     if (state.spent >= state.cap) throw new BudgetSpent();
     const result = await propose(state, captured, holdout);
     state.cycle.result = result;
     state.spent += result.spend.tokens;
+    checkpoint(state);
     if (result.outcome !== 'proposal') return await noProposal(state, { ...result, outcome: result.outcome });
     if (!result.harness) return finish(state, 'keep-base', result.reason);
     return await decide(state, result, result.harness, holdout);
@@ -386,21 +261,23 @@ async function work(state: State, captured: Captured): Promise<HealCycle> {
   }
 }
 
-async function locked(options: HealOptions, start: Start, now: number): Promise<HealCycle> {
-  const cap = blocked(options, start, now);
-  if (typeof cap !== 'number') return cap;
-  const harness = readAgentHarness(options.dir);
+function idleReason(options: HealOptions, trigger: HealCycle['trigger'], revision: string): string {
+  const twice = recurringOnly(options, trigger) ? ' that failed the same way in two or more runs' : '';
+  return `No failed run under revision ${shortId(revision)} with a recorded input${twice}, so there is nothing to learn from.`;
+}
+
+async function run(options: HealOptions, start: Start, harness: Harness, cap: number): Promise<HealCycle> {
   const revision = harnessHash(harness);
   if (start.trigger === 'failures' && !enoughNewFailures(options, revision)) {
-    return ended(start, 'idle', `Fewer than ${options.settings.trigger.minNewFailures} new failed runs under revision ${revision.slice(0, 12)} since the last cycle.`);
+    return ended(start, 'idle', `Fewer than ${options.settings.trigger.minNewFailures} new failed runs under revision ${shortId(revision)} since the last cycle.`);
   }
   const captured = capture(options, start.trigger, revision);
-  if (captured.failures.length === 0) return ended(start, 'idle', `No failed run under revision ${revision.slice(0, 12)} with a recorded input${options.settings.trigger.requireRecurring && start.trigger !== 'score' ? ' failed the same way twice' : ''}, so there is nothing to learn from.`);
+  if (captured.failures.length === 0) return ended(start, 'idle', idleReason(options, start.trigger, revision));
   const cycle: HealCycle = { ...start, outcome: 'interrupted', reason: 'The cycle stopped before it finished.', from: revision };
   const errors = new Set<string>();
-  const all = [...captured.failures, ...captured.passes, ...corpusProbeCases(captured.corpus)];
-  const probe = unscored(probeCapturedCases(all, options.runCase, options.check), errors, options.signal);
-  const state: State = { options, dir: options.dir, settings: options.settings, cycle, harness, cap, spent: 0, errors, probe, library: libraryOf(options.dir, options.settings) };
+  const probe = unscored(caseProbe([...captured.failures, ...captured.passes, ...corpusCases(captured.corpus)], options.runCase, options.check), errors, options.signal);
+  const fileApproval = fileApprovalOf(options.dir);
+  const state: HealState = { options, dir: options.dir, settings: options.settings, cycle, harness, cap, spent: 0, errors, probe, library: libraryOf(options.dir, options.settings), ...(fileApproval && { fileApproval }) };
   writeCycle(options.dir, cycle);
   try {
     const done = await work(state, captured);
@@ -410,6 +287,15 @@ async function locked(options: HealOptions, start: Start, now: number): Promise<
     writeCycle(options.dir, finish(state, 'interrupted', `The cycle stopped before it finished: ${messageOf(error)}`));
     throw error;
   }
+}
+
+async function locked(options: HealOptions, start: Start, now: number): Promise<HealCycle> {
+  const harness = readAgentHarness(options.dir);
+  const recovered = await guardUnfinished(options, harness, UNLIMITED);
+  const current = recovered?.rolledBackTo ? readAgentHarness(options.dir) : harness;
+  const cap = blocked(options, start, now);
+  if (typeof cap !== 'number') return cap;
+  return run(options, start, current, cap);
 }
 
 /** Runs one detect, capture, propose, gate, canary, apply-or-queue and guard cycle for an agent directory, and records it under .lousho/cycles/. */

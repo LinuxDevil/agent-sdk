@@ -37,7 +37,7 @@ function recordedTurns(items: readonly unknown[]): Turn[] {
   return items.flatMap((item) => turnOf(item as { role?: unknown; parts?: unknown } | null));
 }
 
-export function messageOf(input: string): AgentInput {
+export function agentInputOf(input: string): AgentInput {
   let value: unknown;
   try {
     value = JSON.parse(input);
@@ -51,7 +51,7 @@ export function messageOf(input: string): AgentInput {
 }
 
 export function readableInput(input: string): string {
-  const message = messageOf(input);
+  const message = agentInputOf(input);
   return typeof message === 'string' ? message : input;
 }
 
