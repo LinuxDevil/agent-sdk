@@ -11,6 +11,7 @@ How to decide:
 - Read the runs first. Every edit must trace to a moment in a run. If you can't name the moment, don't make the edit.
 - Look first for where runs disagree, because the agent can already do the right thing and just needs telling. Next look for a failure repeated across runs. A problem in one run out of many may be chance.
 - Don't fix what already works, and don't repeat what the harness already says.
+- Facts true only of this agent's workspace go in as 'In this workspace, …'. Procedure must hold for any task of this kind.
 - Use the smallest change that would have changed the run. Add to the instructions only for a short rule that applies to every run; use a skill for a procedure with a clear trigger.
 - If the runs don't argue for a change, change nothing and say KEEP_BASE. That's a real answer, and an unneeded edit costs tokens on every run.
 

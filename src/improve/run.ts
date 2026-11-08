@@ -24,6 +24,11 @@ export class StopRun extends Error {
 
 const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.trim() ?? text.trim();
 
+interface EditContext {
+  signal?: AbortSignal;
+  failedChecks?: readonly string[];
+}
+
 export class ImproveRun {
   private readonly reserved: ImproveStage[] = [];
   private readonly started = new Set<ImproveStage>();
@@ -119,17 +124,19 @@ export class ImproveRun {
     return stage;
   }
 
-  async edit(stage: ImproveStage, system: string, files: Record<string, string>, base: Harness, signal = this.options.signal): Promise<Harness> {
+  async edit(stage: ImproveStage, system: string, files: Record<string, string>, base: Harness, context: EditContext = {}): Promise<Harness> {
     this.started.add(stage);
     try {
-      return await this.attempts(stage, system, new MemoryWorkspace({ files }), base, signal);
+      return await this.attempts(stage, system, new MemoryWorkspace({ files }), base, { ...context, signal: context.signal ?? this.options.signal });
     } catch (error) {
       this.failed.push([error, stage]);
       throw error;
     }
   }
 
-  private async attempts(stage: ImproveStage, system: string, workspace: MemoryWorkspace, base: Harness, signal: AbortSignal | undefined): Promise<Harness> {
+  private async attempts(stage: ImproveStage, system: string, workspace: MemoryWorkspace, base: Harness, { signal, failedChecks }: EditContext): Promise<Harness> {
+    const checked = this.options.quotedChecks === 'flag' ? undefined : failedChecks;
+    const limits = { maxAlwaysOnChars: this.maxAlwaysOn, ...(checked && { failedChecks: checked }) };
     let input = 'Read the runs in context/runs/, then improve the harness, or say KEEP_BASE.';
     for (let attempt = 1; attempt <= STAGE_ATTEMPTS; attempt += 1) {
       const { text, tokens } = await this.session(system, input, workspace, signal);
@@ -137,7 +144,7 @@ export class ImproveRun {
       stage.notes = notesOf(text);
       this.spend(tokens);
       const { harness, errors } = await readHarness(workspace);
-      const problems = [...errors, ...validateHarness(harness, base, { maxAlwaysOnChars: this.maxAlwaysOn })];
+      const problems = [...errors, ...validateHarness(harness, base, limits)];
       if (problems.length === 0) {
         stage.status = diffHarness(base, harness) === '' ? 'no-change' : 'edited';
         return harness;

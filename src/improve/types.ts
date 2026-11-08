@@ -83,6 +83,8 @@ export interface ImproveOptions {
   alwaysPropose?: boolean;
   /** Hooks for the editor sessions, such as a rate-limit delay. */
   editorHooks?: readonly AgentHook[];
+  /** What to do with an edit that quotes, word for word, a failed check of two or more words that its editor saw: `reject` (default) sends it back once with that feedback, then drops it; `flag` keeps it and flags it on the review card. Use `flag` only when a person approves every edit. */
+  quotedChecks?: 'reject' | 'flag';
   /** Runs the invariant and domain editors, and then their probes, two at a time (default `true`). Set `false` for a rate-limited model. */
   parallelEditors?: boolean;
   /** Stops the run when aborted. */

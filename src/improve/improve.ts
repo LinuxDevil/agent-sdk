@@ -60,20 +60,22 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
   const prompts = promptsFor(options);
   const shared = evidenceFiles({ harness: base, runs: baseRuns, recoveries, extra: library });
   const editors = [run.stage('invariant'), run.stage('domain')];
+  const seen = failedChecks(baseRuns);
   const [invariant, domain] = await run.concurrently([
-    (signal: AbortSignal) => run.edit(editors[0], prompts.invariant, shared, base, signal),
-    (signal: AbortSignal) => run.edit(editors[1], prompts.domain, shared, base, signal),
+    (signal: AbortSignal) => run.edit(editors[0], prompts.invariant, shared, base, { signal, failedChecks: seen }),
+    (signal: AbortSignal) => run.edit(editors[1], prompts.domain, shared, base, { signal, failedChecks: seen }),
   ]);
   const probeIfEdited = (candidate: Harness, label: string, signal: AbortSignal) =>
     diffHarness(base, candidate) === '' ? Promise.resolve([]) : run.probe(candidate, label, cases, 0, run.repeats, signal);
   const [invariantRuns, domainRuns] = await run.concurrently([(signal: AbortSignal) => probeIfEdited(invariant, 'invariant', signal), (signal: AbortSignal) => probeIfEdited(domain, 'domain', signal)]);
+  const composeRuns = [...baseRuns, ...invariantRuns, ...domainRuns];
   const composeFiles = evidenceFiles({
     harness: base,
-    runs: [...baseRuns, ...invariantRuns, ...domainRuns],
+    runs: composeRuns,
     recoveries,
     extra: { ...library, ...candidateFiles('invariant', base, invariant), ...candidateFiles('domain', base, domain) },
   });
-  const composed = await run.edit(run.stage('compose'), prompts.compose, composeFiles, base);
+  const composed = await run.edit(run.stage('compose'), prompts.compose, composeFiles, base, { failedChecks: failedChecks(composeRuns) });
   run.candidates = { invariant, domain, compose: composed };
   const stages = { composed, invariant, domain, invariantRuns, domainRuns };
   if (diffHarness(base, composed) === '') return { ...stages, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };
