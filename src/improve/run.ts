@@ -11,6 +11,7 @@ const DEFAULT_REPEATS = 3;
 const DEFAULT_MAX_ALWAYS_ON = 8000;
 const DEFAULT_MAX_EDITOR_STEPS = 30;
 const STAGE_ATTEMPTS = 2;
+const PARALLEL_SESSIONS = 2;
 
 export class StopRun extends Error {
   constructor(
@@ -24,11 +25,14 @@ export class StopRun extends Error {
 const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.trim() ?? text.trim();
 
 export class ImproveRun {
-  readonly stages: ImproveStage[] = [];
+  private readonly reserved: ImproveStage[] = [];
+  private readonly started = new Set<ImproveStage>();
   tokens = 0;
   candidates?: NonNullable<ImproveResult['candidates']>;
   readonly repeats: number;
   private readonly maxAlwaysOn: number;
+  private readonly failed: [unknown, ImproveStage][] = [];
+  private readonly stopped = new Set<ImproveStage>();
 
   constructor(private readonly options: ImproveOptions) {
     this.repeats = options.repeats ?? DEFAULT_REPEATS;
@@ -41,11 +45,42 @@ export class ImproveRun {
     if (maxTokens !== undefined && this.tokens >= maxTokens) throw new StopRun('budget-exceeded', `Stopped at the ${maxTokens} token budget.`);
   }
 
-  async probe(harness: Harness, label: string, caseIds: readonly string[], firstRepeat = 0, count = this.repeats): Promise<LabelledRun[]> {
+  async concurrently<T>(tasks: readonly ((signal: AbortSignal) => Promise<T>)[]): Promise<T[]> {
+    const width = this.options.parallelEditors === false ? 1 : PARALLEL_SESSIONS;
+    const halt = new AbortController();
+    const signal = this.options.signal ? AbortSignal.any([this.options.signal, halt.signal]) : halt.signal;
+    const results: T[] = [];
+    const errors: unknown[] = [];
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      while (next < tasks.length && !halt.signal.aborted) {
+        const index = next++;
+        try {
+          results[index] = await tasks[index](signal);
+        } catch (error) {
+          errors.push(error);
+          halt.abort();
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(width, tasks.length) }, worker));
+    if (errors.length === 0) return results;
+    const chosen = errors.find((error) => error instanceof StopRun) ?? errors[0];
+    this.dropStoppedStages(errors.filter((error) => error !== chosen));
+    throw chosen;
+  }
+
+  private dropStoppedStages(errors: readonly unknown[]): void {
+    for (const [error, stage] of this.failed) {
+      if (errors.includes(error)) this.stopped.add(stage);
+    }
+  }
+
+  async probe(harness: Harness, label: string, caseIds: readonly string[], firstRepeat = 0, count = this.repeats, signal = this.options.signal): Promise<LabelledRun[]> {
     const runs: LabelledRun[] = [];
     for (let repeat = firstRepeat; repeat < firstRepeat + count; repeat += 1) {
       for (const caseId of caseIds) {
-        this.options.signal?.throwIfAborted();
+        signal?.throwIfAborted();
         const run = await this.options.probe(harness, caseId, repeat);
         runs.push({ label, caseId, repeat, run });
         this.spend(run.tokens);
@@ -54,8 +89,8 @@ export class ImproveRun {
     return runs;
   }
 
-  private async session(system: string, input: string, workspace: MemoryWorkspace): Promise<{ text: string; tokens: number }> {
-    const { editor, editorHooks, signal, maxEditorSteps } = this.options;
+  private async session(system: string, input: string, workspace: MemoryWorkspace, signal: AbortSignal | undefined): Promise<{ text: string; tokens: number }> {
+    const { editor, editorHooks, maxEditorSteps } = this.options;
     const agent = createAgent({
       name: 'harness-editor',
       ...editor,
@@ -66,6 +101,7 @@ export class ImproveRun {
     });
     try {
       const result = await agent.send(input, signal ? { signal } : undefined);
+      signal?.throwIfAborted();
       return { text: result.text ?? '', tokens: result.usage?.totalTokens ?? 0 };
     } catch (error) {
       if (error instanceof CompactedLLMProviderError && error.compacted.retryable) throw new StopRun('outage', `The editor's provider failed: ${error.message}`);
@@ -73,13 +109,30 @@ export class ImproveRun {
     }
   }
 
-  async edit(label: ImproveStage['label'], system: string, files: Record<string, string>, base: Harness): Promise<Harness> {
-    const workspace = new MemoryWorkspace({ files });
-    let input = 'Read the runs in context/runs/, then improve the harness, or say KEEP_BASE.';
+  get stages(): ImproveStage[] {
+    return this.reserved.filter((stage) => this.started.has(stage) && !this.stopped.has(stage));
+  }
+
+  stage(label: ImproveStage['label']): ImproveStage {
     const stage: ImproveStage = { label, status: 'no-change', notes: '', tokens: 0 };
-    this.stages.push(stage);
+    this.reserved.push(stage);
+    return stage;
+  }
+
+  async edit(stage: ImproveStage, system: string, files: Record<string, string>, base: Harness, signal = this.options.signal): Promise<Harness> {
+    this.started.add(stage);
+    try {
+      return await this.attempts(stage, system, new MemoryWorkspace({ files }), base, signal);
+    } catch (error) {
+      this.failed.push([error, stage]);
+      throw error;
+    }
+  }
+
+  private async attempts(stage: ImproveStage, system: string, workspace: MemoryWorkspace, base: Harness, signal: AbortSignal | undefined): Promise<Harness> {
+    let input = 'Read the runs in context/runs/, then improve the harness, or say KEEP_BASE.';
     for (let attempt = 1; attempt <= STAGE_ATTEMPTS; attempt += 1) {
-      const { text, tokens } = await this.session(system, input, workspace);
+      const { text, tokens } = await this.session(system, input, workspace, signal);
       stage.tokens += tokens;
       stage.notes = notesOf(text);
       this.spend(tokens);

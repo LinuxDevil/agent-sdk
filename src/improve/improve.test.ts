@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { CompactedLLMProviderError } from '../execution/errors';
-import { mockModel, type MockTurn } from '../testing';
+import { mockModel, type MockModel, type MockRequest, type MockTurn } from '../testing';
 import { evidenceFiles } from './evidence';
 import { diffHarness, validateHarness } from './harness';
-import { createShadowHook, improveAgent, renderTranscript, type Harness, type ImproveOptions, type ProbeRun } from './index';
+import { createShadowHook, improveAgent, renderTranscript, type Harness, type ImproveOptions, type ImproveStage, type ProbeRun } from './index';
 import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT } from './prompts';
 
 const BASE: Harness = { instructions: 'You answer questions.', skills: {} };
@@ -15,20 +15,63 @@ const noEdit: MockTurn[] = ['<notes>KEEP_BASE. Nothing in the runs argues for a 
 
 const run = (passed: boolean | null, tokens = 10): ProbeRun => ({ passed, transcript: `user: hi\nassistant: ${passed}`, tokens, ended: 'stop' });
 
+type Stage = ImproveStage['label'];
+type Script = readonly MockTurn[] | Partial<Record<Stage, MockTurn[]>>;
+const MARKERS: [Stage, string][] = [
+  ['compose', 'You are the composer.'],
+  ['invariant', 'earliest point of divergence'],
+  ['domain', 'a completely different profession'],
+];
+const stageOf = (request: MockRequest): Stage => {
+  const system = String(request.messages.find((message) => message.role === 'system')?.content ?? '');
+  return MARKERS.find(([, marker]) => system.includes(marker))?.[0] ?? 'compose';
+};
+const isFinal = (turn: MockTurn) => typeof turn !== 'object' || !turn.toolCalls?.length;
+
+function bySession(turns: readonly MockTurn[]): Record<Stage, MockTurn[]> {
+  const sessions: MockTurn[][] = [[]];
+  for (const turn of turns) {
+    sessions[sessions.length - 1].push(turn);
+    if (isFinal(turn)) sessions.push([]);
+  }
+  const [invariant = [], domain = [], ...rest] = sessions;
+  return { invariant, domain, compose: rest.flat() };
+}
+
+const editors = (script: Script): MockModel => {
+  const queues: Record<Stage, MockTurn[]> = Array.isArray(script) ? bySession(script) : { invariant: [], domain: [], compose: [], ...script };
+  const count = Object.values(queues).reduce((sum, queue) => sum + queue.length, 0);
+  const next: MockTurn = (request) => {
+    const turn = queues[stageOf(request)].shift();
+    if (turn === undefined) throw new Error(`No turn left for the ${stageOf(request)} editor.`);
+    return typeof turn === 'function' ? turn(request) : turn;
+  };
+  return mockModel(Array.from({ length: count }, () => next));
+};
+
 /** Passes every case once the harness carries the fix; fails `failing` cases before that. */
 const fixable =
   (failing: readonly string[] = ['stuck']): ImproveOptions['probe'] =>
   async (harness, caseId) =>
     run(harness.instructions.includes('forbidden') || !failing.includes(caseId));
 
-const options = (over: Partial<ImproveOptions> & { turns?: MockTurn[] } = {}): ImproveOptions => {
+const gated =
+  (tokens: (harness: Harness) => number = () => 10, flaky = 'Flaky'): ImproveOptions['probe'] =>
+  async (harness, caseId, repeat) => {
+    const { instructions } = harness;
+    if (caseId !== 'held-out') return run(instructions.includes('forbidden'), tokens(harness));
+    if (instructions.includes(flaky)) return run(repeat !== 0, tokens(harness));
+    return run(!instructions.includes('Always'), tokens(harness));
+  };
+
+const options = (over: Partial<ImproveOptions> & { turns?: Script } = {}): ImproveOptions => {
   const { turns = [], ...rest } = over;
   return {
     harness: BASE,
     cases: ['stuck'],
     holdout: ['held-out'],
     probe: fixable(),
-    editor: { provider: mockModel(turns) },
+    editor: { provider: editors(turns) },
     repeats: 2,
     ...rest,
   };
@@ -151,7 +194,7 @@ describe('improveAgent', () => {
   });
 
   it('never sends fresh base runs to an editor', async () => {
-    const provider = mockModel([...noEdit, ...edit(FIX), ...edit(FIX)]);
+    const provider = editors([...noEdit, ...edit(FIX), ...edit(FIX)]);
     const editorCallsAtFreshRuns: number[] = [];
     const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
       if (harness === BASE && caseId === 'stuck' && repeat >= 2) editorCallsAtFreshRuns.push(provider.calls.length);
@@ -327,17 +370,8 @@ describe('improveAgent', () => {
   });
 
   describe('fallback to one editor', () => {
-    const gated =
-      (tokens: (harness: Harness) => number = () => 10, flaky = 'Flaky'): ImproveOptions['probe'] =>
-      async (harness, caseId, repeat) => {
-        const { instructions } = harness;
-        if (caseId !== 'held-out') return run(instructions.includes('forbidden'), tokens(harness));
-        if (instructions.includes(flaky)) return run(repeat !== 0, tokens(harness));
-        return run(!instructions.includes('Always'), tokens(harness));
-      };
-
     it("falls back to the domain editor's harness when the composite fails the held-out check", async () => {
-      const provider = mockModel([...noEdit, ...edit(FIX), ...edit(`${FIX} Always double-check.`)]);
+      const provider = editors([...noEdit, ...edit(FIX), ...edit(`${FIX} Always double-check.`)]);
       const harness = structuredClone(BASE);
       const result = await improveAgent(options({ harness, probe: gated(), editor: { provider } }));
       expect(result.outcome).toBe('proposal');
@@ -500,24 +534,22 @@ describe('improveAgent', () => {
   });
 
   it('never shows held-out cases to an editor', async () => {
-    const provider = mockModel([...noEdit, ...noEdit, ...noEdit]);
+    const provider = editors([...noEdit, ...noEdit, ...noEdit]);
     await improveAgent(options({ probe: async (_h, caseId) => run(false, caseId === 'held-out' ? 1 : 2), editor: { provider } }));
     expect(JSON.stringify(provider.calls)).not.toContain('held-out');
   });
 
   it('retries an invalid edit once with the error, then falls back and says so', async () => {
-    const provider = mockModel([
-      write('harness/instructions.md', ''),
-      '<notes>first</notes>',
-      write('harness/instructions.md', ''),
-      '<notes>second</notes>',
-      ...noEdit,
-      ...noEdit,
-    ]);
+    const provider = editors({
+      invariant: [write('harness/instructions.md', ''), '<notes>first</notes>', write('harness/instructions.md', ''), '<notes>second</notes>'],
+      domain: [...noEdit],
+      compose: [...noEdit],
+    });
     const result = await improveAgent(options({ editor: { provider } }));
     expect(result.stages[0]).toMatchObject({ label: 'invariant', status: 'fell-back' });
     expect(result.stages[0].error).toMatch(/empty/i);
-    expect(JSON.stringify(provider.calls[2])).toContain('REJECTED');
+    const rejected = provider.calls.filter((call) => JSON.stringify(call).includes('REJECTED'));
+    expect(rejected.map(stageOf)).toEqual(['invariant', 'invariant']);
     expect(result.outcome).toBe('keep-base');
   });
 
@@ -533,8 +565,10 @@ describe('improveAgent', () => {
     };
     const result = await improveAgent(options({ probe, editor }));
     expect(result.outcome).toBe('outage');
-    expect(result.stages).toHaveLength(1);
+    expect(result.stages.map((stage) => stage.label)).toEqual(['invariant']);
     expect(probe).toHaveBeenCalledTimes(2);
+    const sequential = await improveAgent(options({ probe, editor, parallelEditors: false }));
+    expect(sequential.stages).toEqual(result.stages);
   });
 
   it('reports an outage when no probe could be scored, instead of a score of zero', async () => {
@@ -566,6 +600,102 @@ describe('improveAgent', () => {
     expect(result.candidates).toBeUndefined();
   });
 
+  describe('parallel editors', () => {
+    const timeline = () => {
+      const events: string[] = [];
+      const turn =
+        (reply: string, delayMs = 0): MockTurn =>
+        async (request) => {
+          const stage = stageOf(request);
+          events.push(`start ${stage}`);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          events.push(`end ${stage}`);
+          return reply;
+        };
+      return { events, turn };
+    };
+    const notes = '<notes>KEEP_BASE.</notes>';
+
+    it('both sessions start before either finishes', async () => {
+      const { events, turn } = timeline();
+      const provider = editors({ invariant: [turn(notes, 20)], domain: [turn(notes, 20)], compose: [notes] });
+      await improveAgent(options({ editor: { provider } }));
+      expect(events.slice(0, 2)).toEqual(['start invariant', 'start domain']);
+    });
+
+    it('stage order is stable', async () => {
+      const { events, turn } = timeline();
+      const provider = editors({ invariant: [turn(notes, 40)], domain: [turn(notes, 0)], compose: [notes] });
+      const result = await improveAgent(options({ editor: { provider } }));
+      expect(events).toEqual(['start invariant', 'start domain', 'end domain', 'end invariant']);
+      expect(result.stages.map((stage) => stage.label)).toEqual(['invariant', 'domain', 'compose']);
+    });
+
+    it('a budget stop in one session ends the run with budget-exceeded', async () => {
+      const slow: MockTurn = { text: notes, delayMs: 5_000 };
+      const costly: MockTurn = { text: notes, usage: { inputTokens: 1_000, outputTokens: 0 } };
+      const provider = editors({ invariant: [slow], domain: [costly], compose: [notes] });
+      const started = Date.now();
+      const result = await improveAgent(options({ editor: { provider }, maxTokens: 500 }));
+      expect(result.outcome).toBe('budget-exceeded');
+      expect(Date.now() - started).toBeLessThan(2_000);
+      expect(result.stages.map((stage) => stage.label)).toEqual(['domain']);
+      expect(provider.calls.map(stageOf)).toEqual(['invariant', 'domain']);
+    });
+
+    it('rethrows an error from one session after stopping the other', async () => {
+      const provider = editors({ invariant: [{ text: notes, delayMs: 5_000 }], domain: [{ error: new Error('boom') }], compose: [notes] });
+      const started = Date.now();
+      await expect(improveAgent(options({ editor: { provider } }))).rejects.toThrow('boom');
+      expect(Date.now() - started).toBeLessThan(2_000);
+    });
+
+    it("stops both sessions when the caller's signal aborts", async () => {
+      const controller = new AbortController();
+      const provider = editors({ invariant: [{ text: notes, delayMs: 5_000 }], domain: [{ text: notes, delayMs: 5_000 }], compose: [notes] });
+      setTimeout(() => controller.abort(new Error('caller stopped')), 20);
+      const started = Date.now();
+      await expect(improveAgent(options({ editor: { provider }, signal: controller.signal }))).rejects.toThrow();
+      expect(Date.now() - started).toBeLessThan(2_000);
+    });
+
+    it('parallelEditors false keeps today\'s order', async () => {
+      const { events, turn } = timeline();
+      const provider = editors({ invariant: [turn(notes, 20)], domain: [turn(notes, 0)], compose: [notes] });
+      await improveAgent(options({ editor: { provider }, parallelEditors: false }));
+      expect(events).toEqual(['start invariant', 'end invariant', 'start domain', 'end domain']);
+    });
+
+    it('probes both edits concurrently', async () => {
+      const events: string[] = [];
+      const probe: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+        const label = harness.instructions.includes('Domain') ? 'domain' : harness.instructions.includes('Invariant') ? 'invariant' : 'other';
+        if (label !== 'other' && caseId === 'stuck' && repeat === 0) events.push(`start ${label}`);
+        await new Promise((resolve) => setTimeout(resolve, label === 'invariant' ? 10 : 0));
+        if (label !== 'other' && caseId === 'stuck' && repeat === 1) events.push(`end ${label}`);
+        return fixable()(harness, caseId, repeat);
+      };
+      const turns = [...edit(`${FIX} Invariant.`), ...edit(`${FIX} Domain.`), ...noEdit];
+      await improveAgent(options({ probe, turns }));
+      expect(events.slice(0, 2)).toEqual(['start invariant', 'start domain']);
+    });
+
+    it('gives the same result as the sequential path', async () => {
+      const scenarios: Partial<ImproveOptions & { turns: Script }>[] = [
+        { turns: [...noEdit, ...edit(FIX), ...edit(FIX)] },
+        { turns: [...edit(FIX), ...noEdit, ...noEdit] },
+        { probe: async () => run(false), turns: [...noEdit, ...edit(FIX), ...edit(FIX)] },
+        { probe: gated(), turns: [...edit(`${FIX} Always check.`), ...edit(`${FIX} Always test.`), ...edit(`${FIX} Always both.`)] },
+        { probe: gated(), turns: [...noEdit, ...edit(FIX), ...edit(`${FIX} Always double-check.`)] },
+      ];
+      for (const scenario of scenarios) {
+        const parallel = await improveAgent(options(scenario));
+        const sequential = await improveAgent(options({ ...scenario, parallelEditors: false }));
+        expect(parallel).toEqual(sequential);
+      }
+    });
+  });
+
   it('rejects bad options', async () => {
     await expect(improveAgent(options({ cases: [] }))).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
     await expect(improveAgent(options({ repeats: 0 }))).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
@@ -587,7 +717,7 @@ describe('editor prompts', () => {
   });
 
   it('sends each editor its own scope', async () => {
-    const provider = mockModel([...noEdit, ...noEdit, ...noEdit]);
+    const provider = editors([...noEdit, ...noEdit, ...noEdit]);
     await improveAgent(options({ editor: { provider } }));
     expect(JSON.stringify(provider.calls[0])).toContain('earliest point of divergence');
     expect(JSON.stringify(provider.calls[0])).not.toContain('completely different profession');

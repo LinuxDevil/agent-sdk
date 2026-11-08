@@ -54,18 +54,21 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
   const { harness: base, cases, recoveries } = options;
   const prompts = promptsFor(options);
   const shared = evidenceFiles({ harness: base, runs: baseRuns, recoveries });
-  const invariant = await run.edit('invariant', prompts.invariant, shared, base);
-  const domain = await run.edit('domain', prompts.domain, shared, base);
-  const probeIfEdited = (candidate: Harness, label: string) => (diffHarness(base, candidate) === '' ? Promise.resolve([]) : run.probe(candidate, label, cases));
-  const invariantRuns = await probeIfEdited(invariant, 'invariant');
-  const domainRuns = await probeIfEdited(domain, 'domain');
+  const editors = [run.stage('invariant'), run.stage('domain')];
+  const [invariant, domain] = await run.concurrently([
+    (signal: AbortSignal) => run.edit(editors[0], prompts.invariant, shared, base, signal),
+    (signal: AbortSignal) => run.edit(editors[1], prompts.domain, shared, base, signal),
+  ]);
+  const probeIfEdited = (candidate: Harness, label: string, signal: AbortSignal) =>
+    diffHarness(base, candidate) === '' ? Promise.resolve([]) : run.probe(candidate, label, cases, 0, run.repeats, signal);
+  const [invariantRuns, domainRuns] = await run.concurrently([(signal: AbortSignal) => probeIfEdited(invariant, 'invariant', signal), (signal: AbortSignal) => probeIfEdited(domain, 'domain', signal)]);
   const composeFiles = evidenceFiles({
     harness: base,
     runs: [...baseRuns, ...invariantRuns, ...domainRuns],
     recoveries,
     extra: { ...candidateFiles('invariant', base, invariant), ...candidateFiles('domain', base, domain) },
   });
-  const composed = await run.edit('compose', prompts.compose, composeFiles, base);
+  const composed = await run.edit(run.stage('compose'), prompts.compose, composeFiles, base);
   run.candidates = { invariant, domain, compose: composed };
   const stages = { composed, invariant, domain, invariantRuns, domainRuns };
   if (diffHarness(base, composed) === '') return { ...stages, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };
