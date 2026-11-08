@@ -223,6 +223,9 @@ interface FileContentPart {
 }
 
 // @public
+export function formatImproveResult(result: ImproveResult): string;
+
+// @public
 export interface GateVerdict {
     label: 'compose' | 'invariant' | 'domain';
     passed: boolean;
@@ -457,6 +460,7 @@ export interface ImproveResult {
         noise: number;
     };
     diff?: string;
+    failedChecks?: string[];
     final?: ProbeSummary;
     freshBase?: ProbeSummary;
     gate?: GateVerdict[];

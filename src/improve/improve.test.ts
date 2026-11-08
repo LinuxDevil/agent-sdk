@@ -463,6 +463,22 @@ describe('improveAgent', () => {
     expect(files['context/runs/base/stuck-0.md']).toContain('Failed check: follows project conventions.');
   });
 
+  it('records the failed checks the editors saw', async () => {
+    const result = await improveAgent(options({ probe: async () => ({ ...run(false), failure: 'a; b' }), turns: [...noEdit, ...noEdit, ...noEdit] }));
+    expect(result.failedChecks).toEqual(['a', 'b']);
+  });
+
+  it("adds the failed checks of an editor's candidate runs, which the composer reads", async () => {
+    const probe: ImproveOptions['probe'] = async (harness) => ({ ...run(false), failure: harness.instructions.includes('forbidden') ? 'c' : 'a' });
+    const result = await improveAgent(options({ probe, turns: [...edit(FIX), ...noEdit, ...noEdit] }));
+    expect(result.failedChecks).toEqual(['a', 'c']);
+  });
+
+  it('leaves failed checks out when no run named one', async () => {
+    const result = await improveAgent(options({ turns: [...noEdit, ...noEdit, ...noEdit] }));
+    expect(result).not.toHaveProperty('failedChecks');
+  });
+
   it('never shows held-out cases to an editor', async () => {
     const provider = mockModel([...noEdit, ...noEdit, ...noEdit]);
     await improveAgent(options({ probe: async (_h, caseId) => run(false, caseId === 'held-out' ? 1 : 2), editor: { provider } }));

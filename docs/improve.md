@@ -12,7 +12,7 @@ It's experimental: its results so far come from a small benchmark.
 
 ```ts
 import { createAgent, defineTool } from 'lousho';
-import { improveAgent, renderTranscript, type Harness } from 'lousho/improve';
+import { formatImproveResult, improveAgent, renderTranscript, type Harness } from 'lousho/improve';
 import { mockModel } from 'lousho/testing';
 import { z } from 'zod';
 
@@ -38,6 +38,7 @@ const result = await improveAgent({
 });
 
 console.log(result.outcome, result.reason);
+console.log(formatImproveResult(result));
 ```
 
 ## How it works
@@ -93,6 +94,10 @@ or replay one the gate rejected.
 | `no-failures` | Every case passed, so no editor ran |
 | `outage` | The provider failed, or no run could be scored |
 | `budget-exceeded` | `maxTokens` ran out |
+
+## Reviewing a result
+
+`formatImproveResult(result)` turns a result into Markdown for review: the diff, each case before and after with pass^3, the editors' notes, and flags for an edit that quotes a failed check word for word, adds text that looks like prompt injection, or adds a skill the instructions never name.
 
 ## Safety
 
