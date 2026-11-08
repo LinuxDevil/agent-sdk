@@ -21,6 +21,8 @@ describe('agentRedirect', () => {
   it('leaves the canvas tab and every non-agents route alone', () => {
     expect(agentRedirect('#/agents/x/canvas')).toBeNull();
     expect(agentRedirect('#/agents/x/canvas?y=1')).toBeNull();
+    // 'runs' is built (A11); 'suggestions' is the last tab to be built (R06).
+    expect(agentRedirect('#/agents/x/runs')).toBeNull();
     expect(agentRedirect('#/agents')).toBeNull();
     expect(agentRedirect('#/traces')).toBeNull();
   });
