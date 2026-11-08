@@ -135,6 +135,7 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
+| `lousho.harness.revision` | The harness revision: a sha256 of the instructions and skills, the same id `harnessHash` gives and `lousho improve` records. Two agents with the same instructions and skills share it. Absent when the instructions are a function or come from the prompt registry. It covers `instructions` and `skills` only: `projectInstructions` (AGENTS.md), a per-send `instructions` addition and the tools are not part of it, and an `instructions/<family>.md` tail is, so such a run matches no saved revision. `lousho traces` shows its first 12 characters |
 
 #### Summing token usage over spans
 

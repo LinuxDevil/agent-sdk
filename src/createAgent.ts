@@ -20,6 +20,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
+import { harnessRevisionOf } from './execution/harnessRevision';
 import { defaultCaptureContent } from './observe/emit';
 import { capturedContentForObserveOnly, withObserveExporter, type PromptUseProvider } from './observe/reporter';
 import { parsePromptRef, registryPrompt } from './observe/promptClient';
@@ -1535,6 +1536,7 @@ function agentSpecs(
   const provider = isPerRun(config.model) ? undefined : resolveModelSource(config, config.model);
   const staticTools = isPerRun(config.tools) ? undefined : toolsFor(config.tools);
   const agentId = newId();
+  const harnessRevision = typeof instructions === 'string' ? harnessRevisionOf(instructions, config.skills ?? []) : undefined;
   const specOf = (prompt: string | undefined, model: string | undefined, runProvider: LLMProvider, tools: RunTools): SubagentSpec => {
     const builder = AgentBuilder.create()
       .setId(agentId)
@@ -1544,7 +1546,7 @@ function agentSpecs(
     // With an explicit provider, `model` is a per-agent model setting.
     if (config.provider && model) builder.setSettings({ model });
     return {
-      agent: builder.build(),
+      agent: { ...builder.build(), ...(harnessRevision !== undefined && { harnessRevision }) },
       provider: runProvider,
       toolRegistry: tools.toolRegistry,
       ...(tools.hostedTools.length > 0 && { hostedTools: tools.hostedTools }),

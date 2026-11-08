@@ -1,7 +1,7 @@
-import { createHash } from 'node:crypto';
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync, type Dirent } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError, SDKError } from '../execution/errors';
+import { harnessRevisionOf } from '../execution/harnessRevision';
 import type { Skill } from '../skills/defineSkill';
 import { hasFrontmatter, skillFromText, type SkillSource } from '../skills/loadSkills';
 import type { Harness } from './types';
@@ -116,19 +116,9 @@ function readDirectory(dir: string): { harness: Harness; readOnly: string[] } {
   return { harness: { instructions, skills }, readOnly };
 }
 
-function byName([a]: [string, unknown], [b]: [string, unknown]): number {
-  if (a === b) return 0;
-  return a < b ? -1 : 1;
-}
-
-const lf = (text: string): string => text.replace(/\r\n/g, '\n');
-
 /** sha256 of the instructions and the skills sorted by name, the same for equal harnesses. */
 export function harnessHash(harness: Harness): string {
-  const skills = Object.entries(harness.skills)
-    .map(([name, skill]): [string, Harness['skills'][string]] => [name, { description: lf(skill.description), content: lf(skill.content) }])
-    .sort(byName);
-  return createHash('sha256').update(JSON.stringify([lf(harness.instructions), skills])).digest('hex');
+  return harnessRevisionOf(harness.instructions, Object.entries(harness.skills).map(([name, skill]) => ({ name, ...skill })));
 }
 
 /** Reads instructions.md and skills/<name>/SKILL.md from an agent directory. Throws when instructions come from elsewhere. */
