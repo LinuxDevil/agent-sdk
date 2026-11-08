@@ -105,6 +105,16 @@ export interface CaseVerdict {
   reasons: string[];
 }
 
+/** The gate's verdict on one harness. */
+export interface GateVerdict {
+  /** Which editor's harness. */
+  label: 'compose' | 'invariant' | 'domain';
+  /** Whether it passed the gate. */
+  passed: boolean;
+  /** Why, in a sentence. */
+  reason: string;
+}
+
 /** What one editor session did. */
 export interface ImproveStage {
   /** Which editor. */
@@ -162,6 +172,10 @@ export interface ImproveResult {
     /** Average spread in tokens between runs of a case. A rise within this isn't rejected. */
     noise: number;
   };
+  /** Each case's verdict, training cases first, when the result was gated. */
+  cases?: CaseVerdict[];
+  /** Each harness the gate judged, in order: the composite first, then any single editor's harness tried after it failed. */
+  gate?: GateVerdict[];
   /** Each editor's harness from before the gate, so a person or a replay can judge one the gate rejected. */
   candidates?: {
     /** The invariant editor's harness, or the base if it changed nothing. */
@@ -171,8 +185,6 @@ export interface ImproveResult {
     /** The composer's harness, or the base if it changed nothing. */
     compose: Harness;
   };
-  /** Each case's verdict, training cases first, when the result was gated. */
-  cases?: CaseVerdict[];
   /** What each editor did. */
   stages: ImproveStage[];
   /** Tokens spent in total. */

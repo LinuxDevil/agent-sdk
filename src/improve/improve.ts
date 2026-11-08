@@ -1,27 +1,11 @@
-import { createAgent } from '../createAgent';
-import { CompactedLLMProviderError, ConfigurationError } from '../execution/errors';
-import { MemoryWorkspace } from '../tools/workspace/MemoryWorkspace';
-import { createFsTools } from '../tools/workspace/fsTools';
+import { ConfigurationError } from '../execution/errors';
 import { evidenceFiles, type LabelledRun } from './evidence';
-import { caseCount, costNote, costOnPassingCases, gateFailure, HOLDOUT_RERUNS, judgeHoldoutCase, judgePooledHoldout, judgeTrainingCase, summarize, trainingFailure } from './gate';
-import { diffHarness, harnessFiles, readHarness, validateHarness } from './harness';
-import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, rejectedNote } from './prompts';
-import type { CaseVerdict, Harness, ImproveOptions, ImproveOutcome, ImproveResult, ImproveStage, ProbeSummary } from './types';
-
-const DEFAULT_REPEATS = 3;
-const DEFAULT_MAX_ALWAYS_ON = 8000;
-const DEFAULT_MAX_COST_INCREASE = 0.5;
-const DEFAULT_MAX_EDITOR_STEPS = 30;
-const STAGE_ATTEMPTS = 2;
-
-class StopRun extends Error {
-  constructor(
-    readonly outcome: ImproveOutcome,
-    reason: string
-  ) {
-    super(reason);
-  }
-}
+import { summarize } from './gate';
+import { diffHarness, harnessFiles } from './harness';
+import { judgeWithFallback } from './judge';
+import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT } from './prompts';
+import { ImproveRun, StopRun } from './run';
+import type { Harness, ImproveOptions, ImproveResult, ProbeSummary } from './types';
 
 function assertOptions(options: ImproveOptions, repeats: number): void {
   if (options.cases.length === 0) throw new ConfigurationError('improveAgent: cases must name at least one case.', 'cases');
@@ -34,90 +18,22 @@ function needsNoEdit(summary: ProbeSummary, alwaysPropose: boolean | undefined):
   return summary.passRate === 1 && !alwaysPropose;
 }
 
-const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.trim() ?? text.trim();
-
-class ImproveRun {
-  readonly stages: ImproveStage[] = [];
-  tokens = 0;
-  candidates?: NonNullable<ImproveResult['candidates']>;
-  readonly repeats: number;
-  private readonly maxAlwaysOn: number;
-
-  constructor(private readonly options: ImproveOptions) {
-    this.repeats = options.repeats ?? DEFAULT_REPEATS;
-    this.maxAlwaysOn = options.maxAlwaysOnChars ?? DEFAULT_MAX_ALWAYS_ON;
-    assertOptions(options, this.repeats);
-  }
-
-  private spend(tokens: number): void {
-    this.tokens += tokens;
-    const { maxTokens } = this.options;
-    if (maxTokens !== undefined && this.tokens >= maxTokens) throw new StopRun('budget-exceeded', `Stopped at the ${maxTokens} token budget.`);
-  }
-
-  async probe(harness: Harness, label: string, caseIds: readonly string[], firstRepeat = 0, count = this.repeats): Promise<LabelledRun[]> {
-    const runs: LabelledRun[] = [];
-    for (let repeat = firstRepeat; repeat < firstRepeat + count; repeat += 1) {
-      for (const caseId of caseIds) {
-        this.options.signal?.throwIfAborted();
-        const run = await this.options.probe(harness, caseId, repeat);
-        runs.push({ label, caseId, repeat, run });
-        this.spend(run.tokens);
-      }
-    }
-    return runs;
-  }
-
-  private async session(system: string, input: string, workspace: MemoryWorkspace): Promise<{ text: string; tokens: number }> {
-    const { editor, editorHooks, signal, maxEditorSteps } = this.options;
-    const agent = createAgent({
-      name: 'harness-editor',
-      ...editor,
-      instructions: system,
-      tools: createFsTools(workspace),
-      maxSteps: maxEditorSteps ?? DEFAULT_MAX_EDITOR_STEPS,
-      ...(editorHooks && { hooks: [...editorHooks] }),
-    });
-    try {
-      const result = await agent.send(input, signal ? { signal } : undefined);
-      return { text: result.text ?? '', tokens: result.usage?.totalTokens ?? 0 };
-    } catch (error) {
-      if (error instanceof CompactedLLMProviderError && error.compacted.retryable) throw new StopRun('outage', `The editor's provider failed: ${error.message}`);
-      throw error;
-    }
-  }
-
-  async edit(label: ImproveStage['label'], system: string, files: Record<string, string>, base: Harness): Promise<Harness> {
-    const workspace = new MemoryWorkspace({ files });
-    let input = 'Read the runs in context/runs/, then improve the harness, or say KEEP_BASE.';
-    const stage: ImproveStage = { label, status: 'no-change', notes: '', tokens: 0 };
-    this.stages.push(stage);
-    for (let attempt = 1; attempt <= STAGE_ATTEMPTS; attempt += 1) {
-      const { text, tokens } = await this.session(system, input, workspace);
-      stage.tokens += tokens;
-      stage.notes = notesOf(text);
-      this.spend(tokens);
-      const { harness, errors } = await readHarness(workspace);
-      const problems = [...errors, ...validateHarness(harness, base, { maxAlwaysOnChars: this.maxAlwaysOn })];
-      if (problems.length === 0) {
-        stage.status = diffHarness(base, harness) === '' ? 'no-change' : 'edited';
-        return harness;
-      }
-      stage.error = problems.join(' ');
-      input = rejectedNote(problems);
-    }
-    stage.status = 'fell-back';
-    return base;
-  }
-}
-
 function candidateFiles(name: string, base: Harness, candidate: Harness): Record<string, string> {
   const files: Record<string, string> = { [`context/candidates/${name}/diff.md`]: diffHarness(base, candidate) || 'No change.' };
   for (const [path, content] of Object.entries(harnessFiles(candidate))) files[`context/candidates/${name}/${path}`] = content;
   return files;
 }
 
-async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: readonly LabelledRun[]): Promise<{ composed: Harness; result?: Omit<ImproveResult, 'base' | 'stages' | 'spend'> }> {
+interface Stages {
+  composed: Harness;
+  invariant: Harness;
+  domain: Harness;
+  invariantRuns: LabelledRun[];
+  domainRuns: LabelledRun[];
+  result?: Omit<ImproveResult, 'base' | 'stages' | 'spend'>;
+}
+
+async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: readonly LabelledRun[]): Promise<Stages> {
   const { harness: base, cases } = options;
   const shared = evidenceFiles({ harness: base, runs: baseRuns });
   const invariant = await run.edit('invariant', INVARIANT_PROMPT, shared, base);
@@ -132,58 +48,14 @@ async function runStages(run: ImproveRun, options: ImproveOptions, baseRuns: rea
   });
   const composed = await run.edit('compose', COMPOSE_PROMPT, composeFiles, base);
   run.candidates = { invariant, domain, compose: composed };
-  if (diffHarness(base, composed) === '') return { composed, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };
-  return { composed };
+  const stages = { composed, invariant, domain, invariantRuns, domainRuns };
+  if (diffHarness(base, composed) === '') return { ...stages, result: { outcome: 'keep-base', reason: 'The editors made no change.' } };
+  return stages;
 }
 
-async function holdoutVerdicts(
-  run: ImproveRun,
-  options: ImproveOptions,
-  candidate: Harness,
-  baseRuns: readonly LabelledRun[],
-  finalRuns: readonly LabelledRun[]
-): Promise<{ verdicts: CaseVerdict[]; regressed: string[] }> {
-  const verdicts: CaseVerdict[] = [];
-  const regressed: string[] = [];
-  for (const id of options.holdout ?? []) {
-    const first = judgeHoldoutCase(id, caseCount(baseRuns, id), caseCount(finalRuns, id));
-    if (!first.needsRerun) {
-      verdicts.push(first.verdict);
-      continue;
-    }
-    const baseRerun = await run.probe(options.harness, 'holdout-base-rerun', [id], run.repeats, HOLDOUT_RERUNS);
-    const finalRerun = await run.probe(candidate, 'holdout-final-rerun', [id], run.repeats, HOLDOUT_RERUNS);
-    const pooled = judgePooledHoldout(id, caseCount([...baseRuns, ...baseRerun], id), caseCount([...finalRuns, ...finalRerun], id), run.repeats, first.verdict);
-    verdicts.push(pooled.verdict);
-    if (pooled.regressed) regressed.push(id);
-  }
-  return { verdicts, regressed };
-}
-
-async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness): Promise<Omit<ImproveResult, 'base' | 'stages' | 'spend'>> {
-  const freshBaseRuns = await run.probe(options.harness, 'fresh-base', options.cases, run.repeats);
-  const holdoutIds = options.holdout ?? [];
-  const finalRuns = await run.probe(composed, 'final', options.cases);
-  const holdoutBaseRuns = await run.probe(options.harness, 'holdout-base', holdoutIds);
-  const holdoutFinalRuns = await run.probe(composed, 'holdout-final', holdoutIds);
-  const final = summarize(finalRuns);
-  const holdout = holdoutIds.length === 0 ? undefined : { base: summarize(holdoutBaseRuns), final: summarize(holdoutFinalRuns) };
-  const freshBase = summarize(freshBaseRuns);
-  const cost = costOnPassingCases([...freshBaseRuns, ...holdoutBaseRuns], [...finalRuns, ...holdoutFinalRuns]);
-  const training = options.cases.map((id) => judgeTrainingCase(id, caseCount(freshBaseRuns, id), caseCount(finalRuns, id)));
-  const summaries = { freshBase, final, ...(holdout && { holdout }), ...(cost && { costOnPassingCases: cost }) };
-  const trainingVerdicts = training.map((judged) => judged.verdict);
-  const untrained = trainingFailure(training);
-  if (untrained) {
-    const firstPass = holdoutIds.map((id) => judgeHoldoutCase(id, caseCount(holdoutBaseRuns, id), caseCount(holdoutFinalRuns, id), false).verdict);
-    return { outcome: 'keep-base', reason: untrained, ...summaries, cases: [...trainingVerdicts, ...firstPass] };
-  }
-  const { verdicts, regressed } = await holdoutVerdicts(run, options, composed, holdoutBaseRuns, holdoutFinalRuns);
-  const failure = gateFailure({ training, regressed, ...(cost && { cost }), maxCostIncrease: options.maxCostIncrease ?? DEFAULT_MAX_COST_INCREASE });
-  const shared = { ...summaries, cases: [...trainingVerdicts, ...verdicts] };
-  if (failure) return { outcome: 'keep-base', reason: failure, ...shared };
-  const reason = `A training case improved by at least 2 in 3 runs, none got worse, and no held-out case got worse.${costNote(cost)}`;
-  return { outcome: 'proposal', reason, harness: composed, diff: diffHarness(options.harness, composed), ...shared };
+function judgeStages(run: ImproveRun, options: ImproveOptions, stages: Stages): Promise<Omit<ImproveResult, 'base' | 'stages' | 'spend'>> {
+  const harnesses = { compose: stages.composed, invariant: stages.invariant, domain: stages.domain };
+  return judgeWithFallback(run, options, harnesses, { invariant: stages.invariantRuns, domain: stages.domainRuns });
 }
 
 /**
@@ -192,6 +64,7 @@ async function judge(run: ImproveRun, options: ImproveOptions, composed: Harness
  */
 export async function improveAgent(options: ImproveOptions): Promise<ImproveResult> {
   const run = new ImproveRun(options);
+  assertOptions(options, run.repeats);
   let base: ProbeSummary = summarize([]);
   const finish = (result: Omit<ImproveResult, 'base' | 'stages' | 'spend'>): ImproveResult => ({ ...result, base, ...(run.candidates && { candidates: run.candidates }), stages: run.stages, spend: { tokens: run.tokens } });
   try {
@@ -199,8 +72,8 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
     base = summarize(baseRuns);
     if (base.passRate === null) return finish({ outcome: 'outage', reason: 'No run could be scored, so there is nothing to learn from.' });
     if (needsNoEdit(base, options.alwaysPropose)) return finish({ outcome: 'no-failures', reason: 'Every case passed, so no editor ran.' });
-    const { composed, result } = await runStages(run, options, baseRuns);
-    return finish(result ?? (await judge(run, options, composed)));
+    const stages = await runStages(run, options, baseRuns);
+    return finish(stages.result ?? (await judgeStages(run, options, stages)));
   } catch (error) {
     if (error instanceof StopRun) return finish({ outcome: error.outcome, reason: error.message });
     throw error;
