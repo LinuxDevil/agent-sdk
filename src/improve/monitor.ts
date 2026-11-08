@@ -1,24 +1,25 @@
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { scoreSeries, significantDrop, trajectoryGate, windowSummary, type ScorePoint, type WindowStat } from '../observe/continuousScore';
+import { pointOf, significantDrop, trajectoryGate, windowSummary, type ScorePoint, type WindowStat } from '../observe/continuousScore';
+import { finishedRuns } from '../observe/store';
+import { ConfigurationError } from '../execution/errors';
 import type { SqlDatabase } from '../storage/sqlite/driver';
 import { writeFileAtomic } from '../storage/atomicFile';
+import { withFileLock } from '../storage/fileLock';
 import { rollbackHarness } from './apply';
 import { appendAudit, readAudit, type AuditEntry } from './audit';
 import { currentRevision } from './revisions';
 import type { ImproveSettings } from './settings';
 
-type MonitorSettings = ImproveSettings['monitor'];
-
 /** What the monitor decided about the current revision. */
 export interface MonitorVerdict {
   /** `idle` with nothing to watch, `pending` until there are enough runs, then `kept`, `kept-unverified`, `regressed` (reported, not rolled back) or `rolled-back`. */
   state: 'idle' | 'pending' | 'kept' | 'kept-unverified' | 'regressed' | 'rolled-back';
-  /** Why, for `idle`, `regressed` and `rolled-back`. */
+  /** Why, for `idle`, `kept-unverified`, `regressed` and `rolled-back`. */
   reason?: string;
   /** Finished runs under the current revision so far, for `pending` and `kept-unverified`. */
   runs?: number;
-  /** Finished runs of the revision before it, for `pending`. */
+  /** Finished runs of the revision before it, for `pending` and `kept-unverified`. */
   baselineRuns?: number;
   /** The runs before the apply that were compared. */
   before?: WindowStat;
@@ -31,6 +32,9 @@ export interface MonitorVerdict {
 /** The comparison of the runs before and after an apply, without side effects. */
 export type MonitorJudgement = { verdict: 'wait' } | { verdict: 'kept'; before: WindowStat; after: WindowStat } | { verdict: 'regressed'; before: WindowStat; after: WindowStat; reason: string };
 
+type MonitorSettings = ImproveSettings['monitor'];
+type CheckSettings = Pick<ImproveSettings, 'monitor' | 'cooldownHours'>;
+
 const LOOKS = 3;
 const LOOK_Z = 2.1;
 const GATE_WINDOW = 10;
@@ -38,6 +42,8 @@ const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 const SERIES_LIMIT = 100_000;
 const STATE_FILE = path.join('.lousho', 'state.json');
+const STATE_LOCK = path.join('.lousho', 'state.lock');
+const MONITOR_LOCK = path.join('.lousho', 'monitor.lock');
 const FINAL: readonly MonitorVerdict['state'][] = ['kept', 'kept-unverified', 'regressed', 'rolled-back'];
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`;
@@ -47,16 +53,17 @@ const passes = (points: readonly ScorePoint[]): number[] => points.map((point) =
 function regression(before: readonly ScorePoint[], after: readonly ScorePoint[], b: WindowStat, a: WindowStat, maxDrop: number): string | undefined {
   if (b.passRate - a.passRate > maxDrop && significantDrop(passes(before), passes(after), LOOK_Z)) return `The pass rate fell from ${percent(b.passRate)} to ${percent(a.passRate)} over ${a.runs} runs.`;
   if (binary(before) && binary(after)) return undefined;
-  const gate = trajectoryGate([...before, ...after], { window: GATE_WINDOW, z: LOOK_Z });
-  if (b.mean - a.mean > maxDrop && gate.state === 'regression') return `The mean score fell from ${b.mean.toFixed(2)} to ${a.mean.toFixed(2)} over ${a.runs} runs.`;
+  const gate = trajectoryGate([...before, ...after], { window: GATE_WINDOW, drop: maxDrop, z: LOOK_Z });
+  if (b.mean - a.mean > maxDrop && gate.state === 'regression') return `The mean score fell from ${b.mean.toFixed(2)} to ${gate.mean.toFixed(2)} over the newest ${GATE_WINDOW} runs.`;
   return undefined;
 }
 
 /** Compares the first runs after an apply with the last runs before it, in up to three looks of `window` runs, at a per-look z of 2.1 that keeps the overall false rollback rate under one-sided 5%. */
 export function judgeApplied(before: readonly ScorePoint[], after: readonly ScorePoint[], settings: MonitorSettings): MonitorJudgement {
-  if (after.length < settings.minRuns || before.length < settings.minRuns) return { verdict: 'wait' };
+  const minRuns = Math.max(settings.minRuns, settings.window);
+  if (after.length < minRuns || before.length < minRuns) return { verdict: 'wait' };
   const looks = Math.min(LOOKS, Math.floor(after.length / settings.window));
-  const size = looks >= 1 ? looks * settings.window : after.length;
+  const size = looks * settings.window;
   const later = after.slice(0, size);
   const earlier = before.slice(-size);
   const b = windowSummary(earlier);
@@ -69,21 +76,28 @@ export function judgeApplied(before: readonly ScorePoint[], after: readonly Scor
 
 interface MonitorState {
   cooldownUntil?: string;
-  monitor?: { revision: string; at: string; verdict: MonitorVerdict };
+  monitor?: { revision: string; applySeq: number; at: string; verdict: MonitorVerdict };
   [key: string]: unknown;
 }
 
 function readState(dir: string): MonitorState {
+  const file = path.join(dir, STATE_FILE);
+  let text: string;
   try {
-    const parsed: unknown = JSON.parse(readFileSync(path.join(dir, STATE_FILE), 'utf8'));
-    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed) ? (parsed as MonitorState) : {};
-  } catch {
-    return {};
+    text = readFileSync(file, 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
+    throw error;
   }
+  const parsed: unknown = JSON.parse(text);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new ConfigurationError(`${file} is not a JSON object; fix or delete it before the monitor runs.`, 'state', 'LOUSHO_CONFIG_INVALID');
+  return parsed as MonitorState;
 }
 
 async function writeState(dir: string, change: Partial<MonitorState>): Promise<void> {
-  await writeFileAtomic(path.join(dir, STATE_FILE), `${JSON.stringify({ ...readState(dir), ...change }, null, 2)}\n`);
+  await withFileLock(path.join(dir, STATE_LOCK), async () => {
+    await writeFileAtomic(path.join(dir, STATE_FILE), `${JSON.stringify({ ...readState(dir), ...change }, null, 2)}\n`);
+  });
 }
 
 function lastApply(dir: string, current: string): AuditEntry | string {
@@ -95,51 +109,67 @@ function lastApply(dir: string, current: string): AuditEntry | string {
   return change;
 }
 
-function seriesAround(db: SqlDatabase, apply: AuditEntry, settings: MonitorSettings, agent: string | undefined): { before: ScorePoint[]; after: ScorePoint[] } {
+function seriesAround(db: SqlDatabase, apply: AuditEntry, settings: MonitorSettings, agent: string): { before: ScorePoint[]; after: ScorePoint[] } {
   const appliedAt = Date.parse(apply.at);
-  const scope = agent === undefined ? {} : { agent };
-  const after = scoreSeries(db, { ...scope, revision: apply.to as string, since: appliedAt, limit: SERIES_LIMIT });
-  const before = scoreSeries(db, { ...scope, revision: apply.from as string, limit: SERIES_LIMIT }).filter((point) => point.at < appliedAt);
-  return { before: before.slice(-LOOKS * settings.window), after };
+  const before = finishedRuns(db, { agent, revision: apply.from, endedBefore: appliedAt, byEnd: true, limit: LOOKS * settings.window }).reverse().map(pointOf);
+  const after = finishedRuns(db, { agent, revision: apply.to, since: appliedAt, byEnd: true, limit: SERIES_LIMIT }).reverse().map(pointOf);
+  return { before, after };
 }
 
 const score = (before: WindowStat, after: WindowStat) => ({ score: { before: before.passRate, after: after.passRate, runs: after.runs } });
 
-async function settle(dir: string, apply: AuditEntry, verdict: MonitorVerdict, now: number, extra: Partial<MonitorState> = {}): Promise<MonitorVerdict> {
-  await writeState(dir, { ...extra, monitor: { revision: apply.to as string, at: new Date(now).toISOString(), verdict } });
+async function settle(dir: string, apply: AuditEntry, verdict: MonitorVerdict, now: number): Promise<MonitorVerdict> {
+  await writeState(dir, { monitor: { revision: apply.to as string, applySeq: apply.seq, at: new Date(now).toISOString(), verdict } });
   return verdict;
 }
 
 async function rollBack(dir: string, apply: AuditEntry, judged: Extract<MonitorJudgement, { verdict: 'regressed' }>, now: number, cooldownHours: number): Promise<MonitorVerdict> {
-  const from = apply.from as string;
-  await rollbackHarness(dir, from, { actor: 'monitor', reason: judged.reason, expectedFrom: apply.to });
-  await appendAudit(dir, { actor: 'monitor', action: 'retire', from: apply.to, to: from, reason: judged.reason, evidence: score(judged.before, judged.after) });
-  const verdict: MonitorVerdict = { state: 'rolled-back', to: from, before: judged.before, after: judged.after, reason: judged.reason };
-  return settle(dir, apply, verdict, now, { cooldownUntil: new Date(now + cooldownHours * HOUR_MS).toISOString() });
+  await writeState(dir, { cooldownUntil: new Date(now + cooldownHours * HOUR_MS).toISOString() });
+  let to: string;
+  try {
+    to = (await rollbackHarness(dir, apply.from as string, { actor: 'monitor', reason: judged.reason, expectedFrom: apply.to })).to;
+  } catch (error) {
+    if (!(error instanceof ConfigurationError)) throw error;
+    await appendAudit(dir, { actor: 'monitor', action: 'guard-fail', from: apply.from, to: apply.to, reason: `${judged.reason} The rollback was refused: ${error.message}`, evidence: score(judged.before, judged.after) });
+    return settle(dir, apply, { state: 'regressed', before: judged.before, after: judged.after, reason: `${judged.reason} The rollback was refused.` }, now);
+  }
+  await appendAudit(dir, { actor: 'monitor', action: 'retire', from: apply.to, to, reason: judged.reason, evidence: score(judged.before, judged.after) });
+  return settle(dir, apply, { state: 'rolled-back', to, before: judged.before, after: judged.after, reason: judged.reason }, now);
 }
 
-async function decide(dir: string, apply: AuditEntry, judged: Exclude<MonitorJudgement, { verdict: 'wait' }>, settings: MonitorSettings, now: number, cooldownHours: number): Promise<MonitorVerdict> {
+async function decide(dir: string, apply: AuditEntry, judged: Exclude<MonitorJudgement, { verdict: 'wait' }>, settings: CheckSettings, now: number): Promise<MonitorVerdict> {
   if (judged.verdict === 'kept') {
     await appendAudit(dir, { actor: 'monitor', action: 'guard-pass', from: apply.from, to: apply.to, reason: `Kept: ${judged.after.runs} runs held the pass rate at ${percent(judged.after.passRate)} against ${percent(judged.before.passRate)}.`, evidence: score(judged.before, judged.after) });
     return settle(dir, apply, { state: 'kept', before: judged.before, after: judged.after }, now);
   }
-  if (settings.autoRollback) return rollBack(dir, apply, judged, now, cooldownHours);
+  if (settings.monitor.autoRollback) return rollBack(dir, apply, judged, now, settings.cooldownHours);
   await appendAudit(dir, { actor: 'monitor', action: 'guard-fail', from: apply.from, to: apply.to, reason: `${judged.reason} Automatic rollback is off.`, evidence: score(judged.before, judged.after) });
   return settle(dir, apply, { state: 'regressed', before: judged.before, after: judged.after, reason: judged.reason }, now);
 }
 
-/** Compares runs under the current revision with the runs before it was applied, and rolls back on a regression. */
-export async function checkApplied(db: SqlDatabase, dir: string, settings: MonitorSettings, options: { now?: number; cooldownHours?: number; agent?: string } = {}): Promise<MonitorVerdict> {
-  const now = options.now ?? Date.now();
-  const current = currentRevision(dir);
-  const apply = lastApply(dir, current);
+function unverifiedReason(after: number, before: number, settings: MonitorSettings): string {
+  const minRuns = Math.max(settings.minRuns, settings.window);
+  if (after < minRuns) return `Kept unverified: ${after} runs after ${settings.giveUpDays} days, fewer than the ${minRuns} the monitor needs.`;
+  if (before < minRuns) return `Kept unverified: the revision before it has only ${before} runs to compare with.`;
+  return `Kept unverified: after ${settings.giveUpDays} days the ${after} runs neither held nor clearly fell.`;
+}
+
+async function check(db: SqlDatabase, dir: string, settings: CheckSettings, now: number, agent: string): Promise<MonitorVerdict> {
+  const apply = lastApply(dir, currentRevision(dir));
   if (typeof apply === 'string') return { state: 'idle', reason: apply };
   const stored = readState(dir).monitor;
-  if (stored?.revision === current && FINAL.includes(stored.verdict.state)) return stored.verdict;
-  const { before, after } = seriesAround(db, apply, settings, options.agent);
-  const judged = judgeApplied(before, after, settings);
-  if (judged.verdict !== 'wait') return decide(dir, apply, judged, settings, now, options.cooldownHours ?? 24);
-  if (now - Date.parse(apply.at) < settings.giveUpDays * DAY_MS) return { state: 'pending', runs: after.length, baselineRuns: before.length };
-  await appendAudit(dir, { actor: 'monitor', action: 'unverified', from: apply.from, to: apply.to, reason: `Kept unverified: ${after.length} runs after ${settings.giveUpDays} days, fewer than the ${settings.minRuns} the monitor needs.` });
-  return settle(dir, apply, { state: 'kept-unverified', runs: after.length }, now);
+  if (stored?.applySeq === apply.seq && FINAL.includes(stored.verdict.state)) return stored.verdict;
+  const { before, after } = seriesAround(db, apply, settings.monitor, agent);
+  const judged = judgeApplied(before, after, settings.monitor);
+  if (judged.verdict !== 'wait') return decide(dir, apply, judged, settings, now);
+  if (now - Date.parse(apply.at) < settings.monitor.giveUpDays * DAY_MS) return { state: 'pending', runs: after.length, baselineRuns: before.length };
+  const reason = unverifiedReason(after.length, before.length, settings.monitor);
+  await appendAudit(dir, { actor: 'monitor', action: 'unverified', from: apply.from, to: apply.to, reason });
+  return settle(dir, apply, { state: 'kept-unverified', runs: after.length, baselineRuns: before.length, reason }, now);
+}
+
+/** Compares runs of `agent` (its id or registered name) under the current revision with its runs before the apply, and rolls back on a regression. */
+export async function checkApplied(db: SqlDatabase, dir: string, settings: Pick<ImproveSettings, 'monitor' | 'cooldownHours'>, options: { agent: string; now?: number }): Promise<MonitorVerdict> {
+  mkdirSync(path.join(dir, '.lousho'), { recursive: true });
+  return withFileLock(path.join(dir, MONITOR_LOCK), () => check(db, dir, settings, options.now ?? Date.now(), options.agent));
 }

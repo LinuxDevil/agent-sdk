@@ -322,10 +322,9 @@ export interface CaseVerdict {
 }
 
 // @public
-export function checkApplied(db: SqlDatabase, dir: string, settings: MonitorSettings, options?: {
+export function checkApplied(db: SqlDatabase, dir: string, settings: Pick<ImproveSettings, 'monitor' | 'cooldownHours'>, options: {
+    agent: string;
     now?: number;
-    cooldownHours?: number;
-    agent?: string;
 }): Promise<MonitorVerdict>;
 
 // @public
@@ -885,9 +884,6 @@ type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // @public
 type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexual-minors' | 'violence' | 'illicit';
-
-// @public (undocumented)
-type MonitorSettings = ImproveSettings['monitor'];
 
 // @public
 export interface MonitorVerdict {
