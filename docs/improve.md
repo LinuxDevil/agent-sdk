@@ -112,3 +112,5 @@ or replay one the gate rejected.
   them as data, and edits that add text that looks like prompt injection are
   rejected, but heuristics can be beaten. That's one reason a person reviews every
   proposal.
+- **Tool results are marked as untrusted** in what the editors read, and a forged
+  closing marker is removed.
