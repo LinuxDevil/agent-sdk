@@ -468,6 +468,12 @@ describe('improveAgent', () => {
     expect(result.failedChecks).toEqual(['a', 'b']);
   });
 
+  it("adds the failed checks of an editor's candidate runs, which the composer reads", async () => {
+    const probe: ImproveOptions['probe'] = async (harness) => ({ ...run(false), failure: harness.instructions.includes('forbidden') ? 'c' : 'a' });
+    const result = await improveAgent(options({ probe, turns: [...edit(FIX), ...noEdit, ...noEdit] }));
+    expect(result.failedChecks).toEqual(['a', 'c']);
+  });
+
   it('leaves failed checks out when no run named one', async () => {
     const result = await improveAgent(options({ turns: [...noEdit, ...noEdit, ...noEdit] }));
     expect(result).not.toHaveProperty('failedChecks');

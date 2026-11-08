@@ -20,19 +20,20 @@ function injectionFlags(added: readonly string[]): string[] {
   return signals.length > 0 ? [`Adds text that looks like prompt injection (${signals.join(', ')}).`] : [];
 }
 
-function unnamedSkills(result: ImproveResult, diff: string): string[] {
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const namesWord = (text: string, name: string) => new RegExp(`(^|[^\\w-])${escaped(name)}($|[^\\w-])`, 'i').test(text);
+
+function unnamedSkills(result: ImproveResult, added: readonly string[]): string[] {
   const harness = result.harness;
   if (!harness) return [];
-  const instructions = harness.instructions.toLowerCase();
   return Object.keys(harness.skills)
-    .filter((name) => diff.includes(`skills/${name}/SKILL.md`) && diff.includes(`+ name: ${name}`) && !instructions.includes(name.toLowerCase()))
+    .filter((name) => added.includes(`name: ${name}`) && !namesWord(harness.instructions, name))
     .map((name) => `Adds skill '${name}', but the instructions never name it.`);
 }
 
 function flags(result: ImproveResult): string {
-  const diff = result.diff ?? '';
-  const added = addedLines(diff);
-  const found = [...quotedChecks(added, result.failedChecks ?? []), ...injectionFlags(added), ...unnamedSkills(result, diff)];
+  const added = addedLines(result.diff ?? '');
+  const found = [...quotedChecks(added, result.failedChecks ?? []), ...injectionFlags(added), ...unnamedSkills(result, added)];
   return found.length > 0 ? found.map((flag) => `- ${flag}`).join('\n') : 'None.';
 }
 
@@ -65,9 +66,15 @@ function cases(verdicts: readonly CaseVerdict[] | undefined): string {
   return [CASES_HEADER, ...verdicts.map(caseRow)].join('\n');
 }
 
+const quoted = (text: string) =>
+  text
+    .split('\n')
+    .map((line) => `> ${line}`)
+    .join('\n');
+
 function editor(stage: ImproveStage): string {
-  const parts = [`### ${stage.label} (${stage.status})`, stage.notes || 'No notes.'];
-  if (stage.error) parts.push(`Error: ${stage.error}`);
+  const parts = [`### ${stage.label} (${stage.status})`, quoted(stage.notes || 'No notes.')];
+  if (stage.error) parts.push(quoted(`Error: ${stage.error}`));
   return parts.join('\n\n');
 }
 

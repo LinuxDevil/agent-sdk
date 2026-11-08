@@ -86,6 +86,7 @@ export async function improveAgent(options: ImproveOptions): Promise<ImproveResu
     if (needsNoEdit(base, options.alwaysPropose)) return finish({ outcome: 'no-failures', reason: 'Every case passed, so no editor ran.' });
     checks = failedChecks(baseRuns);
     const stages = await runStages(run, options, baseRuns);
+    checks = failedChecks([...baseRuns, ...stages.invariantRuns, ...stages.domainRuns]);
     return finish(stages.result ?? (await judgeStages(run, options, stages)));
   } catch (error) {
     if (error instanceof StopRun) return finish({ outcome: error.outcome, reason: error.message });

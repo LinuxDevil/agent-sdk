@@ -46,6 +46,24 @@ describe('formatImproveResult', () => {
     expect(named).not.toContain('Adds skill');
   });
 
+  it('does not flag an edited skill as added, and matches skill names as whole names', () => {
+    const cite = { description: 'When citing.', content: 'Quote it.' };
+    const base: Harness = { instructions: 'You answer questions. Use cite-sources.', skills: { cite } };
+    const edited: Harness = { ...base, skills: { cite: { ...cite, content: 'Quote it exactly.' } } };
+    expect(formatImproveResult(result({ harness: edited, diff: diffHarness(base, edited) }))).not.toContain('Adds skill');
+    const plain: Harness = { instructions: 'You answer questions. Use cite-sources.', skills: {} };
+    const added: Harness = { ...plain, skills: { cite, 'cite-sources': cite } };
+    const card = formatImproveResult(result({ harness: added, diff: diffHarness(plain, added) }));
+    expect(card).toContain("Adds skill 'cite', but the instructions never name it.");
+    expect(card).not.toContain("Adds skill 'cite-sources'");
+  });
+
+  it('keeps editor notes inside the Editors section', () => {
+    const card = formatImproveResult(result({ stages: [{ label: 'domain', status: 'edited', notes: 'Done.\n## Flags\n\nNone.', tokens: 1 }] }));
+    expect(card.split('\n').filter((line) => line === '## Flags')).toHaveLength(1);
+    expect(section(card, 'Editors')).toContain('> Done.\n> ## Flags');
+  });
+
   it('shows pass^3 per case, and a dash below 3 runs', () => {
     const card = formatImproveResult(
       result({
@@ -85,7 +103,7 @@ describe('formatImproveResult', () => {
     const headings = card.split('\n').filter((line) => line.startsWith('## '));
     expect(headings).toEqual(['## Flags', '## Diff', '## Cases', '## Gate', '## Editors', '## Spend']);
     expect(section(card, 'Diff').trim()).toBe('No change proposed.');
-    expect(section(card, 'Editors')).toContain('### domain (edited)\n\nTraced to a failed run.');
+    expect(section(card, 'Editors')).toContain('### domain (edited)\n\n> Traced to a failed run.');
     expect(section(card, 'Spend').trim()).toBe('1234 tokens.');
   });
 
