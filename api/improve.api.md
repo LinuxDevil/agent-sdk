@@ -13,6 +13,9 @@ export function addEntry(dir: string, entry: Omit<LibraryEntry, 'id' | 'at' | 's
 };
 
 // @public
+export function addToCorpus(dir: string, cases: readonly CorpusCase[], maxCases: number): Promise<CorpusCase[]>;
+
+// @public
 export function admitProtectedCases(options: {
     harness: Harness;
     cases: readonly CapturedCase[];
@@ -359,6 +362,17 @@ interface ContextClearedEvent extends AgentEventBase<'context.cleared'> {
     messagesCleared: number;
     // (undocumented)
     sessionId: string;
+}
+
+// @public
+export interface CorpusCase {
+    addedAt: string;
+    baseline: CaseCount;
+    id: string;
+    input: string;
+    origin: 'protected' | 'fixed';
+    revision: string;
+    traceId: string;
 }
 
 // @public
@@ -1003,6 +1017,9 @@ export function readAgentHarness(dir: string): Harness;
 
 // @public
 export function readAudit(dir: string): AuditEntry[];
+
+// @public
+export function readCorpus(dir: string): CorpusCase[];
 
 // @public
 interface ReasoningBlock {
