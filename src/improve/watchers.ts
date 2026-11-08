@@ -20,11 +20,16 @@ function alive(pid: number): boolean {
   }
 }
 
+function isEntry(item: unknown): item is WatcherEntry {
+  const entry = item as Partial<WatcherEntry> | null;
+  return [entry?.agent, entry?.dir, entry?.owner].every((value) => typeof value === 'string');
+}
+
 function readEntries(file: string): WatcherEntry[] {
   try {
     const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
     const list = (parsed as { watchers?: unknown } | null)?.watchers;
-    return Array.isArray(list) ? list.filter((item): item is WatcherEntry => typeof item?.agent === 'string' && typeof item?.dir === 'string' && typeof item?.owner === 'string') : [];
+    return Array.isArray(list) ? list.filter(isEntry) : [];
   } catch {
     return [];
   }
