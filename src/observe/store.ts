@@ -1283,20 +1283,21 @@ const REVISION_WHERE = `AND (? IS NULL OR (instr(o.attrs, ?) > 0 AND ${ROOT_REVI
 const ROOTS_BY_AGENT_ID = `SELECT o.obs_id, o.trace_id, o.start FROM observations o WHERE ${ROOTS_WHERE}AND o.agent_id = ? ${REVISION_WHERE}`;
 const ROOTS_BY_AGENT =
   `SELECT o.obs_id, o.trace_id, o.start FROM observations o LEFT JOIN agents a ON a.agent_id = o.agent_id WHERE ${ROOTS_WHERE}` +
-  `AND (? = '' OR o.agent_id = ? OR a.name = ?) ${REVISION_WHERE}`;
+  `AND (? = '' OR o.agent_id = ? OR a.name = ?) AND o.end < ? ${REVISION_WHERE}`;
+const ROOTS_BY_AGENT_ENDED = ROOTS_BY_AGENT.replace('ORDER BY o.start DESC', 'ORDER BY o.end DESC');
 const ROOT_REVISIONS = `SELECT o.obs_id, ${ROOT_REVISION} AS revision FROM observations o WHERE o.obs_id IN (SELECT value FROM json_each(?))`;
 
 const ONLINE_MEANS =
   "SELECT trace_id, AVG(value) AS mean FROM scores WHERE trace_id IN (SELECT value FROM json_each(?)) AND source = 'online' AND value IS NOT NULL GROUP BY trace_id";
 
-type RunFilter = { revision?: string; agent?: string; agentId?: string; since?: number; limit: number };
+type RunFilter = { revision?: string; agent?: string; agentId?: string; since?: number; endedBefore?: number; byEnd?: boolean; limit: number };
 
 function rootRows(db: SqlDatabase, filter: RunFilter): SqlRow[] {
   const revision = filter.revision ?? null;
   const tail = [revision, revision, revision, filter.limit];
   if (filter.agentId !== undefined) return db.prepare(ROOTS_BY_AGENT_ID).all(filter.since ?? 0, filter.agentId, ...tail);
   const agent = filter.agent ?? '';
-  return db.prepare(ROOTS_BY_AGENT).all(filter.since ?? 0, agent, agent, agent, ...tail);
+  return db.prepare(filter.byEnd === true ? ROOTS_BY_AGENT_ENDED : ROOTS_BY_AGENT).all(filter.since ?? 0, agent, agent, agent, filter.endedBefore ?? Number.MAX_SAFE_INTEGER, ...tail);
 }
 
 const ROOTS_AFTER = `SELECT COUNT(*) AS n FROM observations o WHERE ${ROOTS_WHERE.replace('o.start >= ?', 'o.start > ?')}AND o.agent_id = ?`;

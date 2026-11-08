@@ -1,5 +1,5 @@
 import type { SqlDatabase } from '../storage/sqlite/driver';
-import { finishedRuns } from './store';
+import { finishedRuns, type RevisionRun } from './store';
 
 /** One run's value in the series: the mean of its online scores, or 0 when it failed and 1 when it passed with no score. */
 export interface ScorePoint {
@@ -65,7 +65,12 @@ export function scoreSeries(db: SqlDatabase, filter: { agent?: string; revision?
   const { agent, ...rest } = filter;
   return finishedRuns(db, { ...rest, ...(agent !== undefined && { agentId: agent }), limit: filter.limit ?? SERIES_DEFAULT_LIMIT })
     .reverse()
-    .map((run) => ({ traceId: run.traceId, at: run.startedAt, ...(run.revision !== undefined && { revision: run.revision }), value: run.score ?? (run.failed ? 0 : 1) }));
+    .map(pointOf);
+}
+
+/** A finished run as a point of the series. */
+export function pointOf(run: RevisionRun & { revision?: string }): ScorePoint {
+  return { traceId: run.traceId, at: run.startedAt, ...(run.revision !== undefined && { revision: run.revision }), value: run.score ?? (run.failed ? 0 : 1) };
 }
 
 const meanOf = (values: readonly number[]): number => (values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length);
