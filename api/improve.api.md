@@ -473,6 +473,34 @@ interface GenerateResult {
 }
 
 // @public
+export function guardCorpus(dir: string, options: GuardCorpusOptions): Promise<GuardCorpusResult>;
+
+// @public
+export interface GuardCorpusOptions {
+    firstRepeat?: number;
+    probe: ImproveOptions['probe'];
+    rollback: boolean;
+    runs?: number;
+    signal?: AbortSignal;
+}
+
+// @public
+export interface GuardCorpusResult {
+    cases: GuardedCase[];
+    passed: boolean;
+    reason: string;
+    revision: string;
+    rolledBackTo?: string;
+    runs: number;
+    tokens: number;
+}
+
+// @public
+export type GuardedCase = CaseVerdict & {
+    class: 'regressed' | 'improved' | 'unchanged' | 'inconclusive';
+};
+
+// @public
 interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote'>, GuardrailTrip {
 }
 

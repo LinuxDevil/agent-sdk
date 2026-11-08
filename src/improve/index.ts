@@ -25,3 +25,5 @@ export { approvePending, listPending, rejectPending, savePending } from './pendi
 export type { PendingProposal } from './pending';
 export { addToCorpus, readCorpus } from './corpus';
 export type { CorpusCase } from './corpus';
+export { guardCorpus } from './corpusGuard';
+export type { GuardCorpusOptions, GuardCorpusResult, GuardedCase } from './corpusGuard';
