@@ -183,6 +183,9 @@ interface ApprovalSignIn {
 }
 
 // @public
+export function approvePending(dir: string, id: string, approvedBy: string): Promise<ApplyResult>;
+
+// @public
 export interface AuditEntry {
     action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'pause' | 'resume' | 'canary-start' | 'canary-end';
     actor: 'gate' | 'canary' | 'monitor' | 'guard' | 'scheduler' | `person:${string}`;
@@ -685,6 +688,46 @@ export interface ImproveResult {
 }
 
 // @public
+export interface ImproveSettings {
+    approval: 'auto' | 'manual';
+    budget: {
+        maxTokensPerCycle?: number;
+        maxTokensPerDay: number;
+        maxCyclesPerDay: number;
+        maxAppliesPerDay: number;
+    };
+    canary: {
+        replayRuns: number;
+        traffic?: {
+            share: number;
+            sessions: number;
+        };
+    };
+    cooldownHours: number;
+    enabled: boolean;
+    guard: {
+        runs: number;
+        everyHours: number;
+        maxCases: number;
+    };
+    library: {
+        enabled: boolean;
+        domain?: string;
+    };
+    monitor: {
+        minRuns: number;
+        window: number;
+        maxDrop: number;
+        autoRollback: boolean;
+        giveUpDays: number;
+    };
+    trigger: {
+        minNewFailures: number;
+        requireRecurring: boolean;
+    };
+}
+
+// @public
 export interface ImproveStage {
     error?: string;
     label: GateVerdict['label'];
@@ -750,6 +793,9 @@ export function libraryHome(agentDir: string, domain?: string): {
 };
 
 // @public
+export function listPending(dir: string): PendingProposal[];
+
+// @public
 export function listRevisions(dir: string): HarnessRevision[];
 
 // @public
@@ -763,6 +809,9 @@ interface LLMProvider {
     supportsStreaming(model: string): boolean;
     supportsTools(model: string): boolean;
 }
+
+// @public
+export function loadImproveSettings(dir: string, overrides?: Partial<Pick<ImproveSettings, 'approval'>>, env?: NodeJS.ProcessEnv): ImproveSettings;
 
 // @public (undocumented)
 type MaybePromise<T> = T | Promise<T>;
@@ -791,6 +840,19 @@ type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexu
 // @public
 interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
     object: unknown;
+}
+
+// @public
+export interface PendingProposal {
+    base: Harness;
+    card: string;
+    createdAt: string;
+    cycle?: string;
+    failure?: string;
+    id: string;
+    maxAlwaysOnChars?: number;
+    result: ImproveResult;
+    staleAt?: string;
 }
 
 // @public
@@ -1010,6 +1072,9 @@ export function reflect(options: {
 }>;
 
 // @public
+export function rejectPending(dir: string, id: string, by: string, reason: string): Promise<AuditEntry>;
+
+// @public
 export function renderTranscript(messages: readonly Message[], options?: {
     maxResultChars?: number;
 }): string;
@@ -1059,6 +1124,15 @@ interface RunStartEvent extends AgentEventBase<'run.start'> {
     // (undocumented)
     agentName: string;
 }
+
+// @public
+export function savePending(dir: string, input: {
+    result: ImproveResult;
+    base: Harness;
+    card: string;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+}): Promise<PendingProposal>;
 
 // @public
 interface SchemaIssue {

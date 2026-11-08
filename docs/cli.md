@@ -39,7 +39,7 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
-lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]
+lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual]
 lousho --version
 ```
 
@@ -414,6 +414,14 @@ and apply what you accept by hand.
   `--check`, if there is one. It's evidence only: it never counts as a run and
   never protects a case, and a fork you `--protect` is left out. See
   [Recovery forks as evidence](./improve.md#recovery-forks-as-evidence).
+- `--approval auto|manual` sets the approval mode, over the
+  `LOUSHO_IMPROVE_APPROVAL` variable, which wins over `"approval"` in
+  `improve.json` beside the agent. The default is `auto`. In `manual` mode an
+  edit that quotes a failed check word for word is kept and flagged on the card
+  for the person who approves it; in `auto` mode it is sent back to the editor
+  once and then dropped. Without `--approval`, an `improve.json` that doesn't
+  validate stops the run. Applying proposals from this command arrives with the
+  self-healing cycle.
 
 Before the first run it prints how many runs it will make at least, and the
 token budget if any. Every run and every editor call is billed to your models.
@@ -451,5 +459,54 @@ npx lousho improve audit ./my-agent --verify
   `--verify` checks the hash chain and exits 1 at the first edited, removed or
   truncated line.
 
-A directory literally named `revisions`, `rollback` or `audit` must be passed
-as `./revisions` and so on.
+A directory literally named `revisions`, `rollback`, `audit`, `pending`,
+`approve` or `reject` must be passed as `./revisions` and so on.
+
+### Pending proposals (manual mode)
+
+In manual mode a proposal that passed the gate waits in
+`.lousho/proposals/<id>.json` until a person decides:
+
+```bash
+npx lousho improve pending ./my-agent
+npx lousho improve approve ./my-agent 3f9c0a1b2d4e --by ali
+npx lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
+```
+
+- `pending <dir> [--show <id>] [--json]` lists the queue, newest first, marking
+  stale and refused entries. The id is the first 12 characters of the proposed
+  harness's hash, and a file whose content doesn't match its id is left out.
+  `--show <id>` prints that proposal's review card.
+- `approve <dir> <id> --by <name>` applies the proposal through
+  `applyProposal()` as that person's approval and removes it from the queue. A
+  proposal whose agent directory changed since it was made is refused and
+  marked stale; run improve again. Any other refusal is recorded on the entry
+  and shown by `pending`.
+- `reject <dir> <id> --by <name> [--reason text]` records a `reject` audit entry
+  and moves the file to `.lousho/proposals/rejected/`. A rejected proposal is
+  never queued again.
+
+### `improve.json`
+
+Self-healing settings live in `improve.json` beside the agent. Every key is
+optional, and an unknown key or a bad value is an error
+(`LOUSHO_CONFIG_INVALID`):
+
+```json
+{
+  "approval": "auto",
+  "budget": { "maxTokensPerDay": 2000000, "maxCyclesPerDay": 4, "maxAppliesPerDay": 1 },
+  "trigger": { "minNewFailures": 3, "requireRecurring": true },
+  "canary": { "replayRuns": 6 },
+  "monitor": { "minRuns": 20, "window": 20, "maxDrop": 0.05, "autoRollback": true, "giveUpDays": 7 },
+  "guard": { "runs": 3, "everyHours": 24, "maxCases": 30 },
+  "cooldownHours": 24,
+  "library": { "enabled": true }
+}
+```
+
+These are the defaults. Counts are whole numbers of 1 or more, and `maxDrop` is
+between 0 and 1. `requireRecurring` defaults to `false` in manual mode.
+`"enabled": false` stops the loop for this agent. `budget.maxTokensPerCycle`,
+`canary.traffic` (`share` up to 0.25, `sessions` up to 50) and `library.domain`
+are unset unless you set them. `loadImproveSettings()` reads the file.

@@ -24,6 +24,7 @@ import {
 } from '../improve';
 import { scoreCase } from '../improve/cases';
 import { recordedTurns } from '../improve/recoveries';
+import { loadImproveSettings, type ImproveSettings } from '../improve/settings';
 import { openDb } from '../observe/store';
 import type { AgentInput, LLMProvider } from '../providers';
 import { defineSkill } from '../skills/defineSkill';
@@ -34,7 +35,7 @@ import { isImproveAdmin, runImproveAdmin } from './improveAdmin';
 import { dbPathOf, resolveAgent, sinceMs } from './observe';
 
 const USAGE =
-  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]\n       lousho improve revisions|rollback|audit <agent-dir> ...';
+  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual]\n       lousho improve revisions|rollback|audit|pending|approve|reject <agent-dir> ...';
 
 const HELP = `${USAGE}
 
@@ -67,12 +68,18 @@ Options:
                             only: it never counts as a run and never protects a case
   --out file                also write the proposal to this new file: the review card, or the
                             JSON result for a .json path
+  --approval auto|manual    the approval mode, over LOUSHO_IMPROVE_APPROVAL and improve.json
+                            (default auto). Manual keeps an edit that quotes a failed check
+                            and flags it on the card for the person who approves it
   -h, --help                show this help
 
-Revisions, rollback and the audit log (run one with --help for its flags):
+Revisions, rollback, the audit log and pending proposals (run one with --help for its flags):
   lousho improve revisions <agent-dir> [--json]
   lousho improve rollback <agent-dir> --by <name> [--to <revision>] [--reason text]
   lousho improve audit <agent-dir> [--verify] [--json]
+  lousho improve pending <agent-dir> [--json]
+  lousho improve approve <agent-dir> <id> --by <name>
+  lousho improve reject <agent-dir> <id> --by <name> [--reason text]
 
 See docs/improve.md.`;
 
@@ -92,6 +99,7 @@ const SPEC: CommandSpec = {
     out: { type: 'string' },
     'max-tokens': { type: 'string' },
     'with-recoveries': { type: 'boolean' },
+    approval: { type: 'string' },
   },
 };
 
@@ -109,6 +117,8 @@ export interface ImproveArgs {
   out?: string;
   maxTokens?: number;
   withRecoveries?: boolean;
+  /** The approval mode from `--approval`. */
+  approval?: ImproveSettings['approval'];
   help?: boolean;
 }
 
@@ -128,6 +138,12 @@ function maxTokensOf(text: string | undefined): number | undefined {
   const tokens = Number(text);
   if (!/^\d+$/.test(text) || !Number.isSafeInteger(tokens) || tokens < 1) throw usageError(SPEC, `--max-tokens must be a positive integer, not '${text}'.`);
   return tokens;
+}
+
+function approvalOf(text: string | undefined): Pick<ImproveArgs, 'approval'> {
+  if (text === undefined) return {};
+  if (text !== 'auto' && text !== 'manual') throw usageError(SPEC, `--approval must be 'auto' or 'manual', not '${text}'.`);
+  return { approval: text };
 }
 
 /** Parses the arguments after `improve`; throws `LOUSHO_CONFIG_INVALID` for a missing path or `--check`, an unknown flag, a bad `--since` or a bad `--max-tokens`. */
@@ -152,6 +168,7 @@ export function parseImproveArgs(args: string[]): ImproveArgs {
     out: stringValue(values.out),
     maxTokens: maxTokensOf(stringValue(values['max-tokens'])),
     withRecoveries: values['with-recoveries'] === true,
+    ...approvalOf(stringValue(values.approval)),
   };
 }
 
@@ -320,6 +337,8 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
   const config = await loadConfig(target);
   if (args.out !== undefined) assertOutUsable(args.out, target, config);
   const harness = baseHarness(config);
+  const approval = args.approval ?? loadImproveSettings(target.kind === 'dir' ? target.path : path.dirname(target.path)).approval;
+  const quotedChecks = approval === 'manual' ? 'flag' : 'reject';
   const editor = editorOf(args, config, io);
   const check = await loadCheck(args.check);
   const { failures, passes, decoded } = capture(args, io);
@@ -344,6 +363,7 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
       holdout: admitted.map((c) => c.id),
       probe,
       editor,
+      quotedChecks,
       ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
       ...(recoveries.length > 0 && { recoveries }),
     });

@@ -163,6 +163,12 @@ describe('parseImproveArgs', () => {
     expect(since).toBeLessThanOrEqual(Date.now() - 2 * 3_600_000);
   });
 
+  it('parses --approval and refuses an unknown mode', () => {
+    expect(parseImproveArgs(['agent', '--check', 'c.mjs', '--approval', 'manual']).approval).toBe('manual');
+    expect(parseImproveArgs(['agent', '--check', 'c.mjs']).approval).toBeUndefined();
+    expect(() => parseImproveArgs(['agent', '--check', 'c.mjs', '--approval', 'yolo'])).toThrow(/--approval must be 'auto' or 'manual'/);
+  });
+
   it('needs a path', () => {
     expect(() => parseImproveArgs(['--check', 'c.mjs'])).toThrow(/a path is required/);
   });
