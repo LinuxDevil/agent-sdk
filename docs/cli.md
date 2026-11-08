@@ -18,7 +18,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | `lousho traces [id]` | List the recent runs saved by `fileTraceExporter()` (duration, model and tool calls, tokens, cost), or print one run as a span tree. | [Observability](./observability.md#local-traces) |
 | `lousho build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](./deployment.md) |
 | `lousho studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](./agent-forge.md) |
-| `lousho improve <path> --check <module>` | Experimental. Propose edits to an agent's instructions and skills from failed runs in your local observe database. Prints a review card and applies nothing. | [Below](#lousho-improve) |
+| `lousho improve <path> --check <module>` | Experimental. Run one self-healing cycle on an agent directory: propose edits to its instructions and skills from failed runs in your local observe database, gate them, replay them on fresh runs, and apply (auto mode) or queue (manual mode) one that passes. `--dry-run` prints the review card and applies nothing. | [Below](#lousho-improve) |
 
 Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 `.yml` or `.json`, see [Configuration](./configuration.md#agent-spec-files-agentspec)).
@@ -375,9 +375,17 @@ export default (input, answer) => !answer.includes('I cannot help');
 It takes the failed runs in your local observe database (default
 `~/.lousho/observe.db`, or `--db`), replays each recorded input through the
 agent, scores each answer with your check, and prints the review card from
-`formatImproveResult()`. It never changes the agent: no file in the agent
-directory is written, and there is no flag to apply a proposal. Review the card
-and apply what you accept by hand.
+`formatImproveResult()`. On an agent directory it then runs one self-healing
+cycle with `healOnce()`: only failed runs of the current harness revision count,
+a proposal that passes the gate is replayed on fresh runs (the canary), and in
+auto mode (the default) it is written to `instructions.md` and
+`skills/<name>/SKILL.md`, after which the corpus guard replays the protected
+cases and rolls back on a regression. In manual mode it is queued for
+`lousho improve approve`. Every step is audited, and `improve.json`'s daily caps,
+the cooldown after a rollback and the `.lousho/improve.stop` kill switch apply.
+`--dry-run` keeps the old behaviour: every failed run counts, the card is
+printed, and nothing is written. An agent module, or an agent whose instructions
+don't live in `instructions.md`, always runs dry.
 
 - `<path>` is an agent directory or a `.ts`/`.js` agent module whose
   instructions are plain text. Editors may change only the instructions and

@@ -83,6 +83,8 @@ export interface ImproveOptions {
   maxCostIncrease?: number;
   /** Most steps per editor session (default 30). */
   maxEditorSteps?: number;
+  /** Most milliseconds one editor session may run; a session past it ends the run as an `outage` (default: no limit). */
+  editorTimeoutMs?: number;
   /** Runs the editors even when every case passed, to test whether they rightly change nothing. */
   alwaysPropose?: boolean;
   /** Hooks for the editor sessions, such as a rate-limit delay. */

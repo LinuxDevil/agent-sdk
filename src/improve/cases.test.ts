@@ -82,6 +82,14 @@ describe('casesFromFailures', () => {
     expect(casesFromFailures(db, { agent: 'billing' })).toEqual([]);
     db.close();
   });
+
+  it('keeps only the named traces, and only recurring groups when asked', () => {
+    const db = database();
+    expect(casesFromFailures(db, { traceIds: ['t2'] }).map((c) => c.id)).toEqual(['timeout:t2']);
+    expect(casesFromFailures(db, { recurring: true }).map((c) => c.id).sort()).toEqual(['timeout:t1', 'timeout:t2']);
+    expect(casesFromFailures(db, { traceIds: ['t1'], recurring: true })).toEqual([]);
+    db.close();
+  });
 });
 
 describe('protectedCasesFromPasses', () => {

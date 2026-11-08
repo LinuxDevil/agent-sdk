@@ -346,7 +346,10 @@ npx lousho improve ./my-agent --check ./check.mjs --since 7d --out proposal.md
 It reads cases only from your local observe database, needs a module whose
 default export is your `CaseCheck` (return `failure` to name the check a failed
 answer missed), simulates tools other than loading skills
-unless `--read-only` names them, and prints the review card. It applies nothing.
+unless `--read-only` names them, and prints the review card. On an agent
+directory it runs one self-healing cycle (`healOnce()`): in auto mode a proposal
+that passes the gate and a replay canary is applied and guarded, and in manual
+mode it is queued for approval. `--dry-run` applies nothing.
 `--max-tokens <n>` sets `maxTokens`; it has no default, so without it there is no
 cap. It is checked after each run or editor call, so the last one can go over,
 and a run that hits it ends `budget-exceeded`.

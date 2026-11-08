@@ -23,6 +23,12 @@ export class StopRun extends Error {
   }
 }
 
+function sessionFailure(error: unknown, timedOut: boolean, timeout: number | undefined): unknown {
+  if (timedOut) return new StopRun('outage', `An editor session ran past its ${timeout} ms wall timeout.`);
+  if (error instanceof CompactedLLMProviderError && error.compacted.retryable) return new StopRun('outage', `The editor's provider failed: ${error.message}`);
+  return error;
+}
+
 const notesOf = (text: string) => /<notes>([\s\S]*?)<\/notes>/.exec(text)?.[1]?.trim() ?? text.trim();
 
 interface EditContext {
@@ -128,13 +134,15 @@ export class ImproveRun {
       maxSteps: maxEditorSteps ?? DEFAULT_MAX_EDITOR_STEPS,
       ...(editorHooks && { hooks: [...editorHooks] }),
     });
+    const timeout = this.options.editorTimeoutMs;
+    const timer = timeout === undefined ? undefined : AbortSignal.timeout(timeout);
+    const stop = timer && signal ? AbortSignal.any([signal, timer]) : (timer ?? signal);
     try {
-      const result = await agent.send(input, signal ? { signal } : undefined);
-      signal?.throwIfAborted();
+      const result = await agent.send(input, stop ? { signal: stop } : undefined);
+      stop?.throwIfAborted();
       return { text: result.text ?? '', tokens: result.usage?.totalTokens ?? 0 };
     } catch (error) {
-      if (error instanceof CompactedLLMProviderError && error.compacted.retryable) throw new StopRun('outage', `The editor's provider failed: ${error.message}`);
-      throw error;
+      throw sessionFailure(error, timer?.aborted === true && signal?.aborted !== true, timeout);
     }
   }
 

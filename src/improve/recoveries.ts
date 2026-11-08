@@ -1,5 +1,5 @@
 import { failedTraceIdsFromDb } from '../observe/failures';
-import type { Message } from '../providers';
+import type { AgentInput, Message } from '../providers';
 import type { SqlDatabase, SqlRow } from '../storage/sqlite/driver';
 import { casesFromFailures, type CapturedCase } from './cases';
 import { renderTranscript } from './evidence';
@@ -33,8 +33,26 @@ function turnOf(item: { role?: unknown; parts?: unknown } | null): Turn[] {
   return RECORDED_ROLES.has(role) && content ? [{ role: role as Message['role'], content }] : [];
 }
 
-export function recordedTurns(items: readonly unknown[]): Turn[] {
+function recordedTurns(items: readonly unknown[]): Turn[] {
   return items.flatMap((item) => turnOf(item as { role?: unknown; parts?: unknown } | null));
+}
+
+export function agentInputOf(input: string): AgentInput {
+  let value: unknown;
+  try {
+    value = JSON.parse(input);
+  } catch {
+    return input;
+  }
+  if (typeof value === 'string') return value;
+  const messages = Array.isArray(value) ? recordedTurns(value) : [];
+  if (messages.length === 0) return input;
+  return messages.length === 1 && messages[0].role === 'user' ? messages[0].content : messages;
+}
+
+export function readableInput(input: string): string {
+  const message = agentInputOf(input);
+  return typeof message === 'string' ? message : input;
 }
 
 function recordedMessages(text: unknown, fallback: 'user' | 'assistant'): Turn[] {
@@ -105,8 +123,9 @@ function healOf(db: SqlDatabase, run: Run, failed: ReadonlySet<string>): { trace
 }
 
 /** Turns failed runs whose `.heal` fork from `agent.recover()` then finished with no recorded failure into cases to learn from, each carrying the retry as `recovery` evidence for the editors. */
-export function casesFromRecoveries(db: SqlDatabase, filter: { since?: number; agent?: string; minScore?: number } = {}): CapturedCase[] {
-  const failed = failedTraceIdsFromDb(db, filter);
+export function casesFromRecoveries(db: SqlDatabase, filter: Parameters<typeof casesFromFailures>[1] = {}): CapturedCase[] {
+  const { recurring: _recurring, ...report } = filter;
+  const failed = failedTraceIdsFromDb(db, report);
   const latest = new Map<string, { captured: CapturedCase; start: number; diagnosis: string }>();
   for (const captured of casesFromFailures(db, filter)) {
     const run = runOf(db, captured.traceId);

@@ -23,6 +23,8 @@ function assertOptions(options: ImproveOptions, repeats: number): void {
   const outside = Object.entries(options.library ?? {}).filter(([path, content]) => !LIBRARY_PATH.test(path) || !isLibraryFile(content));
   if (outside.length > 0) throw new ConfigurationError(`improveAgent: library must hold files from libraryFiles, named context/library/<name>.md, not ${outside.map(([path]) => path).join(', ')}.`, 'library');
   assertProposers(options);
+  const timeout = options.editorTimeoutMs;
+  if (timeout !== undefined && (!Number.isInteger(timeout) || timeout <= 0)) throw new ConfigurationError(`improveAgent: editorTimeoutMs must be a positive whole number of milliseconds, got ${timeout}.`, 'editorTimeoutMs');
 }
 
 const LIBRARY_PATH = /^context\/library\/[A-Za-z0-9_-][A-Za-z0-9._-]*\.md$/;
