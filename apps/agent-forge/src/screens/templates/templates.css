@@ -74,18 +74,6 @@
   flex: 1;
   height: 100%;
   padding: var(--space-5);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  transition:
-    border-color var(--dur-fast) var(--ease),
-    box-shadow var(--dur-fast) var(--ease);
-}
-
-.template-card:hover {
-  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
-  box-shadow: var(--shadow);
 }
 
 .template-card:has(.template-card-open:focus-visible) {
@@ -230,10 +218,4 @@
   overflow-wrap: anywhere;
   font: 13px/1.6 var(--font-ui);
   color: var(--text);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .template-card {
-    transition: none;
-  }
 }

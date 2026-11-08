@@ -7,15 +7,15 @@
  * `useAgentList`.
  */
 import { useCallback, useMemo } from 'react';
-import { Bot, CircleAlert, SearchX } from 'lucide-react';
+import { Bot, SearchX } from 'lucide-react';
 import type { AgentListItem } from '../../../shared/wireTypes';
 import { navigate } from '../../router/router';
 import { ScreenHeader } from '../../shell/ScreenHeader';
-import { Card } from '../../ui/Card';
 import { EmptyState } from '../../ui/EmptyState';
 import { FilterBar, type FacetDef } from '../../ui/FilterBar';
 import { Skeleton } from '../../ui/Skeleton';
 import { facet } from '../listFilters';
+import { LoadErrorCard, LoadingGrid } from '../listStates';
 import { agentTabPath } from '../agents/agentTabs';
 import { AgentCard } from './AgentCard';
 import { filterAgents, labelOptions, useAgentListFilter, type AgentListFilter } from './agentListUrl';
@@ -23,8 +23,6 @@ import { NewAgentMenu, StartOptions } from './NewAgentMenu';
 import { useNewAgentActions, type NewAgentActions } from './newAgent';
 import { useAgentList, type AgentListState } from './useAgentList';
 import './agentList.css';
-
-const SKELETON_CARDS = 6;
 
 const plural = (n: number): string => (n === 1 ? 'agent' : 'agents');
 
@@ -41,38 +39,6 @@ function SkeletonCard() {
         </span>
       </span>
     </li>
-  );
-}
-
-/** The first-load shimmer grid: skeleton cards plus one hidden status line. */
-function LoadingGrid() {
-  return (
-    <ul className="agent-grid" aria-label="Agents" aria-busy="true">
-      <li role="status" className="visually-hidden">
-        Loading agents
-      </li>
-      {Array.from({ length: SKELETON_CARDS }, (_, index) => (
-        <SkeletonCard key={index} />
-      ))}
-    </ul>
-  );
-}
-
-/** The error card with Retry (`refresh`). */
-function ErrorCard({ error, onRetry }: { error: string; onRetry(): void }) {
-  return (
-    <Card as="div">
-      <EmptyState
-        icon={CircleAlert}
-        title="Could not load agents"
-        hint={error}
-        action={
-          <button type="button" className="btn" onClick={onRetry}>
-            Retry
-          </button>
-        }
-      />
-    </Card>
   );
 }
 
@@ -116,9 +82,11 @@ interface ListBodyProps {
 /** Exactly one of: error card, loading grid, empty state, no-match state, card grid. */
 function AgentListBody({ list, items, visible, newAgent, onClearFilters, onOpen, onToggle }: ListBodyProps) {
   if (list.error !== undefined && list.items === undefined) {
-    return <ErrorCard error={list.error} onRetry={list.refresh} />;
+    return <LoadErrorCard title="Could not load agents" error={list.error} onRetry={list.refresh} />;
   }
-  if (list.items === undefined) return <LoadingGrid />;
+  if (list.items === undefined) {
+    return <LoadingGrid className="agent-grid" label="Agents" status="Loading agents" skeleton={SkeletonCard} />;
+  }
   if (items.length === 0) {
     return (
       <EmptyState

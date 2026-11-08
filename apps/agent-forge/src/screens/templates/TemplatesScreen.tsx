@@ -6,20 +6,18 @@
  * and the open sheet (`?template=`) live in the hash query.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { CircleAlert, LayoutTemplate } from 'lucide-react';
+import { LayoutTemplate } from 'lucide-react';
 import type { TemplateSummary } from '../../../shared/wireTypes';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { useQueryState } from '../../router/useRoute';
 import { ScreenHeader } from '../../shell/ScreenHeader';
-import { Card } from '../../ui/Card';
 import { EmptyState } from '../../ui/EmptyState';
 import { Skeleton } from '../../ui/Skeleton';
-import { categoryCounts } from './templatesModel';
+import { LoadErrorCard, LoadingGrid } from '../listStates';
+import { categoryCounts, type CategoryCount } from './templatesModel';
 import { TemplateCard } from './TemplateCard';
 import { TemplateSheet } from './TemplateSheet';
 import './templates.css';
-
-const SKELETON_CARDS = 6;
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
@@ -40,38 +38,6 @@ function SkeletonCard() {
   );
 }
 
-/** The first-load shimmer grid: skeleton cards plus one hidden status line. */
-function LoadingGrid() {
-  return (
-    <ul className="templates-grid" aria-label="Templates" aria-busy="true">
-      <li role="status" className="visually-hidden">
-        Loading templates
-      </li>
-      {Array.from({ length: SKELETON_CARDS }, (_, index) => (
-        <SkeletonCard key={index} />
-      ))}
-    </ul>
-  );
-}
-
-/** The error card with Retry (`reload`). */
-function ErrorCard({ error, onRetry }: { error: string; onRetry(): void }) {
-  return (
-    <Card as="div">
-      <EmptyState
-        icon={CircleAlert}
-        title="Could not load templates"
-        hint={error}
-        action={
-          <button type="button" className="btn" onClick={onRetry}>
-            Retry
-          </button>
-        }
-      />
-    </Card>
-  );
-}
-
 /** The loaded grid: one TemplateCard per visible template. */
 function TemplateGrid({ items, onOpen }: { items: TemplateSummary[]; onOpen(id: string): void }) {
   return (
@@ -85,12 +51,10 @@ function TemplateGrid({ items, onOpen }: { items: TemplateSummary[]; onOpen(id: 
   );
 }
 
-export function TemplatesScreen() {
+function useTemplateList() {
   const [items, setItems] = useState<TemplateSummary[] | undefined>();
   const [error, setError] = useState<string | undefined>();
   const [reload, setReload] = useState(0);
-  const [category, setCategory] = useQueryState('category', parseKey, formatKey);
-  const [templateId, setTemplateId] = useQueryState('template', parseKey, formatKey);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +73,78 @@ export function TemplatesScreen() {
     };
   }, [reload]);
 
+  const onRetry = () => setReload((n) => n + 1);
+  return { items, error, onRetry };
+}
+
+function CategoryPills({
+  counts,
+  activeCategory,
+  onSelect,
+}: {
+  counts: CategoryCount[];
+  activeCategory: string;
+  onSelect(category: string): void;
+}) {
+  return (
+    <div className="templates-filter" role="group" aria-label="Category">
+      {counts.map((c) => {
+        const pressed = c.value === undefined ? activeCategory === '' : c.value === activeCategory;
+        return (
+          <button
+            key={c.label}
+            type="button"
+            className="templates-pill"
+            aria-pressed={pressed}
+            onClick={() => onSelect(c.value ?? '')}
+          >
+            {c.label}
+            <span className="templates-pill-count tabular-nums">{c.count}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function TemplatesBody({
+  items,
+  error,
+  visible,
+  onRetry,
+  onOpen,
+}: {
+  items: TemplateSummary[] | undefined;
+  error: string | undefined;
+  visible: TemplateSummary[];
+  onRetry(): void;
+  onOpen(id: string): void;
+}) {
+  if (error !== undefined && items === undefined) {
+    return <LoadErrorCard title="Could not load templates" error={error} onRetry={onRetry} />;
+  }
+  if (items === undefined) {
+    return (
+      <LoadingGrid className="templates-grid" label="Templates" status="Loading templates" skeleton={SkeletonCard} />
+    );
+  }
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        icon={LayoutTemplate}
+        title="No templates found"
+        hint="The SDK ships six templates; check that the Studio server can read the SDK’s templates folder."
+      />
+    );
+  }
+  return <TemplateGrid items={visible} onOpen={onOpen} />;
+}
+
+export function TemplatesScreen() {
+  const { items, error, onRetry } = useTemplateList();
+  const [category, setCategory] = useQueryState('category', parseKey, formatKey);
+  const [templateId, setTemplateId] = useQueryState('template', parseKey, formatKey);
+
   const counts = useMemo(() => (items === undefined ? [] : categoryCounts(items)), [items]);
   // A `?category=` that names no shipped category falls back to All.
   const activeCategory = counts.some((c) => c.value === category) ? category : '';
@@ -120,7 +156,6 @@ export function TemplatesScreen() {
 
   const onOpen = (id: string) => setTemplateId(id);
   const onCloseSheet = () => setTemplateId('');
-  const onRetry = () => setReload((n) => n + 1);
 
   return (
     <>
@@ -130,37 +165,9 @@ export function TemplatesScreen() {
       />
       <div className="templates-screen">
         {items !== undefined && items.length > 0 && (
-          <div className="templates-filter" role="group" aria-label="Category">
-            {counts.map((c) => {
-              const pressed = c.value === undefined ? activeCategory === '' : c.value === activeCategory;
-              return (
-                <button
-                  key={c.label}
-                  type="button"
-                  className="templates-pill"
-                  aria-pressed={pressed}
-                  onClick={() => setCategory(c.value ?? '')}
-                >
-                  {c.label}
-                  <span className="templates-pill-count tabular-nums">{c.count}</span>
-                </button>
-              );
-            })}
-          </div>
+          <CategoryPills counts={counts} activeCategory={activeCategory} onSelect={setCategory} />
         )}
-        {error !== undefined && items === undefined ? (
-          <ErrorCard error={error} onRetry={onRetry} />
-        ) : items === undefined ? (
-          <LoadingGrid />
-        ) : items.length === 0 ? (
-          <EmptyState
-            icon={LayoutTemplate}
-            title="No templates found"
-            hint="The SDK ships six templates; check that the Studio server can read the SDK’s templates folder."
-          />
-        ) : (
-          <TemplateGrid items={visible} onOpen={onOpen} />
-        )}
+        <TemplatesBody items={items} error={error} visible={visible} onRetry={onRetry} onOpen={onOpen} />
         <TemplateSheet
           templateId={templateId === '' ? null : templateId}
           summary={selected}

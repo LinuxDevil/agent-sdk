@@ -241,6 +241,45 @@ describe('TemplatesScreen', () => {
     expect(buttonNamed(document.body, 'Retry')).toBeDefined();
   });
 
+  it('falls back to All for an unknown ?category= and clears the filter from the All pill', async () => {
+    const host = await mountAt('#/templates?category=Nope');
+    expect(pillNamed(host, 'All')!.getAttribute('aria-pressed')).toBe('true');
+    expect(host.querySelectorAll('article.template-card')).toHaveLength(6);
+
+    await act(async () => pillNamed(host, 'Research')!.click());
+    await flush();
+    expect(host.querySelectorAll('article.template-card')).toHaveLength(1);
+
+    await act(async () => pillNamed(host, 'All')!.click());
+    await flush();
+    expect(window.location.hash).toBe('#/templates');
+    expect(host.querySelectorAll('article.template-card')).toHaveLength(6);
+  });
+
+  it('shows the no-requirements note, an unknown id error with the id as title, and Cancel closes the sheet', async () => {
+    api.getTemplate.mockResolvedValueOnce({ ...PR_DETAIL, summary: TEMPLATES[1] } as TemplateDetail);
+    await mountAt('#/templates?template=code-architect');
+    expect(sheet().querySelector('.sheet-title')?.textContent).toBe('Code architect');
+    expect(sheet().querySelector('.template-sheet-note')?.textContent).toBe(
+      'Nothing extra. It runs with your default model.'
+    );
+    expect(sheet().querySelector('.template-requirements')).toBeNull();
+
+    await act(async () => buttonNamed(document.body, 'Cancel')!.click());
+    await flush();
+    expect(window.location.hash).toBe('#/templates');
+
+    api.getTemplate.mockResolvedValueOnce(undefined);
+    window.history.replaceState(null, '', '/#/templates?template=ghost');
+    await act(async () => window.dispatchEvent(new HashChangeEvent('hashchange')));
+    await flush();
+    expect(sheet().querySelector('.sheet-title')?.textContent).toBe('ghost');
+    expect(sheet().querySelector('.sheet-description')).toBeNull();
+    expect(document.body.querySelector('.template-sheet-error[role="alert"]')?.textContent).toBe(
+      "No template 'ghost'."
+    );
+  });
+
   it('retries the detail fetch from the sheet', async () => {
     api.getTemplate.mockRejectedValueOnce(new Error('spec missing'));
     await mountAt('#/templates?template=pr-reviewer');
