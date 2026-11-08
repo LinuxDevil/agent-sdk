@@ -80,7 +80,7 @@ function folderSkill(skillsDir: string, name: string): ReadSkill | undefined {
   const file = path.join(directory, 'SKILL.md');
   if (!isFile(file)) return undefined;
   const skill = parsed({ defaultName: name, file, directory }, readText(file, 'skills'));
-  const extra = readdirSync(directory).some((entry) => entry !== 'SKILL.md' && !JUNK_FILES.has(entry));
+  const extra = readdirSync(directory).some((entry) => entry !== 'SKILL.md' && !JUNK_FILES.has(entry) && !(entry.startsWith('.') && entry.endsWith('.lousho-tmp')));
   return { skill, readOnly: extra || skill.name !== name };
 }
 
