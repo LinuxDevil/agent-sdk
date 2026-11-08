@@ -5,6 +5,21 @@
 ```ts
 
 // @public
+export function admitProtectedCases(options: {
+    harness: Harness;
+    cases: readonly CapturedCase[];
+    probe: ImproveOptions['probe'];
+    runs?: number;
+}): Promise<{
+    admitted: CapturedCase[];
+    refused: {
+        id: string;
+        passed: number;
+        scored: number;
+    }[];
+}>;
+
+// @public
 const AGENT_EVENT_SCHEMA_VERSION: 1;
 
 // @public
@@ -147,10 +162,28 @@ interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetE
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
 
 // @public
+export interface CapturedCase {
+    id: string;
+    input: string;
+    kind: 'failure' | 'protected';
+    traceId: string;
+}
+
+// @public
+export type CaseCheck = (input: string, answer: string) => boolean | null;
+
+// @public
 export interface CaseCount {
     passed: number;
     scored: number;
 }
+
+// @public
+export function casesFromFailures(db: SqlDatabase, filter: {
+    since?: number;
+    agent?: string;
+    minScore?: number;
+}): CapturedCase[];
 
 // @public
 export interface CaseVerdict {
@@ -614,6 +647,14 @@ interface Principal {
 }
 
 // @public
+export function probeCapturedCases(cases: readonly CapturedCase[], runCase: (harness: Harness, input: string) => Promise<{
+    answer: string;
+    transcript: string;
+    tokens: number;
+    ended: string;
+}>, check: CaseCheck): ImproveOptions['probe'];
+
+// @public
 export interface ProbeRun {
     ended: string;
     failure?: string;
@@ -633,6 +674,9 @@ export interface ProbeSummary {
 
 // @public
 type PromptCachingOption = 'auto' | false;
+
+// @public
+export function protectedCasesFromPasses(db: SqlDatabase, traceIds: readonly string[]): CapturedCase[];
 
 // @public
 interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
@@ -762,6 +806,34 @@ interface ServedBy {
     // (undocumented)
     provider: string;
 }
+
+// @public
+interface SqlDatabase {
+    // (undocumented)
+    close(): void;
+    // (undocumented)
+    exec(sql: string): void;
+    // (undocumented)
+    prepare(sql: string): SqlStatement;
+}
+
+// @public
+type SqlRow = Record<string, unknown>;
+
+// @public
+interface SqlStatement {
+    // (undocumented)
+    all(...params: SqlValue[]): SqlRow[];
+    // (undocumented)
+    get(...params: SqlValue[]): SqlRow | undefined;
+    // (undocumented)
+    run(...params: SqlValue[]): {
+        changes: number | bigint;
+    };
+}
+
+// @public
+type SqlValue = string | number | Uint8Array | null;
 
 // @public (undocumented)
 type StandardResult<Output> = {

@@ -99,6 +99,10 @@ or replay one the gate rejected.
 
 `formatImproveResult(result)` turns a result into Markdown for review: the diff, each case before and after with pass^3, the editors' notes, and flags for an edit that quotes a failed check word for word, adds text that looks like prompt injection, or adds a skill the instructions never name.
 
+## Cases from your own traces
+
+`casesFromFailures(db)` turns failed runs in your local trace database into cases. `protectedCasesFromPasses(db, traceIds)` turns good runs into protected cases. You must supply the check that scores an answer, through `probeCapturedCases`. Admit protected cases with `admitProtectedCases` before they gate: only a case that passed 6 of 6 fresh runs can join. Use only your own agents' traces, and keep them local.
+
 ## Safety
 
 - **Your `probe` runs the agent, so it owns side effects.** Add
