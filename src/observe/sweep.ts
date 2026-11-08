@@ -78,7 +78,7 @@ export interface SweepPassOptions {
   errorRateThreshold?: number;
   /** Edge memory for that alert - `agent_id` -> the day bucket already alerted on. */
   errorRateState?: Map<string, number>;
-  /** Edge memory for `agent.score_regression`, per `agent_id`: the revisions already alerted on, when the gate last judged and its streak. Without it the score pass is skipped. */
+  /** Edge memory for `agent.score_regression`, per `agent_id`: the revisions already alerted on, when the gate last judged and its streak. Without it the score pass is skipped; `startStatusSweep` always passes one. */
   scoreRegressionState?: Map<string, ScoreRegressionMemory>;
 }
 
@@ -109,6 +109,10 @@ function judgedRegression(db: SqlDatabase, agentId: string, memory: ScoreRegress
   return memory.streak >= SCORE_STREAK ? { points, gate } : undefined;
 }
 
+function recorded(db: SqlDatabase, agentId: string, revision: string | null): boolean {
+  return db.prepare('SELECT 1 AS hit FROM score_regressions WHERE agent_id = ? AND revision IS ?').get(agentId, revision) !== undefined;
+}
+
 function scoreRegressionAlert(db: SqlDatabase, row: SqlRow, now: number, state: Map<string, ScoreRegressionMemory>): AlertEvent | undefined {
   const agentId = String(row.agent_id);
   const memory = state.get(agentId) ?? { alerted: new Set<string | null>(), streak: 0 };
@@ -117,7 +121,10 @@ function scoreRegressionAlert(db: SqlDatabase, row: SqlRow, now: number, state: 
   if (judged === undefined) return undefined;
   const { points, gate } = judged;
   const revision = points.at(-1)?.revision ?? null;
-  if (memory.alerted.has(revision)) return undefined;
+  if (memory.alerted.has(revision) || recorded(db, agentId, revision)) {
+    memory.alerted.add(revision);
+    return undefined;
+  }
   memory.alerted.add(revision);
   return {
     type: 'agent.score_regression',
@@ -280,7 +287,11 @@ export function sweepAgents(db: SqlDatabase, now: number = Date.now(), options: 
     }
   }
   const regressions = scoreRegressionAlerts(db, now, options.scoreRegressionState);
-  recordRegressions(db, regressions);
+  try {
+    recordRegressions(db, regressions);
+  } catch (error) {
+    console.error('[lousho observe] recording a score regression failed:', error);
+  }
   alerts.push(...regressions);
   return { transitions, alerts };
 }
@@ -343,8 +354,10 @@ function recordRegressions(db: SqlDatabase, alerts: readonly AlertEvent[]): void
 
 export function scoreRegressionsSince(db: SqlDatabase, agent: string, since: number): { at: number; revision: string | null }[] {
   return db
-    .prepare("SELECT at, revision FROM score_regressions WHERE at > ? AND (agent_id = ? OR agent_id IN (SELECT agent_id FROM agents WHERE name = ?)) ORDER BY at")
-    .all(since, agent, agent)
+    .prepare(
+      'SELECT at, revision FROM score_regressions WHERE at > ? AND (agent_id = ? OR (NOT EXISTS (SELECT 1 FROM agents WHERE agent_id = ?) AND agent_id IN (SELECT agent_id FROM agents WHERE name = ?))) ORDER BY at'
+    )
+    .all(since, agent, agent, agent)
     .map((row) => ({ at: Number(row.at), revision: row.revision === null ? null : String(row.revision) }));
 }
 

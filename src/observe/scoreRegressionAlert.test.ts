@@ -172,6 +172,16 @@ describe('the agent.score_regression alert', () => {
     db.close();
   });
 
+  it('records no marker for a steady series', () => {
+    const db = openDb(':memory:');
+    ingestBatch(db, [heartbeat(), ...runs(0, 60, R1, 0.9)]);
+    const sweep = startStatusSweep(db, { intervalMs: 0, now: () => NOW });
+    sweep.run(NOW + 1);
+    sweep.stop();
+    expect(scoreRegressionsSince(db, 'support', 0)).toEqual([]);
+    db.close();
+  });
+
   it('records each regression as a marker a watcher polls, even without an alert sink, and writes nothing else', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'lousho-sweep-'));
     const agentDir = path.join(root, 'support');
@@ -187,7 +197,15 @@ describe('the agent.score_regression alert', () => {
     sweep.run(NOW + 2);
     sweep.stop();
     expect(scoreRegressionsSince(db, 'support', 0)).toEqual([{ at: NOW + 2, revision: R2 }]);
+    expect(scoreRegressionsSince(db, 'uuid-1', 0)).toEqual([{ at: NOW + 2, revision: R2 }]);
     expect(scoreRegressionsSince(db, 'uuid-1', NOW + 2)).toEqual([]);
+    const restarted = startStatusSweep(db, { intervalMs: 0, now: () => NOW });
+    for (let i = 0; i < 4; i++) {
+      ingestBatch(db, runs(50 + i * 10, 10, R2, 0.6));
+      restarted.run(NOW + 10 + i);
+    }
+    restarted.stop();
+    expect(scoreRegressionsSince(db, 'support', 0)).toHaveLength(1);
     expect(readdirSync(agentDir)).toEqual(['instructions.md']);
     expect(readdirSync(root, { recursive: true }).map(String).sort().filter((name) => !name.startsWith('observe.db'))).toEqual(before.filter((name) => !name.startsWith('observe.db')));
     db.close();

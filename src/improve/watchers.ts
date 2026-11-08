@@ -7,7 +7,17 @@ export interface WatcherEntry {
   agent: string;
   dir: string;
   owner: string;
+  pid: number;
   since: string;
+}
+
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
 }
 
 function readEntries(file: string): WatcherEntry[] {
@@ -23,7 +33,8 @@ function readEntries(file: string): WatcherEntry[] {
 async function update(file: string, change: (entries: WatcherEntry[]) => WatcherEntry[]): Promise<void> {
   mkdirSync(path.dirname(file), { recursive: true });
   await withFileLock(`${file}.lock`, async () => {
-    await writeFileAtomic(file, `${JSON.stringify({ watchers: change(readEntries(file)) }, null, 2)}\n`);
+    const live = readEntries(file).filter((item) => !Number.isInteger(item.pid) || alive(item.pid));
+    await writeFileAtomic(file, `${JSON.stringify({ watchers: change(live) }, null, 2)}\n`);
   });
 }
 
@@ -31,8 +42,9 @@ export function readWatchers(file: string): WatcherEntry[] {
   return readEntries(file);
 }
 
-export async function registerWatcher(file: string, entry: Omit<WatcherEntry, 'since'>): Promise<void> {
-  await update(file, (entries) => [...entries.filter((item) => item.owner !== entry.owner), { ...entry, dir: path.resolve(entry.dir), since: new Date().toISOString() }]);
+export async function registerWatcher(file: string, entry: Omit<WatcherEntry, 'since' | 'pid'>): Promise<void> {
+  const dir = path.resolve(entry.dir);
+  await update(file, (entries) => [...entries.filter((item) => item.owner !== entry.owner && !(item.dir === dir && item.agent === entry.agent)), { ...entry, dir, pid: process.pid, since: new Date().toISOString() }]);
 }
 
 export async function unregisterWatcher(file: string, owner: string): Promise<void> {

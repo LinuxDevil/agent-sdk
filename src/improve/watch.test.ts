@@ -19,7 +19,7 @@ import { updateState } from './state';
 import type { Harness } from './types';
 import { isDefinedSchedule } from '../schedules/defineSchedule';
 import { noticeEvent } from './notify';
-import { readWatchers } from './watchers';
+import { readWatchers, registerWatcher } from './watchers';
 import { improveSchedule, watchAgent, watchContext, watchTick, type WatchOptions } from './watch';
 
 vi.mock('./heal', async (original) => {
@@ -293,6 +293,24 @@ describe('the score regression trigger', () => {
     await appendAudit(dir, { actor: 'monitor', action: 'rollback', reason: 'Regressed.' });
     mark(Date.now() + 3, null);
     expect((await watchTick(options(), context)).cycle).toMatchObject({ trigger: 'score', outcome: 'cooldown' });
+  });
+
+  it('a paused tick keeps the marker for the next tick that runs', async () => {
+    const context = watchContext(options());
+    seedFailures(1);
+    mark(Date.now());
+    stop();
+    expect((await watchTick(options(), context)).state).toBe('paused');
+    rmSync(path.join(dir, '.lousho', 'improve.stop'));
+    expect((await watchTick(options(), context)).cycle).toMatchObject({ trigger: 'score', outcome: 'applied' });
+  });
+
+  it('keeps one entry per agent directory and drops a dead watcher', async () => {
+    const registry = path.join(root, 'watchers.json');
+    writeFileSync(registry, JSON.stringify({ watchers: [{ agent: 'old', dir: '/gone', owner: 'x', pid: 2 ** 22 + 12345, since: 'then' }] }));
+    await registerWatcher(registry, { agent: 'support', dir, owner: 'a' });
+    await registerWatcher(registry, { agent: 'support', dir, owner: 'b' });
+    expect(readWatchers(registry).map((entry) => entry.owner)).toEqual(['b']);
   });
 
   it('registers the watcher beside the observe db while it runs', async () => {

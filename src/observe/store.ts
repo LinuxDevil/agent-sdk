@@ -653,6 +653,7 @@ export function pruneBefore(db: SqlDatabase, cutoffMs: number): PruneResult {
     const orphanScores = db
       .prepare('DELETE FROM scores WHERE created_at < ? AND NOT EXISTS (SELECT 1 FROM observations o WHERE o.trace_id = scores.trace_id)')
       .run(cutoffMs);
+    db.prepare('DELETE FROM score_regressions WHERE at < ?').run(cutoffMs);
     const sessions = db
       .prepare(
         `DELETE FROM sessions WHERE status != 'active' AND COALESCE(ended_at, started_at) < ?
