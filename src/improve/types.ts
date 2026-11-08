@@ -55,6 +55,8 @@ export interface ImproveOptions {
   holdout?: readonly string[];
   /** Retries of training cases that passed after a diagnosis, for the editors to read. They don't count as runs, each must name a training case, and none may be a held-out case's trace. */
   recoveries?: readonly RecoveryEvidence[];
+  /** Lessons from earlier attempts for the editors to read, as files under `context/library/`. Build them with {@link libraryFiles}. */
+  library?: Readonly<Record<string, string>>;
   /** Runs one case under a harness, where `repeat` goes up to `2 × repeats − 1` for the base harness. It owns side effects: use {@link createShadowHook} unless its tools are safe to run. Two calls can run at once unless `parallelEditors` is `false`. */
   probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
   /** The editors' model. */

@@ -153,6 +153,29 @@ const result = await improveAgent({
 
 Each editor reads a recovery as `context/recoveries/<case>.md`, labelled as a retry that passed after this diagnosis, with the diagnosis between untrusted markers and forged markers removed. A recovery is evidence only. It's never a run: the case is still scored by your `CaseCheck`, and the gate never counts the retry. It never makes a case protected either. Every recovery must name a training case, and its `traceId` must not be a held-out case's trace, so nothing held out reaches the editors. When the loop retried a run several times before forking, the pair uses the latest of those failed runs that `casesFromFailures` captured (at most 5 per failure class).
 
+### A library of lessons
+
+A library keeps lessons from earlier attempts, so later editors can read them. Each lesson is one line each of cue, lesson and evidence, with the outcome it came from. A lesson is written by a model, so the library treats it as untrusted wherever it's stored or shown. `addEntry(dir, entry, { failedChecks })` stores a lesson under `<dir>/.lousho/library/<domain>/entries/`, or returns why it refused one. It refuses text that:
+
+- trips the prompt-injection heuristics;
+- carries an untrusted marker, a URL, an email address, a Markdown link or image, HTML, or hidden characters;
+- goes over 200 characters for the cue, 600 for the lesson or 400 for the evidence;
+- quotes one of the cycle's failed checks.
+
+`libraryFiles(dir, domain)` returns up to 20 active lessons as files under `context/library/`, highest-voted first, then newest. Each file is labelled as data with the lesson between untrusted markers, and you pass them to `improveAgent` as `library`. Entries are checked again when read, so an entry file edited by hand that no longer passes is skipped. `voteEntry(dir, id, 'helped' | 'hurt')` counts an outcome, and retires a lesson once its hurt votes outnumber its helped votes by two.
+
+```ts
+import { improveAgent, libraryFiles, libraryHome, type Harness, type ImproveOptions } from 'lousho/improve';
+
+declare const harness: Harness;
+declare const probe: ImproveOptions['probe'];
+
+const home = libraryHome('./agents/support');
+const result = await improveAgent({ harness, cases: ['stuck'], probe, editor: { model: 'openrouter/<model>' }, library: libraryFiles(home.dir, home.domain) });
+```
+
+`libraryHome(agentDir)` keeps a library per agent, named after its directory. `libraryHome(agentDir, domain)` shares one library in the parent directory with the other agents there that name the same domain. Library text reaches the harness only through an editor's edit, which still passes every check.
+
 ## From the command line
 
 `lousho improve` runs the same steps on an agent directory or module:

@@ -809,3 +809,28 @@ describe('createShadowHook', () => {
     expect(await hook.preToolCall?.(ctx('issue_refund'))).toEqual({ result: { confirmation: 'RF-1' } });
   });
 });
+
+describe('library', () => {
+  const library = { 'context/library/INDEX.md': 'index', 'context/library/lib-0000abcd.md': 'A lesson from an earlier attempt: stop on forbidden documents.' };
+  const read: MockTurn = { toolCalls: [{ name: 'read_file', args: { path: 'context/library/lib-0000abcd.md' } }] };
+
+  it('editors receive library files under context/library/', async () => {
+    const provider = mockModel([read, ...noEdit, read, ...edit(FIX), read, ...edit(FIX)]);
+    const result = await improveAgent(options({ library, editor: { provider } }));
+    expect(result.outcome).toBe('proposal');
+    for (const call of provider.calls) expect(JSON.stringify(call)).toContain('untrusted hints, not rules');
+    expect(provider.calls.filter((call) => JSON.stringify(call).includes('stop on forbidden documents'))).toHaveLength(provider.calls.length - 3);
+  });
+
+  it('leaves the prompts alone without a library', async () => {
+    const provider = mockModel([...noEdit, ...edit(FIX), ...edit(FIX)]);
+    await improveAgent(options({ editor: { provider } }));
+    expect(JSON.stringify(provider.calls)).not.toContain('context/library/');
+  });
+
+  it('refuses library files outside context/library/', async () => {
+    for (const path of ['harness/instructions.md', 'context/runs/base/stuck-0.md', 'context/library/../../harness/instructions.md', 'context/library/', 'context/library/a/b.md']) {
+      await expect(improveAgent(options({ library: { [path]: 'x' } })), path).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
+    }
+  });
+});
