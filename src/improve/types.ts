@@ -254,7 +254,7 @@ export interface ImproveResult {
   /** The advisory selector's choice, when `select` was set and two or more harnesses passed the gate. */
   selection?: {
     /** The label of the harness kept. */
-    chosen: string;
+    chosen: GateVerdict['label'];
     /** The selector's reason, as plain text, or why it fell back. */
     why: string;
     /** Whether the selector failed or gave no valid choice, so the cheapest harness that passed was kept. */

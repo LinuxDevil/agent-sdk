@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CompactedLLMProviderError } from '../execution/errors';
 import { mockModel, type MockModel, type MockRequest, type MockStaticTurn, type MockTurn } from '../testing';
 import { improveAgent, type Harness, type ImproveOptions, type ProbeRun } from './index';
 import { anonymise, selectionSeed } from './select';
@@ -135,7 +136,9 @@ describe('advisory selector', () => {
     const plain = await improveAgent(options({ select: undefined, editor: { provider: script() } }));
     const off = await improveAgent(options({ select: false, editor: { provider: script() } }));
     expect(off).toEqual(plain);
-    expect(plain.gate).toEqual([{ label: 'compose', passed: true, reason: expect.any(String) }]);
+    expect(plain.reason).toBe('A training case improved by at least 2 in 3 runs, none got worse, and no held-out case got worse. Cost per passing run went from 10 to 12 tokens (noise 0).');
+    expect(plain.harness?.instructions).toBe(LONG);
+    expect(plain.gate).toEqual([{ label: 'compose', passed: true, reason: plain.reason }]);
     expect(plain).not.toHaveProperty('selection');
   });
 
@@ -153,6 +156,52 @@ describe('advisory selector', () => {
     const result = await improveAgent(options({ mode: 'seq', proposers: 2, editor: { provider } }));
     expect(result.harness?.instructions).toBe(LONG);
     expect(result.selection).toMatchObject({ chosen: 'compose-2', fallback: false });
+  });
+
+  it('falls back on a provider outage during selection', async () => {
+    const outage: MockTurn = () => {
+      throw new CompactedLLMProviderError({ error: 'down', category: 'unknown', retryable: true, statusCode: 503 });
+    };
+    const provider = editors({ invariant: noEdit, domain: edit(FIX), compose: edit(LONG), select: [outage] });
+    const result = await improveAgent(options({ editor: { provider } }));
+    expect(result.outcome).toBe('proposal');
+    expect(result.selection).toMatchObject({ chosen: 'domain', fallback: true });
+  });
+
+  it('stops rather than falling back when aborted during selection', async () => {
+    const controller = new AbortController();
+    const abort: MockTurn = () => {
+      controller.abort();
+      return choose('A');
+    };
+    const provider = editors({ invariant: noEdit, domain: edit(FIX), compose: edit(LONG), select: [abort] });
+    await expect(improveAgent(options({ signal: controller.signal, editor: { provider } }))).rejects.toThrow();
+  });
+
+  it('accepts a lower-case choice, and says so when no reason was given', async () => {
+    const labels = ['compose', 'domain'];
+    const provider = editors({ invariant: noEdit, domain: edit(FIX), compose: edit(LONG), select: [`\`\`\`choice\n${idOf('compose', labels).toLowerCase()}\n\`\`\``] });
+    const result = await improveAgent(options({ editor: { provider } }));
+    expect(result.selection).toEqual({ chosen: 'compose', why: 'The selector gave no reason.', fallback: false });
+  });
+
+  it('shows the last assistant answer of a transcript, without tool calls, and leaves out unscored runs', async () => {
+    let saw = '';
+    const capture: MockTurn = (request) => {
+      saw = JSON.stringify(request.messages);
+      return choose('A');
+    };
+    const transcriptOnly: ImproveOptions['probe'] = async (harness, caseId, repeat) => {
+      const scored = await probe(harness, caseId, repeat);
+      if (caseId === 'stuck' && repeat === 1 && harness.instructions === FIX) return { ...scored, passed: null, answer: undefined, transcript: 'assistant: UNSCORED RUN' };
+      return { ...scored, answer: undefined, transcript: `user: hi\nassistant: thinking\ncall load_skill {"name":"secret-skill"}\nassistant: FINAL ${harness.instructions.length}` };
+    };
+    const provider = editors({ invariant: noEdit, domain: edit(FIX), compose: edit(LONG), select: [readAll, capture] });
+    await improveAgent(options({ probe: transcriptOnly, repeats: 3, editor: { provider } }));
+    expect(saw).toContain(`FINAL ${FIX.length}`);
+    expect(saw).not.toContain('secret-skill');
+    expect(saw).not.toContain('thinking');
+    expect(saw).not.toContain('UNSCORED RUN');
   });
 
   it("counts the selector's tokens toward maxTokens, and stops rather than falling back", async () => {

@@ -683,6 +683,7 @@ export interface ImproveOptions {
     quotedChecks?: 'reject' | 'flag';
     recoveries?: readonly RecoveryEvidence[];
     repeats?: number;
+    select?: boolean;
     signal?: AbortSignal;
 }
 
@@ -723,6 +724,11 @@ export interface ImproveResult {
     ledger?: ImproveLedger;
     outcome: ImproveOutcome;
     reason: string;
+    selection?: {
+        chosen: string;
+        why: string;
+        fallback: boolean;
+    };
     spend: {
         tokens: number;
     };
@@ -976,6 +982,7 @@ export function probeCapturedCases(cases: readonly CapturedCase[], runCase: (har
 
 // @public
 export interface ProbeRun {
+    answer?: string;
     cached?: boolean;
     ended: string;
     failure?: string;
