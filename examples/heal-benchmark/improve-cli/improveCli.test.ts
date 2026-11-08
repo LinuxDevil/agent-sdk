@@ -72,7 +72,12 @@ describe('the check module', () => {
     const pages = await answer('page-count');
     expect(check(inputOf('page-count'), pages)).toBe(true);
     const csv = await answer('csv-quotes');
-    expect(check(inputOf('csv-quotes'), csv)).toBe(false);
+    expect(check(inputOf('csv-quotes'), csv)).toEqual({ passed: false, failure: 'hidden' });
+  });
+
+  it('names the real hidden tests a run failed', async () => {
+    const months = await answer('add-months');
+    expect(check(inputOf('add-months'), months)).toEqual({ passed: false, failure: 'follows project conventions; the reported bug is fixed' });
   });
 
   it('leaves a run unscored when it is not the latest run of that case', async () => {

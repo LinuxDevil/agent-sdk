@@ -2,12 +2,33 @@ import { ConfigurationError } from '../execution/errors';
 import { exampleFromTrace } from '../observe/datasets';
 import { failureReportFromDb } from '../observe/failures';
 import type { SqlDatabase } from '../storage/sqlite/driver';
-import type { Harness, ImproveOptions, RecoveryEvidence } from './types';
+import type { Harness, ImproveOptions, ProbeRun, RecoveryEvidence } from './types';
 
 const DEFAULT_ADMISSION_RUNS = 6;
 
-/** Scores an answer to a captured case: `true` or `false`, or `null` when it can't be scored. */
-export type CaseCheck = (input: string, answer: string) => boolean | null;
+/** Scores an answer to a captured case: `true` or `false`, `null` when it can't be scored, or a verdict that also names the check a failed answer missed. */
+export type CaseCheck = (
+  input: string,
+  answer: string
+) =>
+  | boolean
+  | null
+  | {
+      /** Whether the answer passed. */
+      passed: boolean;
+      /** Which check a failed answer missed, shown to the editors as untrusted text. Name the requirement, not the fix. */
+      failure?: string;
+    };
+
+export function scoreCase(check: CaseCheck, input: string, answer: string): Pick<ProbeRun, 'passed' | 'failure'> {
+  const result: unknown = check(input, answer);
+  if (result === null || typeof result === 'boolean') return { passed: result };
+  const { passed, failure } = (typeof result === 'object' ? result : {}) as { passed?: unknown; failure?: unknown };
+  if (typeof passed !== 'boolean' || (failure !== undefined && typeof failure !== 'string')) {
+    throw new ConfigurationError('A CaseCheck must return true, false, null or { passed: boolean; failure?: string }.', 'check');
+  }
+  return !passed && failure ? { passed, failure } : { passed };
+}
 
 /** A real run of your own agent, turned into a case for {@link improveAgent}. */
 export interface CapturedCase {
@@ -60,7 +81,7 @@ export function probeCapturedCases(
     const captured = byId.get(caseId);
     if (!captured) throw new ConfigurationError(`Unknown captured case "${caseId}"`, 'cases');
     const { answer, transcript, tokens, ended } = await runCase(harness, captured.input);
-    return { passed: check(captured.input, answer), transcript, tokens, ended };
+    return { ...scoreCase(check, captured.input, answer), transcript, tokens, ended };
   };
 }
 

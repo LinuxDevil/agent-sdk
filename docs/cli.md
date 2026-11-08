@@ -382,7 +382,10 @@ and apply what you accept by hand.
   instructions are plain text. Editors may change only the instructions and
   skills.
 - `--check <module>` is required. Its default export is a `CaseCheck`,
-  `(input, answer) => boolean | null`; `null` means the answer can't be scored.
+  `(input, answer) => boolean | null | { passed, failure? }`; `null` means the
+  answer can't be scored. Return `{ passed: false, failure }` to name the check
+  a failed answer missed: the editors read it in that run's record, and without
+  it a failed run whose answer looks right gives them nothing to fix.
   `input` is the user's message for a one-message run, else the recorded
   messages as JSON text.
 - `--since` and `--agent` pick which failed runs become cases, as for

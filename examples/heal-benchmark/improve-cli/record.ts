@@ -9,7 +9,7 @@ import { observeExporter, type ObserveReporter, type TraceExporter } from 'loush
 import agent from './agent.ts';
 import check from './check.ts';
 import { DEFAULT_MODEL, refuseUnsharedModel } from './modelRule.ts';
-import { codingTasks, latestProjectRun } from './projectRuns.ts';
+import { codingTasks } from './projectRuns.ts';
 
 export interface RecordOptions {
   db: string;
@@ -181,8 +181,9 @@ async function answerOf(input: string, options: RecordOptions, deps: RecordDeps,
   }
 }
 
-function failureOf(input: string): string | undefined {
-  return latestProjectRun()?.project.tasks.find((task) => task.input === input)?.failure?.();
+function verdictOf(input: string, answer: string): { passed: boolean | null; failure?: string } {
+  const result = check(input, answer);
+  return result === null || typeof result === 'boolean' ? { passed: result } : result;
 }
 
 async function recordOne(caseId: string, repeat: number, context: { options: RecordOptions; deps: RecordDeps; collector: Collector; reporter: ObserveReporter }): Promise<RecordedRun> {
@@ -191,9 +192,9 @@ async function recordOne(caseId: string, repeat: number, context: { options: Rec
   const tracking = rootTracking(reporter);
   const { answer, error } = await answerOf(input, options, deps, tracking.exporter);
   const traceId = tracking.lastRoot();
-  const verdict = error === undefined ? check(input, answer) : null;
+  const { passed: verdict, failure } = error === undefined ? verdictOf(input, answer) : { passed: null };
   await reporter.flush();
-  const scoreError = traceId !== undefined && verdict !== null ? await scoreTrace({ collector, reporter }, traceId, verdict, verdict ? undefined : failureOf(input)) : undefined;
+  const scoreError = traceId !== undefined && verdict !== null ? await scoreTrace({ collector, reporter }, traceId, verdict, verdict ? undefined : failure) : undefined;
   const passed = scoreError === undefined ? verdict : null;
   const problem = error ?? scoreError;
   return { caseId, repeat, ...(traceId !== undefined && { traceId }), passed, ...(problem !== undefined && { error: problem }) };

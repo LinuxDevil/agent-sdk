@@ -59,7 +59,7 @@ the card and decides whether to change the agent's instructions by hand.
 | File | What it is |
 | --- | --- |
 | `improve-cli/agent.ts` | The agent module `lousho improve` loads: `coding-agent` with its tools, on `openrouter/qwen/qwen3.7-flash` |
-| `improve-cli/check.ts` | The `--check` module: runs the hidden tests for the case on the project the run just edited |
+| `improve-cli/check.ts` | The `--check` module: runs the hidden tests for the case on the project the run just edited, and names the ones a failed run missed |
 | `improve-cli/record.ts` | Runs the agent over chosen cases and scores each run into the database you name |
 
 Each run starts from a fresh in-memory copy of the project. `lousho improve`
@@ -71,7 +71,10 @@ outside it. Network access is blocked only on Node 25 or later. If the tools
 were simulated, the check leaves the run unscored instead of failing it.
 
 `check.ts` scores the run the agent just made in the same process, so run one
-agent at a time.
+agent at a time. A failed run returns `failure` with the real names of the
+hidden tests it failed, such as `follows project conventions`, so the editors
+see which check each failed run missed. Without that name the agent's fix looks
+right, and the editors kept the base.
 
 Use a paid model that may read captured traces, such as `qwen/qwen3.7-flash`,
 for both the agent and the editors. `record.ts` refuses `--model`, and

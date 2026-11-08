@@ -235,7 +235,10 @@ export interface CapturedCase {
 }
 
 // @public
-export type CaseCheck = (input: string, answer: string) => boolean | null;
+export type CaseCheck = (input: string, answer: string) => boolean | null | {
+    passed: boolean;
+    failure?: string;
+};
 
 // @public
 export interface CaseCount {
