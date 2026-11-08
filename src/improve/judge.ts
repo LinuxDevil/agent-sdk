@@ -8,6 +8,8 @@ const DEFAULT_MAX_COST_INCREASE = 0.5;
 
 type Judged = Omit<ImproveResult, 'base' | 'stages' | 'spend'>;
 
+export const isCheckpoint = (label: string) => label.startsWith('compose');
+
 export interface Proposal {
   label: Exclude<GateVerdict['label'], 'compose'>;
   harness: Harness;
@@ -82,17 +84,17 @@ async function judgeComposite(run: ImproveRun, options: ImproveOptions, composed
   return { base, result: await gateHarness(run, options, base, composed, finalRuns, 'holdout-final') };
 }
 
-function ineligibility(options: ImproveOptions, composed: Harness, pool: readonly Proposal[], index: number, fresh: readonly LabelledRun[]): string | undefined {
+function ineligibility(options: ImproveOptions, composed: Harness | undefined, pool: readonly Proposal[], index: number, fresh: readonly LabelledRun[]): string | undefined {
   const { harness: candidate, runs } = pool[index];
   if (diffHarness(options.harness, candidate) === '') return 'Made no change.';
-  if (diffHarness(composed, candidate) === '') return 'Same as the composite, so it was not judged again.';
+  if (composed && diffHarness(composed, candidate) === '') return 'Same as the composite, so it was not judged again.';
   const twin = pool.slice(0, index).find((earlier) => diffHarness(earlier.harness, candidate) === '');
-  if (twin) return `Same as the ${twin.label} editor's harness, so it was not judged again.`;
+  if (twin) return `Same as the ${twin.label} ${isCheckpoint(twin.label) ? 'checkpoint' : "editor's harness"}, so it was not judged again.`;
   const failure = trainingFailure(options.cases.map((id) => judgeTrainingCase(id, caseCount(fresh, id), caseCount(runs, id))));
   return failure && `Failed on training: ${failure}`;
 }
 
-function sortCandidates(options: ImproveOptions, composed: Harness, pool: readonly Proposal[], fresh: readonly LabelledRun[]) {
+function sortCandidates(options: ImproveOptions, composed: Harness | undefined, pool: readonly Proposal[], fresh: readonly LabelledRun[]) {
   const eligible: Proposal[] = [];
   const ineligible: GateVerdict[] = [];
   pool.forEach((proposal, index) => {
@@ -118,4 +120,21 @@ export async function judgeWithFallback(run: ImproveRun, options: ImproveOptions
     return { ...judged, reason, gate: [compose, ...tried, ...ineligible] };
   }
   return { ...result, gate: [compose, ...tried, ...ineligible] };
+}
+
+export async function judgeCheckpoints(run: ImproveRun, options: ImproveOptions, checkpoints: readonly Proposal[]): Promise<Judged> {
+  const fresh = await run.probe(options.harness, 'fresh-base', options.cases, run.repeats);
+  const holdout = await run.probe(options.harness, 'holdout-base', options.holdout ?? []);
+  const base: BaseRuns = { fresh, holdout, reruns: new Map() };
+  const { eligible, ineligible } = sortCandidates(options, undefined, checkpoints, fresh);
+  const tried: GateVerdict[] = [];
+  let first: Judged | undefined;
+  for (const { label, harness, runs } of eligible) {
+    const judged = await gateHarness(run, options, base, harness, runs, `holdout-${label}`);
+    tried.push({ label, passed: judged.outcome === 'proposal', reason: judged.reason });
+    first ??= { ...judged, reason: `The ${label} checkpoint failed the gate: ${judged.reason}` };
+    if (judged.outcome === 'proposal') return { ...judged, reason: `The ${label} checkpoint passed the gate. ${judged.reason}`, gate: [...tried, ...ineligible] };
+  }
+  const none: Judged = { outcome: 'keep-base', reason: "No round's checkpoint improved a training case.", freshBase: summarize(fresh) };
+  return { ...(first ?? none), gate: [...tried, ...ineligible] };
 }

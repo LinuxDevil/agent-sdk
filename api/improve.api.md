@@ -363,7 +363,7 @@ export function formatImproveResult(result: ImproveResult): string;
 
 // @public
 export interface GateVerdict {
-    label: 'compose' | 'invariant' | 'domain' | `invariant-${number}` | `domain-${number}`;
+    label: 'compose' | 'invariant' | 'domain' | `invariant-${number}` | `domain-${number}` | `compose-${number}`;
     passed: boolean;
     reason: string;
 }
@@ -604,6 +604,7 @@ export interface ImproveOptions {
     maxCostIncrease?: number;
     maxEditorSteps?: number;
     maxTokens?: number;
+    mode?: 'agg' | 'seq';
     parallelEditors?: boolean;
     probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
     proposers?: number;

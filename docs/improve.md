@@ -112,6 +112,27 @@ chances for noise to pass the gate: at k = 4 up to 9 harnesses can be judged,
 against 3 by default, so the 15% no-op pass rate above can more than double.
 Confirm a proposal with `canaryReplay` before you apply it.
 
+### Sequential rounds
+
+Set `mode: 'seq'` with `proposers: k` to go deep instead of wide: k rounds,
+each with one invariant editor, one domain editor and a composer. Round t's
+editors edit the checkpoint round t − 1's composer wrote (`compose-<t − 1>`),
+not the original harness, and read every earlier round's proposals, checkpoints,
+runs and notes under `context/candidates/` and `context/runs/`. The notes are
+wrapped as untrusted data. The composer may merge edits across rounds, bring
+back an earlier round's checkpoint or proposal, or keep the current one. Each
+new checkpoint is probed, so the next round sees how it behaves. The gate then
+judges every checkpoint against the original harness, never against an earlier
+checkpoint, cheapest first, and the first that passes wins. A checkpoint that
+changed nothing, or repeats an earlier one, is not judged again, and there is no
+fallback to a single editor's harness. `candidates.pool` holds every proposal and
+checkpoint, and `diversity` covers the proposals only. A round costs about what
+one default cycle costs, plus `repeats` runs of each training case for its new
+checkpoint, so k rounds cost about k times as much. Up to k checkpoints are
+gated, each with its own held-out runs, so as with several proposers a no-op is
+more likely to pass by chance: confirm with `canaryReplay`. With k = 1, `seq` is
+the same as the default.
+
 ## Caching and the ledger
 
 A loop that runs every day sees the same failures again. Two caches stop it

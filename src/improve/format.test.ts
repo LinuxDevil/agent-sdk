@@ -28,6 +28,12 @@ describe('formatImproveResult', () => {
     expect(formatImproveResult(result())).not.toContain('## Proposals');
   });
 
+  it("doesn't count seq checkpoints as proposals", () => {
+    const pool = { 'invariant-1': BASE, 'domain-1': BASE, 'compose-1': BASE, 'invariant-2': BASE, 'domain-2': BASE, 'compose-2': BASE };
+    const card = formatImproveResult(result({ candidates: { invariant: BASE, domain: BASE, compose: BASE, pool }, diversity: { meanJaccard: 1, distinct: 1 } }));
+    expect(section(card, 'Proposals').trim()).toBe('4 proposals, 1 distinct, mean line overlap 1.');
+  });
+
   it('flags an edit that quotes a failed check', () => {
     const card = formatImproveResult(result({ failedChecks: ['follows project conventions'], diff: 'instructions.md\n+ Always make sure it follows project conventions.' }));
     expect(card).toContain('Quotes a failed check word for word: "follows project conventions".');
