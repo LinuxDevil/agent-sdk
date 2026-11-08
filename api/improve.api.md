@@ -110,6 +110,9 @@ interface AgentHook {
 }
 
 // @public
+export function appendAudit(dir: string, entry: AuditInput): Promise<AuditEntry>;
+
+// @public
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
 
 // @public
@@ -143,6 +146,36 @@ interface ApprovalSignIn {
     provider: string;
     url: string;
 }
+
+// @public
+export interface AuditEntry {
+    action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'pause' | 'resume' | 'canary-start' | 'canary-end';
+    actor: 'gate' | 'canary' | 'monitor' | 'guard' | 'scheduler' | `person:${string}`;
+    at: string;
+    cycle?: string;
+    evidence?: {
+        gate?: string;
+        cases?: {
+            caseId: string;
+            base: string;
+            final: string;
+        }[];
+        score?: {
+            before: number;
+            after: number;
+            runs: number;
+        };
+    };
+    from?: string;
+    hash: string;
+    prev: string;
+    reason: string;
+    seq: number;
+    to?: string;
+}
+
+// @public
+export type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
 
 // @public
 interface BudgetExceeded {
@@ -760,6 +793,9 @@ interface ProviderUsage {
 }
 
 // @public
+export function readAudit(dir: string): AuditEntry[];
+
+// @public
 interface ReasoningBlock {
     // (undocumented)
     redactedData?: string;
@@ -1122,6 +1158,9 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     // (undocumented)
     toolName: string;
 }
+
+// @public
+export function verifyAudit(dir: string): number | undefined;
 
 // (No @packageDocumentation comment for this package)
 
