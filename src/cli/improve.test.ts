@@ -137,8 +137,11 @@ describe('parseImproveArgs', () => {
         'search',
         '--out',
         'proposal.md',
+        '--max-tokens',
+        '200000',
       ])
     ).toMatchObject({
+      maxTokens: 200000,
       path: 'agent',
       check: 'check.ts',
       model: 'openai/gpt-4.1-mini',
@@ -166,6 +169,18 @@ describe('parseImproveArgs', () => {
     expect(() => parseImproveArgs(['agent'])).toThrow(/--check <module> is required/);
   });
 
+  it('leaves --max-tokens unset by default', () => {
+    expect(parseImproveArgs(['agent', '--check', 'c.mjs']).maxTokens).toBeUndefined();
+  });
+
+  it.each(['0', '-5', '1.5', 'abc', '1e3', '', ' 7', '99999999999999999999'])('refuses --max-tokens %j as a usage error', (value) => {
+    expect(() => parseImproveArgs(['agent', '--check', 'c.mjs', `--max-tokens=${value}`])).toThrow(/--max-tokens must be a positive integer/);
+  });
+
+  it('refuses a negative --max-tokens given as a separate argument', () => {
+    expect(() => parseImproveArgs(['agent', '--check', 'c.mjs', '--max-tokens', '-5'])).toThrow(/--max-tokens needs a value/);
+  });
+
   it('has no --apply flag', () => {
     expect(() => parseImproveArgs(['agent', '--check', 'c.mjs', '--apply'])).toThrow(/unknown option '--apply'/);
   });
@@ -181,6 +196,9 @@ describe('lousho improve', () => {
     expect(code).toBe(0);
     expect(stdout).toContain('Experimental');
     expect(stdout).toContain('never changes');
+    expect(stdout).toContain('[--max-tokens n]');
+    expect(stdout).toMatch(/--max-tokens n {2,}stop once n tokens are spent/);
+    expect(stdout).toContain('no cap');
   });
 
   it('refuses without --check and runs nothing', async () => {
@@ -391,6 +409,38 @@ describe('lousho improve', () => {
     const { code, stdout } = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--protect', 'p1']);
     expect(code).toBe(0);
     expect(stdout).toContain('| pass:p1 | holdout |');
+  });
+
+  it('refuses a bad --max-tokens with exit 2 and runs nothing', async () => {
+    const editor = mockModel([]);
+    const { code, stderr } = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--max-tokens', '0'], { editor });
+    expect(code).toBe(2);
+    expect(stderr).toMatch(/--max-tokens must be a positive integer/);
+    expect(editor.calls).toHaveLength(0);
+  });
+
+  it('says in the cost line whether a token budget is set', async () => {
+    const unset = await improve([agentDir, '--check', checkPath, '--db', dbPath]);
+    expect(unset.stderr).toMatch(/no token budget; pass --max-tokens <n> to cap the spend/);
+    const set = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--max-tokens', '900000']);
+    expect(set.stderr).toMatch(/stops once 900000 tokens are spent \(--max-tokens\)/);
+    expect(set.stdout).toContain('# Improve result: proposal');
+  });
+
+  it('stops at the --max-tokens budget and says so in the card and the JSON', async () => {
+    const provider = mockModel([{ ...fixedWhenForbidden({ messages: [] }), usage: { inputTokens: 40, outputTokens: 10 } }], { onExhausted: 'repeat-last' });
+    const editor = mockModel([]);
+    const json = path.join(root, 'stopped.json');
+    const { code, stdout, stderr } = await improve([agentDir, '--check', checkPath, '--db', dbPath, '--max-tokens', '120', '--out', json], { overrides: { provider }, editor });
+    expect(code).toBe(0);
+    expect(stdout).toContain('# Improve result: budget-exceeded');
+    expect(stdout).toContain('Stopped at the 120 token budget.');
+    expect(stdout).toContain('No change proposed.');
+    expect(stderr).toMatch(/the --max-tokens 120 budget ran out before a result; nothing was proposed/);
+    expect(editor.calls).toHaveLength(0);
+    const result = JSON.parse(fs.readFileSync(json, 'utf8')) as { outcome: string; reason: string; spend: { tokens: number } };
+    expect(result).toMatchObject({ outcome: 'budget-exceeded', reason: 'Stopped at the 120 token budget.' });
+    expect(result.spend.tokens).toBeGreaterThanOrEqual(120);
   });
 
   it('leaves out a protected trace that misses a fresh run, and says so', async () => {
