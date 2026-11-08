@@ -65,8 +65,10 @@ function stripOnce(text: string): string {
   return text.replace(FORGED_TAG, '').replace(HTML_TAG, '').replace(IMAGE, '$1').replace(LINK, '$1').replace(/!\[/g, '[');
 }
 
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g;
+
 function plain(text: string, max: number): string {
-  let current = text.slice(0, max * 4).replace(/\s+/g, ' ');
+  let current = text.slice(0, max * 4).replace(CONTROL, '').replace(/\s+/g, ' ');
   for (let pass = 0; pass < MAX_PASSES; pass++) {
     const next = stripOnce(current);
     if (next === current) break;

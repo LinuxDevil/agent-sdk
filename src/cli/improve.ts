@@ -30,10 +30,11 @@ import { defineSkill } from '../skills/defineSkill';
 import { memoryStore } from '../storage/agentStore';
 import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { detectTarget, agentModuleConfig, type DevTarget } from './devReload';
+import { isImproveAdmin, runImproveAdmin } from './improveAdmin';
 import { dbPathOf, resolveAgent, sinceMs } from './observe';
 
 const USAGE =
-  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]';
+  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries]\n       lousho improve revisions|rollback|audit <agent-dir> ...';
 
 const HELP = `${USAGE}
 
@@ -67,6 +68,11 @@ Options:
   --out file                also write the proposal to this new file: the review card, or the
                             JSON result for a .json path
   -h, --help                show this help
+
+Revisions, rollback and the audit log (run one with --help for its flags):
+  lousho improve revisions <agent-dir> [--json]
+  lousho improve rollback <agent-dir> --by <name> [--to <revision>] [--reason text]
+  lousho improve audit <agent-dir> [--verify] [--json]
 
 See docs/improve.md.`;
 
@@ -356,6 +362,7 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
 /** Runs `lousho improve` with the arguments after `improve`; resolves with the exit code. */
 export async function runImprove(args: string[], io: ImproveIo = { stdout: process.stdout, stderr: process.stderr }): Promise<number> {
   try {
+    if (isImproveAdmin(args)) return await runImproveAdmin(args, io);
     const parsed = parseImproveArgs(args);
     if (parsed.help) {
       io.stdout.write(`${HELP}\n`);

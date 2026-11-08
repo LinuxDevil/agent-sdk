@@ -17,5 +17,5 @@ export { appendAudit, readAudit, verifyAudit } from './audit';
 export type { AuditEntry, AuditInput } from './audit';
 export { currentRevision, harnessHash, listRevisions, readAgentHarness, snapshotRevision } from './revisions';
 export type { HarnessRevision } from './revisions';
-export { applyProposal } from './apply';
-export type { ApplyInput, ApplyResult, Approval } from './apply';
+export { applyProposal, lastGoodRevision, rollbackHarness } from './apply';
+export type { ApplyInput, ApplyResult, Approval, RollbackBy, RollbackResult } from './apply';
