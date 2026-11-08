@@ -55,7 +55,7 @@ function clipped(text: string, max: number): string {
 
 const FORGED_TAG = /<\s*\/?\s*untrusted\b[^>]*>/gi;
 
-function unmark(text: string): string {
+export function unmark(text: string): string {
   const stripped = text.replace(FORGED_TAG, '');
   return stripped === text ? text : unmark(stripped);
 }

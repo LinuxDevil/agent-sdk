@@ -4,6 +4,7 @@ import { evidenceFiles, type LabelledRun } from './evidence';
 import { summarize } from './gate';
 import { diffHarness, harnessFiles } from './harness';
 import { judgeWithFallback } from './judge';
+import { isLibraryFile } from './library';
 import { COMPOSE_PROMPT, DOMAIN_PROMPT, INVARIANT_PROMPT, LIBRARY_NOTE, RECOVERIES_NOTE } from './prompts';
 import { ImproveRun, StopRun } from './run';
 import type { Harness, ImproveOptions, ImproveResult, ImproveStage, ProbeSummary } from './types';
@@ -15,8 +16,8 @@ function assertOptions(options: ImproveOptions, repeats: number): void {
   if (overlap.length > 0) throw new ConfigurationError(`improveAgent: ${overlap.join(', ')} can't be both a case and held out.`, 'holdout');
   const stray = (options.recoveries ?? []).filter((recovery) => !options.cases.includes(recovery.caseId)).map((recovery) => recovery.caseId);
   if (stray.length > 0) throw new ConfigurationError(`improveAgent: recoveries must name training cases, not ${stray.join(', ')}.`, 'recoveries');
-  const outside = Object.keys(options.library ?? {}).filter((path) => !LIBRARY_PATH.test(path));
-  if (outside.length > 0) throw new ConfigurationError(`improveAgent: library files must be named context/library/<name>.md, not ${outside.join(', ')}.`, 'library');
+  const outside = Object.entries(options.library ?? {}).filter(([path, content]) => !LIBRARY_PATH.test(path) || !isLibraryFile(content));
+  if (outside.length > 0) throw new ConfigurationError(`improveAgent: library must hold files from libraryFiles, named context/library/<name>.md, not ${outside.map(([path]) => path).join(', ')}.`, 'library');
 }
 
 const LIBRARY_PATH = /^context\/library\/[A-Za-z0-9_-][A-Za-z0-9._-]*\.md$/;

@@ -12939,11 +12939,11 @@ Each editor reads a recovery as `context/recoveries/<case>.md`, labelled as a re
 A library keeps lessons from earlier attempts, so later editors can read them. Each lesson is one line each of cue, lesson and evidence, with the outcome it came from. A lesson is written by a model, so the library treats it as untrusted wherever it's stored or shown. `addEntry(dir, entry, { failedChecks })` stores a lesson under `<dir>/.lousho/library/<domain>/entries/`, or returns why it refused one. It refuses text that:
 
 - trips the prompt-injection heuristics;
-- carries an untrusted marker, a URL, an email address, a Markdown link or image, HTML, or hidden characters;
+- carries an untrusted marker, a URL or bare domain, an email address, a Markdown link or image, HTML, hidden characters, or a word mixing Latin with lookalike letters;
 - goes over 200 characters for the cue, 600 for the lesson or 400 for the evidence;
 - quotes one of the cycle's failed checks.
 
-`libraryFiles(dir, domain)` returns up to 20 active lessons as files under `context/library/`, highest-voted first, then newest. Each file is labelled as data with the lesson between untrusted markers, and you pass them to `improveAgent` as `library`. Entries are checked again when read, so an entry file edited by hand that no longer passes is skipped. `voteEntry(dir, id, 'helped' | 'hurt')` counts an outcome, and retires a lesson once its hurt votes outnumber its helped votes by two.
+`libraryFiles(dir, domain)` returns up to 20 active lessons as files under `context/library/`, highest-voted first, then newest. Each file is labelled as data with the lesson between untrusted markers, and you pass them to `improveAgent` as `library`. Entries are checked again when read, so an entry file edited by hand that no longer passes is skipped. `voteEntry(dir, id, 'helped' | 'hurt')` counts an outcome, and retires a lesson once its hurt votes outnumber its helped votes by two. Votes are appended to `votes.jsonl` next to the entries, so votes cast at once aren't lost. `improveAgent` accepts only files shaped like `libraryFiles` output, named `context/library/<name>.md`.
 
 ```ts
 import { improveAgent, libraryFiles, libraryHome, type Harness, type ImproveOptions } from 'lousho/improve';
