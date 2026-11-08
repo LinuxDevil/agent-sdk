@@ -97,7 +97,7 @@ function present<T extends object>(fields: T): T {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as T;
 }
 
-function cleanActor(actor: AuditEntry['actor']): AuditEntry['actor'] {
+export function cleanActor(actor: AuditEntry['actor']): AuditEntry['actor'] {
   if (!actor.startsWith('person:')) return actor;
   const name = plain(actor.slice('person:'.length), MAX_NAME);
   if (name === '') throw new ConfigurationError(`appendAudit: the person's name in '${actor}' is empty once markup is removed. Pass a plain name.`, 'actor');

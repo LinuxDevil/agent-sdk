@@ -121,6 +121,33 @@ interface AgentHook {
 export function appendAudit(dir: string, entry: AuditInput): Promise<AuditEntry>;
 
 // @public
+export interface ApplyInput {
+    base: Harness;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+    result: ImproveResult;
+}
+
+// @public
+export function applyProposal(dir: string, input: ApplyInput, approval: Approval): Promise<ApplyResult>;
+
+// @public
+export interface ApplyResult {
+    from: string;
+    to: string;
+    written: string[];
+}
+
+// @public
+export type Approval = {
+    mode: 'auto';
+    by: 'gate' | 'canary';
+} | {
+    mode: 'manual';
+    approvedBy: string;
+};
+
+// @public
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
 
 // @public
