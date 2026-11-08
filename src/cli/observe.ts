@@ -135,7 +135,7 @@ const SUB_SPECS: Record<ObserveSubcommand, CommandSpec> = {
 
 const SUBCOMMANDS = new Set<string>(Object.keys(SUB_SPECS));
 
-function dbPathOf(value: string | boolean | (string | boolean)[] | undefined): string {
+export function dbPathOf(value: string | boolean | (string | boolean)[] | undefined): string {
   const given = stringValue(value);
   return given === undefined ? defaultDbPath() : path.resolve(given);
 }
@@ -175,7 +175,7 @@ function olderThanDays(spec: CommandSpec, value: string | boolean | (string | bo
 const SINCE_UNIT_MS: Record<string, number> = { d: DAY_MS, h: 3_600_000, m: 60_000 };
 
 /** `--since <N>d|<N>h|<N>m`: a positive whole duration back from now, as a ms epoch; absent means no lower bound. */
-function sinceMs(spec: CommandSpec, value: string | boolean | (string | boolean)[] | undefined): number | undefined {
+export function sinceMs(spec: CommandSpec, value: string | boolean | (string | boolean)[] | undefined): number | undefined {
   const given = stringValue(value);
   if (given === undefined) return undefined;
   const match = /^(\d+)([dhm])$/.exec(given);
@@ -439,7 +439,7 @@ async function runPrune(args: string[]): Promise<number> {
 }
 
 /** `--agent X`: an agent_id as is, else the one registered agent named X; two agents sharing a name is a usage error. */
-function resolveAgent(spec: CommandSpec, db: SqlDatabase, given: string): string {
+export function resolveAgent(spec: CommandSpec, db: SqlDatabase, given: string): string {
   if (db.prepare('SELECT 1 AS hit FROM agents WHERE agent_id = ?').get(given) !== undefined) return given;
   const named = db.prepare('SELECT agent_id FROM agents WHERE name = ?').all(given).map((r) => String(r.agent_id));
   if (named.length > 1) throw usageError(spec, `--agent '${given}' names ${named.length} agents (${named.join(', ')}); pass the agent_id.`);

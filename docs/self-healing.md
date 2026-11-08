@@ -154,6 +154,8 @@ Cases can come from your own traces: `casesFromFailures(db)` turns failed runs i
 your local observe database into cases. Tool results in them reach the editors
 marked as untrusted.
 
+From the command line, `lousho improve <agent> --check <module>` does this and prints the proposal for review; see [CLI](./cli.md#lousho-improve).
+
 See [Improving an agent](./improve.md) for the gate, the outcomes and the safety
 notes.
 
