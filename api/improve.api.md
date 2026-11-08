@@ -5,6 +5,14 @@
 ```ts
 
 // @public
+export function addEntry(dir: string, entry: Omit<LibraryEntry, 'id' | 'at' | 'status' | 'votes'>, options?: {
+    failedChecks?: readonly string[];
+}): {
+    entry?: LibraryEntry;
+    refused?: string[];
+};
+
+// @public
 export function admitProtectedCases(options: {
     harness: Harness;
     cases: readonly CapturedCase[];
@@ -538,6 +546,7 @@ export interface ImproveOptions {
     editorHooks?: readonly AgentHook[];
     harness: Harness;
     holdout?: readonly string[];
+    library?: Readonly<Record<string, string>>;
     maxAlwaysOnChars?: number;
     maxCostIncrease?: number;
     maxEditorSteps?: number;
@@ -620,6 +629,33 @@ interface InputSteeredEvent extends AgentEventBase<'input.steered'> {
 
 // @public
 type IoGuardrailKind = 'input' | 'output' | 'tool';
+
+// @public
+export interface LibraryEntry {
+    at: string;
+    confidence: 'low' | 'medium' | 'high';
+    cue: string;
+    domain: string;
+    evidence: string;
+    id: string;
+    lesson: string;
+    outcome: 'kept' | 'rejected' | 'rolled-back';
+    revision: string;
+    status: 'active' | 'retired';
+    votes: {
+        helped: number;
+        hurt: number;
+    };
+}
+
+// @public
+export function libraryFiles(dir: string, domain: string, limit?: number): Record<string, string>;
+
+// @public
+export function libraryHome(agentDir: string, domain?: string): {
+    dir: string;
+    domain: string;
+};
 
 // @public
 interface LLMProvider {
@@ -1161,6 +1197,9 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 
 // @public
 export function verifyAudit(dir: string): number | undefined;
+
+// @public
+export function voteEntry(dir: string, id: string, vote: 'helped' | 'hurt'): LibraryEntry;
 
 // (No @packageDocumentation comment for this package)
 
