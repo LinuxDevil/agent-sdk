@@ -5518,6 +5518,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | `lousho traces [id]` | List the recent runs saved by `fileTraceExporter()` (duration, model and tool calls, tokens, cost), or print one run as a span tree. | [Observability](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#local-traces) |
 | `lousho build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md) |
 | `lousho studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/agent-forge.md) |
+| `lousho improve <path> --check <module>` | Experimental. Propose edits to an agent's instructions and skills from failed runs in your local observe database. Prints a review card and applies nothing. | [Below](#lousho-improve) |
 
 Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 `.yml` or `.json`, see [Configuration](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/configuration.md#agent-spec-files-agentspec)).
@@ -5538,6 +5539,7 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
+lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--out file]
 lousho --version
 ```
 
@@ -5856,6 +5858,52 @@ resolve them with `createAgent({ prompt: 'mira@latest' })` (or a label,
   one version, so this takes it off the one that held it, and prints
   `mira@prod -> 3 (was 2)` (or `(was unset)` for a new label). A label is a
   name without whitespace, `@` or `/`, and not `latest` or all digits. See [The observe daemon](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/observability.md#the-observe-daemon).
+
+## `lousho improve`
+
+Experimental, like the [`improveAgent()`](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/improve.md) it runs.
+
+```bash
+npx lousho improve ./my-agent --check ./check.mjs --since 7d --out proposal.md
+```
+
+```js
+export default (input, answer) => !answer.includes('I cannot help');
+```
+
+It takes the failed runs in your local observe database (default
+`~/.lousho/observe.db`, or `--db`), replays each recorded input through the
+agent, scores each answer with your check, and prints the review card from
+`formatImproveResult()`. It never changes the agent: no file in the agent
+directory is written, and there is no flag to apply a proposal. Review the card
+and apply what you accept by hand.
+
+- `<path>` is an agent directory or a `.ts`/`.js` agent module whose
+  instructions are plain text. Editors may change only the instructions and
+  skills.
+- `--check <module>` is required. Its default export is a `CaseCheck`,
+  `(input, answer) => boolean | null`; `null` means the answer can't be scored.
+  `input` is the user's message for a one-message run, else the recorded
+  messages as JSON text.
+- `--since` and `--agent` pick which failed runs become cases, as for
+  `lousho observe export`.
+- `--protect <traceId>` names a run that went well. It joins the gate only
+  after it passes 6 of 6 fresh runs; otherwise stderr says why it was left out.
+  A trace that is also a failed run stays a case to learn from.
+- Tools are simulated during replays, except `load_skill` and
+  `read_skill_file`. `--read-only <tool>` lets a tool that is safe to call
+  again run for real. Replays aren't traced: `LOUSHO_OBSERVE`, the agent's
+  `exporter` and `onEvent` are off while it runs, so they never reach your
+  database.
+- `--model` runs the agent on another model; `--editor` picks the editors'
+  model (default `--model`, else the agent's own).
+- `--out file` also writes the card, or the JSON result for a `.json` path. It
+  must be a new file, outside the agent's files.
+
+Before the first run it prints how many runs it will make at least. Every run
+and every editor call is billed to your models. It exits 1 on an `outage`: no
+run could be scored, or the editors' provider failed. Each run's error goes to
+stderr. It reads nothing but your own database. See [Improving an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/improve.md#from-the-command-line).
 
 # Cloudflare Workers
 
@@ -12827,6 +12875,19 @@ or replay one the gate rejected.
 
 `db` is your observe database (default `~/.lousho/observe.db`), opened with `new DatabaseSync(path)` from `node:sqlite`; it matches the exported `SqlDatabase` type. Build each transcript your `runCase` returns with `renderTranscript`, so tool results reach the editors marked as untrusted.
 
+## From the command line
+
+`lousho improve` runs the same steps on an agent directory or module:
+
+```bash
+npx lousho improve ./my-agent --check ./check.mjs --since 7d --out proposal.md
+```
+
+It reads cases only from your local observe database, needs a module whose
+default export is your `CaseCheck`, simulates tools other than loading skills
+unless `--read-only` names them, and prints the review card. It applies nothing. See
+[CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#lousho-improve) for every flag.
+
 ## Safety
 
 - **Your `probe` runs the agent, so it owns side effects.** Add
@@ -18324,6 +18385,8 @@ What it will and won't do:
 Cases can come from your own traces: `casesFromFailures(db)` turns failed runs in
 your local observe database into cases. Tool results in them reach the editors
 marked as untrusted.
+
+From the command line, `lousho improve <agent> --check <module>` does this and prints the proposal for review; see [CLI](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/cli.md#lousho-improve).
 
 See [Improving an agent](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/improve.md) for the gate, the outcomes and the safety
 notes.
