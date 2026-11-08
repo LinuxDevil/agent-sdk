@@ -63,6 +63,11 @@ export interface ImproveSettings {
   };
   /** Hours without cycles after a rollback (default 24). */
   cooldownHours: number;
+  /** The watcher's limit on editor and reflection model calls. */
+  rateLimit: {
+    /** Model calls per minute (default 20). */
+    rpm: number;
+  };
   /** The lesson library editors read. */
   library: {
     /** Use the library (default `true`). */
@@ -92,6 +97,7 @@ const fileSchema = z
       .optional(),
     guard: z.object({ runs: count.optional(), everyHours: z.number().positive().finite().optional(), maxCases: count.optional() }).strict().optional(),
     cooldownHours: z.number().min(0).finite().optional(),
+    rateLimit: z.object({ rpm: count.optional() }).strict().optional(),
     library: z.object({ enabled: z.boolean().optional(), domain: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).optional() }).strict().optional(),
   })
   .strict();
@@ -144,6 +150,7 @@ export function loadImproveSettings(dir: string, overrides: Partial<Pick<Improve
     monitor: { minRuns: 20, window: 20, maxDrop: 0.05, autoRollback: true, giveUpDays: 7, ...present(file.monitor ?? {}) },
     guard: { runs: 3, everyHours: 24, maxCases: 30, ...present(file.guard ?? {}) },
     cooldownHours: file.cooldownHours ?? 24,
+    rateLimit: { rpm: 20, ...present(file.rateLimit ?? {}) },
     library: { enabled: true, ...present(file.library ?? {}) },
   };
 }

@@ -1,14 +1,14 @@
-import { mkdirSync, readFileSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { pointOf, significantDrop, trajectoryGate, windowSummary, type ScorePoint, type WindowStat } from '../observe/continuousScore';
 import { finishedRuns } from '../observe/store';
 import { ConfigurationError } from '../execution/errors';
 import type { SqlDatabase } from '../storage/sqlite/driver';
-import { writeFileAtomic } from '../storage/atomicFile';
 import { withFileLock } from '../storage/fileLock';
 import { rollbackHarness } from './apply';
 import { appendAudit, readAudit, type AuditEntry } from './audit';
 import { currentRevision } from './revisions';
+import { readState, updateState } from './state';
 import type { ImproveSettings } from './settings';
 
 /** What the monitor decided about the current revision. */
@@ -41,8 +41,6 @@ const GATE_WINDOW = 10;
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 const SERIES_LIMIT = 100_000;
-const STATE_FILE = path.join('.lousho', 'state.json');
-const STATE_LOCK = path.join('.lousho', 'state.lock');
 const MONITOR_LOCK = path.join('.lousho', 'monitor.lock');
 const FINAL: readonly MonitorVerdict['state'][] = ['kept', 'kept-unverified', 'regressed', 'rolled-back'];
 
@@ -80,24 +78,10 @@ interface MonitorState {
   [key: string]: unknown;
 }
 
-function readState(dir: string): MonitorState {
-  const file = path.join(dir, STATE_FILE);
-  let text: string;
-  try {
-    text = readFileSync(file, 'utf8');
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return {};
-    throw error;
-  }
-  const parsed: unknown = JSON.parse(text);
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) throw new ConfigurationError(`${file} is not a JSON object; fix or delete it before the monitor runs.`, 'state', 'LOUSHO_CONFIG_INVALID');
-  return parsed as MonitorState;
-}
+const readMonitorState = (dir: string): Partial<MonitorState> => readState<MonitorState>(dir);
 
 async function writeState(dir: string, change: Partial<MonitorState>): Promise<void> {
-  await withFileLock(path.join(dir, STATE_LOCK), async () => {
-    await writeFileAtomic(path.join(dir, STATE_FILE), `${JSON.stringify({ ...readState(dir), ...change }, null, 2)}\n`);
-  });
+  await updateState<MonitorState>(dir, change);
 }
 
 function lastApply(dir: string, current: string): AuditEntry | string {
@@ -165,7 +149,7 @@ async function check(db: SqlDatabase, dir: string, settings: CheckSettings, now:
   const agent = agentIdOf(db, name);
   const apply = lastApply(dir, currentRevision(dir));
   if (typeof apply === 'string') return { state: 'idle', reason: apply };
-  const stored = readState(dir).monitor;
+  const stored = readMonitorState(dir).monitor;
   if (stored?.applySeq === apply.seq && FINAL.includes(stored.verdict.state)) return stored.verdict;
   const { before, after } = seriesAround(db, apply, settings.monitor, agent);
   const judged = judgeApplied(before, after, settings.monitor);

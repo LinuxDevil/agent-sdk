@@ -26,6 +26,7 @@ import { scoreCase } from '../improve/cases';
 import { agentInputOf } from '../improve/recoveries';
 import type { HealCycle } from '../improve/cycles';
 import { healOnce } from '../improve/heal';
+import { watchAgent } from '../improve/watch';
 import { writtenHash } from '../improve/harnessWriter';
 import { readAgentHarness } from '../improve/revisions';
 import { loadImproveSettings, type ImproveSettings } from '../improve/settings';
@@ -39,7 +40,7 @@ import { isImproveAdmin, runImproveAdmin } from './improveAdmin';
 import { dbPathOf, resolveAgent, sinceMs } from './observe';
 
 const USAGE =
-  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--dry-run]\n       lousho improve revisions|rollback|audit|pending|approve|reject <agent-dir> ...';
+  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--dry-run] [--watch [--interval 15m]]\n       lousho improve revisions|rollback|audit|pending|approve|reject|pause|resume <agent-dir> ...';
 
 const HELP = `${USAGE}
 
@@ -86,6 +87,12 @@ Options:
                             keeps an edit that quotes a failed check, flagged on the card
   --dry-run                 print the review card and change nothing, from every failed run
                             whatever its revision, as before self-healing
+  --watch                   keep running: every --interval (default 15m) check the kill
+                            switch, take the one-watcher lease, run the post-apply monitor,
+                            the corpus guard every guard.everyHours, then a cycle within
+                            the daily caps. --agent names the agent whose runs the monitor
+                            judges (default: the agent's name). Ctrl-C stops after the step
+  --interval <N>m           the tick interval for --watch, as <N>s, <N>m or <N>h
   -h, --help                show this help
 
 Revisions, rollback, the audit log and pending proposals (run one with --help for its flags):
@@ -95,6 +102,8 @@ Revisions, rollback, the audit log and pending proposals (run one with --help fo
   lousho improve pending <agent-dir> [--json]
   lousho improve approve <agent-dir> <id> --by <name>
   lousho improve reject <agent-dir> <id> --by <name> [--reason text]
+  lousho improve pause <agent-dir> [--reason text] [--by <name>]   write the kill switch file
+  lousho improve resume <agent-dir> [--by <name>]                  remove it
 
 See docs/improve.md.`;
 
@@ -116,6 +125,8 @@ const SPEC: CommandSpec = {
     'with-recoveries': { type: 'boolean' },
     approval: { type: 'string' },
     'dry-run': { type: 'boolean' },
+    watch: { type: 'boolean' },
+    interval: { type: 'string' },
   },
 };
 
@@ -137,6 +148,10 @@ export interface ImproveArgs {
   approval?: ImproveSettings['approval'];
   /** `--dry-run`: print the card and write nothing. */
   dryRun?: boolean;
+  /** `--watch`: keep running cycles on a timer. */
+  watch?: boolean;
+  /** `--interval`, in milliseconds. */
+  intervalMs?: number;
   help?: boolean;
 }
 
@@ -147,6 +162,8 @@ export interface ImproveIo {
   overrides?: CreateAgentConfig;
   /** The editors' provider, instead of `--editor` (tests pass a mock). */
   editor?: LLMProvider;
+  /** Resolves when `--watch` should stop, instead of SIGINT or SIGTERM (tests pass one). */
+  stop?: Promise<unknown>;
 }
 
 const listValue = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []);
@@ -156,6 +173,16 @@ function maxTokensOf(text: string | undefined): number | undefined {
   const tokens = Number(text);
   if (!/^\d+$/.test(text) || !Number.isSafeInteger(tokens) || tokens < 1) throw usageError(SPEC, `--max-tokens must be a positive integer, not '${text}'.`);
   return tokens;
+}
+
+const INTERVAL_UNIT_MS: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000 };
+
+function intervalOf(text: string | undefined): Pick<ImproveArgs, 'intervalMs'> {
+  if (text === undefined) return {};
+  const match = /^(\d+)([smh])$/.exec(text);
+  const count = Number(match?.[1] ?? 0);
+  if (match === null || count <= 0) throw usageError(SPEC, `--interval must be a positive duration like '15m', '30s' or '1h', not '${text}'.`);
+  return { intervalMs: count * INTERVAL_UNIT_MS[match[2]] };
 }
 
 function approvalOf(text: string | undefined): Pick<ImproveArgs, 'approval'> {
@@ -187,6 +214,8 @@ export function parseImproveArgs(args: string[]): ImproveArgs {
     maxTokens: maxTokensOf(stringValue(values['max-tokens'])),
     withRecoveries: values['with-recoveries'] === true,
     dryRun: values['dry-run'] === true,
+    watch: values.watch === true,
+    ...intervalOf(stringValue(values.interval)),
     ...approvalOf(stringValue(values.approval)),
   };
 }
@@ -421,11 +450,15 @@ function reportCycle(cycle: HealCycle, args: ImproveArgs, io: ImproveIo): void {
   }
 }
 
-async function healDir(args: ImproveArgs, io: ImproveIo, dir: string, config: CreateAgentConfig): Promise<number> {
+async function cycleInputs(args: ImproveArgs, io: ImproveIo, dir: string, config: CreateAgentConfig) {
   const settings = loadImproveSettings(dir, args.approval ? { approval: args.approval } : {});
   const editor = editorOf(args, config, io);
   const check = await loadCheck(args.check);
-  const db = openObserveDb(args);
+  return { settings, editor, check, db: openObserveDb(args) };
+}
+
+async function healDir(args: ImproveArgs, io: ImproveIo, dir: string, config: CreateAgentConfig): Promise<number> {
+  const { settings, editor, check, db } = await cycleInputs(args, io, dir, config);
   const controller = new AbortController();
   const interrupt = () => controller.abort();
   process.once('SIGINT', interrupt);
@@ -459,15 +492,77 @@ async function healDir(args: ImproveArgs, io: ImproveIo, dir: string, config: Cr
   }
 }
 
+function stopRequested(io: ImproveIo): { stopped: Promise<unknown>; dispose(): void } {
+  if (io.stop) return { stopped: io.stop, dispose: () => undefined };
+  let done: () => void = () => undefined;
+  const stopped = new Promise<void>((resolve) => {
+    done = resolve;
+  });
+  process.once('SIGINT', done);
+  process.once('SIGTERM', done);
+  return {
+    stopped,
+    dispose: () => {
+      process.off('SIGINT', done);
+      process.off('SIGTERM', done);
+    },
+  };
+}
+
+async function watchDir(args: ImproveArgs, io: ImproveIo, dir: string, config: CreateAgentConfig): Promise<number> {
+  const { settings, editor, check, db } = await cycleInputs(args, io, dir, config);
+  const name = args.agent ?? config.name;
+  if (name === undefined) throw usageError(SPEC, "--watch needs --agent: the agent doesn't name itself, so the monitor can't find its runs.");
+  const stop = stopRequested(io);
+  try {
+    const agent = resolveAgent(SPEC, db, name);
+    io.stderr.write(`lousho improve: watching ${dir} in ${settings.approval} mode every ${(args.intervalMs ?? 900_000) / 1000}s; 'lousho improve pause ${dir}' or Ctrl-C stops it.\n`);
+    await withoutObserve(async () => {
+      const watcher = watchAgent({
+        dir,
+        db,
+        check,
+        runCase: runCaseWith(config, args, io, new Map()),
+        editor,
+        settings,
+        reloadSettings: () => loadImproveSettings(dir, args.approval ? { approval: args.approval } : {}),
+        agent,
+        protect: args.protect,
+        withRecoveries: args.withRecoveries === true,
+        ...(args.since !== undefined && { since: args.since }),
+        ...(args.intervalMs !== undefined && { intervalMs: args.intervalMs }),
+        onCycle: (cycle) => io.stdout.write(`lousho improve: ${cycle.outcome}: ${cycle.reason}\n`),
+        onError: (error) => io.stderr.write(`lousho improve: a watch tick failed: ${error instanceof Error ? error.message : String(error)}\n`),
+      });
+      await stop.stopped;
+      await watcher.stop();
+    });
+    return 0;
+  } finally {
+    stop.dispose();
+    db.close();
+  }
+}
+
+function assertWatchArgs(args: ImproveArgs, target: DevTarget, forced: string | undefined): void {
+  if (!args.watch) {
+    if (args.intervalMs !== undefined) throw usageError(SPEC, '--interval only applies with --watch.');
+    return;
+  }
+  if (args.maxTokens !== undefined || args.out !== undefined) throw usageError(SPEC, '--watch takes its token budget from improve.json and writes no --out file; drop --max-tokens and --out.');
+  if (args.dryRun || forced || target.kind !== 'dir') throw usageError(SPEC, `--watch needs an agent directory whose instructions live in instructions.md, and can't be a dry run${forced ? `: ${forced}` : ''}.`);
+}
+
 async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
   const target = detectTarget(args.path, 'improve');
   const config = await loadConfig(target);
   if (args.out !== undefined) assertOutUsable(args.out, target, config);
   const harness = baseHarness(config);
   const forced = args.dryRun ? undefined : dryRunReason(target, harness);
+  assertWatchArgs(args, target, forced);
   if (forced) io.stderr.write(`lousho improve: this is a dry run, because ${forced}. Nothing will be applied.\n`);
   if (args.dryRun || forced || target.kind !== 'dir') return proposeOnly(args, io, target, config, harness);
-  return healDir(args, io, target.path, config);
+  return args.watch ? watchDir(args, io, target.path, config) : healDir(args, io, target.path, config);
 }
 
 /** Runs `lousho improve` with the arguments after `improve`; resolves with the exit code. */

@@ -1,4 +1,3 @@
-import { lstatSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError, SDKError } from '../execution/errors';
 import type { AgentHook } from '../execution/hooks';
@@ -9,7 +8,7 @@ import { appendAudit } from './audit';
 import { canaryReplay, type CanaryReplayResult } from './canary';
 import { admitProtectedCases, casesFromFailures, protectedCasesFromPasses, scoreCase, type CapturedCase, type CaseCheck } from './cases';
 import { addToCorpus, readCorpus, type CorpusCase } from './corpus';
-import { cooldownEnds, newCycleId, pausedBy, readCycles, usageToday, writeCycle, type HealCycle } from './cycles';
+import { cooldownEnds, newCycleId, ownLousho, pausedBy, readCycles, usageToday, writeCycle, type HealCycle } from './cycles';
 import { formatImproveResult } from './format';
 import { applyAndGuard, corpusCases, guardUnfinished } from './healApply';
 import {
@@ -104,10 +103,7 @@ function ended(start: Start, outcome: HealCycle['outcome'], reason: string): Hea
 }
 
 function lockFile(dir: string): string {
-  const lousho = path.join(dir, LOUSHO);
-  if (lstatSync(lousho, { throwIfNoEntry: false })?.isSymbolicLink()) throw new ConfigurationError(`${lousho} is a symlink; the self-healing state must live inside the agent directory.`, 'dir');
-  mkdirSync(lousho, { recursive: true });
-  return path.join(lousho, 'cycle.lock');
+  return path.join(ownLousho(dir), 'cycle.lock');
 }
 
 function blocked(options: HealOptions, start: Start, now: number): HealCycle | number {

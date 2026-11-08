@@ -495,6 +495,23 @@ npx lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
   and moves the file to `.lousho/proposals/rejected/`. A rejected proposal is
   never queued again.
 
+`--watch` keeps the loop running on an agent directory:
+
+```bash
+npx lousho improve ./my-agent --check ./check.mjs --watch --interval 15m
+npx lousho improve pause ./my-agent --reason "release freeze" --by ali
+npx lousho improve resume ./my-agent --by ali
+```
+
+Each tick checks the kill switch (`.lousho/improve.stop`, `LOUSHO_IMPROVE=off`
+or `"enabled": false`, audited once as `pause`), takes a lease so only one
+watcher runs per directory, runs the post-apply monitor, replays the corpus
+every `guard.everyHours`, and then runs one cycle within the daily caps. A tick
+with the same failures as the last one and no new failed run is skipped.
+Three outages in a row write the stop file. Editor calls are limited to
+`rateLimit.rpm` a minute. Ctrl-C stops after the current step. `pause` writes
+the stop file and `resume` removes it; both are audited.
+
 ### `improve.json`
 
 Self-healing settings live in `improve.json` beside the agent. Every key is
@@ -510,6 +527,7 @@ optional, and an unknown key or a bad value is an error
   "monitor": { "minRuns": 20, "window": 20, "maxDrop": 0.05, "autoRollback": true, "giveUpDays": 7 },
   "guard": { "runs": 3, "everyHours": 24, "maxCases": 30 },
   "cooldownHours": 24,
+  "rateLimit": { "rpm": 20 },
   "library": { "enabled": true }
 }
 ```

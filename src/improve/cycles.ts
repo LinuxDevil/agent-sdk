@@ -3,6 +3,7 @@ import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, wr
 import path from 'node:path';
 import { ConfigurationError } from '../execution/errors';
 import { readAudit } from './audit';
+import { readState } from './state';
 import type { CanaryReplayResult } from './canary';
 import type { GuardCorpusResult } from './corpusGuard';
 import type { ImproveSettings } from './settings';
@@ -65,6 +66,13 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
 const AUTO_ACTORS: readonly string[] = ['gate', 'canary'];
 
+export function ownLousho(dir: string): string {
+  const lousho = path.join(dir, LOUSHO);
+  if (lstatSync(lousho, { throwIfNoEntry: false })?.isSymbolicLink()) throw new ConfigurationError(`${lousho} is a symlink; the self-healing state must live inside the agent directory.`, 'dir');
+  mkdirSync(lousho, { recursive: true });
+  return lousho;
+}
+
 /** A new cycle id: its UTC start time and a random suffix. */
 export function newCycleId(now: number): string {
   const stamp = new Date(now).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
@@ -115,14 +123,16 @@ export function readCycles(dir: string): HealCycle[] {
     .sort((a, b) => b.id.localeCompare(a.id));
 }
 
-const dayStart = (now: number): number => Math.floor(now / DAY_MS) * DAY_MS;
+export const dayStart = (now: number): number => Math.floor(now / DAY_MS) * DAY_MS;
 
-/** Cycles, tokens and automatic applies so far in the current UTC day. */
+/** Cycles, tokens (the watcher's own guard and corpus runs included) and automatic applies so far in the current UTC day. */
 export function usageToday(dir: string, now: number): { cycles: number; tokens: number; applies: number } {
   const since = dayStart(now);
   const today = readCycles(dir).filter((cycle) => Date.parse(cycle.startedAt) >= since);
   const applies = readAudit(dir).filter((entry) => entry.action === 'apply' && AUTO_ACTORS.includes(entry.actor) && Date.parse(entry.at) >= since).length;
-  return { cycles: today.length, tokens: today.reduce((sum, cycle) => sum + cycle.tokens, 0), applies };
+  const watch = readState<{ watch?: { spentDay?: number; spent?: number } }>(dir).watch;
+  const watcher = watch?.spentDay === since ? (watch.spent ?? 0) : 0;
+  return { cycles: today.length, tokens: watcher + today.reduce((sum, cycle) => sum + cycle.tokens, 0), applies };
 }
 
 /** When the cooldown after the latest rollback ends, in epoch ms, or `undefined` when none is active. */
