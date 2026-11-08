@@ -3,6 +3,7 @@ import type { Writable } from 'node:stream';
 import { ConfigurationError } from '../execution/errors';
 import { rollbackHarness } from '../improve/apply';
 import { readAudit, verifyAudit, type AuditEntry } from '../improve/audit';
+import { approvePending, isPendingId, listPending, readPendingProposal, rejectPending } from '../improve/pending';
 import { currentRevision, listRevisions, type HarnessRevision } from '../improve/revisions';
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
 
@@ -27,16 +28,18 @@ const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
 const MIN_PREFIX = 4;
 
 const safe = (value: unknown): string => String(value ?? '-').replace(CONTROL, ' ');
+const safeText = (value: string): string => value.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, ' ');
 const short = (id: unknown): string => (typeof id === 'string' ? safe(id.slice(0, SHORT)) : '-');
 
-function parsed(spec: CommandSpec, args: readonly string[], io: AdminIo): { values: Record<string, unknown>; dir: string } | undefined {
+function parsed(spec: CommandSpec, args: readonly string[], io: AdminIo): { values: Record<string, unknown>; dir: string; id: string } | undefined {
   const { values, positionals, help } = parseCommand(spec, args);
   if (help) {
     io.stdout.write(`${spec.usage}\n`);
     return undefined;
   }
-  if (positionals.length !== 1) throw usageError(spec, 'an agent directory is required.');
-  return { values, dir: path.resolve(positionals[0]) };
+  const wanted = spec.positionals ?? 1;
+  if (positionals.length !== wanted) throw usageError(spec, wanted === 2 ? 'an agent directory and a proposal id are required.' : 'an agent directory is required.');
+  return { values, dir: path.resolve(positionals[0]), id: positionals[1] ?? '' };
 }
 
 const SOURCE_ACTION: Partial<Record<HarnessRevision['source'], AuditEntry['action']>> = { apply: 'apply', rollback: 'rollback' };
@@ -98,8 +101,7 @@ function resolveTarget(dir: string, to: string | undefined, current: string): st
 async function rollback(args: readonly string[], io: AdminIo): Promise<number> {
   const command = parsed(ROLLBACK, args, io);
   if (!command) return 0;
-  const by = stringValue(command.values.by as string | undefined)?.trim();
-  if (!by) throw usageError(ROLLBACK, '--by <name> is required: the audit log records who rolled back.');
+  const by = personOf(ROLLBACK, command.values);
   const current = currentRevision(command.dir);
   const target = resolveTarget(command.dir, stringValue(command.values.to as string | undefined), current);
   const reason = stringValue(command.values.reason as string | undefined) ?? DEFAULT_REASON;
@@ -129,14 +131,69 @@ function audit(args: readonly string[], io: AdminIo): number {
   return 0;
 }
 
-const COMMANDS: Record<string, (args: readonly string[], io: AdminIo) => number | Promise<number>> = { revisions, rollback, audit };
+const PENDING: CommandSpec = { command: 'improve pending', usage: 'Usage: lousho improve pending <agent-dir> [--show <id>] [--json]', positionals: 1, options: { json: { type: 'boolean' }, show: { type: 'string' } } };
+const APPROVE: CommandSpec = { command: 'improve approve', usage: 'Usage: lousho improve approve <agent-dir> <id> --by <name>', positionals: 2, options: { by: { type: 'string' } } };
+const REJECT: CommandSpec = { command: 'improve reject', usage: 'Usage: lousho improve reject <agent-dir> <id> --by <name> [--reason text]', positionals: 2, options: { by: { type: 'string' }, reason: { type: 'string' } } };
+
+function pending(args: readonly string[], io: AdminIo): number {
+  const command = parsed(PENDING, args, io);
+  if (!command) return 0;
+  const shown = stringValue(command.values.show as string | undefined);
+  if (shown !== undefined) {
+    io.stdout.write(`${safeText(readPendingProposal(command.dir, idOf(PENDING, shown)).card)}\n`);
+    return 0;
+  }
+  const queued = listPending(command.dir);
+  if (command.values.json === true) {
+    io.stdout.write(`${JSON.stringify(queued.map(({ id, createdAt, cycle, staleAt, failure, result }) => ({ id, createdAt, cycle, staleAt, failure, reason: result.reason })), null, 2)}\n`);
+    return 0;
+  }
+  if (queued.length === 0) io.stdout.write('No pending proposals.\n');
+  for (const item of queued) io.stdout.write(`${item.id}  ${safe(item.createdAt)}${stateOf(item)}  ${safe(item.result.reason)}\n`);
+  return 0;
+}
+
+function stateOf(item: { staleAt?: string; failure?: string }): string {
+  if (item.staleAt) return '  stale';
+  return item.failure ? '  refused' : '';
+}
+
+function idOf(spec: CommandSpec, id: string): string {
+  if (!isPendingId(id)) throw usageError(spec, "a proposal id is 12 lowercase hex characters, as 'lousho improve pending' prints them.");
+  return id;
+}
+
+function personOf(spec: CommandSpec, values: Record<string, unknown>): string {
+  const by = stringValue(values.by as string | undefined)?.trim();
+  if (!by) throw usageError(spec, '--by <name> is required: the audit log records who did it.');
+  return by;
+}
+
+async function approve(args: readonly string[], io: AdminIo): Promise<number> {
+  const command = parsed(APPROVE, args, io);
+  if (!command) return 0;
+  const applied = await approvePending(command.dir, idOf(APPROVE, command.id), personOf(APPROVE, command.values));
+  io.stdout.write(`Applied ${command.id}: ${short(applied.from)} -> ${short(applied.to)} (${applied.written.join(', ')}).\n`);
+  return 0;
+}
+
+async function reject(args: readonly string[], io: AdminIo): Promise<number> {
+  const command = parsed(REJECT, args, io);
+  if (!command) return 0;
+  const by = personOf(REJECT, command.values);
+  await rejectPending(command.dir, idOf(REJECT, command.id), by, stringValue(command.values.reason as string | undefined) ?? 'Rejected from the command line.');
+  io.stdout.write(`Rejected ${command.id}.\n`);
+  return 0;
+}
+
+const COMMANDS: Record<string, (args: readonly string[], io: AdminIo) => number | Promise<number>> = { revisions, rollback, audit, pending, approve, reject };
 
 /** Whether the arguments after `improve` name an admin subcommand rather than an agent path. */
 export function isImproveAdmin(args: readonly string[]): boolean {
   return args[0] !== undefined && Object.hasOwn(COMMANDS, args[0]);
 }
 
-/** Runs `lousho improve revisions|rollback|audit`; resolves with the exit code. */
+/** Runs `lousho improve revisions|rollback|audit|pending|approve|reject`; resolves with the exit code. */
 export async function runImproveAdmin(args: readonly string[], io: AdminIo): Promise<number> {
   return COMMANDS[args[0]](args.slice(1), io);
 }

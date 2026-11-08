@@ -126,7 +126,8 @@ export function readAgentHarness(dir: string): Harness {
   return readHarnessState(dir).harness;
 }
 
-function isHarness(value: unknown): value is Harness {
+/** Whether a parsed JSON value has the shape of a harness: instructions text and skills with a description and content. */
+export function isHarness(value: unknown): value is Harness {
   const harness = value as Harness | undefined;
   if (typeof harness?.instructions !== 'string' || typeof harness.skills !== 'object' || harness.skills === null) return false;
   return Object.values(harness.skills).every((skill) => typeof skill?.description === 'string' && typeof skill.content === 'string');

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Writable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { applyProposal } from '../improve/apply';
+import { listPending, savePending } from '../improve/pending';
 import { readAudit } from '../improve/audit';
 import { currentRevision, readAgentHarness } from '../improve/revisions';
 import type { Harness, ImproveResult } from '../improve/types';
@@ -160,3 +161,48 @@ describe('lousho improve audit', () => {
     expect((await run('audit', dir, '--verify')).code).toBe(1);
   });
 });
+
+describe('lousho improve pending, approve and reject', () => {
+  async function queue(instructions: string): Promise<string> {
+    const base = readAgentHarness(dir);
+    return (await savePending(dir, { result: proposal({ ...base, instructions }), base, card: 'card' })).id;
+  }
+
+  it('lists, approves and rejects', async () => {
+    const first = await queue('First.');
+    const second = await queue('Second.');
+    const listed = await run('pending', dir);
+    expect(listed.stdout).toContain(first);
+    expect(listed.stdout).toContain(second);
+    expect(JSON.parse((await run('pending', dir, '--json')).stdout)).toHaveLength(2);
+    const approved = await run('approve', dir, first, '--by', 'ali');
+    expect(approved).toMatchObject({ code: 0, stderr: '' });
+    expect(readFileSync(path.join(dir, 'instructions.md'), 'utf8')).toBe('First.\n');
+    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'apply', actor: 'person:ali' });
+    const stale = await run('approve', dir, second, '--by', 'ali');
+    expect(stale.code).toBe(1);
+    expect(stale.stderr).toMatch(/stale/);
+    expect((await run('pending', dir)).stdout).toMatch(/stale/);
+    expect((await run('reject', dir, second, '--by', 'ali', '--reason', 'Outdated.')).code).toBe(0);
+    expect(listPending(dir)).toEqual([]);
+    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'reject', reason: `Rejected ${second}: Outdated.` });
+  });
+
+  it('shows one card and refuses a malformed id as a usage error', async () => {
+    const id = await queue('First.');
+    const shown = await run('pending', dir, '--show', id);
+    expect(shown).toMatchObject({ code: 0, stdout: 'card\n' });
+    expect((await run('pending', dir, '--show', '../x')).code).toBe(2);
+    expect((await run('approve', dir, 'nope', '--by', 'ali')).code).toBe(2);
+  });
+
+  it('needs an id and --by', async () => {
+    const id = await queue('First.');
+    expect((await run('approve', dir)).code).toBe(2);
+    expect((await run('approve', dir, id)).stderr).toMatch(/--by/);
+    expect((await run('reject', dir, id)).code).toBe(2);
+    expect((await run('approve', dir, 'aaaaaaaaaaaa', '--by', 'ali')).code).toBe(1);
+    expect((await run('pending', dir)).stdout).toContain(id);
+  });
+});
+
