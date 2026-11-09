@@ -1,11 +1,12 @@
 /**
- * The `agent` kind's Inspector body (C03), four `InspectorSection`s in the
- * ticket's order: Identity (name, the inline `subagentKey`, description),
- * Model (picker, fallbacks, sampling settings, reasoning), Instructions
- * (source toggle, prompt ref, per-family tails) and Advanced (the
- * remaining `AGENT_FIELD_KEYS` as one JSON object). Field-level edits go
- * through `patch` (which merges into `data.fields`); `subagentKey` lives
- * outside `fields` so it goes through `replace`.
+ * The `agent` kind's Inspector body (C03 + C27), eight `InspectorSection`s
+ * in the ticket's order: Identity (name, the inline `subagentKey`,
+ * description), Model (picker, fallbacks, sampling settings, reasoning),
+ * Instructions (source toggle, prompt ref, per-family tails), then the C27
+ * run settings — Limits, Approvals, Reliability, Context and Delegation
+ * (root agent only). Every `AGENT_FIELD_KEYS` entry now has a real control;
+ * field-level edits go through `patch` (which merges into `data.fields`);
+ * `subagentKey` lives outside `fields` so it goes through `replace`.
  */
 import type { ChangeEvent } from 'react';
 import { InspectorSection } from '../../../components/InspectorSection';
@@ -13,36 +14,22 @@ import { Field } from '../../../ui/Field';
 import { Input, Textarea } from '../../../ui/controls';
 import { sectionChildren } from '../../../graph/v2/order';
 import { AGENT_MODEL_PATTERN, AGENT_NAME_PATTERN } from '../../../graph/v2/kinds/agent';
-import type { AgentFields, AgentNodeData, GraphNode, NodeOfKind } from '../../../graph/v2/types';
-import { AGENT_FIELD_KEYS } from '../../../graph/v2/types';
-import { JsonField } from '../../fields/JsonField';
+import type { AgentNodeData, GraphNode, NodeOfKind } from '../../../graph/v2/types';
 import { StringListField } from '../../fields/StringListField';
 import { InstructionsField } from './InstructionsField';
 import { ModelPicker, MODEL_ID_ERROR } from './ModelPicker';
 import { ModelSettingsFields } from './ModelSettingsFields';
 import { ReasoningField } from './ReasoningField';
+import { ApprovalsFields } from './ApprovalsSection';
+import { ContextFields } from './ContextSection';
+import { DelegationFields } from './DelegationSection';
+import { LimitsFields } from './LimitsSection';
+import { ReliabilityFields } from './ReliabilitySection';
 import type { KindFieldsProps } from '../index';
 
 const SUBAGENT_KEY_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const NAME_PATTERN_ERROR = 'Use letters, digits, space, dot, dash or underscore, up to 64 characters';
 const SUBAGENT_KEY_PATTERN_ERROR = 'Use lower-case letters, digits, dash or underscore';
-
-/** `AGENT_FIELD_KEYS` the form edits directly — everything else is one "Other settings" JSON object. */
-const FORM_KEYS = new Set<string>([
-  'name',
-  'description',
-  'model',
-  'fallbackModels',
-  'instructions',
-  'instructionsByFamily',
-  'promptRef',
-  'modelSettings',
-  'reasoning',
-]);
-
-/** The `AGENT_FIELD_KEYS` left for the Advanced JSON, in spec order. */
-const ADVANCED_KEYS = AGENT_FIELD_KEYS.filter((key) => !FORM_KEYS.has(key));
-const ADVANCED_SET = new Set<string>(ADVANCED_KEYS);
 
 /** The `subagents` record key a sibling node stands for (inline agent or ref/remote), or `undefined`. */
 function siblingKey(node: GraphNode): string | undefined {
@@ -118,33 +105,10 @@ function IdentityFields({ node, graph, patch, replace }: IdentityProps): JSX.Ele
   );
 }
 
-/** The Advanced section's `check`: only the un-handled `AGENT_FIELD_KEYS` may appear. */
-function checkAdvanced(value: unknown): string | undefined {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return 'Enter a JSON object';
-  for (const key of Object.keys(value)) {
-    if (!ADVANCED_SET.has(key)) return `Unknown setting '${key}'`;
-  }
-  return undefined;
-}
-
-/** The fields the Advanced JSON edits: the `AGENT_FIELD_KEYS` entries present in `fields`. */
-function advancedOf(fields: AgentFields): Record<string, unknown> | undefined {
-  const out: Record<string, unknown> = {};
-  for (const key of ADVANCED_KEYS) {
-    if (fields[key] !== undefined) out[key] = fields[key];
-  }
-  return Object.keys(out).length === 0 ? undefined : out;
-}
-
-/** The agent Inspector body: the four sections described above. */
+/** The agent Inspector body: the eight sections described above. */
 export function AgentFields({ node, graph, patch, replace }: KindFieldsProps<'agent'>): JSX.Element {
   const { fields } = node.data;
-  const onAdvanced = (value: unknown) => {
-    const next = (value ?? {}) as Record<string, unknown>;
-    const update: Record<string, unknown> = {};
-    for (const key of ADVANCED_KEYS) update[key] = next[key];
-    patch(update);
-  };
+  const inline = node.data.subagentKey !== undefined;
   return (
     <>
       <InspectorSection id="agent-identity" title="Identity">
@@ -167,17 +131,23 @@ export function AgentFields({ node, graph, patch, replace }: KindFieldsProps<'ag
       <InspectorSection id="agent-instructions" title="Instructions">
         <InstructionsField node={node} patch={patch} />
       </InspectorSection>
-      <InspectorSection id="agent-advanced" title="Advanced">
-        <JsonField
-          id="node-agent-advanced"
-          label="Other settings (JSON)"
-          value={advancedOf(fields)}
-          onChange={onAdvanced}
-          rows={8}
-          check={checkAdvanced}
-          help="Limits, retries and other run settings. A form arrives in a later update."
-        />
+      <InspectorSection id="agent-limits" title="Limits">
+        <LimitsFields fields={fields} patch={patch} />
       </InspectorSection>
+      <InspectorSection id="agent-approvals" title="Approvals">
+        <ApprovalsFields fields={fields} patch={patch} />
+      </InspectorSection>
+      <InspectorSection id="agent-reliability" title="Reliability">
+        <ReliabilityFields fields={fields} patch={patch} />
+      </InspectorSection>
+      <InspectorSection id="agent-context" title="Context">
+        <ContextFields fields={fields} patch={patch} />
+      </InspectorSection>
+      {inline ? null : (
+        <InspectorSection id="agent-delegation" title="Delegation">
+          <DelegationFields fields={fields} patch={patch} />
+        </InspectorSection>
+      )}
     </>
   );
 }
