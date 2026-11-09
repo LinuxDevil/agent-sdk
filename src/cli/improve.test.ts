@@ -10,6 +10,8 @@ import { ingestBatch, openDb } from '../observe/store';
 import { mockModel, type MockTurn } from '../testing';
 import { defineTool } from '../tools/defineTool';
 import { readAudit } from '../improve/audit';
+import { readCorpus } from '../improve/corpus';
+import { readCycles } from '../improve/cycles';
 import { listPending } from '../improve/pending';
 import { currentRevision } from '../improve/revisions';
 import { parseImproveArgs, runImprove, type ImproveIo } from './improve';
@@ -174,6 +176,13 @@ describe('parseImproveArgs', () => {
     expect(parseImproveArgs(['agent', '--check', 'c.mjs', '--approval', 'manual']).approval).toBe('manual');
     expect(parseImproveArgs(['agent', '--check', 'c.mjs']).approval).toBeUndefined();
     expect(() => parseImproveArgs(['agent', '--check', 'c.mjs', '--approval', 'yolo'])).toThrow(/--approval must be 'auto' or 'manual'/);
+  });
+
+  it('parses the editor flags, and leaves them unset by default', () => {
+    expect(parseImproveArgs(['agent', '--check', 'c.mjs']).editors).toEqual({});
+    expect(parseImproveArgs(['agent', '--check', 'c.mjs', '--proposers', '3', '--mode', 'seq', '--select', '--no-parallel-editors']).editors).toEqual({ proposers: 3, mode: 'seq', select: true, parallel: false });
+    for (const value of ['0', '5', '2.5', 'two']) expect(() => parseImproveArgs(['agent', '--check', 'c.mjs', `--proposers=${value}`])).toThrow(/--proposers must be a whole number from 1 to 4/);
+    expect(() => parseImproveArgs(['agent', '--check', 'c.mjs', '--mode', 'deep'])).toThrow(/--mode must be 'agg' or 'seq'/);
   });
 
   it('needs a path', () => {
@@ -648,7 +657,8 @@ describe('lousho improve, one self-healing cycle', () => {
     const json = await run(['status', agentDir, '--json']);
     expect(json.code).toBe(0);
     const report = JSON.parse(json.stdout) as Record<string, unknown>;
-    expect(Object.keys(report).sort()).toEqual(['approval', 'audit', 'budget', 'canary', 'cooldownUntil', 'dir', 'lastCycle', 'monitor', 'paused', 'pending', 'revision', 'warnings']);
+    expect(Object.keys(report).sort()).toEqual(['approval', 'audit', 'budget', 'canary', 'cooldownUntil', 'dir', 'editors', 'lastCycle', 'monitor', 'paused', 'pending', 'revision', 'warnings']);
+    expect(report.editors).toEqual({ proposers: 1, mode: 'agg', select: false, parallel: true });
     expect(report).toMatchObject({ approval: 'auto', paused: null, revision: currentRevision(agentDir), monitor: { state: 'pending' }, lastCycle: { outcome: 'applied' }, budget: { applies: { used: 1, max: 1 } }, canary: { traffic: null, last: { passed: true } } });
     expect(report.warnings).toEqual([expect.stringMatching(/hasn't judged the last apply yet/)]);
     const text = await run(['status', agentDir]);
@@ -658,6 +668,16 @@ describe('lousho improve, one self-healing cycle', () => {
     const corrupt = JSON.parse((await run(['status', agentDir, '--json'])).stdout) as { warnings: string[] };
     expect(corrupt.warnings[0]).toMatch(/state\.json can't be read/);
     expect(await run(['status', path.join(root, 'nope')])).toMatchObject({ code: 1, stderr: expect.stringMatching(/is not an agent directory/) });
+  });
+
+  it("status shows improve.json's editors, and the cycle flags override them", async () => {
+    fs.writeFileSync(path.join(agentDir, 'improve.json'), JSON.stringify({ editors: { proposers: 3, mode: 'seq', select: true } }));
+    expect((await run(['status', agentDir])).stdout).toMatch(/^Editors: 3 proposers, seq mode, selector on, parallel on$/m);
+    const { code } = await run([agentDir, '--check', checkPath, '--db', dbPath, '--approval', 'manual', '--proposers', '2', '--mode', 'agg', '--no-parallel-editors'], { editor: editorFor(FIX) });
+    expect(code).toBe(0);
+    const labels = readCycles(agentDir)[0]?.result?.stages.map((stage) => stage.label) ?? [];
+    expect(labels).toEqual(expect.arrayContaining(['invariant-1', 'invariant-2', 'domain-1', 'domain-2']));
+    expect(labels.some((label) => label.startsWith('compose-'))).toBe(false);
   });
 
   it('status prints a cycle reason on one line, as plain text', async () => {
@@ -693,5 +713,48 @@ describe('lousho improve, one self-healing cycle', () => {
     expect(code).toBe(0);
     expect(stderr).toMatch(/this is a dry run, because .*model-specific instructions/);
     expect(instructions()).toBe('You answer refund questions.');
+  });
+
+  describe('approve runs the corpus guard', () => {
+    const failsWhenFixed = () => {
+      const file = path.join(root, 'strict.mjs');
+      fs.writeFileSync(file, "export default (input, answer) => !answer.startsWith('ok');\n");
+      return file;
+    };
+
+    async function queued(): Promise<string> {
+      await run([agentDir, '--check', checkPath, '--db', dbPath, '--approval', 'manual', '--protect', 'p1'], { editor: editorFor(FIX) });
+      expect(readCorpus(agentDir).map((item) => item.id)).toEqual(['pass:p1']);
+      const [pending] = listPending(agentDir);
+      return pending.id;
+    }
+
+    it('needs --check or --no-guard when the corpus has cases, before it writes', async () => {
+      const id = await queued();
+      const refused = await run(['approve', agentDir, id, '--by', 'ali']);
+      expect(refused).toMatchObject({ code: 2, stderr: expect.stringMatching(/--check <module>.*--no-guard/) });
+      expect(instructions()).toBe('You answer refund questions.');
+      const unguarded = await run(['approve', agentDir, id, '--by', 'ali', '--no-guard']);
+      expect(unguarded).toMatchObject({ code: 0, stdout: expect.stringMatching(/Applied .*The corpus guard was skipped \(--no-guard\)/) });
+      expect(instructions()).toBe(FIX);
+      expect(readAudit(agentDir).map((entry) => entry.action)).not.toContain('guard-pass');
+    });
+
+    it('keeps an approved edit the guard passes', async () => {
+      const id = await queued();
+      const approved = await run(['approve', agentDir, id, '--by', 'ali', '--check', checkPath]);
+      expect(approved).toMatchObject({ code: 0, stdout: expect.stringMatching(/Applied .*The corpus guard passed: No corpus case regressed/) });
+      expect(instructions()).toBe(FIX);
+      expect(readAudit(agentDir).map((entry) => entry.action).slice(-2)).toEqual(['apply', 'guard-pass']);
+    });
+
+    it("rolls back to the approved revision's parent when the guard finds a regression", async () => {
+      const id = await queued();
+      const before = currentRevision(agentDir);
+      const approved = await run(['approve', agentDir, id, '--by', 'ali', '--check', failsWhenFixed()]);
+      expect(approved).toMatchObject({ code: 1, stdout: expect.stringMatching(new RegExp(`Rolled back to ${before.slice(0, 12)}`)) });
+      expect(currentRevision(agentDir)).toBe(before);
+      expect(readAudit(agentDir).map((entry) => entry.action).slice(-3)).toEqual(['apply', 'guard-fail', 'rollback']);
+    });
   });
 });

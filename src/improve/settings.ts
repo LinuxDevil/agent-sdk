@@ -75,10 +75,32 @@ export interface ImproveSettings {
     /** Share entries with other agents that set the same domain; per agent when unset. */
     domain?: string;
   };
+  /** The Harness² editor options each cycle passes to `improveAgent()`. */
+  editors: {
+    /** k invariant and k domain editors, or k rounds in `seq` mode (default 1, at most 4). */
+    proposers: number;
+    /** `agg` (default) proposes side by side; `seq` runs rounds that build on each other. */
+    mode: 'agg' | 'seq';
+    /** Gate every candidate and let the advisory selector choose among those that pass (default `false`). */
+    select: boolean;
+    /** Run the editors and their probes two at a time (default `true`). */
+    parallel: boolean;
+  };
+}
+
+/** Flags and options that win over improve.json and the environment. */
+export interface ImproveSettingsOverrides {
+  /** The approval mode, from `--approval`. */
+  approval?: ImproveSettings['approval'];
+  /** Editor options, from `--proposers`, `--mode`, `--select` and `--no-parallel-editors`. */
+  editors?: Partial<ImproveSettings['editors']>;
 }
 
 const count = z.number().int().positive();
 const share = z.number().gt(0).max(0.25);
+const MAX_PROPOSERS = 4;
+const proposers = count.max(MAX_PROPOSERS);
+const editorMode = z.enum(['agg', 'seq']);
 
 const fileSchema = z
   .object({
@@ -99,6 +121,7 @@ const fileSchema = z
     cooldownHours: z.number().min(0).finite().optional(),
     rateLimit: z.object({ rpm: count.optional() }).strict().optional(),
     library: z.object({ enabled: z.boolean().optional(), domain: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).optional() }).strict().optional(),
+    editors: z.object({ proposers: proposers.optional(), mode: editorMode.optional(), select: z.boolean().optional(), parallel: z.boolean().optional() }).strict().optional(),
   })
   .strict();
 
@@ -133,12 +156,24 @@ function approvalOf(value: string | undefined, source: string): ImproveSettings[
   return value as ImproveSettings['approval'];
 }
 
+const DEFAULT_EDITORS: ImproveSettings['editors'] = { proposers: 1, mode: 'agg', select: false, parallel: true };
+
+export function editorsOf(settings: Pick<ImproveSettings, 'editors'>): ImproveSettings['editors'] {
+  return { ...DEFAULT_EDITORS, ...settings.editors };
+}
+
+function editorOverrides(editors: ImproveSettingsOverrides['editors'] = {}): Partial<ImproveSettings['editors']> {
+  if (editors.proposers !== undefined && !proposers.safeParse(editors.proposers).success) refuse(`--proposers must be a whole number from 1 to ${MAX_PROPOSERS}.`, '--proposers');
+  if (editors.mode !== undefined && !editorMode.safeParse(editors.mode).success) refuse("--mode must be 'agg' or 'seq'.", '--mode');
+  return present(editors);
+}
+
 function present<T extends object>(fields: T): T {
   return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined)) as T;
 }
 
 /** Reads improve.json beside the agent; flags win over LOUSHO_IMPROVE_* variables, which win over the file. */
-export function loadImproveSettings(dir: string, overrides: Partial<Pick<ImproveSettings, 'approval'>> = {}, env: NodeJS.ProcessEnv = process.env): ImproveSettings {
+export function loadImproveSettings(dir: string, overrides: ImproveSettingsOverrides = {}, env: NodeJS.ProcessEnv = process.env): ImproveSettings {
   const file = readFile(dir);
   const approval = approvalOf(overrides.approval, '--approval') ?? approvalOf(env.LOUSHO_IMPROVE_APPROVAL, 'LOUSHO_IMPROVE_APPROVAL') ?? file.approval ?? 'auto';
   return {
@@ -152,5 +187,6 @@ export function loadImproveSettings(dir: string, overrides: Partial<Pick<Improve
     cooldownHours: file.cooldownHours ?? 24,
     rateLimit: { rpm: 20, ...present(file.rateLimit ?? {}) },
     library: { enabled: true, ...present(file.library ?? {}) },
+    editors: { ...DEFAULT_EDITORS, ...present(file.editors ?? {}), ...editorOverrides(overrides.editors) },
   };
 }
