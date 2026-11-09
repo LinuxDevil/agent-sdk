@@ -3,7 +3,7 @@ import { lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, wr
 import path from 'node:path';
 import { ConfigurationError } from '../execution/errors';
 import { readAudit } from './audit';
-import { readState } from './state';
+import { readState, updateState } from './state';
 import type { CanaryReplayResult } from './canary';
 import type { GuardCorpusResult } from './corpusGuard';
 import type { ImproveSettings } from './settings';
@@ -123,7 +123,7 @@ export function readCycles(dir: string): HealCycle[] {
     .sort((a, b) => b.id.localeCompare(a.id));
 }
 
-export const dayStart = (now: number): number => Math.floor(now / DAY_MS) * DAY_MS;
+const dayStart = (now: number): number => Math.floor(now / DAY_MS) * DAY_MS;
 
 /** Cycles, tokens (the watcher's own guard and corpus runs included) and automatic applies so far in the current UTC day. */
 export function usageToday(dir: string, now: number): { cycles: number; tokens: number; applies: number } {
@@ -133,6 +133,15 @@ export function usageToday(dir: string, now: number): { cycles: number; tokens: 
   const watch = readState<{ watch?: { spentDay?: number; spent?: number } }>(dir).watch;
   const watcher = watch?.spentDay === since ? (watch.spent ?? 0) : 0;
   return { cycles: today.length, tokens: watcher + today.reduce((sum, cycle) => sum + cycle.tokens, 0), applies };
+}
+
+export async function addSpentToday(dir: string, tokens: number, now: number): Promise<void> {
+  if (tokens <= 0) return;
+  const day = dayStart(now);
+  await updateState<{ watch?: { spentDay?: number; spent?: number } }>(dir, (current) => {
+    const watch = current.watch ?? {};
+    return { watch: { ...watch, spentDay: day, spent: (watch.spentDay === day ? (watch.spent ?? 0) : 0) + tokens } };
+  });
 }
 
 /** When the cooldown after the latest rollback ends, in epoch ms, or `undefined` when none is active. */

@@ -10,8 +10,9 @@ import { readAudit } from './audit';
 import { canaryReplay } from './canary';
 import { guardCorpus } from './corpusGuard';
 import { readCorpus } from './corpus';
-import { readCycles, writeCycle } from './cycles';
+import { newCycleId, readCycles, writeCycle } from './cycles';
 import { healOnce, type HealOptions } from './heal';
+import { improveAgent } from './improve';
 import { listPending, rejectPending } from './pending';
 import { currentRevision } from './revisions';
 import { loadImproveSettings, type ImproveSettings } from './settings';
@@ -20,6 +21,11 @@ import type { Harness } from './types';
 vi.mock('./canary', async (original) => {
   const actual = await original<typeof import('./canary')>();
   return { ...actual, canaryReplay: vi.fn(actual.canaryReplay) };
+});
+
+vi.mock('./improve', async (original) => {
+  const actual = await original<typeof import('./improve')>();
+  return { ...actual, improveAgent: vi.fn(actual.improveAgent) };
 });
 
 vi.mock('./corpusGuard', async (original) => {
@@ -122,6 +128,7 @@ afterEach(() => {
   db.close();
   vi.mocked(canaryReplay).mockClear();
   vi.mocked(guardCorpus).mockClear();
+  vi.mocked(improveAgent).mockClear();
   vi.unstubAllEnvs();
   rmSync(root, { recursive: true, force: true });
 });
@@ -371,6 +378,38 @@ describe('healOnce', () => {
     const cycle = await heal({ protect: ['p1'], maxTokens: 100_000 });
     expect(cycle).toMatchObject({ outcome: 'budget-exceeded', reason: expect.stringMatching(/corpus guard/) });
     expect(instructions()).toBe(BASE);
+  });
+
+  it('passes the editors settings to improveAgent, with the defaults unchanged', async () => {
+    seedFailures();
+    await heal();
+    expect(vi.mocked(improveAgent).mock.calls[0]?.[0]).toMatchObject({ proposers: 1, mode: 'agg', select: false, parallelEditors: true });
+    seedFailures(['t4', 't5', 't6'], currentRevision(dir));
+    vi.mocked(improveAgent).mockClear();
+    await heal({ trigger: 'manual', settings: settings({ approval: 'manual', editors: { proposers: 2, mode: 'seq', select: true, parallel: false } }) });
+    expect(vi.mocked(improveAgent).mock.calls[0]?.[0]).toMatchObject({ proposers: 2, mode: 'seq', select: true, parallelEditors: false });
+  });
+
+  it('with k proposers, stops before the editors when the last cycle scaled by k does not fit the budget left', async () => {
+    seedFailures();
+    const yesterday = Date.now() - 2 * 24 * 60 * 60 * 1000;
+    const stage = (label: 'invariant' | 'domain' | 'compose') => ({ label, status: 'edited' as const, notes: '', tokens: 1000 });
+    writeCycle(dir, {
+      id: newCycleId(yesterday),
+      trigger: 'failures',
+      approval: 'auto',
+      outcome: 'keep-base',
+      reason: 'Kept.',
+      startedAt: new Date(yesterday).toISOString(),
+      tokens: 60_000,
+      result: { outcome: 'keep-base', reason: 'Kept.', base: { runs: 3, excluded: 0, passRate: 0, noise: 0, tokensPerRun: 10 }, stages: [stage('invariant'), stage('domain'), stage('compose')], spend: { tokens: 40_000 } },
+      canary: { passed: true, cases: [], reason: 'Held.', tokens: 5_000 },
+    });
+    const wide = await heal({ maxTokens: 100_000, settings: settings({ editors: { proposers: 3, mode: 'agg', select: false, parallel: true } }) });
+    expect(wide).toMatchObject({ outcome: 'budget-exceeded', reason: expect.stringMatching(/3 proposers .*about 125000 tokens.*40000 with 1/) });
+    expect(improveAgent).not.toHaveBeenCalled();
+    expect(instructions()).toBe(BASE);
+    expect((await heal({ maxTokens: 100_000, trigger: 'manual' })).outcome).toBe('applied');
   });
 
   it('never writes outside instructions.md, skills/*/SKILL.md and .lousho/', async () => {

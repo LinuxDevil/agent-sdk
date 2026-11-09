@@ -174,6 +174,13 @@ describe('watchTick', () => {
     expect(second).toBeLessThan(first);
   });
 
+  it("hands healOnce the reloaded improve.json's editors block each tick", async () => {
+    writeFileSync(path.join(dir, 'improve.json'), JSON.stringify({ approval: 'manual', editors: { proposers: 2, mode: 'seq', select: true, parallel: false } }));
+    seedFailures();
+    await tick({ reloadSettings: () => ({ ...loadImproveSettings(dir, {}, {}), library: { enabled: false } }) });
+    expect(vi.mocked(healOnce).mock.calls[0]?.[0].settings.editors).toEqual({ proposers: 2, mode: 'seq', select: true, parallel: false });
+  });
+
   it('same signatures twice skip the second cycle', async () => {
     const context = watchContext(options());
     const manual = settings({ approval: 'manual', trigger: { minNewFailures: 3, requireRecurring: false } });

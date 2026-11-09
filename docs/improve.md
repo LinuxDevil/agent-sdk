@@ -266,7 +266,9 @@ A [self-healing cycle](#the-self-healing-loop) ends with one of these in
 | `interrupted` | The cycle stopped before it finished. If it had already applied, the next cycle runs the corpus guard on that apply first |
 
 `budget-exceeded` also covers a cycle that stops before an apply because the
-corpus guard that must follow it would not fit in the tokens left.
+corpus guard that must follow it would not fit in the tokens left, and, with
+`editors.proposers` above 1, a cycle that stops before the editors run because
+the last cycle's spend, scaled by k, plus its canary and guard would not fit.
 
 ## Reviewing a result
 
@@ -503,7 +505,7 @@ Both modes run the same gate and canary. They differ in who writes.
 | Failures that become cases | Only those seen in two or more runs (`requireRecurring` defaults to `true`) | Every one (`requireRecurring` defaults to `false`) |
 | Daily cap on applies | `budget.maxAppliesPerDay` (default 1) | None; a person decides |
 | A stale proposal | Refused; the cycle ends `stale` | Refused at approve time and marked stale |
-| Corpus guard after the write | Right away, in the cycle | At the watcher's next scheduled guard (`guard.everyHours`) |
+| Corpus guard after the write | Right away, in the cycle | Right after `approve`, which rolls back to the approved revision's parent on a regression; with `--no-guard`, at the watcher's next scheduled guard |
 | Monitor and automatic rollback | Yes, in a watcher | Yes, in a watcher |
 
 Set the mode with `"approval"` in `improve.json`, `LOUSHO_IMPROVE_APPROVAL`, or
@@ -516,12 +518,15 @@ In manual mode, a person works the queue:
 ```bash
 npx lousho improve pending ./my-agent
 npx lousho improve pending ./my-agent --show 3f9c0a1b2d4e
-npx lousho improve approve ./my-agent 3f9c0a1b2d4e --by ali
+npx lousho improve approve ./my-agent 3f9c0a1b2d4e --by ali --check ./check.mjs
 npx lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
 ```
 
-`approvePending()`, `rejectPending()` and `listPending()` do the same from
-code. See [CLI](./cli.md#pending-proposals-manual-mode).
+`approve` runs the corpus guard right after the write, so it needs `--check`
+when the corpus has cases (or `--no-guard` to skip it). `approvePending()`,
+`rejectPending()` and `listPending()` do the same from code, and
+`guardApproval(dir, applied, { probe, runs })` runs that guard on what
+`approvePending()` returned. See [CLI](./cli.md#pending-proposals-manual-mode).
 
 ## Running it continuously
 
@@ -649,6 +654,10 @@ optional, and an unknown key or a bad value stops the loop with
 | `rateLimit.rpm` | 20 | A watcher's editor and reflection calls per minute |
 | `library.enabled` | `true` | Use the lesson library and reflect after a decided cycle |
 | `library.domain` | unset | Share lessons with the other agents in the parent folder that set the same domain |
+| `editors.proposers` | 1 | k invariant and k domain editors per cycle, or k rounds in `seq` mode (at most 4) |
+| `editors.mode` | `agg` | `agg` or `seq` |
+| `editors.select` | `false` | Gate every candidate and let the advisory selector choose |
+| `editors.parallel` | `true` | Run the editors and their probes two at a time |
 
 The JSON form is in [CLI](./cli.md#improvejson).
 
@@ -690,8 +699,22 @@ of today's budget, the cooldown, the kill switch and the last canary.
 | `cacheDir` | unset | Replay editor sessions. See [Caching and the ledger](#caching-and-the-ledger) |
 
 In a cycle, `quotedChecks` follows the approval mode and `cacheDir` is
-`.lousho/cache`. `healOnce()` and `lousho improve` don't pass the other four
-yet, so the loop runs one proposer of each kind, in parallel, with no selector.
+`.lousho/cache`. The other four come from `settings.editors`, the `editors`
+block in `improve.json` (`proposers`, `mode`, `select`, and `parallel` for
+`parallelEditors`), which `healOnce()`, `watchAgent()` and `lousho improve`
+pass to `improveAgent()`. A watcher re-reads them each tick when it has
+`reloadSettings`, as `lousho improve --watch` does. The flags `--proposers
+<1-4>` and `--mode agg|seq` win over the file, `--select` turns the selector
+on and `--no-parallel-editors` turns parallel off. `lousho improve status`
+shows the values in the file, with the defaults filled in. The defaults are unchanged: one proposer of each kind,
+in parallel, with no selector.
+
+k proposers cost about k times the editor sessions and proposal runs. With k
+above 1, a cycle estimates its spend before the editors run: the last cycle's
+`improveAgent()` tokens, divided by its proposers and multiplied by k, plus that
+cycle's canary and guard tokens. If that is more than the tokens left, the cycle
+ends `budget-exceeded` and nothing runs. The first cycle has nothing to scale
+from, so only `maxTokens` stops it.
 
 ## From the command line
 
@@ -774,13 +797,15 @@ when the directory changed since the cycle read it, so a person's edit is never
 overwritten.
 
 **Checks after the write.** The corpus guard replays the protected and fixed
-cases right away, and a watcher replays them every `guard.everyHours`. The
+cases right away, after an automatic apply and after `lousho improve approve`
+(unless `--no-guard`), and a watcher replays them every `guard.everyHours`. The
 monitor then compares real runs before and after. Either one rolls back on a
 regression.
 
 **Rollback.** A rollback restores a saved revision through the same writer. It
 makes a new revision and never rewrites history. The corpus guard in a cycle
-returns to the cycle's starting revision, the scheduled guard to the last
+returns to the cycle's starting revision, the guard after an approval to the
+approved revision's parent, the scheduled guard to the last
 revision whose guard passed, and the monitor to the revision before the apply.
 A person can roll back at any time with `lousho improve rollback <dir> --by
 <name> [--to <revision>]`. Every rollback, a person's too, starts the

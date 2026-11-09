@@ -5,7 +5,7 @@ import { cooldownEnds, pausedBy, readCycles, usageToday } from './cycles';
 import type { MonitorVerdict } from './monitor';
 import { listPending } from './pending';
 import { currentRevision } from './revisions';
-import { loadImproveSettings } from './settings';
+import { loadImproveSettings, type ImproveSettings } from './settings';
 import { readState } from './state';
 
 const RECENT = 5;
@@ -25,6 +25,8 @@ export interface ImproveStatus {
   dir: string;
   /** The approval mode. */
   approval: 'auto' | 'manual';
+  /** The editor options a cycle passes to `improveAgent()`, from improve.json and the defaults. */
+  editors: ImproveSettings['editors'];
   /** Why the loop is paused, or `null` when it may run. */
   paused: string | null;
   /** The active harness revision, or `null` when the instructions can't be read. */
@@ -155,6 +157,7 @@ export function improveStatus(dir: string, options: { now?: number; env?: NodeJS
   return {
     dir,
     approval: settings.approval,
+    editors: settings.editors,
     paused: pausedBy(dir, settings, env) ?? null,
     revision,
     audit: audit

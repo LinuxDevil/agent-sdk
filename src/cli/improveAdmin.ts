@@ -1,7 +1,9 @@
 import * as path from 'node:path';
 import type { Writable } from 'node:stream';
 import { ConfigurationError } from '../execution/errors';
-import { rollbackHarness } from '../improve/apply';
+import { rollbackHarness, type ApplyResult } from '../improve/apply';
+import type { GuardApprovalResult } from '../improve/approveGuard';
+import { readCorpus } from '../improve/corpus';
 import { readAudit, verifyAudit, type AuditEntry } from '../improve/audit';
 import { approvePending, isPendingId, listPending, readPendingProposal, rejectPending } from '../improve/pending';
 import { currentRevision, listRevisions, type HarnessRevision } from '../improve/revisions';
@@ -9,9 +11,20 @@ import { parseCommand, stringValue, usageError, type CommandSpec } from './args'
 import { pause, resume } from './improvePause';
 import { status } from './improveStatus';
 
+/** What `approve` needs to replay the corpus: the check module and how to run the agent. */
+export interface ApproveGuardFlags {
+  check: string;
+  model?: string;
+  readOnly: string[];
+}
+
+/** Loads the agent and the check before the write, and returns the guard to run after it. */
+export type PrepareGuard = (dir: string, flags: ApproveGuardFlags) => Promise<(applied: ApplyResult) => Promise<GuardApprovalResult>>;
+
 interface AdminIo {
   stdout: Writable;
   stderr: Writable;
+  prepareGuard?: PrepareGuard;
 }
 
 const SHORT = 12;
@@ -134,7 +147,12 @@ function audit(args: readonly string[], io: AdminIo): number {
 }
 
 const PENDING: CommandSpec = { command: 'improve pending', usage: 'Usage: lousho improve pending <agent-dir> [--show <id>] [--json]', positionals: 1, options: { json: { type: 'boolean' }, show: { type: 'string' } } };
-const APPROVE: CommandSpec = { command: 'improve approve', usage: 'Usage: lousho improve approve <agent-dir> <id> --by <name>', positionals: 2, options: { by: { type: 'string' } } };
+const APPROVE: CommandSpec = {
+  command: 'improve approve',
+  usage: 'Usage: lousho improve approve <agent-dir> <id> --by <name> [--check <module>] [--model provider/model] [--read-only tool]... [--no-guard]',
+  positionals: 2,
+  options: { by: { type: 'string' }, check: { type: 'string' }, model: { type: 'string' }, 'read-only': { type: 'string', multiple: true }, 'no-guard': { type: 'boolean' } },
+};
 const REJECT: CommandSpec = { command: 'improve reject', usage: 'Usage: lousho improve reject <agent-dir> <id> --by <name> [--reason text]', positionals: 2, options: { by: { type: 'string' }, reason: { type: 'string' } } };
 
 function pending(args: readonly string[], io: AdminIo): number {
@@ -171,12 +189,30 @@ function personOf(spec: CommandSpec, values: Record<string, unknown>): string {
   return by;
 }
 
+async function guardFor(command: { values: Record<string, unknown>; dir: string }, io: AdminIo): Promise<((applied: ApplyResult) => Promise<GuardApprovalResult>) | string> {
+  if (command.values['no-guard'] === true) return 'The corpus guard was skipped (--no-guard).';
+  if (readCorpus(command.dir).length === 0) return 'The corpus is empty, so there was nothing to guard.';
+  const check = stringValue(command.values.check as string | undefined);
+  if (check === undefined || !io.prepareGuard) throw usageError(APPROVE, '--check <module> is required to run the corpus guard right after the write; pass --no-guard to leave it to the next scheduled guard.');
+  const readOnly = (command.values['read-only'] as string[] | undefined) ?? [];
+  return io.prepareGuard(command.dir, { check, model: stringValue(command.values.model as string | undefined), readOnly });
+}
+
 async function approve(args: readonly string[], io: AdminIo): Promise<number> {
   const command = parsed(APPROVE, args, io);
   if (!command) return 0;
-  const applied = await approvePending(command.dir, idOf(APPROVE, command.id), personOf(APPROVE, command.values));
-  io.stdout.write(`Applied ${command.id}: ${short(applied.from)} -> ${short(applied.to)} (${applied.written.join(', ')}).\n`);
-  return 0;
+  const id = idOf(APPROVE, command.id);
+  const by = personOf(APPROVE, command.values);
+  const guard = await guardFor(command, io);
+  const applied = await approvePending(command.dir, id, by);
+  const line = `Applied ${id}: ${short(applied.from)} -> ${short(applied.to)} (${applied.written.join(', ')}).`;
+  if (typeof guard === 'string') {
+    io.stdout.write(`${line} ${guard}\n`);
+    return 0;
+  }
+  const guarded = await guard(applied);
+  io.stdout.write(`${line} The corpus guard ${guarded.passed ? 'passed' : 'did not pass'}: ${safe(guarded.reason)}\n`);
+  return guarded.passed ? 0 : 1;
 }
 
 async function reject(args: readonly string[], io: AdminIo): Promise<number> {

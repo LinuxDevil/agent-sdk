@@ -2,35 +2,16 @@ import { ConfigurationError } from '../execution/errors';
 import { applyProposal, rollbackHarness } from './apply';
 import type { CapturedCase } from './cases';
 import { readCorpus, type CorpusCase } from './corpus';
-import { guardCorpus, type GuardCorpusResult } from './corpusGuard';
+import { judgeGuard } from './approveGuard';
 import { readCycles, writeCycle, type HealCycle } from './cycles';
 import type { HealOptions } from './heal';
 import { STALE_FIELD } from './harnessWriter';
-import { caseProbe, checkpoint, counted, finish, libraryOf, MAX_ALWAYS_ON, messageOf, reflectAndVote, rejected, shortId, unscored, type HealState } from './healState';
+import { caseProbe, checkpoint, counted, finish, libraryOf, MAX_ALWAYS_ON, reflectAndVote, rejected, shortId, unscored, type HealState } from './healState';
 import { harnessHash } from './revisions';
 import type { Harness, ImproveResult } from './types';
 
-interface GuardCheck {
-  guard?: GuardCorpusResult;
-  reason: string;
-  undo: boolean;
-  regressed: boolean;
-}
-
 export function corpusCases(corpus: readonly CorpusCase[]): CapturedCase[] {
   return corpus.map((item) => ({ id: item.id, input: item.input, traceId: item.traceId, kind: 'protected' }));
-}
-
-async function runGuard(state: HealState): Promise<GuardCheck> {
-  let guard: GuardCorpusResult;
-  try {
-    guard = await guardCorpus(state.dir, { probe: counted(state), runs: state.settings.guard.runs, rollback: false });
-  } catch (error) {
-    return { reason: `The corpus guard could not run (${messageOf(error)}), so the edit is undone.`, undo: true, regressed: false };
-  }
-  if (guard.passed) return { guard, reason: guard.reason, undo: false, regressed: false };
-  const regressed = guard.cases.some((item) => item.class === 'regressed');
-  return { guard, reason: regressed ? guard.reason : `${guard.reason} A guard that can't judge counts as a failure, so the edit is undone.`, undo: true, regressed };
 }
 
 async function undoApply(state: HealState, to: string, reason: string): Promise<{ to: string } | { refused: string }> {
@@ -43,7 +24,7 @@ async function undoApply(state: HealState, to: string, reason: string): Promise<
 }
 
 async function guardApplied(state: HealState, to: string): Promise<HealCycle> {
-  const check = await runGuard(state);
+  const check = await judgeGuard(state.dir, counted(state), state.settings.guard.runs);
   if (check.guard) state.cycle.guard = check.guard;
   checkpoint(state);
   if (!check.undo) return finish(state, 'applied', `Applied ${shortId(to)}. ${check.reason}`);
