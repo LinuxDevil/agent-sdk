@@ -39,7 +39,12 @@ interface AppState {
    * state that could drift from this.
    */
   graph: Graph;
-  setGraph: (updater: (graph: Graph) => Graph) => void;
+  /**
+   * `{ dirty: false }` applies the update without marking the document
+   * dirty — used by the automatic unplaced-node layout (C17), whose
+   * recomputed positions need no save of their own.
+   */
+  setGraph: (updater: (graph: Graph) => Graph, options?: { dirty?: boolean }) => void;
   /**
    * Derived, read-mostly view of `graph` as the SDK's `AgentSpecV2` (via
    * `graphToSpec()`), kept for components that read the spec shape
