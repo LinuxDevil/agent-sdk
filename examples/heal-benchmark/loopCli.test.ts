@@ -65,6 +65,14 @@ describe('the S29 bars', () => {
     expect(plannedAttempts({ scenarios: SCENARIOS.filter((item) => item.id === 'no-op'), attempts: 2, live: true }, rows)).toEqual([]);
   });
 
+  it('canary-traffic rows appended to a live proof file later complete it, with no mixing', () => {
+    const earlier = full().filter((item) => item.scenario !== 'canary-traffic').map((item) => (item.scenario === 'no-op' || item.scenario === 'stable-monitor' ? { ...item, live: false } : item));
+    expect(loopDecision(loopBars(earlier), earlier)).toMatch(/^INCOMPLETE: .*Traffic canary/);
+    expect(plannedAttempts({ scenarios: SCENARIOS.filter((item) => item.id === 'canary-traffic'), live: true }, earlier).map((item) => item.attempt)).toEqual([0, 1, 2, 3, 4]);
+    const appended = [...earlier, ...Array.from({ length: 5 }, (_, i) => row('canary-traffic', i))];
+    expect(loopDecision(loopBars(appended), appended)).toMatch(/^GO: /);
+  });
+
   it('rows from an offline run never count as live evidence', () => {
     const rows = [...full(), row('budget', 3, { run: 'offline' })];
     expect(loopDecision(loopBars(rows), rows)).toMatch(/^INCOMPLETE: the rows mix live and offline/);

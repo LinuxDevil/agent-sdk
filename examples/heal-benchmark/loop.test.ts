@@ -83,6 +83,12 @@ describe('the synthetic self-healing loop', () => {
     expect(row.finalHash).toBe(row.baseHash);
   });
 
+  it('I canary-traffic: a candidate that brings a new failure class to live sessions is retired, not promoted', async () => {
+    const row = await attempt('canary-traffic');
+    expect(row).toMatchObject({ status: 'ok', passed: true, outcome: 'retired', applied: false });
+    expect(row.checks.newClasses).toBeGreaterThan(0);
+  });
+
   it('J budget: the second cycle is refused once the daily tokens are spent, over the cap by at most one run', async () => {
     const row = await attempt('budget');
     expect(row).toMatchObject({ passed: true, outcome: 'budget' });
