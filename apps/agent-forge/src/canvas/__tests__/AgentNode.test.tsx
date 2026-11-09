@@ -132,6 +132,12 @@ describe('AgentNode card', () => {
     for (const state of ['running', 'selected', 'highlighted', 'has-breakpoint']) expect(card.classList).toContain(state);
   });
 
+  it.each(['paused', 'error', 'done'] as const)('marks a %s node with its state class', (status) => {
+    const card = renderCard(nodeOf('tool'), { status });
+    expect(card.classList).toContain(status);
+    expect(card.classList).not.toContain('running');
+  });
+
   it('renders the generic card markup', () => {
     const card = renderCard(nodeOf('abort'), { status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();

@@ -778,13 +778,12 @@ function useCanvasElements() {
     displayGraph,
     proposal,
     hideProposal,
-    nodeIdMap,
     setGraph,
     selectedNodeId,
     setSelectedNodeId,
     highlightedNodeId,
     debugState,
-    spans,
+    nodeStates,
     runStatus,
   } = useAppState();
 
@@ -792,8 +791,8 @@ function useCanvasElements() {
   const breakpointsKey = breakpoints.join(',');
   const [measured, setMeasured] = useState<MeasuredSizes>({});
   const statuses = useMemo(
-    () => nodeRunStatuses(displayGraph, spans, runStatus, nodeIdMap),
-    [displayGraph, spans, runStatus, nodeIdMap]
+    () => nodeRunStatuses(displayGraph.nodes.map((n) => n.id), nodeStates, runStatus),
+    [displayGraph, nodeStates, runStatus]
   );
   const nodes = useMemo(
     () => toRfNodes(displayGraph, { selectedNodeId, highlightedNodeId, breakpoints, statuses }, measured),
@@ -824,7 +823,6 @@ function useCanvasElements() {
     measured,
     setMeasured,
     setSelectedEdgeId,
-    nodeIdMap,
   };
 }
 

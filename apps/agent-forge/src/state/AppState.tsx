@@ -19,6 +19,7 @@ import type {
   VersionListItem,
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
+import type { NodeStates } from './nodeStateReducer';
 import { useAgentDocument } from './useAgentDocument';
 import { agentRouteId } from '../screens/agents/agentRoute';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
@@ -114,6 +115,13 @@ interface AppState {
    * the WS subscription's initial push arrives).
    */
   runStatus: AgentRunStatusPayload | undefined;
+  /**
+   * The latest `node` frame per canvas node id for the current run -
+   * the status overlay's feed (canvas/nodeStatus.ts). Reset on agent
+   * switch, on each `runAgent()` call and on a new run's first
+   * `running` status.
+   */
+  nodeStates: NodeStates;
   /** POSTs the current graph's compiled spec + `input` to `/agents/:id/run`. */
   runAgent: (input: string) => Promise<void>;
   /** POSTs `/agents/:id/stop` - see runtimeClient.ts/runRegistry.ts for what this can and can't interrupt. */
