@@ -73,7 +73,22 @@ export interface AgentRunStatusPayload {
   provider?: string;
   /** Trace id (root span id) of the latest run, once its first span started - the top bar's "Open trace" link. */
   traceId?: string;
+  /**
+   * Why the run was cancelled - set when `status === 'stopped'` (`'user'` for
+   * a Stop click, `'abort_listener:<id>'` for an abort listener, any other
+   * caller-supplied reason). Cleared when the next run launches.
+   */
+  abortReason?: string;
   updatedAt: string;
+}
+
+/** `POST /agents/:id/abort` body (the body itself is optional). */
+export interface AbortRunRequest {
+  /**
+   * Why the run is being cancelled: 1..200 characters, defaulting to `'user'`.
+   * Abort listeners pass `'abort_listener:<id>'` (PLAN §10).
+   */
+  reason?: string;
 }
 
 /**

@@ -8,6 +8,7 @@ import { OutputPanel } from './debug/OutputPanel';
 import { HistoryPanel } from './debug/HistoryPanel';
 import { DebugBar } from './debug/DebugBar';
 import { TestPane } from './test/TestPane';
+import { StopButton } from './test/StopButton';
 import { SettingsPanel } from './SettingsPanel';
 import { tabIds, tabListKeyDown } from './tabs';
 import { DrawerResizeHandle, useDrawerHeight } from './drawerHeight';
@@ -23,7 +24,7 @@ const TABS: { id: DrawerTab; label: string; Icon: LucideIcon }[] = [
 const TAB_IDS = TABS.map((t) => t.id);
 
 const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
-  test: () => <TestPane />,
+  test: () => <TestPane runActions={<StopButton />} />,
   logs: () => <LogsPanel />,
   trace: () => <TracePanel />,
   output: () => <OutputPanel />,
