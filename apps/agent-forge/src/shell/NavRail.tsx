@@ -1,4 +1,5 @@
-import { Activity, Bot, ClipboardCheck, FileText, FlaskConical, LayoutTemplate, Library, LineChart, MessagesSquare, Settings, type LucideIcon } from 'lucide-react';
+import { Activity, Bot, ClipboardCheck, FileText, FlaskConical, LayoutTemplate, Library, LineChart, MessagesSquare, Settings, Sparkles, type LucideIcon } from 'lucide-react';
+import { openAuthor } from '../author/authorEntry';
 import { useRoute } from '../router/useRoute';
 import { DaemonStatus } from './DaemonStatus';
 import { NavBrand } from './NavBrand';
@@ -86,6 +87,23 @@ export function NavRail({
               <NavLink item={item} active={isActive(item, path)} collapsed={rail} onNavigate={onNavigate} />
             </li>
           ))}
+          {section === 'Footer' && (
+            <li>
+              <button
+                type="button"
+                className="icon-btn author-trigger"
+                aria-label="Agent Author (Ctrl+J)"
+                title="Agent Author (Ctrl+J)"
+                onClick={() => {
+                  openAuthor({ source: 'header' });
+                  onNavigate?.(); // the narrow drawer yields to the dock sheet
+                }}
+              >
+                <Sparkles size={16} strokeWidth={1.75} aria-hidden="true" />
+                <span className="nav-label">Agent Author</span>
+              </button>
+            </li>
+          )}
         </ul>
       ))}
       <DaemonStatus />
