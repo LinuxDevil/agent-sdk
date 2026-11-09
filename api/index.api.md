@@ -1467,6 +1467,12 @@ export function compilePolicy(policy: AgentSpecPolicy | undefined): CompiledPoli
 // @public
 export function compileSpec(spec: AgentSpecV2, host: SpecHost): Promise<CompiledSpec>;
 
+// @public
+export function compileSpecWithNodeIds(spec: AgentSpecV2, host: SpecHost, index?: {
+    spec?: AgentSpecV2;
+    toolNamesByRef?: (compiled: CompiledSpec) => readonly (readonly string[])[];
+}): Promise<CompiledSpec>;
+
 // @public (undocumented)
 interface ConditionNode {
     // (undocumented)

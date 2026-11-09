@@ -12,7 +12,6 @@
  */
 import { APPROVAL_WAIT_SPAN_NAME, FlowAttr, FLOW_NODE_SPAN_NAME, GUARDRAIL_SPAN_NAME, GenAiAttr, GenAiOperation, HANDOFF_SPAN_NAME, SdkAttr } from '../../execution/semconv';
 import type { Span, TraceExporter } from '../../execution/tracing';
-import type { Subagents } from '../../subagents/types';
 import type { HandoffSpec } from './handoffs';
 import { specNodeIds } from './nodeIds';
 import type { AgentSpecV2 } from './types';
@@ -84,8 +83,15 @@ function isSpecBuiltAgent(value: unknown): value is SpecBuiltAgent {
  * `nodeIdIndexOf(spec, toolNamesByRef, …)` takes as `subIndexes`. Agents
  * compiled any other way (remote, or built by hand) contribute nothing:
  * their spans still stamp `sub:<name>` but resolve no member ids.
+ *
+ * The parameter is structural rather than `Subagents` so this browser-safe
+ * entry's public signature does not drag the whole agent runtime type graph
+ * into its API report: any `createAgent()` `subagents` record or
+ * `SubagentCatalog` (`{ list, resolve }`) is assignable to it.
  */
-export function subAgentNodeIndexes(subagents: Subagents | undefined): Record<string, NodeIdIndex> {
+export function subAgentNodeIndexes(
+  subagents: Readonly<Record<string, unknown>> | { list: unknown } | undefined
+): Record<string, NodeIdIndex> {
   if (subagents === undefined || 'list' in subagents) return {};
   const indexes: Record<string, NodeIdIndex> = {};
   for (const [name, sub] of Object.entries(subagents)) {
