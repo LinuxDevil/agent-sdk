@@ -4,12 +4,15 @@
  * creates through `POST /agents` and opens the new agent's canvas; From
  * template navigates to `/templates` once A10 registers that route (checked
  * against `routeTable.ts`, which is React-free so there is no import cycle
- * with `screens/routes.tsx`). Describe with AI waits for AA19's Author dock
- * entry point and Import from file… for L08's import sheet - until then they
- * carry a `disabledReason` the menu and start buttons surface as their title.
+ * with `screens/routes.tsx`). Describe with AI opens the Agent Author dock
+ * through AA19's `openAuthor` (a new chat, create focus, the shared draft
+ * prefill - never sent). Import from file… still waits for L08's import
+ * sheet, so it carries a `disabledReason` the menu and start buttons
+ * surface as their title.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { FilePlus2, LayoutTemplate, Sparkles, Upload, type LucideIcon } from 'lucide-react';
+import { CREATE_AGENT_DRAFT, openAuthor } from '../../author/authorEntry';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { navigate } from '../../router/router';
 import { useToast } from '../../ui/Toast';
@@ -77,6 +80,19 @@ export function useNewAgentActions(): NewAgentActions {
 
   const openTemplates = useCallback(() => navigate('/templates'), []);
 
+  // AA19: a fresh Author chat focused on creating, prefilled with the shared
+  // draft (composer text only - the user still has to send it).
+  const describeWithAi = useCallback(
+    () =>
+      openAuthor({
+        source: 'agents-list',
+        focus: { mode: 'create' },
+        draft: CREATE_AGENT_DRAFT,
+        newChat: true,
+      }),
+    []
+  );
+
   const actions = useMemo<NewAgentAction[]>(() => {
     const blank: NewAgentAction = creating
       ? { kind: 'blank', label: 'Blank agent', hint: HINT_BLANK, icon: FilePlus2, disabledReason: 'Creating an agent…' }
@@ -88,7 +104,7 @@ export function useNewAgentActions(): NewAgentActions {
         label: 'Describe with AI',
         hint: HINT_DESCRIBE,
         icon: Sparkles,
-        disabledReason: 'The Agent Author isn’t set up yet.',
+        run: describeWithAi,
       },
       templatesAvailable
         ? { kind: 'template', label: 'From template', hint: HINT_TEMPLATE, icon: LayoutTemplate, run: openTemplates }
@@ -107,7 +123,7 @@ export function useNewAgentActions(): NewAgentActions {
         disabledReason: 'Import arrives with the import sheet.',
       },
     ];
-  }, [creating, templatesAvailable, createBlank, openTemplates]);
+  }, [creating, templatesAvailable, createBlank, openTemplates, describeWithAi]);
 
   return { actions, creating };
 }

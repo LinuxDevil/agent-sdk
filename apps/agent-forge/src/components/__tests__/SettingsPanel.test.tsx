@@ -137,6 +137,7 @@ describe('SettingsPanel', () => {
     const shortcuts = host.querySelector('section[aria-label="Keyboard shortcuts"]')!;
     expect([...shortcuts.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual([
       'Ctrl/Cmd+K',
+      'Ctrl/Cmd+J',
       '?',
       'Ctrl/Cmd+S',
       'j',

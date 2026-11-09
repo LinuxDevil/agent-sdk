@@ -19455,6 +19455,19 @@ See [The self-healing loop](https://github.com/LinuxDevil/agent-sdk/blob/main/do
 [Approval modes](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/improve.md#approval-modes), and
 [Safety](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/improve.md#safety) for what it can and can't change.
 
+### Live evidence
+
+On 2026-11-09 the loop ran live on synthetic fixtures, with
+`qwen/qwen3.7-flash` as the agent and one attempt per scenario (three for the
+planted editor edit). Every scenario passed: a true fix was applied and kept,
+a planted edit was rejected by the gate twice out of two, a planted edit forced
+past the gate was rolled back on the first tick, and the no-op, injection,
+healthy, kill switch, manual, budget, stable monitor and traffic canary
+scenarios behaved as specified. The audit log verified in every directory.
+Auto mode stays the default. The sample is small, so the loop stays
+experimental until the full benchmark (5 to 10 attempts per scenario) runs:
+`npx tsx examples/heal-benchmark/loop.ts --live --out <file.jsonl>`.
+
 ### The engine: `improveAgent()`
 
 Each cycle runs `improveAgent()` from `lousho/improve`. On its own, it looks for
