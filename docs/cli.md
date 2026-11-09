@@ -18,7 +18,7 @@ Run it with `npx lousho <command>` inside a project that has the SDK installed.
 | `lousho traces [id]` | List the recent runs saved by `fileTraceExporter()` (duration, model and tool calls, tokens, cost), or print one run as a span tree. | [Observability](./observability.md#local-traces) |
 | `lousho build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](./deployment.md) |
 | `lousho studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](./agent-forge.md) |
-| `lousho improve <path> --check <module>` | Experimental. Run one self-healing cycle on an agent directory: propose edits to its instructions and skills from failed runs in your local observe database, gate them, replay them on fresh runs, and apply (auto mode) or queue (manual mode) one that passes. `--dry-run` prints the review card and applies nothing. | [Below](#lousho-improve) |
+| `lousho improve <path> --check <module>` | Experimental. Run one self-healing cycle on an agent directory: propose edits to its instructions and skills from failed runs in your local observe database, gate them, replay them on fresh runs, and apply (auto mode, the default) or queue (manual mode) one that passes. `--watch` keeps it running; `pause`, `status`, `rollback`, `approve` and the other subcommands manage it. `--dry-run` prints the review card and applies nothing. | [Below](#lousho-improve) |
 
 Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 `.yml` or `.json`, see [Configuration](./configuration.md#agent-spec-files-agentspec)).
@@ -39,7 +39,8 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
-lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual]
+lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--dry-run] [--watch [--interval 15m]]
+lousho improve <revisions|rollback|audit|pending|approve|reject|pause|resume|status> <agent-dir> ...
 lousho --version
 ```
 
@@ -428,12 +429,20 @@ don't live in `instructions.md`, always runs dry.
   `improve.json` beside the agent. The default is `auto`. In `manual` mode an
   edit that quotes a failed check word for word is kept and flagged on the card
   for the person who approves it; in `auto` mode it is sent back to the editor
-  once and then dropped. Without `--approval`, an `improve.json` that doesn't
-  validate stops the run. Applying proposals from this command arrives with the
-  self-healing cycle.
+  once and then dropped. An `improve.json` that doesn't validate stops the
+  run. See [Approval modes](./improve.md#approval-modes).
+- `--dry-run` writes nothing: no apply, no queue, no audit entry. It reads
+  every failed run whatever its revision, and ignores the kill switch and the
+  daily caps.
+- `--watch` keeps running cycles on a timer; `--interval` (default `15m`, as
+  `<N>s`, `<N>m` or `<N>h`) sets the spacing. It needs an agent directory, takes
+  its budget from `improve.json`, and can't be combined with `--dry-run`,
+  `--max-tokens` or `--out`. See below.
 
-Before the first run it prints how many runs it will make at least, and the
-token budget if any. Every run and every editor call is billed to your models.
+Before it starts, a cycle prints its approval mode and whether it applies or
+queues; a dry run prints how many runs it will make at least, and the token
+budget if any. Every run and every editor call is billed to your models.
+`--max-tokens` caps one cycle within `improve.json`'s daily caps.
 It exits 1 on an `outage`: no run could be scored, or the editors' provider
 failed. A `budget-exceeded` run exits 0, since you set the cap. Each run's error goes to
 stderr. It reads nothing but your own database. See [Improving an agent](./improve.md#from-the-command-line).
@@ -469,7 +478,8 @@ npx lousho improve audit ./my-agent --verify
   truncated line.
 
 A directory literally named `revisions`, `rollback`, `audit`, `pending`,
-`approve` or `reject` must be passed as `./revisions` and so on.
+`approve`, `reject`, `pause`, `resume` or `status` must be passed as
+`./revisions` and so on.
 
 ### Pending proposals (manual mode)
 
@@ -495,6 +505,8 @@ npx lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
   and moves the file to `.lousho/proposals/rejected/`. A rejected proposal is
   never queued again.
 
+### Watching, pausing and status
+
 `--watch` keeps the loop running on an agent directory:
 
 ```bash
@@ -510,7 +522,11 @@ every `guard.everyHours`, and then runs one cycle within the daily caps. A tick
 with the same failures as the last one and no new failed run is skipped.
 Three outages in a row write the stop file. Editor calls are limited to
 `rateLimit.rpm` a minute. Ctrl-C stops after the current step. `pause` writes
-the stop file and `resume` removes it; both are audited.
+the stop file and `resume` removes it; both are audited. `resume` doesn't
+undo `LOUSHO_IMPROVE=off` or `"enabled": false`. While the loop is paused, the
+monitor doesn't run either, so nothing is rolled back automatically. Only a
+watcher runs the monitor: a single `lousho improve` cycle doesn't. See
+[Running it continuously](./improve.md#running-it-continuously).
 
 `lousho improve status <dir> [--json]` prints the mode and active revision, the
 last 5 audit entries, pending proposals, the monitor's verdict (with a warning
@@ -543,4 +559,7 @@ These are the defaults. Counts are whole numbers of 1 or more, and `maxDrop` is
 between 0 and 1. `requireRecurring` defaults to `false` in manual mode.
 `"enabled": false` stops the loop for this agent. `budget.maxTokensPerCycle`,
 `canary.traffic` (`share` up to 0.25, `sessions` up to 50) and `library.domain`
-are unset unless you set them. `loadImproveSettings()` reads the file.
+are unset unless you set them. `canary.traffic` is accepted and shown by
+`status`, but no cycle uses it yet: the replay canary always runs.
+`loadImproveSettings()` reads the file. See
+[Settings](./improve.md#settings) for what each key does.
