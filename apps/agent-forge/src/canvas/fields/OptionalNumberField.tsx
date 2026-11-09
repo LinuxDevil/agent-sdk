@@ -24,6 +24,10 @@ export interface OptionalNumberFieldProps {
   onChange(value: number | undefined): void;
   min?: number;
   max?: number;
+  /** Replaces the generated message when `min` is violated (e.g. 'At least 30 seconds'). */
+  minMessage?: string;
+  /** Replaces the generated message when `max` is violated. */
+  maxMessage?: string;
   /** Native `step` attribute (e.g. `0.1` for temperature). */
   step?: number;
   /** Non-integers show 'Enter a whole number'. */
@@ -44,14 +48,13 @@ function rangeError(min: number | undefined, max: number | undefined): string {
 /** `text`'s error under the field's rules, or `undefined` when it is an emittable number. */
 function validate(
   text: string,
-  props: Pick<OptionalNumberFieldProps, 'min' | 'max' | 'integer'>,
+  props: Pick<OptionalNumberFieldProps, 'min' | 'max' | 'minMessage' | 'maxMessage' | 'integer'>,
 ): string | undefined {
   const num = Number(text);
   if (!Number.isFinite(num)) return 'Enter a number';
   if (props.integer === true && !Number.isInteger(num)) return 'Enter a whole number';
-  if ((props.min !== undefined && num < props.min) || (props.max !== undefined && num > props.max)) {
-    return rangeError(props.min, props.max);
-  }
+  if (props.min !== undefined && num < props.min) return props.minMessage ?? rangeError(props.min, props.max);
+  if (props.max !== undefined && num > props.max) return props.maxMessage ?? rangeError(props.min, props.max);
   return undefined;
 }
 
@@ -66,6 +69,8 @@ export function OptionalNumberField({
   onChange,
   min,
   max,
+  minMessage,
+  maxMessage,
   step,
   integer,
   help,
@@ -80,7 +85,7 @@ export function OptionalNumberField({
       emit(undefined);
       return;
     }
-    const problem = validate(text, { min, max, integer });
+    const problem = validate(text, { min, max, minMessage, maxMessage, integer });
     if (problem !== undefined) {
       setError(problem);
       return;

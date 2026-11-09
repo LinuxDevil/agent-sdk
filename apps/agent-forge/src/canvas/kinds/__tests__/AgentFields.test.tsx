@@ -85,9 +85,6 @@ function choose(id: string, value: string) {
   });
 }
 
-function blur(id: string) {
-  act(() => field(id).dispatchEvent(new FocusEvent('focusout', { bubbles: true })));
-}
 
 const fields = () => (app.graph!.nodes[0].data as AgentNodeData).fields;
 
@@ -100,12 +97,23 @@ beforeEach(() => {
 });
 
 describe('agent Inspector', () => {
-  it('shows the four sections in order', () => {
+  it('shows the sections in order', () => {
     renderInspector();
     const ids = [...container.querySelectorAll('.inspector-section-body')].map((el) => el.id);
-    for (const id of ['agent-identity', 'agent-model', 'agent-instructions', 'agent-advanced']) {
+    for (const id of [
+      'agent-identity',
+      'agent-model',
+      'agent-instructions',
+      'agent-limits',
+      'agent-approvals',
+      'agent-reliability',
+      'agent-context',
+      'agent-delegation',
+    ]) {
       expect(ids).toContain(`inspector-section-${id}`);
     }
+    // C27: the Advanced JSON editor is gone — every AGENT_FIELD_KEYS entry has a real control.
+    expect(container.querySelector('#node-agent-advanced')).toBeNull();
   });
 
   it('writes the name field from the name input', () => {
@@ -194,21 +202,12 @@ describe('agent Inspector', () => {
     expect(fields().promptRef).toBeUndefined();
   });
 
-  it('shows "Unknown setting" for a stray key in the Advanced JSON and does not write it', () => {
+  it('writes maxSteps through the Limits section instead of JSON', () => {
     renderInspector();
-    type('node-agent-advanced', '{"foo": 1}');
-    blur('node-agent-advanced');
-    expect(container.textContent).toContain("Unknown setting 'foo'");
-    expect('foo' in fields()).toBe(false);
-  });
-
-  it('patches known advanced keys and deletes missing ones', () => {
-    app.graph = specToGraph(specOf({ maxSteps: 5, retry: false }));
-    renderInspector();
-    type('node-agent-advanced', '{"maxSteps": 9}');
-    blur('node-agent-advanced');
+    const el = field<HTMLInputElement>('node-agent-max-steps');
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '9');
+    act(() => el.dispatchEvent(new Event('input', { bubbles: true })));
     expect(fields().maxSteps).toBe(9);
-    expect(fields().retry).toBeUndefined();
   });
 });
 
