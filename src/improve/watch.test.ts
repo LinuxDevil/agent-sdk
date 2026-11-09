@@ -16,6 +16,7 @@ import { checkApplied } from './monitor';
 import { currentRevision } from './revisions';
 import { loadImproveSettings, type ImproveSettings } from './settings';
 import { updateState } from './state';
+import { readCanary } from './trafficCanary';
 import type { Harness } from './types';
 import { isDefinedSchedule } from '../schedules/defineSchedule';
 import { fileStore } from '../storage/fileStore';
@@ -361,6 +362,46 @@ describe('the score regression trigger', () => {
 });
 
 describe('notifications', () => {
+  it('the traffic canary: a tick starts it, a later tick promotes, applies, guards and posts', async () => {
+    const traffic = settings({ canary: { replayRuns: 6, traffic: { share: 0.1, sessions: 3 } } });
+    const post = vi.fn();
+    const context = watchContext(options({ settings: traffic, alerter: { post } }));
+    seedFailures();
+    const started = await watchTick(options({ settings: traffic, alerter: { post } }), context);
+    expect(started.cycle?.outcome).toBe('canary-started');
+    const canary = readCanary(dir);
+    expect(canary).toBeDefined();
+    expect(readFileSync(path.join(dir, 'instructions.md'), 'utf8').trim()).toBe(BASE);
+    const at = Date.now() + 1000;
+    ingestBatch(db, [0, 1, 2].map((i) => ({ ...root_(`c${i}`, '"hello"', at + i), data: { ...root_(`c${i}`, '"hello"', at + i).data, attrs: { 'gen_ai.operation.name': 'invoke_agent', 'lousho.harness.revision': canary?.revision } } }) as IngestEvent));
+    const settled = await watchTick(options({ settings: traffic, alerter: { post } }), context);
+    expect(settled.canary).toMatchObject({ outcome: 'applied', applied: { to: canary?.revision } });
+    expect(readFileSync(path.join(dir, 'instructions.md'), 'utf8').trim()).toBe(FIX);
+    expect(readCanary(dir)).toBeUndefined();
+    expect(actions()).toEqual(expect.arrayContaining(['canary-start', 'apply', 'canary-end']));
+    expect(post.mock.calls.map(([[event]]) => event.type)).toEqual(['improve.canary', 'improve.applied']);
+  });
+
+  it('the traffic canary waits when the daily apply cap is spent, and a pause ends it', async () => {
+    const traffic = settings({ canary: { replayRuns: 6, traffic: { share: 0.1, sessions: 3 } } });
+    const context = watchContext(options({ settings: traffic }));
+    seedFailures();
+    await watchTick(options({ settings: traffic }), context);
+    const canary = readCanary(dir);
+    await appendAudit(dir, { actor: 'gate', action: 'apply', from: 'a'.repeat(64), to: 'b'.repeat(64), reason: 'Applied elsewhere today.' });
+    const at = Date.now() + 1000;
+    ingestBatch(db, [0, 1, 2].map((i) => ({ ...root_(`c${i}`, '"hello"', at + i), data: { ...root_(`c${i}`, '"hello"', at + i).data, attrs: { 'gen_ai.operation.name': 'invoke_agent', 'lousho.harness.revision': canary?.revision } } }) as IngestEvent));
+    const held = await watchTick(options({ settings: traffic }), context);
+    expect(held.canary).toBeUndefined();
+    expect(readCanary(dir)).toBeDefined();
+    const post = vi.fn();
+    stop();
+    await tick({ settings: traffic, alerter: { post } });
+    expect(readCanary(dir)).toBeUndefined();
+    expect(post.mock.calls.map(([[event]]) => event.type)).toEqual(['improve.paused']);
+    expect(actions().at(-1)).toBe('canary-end');
+  });
+
   it('an apply posts one improve.applied', async () => {
     seedFailures();
     const post = vi.fn();

@@ -298,7 +298,17 @@ interface ApprovalSignIn {
 }
 
 // @public
-export function approvePending(dir: string, id: string, approvedBy: string): Promise<ApplyResult>;
+export type ApprovedPending = ApplyResult | {
+    canary: TrafficCanary;
+};
+
+// @public
+export function approvePending(dir: string, id: string, approvedBy: string, options?: ApprovePendingOptions): Promise<ApprovedPending>;
+
+// @public
+export interface ApprovePendingOptions {
+    db?: SqlDatabase;
+}
 
 // @public
 export interface AuditEntry {
@@ -423,6 +433,28 @@ export interface CanaryReplayResult {
     reason: string;
     tokens: number;
 }
+
+// @public
+export interface CanarySettlement {
+    applied?: ApplyResult;
+    outcome: 'none' | 'pending' | 'applied' | 'queued' | 'retired';
+    queued?: PendingProposal;
+    reason: string;
+    verdict: CanaryVerdict;
+}
+
+// @public
+export interface CanaryVerdict {
+    flagged: number;
+    newClasses: string[];
+    p0: number;
+    reason: string;
+    sessions: number;
+    state: 'none' | 'pending' | 'promote' | 'retire';
+}
+
+// @public
+export function canaryVerdict(db: SqlDatabase, dir: string, settings: ImproveSettings, now?: number): CanaryVerdict;
 
 // @public
 export interface CapturedCase {
@@ -1031,7 +1063,7 @@ export interface HealCycle {
     from?: string;
     guard?: GuardCorpusResult;
     id: string;
-    outcome: 'idle' | 'paused' | 'busy' | 'budget' | 'cooldown' | Exclude<ImproveOutcome, 'proposal'> | 'canary-failed' | 'applied' | 'pending' | 'guard-rolled-back' | 'stale' | 'refused' | 'interrupted';
+    outcome: 'idle' | 'paused' | 'busy' | 'budget' | 'cooldown' | Exclude<ImproveOutcome, 'proposal'> | 'canary-failed' | 'canary-started' | 'applied' | 'pending' | 'guard-rolled-back' | 'stale' | 'refused' | 'interrupted';
     pending?: string;
     reason: string;
     result?: ImproveResult;
@@ -1856,6 +1888,9 @@ export function readAgentHarness(dir: string): Harness;
 export function readAudit(dir: string): AuditEntry[];
 
 // @public
+export function readCanary(dir: string): TrafficCanary | undefined;
+
+// @public
 export function readCorpus(dir: string): CorpusCase[];
 
 // @public
@@ -1973,6 +2008,9 @@ export interface RollbackResult {
     to: string;
     written: string[];
 }
+
+// @public
+export function routesToCandidate(sessionId: string, share: number): boolean;
 
 // @public
 interface RunDoneEvent extends AgentEventBase<'run.done'> {
@@ -2226,6 +2264,9 @@ type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
 };
 
 // @public
+export function settleCanary(db: SqlDatabase, dir: string, settings: ImproveSettings, now?: number): Promise<CanarySettlement>;
+
+// @public
 interface SimpleAgent<TObject = unknown> {
     approvals: AgentApprovals;
     close: () => Promise<void>;
@@ -2289,6 +2330,20 @@ interface StandardSchemaV1<Input = unknown, Output = Input> {
 }
 
 // @public
+export function startCanary(db: SqlDatabase, dir: string, input: StartCanaryInput, settings: ImproveSettings, now?: number): Promise<TrafficCanary>;
+
+// @public
+export interface StartCanaryInput {
+    agent?: string;
+    approvedBy?: string;
+    base: Harness;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+    replay?: Pick<CanaryReplayResult, 'passed' | 'reason'>;
+    result: ImproveResult;
+}
+
+// @public
 export interface StatusCount {
     max: number;
     used: number;
@@ -2325,6 +2380,12 @@ interface StepUsage {
     // (undocumented)
     usage: Usage;
 }
+
+// @public
+export function stopCanary(dir: string, by: {
+    actor: AuditEntry['actor'];
+    reason: string;
+}): Promise<boolean>;
 
 // @public
 interface StreamChunk {
@@ -2540,6 +2601,23 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 }
 
 // @public
+export interface TrafficCanary {
+    agent?: string;
+    approvedBy?: string;
+    base: Harness;
+    baseRevision: string;
+    candidate: Harness;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+    p0: number;
+    result: ImproveResult;
+    revision: string;
+    sessions: number;
+    share: number;
+    startedAt: string;
+}
+
+// @public
 interface Usage {
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
@@ -2585,6 +2663,7 @@ export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' 
 
 // @public
 export interface WatchTick {
+    canary?: CanarySettlement;
     cycle?: HealCycle;
     guard?: GuardCorpusResult;
     monitor?: MonitorVerdict;

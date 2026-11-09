@@ -1538,6 +1538,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     fallbackModels?: readonly string[];
     guardrails?: AgentGuardrails;
     handoffs?: ReadonlyArray<SimpleAgent | Handoff>;
+    harnessCanary?: (ctx: RunConfigContext) => HarnessArm | undefined;
     hooks?: readonly AgentHook[];
     limits?: RunLimits;
     maxHandoffs?: number;
@@ -3210,6 +3211,12 @@ interface HandoffSpec {
 // @public
 export interface HandoffTarget extends SubagentSpec {
     handoffs?: readonly ResolvedHandoff[];
+}
+
+// @public
+export interface HarnessArm {
+    instructions: string;
+    skills: readonly Skill[];
 }
 
 // @public
@@ -7868,7 +7875,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.111";
+export const VERSION = "1.0.0-alpha.117";
 
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;

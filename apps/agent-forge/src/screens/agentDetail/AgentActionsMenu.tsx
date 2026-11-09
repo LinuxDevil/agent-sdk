@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { Copy, Download, Trash2 } from 'lucide-react';
+import { Copy, Download, Sparkles, Trash2 } from 'lucide-react';
 
+import { openAuthor } from '../../author/authorEntry';
 import type { AgentRecord } from '../../../shared/wireTypes';
 import { navigate } from '../../router/router';
 import { runtimeClient } from '../../runtime/runtimeClient';
@@ -13,7 +14,8 @@ import { useToast } from '../../ui/Toast';
 import { agentTabPath } from '../agents/agentTabs';
 
 /**
- * The detail header's overflow menu (PLAN §11, A12): Duplicate (a
+ * The detail header's overflow menu (PLAN §11, A12): Change with AI (AA19's
+ * Author entry point focused on this agent), Duplicate (a
  * `POST /agents { from: { copyOf } }` copy that opens its Overview), Export
  * YAML (a client-side `<a download>` of the spec until L07's export sheet)
  * and Delete agent… behind a ConfirmDialog. Passed to `AgentDetailHeader`'s
@@ -70,6 +72,14 @@ export function AgentActionsMenu({ record }: { record: AgentRecord }): JSX.Eleme
   }
 
   const items: MenuEntry[] = [
+    {
+      id: 'change-with-ai',
+      label: 'Change with AI',
+      icon: Sparkles,
+      disabled: busyReason !== undefined,
+      disabledReason: busyReason,
+      onSelect: () => openAuthor({ source: 'agent-header', focus: { mode: 'edit', agentId: id } }),
+    },
     {
       id: 'duplicate',
       label: 'Duplicate',

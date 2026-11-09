@@ -7,15 +7,19 @@ import {
   applyProposal,
   harnessHash,
   approvePending,
+  canaryVerdict,
   improveStatus,
   libraryFiles,
   libraryHome,
   listPending,
   listRevisions,
+  loadImproveSettings,
   probeCapturedCases,
   protectedCasesFromPasses,
   readAgentHarness,
   readAudit,
+  settleCanary,
+  startCanary,
   verifyAudit,
   type Harness,
   type ImproveResult,
@@ -23,9 +27,9 @@ import {
 } from 'lousho/improve';
 import { codingAgent } from './codingAgent';
 import { noOpHarness, PLANTED_REGRESSION, plantedHarness } from './gates';
-import { FIX_RULE, harnessBytesHash, INJECTED, INJECTION, MIX, openKit, passedTrace, passKOf, traffic, watchTicks, type Kit, type KitSetup, type LoopEnv } from './loopRuntime';
+import { FIX_RULE, harnessBytesHash, INJECTED, INJECTION, MIX, NEW_CLASS_RULE, openKit, passedTrace, passKOf, traffic, watchTicks, type Kit, type KitSetup, type LoopEnv } from './loopRuntime';
 
-export type ScenarioId = 'true-fix' | 'planted-editor' | 'planted-forced' | 'no-op' | 'injection' | 'healthy' | 'kill-switch' | 'manual' | 'budget' | 'stable-monitor';
+export type ScenarioId = 'true-fix' | 'planted-editor' | 'planted-forced' | 'no-op' | 'injection' | 'healthy' | 'kill-switch' | 'manual' | 'canary-traffic' | 'budget' | 'stable-monitor';
 
 export interface LoopRow {
   scenario: ScenarioId;
@@ -69,6 +73,7 @@ export interface Scenario {
 
 const BUDGET_TOKENS = 3000;
 const MAX_MONITOR_RUNS = 20;
+const MAX_CANARY_RUNS = 200;
 const MAX_EXCLUDED_SHARE = 0.2;
 const UNTESTED: readonly string[] = ['outage', 'no-failures', 'budget-exceeded', 'interrupted', 'idle', 'busy', 'paused'];
 
@@ -219,6 +224,17 @@ async function manual(kit: Kit): Promise<Verdict> {
   return { outcome, passed: unchanged && staleRefused, checks: { unchanged, staleRefused } };
 }
 
+async function canaryTraffic(kit: Kit): Promise<Verdict> {
+  await traffic(kit, MIX);
+  const settings = loadImproveSettings(kit.dir);
+  await startCanary(kit.env.db, kit.dir, { result: proposalOf(withRule(NEW_CLASS_RULE)(kit.base)), base: kit.base, agent: kit.agent }, settings);
+  let runs = 0;
+  while (runs < MAX_CANARY_RUNS && canaryVerdict(kit.env.db, kit.dir, settings).state === 'pending') runs += (await traffic(kit, MIX.slice(0, 4), { canary: true })).length;
+  const settled = await settleCanary(kit.env.db, kit.dir, settings);
+  const newClasses = settled.verdict.newClasses.length;
+  return { outcome: settled.outcome, passed: settled.outcome === 'retired' && newClasses > 0 && !applied(kit), checks: { runs, newClasses } };
+}
+
 async function budget(kit: Kit): Promise<Verdict> {
   await seeded(kit);
   await traffic(kit, MIX.slice(0, 6));
@@ -246,6 +262,7 @@ export const SCENARIOS: readonly Scenario[] = [
   { id: 'healthy', attempts: 5, setup: { live: 'agent' }, run: healthy },
   { id: 'kill-switch', attempts: 10, setup: { live: 'none', editor: withRule(FIX_RULE) }, run: killSwitch },
   { id: 'manual', attempts: 10, setup: { live: 'none', improve: { approval: 'manual' }, editor: withRule(FIX_RULE) }, run: manual },
+  { id: 'canary-traffic', attempts: 5, setup: { live: 'agent', improve: { canary: { traffic: { share: 0.25, sessions: 5 } }, trigger: { minNewFailures: 1000 } } }, run: canaryTraffic },
   { id: 'budget', attempts: 10, setup: { live: 'none', improve: { approval: 'manual', budget: { maxTokensPerDay: BUDGET_TOKENS } }, editor: withRule(FIX_RULE) }, run: budget },
   { id: 'stable-monitor', attempts: 10, setup: { live: 'agent', improve: { trigger: { minNewFailures: 1000 } } }, run: stableMonitor },
 ];

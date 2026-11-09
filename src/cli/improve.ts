@@ -115,7 +115,7 @@ Revisions, rollback, the audit log and pending proposals (run one with --help fo
   lousho improve audit <agent-dir> [--verify] [--json]
   lousho improve pending <agent-dir> [--json]
   lousho improve approve <agent-dir> <id> --by <name> [--check <module>] [--model provider/model]
-                         [--read-only tool]... [--no-guard]
+                         [--read-only tool]... [--no-guard] [--db path]
   lousho improve reject <agent-dir> <id> --by <name> [--reason text]
   lousho improve pause <agent-dir> [--reason text] [--by <name>]   write the kill switch file
   lousho improve resume <agent-dir> [--by <name>]                  remove it

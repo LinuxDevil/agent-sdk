@@ -43,7 +43,8 @@ import { toolNodeName } from '../graph/v2/nodeIds';
 import type { Graph, GraphEdge, GraphNode, ToolNodeData } from '../graph/v2/types';
 import { ROOT_AGENT_ID, ROOT_ONLY_KINDS } from '../graph/v2/types';
 import { KIND_VIEWS, type PaletteEntry } from '../canvas/kinds';
-import { autoLayout } from '../canvas/layout';
+import { applyLayoutResult, autoLayout } from '../canvas/layout';
+import { useToast } from '../ui/Toast';
 import { EmptyCanvas } from '../canvas/EmptyCanvas';
 import { nodeRunStatuses, type NodeRunStatus } from '../canvas/nodeStatus';
 import { PALETTE_DRAG_MIME } from '../canvas/dnd';
@@ -498,6 +499,33 @@ function motionDuration(ms: number): { duration: number } | undefined {
 }
 
 /**
+ * Ids of nodes hidden inside a collapsed group. React Flow never renders
+ * them (`hidden` in `toRfNodes`), so they never report a measured size —
+ * demanding one would block the fit/unplaced-layout gates forever.
+ */
+export function collapsedHiddenIds(graph: Graph): Set<string> {
+  const hidden = new Set<string>();
+  for (const node of graph.nodes) {
+    if (node.kind === 'agent' && node.collapsed === true) {
+      for (const id of descendantsOf(graph, node.id)) {
+        if (id !== node.id) hidden.add(id);
+      }
+    }
+  }
+  return hidden;
+}
+
+/**
+ * True when every node that can render has a measured size. Nodes hidden
+ * inside a collapsed group are exempt: they are not rendered, so React
+ * Flow never measures them.
+ */
+export function allVisibleMeasured(graph: Graph, measured: MeasuredSizes): boolean {
+  const hidden = collapsedHiddenIds(graph);
+  return graph.nodes.every((n) => hidden.has(n.id) || measured[n.id] !== undefined);
+}
+
+/**
  * An automatic fit: the whole graph when it fits at AUTO_FIT_MIN_ZOOM or more
  * (never past 1:1), else that zoom with the graph's top-left corner in view.
  */
@@ -543,7 +571,7 @@ function useFitViewOnResize() {
 /** The first fit when an agent opens or an empty canvas is filled (canvas/canvasResets.ts), with legible sizing. */
 function useFitViewOnLoad(agentId: string, graph: Graph, measured: MeasuredSizes): boolean {
   const fitLegibly = useLegibleFit();
-  const allMeasured = graph.nodes.length > 0 && graph.nodes.every((n) => measured[n.id]);
+  const allMeasured = graph.nodes.length > 0 && allVisibleMeasured(graph, measured);
   return useFitOnLoad(agentId, graph.nodes.length, allMeasured, fitLegibly);
 }
 
@@ -598,15 +626,45 @@ function useKeepSelectionInView(selectedNodeId: string | undefined) {
 }
 
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
-function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined, readOnly: boolean) {
+function useToolbarActions(
+  setGraph: SetGraph,
+  selectedNodeId: string | undefined,
+  readOnly: boolean,
+  graph: Graph,
+  measured: MeasuredSizes,
+  agentId: string
+) {
   const { fitView } = useReactFlow();
   const fitLegibly = useLegibleFit();
+  const toast = useToast();
+  const [layoutBusy, setLayoutBusy] = useState(false);
+  // The agent on screen NOW: an auto-layout that resolves after an agent
+  // switch must not write agent A's positions into agent B's document.
+  const latestAgentId = useRef(agentId);
+  latestAgentId.current = agentId;
 
-  function handleAutoLayout() {
-    if (readOnly) return;
-    setGraph((g) => autoLayout(g));
-    window.requestAnimationFrame(() => fitLegibly(200));
-  }
+  // elkjs runs off the main thread (canvas/layout.ts); the button stays
+  // busy until the layout lands or fails - a failure leaves the graph as is.
+  const handleAutoLayout = useCallback(async () => {
+    if (readOnly || layoutBusy) return;
+    const before = graph;
+    const forAgent = latestAgentId.current;
+    setLayoutBusy(true);
+    try {
+      const laidOut = await autoLayout(before, 'all', measured);
+      if (latestAgentId.current !== forAgent) return;
+      // A no-op layout (positions already match) must not dirty the document.
+      if (applyLayoutResult(before, laidOut, before) === before) return;
+      // Merge the moved positions onto the LATEST graph inside the updater:
+      // edits made while elkjs ran are kept, only positions change.
+      setGraph((current) => applyLayoutResult(before, laidOut, current));
+      window.requestAnimationFrame(() => fitLegibly(200));
+    } catch {
+      toast.show({ message: "Couldn't lay out the canvas.", tone: 'error' });
+    } finally {
+      setLayoutBusy(false);
+    }
+  }, [readOnly, layoutBusy, graph, measured, setGraph, fitLegibly, toast]);
 
   function handleFitView() {
     fitView({ ...FIT_VIEW_OPTIONS, ...motionDuration(200) });
@@ -632,7 +690,79 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleDuplicate]);
 
-  return { handleAutoLayout, handleFitView, handleDuplicate };
+  return { handleAutoLayout, handleFitView, handleDuplicate, layoutBusy };
+}
+
+/**
+ * On agent open, nodes with no saved position (`graph.unplaced`) are laid
+ * out by elkjs once every node is measured (C17). Runs once per agent id
+ * and writes with `{ dirty: false }`: the recomputed positions are saved
+ * with the next real edit, or never — they are recomputed on every open.
+ * `graph` is `undefined` while a proposal overlay shows, so the layout
+ * never writes proposal nodes into the real graph.
+ */
+export function useLayoutUnplaced(agentId: string, graph: Graph | undefined, measured: MeasuredSizes, setGraph: SetGraph) {
+  const toast = useToast();
+  // The agent on screen NOW: guards the async write against an agent
+  // switch that lands while elkjs is still running.
+  const latestAgentId = useRef(agentId);
+  latestAgentId.current = agentId;
+  // The in-flight (or finished) run for this agent. Dep changes - measured
+  // batches, edits - must NOT cancel it: the result is merged onto the
+  // latest graph anyway, and a cancelled run would never be retried.
+  const runRef = useRef<{ agentId: string; cancelled: boolean; done: boolean } | null>(null);
+  const allMeasured = graph !== undefined && allVisibleMeasured(graph, measured);
+  useEffect(() => {
+    if (graph === undefined || graph.unplaced.length === 0 || !allMeasured) return;
+    const existing = runRef.current;
+    if (existing !== null && existing.agentId === agentId) {
+      if (!existing.done) return; // a layout for this agent is still in flight
+      // A finished run leaves only the ids ELK could not position (hidden
+      // under a collapsed group) flagged in `unplaced`. When one of them
+      // is visible again - the group was expanded - allow one more run.
+      const hidden = collapsedHiddenIds(graph);
+      const unplacedIds = new Set(graph.unplaced);
+      const hasVisibleUnplaced = graph.nodes.some(
+        (n) => unplacedIds.has(n.id) && n.kind !== 'note' && !hidden.has(n.id)
+      );
+      if (!hasVisibleUnplaced) return;
+      runRef.current = null;
+    }
+    const run = { agentId, cancelled: false, done: false };
+    runRef.current = run;
+    autoLayout(graph, 'unplaced', measured).then(
+      (laidOut) => {
+        if (run.cancelled || latestAgentId.current !== run.agentId) return;
+        // Keep `run` as the once-per-agent marker: unplaced ids ELK cannot
+        // position (nodes hidden under a collapsed group) stay flagged, and
+        // clearing the marker would re-run the layout on every graph change.
+        run.done = true;
+        // Merge the moved positions onto the LATEST graph: edits made
+        // while elkjs ran are kept, only positions change.
+        setGraph((current) => applyLayoutResult(graph, laidOut, current), { dirty: false });
+      },
+      () => {
+        if (runRef.current === run) runRef.current = null;
+        if (run.cancelled || latestAgentId.current !== run.agentId) return;
+        // The next graph/measured change retries; the toast says why nothing moved.
+        toast.show({ message: "Couldn't lay out the canvas.", tone: 'error' });
+      }
+    );
+  }, [agentId, graph, allMeasured, measured, setGraph, toast]);
+
+  // Only an agent switch or unmount cancels an in-flight layout - and the
+  // marker is released too, so React StrictMode's dev double-mount (which
+  // runs this cleanup and then re-runs the layout effect) starts a fresh
+  // run instead of stranding a cancelled one. The cancelled run's result
+  // is dropped by its own `cancelled` check either way.
+  useEffect(() => {
+    return () => {
+      if (runRef.current !== null) {
+        runRef.current.cancelled = true;
+        runRef.current = null;
+      }
+    };
+  }, [agentId]);
 }
 
 /** One icon button of the canvas toolbar: `label` is its accessible name, `tooltip` its title. */
@@ -642,19 +772,23 @@ function ToolbarButton({
   tooltip,
   onClick,
   disabled,
+  busy,
 }: {
   Icon: LucideIcon;
   label: string;
   tooltip: string;
   onClick: () => void;
   disabled?: boolean;
+  /** A long-running action in flight: disables the button and exposes `aria-busy`. */
+  busy?: boolean;
 }) {
   return (
     <button
       type="button"
       className="btn btn-ghost btn-icon btn-sm"
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
       aria-label={label}
       title={tooltip}
     >
@@ -682,6 +816,7 @@ function CanvasToolbar({
   readOnly,
   proposalId,
   onShowProposal,
+  layoutBusy,
   onAutoLayout,
   onFitView,
   onDuplicate,
@@ -692,6 +827,8 @@ function CanvasToolbar({
   /** AA18: the open proposal's id - with `onShowProposal`, renders the toolbar pill. */
   proposalId?: string | null;
   onShowProposal?: () => void;
+  /** The elkjs auto-layout request is in flight. */
+  layoutBusy: boolean;
   onAutoLayout: () => void;
   onFitView: () => void;
   onDuplicate: () => void;
@@ -705,6 +842,7 @@ function CanvasToolbar({
         tooltip={readOnly ? 'Hide the proposal to edit' : 'Auto layout the current graph'}
         onClick={onAutoLayout}
         disabled={readOnly}
+        busy={layoutBusy}
       />
       <ToolbarButton Icon={Maximize} label="Fit view" tooltip="Fit view to graph" onClick={onFitView} />
       <ToolbarButton
@@ -892,6 +1030,7 @@ function useProposalNodeClick(onShowProposal?: () => void) {
 function CanvasInner({ inspectorCollapsed, onToggleInspector, proposalId, onShowProposal }: CanvasAreaProps) {
   const {
     agentId,
+    graph,
     displayGraph,
     proposal,
     setGraph,
@@ -912,10 +1051,18 @@ function CanvasInner({ inspectorCollapsed, onToggleInspector, proposalId, onShow
   const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
   const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
   const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
-  const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId, readOnly);
+  const { handleAutoLayout, handleFitView, handleDuplicate, layoutBusy } = useToolbarActions(
+    setGraph,
+    selectedNodeId,
+    readOnly,
+    graph,
+    measured,
+    agentId
+  );
   useFitViewOnResize();
   useKeepSelectionInView(selectedNodeId);
   const fitting = useFitViewOnLoad(agentId, displayGraph, measured);
+  useLayoutUnplaced(agentId, proposal === undefined ? graph : undefined, measured, setGraph);
 
   const onNodeClick = useProposalNodeClick(onShowProposal);
 
@@ -926,6 +1073,7 @@ function CanvasInner({ inspectorCollapsed, onToggleInspector, proposalId, onShow
         readOnly={readOnly}
         proposalId={proposalId}
         onShowProposal={onShowProposal}
+        layoutBusy={layoutBusy}
         onAutoLayout={handleAutoLayout}
         onFitView={handleFitView}
         onDuplicate={handleDuplicate}
