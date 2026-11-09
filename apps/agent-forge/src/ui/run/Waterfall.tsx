@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 import { VirtualList } from '../../components/debug/VirtualList';
 import { fmtDuration } from '../../observe/format';
@@ -17,6 +17,8 @@ export interface WaterfallProps {
   selectedObsId?: string | null;
   onSelect: (obsId: string) => void;
   now?: number;
+  /** Per-row trailing action (see TraceViewerProps.rowAction); the row button can't nest one, so an actionable row is wrapped in a flex line. */
+  rowAction?: (row: ObserveObservationRow) => ReactNode;
 }
 
 const TARGET_TICKS = 5;
@@ -59,10 +61,11 @@ interface BarRowProps {
   now: number;
   selected: boolean;
   virtual: boolean;
+  rowAction?: (row: ObserveObservationRow) => ReactNode;
   onSelect: (obsId: string) => void;
 }
 
-function BarRow({ node, minStart, totalMs, now, selected, virtual, onSelect }: BarRowProps) {
+function BarRow({ node, minStart, totalMs, now, selected, virtual, rowAction, onSelect }: BarRowProps) {
   const { row } = node;
   const ms = elapsedMs(row, now, !isRunning(row) && row.end === null ? latestKnownEnd(node) : undefined);
   const left = ((row.start - minStart) / totalMs) * 100;
@@ -70,7 +73,8 @@ function BarRow({ node, minStart, totalMs, now, selected, virtual, onSelect }: B
   const failed = row.status === 'error';
   const running = isRunning(row);
   const label = `${fmtDuration(ms)}${running ? ' running' : ''}`;
-  return (
+  const action = rowAction?.(row);
+  const button = (
     <button
       type="button"
       className={cx('run-row', 'run-wf-row', virtual && 'run-row-virtual', selected && 'selected', failed && 'run-row-error')}
@@ -93,6 +97,16 @@ function BarRow({ node, minStart, totalMs, now, selected, virtual, onSelect }: B
       <span className={cx('run-dur', running && 'run-dur-live')}>{label}</span>
     </button>
   );
+  // The row is itself a <button>, so a per-row action (a button too) can't
+  // nest inside it: an actionable row is wrapped in a flex line that keeps
+  // the button's grid intact. Rows without an action render unchanged.
+  if (action == null) return button;
+  return (
+    <div className={cx('run-wf-rowline', virtual && 'run-row-virtual')}>
+      {button}
+      {action}
+    </div>
+  );
 }
 
 /**
@@ -102,7 +116,7 @@ function BarRow({ node, minStart, totalMs, now, selected, virtual, onSelect }: B
  * at the ticks; bars take their kind's colour, an open observation's bar runs
  * to `now`, an error bar is striped red. Above 500 observations the rows render through `VirtualList`.
  */
-export function Waterfall({ observations, selectedObsId, onSelect, now }: WaterfallProps) {
+export function Waterfall({ observations, selectedObsId, onSelect, now, rowAction }: WaterfallProps) {
   const nodes = useFlatNodes(observations);
   const clock = now ?? Date.now();
   const { minStart, maxEnd } = traceBounds(observations, clock);
@@ -118,6 +132,7 @@ export function Waterfall({ observations, selectedObsId, onSelect, now }: Waterf
       now={clock}
       selected={node.row.obs_id === selectedObsId}
       virtual={virtual}
+      rowAction={rowAction}
       onSelect={onSelect}
     />
   );

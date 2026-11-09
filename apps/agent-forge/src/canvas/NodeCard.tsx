@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Handle, Position } from '@xyflow/react';
+import { Pin } from 'lucide-react';
 import type { Graph, GraphNode } from '../graph/v2/types';
 import { StatusPill } from '../ui/StatusPill';
 import { viewFor } from './kinds';
@@ -23,6 +24,8 @@ export interface CanvasNodeData extends Record<string, unknown> {
   status?: string;
   /** Opens the node spans sheet for this node (AppState.openNodeSpans); omitted renders the pill inert. */
   onViewSpans?: (nodeId: string) => void;
+  /** True when a tool result is pinned for this node (T04 "run from here"); renders the Pin badge. */
+  pinned?: boolean;
   /** The whole graph, for kind titles that read sibling nodes (the abort listener names its trigger). */
   graph?: Graph;
   /** Group nodes only: how many descendants the group hides while collapsed. */
@@ -76,6 +79,7 @@ export function NodeCardHead({
   children,
   graph,
   onViewSpans,
+  pinned,
 }: {
   node: GraphNode;
   status?: string;
@@ -83,6 +87,8 @@ export function NodeCardHead({
   children?: ReactNode;
   graph?: Graph;
   onViewSpans?: (nodeId: string) => void;
+  /** Shows the "Pinned result" badge (T04) - set on tool nodes with a pin. */
+  pinned?: boolean;
 }): JSX.Element {
   const view = viewFor(node.kind);
   const title = view.title(node as never, graph);
@@ -114,6 +120,11 @@ export function NodeCardHead({
       <span className="rf-node-title" title={title}>
         {title}
       </span>
+      {pinned === true && (
+        <span className="node-pin-badge" role="img" aria-label="Pinned result" title="Pinned result">
+          <Pin size={12} strokeWidth={1.75} aria-hidden="true" />
+        </span>
+      )}
       {pillOrButton}
       {children}
     </div>
@@ -150,7 +161,7 @@ export function NodeCard({
     <div className={cardClassName('rf-node', selected, data)} data-node-kind={graphNode.kind} data-node-id={graphNode.id}>
       {view.ports.in && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {view.ports.out && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
-      <NodeCardHead node={graphNode} status={status} graph={data.graph} onViewSpans={data.onViewSpans}>
+      <NodeCardHead node={graphNode} status={status} graph={data.graph} onViewSpans={data.onViewSpans} pinned={data.pinned}>
         {headAction}
       </NodeCardHead>
       {(chips.length > 0 || edited) && (

@@ -49,6 +49,7 @@ import type {
   StudioEvent,
   TemplateDetail,
   TemplateSummary,
+  ToolPin,
   TraceDetailPayload,
   TraceSummaryPayload,
   VersionListItem,
@@ -368,10 +369,15 @@ class RuntimeClient implements AgentApi {
     await this.request(`/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
   }
 
-  async run(agentId: string, input: string, spec: AgentSpecV2): Promise<AgentRunStatusPayload> {
+  async run(
+    agentId: string,
+    input: string,
+    spec: AgentSpecV2,
+    pins?: ToolPin[]
+  ): Promise<AgentRunStatusPayload> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/run`, {
       method: 'POST',
-      body: JSON.stringify({ input, spec }),
+      body: JSON.stringify({ input, spec, ...(pins !== undefined && pins.length > 0 ? { pins } : {}) }),
     });
   }
 

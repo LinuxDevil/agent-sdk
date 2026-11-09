@@ -228,6 +228,35 @@ export interface NodeStatePayload {
 }
 
 /**
+ * One recorded tool result pinned for a "run from here" re-run (T04):
+ * when the pinned run's model calls `toolName` again, the
+ * `studio-pins` preToolCall hook answers with `result` instead of
+ * executing the tool. `nodeId` is the canvas node id (`tool:<key>`,
+ * PLAN §3.3) for display and un-pinning; `args`, when set, restricts the
+ * pin to calls whose arguments stable-stringify-equal it. Pins apply to
+ * that one run only - they are never stored and never sent on chat turns.
+ */
+export interface ToolPin {
+  nodeId: string;
+  /** The called tool name (`gen_ai.tool.name` on the span). */
+  toolName: string;
+  /** When set, only calls with canonical-equal args are pinned. */
+  args?: Record<string, unknown>;
+  /** Returned to the model instead of running the tool. */
+  result: unknown;
+}
+
+/**
+ * The `POST /agents/:id/run` request body: the input to run, an optional
+ * spec override, and optional tool-result pins (T04 "run from here").
+ */
+export interface RunAgentRequest {
+  input: string;
+  spec?: unknown;
+  pins?: ToolPin[];
+}
+
+/**
  * A single WS message pushed to `WS /agents/:id/stream` subscribers.
  * `type: 'status'` carries the full AgentRunStatusPayload (sent on every
  * status transition, and once immediately on connect). `type: 'event'`

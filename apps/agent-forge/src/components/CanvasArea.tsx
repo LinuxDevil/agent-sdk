@@ -93,6 +93,8 @@ interface NodeDecor {
   statuses: Record<string, NodeRunStatus>;
   /** Opens the node spans sheet for a card's status pill (AppState.openNodeSpans). */
   openNodeSpans?: (nodeId: string) => void;
+  /** Node ids with a pinned tool result (T04); their cards show the Pin badge. */
+  pinnedNodeIds?: ReadonlySet<string>;
 }
 
 /** True when an `owner`-chain ancestor of `node` is a collapsed agent group. */
@@ -184,7 +186,7 @@ function groupSizes(graph: Graph, measured: MeasuredSizes): Map<string, { width:
  * the parent React Flow would re-lay them at absolute coordinates).
  */
 export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<CanvasNodeData>[] {
-  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans } = decor;
+  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans, pinnedNodeIds } = decor;
   const sizes = groupSizes(graph, measured);
   return canvasNodeOrder(graph).map((n) => {
     const group = isGroupNode(n);
@@ -206,6 +208,7 @@ export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSize
         hasBreakpoint: hasBreakpointOn(n, breakpoints),
         status: statuses[n.id],
         onViewSpans: openNodeSpans,
+        pinned: pinnedNodeIds?.has(n.id) === true,
         insideCount: group ? descendantCount(graph, n.id) : undefined,
       },
     };
@@ -928,6 +931,7 @@ function useCanvasElements() {
     nodeStates,
     runStatus,
     openNodeSpans,
+    pins,
   } = useAppState();
 
   const breakpoints = debugState?.breakpoints ?? [];
@@ -937,14 +941,17 @@ function useCanvasElements() {
     () => nodeRunStatuses(displayGraph.nodes.map((n) => n.id), nodeStates, runStatus),
     [displayGraph, nodeStates, runStatus]
   );
+  // The canvas node ids (`tool:<key>`) carrying at least one pinned tool
+  // result - their cards show the Pin badge (T04).
+  const pinnedNodeIds = useMemo(() => new Set(pins.map((pin) => pin.nodeId)), [pins]);
   const nodes = useMemo(
     () =>
       toRfNodes(
         displayGraph,
-        { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans },
+        { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans, pinnedNodeIds },
         measured
       ),
-    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, openNodeSpans, measured]
+    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, openNodeSpans, pinnedNodeIds, measured]
   );
   const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
   // Edges derive from the DISPLAY graph so proposal nodes are wired in;

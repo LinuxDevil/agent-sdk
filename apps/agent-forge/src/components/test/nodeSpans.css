@@ -17,3 +17,49 @@
   margin: 0;
   font-size: 13px;
 }
+
+/* T04 "run from here": the sheet footer's pin controls and the per-row
+   pin toggle inside the trace rows. Tokens only. */
+.node-spans-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.node-pins-chip {
+  font-size: var(--fs-overline);
+  color: var(--text-faint);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px var(--space-2);
+  white-space: nowrap;
+}
+.node-pin-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: var(--fs-overline);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.node-pin-toggle:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.node-pin-toggle[aria-pressed='true'] {
+  color: var(--accent);
+}
+.node-pin-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.node-pin-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
