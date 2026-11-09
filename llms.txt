@@ -1,10 +1,10 @@
 # lousho
 
-> Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry. No hosted runtime.
+> TypeScript AI agents you can test in CI, pause for approval, and resume after a crash. Runs in your own Node process.
 
 ## Docs
 
-- [Lousho — TypeScript AI agent SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): Open-source TypeScript SDK for agents that run in your own Node process: tool calling, MCP, sessions that survive a restart, human approvals, and OpenTelemetry. No hosted runtime.
+- [Lousho — TypeScript AI agent SDK](https://github.com/LinuxDevil/agent-sdk/blob/main/README.md): TypeScript AI agents you can test in CI, pause for approval, and resume after a crash. Runs in your own Node process.
 - [Installation](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/installation.md): `ai` (the Vercel AI SDK: `^4.3.19`, `^6.0.0` or `^7.0.0`) and `zod` (`^3.25.76 || ^4.0.0`) are required peer dependencies. `ai` 5 is not supported.
 - [Quick Start](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/quick-start.md): This page takes you from a one-line agent to tools, streaming, sessions, an approval and an offline test. Every snippet after the first runs as-is with no API key, on the SDK's built-in mock provider.
 - [API Overview](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/api-overview.md): The package root (`lousho`) exports everything below. For the complete, generated API reference (every export, signature and doc comment), build the TypeDoc site
