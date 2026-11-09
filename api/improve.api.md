@@ -1053,7 +1053,7 @@ export interface HealCycle {
     from?: string;
     guard?: GuardCorpusResult;
     id: string;
-    outcome: 'idle' | 'paused' | 'busy' | 'budget' | 'cooldown' | Exclude<ImproveOutcome, 'proposal'> | 'canary-failed' | 'applied' | 'pending' | 'guard-rolled-back' | 'stale' | 'refused' | 'interrupted';
+    outcome: 'idle' | 'paused' | 'busy' | 'budget' | 'cooldown' | Exclude<ImproveOutcome, 'proposal'> | 'canary-failed' | 'canary-started' | 'applied' | 'pending' | 'guard-rolled-back' | 'stale' | 'refused' | 'interrupted';
     pending?: string;
     reason: string;
     result?: ImproveResult;
@@ -2651,6 +2651,7 @@ export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' 
 
 // @public
 export interface WatchTick {
+    canary?: CanarySettlement;
     cycle?: HealCycle;
     guard?: GuardCorpusResult;
     monitor?: MonitorVerdict;

@@ -16,6 +16,7 @@ import { improveAgent } from './improve';
 import { listPending, rejectPending } from './pending';
 import { currentRevision } from './revisions';
 import { loadImproveSettings, type ImproveSettings } from './settings';
+import { readCanary } from './trafficCanary';
 import type { Harness } from './types';
 
 vi.mock('./canary', async (original) => {
@@ -240,6 +241,33 @@ describe('healOnce', () => {
     const cycle = await heal({ editor: editor(FIX, { compose: pause }) });
     expect(cycle.outcome).toBe('paused');
     expect(instructions()).toBe(BASE);
+  });
+
+  it('with canary.traffic, a fix that passes the replay canary starts a traffic canary and writes nothing', async () => {
+    seedFailures();
+    const traffic = settings({ canary: { replayRuns: 6, traffic: { share: 0.1, sessions: 10 } } });
+    const cycle = await heal({ settings: traffic });
+    expect(cycle).toMatchObject({ outcome: 'canary-started', from: currentRevision(dir) });
+    expect(instructions()).toBe(BASE);
+    expect(readCanary(dir)).toMatchObject({ baseRevision: cycle.from, share: 0.1, sessions: 10, cycle: cycle.id });
+    expect(actions()).toEqual(['canary-end', 'canary-start']);
+  });
+
+  it('with canary.traffic, a replay canary failure starts no traffic canary', async () => {
+    seedFailures();
+    vi.mocked(canaryReplay).mockResolvedValueOnce({ passed: false, cases: [], reason: 'A training case fell below 5 in 6 fresh runs (x).', tokens: 7 });
+    const cycle = await heal({ settings: settings({ canary: { replayRuns: 6, traffic: { share: 0.1, sessions: 10 } } }) });
+    expect(cycle.outcome).toBe('canary-failed');
+    expect(readCanary(dir)).toBeUndefined();
+  });
+
+  it('while a traffic canary runs, a cycle is busy and spends nothing', async () => {
+    seedFailures();
+    const traffic = settings({ canary: { replayRuns: 6, traffic: { share: 0.1, sessions: 10 } } });
+    await heal({ settings: traffic });
+    seedFailures(['t4', 't5', 't6']);
+    const second = await heal({ settings: traffic, trigger: 'manual' });
+    expect(second).toMatchObject({ outcome: 'busy', tokens: 0, reason: expect.stringMatching(/traffic canary/) });
   });
 
   it('a second cycle on the same directory at once is busy', async () => {

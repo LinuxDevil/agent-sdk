@@ -86,6 +86,10 @@ async function withCanaryLock<T>(dir: string, task: () => Promise<T>): Promise<T
   return withFileLock(path.join(dir, '.lousho', 'canary.lock'), task);
 }
 
+export function canaryRunning(dir: string): boolean {
+  return statSync(path.join(dir, CANARY_FILE), { throwIfNoEntry: false }) !== undefined;
+}
+
 function writeCanary(dir: string, canary: TrafficCanary): void {
   const file = path.join(dir, CANARY_FILE);
   const temp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;

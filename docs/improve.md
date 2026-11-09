@@ -386,7 +386,9 @@ The session never sees a held-out case's id: each held-out case appears as `held
 
 `startCanary` takes a proposal that passed the gate and writes `.lousho/canary.json`. While that file exists, an agent loaded with `loadAgentDir` serves the candidate to a stable share of new sessions (by a hash of the session id; a run without a session id always gets the base) and stamps those runs with the candidate's revision. The opt-in must be in `improve.json` when the agent loads. The session cap is kept in `.lousho/canary-sessions.txt`, so it holds across restarts and processes on one host.
 
-`settleCanary` reads the trial. Nothing calls it for you: call it on a timer. After `sessions` candidate sessions it promotes when the share of flagged sessions is 0 or at least 0.05 below the base's rate over its last 20 runs, and no failure class appeared that the base didn't have. It retires early once a promotion is ruled out, and when the directory changed, the loop is paused, the opt-in is removed or `monitor.giveUpDays` pass. A promote goes through `applyProposal` (auto) or the pending queue (manual), which check the proposal again. In manual mode the candidate still reaches users before a person approves it; only the apply waits.
+`healOnce()` (`lousho improve`) starts it for you. When `canary.traffic` is set, a proposal that passes the gate and the replay canary starts a traffic canary instead of being applied or queued, and the cycle ends `canary-started`. While the canary runs, every cycle ends `busy`. `lousho improve --watch` settles the trial on each tick. A promote then counts toward `maxAppliesPerDay` and is followed by the corpus guard, and the watcher waits a day when the cap is spent. A pause ends the canary.
+
+`settleCanary` reads the trial; call it yourself on a timer when you don't use the watcher. After `sessions` candidate sessions it promotes when the share of flagged sessions is 0 or at least 0.05 below the base's rate over its last 20 runs, and no failure class appeared that the base didn't have. It retires early once a promotion is ruled out, and when the directory changed, the loop is paused, the opt-in is removed or `monitor.giveUpDays` pass. A promote goes through `applyProposal` (auto) or the pending queue (manual), which check the proposal again. In manual mode the candidate still reaches users before a person approves it; only the apply waits.
 
 ```ts
 import { loadImproveSettings, settleCanary, startCanary, type Harness, type ImproveResult, type SqlDatabase } from 'lousho/improve';
@@ -510,6 +512,8 @@ Everything the loop keeps lives in the agent directory:
 | `.lousho/cache/` | Editor sessions the loop can replay |
 | `.lousho/state.json` | The cooldown, the monitor's verdict and the watcher's counters |
 | `.lousho/improve.stop` | The kill switch, when it exists |
+| `.lousho/canary.json` | The running traffic canary, when there is one |
+| `.lousho/canary-sessions.txt` | Hashed ids of the sessions the traffic canary served |
 
 Only cycles that got past the trigger are saved, so an `idle`, `paused`, `busy`,
 `budget` or `cooldown` result costs nothing and isn't counted against
@@ -561,7 +565,8 @@ npx lousho improve ./my-agent --check ./check.mjs --watch --interval 15m
 Every `--interval` (default 15 minutes) a tick:
 
 1. Reads `improve.json` again and checks the kill switch. A paused tick is
-   audited once as `pause` and posts `improve.paused`, and does nothing else.
+   audited once as `pause`, posts `improve.paused`, ends any traffic canary,
+   and does nothing else.
 2. Takes the one-watcher lease in `.lousho/watch`, which lasts two intervals
    and is renewed while the tick runs. A tick that can't take it skips.
 3. Runs [the monitor](#the-monitor) on the last apply.
@@ -571,8 +576,12 @@ Every `--interval` (default 15 minutes) a tick:
 5. Every `guard.everyHours` (default 24), replays the corpus under the current
    revision. On a regression it rolls back to the last good revision: the
    newest one whose latest guard passed, else the first baseline.
-6. Runs one cycle within the daily caps. A tick that sees the same failures as
+6. Settles a running [traffic canary](#live-traffic-canary-opt-in). A promote
+   counts toward `budget.maxAppliesPerDay` and is followed by the corpus guard;
+   when the cap is spent, the canary waits for the next day.
+7. Runs one cycle within the daily caps. A tick that sees the same failures as
    the last cycle, and no new failed run or score regression, skips the cycle.
+   While a traffic canary runs, the cycle ends `busy`.
 
 `--watch` needs an agent name to find the agent's runs: `--agent`, or the name
 the agent sets. Editor and reflection calls are limited to `rateLimit.rpm` per
@@ -663,7 +672,7 @@ optional, and an unknown key or a bad value stops the loop with
 | `trigger.minNewFailures` | 3 | New failed runs that start a watcher's cycle |
 | `trigger.requireRecurring` | `true` in auto, `false` in manual | Only failures seen in two or more runs become cases |
 | `canary.replayRuns` | 6 | Fresh runs per case in the replay canary |
-| `canary.traffic` | unset | `{ share, sessions }` for the live traffic canary (`share` at most 0.25, `sessions` at most 50). Accepted and shown by `status`, but no cycle uses it yet |
+| `canary.traffic` | unset | `{ share, sessions }` turns on the live traffic canary (`share` at most 0.25, `sessions` at most 50): a proposal that passes the replay canary is trialled on real sessions instead of being written. See [Live traffic canary](#live-traffic-canary-opt-in) |
 | `monitor.minRuns` | 20 | Runs on each side before the monitor judges |
 | `monitor.window` | 20 | Runs per look |
 | `monitor.maxDrop` | 0.05 | The drop that counts as a regression |
@@ -690,9 +699,9 @@ database, and writes one line to stderr:
 
 | Event | When |
 | --- | --- |
-| `improve.applied` | A cycle applied an edit and the corpus guard passed |
-| `improve.pending` | A cycle queued a proposal; `details.card` is the proposal file's local path |
-| `improve.canary` | A proposal passed the gate and failed the replay canary |
+| `improve.applied` | A cycle applied an edit and the corpus guard passed, or a traffic canary was promoted and applied |
+| `improve.pending` | A cycle or a promoted traffic canary queued a proposal; `details.card` is the proposal file's local path |
+| `improve.canary` | A proposal failed the replay canary, a traffic canary started, or a traffic canary was retired |
 | `improve.rolled_back` | The corpus guard or the monitor rolled an edit back |
 | `improve.guard_failed` | The monitor or a scheduled guard saw a regression and didn't roll back, because `autoRollback` is off or the rollback was refused. Posted once per revision |
 | `improve.paused` | The kill switch is on, or three outages in a row paused the loop |
@@ -747,7 +756,8 @@ npx lousho improve ./my-agent --check ./check.mjs --dry-run --since 7d --out pro
 
 On an agent directory, `lousho improve` runs one self-healing cycle with
 `healOnce()`. In auto mode it **applies** a proposal that passes the gate and
-the canary, and in manual mode it queues it. It needs a module whose default
+the canary, and in manual mode it queues it. With `canary.traffic` set, it
+starts the [traffic canary](#live-traffic-canary-opt-in) instead. It needs a module whose default
 export is your `CaseCheck` (return `failure` to name the check a failed answer
 missed). It reads cases only from your local observe database, simulates tools
 other than loading skills unless `--read-only` names them, and prints the review

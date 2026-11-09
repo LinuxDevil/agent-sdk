@@ -34,6 +34,7 @@ import { savePending } from './pending';
 import { casesFromRecoveries, readableInput } from './recoveries';
 import { harnessHash, readAgentHarness } from './revisions';
 import { editorsOf, type ImproveSettings } from './settings';
+import { canaryRunning, startCanary } from './trafficCanary';
 import type { Harness, ImproveOptions, ImproveResult, RecoveryEvidence } from './types';
 
 /** Options for {@link healOnce}. */
@@ -238,6 +239,18 @@ async function queue(state: HealState, result: ImproveResult): Promise<HealCycle
   }
 }
 
+async function startTraffic(state: HealState, result: ImproveResult, replay: CanaryReplayResult): Promise<HealCycle> {
+  const { options, cycle } = state;
+  try {
+    const input = { result, base: state.harness, replay, cycle: cycle.id, ...(options.agent && { agent: options.agent }), maxAlwaysOnChars: MAX_ALWAYS_ON };
+    const canary = await startCanary(options.db, state.dir, input, { ...state.settings, approval: cycle.approval });
+    return finish(state, 'canary-started', `Serving ${shortId(canary.revision)} to ${Math.round(canary.share * 100)}% of new sessions for ${canary.sessions} sessions; the watcher settles the trial.`);
+  } catch (error) {
+    if (!(error instanceof ConfigurationError)) throw error;
+    return rejected(state, 'refused', error.message);
+  }
+}
+
 function pausedStop(state: HealState, when: string): HealCycle | undefined {
   const { paused } = recheck(state);
   return paused ? finish(state, 'paused', `Paused ${when}: ${paused}. Nothing was applied.`) : undefined;
@@ -253,6 +266,7 @@ async function decide(state: HealState, result: ImproveResult, candidate: Harnes
   const now = recheck(state);
   if (now.paused) return finish(state, 'paused', `Paused before the write: ${now.paused}. Nothing was applied.`);
   state.cycle.approval = now.approval;
+  if (state.settings.canary.traffic) return startTraffic(state, result, canary);
   return now.approval === 'auto' ? applyAndGuard(state, result) : queue(state, result);
 }
 
@@ -311,6 +325,7 @@ async function locked(options: HealOptions, start: Start, now: number): Promise<
   const harness = readAgentHarness(options.dir);
   const recovered = await guardUnfinished(options, harness, UNLIMITED);
   const current = recovered?.rolledBackTo ? readAgentHarness(options.dir) : harness;
+  if (canaryRunning(options.dir)) return ended(start, 'busy', 'A traffic canary is running for this agent; the watcher settles it before another cycle runs.');
   const cap = blocked(options, start, now);
   if (typeof cap !== 'number') return cap;
   return run(options, start, current, cap);
