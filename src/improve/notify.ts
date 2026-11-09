@@ -60,6 +60,7 @@ const CYCLE_EVENTS: Partial<Record<HealCycle['outcome'], ImproveEventType>> = {
   applied: 'improve.applied',
   'guard-rolled-back': 'improve.rolled_back',
   'canary-failed': 'improve.canary',
+  'canary-started': 'improve.canary',
 };
 
 export function cycleNotice(cycle: HealCycle, dir: string): ImproveNotice | undefined {

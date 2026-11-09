@@ -16,6 +16,8 @@ import type { GuardCorpusResult } from './corpusGuard';
 import { cycleNotice, notifier, type Notify } from './notify';
 import { pausedBy, type HealCycle } from './cycles';
 import { healOnce, type HealOptions } from './heal';
+import { stopCanary, type CanarySettlement } from './trafficCanary';
+import { settleTraffic } from './watchCanary';
 import { checkApplied, type MonitorVerdict } from './monitor';
 import { pauseImprove } from './pause';
 import { harnessHash, readAgentHarness } from './revisions';
@@ -61,6 +63,8 @@ export interface WatchTick {
   guard?: GuardCorpusResult;
   /** The cycle, when one ran. */
   cycle?: HealCycle;
+  /** What settling the opt-in traffic canary did, when one was settled. */
+  canary?: CanarySettlement;
 }
 
 const DEFAULT_INTERVAL_MS = 15 * 60 * 1000;
@@ -102,6 +106,7 @@ async function pauseOnce(dir: string, reason: string, notify: Notify): Promise<W
     await saveWatch(dir, { paused: reason });
     notify({ type: 'improve.paused', reason: `Paused: ${reason}.` });
   }
+  await stopCanary(dir, { actor: 'scheduler', reason: `the self-healing loop is paused: ${reason}.` });
   return { state: 'paused', reason: `Paused: ${reason}.` };
 }
 
@@ -204,11 +209,13 @@ async function steps(options: WatchOptions, context: WatchContext, trigger: Heal
   await harvest(options, monitor, now, context);
   const stopAfterHarvest = halted(options, context.signal);
   if (stopAfterHarvest) return { ...stopAfterHarvest, monitor };
-  const guard = await guardScheduled(options, now, context);
+  const traffic = await settleTraffic(options, now, context);
+  const guard = traffic.guard ?? (await guardScheduled(options, now, context));
+  const done = { monitor, ...(guard && { guard }), ...(traffic.canary && { canary: traffic.canary }) };
   const stopAfterGuard = halted(options, context.signal);
-  if (stopAfterGuard) return { ...stopAfterGuard, monitor, ...(guard && { guard }) };
+  if (stopAfterGuard) return { ...stopAfterGuard, ...done };
   const ran = await runCycle(options, context, trigger, now);
-  return { ...ran, monitor, ...(guard && { guard }) };
+  return { ...ran, ...done };
 }
 
 /** Runs one watch tick: the kill switch, the lease, the monitor, the scheduled corpus guard, then a cycle within the budgets. */

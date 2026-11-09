@@ -8,6 +8,7 @@ import { listPending, savePending } from '../improve/pending';
 import { readAudit } from '../improve/audit';
 import { currentRevision, readAgentHarness } from '../improve/revisions';
 import type { Harness, ImproveResult } from '../improve/types';
+import { openDb } from '../observe/store';
 import { runImprove } from './improve';
 
 let dir: string;
@@ -194,6 +195,21 @@ describe('lousho improve pending, approve and reject', () => {
     expect(shown).toMatchObject({ code: 0, stdout: 'card\n' });
     expect((await run('pending', dir, '--show', '../x')).code).toBe(2);
     expect((await run('approve', dir, 'nope', '--by', 'ali')).code).toBe(2);
+  });
+
+  it('with canary.traffic, approve starts the traffic canary and writes nothing, and needs the observe database', async () => {
+    writeFileSync(path.join(dir, 'improve.json'), JSON.stringify({ approval: 'manual', canary: { traffic: { share: 0.1, sessions: 10 } } }));
+    const id = await queue('First.');
+    const before = readFileSync(path.join(dir, 'instructions.md'), 'utf8');
+    const missing = await run('approve', dir, id, '--by', 'ali', '--db', path.join(dir, 'none.db'));
+    expect(missing).toMatchObject({ code: 1, stderr: expect.stringMatching(/observe database/) });
+    const dbFile = path.join(dir, 'observe.db');
+    openDb(dbFile).close();
+    const approved = await run('approve', dir, id, '--by', 'ali', '--db', dbFile);
+    expect(approved).toMatchObject({ code: 0, stdout: expect.stringMatching(/traffic canary now serves/) });
+    expect(readFileSync(path.join(dir, 'instructions.md'), 'utf8')).toBe(before);
+    expect(listPending(dir)).toEqual([]);
+    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'canary-start', actor: 'person:ali' });
   });
 
   it('needs an id and --by', async () => {

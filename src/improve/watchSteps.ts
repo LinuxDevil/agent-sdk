@@ -152,10 +152,14 @@ export async function harvest(options: WatchOptions, monitor: MonitorVerdict, no
 }
 
 export async function guardScheduled(options: WatchOptions, now: number, context: Pick<WatchContext, 'notify' | 'signal'>): Promise<GuardCorpusResult | undefined> {
+  const last = watchOf(options.dir).guardAt;
+  if (last !== undefined && now - last < options.settings.guard.everyHours * HOUR_MS) return undefined;
+  return guardNow(options, now, context);
+}
+
+export async function guardNow(options: WatchOptions, now: number, context: Pick<WatchContext, 'notify' | 'signal'>): Promise<GuardCorpusResult | undefined> {
   const { signal } = context;
   const { dir, settings } = options;
-  const last = watchOf(dir).guardAt;
-  if (last !== undefined && now - last < settings.guard.everyHours * HOUR_MS) return undefined;
   const corpus = readCorpus(dir);
   if (corpus.length === 0) return undefined;
   const revision = harnessHash(readAgentHarness(dir));

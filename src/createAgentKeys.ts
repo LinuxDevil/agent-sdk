@@ -14,6 +14,7 @@ const CREATE_AGENT_KEYS = {
   tools: true,
   mcpServers: true,
   skills: true,
+  harnessCanary: true,
   name: true,
   description: true,
   subagents: true,

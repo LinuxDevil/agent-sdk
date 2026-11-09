@@ -1,9 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, fsyncSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, writeSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError } from '../execution/errors';
 import { withFileLock } from '../storage/fileLock';
-import { applyProposal, type ApplyResult } from './apply';
 import { appendAudit, cleanActor, type AuditEntry } from './audit';
 import { harnessHash, isHarness } from './revisions';
 import type { Harness, ImproveResult } from './types';
@@ -37,7 +36,7 @@ const ID = /^[0-9a-f]{12}$/;
 /** Whether text has the shape of a pending proposal id: 12 lowercase hex characters. */
 export const isPendingId = (id: string): boolean => ID.test(id);
 
-function folderOf(dir: string): string {
+export function folderOf(dir: string): string {
   return path.join(dir, FOLDER);
 }
 
@@ -82,7 +81,7 @@ function readPending(file: string): PendingProposal | undefined {
   }
 }
 
-async function withProposalsLock<T>(dir: string, task: () => Promise<T>): Promise<T> {
+export async function withProposalsLock<T>(dir: string, task: () => Promise<T>): Promise<T> {
   refuseSymlinks(dir);
   mkdirSync(folderOf(dir), { recursive: true });
   return withFileLock(path.join(folderOf(dir), '.lock'), async () => {
@@ -116,7 +115,7 @@ export function listPending(dir: string): PendingProposal[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-function pendingOrThrow(dir: string, id: string): PendingProposal {
+export function pendingOrThrow(dir: string, id: string): PendingProposal {
   const pending = readPending(path.join(folderOf(dir), `${checkedId(id)}.json`));
   if (!pending) throw new ConfigurationError(`No pending proposal ${id} in ${dir}, or its file doesn't match its id; see 'lousho improve pending'.`, 'id');
   return pending;
@@ -128,28 +127,10 @@ export function readPendingProposal(dir: string, id: string): PendingProposal {
   return pendingOrThrow(dir, id);
 }
 
-function markRefused(file: string, pending: PendingProposal, error: unknown): void {
+export function markRefused(file: string, pending: PendingProposal, error: unknown): void {
   if (!(error instanceof ConfigurationError)) return;
   const now = new Date().toISOString();
   writeJson(file, error.field === 'base' ? { ...pending, staleAt: now } : { ...pending, failure: error.message });
-}
-
-/** Applies a pending proposal as a named person's approval and removes it from the queue; a stale one is refused and marked stale. */
-export async function approvePending(dir: string, id: string, approvedBy: string): Promise<ApplyResult> {
-  return withProposalsLock(dir, async () => {
-    const pending = pendingOrThrow(dir, id);
-    const file = path.join(folderOf(dir), `${pending.id}.json`);
-    const input = { result: pending.result, base: pending.base, ...(pending.cycle && { cycle: pending.cycle }), ...(pending.maxAlwaysOnChars !== undefined && { maxAlwaysOnChars: pending.maxAlwaysOnChars }) };
-    let applied: ApplyResult;
-    try {
-      applied = await applyProposal(dir, input, { mode: 'manual', approvedBy });
-    } catch (error) {
-      markRefused(file, pending, error);
-      throw error;
-    }
-    rmSync(file, { force: true });
-    return applied;
-  });
 }
 
 /** Rejects a pending proposal: moves it to .lousho/proposals/rejected/ and audits `reject` with the reason. */

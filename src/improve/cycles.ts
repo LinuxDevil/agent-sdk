@@ -26,6 +26,7 @@ export interface HealCycle {
     | 'cooldown'
     | Exclude<ImproveOutcome, 'proposal'>
     | 'canary-failed'
+    | 'canary-started'
     | 'applied'
     | 'pending'
     | 'guard-rolled-back'
