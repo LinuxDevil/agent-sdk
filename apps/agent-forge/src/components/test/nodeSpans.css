@@ -1,0 +1,19 @@
+/* The node spans sheet's empty state (NodeSpansSheet.tsx): a muted icon over
+   the "no spans" line, centred in the sheet body. Tokens only. */
+.node-spans-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-4);
+  color: var(--text-muted);
+  text-align: center;
+}
+.node-spans-empty-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+.node-spans-empty p {
+  margin: 0;
+  font-size: 13px;
+}

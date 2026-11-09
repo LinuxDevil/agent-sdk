@@ -21,6 +21,7 @@ import type {
 import type { ChatState } from './chatReducer';
 import type { NodeStates } from './nodeStateReducer';
 import { useAgentDocument } from './useAgentDocument';
+import { useNodeSpans } from './useNodeSpans';
 import { agentRouteId } from '../screens/agents/agentRoute';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
@@ -161,6 +162,16 @@ interface AppState {
   setHighlightedNodeId: (nodeId: string | undefined) => void;
 
   /**
+   * The node whose spans the node spans sheet (components/test/NodeSpansSheet)
+   * is showing — set by a node card's status pill or the Inspector's "View
+   * spans" button, cleared by `closeNodeSpans` (Esc, scrim, close button).
+   * `undefined` = the sheet is closed.
+   */
+  spansNodeId: string | undefined;
+  openNodeSpans: (nodeId: string) => void;
+  closeNodeSpans: () => void;
+
+  /**
    * This agent's live chat transcript - the server's real
    * `Message[]` history (see runRegistry.ts/chatReconcile.ts), pushed over
    * `WS /agents/:id/stream` as `{type:'chat'}` and applied through the pure
@@ -207,6 +218,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
   const [railTab, setRailTab] = useState<RailTab>('agents');
   const [drawerTab, setDrawerTab] = useState<DrawerTab>('test');
+  const nodeSpans = useNodeSpans();
   // A reload of an agents URL (`#/agents/:id`, `#/agents/:id/canvas`, `#/agents/:id/:tab`) reopens that agent.
   const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
   const doc = useAgentDocument(store, initialAgentId);
@@ -265,20 +277,25 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     // creating, renaming or deleting an agent clears it.
     switchAgent: async (id: string) => {
       setProposal(undefined);
+      nodeSpans.closeNodeSpans();
       return doc.switchAgent(id);
     },
     createAgent: async (id: string, template: TemplateId) => {
       setProposal(undefined);
+      nodeSpans.closeNodeSpans();
       return doc.createAgent(id, template);
     },
     renameAgent: async (fromId: string, toId: string) => {
       setProposal(undefined);
+      nodeSpans.closeNodeSpans();
       return doc.renameAgent(fromId, toId);
     },
     deleteAgent: async (id: string) => {
       setProposal(undefined);
+      nodeSpans.closeNodeSpans();
       return doc.deleteAgent(id);
     },
+    ...nodeSpans,
     ...run,
     agentStatuses,
     ...stream,

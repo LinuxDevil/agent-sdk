@@ -21,6 +21,8 @@ export interface CanvasNodeData extends Record<string, unknown> {
   hasBreakpoint?: boolean;
   /** This node's status in the current run (see nodeStatus.ts); omitted reads idle. */
   status?: string;
+  /** Opens the node spans sheet for this node (AppState.openNodeSpans); omitted renders the pill inert. */
+  onViewSpans?: (nodeId: string) => void;
   /** The whole graph, for kind titles that read sibling nodes (the abort listener names its trigger). */
   graph?: Graph;
   /** Group nodes only: how many descendants the group hides while collapsed. */
@@ -73,16 +75,37 @@ export function NodeCardHead({
   className,
   children,
   graph,
+  onViewSpans,
 }: {
   node: GraphNode;
   status?: string;
   className?: string;
   children?: ReactNode;
   graph?: Graph;
+  onViewSpans?: (nodeId: string) => void;
 }): JSX.Element {
   const view = viewFor(node.kind);
   const title = view.title(node as never, graph);
   const { Icon } = view;
+  const pill = <StatusPill status={status ?? 'idle'} />;
+  // A node that ran (status not idle) turns its pill into the spans-sheet
+  // opener; `nodrag` keeps React Flow from starting a drag on the click.
+  const pillOrButton =
+    onViewSpans !== undefined && (status ?? 'idle') !== 'idle' ? (
+      <button
+        type="button"
+        className="node-status-button nodrag"
+        aria-label={`View spans for ${title}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onViewSpans(node.id);
+        }}
+      >
+        {pill}
+      </button>
+    ) : (
+      pill
+    );
   return (
     <div className={['rf-node-head', className].filter(Boolean).join(' ')}>
       <span className={`node-kind kind-${view.tone}`} aria-hidden="true">
@@ -91,7 +114,7 @@ export function NodeCardHead({
       <span className="rf-node-title" title={title}>
         {title}
       </span>
-      <StatusPill status={status ?? 'idle'} />
+      {pillOrButton}
       {children}
     </div>
   );
@@ -127,7 +150,7 @@ export function NodeCard({
     <div className={cardClassName('rf-node', selected, data)} data-node-kind={graphNode.kind} data-node-id={graphNode.id}>
       {view.ports.in && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {view.ports.out && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
-      <NodeCardHead node={graphNode} status={status} graph={data.graph}>
+      <NodeCardHead node={graphNode} status={status} graph={data.graph} onViewSpans={data.onViewSpans}>
         {headAction}
       </NodeCardHead>
       {(chips.length > 0 || edited) && (

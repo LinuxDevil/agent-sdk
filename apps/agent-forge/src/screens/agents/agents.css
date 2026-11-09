@@ -882,6 +882,27 @@ button.breakpoint-toggle {
   flex: none;
   margin-left: auto;
 }
+/* The status pill's spans-sheet button (NodeCard.tsx): a bare button around
+   the pill, pushed right like the pill was; `nodrag` is React Flow's. */
+.node-status-button {
+  display: inline-flex;
+  flex: none;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.node-status-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.node-status-button .status-pill {
+  margin-left: 0;
+}
 .node-kind {
   display: inline-flex;
   align-items: center;
