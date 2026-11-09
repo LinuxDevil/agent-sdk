@@ -18,6 +18,7 @@ import { loadImproveSettings, type ImproveSettings } from './settings';
 import { updateState } from './state';
 import type { Harness } from './types';
 import { isDefinedSchedule } from '../schedules/defineSchedule';
+import { fileStore } from '../storage/fileStore';
 import { noticeEvent } from './notify';
 import { readWatchers, registerWatcher } from './watchers';
 import { improveSchedule, watchAgent, watchContext, watchTick, type WatchOptions } from './watch';
@@ -233,6 +234,36 @@ describe('watchTick', () => {
     expect((await first).cycle?.outcome).toBe('applied');
   });
 
+  it('a tick waits for a renewal in flight, so releasing the lease after it frees the directory', async () => {
+    const store = fileStore(path.join(dir, '.lousho', 'watch')).checkpoints;
+    let calls = 0;
+    let open: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const slowRenewals = Object.assign(Object.create(store) as typeof store, {
+      acquireLease: async (id: string, owner: string, ttl: number) => {
+        calls += 1;
+        if (calls > 1) {
+          await held;
+          await new Promise((resolve) => setTimeout(resolve, 30));
+        }
+        return store.acquireLease!(id, owner, ttl);
+      },
+    });
+    vi.mocked(healOnce).mockImplementationOnce(async (call) => {
+      await vi.waitFor(() => expect(calls).toBeGreaterThan(1), { timeout: 2000 });
+      const cycle = await (await vi.importActual<typeof import('./heal')>('./heal')).healOnce(call);
+      open();
+      return cycle;
+    });
+    const context = watchContext(options({ intervalMs: 300, store: slowRenewals }));
+    await watchTick(options({ intervalMs: 300, store: slowRenewals }), context);
+    await store.releaseLease!(context.leaseId, context.owner);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect((await tick({ intervalMs: 300 })).state).not.toBe('leased');
+  });
+
   it('runs the corpus guard once guard.everyHours have passed', async () => {
     const context = watchContext(options());
     seedFailures();
@@ -414,5 +445,16 @@ describe('watchAgent', () => {
     expect(healOnce).toHaveBeenCalledTimes(1);
     expect(readFileSync(path.join(dir, 'instructions.md'), 'utf8').trim()).toBe(BASE);
     expect(readCycles(dir)[0]?.outcome).toBe('interrupted');
+  });
+
+  it('reports each finished tick to onTick, in order', async () => {
+    seedFailures();
+    stop();
+    const ticks: string[] = [];
+    const watcher = watchAgent(options({ intervalMs: 20, onTick: (tick) => ticks.push(tick.state) }));
+    await vi.waitFor(() => expect(ticks.length).toBeGreaterThanOrEqual(2));
+    await watcher.stop();
+    expect(ticks.slice(0, 2)).toEqual(['paused', 'paused']);
+    expect(healOnce).not.toHaveBeenCalled();
   });
 });

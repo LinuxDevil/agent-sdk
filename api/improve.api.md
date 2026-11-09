@@ -2544,6 +2544,7 @@ export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' 
     log?: (line: string) => void;
     onCycle?: (cycle: HealCycle) => void;
     onError?: (error: unknown) => void;
+    onTick?: (tick: WatchTick) => void;
     registry?: string;
     reloadSettings?: () => ImproveSettings;
     store?: CheckpointStore;
