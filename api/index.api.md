@@ -7868,7 +7868,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.104";
+export const VERSION = "1.0.0-alpha.105";
 
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;
