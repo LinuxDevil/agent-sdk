@@ -84,6 +84,17 @@ describe('specToGraph: abort listener worked example', () => {
     expect(ABORT_VIEW.ports).toStrictEqual({ in: true, out: false });
   });
 
+  it('clips the rows to their first line and 40 characters and drops empty ones', () => {
+    const long = 'x'.repeat(41);
+    const g = graphOf([{ id: 'a1', triggerId: 't3', when: `first\nsecond`, match: long, scope: 'both' }]);
+    expect(ABORT_VIEW.rows(abortNode(g))).toEqual([
+      { k: 'when', v: 'first' },
+      { k: 'match', v: `${'x'.repeat(39)}…` },
+    ]);
+    const exact = graphOf([{ id: 'a1', triggerId: 't3', when: 'y'.repeat(40), match: '', scope: 'both' }]);
+    expect(ABORT_VIEW.rows(abortNode(exact))).toEqual([{ k: 'when', v: 'y'.repeat(40) }]);
+  });
+
   it('titles (no trigger) while triggerId names no trigger node', () => {
     const g = graphOf([{ id: 'a1', triggerId: '', when: 'w', match: 'm', scope: 'both' }]);
     expect(ABORT_VIEW.title(abortNode(g), g)).toBe('Cancel on (no trigger)');

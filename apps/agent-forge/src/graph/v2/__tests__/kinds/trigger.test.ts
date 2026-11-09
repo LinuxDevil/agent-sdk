@@ -90,6 +90,18 @@ describe('specToGraph: trigger worked example', () => {
     expect(TRIGGER_VIEW.chip?.(t5)).toBe('on done');
   });
 
+  it('clips the prompt and template rows to their first line and 40 characters', () => {
+    const g = graphOf([
+      { id: 't2', type: 'cron', cron: '* * * * *', prompt: `${'p'.repeat(45)}\nmore` },
+      { id: 't3', type: 'webhook', path: '/h', promptTemplate: 'line one\nline two' },
+      { id: 't5', type: 'agent', after: 'a', on: 'done', promptTemplate: 'q'.repeat(40) },
+    ] as TriggerSpec[]);
+    const [t2, t3, t5] = g.nodes.slice(1) as Array<Extract<Graph['nodes'][number], { kind: 'trigger' }>>;
+    expect(TRIGGER_VIEW.rows(t2)).toEqual([{ k: 'prompt', v: `${'p'.repeat(39)}…` }]);
+    expect(TRIGGER_VIEW.rows(t3)).toEqual([{ k: 'template', v: 'line one' }]);
+    expect(TRIGGER_VIEW.rows(t5)).toEqual([{ k: 'template', v: 'q'.repeat(40) }]);
+  });
+
   it('shows out-only ports so a trigger can only source edges', () => {
     expect(TRIGGER_VIEW.ports).toStrictEqual({ in: false, out: true });
   });
