@@ -64,8 +64,12 @@ function isShaped(value: TrafficCanary): boolean {
 }
 
 function startedInAudit(dir: string, canary: TrafficCanary): boolean {
-  const last = readAudit(dir).filter((entry) => entry.action === 'canary-start' || entry.action === 'canary-end').at(-1);
-  return last?.action === 'canary-start' && last.from === canary.baseRevision && last.to === canary.revision && verifyAudit(dir) === undefined;
+  const entries = readAudit(dir);
+  const started = entries.map((entry) => entry.action).lastIndexOf('canary-start');
+  const start = entries[started];
+  if (start?.from !== canary.baseRevision || start.to !== canary.revision) return false;
+  const ended = entries.slice(started + 1).some((entry) => entry.action === 'canary-end' && entry.from === canary.baseRevision && entry.to === canary.revision);
+  return !ended && verifyAudit(dir) === undefined;
 }
 
 function checked(dir: string, value: TrafficCanary): TrafficCanary {

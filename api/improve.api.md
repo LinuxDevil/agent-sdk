@@ -425,6 +425,28 @@ export interface CanaryReplayResult {
 }
 
 // @public
+export interface CanarySettlement {
+    applied?: ApplyResult;
+    outcome: 'none' | 'pending' | 'applied' | 'queued' | 'retired';
+    queued?: PendingProposal;
+    reason: string;
+    verdict: CanaryVerdict;
+}
+
+// @public
+export interface CanaryVerdict {
+    flagged: number;
+    newClasses: string[];
+    p0: number;
+    reason: string;
+    sessions: number;
+    state: 'none' | 'pending' | 'promote' | 'retire';
+}
+
+// @public
+export function canaryVerdict(db: SqlDatabase, dir: string, settings: ImproveSettings, now?: number): CanaryVerdict;
+
+// @public
 export interface CapturedCase {
     id: string;
     input: string;
@@ -1856,6 +1878,9 @@ export function readAgentHarness(dir: string): Harness;
 export function readAudit(dir: string): AuditEntry[];
 
 // @public
+export function readCanary(dir: string): TrafficCanary | undefined;
+
+// @public
 export function readCorpus(dir: string): CorpusCase[];
 
 // @public
@@ -1973,6 +1998,9 @@ export interface RollbackResult {
     to: string;
     written: string[];
 }
+
+// @public
+export function routesToCandidate(sessionId: string, share: number): boolean;
 
 // @public
 interface RunDoneEvent extends AgentEventBase<'run.done'> {
@@ -2226,6 +2254,9 @@ type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
 };
 
 // @public
+export function settleCanary(db: SqlDatabase, dir: string, settings: ImproveSettings, now?: number): Promise<CanarySettlement>;
+
+// @public
 interface SimpleAgent<TObject = unknown> {
     approvals: AgentApprovals;
     close: () => Promise<void>;
@@ -2289,6 +2320,19 @@ interface StandardSchemaV1<Input = unknown, Output = Input> {
 }
 
 // @public
+export function startCanary(db: SqlDatabase, dir: string, input: StartCanaryInput, settings: ImproveSettings, now?: number): Promise<TrafficCanary>;
+
+// @public
+export interface StartCanaryInput {
+    agent?: string;
+    base: Harness;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+    replay?: Pick<CanaryReplayResult, 'passed' | 'reason'>;
+    result: ImproveResult;
+}
+
+// @public
 export interface StatusCount {
     max: number;
     used: number;
@@ -2325,6 +2369,12 @@ interface StepUsage {
     // (undocumented)
     usage: Usage;
 }
+
+// @public
+export function stopCanary(dir: string, by: {
+    actor: AuditEntry['actor'];
+    reason: string;
+}): Promise<boolean>;
 
 // @public
 interface StreamChunk {
@@ -2537,6 +2587,22 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     toolCallId: string;
     // (undocumented)
     toolName: string;
+}
+
+// @public
+export interface TrafficCanary {
+    agent?: string;
+    base: Harness;
+    baseRevision: string;
+    candidate: Harness;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+    p0: number;
+    result: ImproveResult;
+    revision: string;
+    sessions: number;
+    share: number;
+    startedAt: string;
 }
 
 // @public

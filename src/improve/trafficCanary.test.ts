@@ -386,6 +386,16 @@ describe('canaryArm', () => {
     expect(arm({ sessionId: ids[4] })).toMatchObject({ instructions: 'Be even more careful.' });
   });
 
+  it("keeps serving when a heal cycle audits another candidate's replay canary-end", async () => {
+    optIn();
+    const canary = await start();
+    await appendAudit(dir, { actor: 'canary', action: 'canary-end', from: canary.baseRevision, to: 'c'.repeat(64), reason: 'The replay canary failed.' });
+    expect(readCanary(dir)).toBeDefined();
+    expect(canaryArm(dir, base)({ sessionId: routed(0.1)[0] })).toBeDefined();
+    await appendAudit(dir, { actor: 'canary', action: 'canary-end', from: canary.baseRevision, to: canary.revision, reason: 'Ended.' });
+    expect(() => readCanary(dir)).toThrow(ConfigurationError);
+  });
+
   it('serves nothing when the audit chain is broken', async () => {
     optIn();
     await start();
