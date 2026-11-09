@@ -21,6 +21,7 @@ import type {
 import type { ChatState } from './chatReducer';
 import type { NodeStates } from './nodeStateReducer';
 import { useAgentDocument } from './useAgentDocument';
+import { useNodeSpans } from './useNodeSpans';
 import { agentRouteId } from '../screens/agents/agentRoute';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
@@ -161,6 +162,16 @@ interface AppState {
   setHighlightedNodeId: (nodeId: string | undefined) => void;
 
   /**
+   * The node whose spans the node spans sheet (components/test/NodeSpansSheet)
+   * is showing — set by a node card's status pill or the Inspector's "View
+   * spans" button, cleared by `closeNodeSpans` (Esc, scrim, close button).
+   * `undefined` = the sheet is closed.
+   */
+  spansNodeId: string | undefined;
+  openNodeSpans: (nodeId: string) => void;
+  closeNodeSpans: () => void;
+
+  /**
    * This agent's live chat transcript - the server's real
    * `Message[]` history (see runRegistry.ts/chatReconcile.ts), pushed over
    * `WS /agents/:id/stream` as `{type:'chat'}` and applied through the pure
@@ -274,6 +285,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
   const doc = useAgentDocument(store, initialAgentId);
   const { agentId, spec } = doc;
+  const nodeSpans = useNodeSpans();
   const overlay = useProposalOverlay(doc);
   const { saveVersion, latestVersionRef } = useSaveVersion(doc);
   const agentStatuses = useAgentStatuses(doc.agents);
@@ -294,7 +306,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setRailTab,
     drawerTab,
     setDrawerTab,
-    ...agentActionsClearing(doc, overlay.hideProposal),
+    // A proposal overlay and the node-spans sheet belong to the document
+    // they were opened for: agent mutations clear both.
+    ...agentActionsClearing(doc, () => {
+      overlay.hideProposal();
+      nodeSpans.closeNodeSpans();
+    }),
+    ...nodeSpans,
     ...run,
     agentStatuses,
     ...stream,

@@ -90,6 +90,8 @@ interface NodeDecor {
   highlightedNodeId: string | undefined;
   breakpoints: string[];
   statuses: Record<string, NodeRunStatus>;
+  /** Opens the node spans sheet for a card's status pill (AppState.openNodeSpans). */
+  openNodeSpans?: (nodeId: string) => void;
 }
 
 /** True when an `owner`-chain ancestor of `node` is a collapsed agent group. */
@@ -181,7 +183,7 @@ function groupSizes(graph: Graph, measured: MeasuredSizes): Map<string, { width:
  * the parent React Flow would re-lay them at absolute coordinates).
  */
 export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<CanvasNodeData>[] {
-  const { selectedNodeId, highlightedNodeId, breakpoints, statuses } = decor;
+  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans } = decor;
   const sizes = groupSizes(graph, measured);
   return canvasNodeOrder(graph).map((n) => {
     const group = isGroupNode(n);
@@ -202,6 +204,7 @@ export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSize
         highlighted: n.id === highlightedNodeId,
         hasBreakpoint: hasBreakpointOn(n, breakpoints),
         status: statuses[n.id],
+        onViewSpans: openNodeSpans,
         insideCount: group ? descendantCount(graph, n.id) : undefined,
       },
     };
@@ -786,6 +789,7 @@ function useCanvasElements() {
     debugState,
     nodeStates,
     runStatus,
+    openNodeSpans,
   } = useAppState();
 
   const breakpoints = debugState?.breakpoints ?? [];
@@ -796,8 +800,13 @@ function useCanvasElements() {
     [displayGraph, nodeStates, runStatus]
   );
   const nodes = useMemo(
-    () => toRfNodes(displayGraph, { selectedNodeId, highlightedNodeId, breakpoints, statuses }, measured),
-    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, measured]
+    () =>
+      toRfNodes(
+        displayGraph,
+        { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans },
+        measured
+      ),
+    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, openNodeSpans, measured]
   );
   const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
   // Edges derive from the DISPLAY graph so proposal nodes are wired in;

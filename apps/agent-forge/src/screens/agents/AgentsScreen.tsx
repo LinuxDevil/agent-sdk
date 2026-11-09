@@ -4,6 +4,7 @@ import { LeftRail } from '../../components/LeftRail';
 import { CanvasArea } from '../../components/CanvasArea';
 import { Inspector } from '../../components/Inspector';
 import { BottomDrawer } from '../../components/BottomDrawer';
+import { NodeSpansSheet } from '../../components/test/NodeSpansSheet';
 import { NARROW_QUERY, useMediaQuery } from '../../components/useMediaQuery';
 import { useShell } from '../../shell/AppShell';
 import { useAppState } from '../../state/AppState';
@@ -69,6 +70,7 @@ export function AgentsScreen() {
         {panels.open && <div className="shell-scrim" aria-hidden="true" onClick={panels.close} />}
       </div>
       <BottomDrawer />
+      <NodeSpansSheet />
     </div>
   );
 }
