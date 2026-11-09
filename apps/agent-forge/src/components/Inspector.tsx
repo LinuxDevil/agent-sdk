@@ -108,12 +108,12 @@ function BreakpointSection({ breakpointKey }: { breakpointKey: string }) {
 }
 
 function NodeInspector({ selected }: { selected: GraphNode }) {
-  const { graph, setGraph } = useAppState();
+  const { displayGraph, setGraph, proposal } = useAppState();
   const selectedId = selected.id;
   const view = viewFor(selected.kind);
   const props: KindFieldsProps<typeof selected.kind> = {
     node: selected as never,
-    graph,
+    graph: displayGraph,
     patch: (patch) => setGraph((g) => patchNode(g, selectedId, patch)),
     replace: (data) => setGraph((g) => setNodeData(g, selectedId, data)),
     // validateGraph's per-node problems arrive with C19; nothing to show before.
@@ -128,7 +128,18 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
       <div className="inspector-body">
         {/* Collapsible sections, each remembered per viewer (InspectorSection.tsx). */}
         <InspectorSection id="node" title="Settings">
-          <Fields {...props} />
+          {proposal === undefined ? (
+            <Fields {...props} />
+          ) : (
+            <>
+              {/* Read-only while the proposal overlay is shown (C21): the
+                  fields render the PROPOSED data, edits wait for Apply. */}
+              <p className="hint inspector-proposal-hint">This is a proposal. Apply it from the chat to edit.</p>
+              <fieldset disabled className="inspector-proposal-fieldset">
+                <Fields {...props} />
+              </fieldset>
+            </>
+          )}
         </InspectorSection>
         {breakpointKey && <BreakpointSection breakpointKey={breakpointKey} />}
       </div>
@@ -145,7 +156,9 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
  * registers one).
  */
 export function Inspector() {
-  const { graph, selectedNodeId } = useAppState();
-  const selected = graph.nodes.find((n) => n.id === selectedNodeId);
+  // The Inspector reads the DISPLAY graph: while a proposal is shown the
+  // selected node's fields are the proposed ones (C21).
+  const { displayGraph, selectedNodeId } = useAppState();
+  const selected = displayGraph.nodes.find((n) => n.id === selectedNodeId);
   return selected ? <NodeInspector selected={selected} /> : <EmptyInspector />;
 }

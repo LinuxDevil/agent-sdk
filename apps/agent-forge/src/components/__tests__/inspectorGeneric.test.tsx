@@ -12,7 +12,11 @@ const appState = vi.hoisted(() => ({
   debugState: undefined,
   setBreakpoints: vi.fn(async () => {}),
 }));
-vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
+vi.mock('../../state/AppState', () => ({
+  // The Inspector reads displayGraph (the proposal overlay's graph, C21);
+  // these tests have no proposal, so it mirrors graph.
+  useAppState: () => ({ ...appState, displayGraph: appState.graph }),
+}));
 
 import { Inspector } from '../Inspector';
 
