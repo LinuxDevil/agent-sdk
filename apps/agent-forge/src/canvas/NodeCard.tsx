@@ -36,6 +36,9 @@ export function cardClassName(
     ['highlighted', data.highlighted],
     ['has-breakpoint', data.hasBreakpoint],
     ['running', data.status === 'running'],
+    ['paused', data.status === 'paused'],
+    ['error', data.status === 'error'],
+    ['done', data.status === 'done'],
   ];
   return [base, ...flags.filter(([, on]) => on).map(([name]) => name)].join(' ');
 }

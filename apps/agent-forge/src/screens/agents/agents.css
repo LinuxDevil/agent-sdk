@@ -762,6 +762,35 @@ button.breakpoint-toggle {
     opacity: 0.3;
   }
 }
+/*
+ * The `node`-frame states beyond running (canvas/nodeStatus.ts): paused is
+ * the approval wait - the same pulsing ring in the warning border tone;
+ * error is terminal, so its danger ring is drawn once, without the pulse;
+ * done carries no ring at all - the status pill alone marks it.
+ */
+.canvas-wrap .rf-node.paused {
+  border-color: var(--warning);
+}
+.canvas-wrap .rf-node.paused::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--warning-border);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: rf-node-running 1.2s var(--ease) infinite alternate;
+}
+.canvas-wrap .rf-node.error {
+  border-color: var(--danger);
+}
+.canvas-wrap .rf-node.error::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 2px solid var(--danger-border);
+  border-radius: inherit;
+  pointer-events: none;
+}
 .rf-node-head {
   display: flex;
   align-items: center;
@@ -975,6 +1004,7 @@ button.breakpoint-toggle {
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-wrap .rf-node.running::after,
+  .canvas-wrap .rf-node.paused::after,
   .canvas-wrap .react-flow__edge.animated path {
     animation: none;
   }

@@ -56,6 +56,21 @@ describe('sticky side panels', () => {
   });
 });
 
+describe('canvas node status rings', () => {
+  const css = sheet('screens/agents/agents.css');
+  it('paused rings in --warning-border, error in --danger-border, done rings nothing', () => {
+    expect(rulesFor(css, '.canvas-wrap .rf-node.paused::after')).toMatch(/border:\s*2px solid var\(--warning-border\)/);
+    expect(rulesFor(css, '.canvas-wrap .rf-node.error::after')).toMatch(/border:\s*2px solid var\(--danger-border\)/);
+    expect(rulesFor(css, '.canvas-wrap .rf-node.done::after')).toBe('');
+  });
+  it('turns the ring animation off under prefers-reduced-motion', () => {
+    const reduced = css.slice(css.indexOf('prefers-reduced-motion'));
+    expect(reduced).toContain('.canvas-wrap .rf-node.running::after');
+    expect(reduced).toContain('.canvas-wrap .rf-node.paused::after');
+    expect(reduced).toMatch(/animation:\s*none/);
+  });
+});
+
 describe('U01 tokens', () => {
   const theme = sheet('theme.css');
   it.each(['success', 'warning', 'danger', 'info'])('--%s-border is the status colour at 40%%', (s) => {

@@ -725,20 +725,22 @@ function useCanvasElements() {
     agentId,
     graph,
     edges: graphEdges,
-    nodeIdMap,
     setGraph,
     selectedNodeId,
     setSelectedNodeId,
     highlightedNodeId,
     debugState,
-    spans,
+    nodeStates,
     runStatus,
   } = useAppState();
 
   const breakpoints = debugState?.breakpoints ?? [];
   const breakpointsKey = breakpoints.join(',');
   const [measured, setMeasured] = useState<MeasuredSizes>({});
-  const statuses = useMemo(() => nodeRunStatuses(graph, spans, runStatus, nodeIdMap), [graph, spans, runStatus, nodeIdMap]);
+  const statuses = useMemo(
+    () => nodeRunStatuses(graph.nodes.map((n) => n.id), nodeStates, runStatus),
+    [graph, nodeStates, runStatus]
+  );
   const nodes = useMemo(
     () => toRfNodes(graph, { selectedNodeId, highlightedNodeId, breakpoints, statuses }, measured),
     [graph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, measured]
