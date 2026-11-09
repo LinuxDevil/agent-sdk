@@ -1,8 +1,7 @@
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../ui/__tests__/render';
-import { specToGraph } from '../../graph/v2/specToGraph';
-import type { AbortNodeData, Graph } from '../../graph/v2/types';
+import type { FlowNodeData, Graph, GraphNode } from '../../graph/v2/types';
 
 const appState = vi.hoisted(() => ({
   graph: { version: 2, nodes: [], emptySections: [], unplaced: [] } as unknown as Graph,
@@ -20,18 +19,30 @@ vi.mock('../../state/AppState', () => ({
 
 import { Inspector } from '../Inspector';
 
+/**
+ * A `flow` node built by hand — specToGraph does not emit flow nodes yet
+ * (C15), and `flow` is the one kind still on the generic view, so it is the
+ * only kind whose Inspector falls back to the JSON editor.
+ */
 const baseGraph = (): Graph =>
-  specToGraph({
+  ({
     version: 2,
-    name: 'bot',
-    model: 'mock/mock-1',
-    instructions: 'p',
-    abortListeners: [{ id: 'a1', triggerId: 't1', when: 'event.x', match: 'run.y', scope: 'both' }],
-  } as unknown as Parameters<typeof specToGraph>[0]);
+    nodes: [
+      {
+        id: 'flow:e1',
+        kind: 'flow',
+        owner: 'agent',
+        position: { x: 0, y: 0 },
+        data: { step: { type: 'end', id: 'e1' }, children: { shape: 'none' } },
+      } satisfies GraphNode,
+    ],
+    emptySections: [],
+    unplaced: [],
+  }) as Graph;
 
 beforeEach(() => {
   appState.graph = baseGraph();
-  appState.selectedNodeId = 'abort:a1';
+  appState.selectedNodeId = 'flow:e1';
   appState.setGraph.mockReset();
 });
 
@@ -51,10 +62,10 @@ function editJson(container: HTMLElement, value: string) {
 describe('generic Inspector', () => {
   it('shows the selected node header and the JSON editor seeded with its item', () => {
     const container = render(<Inspector />);
-    expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (abort)');
-    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('a1');
+    expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (flow)');
+    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('e1');
     const textarea = container.querySelector('#node-json') as HTMLTextAreaElement;
-    expect(JSON.parse(textarea.value)).toEqual({ id: 'a1', triggerId: 't1', when: 'event.x', match: 'run.y', scope: 'both' });
+    expect(JSON.parse(textarea.value)).toEqual({ type: 'end', id: 'e1' });
     expect(container.textContent).toContain('This node has no form yet.');
   });
 
@@ -63,8 +74,8 @@ describe('generic Inspector', () => {
     editJson(container, '{ "type": "string" }');
     expect(appState.setGraph).toHaveBeenCalledTimes(1);
     const next = appState.setGraph.mock.calls[0][0](appState.graph) as Graph;
-    const output = next.nodes.find((n) => n.id === 'abort:a1')!;
-    expect((output.data as AbortNodeData).item).toEqual({ type: 'string' });
+    const output = next.nodes.find((n) => n.id === 'flow:e1')!;
+    expect((output.data as FlowNodeData).step).toEqual({ type: 'string' });
     expect(container.querySelector('[role="alert"]')).toBeNull();
   });
 

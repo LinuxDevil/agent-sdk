@@ -114,9 +114,9 @@ describe('Inspector while a proposal is shown', () => {
     expect(fieldset).not.toBeNull();
     expect(fieldset.disabled).toBe(true);
     expect(container.textContent).toContain('This is a proposal. Apply it from the chat to edit.');
-    // 'abort:a1' is proposed:edit — the generic JSON editor shows the
+    // 'abort:a1' is proposed:edit — its real Inspector fields show the
     // PROPOSED `when`, not the current one.
-    const textarea = container.querySelector('#node-json') as HTMLTextAreaElement;
-    expect(JSON.parse(textarea.value)).toMatchObject({ id: 'a1', when: 'event.changed' });
+    const when = container.querySelector('#node-abort-when') as HTMLInputElement;
+    expect(when.value).toBe('event.changed');
   });
 });

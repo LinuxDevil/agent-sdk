@@ -63,7 +63,7 @@ function AgentGroupNodeImpl({ data, selected }: NodeProps) {
     >
       {ports.in && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {ports.out && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
-      <NodeCardHead node={graphNode} status={nodeData.status} className="rf-group-head">
+      <NodeCardHead node={graphNode} status={nodeData.status} className="rf-group-head" graph={nodeData.graph}>
         {/* A proposal-edited group carries the same "edited" marker chip as a card (C21). */}
         {graphNode.proposed === 'edit' && (
           <code className="node-chip node-chip-edited" title="Changed by the proposal">

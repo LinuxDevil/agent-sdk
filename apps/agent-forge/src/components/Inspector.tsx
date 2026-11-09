@@ -2,7 +2,7 @@ import { MousePointerClick } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { patchNode, setNodeData } from '../graph/v2/mutations';
 import { toolNodeName } from '../graph/v2/nodeIds';
-import type { GraphNode, Problem, ToolNodeData } from '../graph/v2/types';
+import type { Graph, GraphNode, Problem, ToolNodeData } from '../graph/v2/types';
 import { ROOT_AGENT_ID } from '../graph/v2/types';
 import { viewFor, type KindFieldsProps } from '../canvas/kinds';
 import { InspectorSection } from './InspectorSection';
@@ -52,7 +52,7 @@ function breakpointKeyFor(node: GraphNode): string | undefined {
 }
 
 /** The header: the node's kind icon tile, its view label as an overline, and its title (truncated, full text in the tooltip). */
-function InspectorHead({ node }: { node: GraphNode }) {
+function InspectorHead({ node, graph }: { node: GraphNode; graph: Graph }) {
   const view = viewFor(node.kind);
   const { Icon } = view;
   return (
@@ -62,8 +62,8 @@ function InspectorHead({ node }: { node: GraphNode }) {
       </span>
       <div className="inspector-head-text">
         <div className="k overline">Selected node ({view.label})</div>
-        <div className="v" title={view.title(node as never)}>
-          {view.title(node as never)}
+        <div className="v" title={view.title(node as never, graph)}>
+          {view.title(node as never, graph)}
         </div>
       </div>
     </div>
@@ -124,7 +124,7 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
 
   return (
     <aside className="inspector" id="studio-inspector" aria-label="Inspector">
-      <InspectorHead node={selected} />
+      <InspectorHead node={selected} graph={displayGraph} />
       <div className="inspector-body">
         {/* Collapsible sections, each remembered per viewer (InspectorSection.tsx). */}
         <InspectorSection id="node" title="Settings">
