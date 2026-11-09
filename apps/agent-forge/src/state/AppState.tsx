@@ -18,7 +18,7 @@ import type {
   VersionListItem,
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
-import { useAgentDocument } from './useAgentDocument';
+import { useAgentDocument, type SetGraphOptions } from './useAgentDocument';
 import { agentRouteId } from '../screens/agents/agentRoute';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
@@ -36,7 +36,15 @@ interface AppState {
    * state that could drift from this.
    */
   graph: Graph;
-  setGraph: (updater: (graph: Graph) => Graph) => void;
+  /**
+   * Every canvas mutation goes through here. `options.history` controls the
+   * undo record (default `{ label: 'Edit' }`; `false` records nothing, e.g.
+   * C17's unplaced-node layout) and `options.dirty` (default true) the
+   * unsaved-changes flag; `coalesceKey` merges same-key edits within
+   * COALESCE_MS into one undo step (drags pass 'move:<ids>', Inspector
+   * fields 'field:<node>:<key>').
+   */
+  setGraph: (updater: (graph: Graph) => Graph, options?: SetGraphOptions) => void;
   /**
    * Derived, read-mostly view of `graph` as the SDK's `AgentSpecV2` (via
    * `graphToSpec()`), kept for components that read the spec shape
@@ -54,6 +62,18 @@ interface AppState {
   /** True when there are unsaved changes since the last successful `save()`. */
   dirty: boolean;
   save: () => Promise<void>;
+  /**
+   * Undo/redo over the spec-patch history (C20): `undo`/`redo` rebuild the
+   * graph from the patched `{ spec, layout }` and mark the document dirty;
+   * `canUndo`/`canRedo` drive the toolbar buttons and `undoLabel`/`redoLabel`
+   * the "Undo <label>" tooltips. History resets on agent switch.
+   */
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string;
+  redoLabel: string;
   /**
    * The explicit "Save version" (the Topbar's Save button and Ctrl/Cmd+S):
    * `save()` (the working-copy PUT, same as autosave) then

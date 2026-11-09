@@ -21,7 +21,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, type LucideIcon } from 'lucide-react';
+import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, Redo2, Undo2, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
 import { GROUP_NODE_TYPE, NODE_TYPES, flowNodeType, miniMapNodeClassName, type CanvasNodeData } from '../canvas/AgentNode';
@@ -318,7 +318,16 @@ function useGraphEditHandlers(
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       if (changes.some((c) => c.type === 'position' && c.position)) {
-        setGraph((g) => applyPositionChanges(g, changes));
+        // A drag fires one change batch per frame: 'move:<ids>' coalesces
+        // the whole gesture into a single 'Move' undo step (C20).
+        const movedIds = changes
+          .filter((c) => c.type === 'position' && c.position)
+          .map((c) => c.id)
+          .sort()
+          .join(',');
+        setGraph((g) => applyPositionChanges(g, changes), {
+          history: { label: 'Move', coalesceKey: `move:${movedIds}` },
+        });
       }
       if (changes.some((c) => c.type === 'dimensions')) {
         setMeasured((prev) => applyDimensionChanges(prev, changes));
@@ -581,7 +590,7 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
   const fitLegibly = useLegibleFit();
 
   function handleAutoLayout() {
-    setGraph((g) => autoLayout(g));
+    setGraph((g) => autoLayout(g), { history: { label: 'Auto layout' } });
     window.requestAnimationFrame(() => fitLegibly(200));
   }
 
@@ -591,7 +600,7 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
 
   const handleDuplicate = useCallback(() => {
     if (!selectedNodeId) return;
-    setGraph((g) => duplicateNode(g, selectedNodeId).graph);
+    setGraph((g) => duplicateNode(g, selectedNodeId).graph, { history: { label: 'Duplicate' } });
   }, [selectedNodeId, setGraph]);
 
   // Ctrl/Cmd+D duplicates the selected node - a discoverable shortcut
