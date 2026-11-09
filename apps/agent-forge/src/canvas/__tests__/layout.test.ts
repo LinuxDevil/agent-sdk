@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyElkPositions, autoLayout, toElkGraph } from '../layout';
+import { applyElkPositions, applyLayoutResult, autoLayout, toElkGraph } from '../layout';
 import { setCollapsed } from '../../graph/v2/mutations';
 import { specToGraph } from '../../graph/v2/specToGraph';
 import type { CanvasLayout } from '../../../shared/wireTypes';
@@ -98,6 +98,61 @@ describe('applyElkPositions', () => {
     };
     const laidOut = applyElkPositions(original, fake, 'all');
     expect(byId(laidOut, 'agent').position).not.toStrictEqual(byId(original, 'agent').position);
+  });
+});
+
+describe('applyLayoutResult', () => {
+  it('merges moved positions onto the latest graph, keeping concurrent edits', () => {
+    const before = graph();
+    // The layout moved trigger:t1 and agent; tool:http kept its position.
+    const laidOut: Graph = {
+      ...before,
+      unplaced: [],
+      nodes: before.nodes.map((n) => {
+        if (n.id === 'trigger:t1') return { ...n, position: { x: 900, y: 900 } };
+        if (n.id === 'agent') return { ...n, position: { x: 500, y: 500 } };
+        return n;
+      }),
+    };
+    // While elkjs ran, the user dragged tool:http and added a note.
+    const latest: Graph = {
+      ...before,
+      nodes: [
+        ...before.nodes.map((n) => (n.id === 'tool:http' ? { ...n, position: { x: 1, y: 2 } } : n)),
+        { id: 'note:n1', kind: 'note', owner: null, position: { x: 5, y: 6 }, data: { text: 'hi' } },
+      ],
+    };
+    const merged = applyLayoutResult(before, laidOut, latest);
+    expect(byId(merged, 'trigger:t1').position).toStrictEqual({ x: 900, y: 900 });
+    expect(byId(merged, 'agent').position).toStrictEqual({ x: 500, y: 500 });
+    // The concurrent drag wins over the (unchanged-by-layout) snapshot.
+    expect(byId(merged, 'tool:http').position).toStrictEqual({ x: 1, y: 2 });
+    expect(byId(merged, 'note:n1')).toBeDefined();
+    // Moved ids leave `unplaced`; ids the layout did not move stay flagged.
+    expect(merged.unplaced).toEqual(['tool:http', GROUP_ID, GROUP_TOOL_ID]);
+  });
+
+  it('keeps a node\'s position when it moved while the layout ran', () => {
+    const before = graph();
+    const laidOut: Graph = {
+      ...before,
+      nodes: before.nodes.map((n) => (n.id === 'agent' ? { ...n, position: { x: 700, y: 700 } } : n)),
+    };
+    const agentBefore = byId(before, 'agent').position;
+    const latest: Graph = {
+      ...before,
+      nodes: before.nodes.map((n) => (n.id === 'agent' ? { ...n, position: { x: 42, y: 43 } } : n)),
+    };
+    const merged = applyLayoutResult(before, laidOut, latest);
+    expect(byId(merged, 'agent').position).toStrictEqual({ x: 42, y: 43 });
+    expect(agentBefore).not.toStrictEqual({ x: 42, y: 43 });
+  });
+
+  it('returns latest unchanged when the layout moved nothing', () => {
+    const before = graph();
+    const laidOut: Graph = { ...before, nodes: before.nodes.map((n) => ({ ...n })) };
+    const latest: Graph = { ...before };
+    expect(applyLayoutResult(before, laidOut, latest)).toBe(latest);
   });
 });
 

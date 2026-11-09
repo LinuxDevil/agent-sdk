@@ -134,6 +134,41 @@ export function applyElkPositions(graph: Graph, laidOut: ElkNode, scope: LayoutS
   };
 }
 
+/**
+ * Applies the positions `laidOut` produced (relative to `before`) onto
+ * `latest` — the graph as it is NOW, which may have been edited while the
+ * async layout ran. Only nodes whose position actually changed are
+ * touched, and only while `latest` still holds `before`'s position for
+ * them (a node the user moved mid-layout keeps their position); node
+ * data, ids, edges and unrelated `unplaced` entries always come from
+ * `latest`. `unplaced` loses the moved ids — they have real positions
+ * now, whether the layout or the user gave them. Returns `latest` itself
+ * when nothing would move, so callers can skip a no-op `setGraph`.
+ */
+export function applyLayoutResult(before: Graph, laidOut: Graph, latest: Graph): Graph {
+  const beforePos = new Map(before.nodes.map((n) => [n.id, n.position]));
+  const laidPos = new Map(laidOut.nodes.map((n) => [n.id, n.position]));
+  const moved = new Set<string>();
+  for (const [id, position] of laidPos) {
+    const old = beforePos.get(id);
+    if (old !== undefined && (old.x !== position.x || old.y !== position.y)) moved.add(id);
+  }
+  if (moved.size === 0) return latest;
+  let changed = false;
+  const nodes = latest.nodes.map((node) => {
+    const target = moved.has(node.id) ? laidPos.get(node.id) : undefined;
+    const old = beforePos.get(node.id);
+    if (target === undefined || old === undefined) return node;
+    // The node moved (or was removed) while the layout ran - keep `latest`.
+    if (node.position.x !== old.x || node.position.y !== old.y) return node;
+    if (node.position.x === target.x && node.position.y === target.y) return node;
+    changed = true;
+    return { ...node, position: { x: target.x, y: target.y } };
+  });
+  if (!changed) return latest;
+  return { ...latest, nodes, unplaced: latest.unplaced.filter((id) => !moved.has(id)) };
+}
+
 /** The worker round-trip protocol (`layout.worker.ts`): request `{ id, graph }`, reply `{ id, result | error }`. */
 interface LayoutReply {
   id: number;
