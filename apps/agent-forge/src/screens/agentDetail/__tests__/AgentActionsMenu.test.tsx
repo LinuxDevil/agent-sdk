@@ -24,6 +24,7 @@ const appState = vi.hoisted(() => ({
 }));
 vi.mock('../../../state/AppState', () => ({ useAppState: () => appState }));
 
+import { takePendingOpen } from '../../../author/authorEntry';
 import { AgentActionsMenu } from '../AgentActionsMenu';
 
 function record(over: Partial<AgentRecord> = {}): AgentRecord {
@@ -90,21 +91,32 @@ function toastTexts(): string {
 beforeEach(() => {
   mocks.createAgentRecord.mockReset();
   mocks.deleteAgent.mockReset();
+  takePendingOpen(); // drain any queued Author open
   appState.agentId = 'other-agent';
   window.history.replaceState(null, '', '/#/agents/support-bot/overview');
 });
 
 describe('AgentActionsMenu', () => {
-  it('lists Duplicate, Export YAML and Delete agent… with one separator and a danger delete', () => {
+  it('lists Change with AI, Duplicate, Export YAML and Delete agent… with one separator and a danger delete', () => {
     renderMenu();
     const menu = openMenu();
 
     const labels = [...menu.querySelectorAll<HTMLElement>('[role^="menuitem"]')].map((el) => el.textContent ?? '');
-    expect(labels[0]).toContain('Duplicate');
-    expect(labels[1]).toContain('Export YAML');
-    expect(labels[2]).toContain('Delete agent…');
+    expect(labels[0]).toContain('Change with AI');
+    expect(labels[1]).toContain('Duplicate');
+    expect(labels[2]).toContain('Export YAML');
+    expect(labels[3]).toContain('Delete agent…');
     expect(menu.querySelectorAll('[role="separator"]').length).toBe(1);
     expect(menuItem('Delete agent…').classList.contains('menu-item-danger')).toBe(true);
+  });
+
+  it('Change with AI opens the Author focused on this agent (AA19)', async () => {
+    renderMenu();
+    openMenu();
+    await act(async () => {
+      menuItem('Change with AI').click();
+    });
+    expect(takePendingOpen()).toEqual({ source: 'agent-header', focus: { mode: 'edit', agentId: 'support-bot' } });
   });
 
   it('duplicates the agent, toasts and opens the copy’s overview', async () => {

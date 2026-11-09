@@ -14,6 +14,7 @@ const routesState = vi.hoisted(() => ({
 vi.mock('../../routeTable', () => ({ ROUTES: routesState.routes }));
 
 import type { AgentRecord } from '../../../../shared/wireTypes';
+import { CREATE_AGENT_DRAFT, takePendingOpen } from '../../../author/authorEntry';
 import { hasTemplatesRoute, useNewAgentActions } from '../newAgent';
 import { NewAgentMenu, StartOptions } from '../NewAgentMenu';
 import { render } from '../../../ui/__tests__/render';
@@ -61,6 +62,7 @@ async function openMenu(host: HTMLElement) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  takePendingOpen(); // drain any queued Author open
   // The mocked ROUTES binding holds this array's identity - mutate, never reassign.
   routesState.routes.length = 0;
   api.createAgentRecord.mockResolvedValue({ id: 'untitled-1' } as AgentRecord);
@@ -83,17 +85,23 @@ describe('NewAgentMenu', () => {
     expect(document.body.querySelectorAll('[role="separator"]')).toHaveLength(1);
   });
 
-  it('disables Describe with AI and Import with their reasons until AA19/L08 wire them', async () => {
+  it('runs Describe with AI through the Author entry point (AA19) and keeps Import disabled', async () => {
     const host = mount(<MenuHarness />);
     await openMenu(host);
-
-    const describe = menuItem('Describe with AI')!;
-    expect(describe.getAttribute('aria-disabled')).toBe('true');
-    expect(describe.getAttribute('title')).toBe('The Agent Author isn’t set up yet.');
 
     const importItem = menuItem('Import from file…')!;
     expect(importItem.getAttribute('aria-disabled')).toBe('true');
     expect(importItem.getAttribute('title')).toBe('Import arrives with the import sheet.');
+
+    const describe = menuItem('Describe with AI')!;
+    expect(describe.getAttribute('aria-disabled')).toBeNull();
+    await act(async () => describe.click());
+    expect(takePendingOpen()).toEqual({
+      source: 'agents-list',
+      focus: { mode: 'create' },
+      draft: CREATE_AGENT_DRAFT,
+      newChat: true,
+    });
   });
 
   it('hasTemplatesRoute detects the /templates route entry', () => {
@@ -173,14 +181,15 @@ describe('StartOptions', () => {
     expect(titles).toEqual(['Blank agent', 'Describe with AI', 'From template']);
 
     const describe = buttons[1];
-    expect(describe.disabled).toBe(true);
-    expect(describe.getAttribute('title')).toBe('The Agent Author isn’t set up yet.');
-    // The reason is part of the button's accessible description.
-    const describedBy = (describe.getAttribute('aria-describedby') ?? '')
-      .split(' ')
-      .map((id) => document.getElementById(id)?.textContent ?? '')
-      .join(' ');
-    expect(describedBy).toContain('The Agent Author isn’t set up yet.');
+    expect(describe.disabled).toBe(false);
+    // The large start button opens the same Author request as the menu item.
+    await act(async () => describe.click());
+    expect(takePendingOpen()).toEqual({
+      source: 'agents-list',
+      focus: { mode: 'create' },
+      draft: CREATE_AGENT_DRAFT,
+      newChat: true,
+    });
 
     const template = buttons[2];
     expect(template.disabled).toBe(true);

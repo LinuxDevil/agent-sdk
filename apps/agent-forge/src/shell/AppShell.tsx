@@ -1,6 +1,7 @@
 import './shell.css';
 import { Menu } from 'lucide-react';
 import { createContext, useCallback, useContext, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
+import { registerAuthorDock, toggleAuthor } from '../author/authorEntry';
 import { NARROW_QUERY, useMediaQuery } from '../components/useMediaQuery';
 import { useAppState } from '../state/AppState';
 import { CommandPalette } from '../ui/CommandPalette';
@@ -8,6 +9,7 @@ import { Dock, DockProvider, useDock, type DockApi } from './Dock';
 import { LogoMark } from './NavBrand';
 import { NavRail } from './NavRail';
 import { useNavCollapsed } from './navCollapsed';
+import { matchShortcut } from './shortcuts';
 
 /** Lets the Studio side panels (rail/inspector drawers) yield when the nav drawer opens - one drawer at a time. */
 const ShellContext = createContext({ navOpen: false });
@@ -96,6 +98,30 @@ function gridAttrs(narrow: boolean, collapsed: boolean, docked: boolean, dockWid
   };
 }
 
+/**
+ * The shell's global Author keys (AA19): Ctrl/Cmd+J toggles the dock through
+ * `authorEntry` (bubble phase, so the command palette's modal dialog can keep
+ * the key to itself; `preventDefault` only on a match, beating the browser's
+ * Downloads shortcut). The dock API is registered with `authorEntry` so
+ * `openAuthor`/`toggleAuthor` can drive it from outside the React tree.
+ */
+function useAuthorShortcuts(dock: DockApi): void {
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.repeat || matchShortcut(e) !== 'author') return;
+      e.preventDefault();
+      toggleAuthor();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    registerAuthorDock({ isOpen: () => dock.open, setOpen: dock.setOpen });
+    return () => registerAuthorDock(null);
+  }, [dock.open, dock.setOpen]);
+}
+
 /** The shell markup; lives inside DockProvider so the dock API can drive its grid. */
 function ShellLayout({ children, dock }: { children: ReactNode; dock?: ReactNode }) {
   const narrow = useMediaQuery(NARROW_QUERY);
@@ -103,6 +129,7 @@ function ShellLayout({ children, dock }: { children: ReactNode; dock?: ReactNode
   const dockApi = useDock();
   const { navOpen, toggleNav, closeNav } = useNavDrawer(narrow, dockApi);
   const docked = dock !== undefined && dockApi.open && !narrow;
+  useAuthorShortcuts(dockApi);
 
   return (
     <ShellContext.Provider value={{ navOpen }}>
