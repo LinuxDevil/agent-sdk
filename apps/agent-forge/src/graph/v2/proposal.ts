@@ -62,6 +62,105 @@ interface Removal {
   node: GraphNode;
 }
 
+interface MergeState {
+  out: GraphNode[];
+  usedIds: Set<string>;
+  placed: Map<string, GraphNode>;
+}
+
+function specLayoutOf(layout: CanvasLayout): CanvasLayout {
+  return {
+    schemaVersion: 1,
+    nodes: layout.nodes,
+    notes: [],
+    ...(layout.viewport !== undefined ? { viewport: { ...layout.viewport } } : {}),
+  };
+}
+
+function mergedNode(p: GraphNode, c: GraphNode | undefined): GraphNode {
+  if (c === undefined) return { ...p, proposed: 'add' };
+  if (sameNodeData(c.data, p.data)) {
+    // Unchanged: the current node's data and position, under the proposed
+    // (canonical) id and owner so parent/child references stay consistent.
+    const node: GraphNode = { ...c, id: p.id, owner: p.owner, position: { ...c.position } };
+    if (c.collapsed !== undefined) node.collapsed = c.collapsed;
+    return node;
+  }
+  // Edited: the proposed node's data, the current node's position.
+  const node: GraphNode = { ...p, proposed: 'edit', position: { ...c.position } };
+  if (c.collapsed !== undefined) node.collapsed = c.collapsed;
+  else delete node.collapsed;
+  return node;
+}
+
+function placeProposedNodes(current: Graph, proposed: Graph, rekey: NodeIdMap, state: MergeState): void {
+  // rekeyed current id → the current node (for classification and position).
+  const byRekeyedId = new Map<string, GraphNode>();
+  for (const node of current.nodes) {
+    byRekeyedId.set(rekey[node.id] ?? node.id, node);
+  }
+  for (const p of proposed.nodes) {
+    const c = byRekeyedId.get(p.id);
+    const node = mergedNode(p, c);
+    state.usedIds.add(node.id);
+    if (c !== undefined) state.placed.set(c.id, node);
+    state.out.push(node);
+  }
+}
+
+function carryNotes(current: Graph, state: MergeState): void {
+  // Notes are not spec nodes: the proposal neither adds nor removes them.
+  for (const note of current.nodes) {
+    if (note.kind !== 'note') continue;
+    const carried = { ...note, position: { ...note.position } };
+    state.usedIds.add(carried.id);
+    state.placed.set(note.id, carried);
+    state.out.push(carried);
+  }
+}
+
+function collectRemovals(current: Graph, proposed: Graph, rekey: NodeIdMap, usedIds: Set<string>): Removal[] {
+  const proposedIds = new Set(proposed.nodes.map((n) => n.id));
+  const removed: Removal[] = [];
+  for (const c of current.nodes) {
+    if (c.kind === 'note') continue;
+    if (proposedIds.has(rekey[c.id] ?? c.id)) continue; // survivor — already placed
+    const clone: GraphNode = { ...c, proposed: 'remove', position: { ...c.position } };
+    clone.id = dedupeId(clone.id, usedIds);
+    usedIds.add(clone.id);
+    removed.push({ source: c, node: clone });
+  }
+  return removed;
+}
+
+// Insert each removal after its "previous sibling" in the current order:
+// the nearest earlier same-owner node still in `out`, else the owner node
+// itself, else the nearest earlier placed node, else the end.
+function previousSibling(
+  current: Graph,
+  { source, node: clone }: Removal,
+  placed: Map<string, GraphNode>
+): GraphNode | undefined {
+  let fallback: GraphNode | undefined;
+  let ownerNode: GraphNode | undefined;
+  for (let i = current.nodes.indexOf(source) - 1; i >= 0; i -= 1) {
+    const s = current.nodes[i];
+    const entry = placed.get(s.id);
+    if (entry === undefined) continue;
+    fallback ??= entry;
+    if (s.owner === clone.owner) return entry;
+    if (s.id === clone.owner) ownerNode ??= entry;
+  }
+  return ownerNode ?? fallback;
+}
+
+function insertRemoval(current: Graph, removal: Removal, out: GraphNode[], placed: Map<string, GraphNode>): void {
+  const predecessor = previousSibling(current, removal, placed);
+  const position = predecessor === undefined ? out.length : out.indexOf(predecessor) + 1;
+  out.splice(position, 0, removal.node);
+  placed.set(removal.source.id, removal.node);
+}
+
 /**
  * current graph + proposed spec → one display graph (see the module doc for
  * the classification rules). `layout` is the current document's
@@ -78,20 +177,7 @@ export function mergeProposal(
   nodeIdMap?: NodeIdMap
 ): Graph {
   const rekey = nodeIdMap ?? graphToSpec(current).nodeIdMap;
-  const specLayout: CanvasLayout = {
-    schemaVersion: 1,
-    nodes: layout.nodes,
-    notes: [],
-    ...(layout.viewport !== undefined ? { viewport: { ...layout.viewport } } : {}),
-  };
-  const proposed = specToGraph(proposedSpec, specLayout);
-  const proposedIds = new Set(proposed.nodes.map((n) => n.id));
-
-  // rekeyed current id → the current node (for classification and position).
-  const byRekeyedId = new Map<string, GraphNode>();
-  for (const node of current.nodes) {
-    byRekeyedId.set(rekey[node.id] ?? node.id, node);
-  }
+  const proposed = specToGraph(proposedSpec, specLayoutOf(layout));
 
   const out: GraphNode[] = [];
   const usedIds = new Set<string>();
@@ -99,69 +185,11 @@ export function mergeProposal(
   // they are inserted, notes as carried) — the "previous sibling" lookup.
   const placed = new Map<string, GraphNode>();
 
-  for (const p of proposed.nodes) {
-    const c = byRekeyedId.get(p.id);
-    let node: GraphNode;
-    if (c === undefined) {
-      node = { ...p, proposed: 'add' };
-    } else if (sameNodeData(c.data, p.data)) {
-      // Unchanged: the current node's data and position, under the proposed
-      // (canonical) id and owner so parent/child references stay consistent.
-      node = { ...c, id: p.id, owner: p.owner, position: { ...c.position } };
-      if (c.collapsed !== undefined) node.collapsed = c.collapsed;
-    } else {
-      // Edited: the proposed node's data, the current node's position.
-      node = { ...p, proposed: 'edit', position: { ...c.position } };
-      if (c.collapsed !== undefined) node.collapsed = c.collapsed;
-      else delete node.collapsed;
-    }
-    usedIds.add(node.id);
-    if (c !== undefined) placed.set(c.id, node);
-    out.push(node);
-  }
-
-  // Notes are not spec nodes: the proposal neither adds nor removes them.
-  for (const note of current.nodes) {
-    if (note.kind !== 'note') continue;
-    const carried = { ...note, position: { ...note.position } };
-    usedIds.add(carried.id);
-    placed.set(note.id, carried);
-    out.push(carried);
-  }
-
-  const removed: Removal[] = [];
-  for (const c of current.nodes) {
-    if (c.kind === 'note') continue;
-    if (proposedIds.has(rekey[c.id] ?? c.id)) continue; // survivor — already placed
-    const clone: GraphNode = { ...c, proposed: 'remove', position: { ...c.position } };
-    clone.id = dedupeId(clone.id, usedIds);
-    usedIds.add(clone.id);
-    removed.push({ source: c, node: clone });
-  }
-
-  // Insert each removal after its "previous sibling" in the current order:
-  // the nearest earlier same-owner node still in `out`, else the owner node
-  // itself, else the nearest earlier placed node, else the end.
-  for (const { source, node: clone } of removed) {
-    const at = current.nodes.indexOf(source);
-    let predecessor: GraphNode | undefined;
-    let fallback: GraphNode | undefined;
-    let ownerNode: GraphNode | undefined;
-    for (let i = at - 1; i >= 0; i -= 1) {
-      const s = current.nodes[i];
-      const entry = placed.get(s.id);
-      if (entry === undefined) continue;
-      fallback ??= entry;
-      if (s.owner === clone.owner) {
-        predecessor = entry;
-        break;
-      }
-      if (s.id === clone.owner) ownerNode ??= entry;
-    }
-    predecessor ??= ownerNode ?? fallback;
-    const position = predecessor === undefined ? out.length : out.indexOf(predecessor) + 1;
-    out.splice(position, 0, clone);
-    placed.set(source.id, clone);
+  placeProposedNodes(current, proposed, rekey, { out, usedIds, placed });
+  carryNotes(current, { out, usedIds, placed });
+  const removed = collectRemovals(current, proposed, rekey, usedIds);
+  for (const removal of removed) {
+    insertRemoval(current, removal, out, placed);
   }
 
   const addIds = new Set(out.filter((n) => n.proposed === 'add').map((n) => n.id));
