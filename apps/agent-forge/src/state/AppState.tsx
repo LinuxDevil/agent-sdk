@@ -74,6 +74,12 @@ interface AppState {
   dirty: boolean;
   save: () => Promise<void>;
   /**
+   * Re-reads the open agent's spec and layout from disk (`GET /agents/:id`)
+   * and shows them in place - the Author canvas sync's post-save refresh
+   * (AA18). `discardLocal` replaces unsaved edits too and clears `dirty`.
+   */
+  reload: (options?: { discardLocal?: boolean }) => Promise<void>;
+  /**
    * The explicit "Save version" (the Topbar's Save button and Ctrl/Cmd+S):
    * `save()` (the working-copy PUT, same as autosave) then
    * `POST /agents/:id/versions`. Resolves to the written item when a

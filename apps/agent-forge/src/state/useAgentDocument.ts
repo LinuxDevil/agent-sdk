@@ -436,6 +436,22 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
 
   useAutosave({ ...saveDeps, dirty });
 
+  /**
+   * Re-reads the open agent (`store.load` → `GET /agents/:id`) and shows
+   * the record's spec and layout in place - the Author canvas sync's
+   * post-save refresh (AA18). `discardLocal` also clears the dirty flag
+   * (the loaded document replaces unsaved edits); without it the document
+   * keeps its dirty state so an in-progress edit still autosaves.
+   */
+  const reload = useCallback(
+    async (options?: { discardLocal?: boolean }) => {
+      const loaded = await store.load(agentId);
+      if (!loaded) return;
+      showAgent(doc, agentId, loaded.spec, graphOfRecord(loaded), { clean: options?.discardLocal === true });
+    },
+    [store, agentId]
+  );
+
   const { switchAgent, createAgent, renameAgent, deleteAgent } = useAgentActions(
     { store, agents, agentId, refreshAgents, doc },
     derived,
@@ -456,6 +472,7 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     nodeIdMap: derived.nodeIdMap,
     dirty,
     save,
+    reload,
     selectedNodeId,
     setSelectedNodeId,
     agents,

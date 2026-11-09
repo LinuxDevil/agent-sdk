@@ -24,6 +24,7 @@ import {
   proposalActionState,
   type ProposalActionState,
 } from './proposalActionState';
+import { focusProposalCard } from './proposalFocus';
 import { registerToolRenderer, type ToolRenderContext } from './toolRenderers';
 
 /** The Apply footer's disabled copy, in precedence order. */
@@ -49,38 +50,19 @@ function applyFor(
 }
 
 /**
- * Scrolls the card `data-proposal-id="{id}"` to centre and moves focus to
- * its title (the heading takes `tabIndex=-1` for the visit). Reduced
- * motion swaps the smooth scroll for a jump.
- */
-function scrollToProposal(id: string): boolean {
-  const esc = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(id) : id.replace(/"/g, '\\"');
-  const el = document.querySelector(`[data-proposal-id="${esc}"]`);
-  if (el === null) return false;
-  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false;
-  el.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
-  const heading = el.querySelector('h3');
-  if (heading !== null) {
-    heading.tabIndex = -1;
-    heading.focus();
-  }
-  return true;
-}
-
-/**
  * The save-error "Show the newer proposal" action: scroll to the card the
  * gate named, or - when the optimistic transcript has not caught up -
  * reconcile the session first, then retry once.
  */
 function showNewer(chat: AuthorChat, id: string): void {
-  if (scrollToProposal(id) || chat.state.sessionId === null) return;
+  if (focusProposalCard(id) || chat.state.sessionId === null) return;
   const sessionId = chat.state.sessionId;
   void chat
     .openSession(sessionId)
     .catch(() => undefined)
     .then(() => {
       setTimeout(() => {
-        scrollToProposal(id);
+        focusProposalCard(id);
       }, 0);
     });
 }

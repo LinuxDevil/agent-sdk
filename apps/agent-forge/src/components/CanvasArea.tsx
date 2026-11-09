@@ -21,7 +21,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, type LucideIcon } from 'lucide-react';
+import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, Sparkles, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
 import { GROUP_NODE_TYPE, NODE_TYPES, flowNodeType, miniMapNodeClassName, type CanvasNodeData } from '../canvas/AgentNode';
@@ -663,9 +663,25 @@ function ToolbarButton({
   );
 }
 
+/**
+ * The proposal pill (AA18) at the head of the canvas toolbar while an
+ * Author overlay is shown: a dashed-accent button that opens the Author
+ * dock on the proposal card (`onShowProposal`, wired by AgentsScreen).
+ */
+function ProposalPill({ onShow }: { onShow: () => void }) {
+  return (
+    <button type="button" className="canvas-proposal-pill" onClick={onShow}>
+      <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />
+      Proposed change · review in the Author
+    </button>
+  );
+}
+
 function CanvasToolbar({
   canDuplicate,
   readOnly,
+  proposalId,
+  onShowProposal,
   onAutoLayout,
   onFitView,
   onDuplicate,
@@ -673,12 +689,16 @@ function CanvasToolbar({
   canDuplicate: boolean;
   /** A proposal overlay is showing: edits (auto layout, duplicate) are disabled; fit view stays. */
   readOnly: boolean;
+  /** AA18: the open proposal's id - with `onShowProposal`, renders the toolbar pill. */
+  proposalId?: string | null;
+  onShowProposal?: () => void;
   onAutoLayout: () => void;
   onFitView: () => void;
   onDuplicate: () => void;
 }) {
   return (
     <div className="canvas-toolbar" role="group" aria-label="Canvas tools">
+      {proposalId != null && onShowProposal !== undefined && <ProposalPill onShow={onShowProposal} />}
       <ToolbarButton
         Icon={LayoutGrid}
         label="Auto layout"
@@ -703,6 +723,16 @@ export interface InspectorToggleProps {
   inspectorCollapsed?: boolean;
   onToggleInspector?: () => void;
 }
+
+/** AA18's wiring from the builder screen: the open proposal's id and the "show its card" action. */
+export interface CanvasProposalSyncProps {
+  /** The open Author proposal's id (drives the toolbar pill); null/absent = no overlay. */
+  proposalId?: string | null;
+  /** Opens the Author dock and scrolls to `[data-proposal-id]` - the pill's and dashed nodes' click. */
+  onShowProposal?: () => void;
+}
+
+export type CanvasAreaProps = InspectorToggleProps & CanvasProposalSyncProps;
 
 /**
  * The docked Inspector's Show/Hide toggle, on the canvas's top-right edge
@@ -837,13 +867,29 @@ function useCanvasElements() {
 }
 
 /**
+ * AA18: a click on a dashed (proposed) node opens the Author card it
+ * belongs to - the same action as the toolbar pill. `proposed` flags only
+ * exist on the display graph while an overlay is shown, so the flag check
+ * alone gates the click; node selection still happens through
+ * `onNodesChange`, keeping the Inspector on the proposed node.
+ */
+function useProposalNodeClick(onShowProposal?: () => void) {
+  return useCallback(
+    (_event: unknown, node: Node<CanvasNodeData>) => {
+      if (node.data.graphNode.proposed !== undefined) onShowProposal?.();
+    },
+    [onShowProposal]
+  );
+}
+
+/**
  * Real ReactFlow canvas. `AppState.graph` is the single source
  * of truth: every handler below reads it and, on a real mutation, calls
  * `setGraph()` - ReactFlow's `nodes`/`edges` props are recomputed from
  * `graph` on every render rather than kept in separate ReactFlow-owned
  * state, so there is nowhere for the two to drift apart.
  */
-function CanvasInner(inspectorToggle: InspectorToggleProps) {
+function CanvasInner({ inspectorCollapsed, onToggleInspector, proposalId, onShowProposal }: CanvasAreaProps) {
   const {
     agentId,
     displayGraph,
@@ -871,16 +917,20 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
   useKeepSelectionInView(selectedNodeId);
   const fitting = useFitViewOnLoad(agentId, displayGraph, measured);
 
+  const onNodeClick = useProposalNodeClick(onShowProposal);
+
   return (
     <main className="canvas-wrap" aria-label="Agent graph" data-fitting={fitting || undefined} onDrop={onDrop} onDragOver={onDragOver}>
       <CanvasToolbar
         canDuplicate={!!selectedNodeId}
         readOnly={readOnly}
+        proposalId={proposalId}
+        onShowProposal={onShowProposal}
         onAutoLayout={handleAutoLayout}
         onFitView={handleFitView}
         onDuplicate={handleDuplicate}
       />
-      <InspectorToggle {...inspectorToggle} />
+      <InspectorToggle inspectorCollapsed={inspectorCollapsed} onToggleInspector={onToggleInspector} />
       <EmptyCanvas />
       <ProposalBanner />
       {connectError && (
@@ -896,6 +946,7 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
         onNodesChange={editHandlers.onNodesChange}
         onEdgesChange={editHandlers.onEdgesChange}
         onNodesDelete={editHandlers.onNodesDelete}
+        onNodeClick={onNodeClick}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         nodesDraggable={!readOnly}
@@ -920,6 +971,6 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
  * adopters at `@xyflow/react` (same team, actively released); see the
  * epic's PR description for the full rationale.
  */
-export function CanvasArea(props: InspectorToggleProps) {
+export function CanvasArea(props: CanvasAreaProps) {
   return <CanvasInner {...props} />;
 }
