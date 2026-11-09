@@ -167,6 +167,39 @@
   outline-offset: 2px;
 }
 
+/* The Agent Author trigger (AA19): a nav-item-shaped button in the footer group. */
+.nav-rail .author-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.nav-rail .author-trigger:hover {
+  background: light-dark(var(--surface), var(--surface-2));
+  color: var(--text);
+}
+.nav-rail .author-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.nav-rail[data-collapsed] .author-trigger {
+  justify-content: center;
+  padding: 0;
+}
+
 /* Collector status card, pinned under Settings. */
 .nav-daemon {
   position: relative;
