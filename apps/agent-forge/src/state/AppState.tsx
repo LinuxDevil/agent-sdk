@@ -77,8 +77,10 @@ interface AppState {
    * Re-reads the open agent's spec and layout from disk (`GET /agents/:id`)
    * and shows them in place - the Author canvas sync's post-save refresh
    * (AA18). `discardLocal` replaces unsaved edits too and clears `dirty`.
+   * Resolves `false` when the agent is gone or the screen switched
+   * agents while the fetch ran.
    */
-  reload: (options?: { discardLocal?: boolean }) => Promise<void>;
+  reload: (options?: { discardLocal?: boolean }) => Promise<boolean>;
   /**
    * The explicit "Save version" (the Topbar's Save button and Ctrl/Cmd+S):
    * `save()` (the working-copy PUT, same as autosave) then

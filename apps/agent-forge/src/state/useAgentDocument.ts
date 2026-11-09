@@ -421,6 +421,11 @@ function useDerivedDocument(
  */
 export function useAgentDocument(store: AgentStore, initialId?: string) {
   const { agentId, graph, dirty, selectedNodeId, latestJson, doc } = useDocumentState();
+  // The agent the document currently shows, readable from async
+  // continuations: a `reload()` whose fetch resolves after an agent
+  // switch must not flip the document back to the agent it started on.
+  const agentIdRef = useRef(agentId);
+  agentIdRef.current = agentId;
   const { setDirty, lastSavedJson, setSelectedNodeId } = doc;
   const { agents, setAgents, refreshAgents, agentsLoaded } = useAgentList(store, initialId ?? agentId, doc);
   // `WS /events`: another tab's write refreshes this tab's agents list.
@@ -442,12 +447,16 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
    * post-save refresh (AA18). `discardLocal` also clears the dirty flag
    * (the loaded document replaces unsaved edits); without it the document
    * keeps its dirty state so an in-progress edit still autosaves.
+   * Resolves `true` when the document was replaced, `false` when the
+   * agent is gone or the screen switched agents while the fetch ran.
    */
   const reload = useCallback(
-    async (options?: { discardLocal?: boolean }) => {
-      const loaded = await store.load(agentId);
-      if (!loaded) return;
-      showAgent(doc, agentId, loaded.spec, graphOfRecord(loaded), { clean: options?.discardLocal === true });
+    async (options?: { discardLocal?: boolean }): Promise<boolean> => {
+      const id = agentId;
+      const loaded = await store.load(id);
+      if (!loaded || agentIdRef.current !== id) return false;
+      showAgent(doc, id, loaded.spec, graphOfRecord(loaded), { clean: options?.discardLocal === true });
+      return true;
     },
     [store, agentId]
   );
