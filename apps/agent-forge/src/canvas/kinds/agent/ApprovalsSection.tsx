@@ -10,6 +10,7 @@ import { Switch } from '../../../ui/controls';
 import { ChoiceField } from '../../fields/ChoiceField';
 import { OptionalNumberField } from '../../fields/OptionalNumberField';
 import type { AgentFields } from '../../../graph/v2/types';
+import { MAX_APPROVAL_TTL_MS } from '../../../graph/v2/specTypes';
 import type { RunSettingsProps } from './LimitsSection';
 
 type PermissionMode = NonNullable<AgentFields['permissionMode']>;
@@ -42,9 +43,11 @@ export function ApprovalsFields({ fields, patch }: RunSettingsProps): JSX.Elemen
         value={fields.approvalTtlMs}
         onChange={(approvalTtlMs) => patch({ approvalTtlMs })}
         min={30000}
+        max={MAX_APPROVAL_TTL_MS}
         integer
         unit="ms"
         minMessage="At least 30 seconds"
+        maxMessage="At most 100 years"
         help="Unanswered approvals are denied after this."
       />
       <Field

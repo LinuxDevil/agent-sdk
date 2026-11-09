@@ -7,8 +7,10 @@
  *
  * Deviations from the ticket table, per "the SDK wins": the spec has no
  * `enabled` flag — `toolSearch` is `false | { thresholdPercent, maxResults,
- * contextWindow }` and `codeMode` is `boolean | CodeModeOptions` — so the
- * switches write an object/`true` for on and delete the key for off.
+ * contextWindow }` (only the literal `false` disables it; absent and `{}`
+ * are both on) and `codeMode` is `boolean | CodeModeOptions` — so the
+ * switches write `false`/`{}`/`true` for off/on and delete `codeMode`'s
+ * key for off.
  */
 import { Field } from '../../../ui/Field';
 import { Switch } from '../../../ui/controls';
@@ -96,15 +98,16 @@ export function ContextFields({ fields, patch }: RunSettingsProps): JSX.Element 
         hint="Loads deferred tools on demand."
       >
         <Switch
-          checked={toolSearch !== undefined}
-          onChange={(on) => patch({ toolSearch: on ? (toolSearch ?? {}) : undefined })}
+          // Only the literal `false` disables tool search; absent and `{}` both mean on.
+          checked={fields.toolSearch !== false}
+          onChange={(on) => patch({ toolSearch: on ? (toolSearch ?? {}) : false })}
         />
       </Field>
-      {toolSearch !== undefined ? (
+      {fields.toolSearch !== false ? (
         <OptionalNumberField
           id="node-agent-tool-search-max-results"
           label="Max results"
-          value={toolSearch.maxResults as number | undefined}
+          value={(isRecord(fields.toolSearch) ? fields.toolSearch.maxResults : undefined) as number | undefined}
           onChange={(maxResults) => patch(mergeNested(fields, 'toolSearch', { maxResults }))}
           min={1}
           max={50}

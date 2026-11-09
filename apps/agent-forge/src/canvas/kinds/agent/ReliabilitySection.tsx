@@ -7,9 +7,10 @@
  * Deviation from the ticket table, per "the SDK wins": `retry.backoff` is
  * the SDK's `BackoffOptions` object (`{ initialMs, maxMs, factor, jitter }`,
  * always exponential — there is no 'linear' strategy), so the Backoff
- * choice writes preset objects: Exponential `{ factor: 2 }`, Linear
- * `{ factor: 1 }` (a constant delay, the closest the formula gets to
- * linear). `rateLimit.maxConcurrent` stays unedited here.
+ * choice writes preset `factor`s — Exponential 2, Linear 1 (a constant
+ * delay, the closest the formula gets to linear) — merged over any custom
+ * `BackoffOptions` sub-keys already in the spec. `rateLimit.maxConcurrent`
+ * stays unedited here.
  */
 import { ChoiceField } from '../../fields/ChoiceField';
 import { OptionalNumberField } from '../../fields/OptionalNumberField';
@@ -46,10 +47,15 @@ function backoffChoiceOf(backoff: unknown): BackoffChoice | undefined {
   return backoff.factor === 1 ? 'linear' : 'exponential';
 }
 
-/** The preset object a Backoff choice writes (`undefined` deletes `retry.backoff`). */
-function backoffValueOf(choice: BackoffChoice | undefined): Record<string, unknown> | undefined {
+/**
+ * The `BackoffOptions` a Backoff choice writes: the preset's `factor`
+ * merged over the stored object, so custom `initialMs`/`maxMs`/`jitter`
+ * sub-keys (set in the spec file — the Inspector has no controls for them)
+ * survive a re-pick. `undefined` deletes `retry.backoff`.
+ */
+function backoffValueOf(choice: BackoffChoice | undefined, existing: unknown): Record<string, unknown> | undefined {
   if (choice === undefined) return undefined;
-  return choice === 'linear' ? { factor: 1 } : { factor: 2 };
+  return { ...(isRecord(existing) ? existing : {}), factor: choice === 'linear' ? 1 : 2 };
 }
 
 /** The Reliability section described above. */
@@ -88,7 +94,9 @@ export function ReliabilityFields({ fields, patch }: RunSettingsProps): JSX.Elem
             value={backoffChoiceOf(retryCustom.backoff)}
             options={BACKOFF_OPTIONS}
             allowUnset
-            onChange={(backoff) => patch(mergeNested(fields, 'retry', { backoff: backoffValueOf(backoff) }))}
+            onChange={(backoff) =>
+              patch(mergeNested(fields, 'retry', { backoff: backoffValueOf(backoff, retryCustom.backoff) }))
+            }
           />
           <OptionalNumberField
             id="node-agent-retry-timeout"

@@ -176,6 +176,14 @@ describe('agent run settings Inspector', () => {
     expect(fields().retry).toStrictEqual({ maxRetries: 4 });
   });
 
+  it('keeps custom backoff sub-keys when the preset is re-picked', () => {
+    app.graph = specToGraph(specOf({ retry: { backoff: { initialMs: 100, jitter: false } } }));
+    renderInspector();
+    // Backoff ChoiceField (allowUnset): 0 Default, 1 Exponential, 2 Linear.
+    choose('node-agent-retry-backoff', '2');
+    expect(fields().retry).toStrictEqual({ backoff: { initialMs: 100, jitter: false, factor: 1 } });
+  });
+
   it('writes rateLimit.requestsPerMinute', () => {
     renderInspector();
     type('node-agent-rate-limit-rpm', '30');
@@ -220,16 +228,28 @@ describe('agent run settings Inspector', () => {
     expect(fields().promptCaching).toBeUndefined();
   });
 
-  it('writes toolSearch on and off, keeping maxResults inside the object', () => {
+  it('writes toolSearch false off and an object on, keeping maxResults inside it', () => {
     renderInspector();
+    // Absent means on (the SDK default); the first click turns it off.
+    click('node-agent-tool-search');
+    expect(fields().toolSearch).toBe(false);
+    flush();
+    expect(field('node-agent-tool-search-max-results')).toBeNull();
     click('node-agent-tool-search');
     expect(fields().toolSearch).toStrictEqual({});
     flush();
     type('node-agent-tool-search-max-results', '8');
     expect(fields().toolSearch).toStrictEqual({ maxResults: 8 });
+  });
+
+  it('reads a literal toolSearch:false as off', () => {
+    app.graph = specToGraph(specOf({ toolSearch: false }));
+    renderInspector();
+    expect(field('node-agent-tool-search').getAttribute('aria-checked')).toBe('false');
     flush();
+    // Toggling back on writes an object, never resurrects `false`.
     click('node-agent-tool-search');
-    expect(fields().toolSearch).toBeUndefined();
+    expect(fields().toolSearch).toStrictEqual({});
   });
 
   it('writes codeMode true on and deletes the key off', () => {
