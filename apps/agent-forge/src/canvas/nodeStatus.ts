@@ -19,8 +19,12 @@ function frameStatus(state: NodeRunState, runStatus: AgentRunStatusPayload | und
       const run = runStatus?.status;
       return run === 'running' ? 'running' : run === 'paused' ? 'paused' : 'idle';
     }
-    case 'waiting':
-      return 'paused';
+    case 'waiting': {
+      // Like `running`, a wait is live only while its run is: a stopped
+      // or finished run's stale marker must not keep a pulsing ring.
+      const run = runStatus?.status;
+      return run === 'running' || run === 'paused' ? 'paused' : 'idle';
+    }
     case 'done':
       return 'done';
     case 'error':

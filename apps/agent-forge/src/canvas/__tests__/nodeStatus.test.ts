@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { nodeRunStatuses } from '../nodeStatus';
 import type { NodeStates } from '../../state/nodeStateReducer';
+import { applyNodeState } from '../../state/nodeStateReducer';
 import type { AgentRunStatusPayload, NodeStatePayload, NodeRunState } from '../../../shared/wireTypes';
 
 const status = (s: AgentRunStatusPayload['status'], over: Partial<AgentRunStatusPayload> = {}): AgentRunStatusPayload =>
@@ -59,6 +60,9 @@ describe('nodeRunStatuses', () => {
     ['running', undefined, 'idle'],
     ['waiting', 'paused', 'paused'],
     ['waiting', 'running', 'paused'],
+    ['waiting', 'stopped', 'idle'],
+    ['waiting', 'done', 'idle'],
+    ['waiting', undefined, 'idle'],
     ['done', 'done', 'done'],
     ['error', 'error', 'error'],
   ])('frame %s with run %s maps to %s', (state, run, expected) => {
@@ -69,6 +73,30 @@ describe('nodeRunStatuses', () => {
   it('a waiting frame shows the node paused (the warning ring status)', () => {
     const s = nodeRunStatuses(['tool:http'], states(frame('tool:http', 'waiting')), status('paused'));
     expect(s['tool:http']).toBe('paused');
+  });
+
+  it('a node stays paused through the approval wait, then runs and finishes with the tool', () => {
+    // The approval.wait marker's end emits no node frame (nodeStates.ts),
+    // so the waiting frame is the node's latest until the gated tool's
+    // real span frames arrive after the resume.
+    const ids = ['tool:demo-approval'];
+    const waiting = frame('tool:demo-approval', 'waiting', '2026-01-01T00:00:01.000Z');
+    let nodeStates: NodeStates = applyNodeState({}, waiting);
+    // No clobbering done frame arrives; a repeated status push keeps paused.
+    expect(nodeRunStatuses(ids, nodeStates, status('paused'))['tool:demo-approval']).toBe('paused');
+
+    nodeStates = applyNodeState(
+      nodeStates,
+      frame('tool:demo-approval', 'running', '2026-01-01T00:00:05.000Z')
+    );
+    // spanId differs from the marker's, and `at` is newer - the wait is over.
+    expect(nodeRunStatuses(ids, nodeStates, status('running'))['tool:demo-approval']).toBe('running');
+
+    nodeStates = applyNodeState(
+      nodeStates,
+      frame('tool:demo-approval', 'done', '2026-01-01T00:00:06.000Z')
+    );
+    expect(nodeRunStatuses(ids, nodeStates, status('running'))['tool:demo-approval']).toBe('done');
   });
 
   it('raises the subagent group node from a child frame', () => {

@@ -12,6 +12,7 @@
  */
 import { APPROVAL_WAIT_SPAN_NAME, FlowAttr, FLOW_NODE_SPAN_NAME, GUARDRAIL_SPAN_NAME, GenAiAttr, GenAiOperation, HANDOFF_SPAN_NAME, SdkAttr } from '../../execution/semconv';
 import type { Span, TraceExporter } from '../../execution/tracing';
+import type { Subagents } from '../../subagents/types';
 import type { HandoffSpec } from './handoffs';
 import { specNodeIds } from './nodeIds';
 import type { AgentSpecV2 } from './types';
@@ -64,6 +65,33 @@ export function nodeIdIndexOf(
   }
   for (const entry of spec.guardrails ?? []) index.guardrailByName[entry.id] = `guard:${entry.id}`;
   return index;
+}
+
+/** The shape specV2ToAgent() stamps on a spec-built agent — structural, so this module never imports specToAgent (which imports this one). */
+interface SpecBuiltAgent {
+  spec: AgentSpecV2;
+  toolNamesByRef: readonly (readonly string[])[];
+}
+
+/** Whether `value` is an agent specV2ToAgent() built (carries `spec`/`toolNamesByRef`); remote sub-agents are not. */
+function isSpecBuiltAgent(value: unknown): value is SpecBuiltAgent {
+  return typeof value === 'object' && value !== null && 'spec' in value && 'toolNamesByRef' in value;
+}
+
+/**
+ * `config.subagents` entries that are spec-built, as `name → their own
+ * {@link NodeIdIndex}` for the enclosing agent's index — what
+ * `nodeIdIndexOf(spec, toolNamesByRef, …)` takes as `subIndexes`. Agents
+ * compiled any other way (remote, or built by hand) contribute nothing:
+ * their spans still stamp `sub:<name>` but resolve no member ids.
+ */
+export function subAgentNodeIndexes(subagents: Subagents | undefined): Record<string, NodeIdIndex> {
+  if (subagents === undefined || 'list' in subagents) return {};
+  const indexes: Record<string, NodeIdIndex> = {};
+  for (const [name, sub] of Object.entries(subagents)) {
+    if (isSpecBuiltAgent(sub)) indexes[name] = nodeIdIndexOf(sub.spec, sub.toolNamesByRef);
+  }
+  return indexes;
 }
 
 /** `transfer_to_<name>` exactly as handoffAgents.ts builds it (illegal tool-name characters → '_', ≤64). */
