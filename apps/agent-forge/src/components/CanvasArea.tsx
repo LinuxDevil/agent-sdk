@@ -44,6 +44,7 @@ import type { Graph, GraphEdge, GraphNode, ToolNodeData } from '../graph/v2/type
 import { ROOT_AGENT_ID, ROOT_ONLY_KINDS } from '../graph/v2/types';
 import { KIND_VIEWS, type PaletteEntry } from '../canvas/kinds';
 import { autoLayout } from '../canvas/layout';
+import { useToast } from '../ui/Toast';
 import { EmptyCanvas } from '../canvas/EmptyCanvas';
 import { nodeRunStatuses, type NodeRunStatus } from '../canvas/nodeStatus';
 import { PALETTE_DRAG_MIME } from '../canvas/dnd';
@@ -595,15 +596,33 @@ function useKeepSelectionInView(selectedNodeId: string | undefined) {
 }
 
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
-function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined, readOnly: boolean) {
+function useToolbarActions(
+  setGraph: SetGraph,
+  selectedNodeId: string | undefined,
+  readOnly: boolean,
+  graph: Graph,
+  measured: MeasuredSizes
+) {
   const { fitView } = useReactFlow();
   const fitLegibly = useLegibleFit();
+  const toast = useToast();
+  const [layoutBusy, setLayoutBusy] = useState(false);
 
-  function handleAutoLayout() {
-    if (readOnly) return;
-    setGraph((g) => autoLayout(g));
-    window.requestAnimationFrame(() => fitLegibly(200));
-  }
+  // elkjs runs off the main thread (canvas/layout.ts); the button stays
+  // busy until the layout lands or fails - a failure leaves the graph as is.
+  const handleAutoLayout = useCallback(async () => {
+    if (readOnly || layoutBusy) return;
+    setLayoutBusy(true);
+    try {
+      const laidOut = await autoLayout(graph, 'all', measured);
+      setGraph(() => laidOut);
+      window.requestAnimationFrame(() => fitLegibly(200));
+    } catch {
+      toast.show({ message: "Couldn't lay out the canvas.", tone: 'error' });
+    } finally {
+      setLayoutBusy(false);
+    }
+  }, [readOnly, layoutBusy, graph, measured, setGraph, fitLegibly, toast]);
 
   function handleFitView() {
     fitView({ ...FIT_VIEW_OPTIONS, ...motionDuration(200) });
@@ -629,7 +648,39 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [handleDuplicate]);
 
-  return { handleAutoLayout, handleFitView, handleDuplicate };
+  return { handleAutoLayout, handleFitView, handleDuplicate, layoutBusy };
+}
+
+/**
+ * On agent open, nodes with no saved position (`graph.unplaced`) are laid
+ * out by elkjs once every node is measured (C17). Runs once per agent id
+ * and writes with `{ dirty: false }`: the recomputed positions are saved
+ * with the next real edit, or never — they are recomputed on every open.
+ * `graph` is `undefined` while a proposal overlay shows, so the layout
+ * never writes proposal nodes into the real graph.
+ */
+function useLayoutUnplaced(agentId: string, graph: Graph | undefined, measured: MeasuredSizes, setGraph: SetGraph) {
+  const toast = useToast();
+  const attempted = useRef<string | null>(null);
+  const allMeasured = graph !== undefined && graph.nodes.length > 0 && graph.nodes.every((n) => measured[n.id]);
+  useEffect(() => {
+    if (graph === undefined || graph.unplaced.length === 0 || !allMeasured || attempted.current === agentId) return;
+    attempted.current = agentId;
+    let cancelled = false;
+    autoLayout(graph, 'unplaced', measured).then(
+      (laidOut) => {
+        if (!cancelled) setGraph(() => laidOut, { dirty: false });
+      },
+      () => {
+        // Allow a retry on the next graph/measured change; the toast says why nothing moved.
+        attempted.current = null;
+        if (!cancelled) toast.show({ message: "Couldn't lay out the canvas.", tone: 'error' });
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId, graph, allMeasured, measured, setGraph, toast]);
 }
 
 /** One icon button of the canvas toolbar: `label` is its accessible name, `tooltip` its title. */
@@ -639,19 +690,23 @@ function ToolbarButton({
   tooltip,
   onClick,
   disabled,
+  busy,
 }: {
   Icon: LucideIcon;
   label: string;
   tooltip: string;
   onClick: () => void;
   disabled?: boolean;
+  /** A long-running action in flight: disables the button and exposes `aria-busy`. */
+  busy?: boolean;
 }) {
   return (
     <button
       type="button"
       className="btn btn-ghost btn-icon btn-sm"
       onClick={onClick}
-      disabled={disabled}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
       aria-label={label}
       title={tooltip}
     >
@@ -663,6 +718,7 @@ function ToolbarButton({
 function CanvasToolbar({
   canDuplicate,
   readOnly,
+  layoutBusy,
   onAutoLayout,
   onFitView,
   onDuplicate,
@@ -670,6 +726,8 @@ function CanvasToolbar({
   canDuplicate: boolean;
   /** A proposal overlay is showing: edits (auto layout, duplicate) are disabled; fit view stays. */
   readOnly: boolean;
+  /** The elkjs auto-layout request is in flight. */
+  layoutBusy: boolean;
   onAutoLayout: () => void;
   onFitView: () => void;
   onDuplicate: () => void;
@@ -682,6 +740,7 @@ function CanvasToolbar({
         tooltip={readOnly ? 'Hide the proposal to edit' : 'Auto layout the current graph'}
         onClick={onAutoLayout}
         disabled={readOnly}
+        busy={layoutBusy}
       />
       <ToolbarButton Icon={Maximize} label="Fit view" tooltip="Fit view to graph" onClick={onFitView} />
       <ToolbarButton
@@ -837,6 +896,7 @@ function useCanvasElements() {
 function CanvasInner(inspectorToggle: InspectorToggleProps) {
   const {
     agentId,
+    graph,
     displayGraph,
     proposal,
     setGraph,
@@ -857,16 +917,24 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
   const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
   const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
   const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
-  const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId, readOnly);
+  const { handleAutoLayout, handleFitView, handleDuplicate, layoutBusy } = useToolbarActions(
+    setGraph,
+    selectedNodeId,
+    readOnly,
+    graph,
+    measured
+  );
   useFitViewOnResize();
   useKeepSelectionInView(selectedNodeId);
   const fitting = useFitViewOnLoad(agentId, displayGraph, measured);
+  useLayoutUnplaced(agentId, proposal === undefined ? graph : undefined, measured, setGraph);
 
   return (
     <main className="canvas-wrap" aria-label="Agent graph" data-fitting={fitting || undefined} onDrop={onDrop} onDragOver={onDragOver}>
       <CanvasToolbar
         canDuplicate={!!selectedNodeId}
         readOnly={readOnly}
+        layoutBusy={layoutBusy}
         onAutoLayout={handleAutoLayout}
         onFitView={handleFitView}
         onDuplicate={handleDuplicate}

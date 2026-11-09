@@ -10,7 +10,11 @@
     // re-exports used, but type-only re-exports emit no JS for exports to
     // reach, so the file itself must count as an entry (S23).
     "src/spec/v2/index.ts",
-    "apps/agent-forge/evals/author/run.ts"
+    "apps/agent-forge/evals/author/run.ts",
+    // The elkjs layout worker: only referenced through
+    // `new Worker(new URL('./layout.worker.ts', import.meta.url))` in
+    // apps/agent-forge/src/canvas/layout.ts (C17).
+    "apps/agent-forge/src/canvas/layout.worker.ts"
   ],
   "ignorePatterns": [
     ".claude/**"
