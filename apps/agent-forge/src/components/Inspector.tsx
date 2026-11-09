@@ -1,4 +1,6 @@
-import { MousePointerClick } from 'lucide-react';
+import { useRef } from 'react';
+import type { RefObject } from 'react';
+import { CircleAlert, MousePointerClick, TriangleAlert } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { patchNode, setNodeData } from '../graph/v2/mutations';
 import { toolNodeName } from '../graph/v2/nodeIds';
@@ -89,6 +91,92 @@ function EmptyInspector() {
   );
 }
 
+/**
+ * The spec-path suffix a problem's `fieldPath` has inside its node:
+ * `tools[0].builtin` on the `tools[0]` node is `.builtin`; on the root
+ * agent (`''` spec path) it is the whole path. `undefined` when the
+ * problem carries no field path.
+ */
+function fieldSuffix(fieldPath: string | undefined, specPath: string | undefined): string | undefined {
+  if (fieldPath === undefined || fieldPath === '') return fieldPath === '' ? '' : undefined;
+  if (specPath === undefined || specPath === '') return fieldPath;
+  if (fieldPath === specPath) return '';
+  if (fieldPath.startsWith(specPath)) return fieldPath.slice(specPath.length);
+  return fieldPath;
+}
+
+/**
+ * Best-effort focus of the control registered for a spec-path suffix:
+ * controls carry `data-field-path` (the `Field` component's `fieldPath`
+ * prop, the canvas field kit's `fieldPath`). Tries the suffix with and
+ * without its leading dot, then focuses the first control inside the
+ * matched `.field` row.
+ */
+function focusFieldPath(root: HTMLElement, suffix: string | undefined): void {
+  if (suffix === undefined || suffix === '') return;
+  const candidates = [suffix, suffix.replace(/^\./, '')];
+  for (const candidate of candidates) {
+    if (candidate === '') continue;
+    let el: HTMLElement | null = null;
+    try {
+      el = root.querySelector<HTMLElement>(`[data-field-path="${CSS.escape(candidate)}"]`);
+    } catch {
+      el = null;
+    }
+    const control =
+      el === null
+        ? null
+        : el.matches('input, select, textarea, button, [tabindex]')
+          ? el
+          : el.querySelector<HTMLElement>('input, select, textarea, button, [tabindex]');
+    if (control !== null) {
+      control.scrollIntoView?.({ block: 'nearest' });
+      control.focus();
+      return;
+    }
+  }
+}
+
+/** The Inspector's top section (C19): the selected node's problems, each focusing its field on click. */
+function ProblemsSection({
+  problems,
+  specPath,
+  rootRef,
+}: {
+  problems: Problem[];
+  specPath: string | undefined;
+  rootRef: RefObject<HTMLElement | null>;
+}) {
+  return (
+    <InspectorSection id="problems" title={`Problems (${problems.length})`}>
+      <ul className="inspector-problems">
+        {problems.map((problem, index) => {
+          const Icon = problem.severity === 'error' ? CircleAlert : TriangleAlert;
+          const suffix = fieldSuffix(problem.fieldPath, specPath);
+          return (
+            <li key={index}>
+              <button
+                type="button"
+                className={`inspector-problem inspector-problem-${problem.severity}`}
+                disabled={suffix === undefined}
+                onClick={() => {
+                  if (rootRef.current !== null) focusFieldPath(rootRef.current, suffix);
+                }}
+              >
+                <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+                <span className="inspector-problem-message">{problem.message}</span>
+                {problem.fieldPath !== undefined && problem.fieldPath !== '' && (
+                  <code className="inspector-problem-field">{problem.fieldPath}</code>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </InspectorSection>
+  );
+}
+
 function breakpointsOf(debugState: ReturnType<typeof useAppState>['debugState']): string[] {
   return debugState?.breakpoints ?? [];
 }
@@ -108,16 +196,17 @@ function BreakpointSection({ breakpointKey }: { breakpointKey: string }) {
 }
 
 function NodeInspector({ selected }: { selected: GraphNode }) {
-  const { graph, setGraph } = useAppState();
+  const { graph, setGraph, problems, specPaths } = useAppState();
   const selectedId = selected.id;
   const view = viewFor(selected.kind);
+  const nodeProblems = problems.filter((p) => p.nodeId === selectedId);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const props: KindFieldsProps<typeof selected.kind> = {
     node: selected as never,
     graph,
     patch: (patch) => setGraph((g) => patchNode(g, selectedId, patch)),
     replace: (data) => setGraph((g) => setNodeData(g, selectedId, data)),
-    // validateGraph's per-node problems arrive with C19; nothing to show before.
-    problems: [] as Problem[],
+    problems: nodeProblems,
   };
   const breakpointKey = breakpointKeyFor(selected);
   const Fields = view.Fields as (p: typeof props) => JSX.Element;
@@ -125,8 +214,11 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
   return (
     <aside className="inspector" id="studio-inspector" aria-label="Inspector">
       <InspectorHead node={selected} />
-      <div className="inspector-body">
+      <div className="inspector-body" ref={bodyRef}>
         {/* Collapsible sections, each remembered per viewer (InspectorSection.tsx). */}
+        {nodeProblems.length > 0 && (
+          <ProblemsSection problems={nodeProblems} specPath={specPaths[selectedId]} rootRef={bodyRef} />
+        )}
         <InspectorSection id="node" title="Settings">
           <Fields {...props} />
         </InspectorSection>

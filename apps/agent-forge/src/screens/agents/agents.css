@@ -774,6 +774,32 @@ button.breakpoint-toggle {
   flex: none;
   margin-left: auto;
 }
+/*
+ * Validation badge (NodeCard.tsx's ProblemBadge, C19): sits in the head's
+ * right cluster before the status pill - an error card also gets the
+ * --danger-border ring so the problem is visible without hovering.
+ */
+.node-problem {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+}
+.node-problem-error {
+  color: var(--danger);
+}
+.node-problem-warning {
+  color: var(--warning);
+}
+.canvas-wrap .rf-node.has-error {
+  border-color: var(--danger-border);
+}
+.canvas-wrap .rf-group.has-error {
+  border-color: var(--danger-border);
+}
 .node-kind {
   display: inline-flex;
   align-items: center;
@@ -1091,6 +1117,60 @@ button.breakpoint-toggle {
 }
 .inspector .textarea {
   min-height: 96px;
+}
+/* The Inspector's Problems section (C19): one button per problem; clicking focuses its field. */
+.inspector-problems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.inspector-problem {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+.inspector-problem:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.inspector-problem:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+.inspector-problem:disabled {
+  cursor: default;
+}
+.inspector-problem > svg {
+  flex: none;
+  margin-top: 1px;
+}
+.inspector-problem-error > svg {
+  color: var(--danger);
+}
+.inspector-problem-warning > svg {
+  color: var(--warning);
+}
+.inspector-problem-message {
+  flex: 1;
+  min-width: 0;
+}
+.inspector-problem-field {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-faint);
 }
 /* Router branches. */
 .branch-row {

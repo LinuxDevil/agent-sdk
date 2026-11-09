@@ -35,13 +35,14 @@ export function RegistryForm({ item, patch }: ToolSubFormProps<'registry'>): JSX
         required
         error={nameError(name)}
         hint="Installed with lousho add."
+        fieldPath=".registry"
       >
         <Input
           value={name}
           onChange={(event: ChangeEvent<HTMLInputElement>) => patch({ registry: event.target.value })}
         />
       </Field>
-      <Field id="node-tool-version" label="Version" error={versionError(version)}>
+      <Field id="node-tool-version" label="Version" error={versionError(version)} fieldPath=".version">
         <Input
           value={version}
           placeholder="1.2.0"

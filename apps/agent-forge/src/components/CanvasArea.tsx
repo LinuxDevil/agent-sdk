@@ -38,7 +38,7 @@ import { positionFor } from '../graph/v2/reown';
 import { canConnect } from '../graph/v2/connectionRules';
 import { orderedNodes } from '../graph/v2/order';
 import { toolNodeName } from '../graph/v2/nodeIds';
-import type { Graph, GraphEdge, GraphNode, ToolNodeData } from '../graph/v2/types';
+import type { Graph, GraphEdge, GraphNode, Problem, ToolNodeData } from '../graph/v2/types';
 import { ROOT_AGENT_ID, ROOT_ONLY_KINDS } from '../graph/v2/types';
 import { KIND_VIEWS, type PaletteEntry } from '../canvas/kinds';
 import { autoLayout } from '../canvas/layout';
@@ -82,12 +82,13 @@ function applyDimensionChanges(prev: MeasuredSizes, changes: NodeChange[]): Meas
   return next;
 }
 
-/** What each card shows beyond its own graph node: selection, highlight, breakpoints and run status. */
+/** What each card shows beyond its own graph node: selection, highlight, breakpoints, run status and validation problems. */
 interface NodeDecor {
   selectedNodeId: string | undefined;
   highlightedNodeId: string | undefined;
   breakpoints: string[];
   statuses: Record<string, NodeRunStatus>;
+  problems?: ReadonlyMap<string, Problem[]>;
 }
 
 /** True when an `owner`-chain ancestor of `node` is a collapsed agent group. */
@@ -179,7 +180,7 @@ function groupSizes(graph: Graph, measured: MeasuredSizes): Map<string, { width:
  * the parent React Flow would re-lay them at absolute coordinates).
  */
 export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<CanvasNodeData>[] {
-  const { selectedNodeId, highlightedNodeId, breakpoints, statuses } = decor;
+  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems } = decor;
   const sizes = groupSizes(graph, measured);
   return canvasNodeOrder(graph).map((n) => {
     const group = isGroupNode(n);
@@ -199,6 +200,7 @@ export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSize
         highlighted: n.id === highlightedNodeId,
         hasBreakpoint: hasBreakpointOn(n, breakpoints),
         status: statuses[n.id],
+        problems: problems?.get(n.id) ?? [],
         insideCount: group ? descendantCount(graph, n.id) : undefined,
       },
     };
@@ -733,15 +735,30 @@ function useCanvasElements() {
     debugState,
     spans,
     runStatus,
+    problems,
   } = useAppState();
 
   const breakpoints = debugState?.breakpoints ?? [];
   const breakpointsKey = breakpoints.join(',');
   const [measured, setMeasured] = useState<MeasuredSizes>({});
   const statuses = useMemo(() => nodeRunStatuses(graph, spans, runStatus, nodeIdMap), [graph, spans, runStatus, nodeIdMap]);
+  const problemsByNode = useMemo(() => {
+    const map = new Map<string, Problem[]>();
+    for (const problem of problems) {
+      const list = map.get(problem.nodeId) ?? [];
+      list.push(problem);
+      map.set(problem.nodeId, list);
+    }
+    return map;
+  }, [problems]);
   const nodes = useMemo(
-    () => toRfNodes(graph, { selectedNodeId, highlightedNodeId, breakpoints, statuses }, measured),
-    [graph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, measured]
+    () =>
+      toRfNodes(
+        graph,
+        { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems: problemsByNode },
+        measured
+      ),
+    [graph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, problemsByNode, measured]
   );
   const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
   const edges = useMemo(() => {

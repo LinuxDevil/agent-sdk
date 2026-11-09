@@ -4,7 +4,7 @@ import type { AgentSpecV2 } from 'lousho';
 import { HttpAgentStore } from '../persistence/HttpAgentStore';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { AgentStore } from '../persistence/AgentStore';
-import type { Graph, GraphEdge } from '../graph/v2/types';
+import type { Graph, GraphEdge, Problem } from '../graph/v2/types';
 import type { TemplateId } from '../canvas/templates';
 import type { AgentListItem } from '../../shared/wireTypes';
 import type {
@@ -24,7 +24,7 @@ import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
 
 type RailTab = 'agents' | 'nodes';
-export type DrawerTab = 'chat' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
+export type DrawerTab = 'chat' | 'problems' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
 
 interface AppState {
   store: AgentStore;
@@ -51,6 +51,15 @@ interface AppState {
   edges: GraphEdge[];
   /** Graph node id → the id `specToGraph(spec)` gives it today, from the same `graphToSpec` call as `spec`. */
   nodeIdMap: Record<string, string>;
+  /** Graph node id → its spec path (`''` root, `'tools[2]'`, `'subagents.r.inline'`), from the same `graphToSpec` call. */
+  specPaths: Record<string, string>;
+  /**
+   * `validateGraph(graph)` — structural, per-kind and AgentSpec v2 schema
+   * problems — debounced 300 ms behind edits (useAgentDocument). The node
+   * badges, the Inspector's Problems section and the drawer's Problems tab
+   * all read this one list.
+   */
+  problems: Problem[];
   /** True when there are unsaved changes since the last successful `save()`. */
   dirty: boolean;
   save: () => Promise<void>;

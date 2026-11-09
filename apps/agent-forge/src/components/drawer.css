@@ -434,6 +434,39 @@
 }
 
 /* ---------- Output tab ---------- */
+/* ---------- Problems tab (C19): severity, node tile, message, field ---------- */
+.problem-severity {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 600;
+}
+.problem-severity-error {
+  color: var(--danger);
+}
+.problem-severity-warning {
+  color: var(--warning);
+}
+.problem-node {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.problem-node-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.problem-node-gone {
+  color: var(--text-faint);
+}
+.problem-field {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .output-json {
   padding: var(--space-3) var(--space-4);
   white-space: pre-wrap;

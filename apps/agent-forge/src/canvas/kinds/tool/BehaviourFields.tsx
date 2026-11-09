@@ -49,12 +49,14 @@ export function BehaviourFields({ item, patch }: BehaviourFieldsProps): JSX.Elem
             options={APPROVAL_OPTIONS}
             onChange={(approval) => patch({ approval })}
             help="Let a model decide asks a person only when the call looks risky."
+            fieldPath=".approval"
           />
           <Field
             id="node-tool-defer"
             label="Load on demand"
             inline
             hint="The model finds it with tool search instead of seeing it up front."
+            fieldPath=".deferLoading"
           >
             <Switch
               checked={common.deferLoading === true}
@@ -68,6 +70,7 @@ export function BehaviourFields({ item, patch }: BehaviourFieldsProps): JSX.Elem
         label="Node id"
         error={idError}
         hint="Optional. Keeps traces and layout stable if you rename the tool."
+        fieldPath=".id"
       >
         <Input
           value={id}

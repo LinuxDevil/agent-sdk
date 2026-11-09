@@ -1,11 +1,12 @@
 import type { CSSProperties, ReactElement } from 'react';
-import { Activity, Braces, History, MessageSquare, ScrollText, Settings, type LucideIcon } from 'lucide-react';
+import { Activity, Braces, History, MessageSquare, ScrollText, Settings, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import type { DrawerTab } from '../state/AppState';
 import { LogsPanel } from './debug/LogsPanel';
 import { TracePanel } from './debug/TracePanel';
 import { OutputPanel } from './debug/OutputPanel';
 import { HistoryPanel } from './debug/HistoryPanel';
+import { ProblemsPanel } from './debug/ProblemsPanel';
 import { DebugBar } from './debug/DebugBar';
 import { ChatPanel } from './ChatPanel';
 import { SettingsPanel } from './SettingsPanel';
@@ -14,6 +15,7 @@ import { DrawerResizeHandle, useDrawerHeight } from './drawerHeight';
 
 const TABS: { id: DrawerTab; label: string; Icon: LucideIcon }[] = [
   { id: 'chat', label: 'Chat', Icon: MessageSquare },
+  { id: 'problems', label: 'Problems', Icon: TriangleAlert },
   { id: 'logs', label: 'Logs', Icon: ScrollText },
   { id: 'trace', label: 'Trace', Icon: Activity },
   { id: 'output', label: 'Output', Icon: Braces },
@@ -24,6 +26,7 @@ const TAB_IDS = TABS.map((t) => t.id);
 
 const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
   chat: () => <ChatPanel />,
+  problems: () => <ProblemsPanel />,
   logs: () => <LogsPanel />,
   trace: () => <TracePanel />,
   output: () => <OutputPanel />,
@@ -37,11 +40,12 @@ const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
 
 type DrawerCounts = Partial<Record<DrawerTab, number>>;
 
-/** The live counts shown on the Chat (messages), Logs (lines) and Trace (spans) tabs. */
+/** The live counts shown on the Chat (messages), Problems (errors + warnings) and Trace (spans) tabs. */
 function useDrawerCounts(): DrawerCounts {
-  const { chat, logs, spans } = useAppState();
+  const { chat, logs, spans, problems } = useAppState();
   return {
     chat: chat.messages.filter((m) => m.role !== 'system').length,
+    problems: problems.length,
     logs: logs.length,
     trace: spans.length,
   };
