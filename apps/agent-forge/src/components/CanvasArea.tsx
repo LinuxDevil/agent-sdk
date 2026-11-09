@@ -707,19 +707,33 @@ export function useLayoutUnplaced(agentId: string, graph: Graph | undefined, mea
   // The in-flight (or finished) run for this agent. Dep changes - measured
   // batches, edits - must NOT cancel it: the result is merged onto the
   // latest graph anyway, and a cancelled run would never be retried.
-  const runRef = useRef<{ agentId: string; cancelled: boolean } | null>(null);
+  const runRef = useRef<{ agentId: string; cancelled: boolean; done: boolean } | null>(null);
   const allMeasured = graph !== undefined && allVisibleMeasured(graph, measured);
   useEffect(() => {
     if (graph === undefined || graph.unplaced.length === 0 || !allMeasured) return;
-    if (runRef.current?.agentId === agentId) return;
-    const run = { agentId, cancelled: false };
+    const existing = runRef.current;
+    if (existing !== null && existing.agentId === agentId) {
+      if (!existing.done) return; // a layout for this agent is still in flight
+      // A finished run leaves only the ids ELK could not position (hidden
+      // under a collapsed group) flagged in `unplaced`. When one of them
+      // is visible again - the group was expanded - allow one more run.
+      const hidden = collapsedHiddenIds(graph);
+      const unplacedIds = new Set(graph.unplaced);
+      const hasVisibleUnplaced = graph.nodes.some(
+        (n) => unplacedIds.has(n.id) && n.kind !== 'note' && !hidden.has(n.id)
+      );
+      if (!hasVisibleUnplaced) return;
+      runRef.current = null;
+    }
+    const run = { agentId, cancelled: false, done: false };
     runRef.current = run;
     autoLayout(graph, 'unplaced', measured).then(
       (laidOut) => {
+        if (run.cancelled || latestAgentId.current !== run.agentId) return;
         // Keep `run` as the once-per-agent marker: unplaced ids ELK cannot
         // position (nodes hidden under a collapsed group) stay flagged, and
         // clearing the marker would re-run the layout on every graph change.
-        if (run.cancelled || latestAgentId.current !== run.agentId) return;
+        run.done = true;
         // Merge the moved positions onto the LATEST graph: edits made
         // while elkjs ran are kept, only positions change.
         setGraph((current) => applyLayoutResult(graph, laidOut, current), { dirty: false });
@@ -733,10 +747,17 @@ export function useLayoutUnplaced(agentId: string, graph: Graph | undefined, mea
     );
   }, [agentId, graph, allMeasured, measured, setGraph, toast]);
 
-  // Only an agent switch or unmount cancels an in-flight layout.
+  // Only an agent switch or unmount cancels an in-flight layout - and the
+  // marker is released too, so React StrictMode's dev double-mount (which
+  // runs this cleanup and then re-runs the layout effect) starts a fresh
+  // run instead of stranding a cancelled one. The cancelled run's result
+  // is dropped by its own `cancelled` check either way.
   useEffect(() => {
     return () => {
-      if (runRef.current !== null) runRef.current.cancelled = true;
+      if (runRef.current !== null) {
+        runRef.current.cancelled = true;
+        runRef.current = null;
+      }
     };
   }, [agentId]);
 }

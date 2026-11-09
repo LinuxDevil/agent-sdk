@@ -1,4 +1,4 @@
-import { act } from 'react';
+import { StrictMode, act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, rerender } from '../../ui/__tests__/render';
 import { useLayoutUnplaced } from '../CanvasArea';
@@ -54,15 +54,15 @@ const GROUP_TOOL_ID = 'sub:research/tool:web-fetch';
 type Measured = Record<string, { width: number; height: number }>;
 type SetGraph = (updater: (g: Graph) => Graph, options?: { dirty?: boolean }) => void;
 
-/** A graph whose only unplaced node is `trigger:t1`. */
-function graphA(collapsed = false): Graph {
+/** A graph whose unplaced nodes are `trigger:t1` (and the group child when `unplacedChild`). */
+function graphA(collapsed = false, unplacedChild = false): Graph {
   const g = specToGraph(SPEC as never, {
     schemaVersion: 1,
     nodes: {
       agent: { x: 40, y: 60 },
       'tool:http': { x: 300, y: 60 },
       [GROUP_ID]: { x: 560, y: 60 },
-      [GROUP_TOOL_ID]: { x: 20, y: 100 },
+      ...(unplacedChild ? {} : { [GROUP_TOOL_ID]: { x: 20, y: 100 } }),
     },
     notes: [],
   });
@@ -215,6 +215,70 @@ describe('useLayoutUnplaced', () => {
     });
     expect(applied).toBeDefined();
     expect(appliedOptions).toEqual({ dirty: false });
+  });
+
+  it('completes under React StrictMode\'s dev double-mount', async () => {
+    const g = graphA();
+    current = g;
+    // StrictMode mounts, cleans up and re-runs the effects: the first run
+    // is cancelled, the second must still deliver the layout.
+    mocks.autoLayout.mockResolvedValue(laidOutVersion(g));
+    render(
+      <StrictMode>
+        <Probe agentId="a" graph={g} measured={measuredOf(g)} />
+      </StrictMode>
+    );
+    // The double-mount fires the layout effect twice: run 1 is cancelled by
+    // the strict cleanup, run 2 must deliver the result.
+    expect(mocks.autoLayout).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(applied).toBeDefined();
+    expect(appliedOptions).toEqual({ dirty: false });
+    expect(positionOf(applied!, 'trigger:t1')).toStrictEqual({ x: 640, y: 480 });
+    expect(applied!.unplaced).toEqual([]);
+  });
+
+  it('runs once more when a collapsed-hidden unplaced node becomes visible', async () => {
+    // Collapsed group whose child has no saved position: ELK cannot see it.
+    const g = graphA(true, true);
+    current = g;
+    const first = deferred<Graph>();
+    const second = deferred<Graph>();
+    mocks.autoLayout.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+
+    render(<Probe agentId="a" graph={g} measured={measuredOf(g, [GROUP_TOOL_ID])} />);
+    expect(mocks.autoLayout).toHaveBeenCalledTimes(1);
+
+    // The hidden child stays flagged; only the trigger moved.
+    const laid1: Graph = {
+      ...g,
+      unplaced: [GROUP_TOOL_ID],
+      nodes: g.nodes.map((n) => (n.id === 'trigger:t1' ? { ...n, position: { x: 640, y: 480 } } : n)),
+    };
+    await act(async () => {
+      first.resolve(laid1);
+    });
+    expect(applied!.unplaced).toEqual([GROUP_TOOL_ID]);
+
+    // Expanding the group makes the child measurable -> exactly one more run.
+    const expanded = setCollapsed(applied!, GROUP_ID, false);
+    current = expanded;
+    const measured2 = measuredOf(expanded);
+    rerender(<Probe agentId="a" graph={expanded} measured={measured2} />);
+    expect(mocks.autoLayout).toHaveBeenCalledTimes(2);
+
+    const laid2: Graph = {
+      ...expanded,
+      unplaced: [],
+      nodes: expanded.nodes.map((n) => (n.id === GROUP_TOOL_ID ? { ...n, position: { x: 30, y: 70 } } : n)),
+    };
+    await act(async () => {
+      second.resolve(laid2);
+    });
+    expect(positionOf(applied!, GROUP_TOOL_ID)).toStrictEqual({ x: 30, y: 70 });
+    expect(applied!.unplaced).toEqual([]);
   });
 
   it('toasts on failure and retries on the next measured/graph change', async () => {
