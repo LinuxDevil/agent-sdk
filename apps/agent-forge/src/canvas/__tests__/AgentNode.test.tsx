@@ -144,6 +144,32 @@ describe('AgentNode card', () => {
   });
 });
 
+describe('proposal overlay classes (C21)', () => {
+  const proposed = (kind: GraphNode['kind'], flag: 'add' | 'remove' | 'edit'): GraphNode => ({
+    ...nodeOf(kind),
+    proposed: flag,
+  });
+
+  it.each([
+    ['add', 'proposed-add'],
+    ['remove', 'proposed-remove'],
+    ['edit', 'proposed-edit'],
+  ] as const)('marks a %s node with .%s', (flag, cls) => {
+    const card = renderCard(proposed('tool', flag));
+    expect(card.classList).toContain(cls);
+  });
+
+  it('shows the "edited" chip only on an edited node', () => {
+    const edited = renderCard(proposed('tool', 'edit'));
+    const chip = edited.querySelector('.node-chip-edited');
+    expect(chip?.textContent).toBe('edited');
+    for (const flag of ['add', 'remove'] as const) {
+      expect(renderCard(proposed('tool', flag)).querySelector('.node-chip-edited')).toBeNull();
+    }
+    expect(renderCard(nodeOf('tool')).querySelector('.node-chip-edited')).toBeNull();
+  });
+});
+
 describe('agent card (KindView)', () => {
   const rowText = (card: HTMLElement, key: string) =>
     [...card.querySelectorAll('.node-row')].find((r) => r.firstElementChild?.textContent === key)

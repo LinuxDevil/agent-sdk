@@ -37,6 +37,8 @@ import {
 import { positionFor } from '../graph/v2/reown';
 import { canConnect } from '../graph/v2/connectionRules';
 import { orderedNodes } from '../graph/v2/order';
+import { deriveEdges } from '../graph/v2/edges';
+import { proposalCounts } from '../graph/v2/proposal';
 import { toolNodeName } from '../graph/v2/nodeIds';
 import type { Graph, GraphEdge, GraphNode, ToolNodeData } from '../graph/v2/types';
 import { ROOT_AGENT_ID, ROOT_ONLY_KINDS } from '../graph/v2/types';
@@ -254,10 +256,18 @@ export function toRfEdges(
   edges: GraphEdge[],
   statuses: Record<string, NodeRunStatus> = {},
   selectedEdgeId?: string,
-  hiddenNodeIds?: ReadonlySet<string>
+  hiddenNodeIds?: ReadonlySet<string>,
+  proposed?: ReadonlyMap<string, GraphNode['proposed']>
 ): Edge[] {
   return edges.map((e) => {
     const running = statuses[e.source] === 'running';
+    // The proposal overlay (C21): an edge touching an added node draws
+    // dashed --success, one touching a removed node dashed --danger.
+    const src = proposed?.get(e.source);
+    const tgt = proposed?.get(e.target);
+    const proposedClass =
+      src === 'add' || tgt === 'add' ? 'edge-proposed-add' : src === 'remove' || tgt === 'remove' ? 'edge-proposed-remove' : undefined;
+    const className = [running ? 'edge-running' : undefined, proposedClass].filter(Boolean).join(' ') || undefined;
     return {
       id: e.id,
       source: e.source,
@@ -270,7 +280,7 @@ export function toRfEdges(
       // collapsed group's children keep their edges out of view this way.
       hidden: hiddenNodeIds === undefined ? false : hiddenNodeIds.has(e.source) || hiddenNodeIds.has(e.target),
       animated: running,
-      className: running ? 'edge-running' : undefined,
+      className,
       markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: running ? 'var(--accent)' : 'var(--text-faint)' },
     };
   });
@@ -313,11 +323,14 @@ function useGraphEditHandlers(
   selectedNodeId: string | undefined,
   setSelectedNodeId: SetSelectedNodeId,
   setMeasured: (updater: (prev: MeasuredSizes) => MeasuredSizes) => void,
-  setSelectedEdgeId: (id: string | undefined) => void
+  setSelectedEdgeId: (id: string | undefined) => void,
+  readOnly: boolean
 ) {
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      if (changes.some((c) => c.type === 'position' && c.position)) {
+      // While a proposal overlay is shown the canvas is read-only (C21):
+      // position writes are refused even if a stray change slips through.
+      if (!readOnly && changes.some((c) => c.type === 'position' && c.position)) {
         setGraph((g) => applyPositionChanges(g, changes));
       }
       if (changes.some((c) => c.type === 'dimensions')) {
@@ -326,7 +339,7 @@ function useGraphEditHandlers(
       const selection = lastSelectionChange(changes);
       if (selection) setSelectedNodeId(selection.selected ? selection.id : undefined);
     },
-    [setGraph, setSelectedNodeId, setMeasured]
+    [setGraph, setSelectedNodeId, setMeasured, readOnly]
   );
 
   const onEdgesChange = useCallback(
@@ -342,21 +355,23 @@ function useGraphEditHandlers(
 
   const onNodesDelete = useCallback(
     (deleted: Node[]) => {
+      // Read-only while a proposal overlay is shown (C21): deletes never reach the graph.
+      if (readOnly) return;
       // removeNode refuses the root agent silently.
       setGraph((g) => deleted.reduce((acc, n) => removeNode(acc, n.id), g));
       if (deleted.some((n) => n.id === selectedNodeId)) setSelectedNodeId(undefined);
     },
-    [setGraph, selectedNodeId, setSelectedNodeId]
+    [setGraph, selectedNodeId, setSelectedNodeId, readOnly]
   );
 
   return { onNodesChange, onEdgesChange, onNodesDelete };
 }
 
 /** Edge creation: `onConnect` commits (or flashes the rejection), `isValidConnection` gates dragging. */
-function useConnectionHandlers(graph: Graph, setGraph: SetGraph, flashError: (reason: string) => void) {
+function useConnectionHandlers(graph: Graph, setGraph: SetGraph, flashError: (reason: string) => void, readOnly: boolean) {
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (!connection.source || !connection.target) return;
+      if (readOnly || !connection.source || !connection.target) return;
       let rejection: string | undefined;
       setGraph((g) => {
         const result = connectNodes(g, connection.source as string, connection.target as string);
@@ -368,17 +383,18 @@ function useConnectionHandlers(graph: Graph, setGraph: SetGraph, flashError: (re
       });
       if (rejection) flashError(rejection);
     },
-    [setGraph, flashError]
+    [setGraph, flashError, readOnly]
   );
 
   const isValidConnection = useCallback(
     (connection: Connection | Edge) => {
+      if (readOnly) return false;
       const source = graph.nodes.find((n) => n.id === connection.source);
       const target = graph.nodes.find((n) => n.id === connection.target);
       if (!source || !target) return false;
       return canConnect(source, target).ok;
     },
-    [graph]
+    [graph, readOnly]
   );
 
   return { onConnect, isValidConnection };
@@ -412,18 +428,20 @@ function useDropHandlers(
   setGraph: SetGraph,
   selectedNodeId: string | undefined,
   setSelectedNodeId: SetSelectedNodeId,
-  flashError: (reason: string) => void
+  flashError: (reason: string) => void,
+  readOnly: boolean
 ) {
   const { screenToFlowPosition } = useReactFlow();
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
-    if (!e.dataTransfer.types.includes(PALETTE_DRAG_MIME)) return;
+    if (readOnly || !e.dataTransfer.types.includes(PALETTE_DRAG_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-  }, []);
+  }, [readOnly]);
 
   const onDrop = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
+      if (readOnly) return;
       const entryId = e.dataTransfer.getData(PALETTE_DRAG_MIME);
       if (!entryId) return;
       e.preventDefault();
@@ -460,7 +478,7 @@ function useDropHandlers(
       }
       if (addedId) setSelectedNodeId(addedId);
     },
-    [screenToFlowPosition, setGraph, selectedNodeId, setSelectedNodeId, flashError]
+    [screenToFlowPosition, setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly]
   );
 
   return { onDragOver, onDrop };
@@ -576,11 +594,12 @@ function useKeepSelectionInView(selectedNodeId: string | undefined) {
 }
 
 /** Toolbar actions (auto layout, fit view, duplicate) plus the Ctrl/Cmd+D shortcut. */
-function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined) {
+function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefined, readOnly: boolean) {
   const { fitView } = useReactFlow();
   const fitLegibly = useLegibleFit();
 
   function handleAutoLayout() {
+    if (readOnly) return;
     setGraph((g) => autoLayout(g));
     window.requestAnimationFrame(() => fitLegibly(200));
   }
@@ -590,9 +609,9 @@ function useToolbarActions(setGraph: SetGraph, selectedNodeId: string | undefine
   }
 
   const handleDuplicate = useCallback(() => {
-    if (!selectedNodeId) return;
+    if (readOnly || !selectedNodeId) return;
     setGraph((g) => duplicateNode(g, selectedNodeId).graph);
-  }, [selectedNodeId, setGraph]);
+  }, [selectedNodeId, setGraph, readOnly]);
 
   // Ctrl/Cmd+D duplicates the selected node - a discoverable shortcut
   // alongside the toolbar button, matching common canvas-editor conventions.
@@ -642,25 +661,34 @@ function ToolbarButton({
 
 function CanvasToolbar({
   canDuplicate,
+  readOnly,
   onAutoLayout,
   onFitView,
   onDuplicate,
 }: {
   canDuplicate: boolean;
+  /** A proposal overlay is showing: edits (auto layout, duplicate) are disabled; fit view stays. */
+  readOnly: boolean;
   onAutoLayout: () => void;
   onFitView: () => void;
   onDuplicate: () => void;
 }) {
   return (
     <div className="canvas-toolbar" role="group" aria-label="Canvas tools">
-      <ToolbarButton Icon={LayoutGrid} label="Auto layout" tooltip="Auto layout the current graph" onClick={onAutoLayout} />
+      <ToolbarButton
+        Icon={LayoutGrid}
+        label="Auto layout"
+        tooltip={readOnly ? 'Hide the proposal to edit' : 'Auto layout the current graph'}
+        onClick={onAutoLayout}
+        disabled={readOnly}
+      />
       <ToolbarButton Icon={Maximize} label="Fit view" tooltip="Fit view to graph" onClick={onFitView} />
       <ToolbarButton
         Icon={Copy}
         label="Duplicate"
-        tooltip="Duplicate selected node (Ctrl/Cmd+D)"
+        tooltip={readOnly ? 'Hide the proposal to edit' : 'Duplicate selected node (Ctrl/Cmd+D)'}
         onClick={onDuplicate}
-        disabled={!canDuplicate}
+        disabled={readOnly || !canDuplicate}
       />
     </div>
   );
@@ -698,6 +726,29 @@ function InspectorToggle({ inspectorCollapsed = false, onToggleInspector }: Insp
   );
 }
 
+/**
+ * The proposal overlay's banner (C21), top-centre over the canvas: what the
+ * proposal changes (counts from `proposalCounts(displayGraph)`) and a Hide
+ * ghost button. Apply/Discard live on the Author's proposal card (AA16/AA18),
+ * not here.
+ */
+export function ProposalBanner() {
+  const { proposal, displayGraph, hideProposal } = useAppState();
+  if (proposal === undefined) return null;
+  const counts = proposalCounts(displayGraph);
+  return (
+    <div className="canvas-proposal-banner" role="status">
+      {proposal.title !== undefined && <span className="canvas-proposal-title">{proposal.title}</span>}
+      <span>
+        Showing a proposed change: {counts.added} added, {counts.edited} changed, {counts.removed} removed.
+      </span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={hideProposal}>
+        Hide
+      </button>
+    </div>
+  );
+}
+
 /** The MiniMap (bottom-right) and zoom/fit Controls (bottom-left), both themed in agents.css. */
 function CanvasNavigator() {
   return (
@@ -724,7 +775,9 @@ function useCanvasElements() {
   const {
     agentId,
     graph,
-    edges: graphEdges,
+    displayGraph,
+    proposal,
+    hideProposal,
     setGraph,
     selectedNodeId,
     setSelectedNodeId,
@@ -738,20 +791,39 @@ function useCanvasElements() {
   const breakpointsKey = breakpoints.join(',');
   const [measured, setMeasured] = useState<MeasuredSizes>({});
   const statuses = useMemo(
-    () => nodeRunStatuses(graph.nodes.map((n) => n.id), nodeStates, runStatus),
-    [graph, nodeStates, runStatus]
+    () => nodeRunStatuses(displayGraph.nodes.map((n) => n.id), nodeStates, runStatus),
+    [displayGraph, nodeStates, runStatus]
   );
   const nodes = useMemo(
-    () => toRfNodes(graph, { selectedNodeId, highlightedNodeId, breakpoints, statuses }, measured),
-    [graph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, measured]
+    () => toRfNodes(displayGraph, { selectedNodeId, highlightedNodeId, breakpoints, statuses }, measured),
+    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, measured]
   );
   const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
+  // Edges derive from the DISPLAY graph so proposal nodes are wired in;
+  // `includeRemoved` keeps a removed node's edges drawn (faded) too.
   const edges = useMemo(() => {
     const hiddenNodeIds = new Set(nodes.filter((n) => n.hidden).map((n) => n.id));
-    return toRfEdges(graphEdges, statuses, selectedEdgeId, hiddenNodeIds);
-  }, [graphEdges, statuses, selectedEdgeId, nodes]);
+    const proposed = new Map(
+      displayGraph.nodes.filter((n) => n.proposed !== undefined).map((n) => [n.id, n.proposed] as const)
+    );
+    return toRfEdges(deriveEdges(displayGraph, { includeRemoved: true }), statuses, selectedEdgeId, hiddenNodeIds, proposed);
+  }, [displayGraph, statuses, selectedEdgeId, nodes]);
 
-  return { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId };
+  return {
+    agentId,
+    graph,
+    displayGraph,
+    proposal,
+    hideProposal,
+    setGraph,
+    selectedNodeId,
+    setSelectedNodeId,
+    nodes,
+    edges,
+    measured,
+    setMeasured,
+    setSelectedEdgeId,
+  };
 }
 
 /**
@@ -762,28 +834,45 @@ function useCanvasElements() {
  * state, so there is nowhere for the two to drift apart.
  */
 function CanvasInner(inspectorToggle: InspectorToggleProps) {
-  const { agentId, graph, setGraph, selectedNodeId, setSelectedNodeId, nodes, edges, measured, setMeasured, setSelectedEdgeId } =
-    useCanvasElements();
+  const {
+    agentId,
+    displayGraph,
+    proposal,
+    setGraph,
+    selectedNodeId,
+    setSelectedNodeId,
+    nodes,
+    edges,
+    measured,
+    setMeasured,
+    setSelectedEdgeId,
+  } = useCanvasElements();
   const { connectError, flashError } = useConnectError();
+  // While a proposal overlay is shown the canvas is read-only (C21): no
+  // drags, connects, drops, deletes or layout edits — selection stays on so
+  // the Inspector can show the proposed node.
+  const readOnly = proposal !== undefined;
 
-  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId);
-  const { onConnect, isValidConnection } = useConnectionHandlers(graph, setGraph, flashError);
-  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError);
-  const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId);
+  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
+  const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
+  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
+  const { handleAutoLayout, handleFitView, handleDuplicate } = useToolbarActions(setGraph, selectedNodeId, readOnly);
   useFitViewOnResize();
   useKeepSelectionInView(selectedNodeId);
-  const fitting = useFitViewOnLoad(agentId, graph, measured);
+  const fitting = useFitViewOnLoad(agentId, displayGraph, measured);
 
   return (
     <main className="canvas-wrap" aria-label="Agent graph" data-fitting={fitting || undefined} onDrop={onDrop} onDragOver={onDragOver}>
       <CanvasToolbar
         canDuplicate={!!selectedNodeId}
+        readOnly={readOnly}
         onAutoLayout={handleAutoLayout}
         onFitView={handleFitView}
         onDuplicate={handleDuplicate}
       />
       <InspectorToggle {...inspectorToggle} />
       <EmptyCanvas />
+      <ProposalBanner />
       {connectError && (
         <div className="canvas-connect-error" role="alert">
           {connectError}
@@ -799,13 +888,15 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
         onNodesDelete={editHandlers.onNodesDelete}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
-        deleteKeyCode={['Backspace', 'Delete']}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
         minZoom={MIN_ZOOM}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={2} color="var(--canvas-dot)" />
         {/* Nothing to overview or zoom on an empty canvas; the template card has the room. */}
-        {graph.nodes.length > 0 && <CanvasNavigator />}
+        {displayGraph.nodes.length > 0 && <CanvasNavigator />}
       </ReactFlow>
     </main>
   );
