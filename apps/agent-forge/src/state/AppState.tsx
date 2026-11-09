@@ -134,6 +134,8 @@ interface AppState {
   stopAgent: () => Promise<void>;
   /** Resolves the run's current pending approval, if any, via `/agents/:id/approve`. */
   approveAgent: (approved: boolean, note?: string) => Promise<void>;
+  /** Pushes `message` into the live run's input queue via `/agents/:id/steer`; rejects when nothing is running (or a flow run). */
+  steerRun: (message: string) => Promise<void>;
   /**
    * Live run status for every saved agent, keyed by agent id -
    * what the LeftRail's agent-list status pills render, replacing the

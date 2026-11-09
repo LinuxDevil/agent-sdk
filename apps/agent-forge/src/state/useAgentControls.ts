@@ -75,7 +75,14 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
     [agentId, runStatus]
   );
 
-  return { debugMode, setDebugMode, runAgent, setBreakpoints, continueDebug, stepDebug, stopAgent, approveAgent };
+  // `POST /agents/:id/steer` - pushes `message` into the live run's input
+  // queue. Rejects (the caller's SteerBox shows it inline) on a 409
+  // LOUSHO_NO_ACTIVE_RUN / LOUSHO_STEER_UNSUPPORTED.
+  const steerRun = useCallback(async (message: string) => {
+    await runtimeClient.steer(agentId, message);
+  }, [agentId]);
+
+  return { debugMode, setDebugMode, runAgent, setBreakpoints, continueDebug, stepDebug, stopAgent, approveAgent, steerRun };
 }
 
 interface ChatControlDeps {

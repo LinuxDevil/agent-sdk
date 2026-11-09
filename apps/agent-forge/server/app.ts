@@ -28,6 +28,7 @@
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
  *   POST /agents/:id/approve         -> body: { approvalId, approved, note? }
+ *   POST /agents/:id/steer           -> body: { message } - 202 SteerResponse; 409 when nothing is running / a flow run
  *   GET  /agents/:id/traces?limit=N  -> { traces: TraceSummaryPayload[] } (newest first)
  *   GET  /agents/:id/traces/:traceId -> TraceDetailPayload | 404
  *   GET  /runs/:id/history           -> RunHistoryPayload
@@ -81,6 +82,7 @@ import {
   AlreadyRunningError,
   NoActiveRunError,
   ApprovalPendingError,
+  SteerUnsupportedError,
 } from './runRegistry';
 import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
@@ -400,6 +402,35 @@ function registerRunRoutes(app: Express): void {
           [NoActiveRunError, 409],
           [AgentNotFoundError, 409],
         ]);
+      }
+    })
+  );
+
+  // Steer: push a correction into the live run's input queue (the SDK's
+  // `steer()` via the AgentHost - see RunManager.steer()). Unlike approve,
+  // the 409s carry a `code` the Test pane's SteerBox can branch on.
+  app.post(
+    '/agents/:id/steer',
+    asyncRoute(async (req, res) => {
+      const { message } = req.body as { message?: unknown };
+      const trimmed = typeof message === 'string' ? message.trim() : '';
+      if (trimmed.length === 0 || trimmed.length > 3000) {
+        sendError(res, 400, "Request body must include a 'message' of 1 to 3000 characters", 'LOUSHO_BODY_INVALID');
+        return;
+      }
+      try {
+        const response = await workspaceOf(req).runs.steer(paramId(req), trimmed);
+        res.status(202).json(response);
+      } catch (error) {
+        if (error instanceof NoActiveRunError) {
+          sendError(res, 409, error.message, 'LOUSHO_NO_ACTIVE_RUN');
+          return;
+        }
+        if (error instanceof SteerUnsupportedError) {
+          sendError(res, 409, error.message, 'LOUSHO_STEER_UNSUPPORTED');
+          return;
+        }
+        throw error;
       }
     })
   );
