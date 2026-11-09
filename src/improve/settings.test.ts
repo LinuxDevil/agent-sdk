@@ -30,7 +30,24 @@ describe('loadImproveSettings', () => {
       cooldownHours: 24,
       rateLimit: { rpm: 20 },
       library: { enabled: true },
+      editors: { proposers: 1, mode: 'agg', select: false, parallel: true },
     });
+  });
+
+  it('reads the editors block, and flags win over it', () => {
+    file({ editors: { proposers: 3, mode: 'seq' } });
+    expect(loadImproveSettings(dir, {}, {}).editors).toEqual({ proposers: 3, mode: 'seq', select: false, parallel: true });
+    expect(loadImproveSettings(dir, { editors: { proposers: 2, select: true, parallel: false } }, {}).editors).toEqual({ proposers: 2, mode: 'seq', select: true, parallel: false });
+  });
+
+  it('refuses proposers outside 1 to 4 and an unknown mode, in the file and in flags', () => {
+    for (const value of [{ editors: { proposers: 0 } }, { editors: { proposers: 5 } }, { editors: { proposers: 1.5 } }, { editors: { mode: 'deep' } }, { editors: { workers: 2 } }]) {
+      file(value);
+      expect(() => loadImproveSettings(dir, {}, {})).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID', message: expect.stringMatching(/editors/) }));
+    }
+    rmSync(path.join(dir, 'improve.json'));
+    expect(() => loadImproveSettings(dir, { editors: { proposers: 9 } }, {})).toThrow(/--proposers/);
+    expect(() => loadImproveSettings(dir, { editors: { mode: 'wide' as 'agg' } }, {})).toThrow(/--mode/);
   });
 
   it('env overrides the file and the flag overrides env', () => {
@@ -76,6 +93,7 @@ describe('loadImproveSettings', () => {
       cooldownHours: 6,
       rateLimit: { rpm: 5 },
       library: { enabled: false, domain: 'billing' },
+      editors: { proposers: 4, mode: 'seq', select: true, parallel: false },
     };
     file({ $schema: './improve.schema.json', ...settings });
     expect(loadImproveSettings(dir, {}, {})).toEqual(settings);

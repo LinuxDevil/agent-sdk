@@ -160,21 +160,22 @@ export function runProjectTests(files: Readonly<Record<string, string>>, file?: 
   }
 }
 
-function changedFiles(files: Readonly<Record<string, string>>): string[] {
-  return [...new Set([...Object.keys(FIXTURE), ...Object.keys(files)])].filter((name) => files[name] !== FIXTURE[name]);
+function changedFiles(files: Readonly<Record<string, string>>, start: Readonly<Record<string, string>>): string[] {
+  return [...new Set([...Object.keys(start), ...Object.keys(files)])].filter((name) => files[name] !== start[name]);
 }
 
-function failedChecks(files: Readonly<Record<string, string>>, { mayChange, hidden }: CodingTask): string[] {
-  if (changedFiles(files).some((name) => !mayChange.includes(name))) return ['changed only the files this task allows'];
+function failedChecks(files: Readonly<Record<string, string>>, { mayChange, hidden }: CodingTask, start: Readonly<Record<string, string>>): string[] {
+  if (changedFiles(files, start).some((name) => !mayChange.includes(name))) return ['changed only the files this task allows'];
   const { exitCode, output } = runProjectTests({ ...files, 'test/hidden.test.js': hidden }, 'test/hidden.test.js');
   if (exitCode === 0) return [];
   const names = [...output.matchAll(/^\s*✖ (.+?) \(\d/gm)].map((match) => match[1]);
   return names.length === 0 ? ['the project loads and runs'] : [...new Set(names)];
 }
 
-/** A coding agent with a real test runner, scored by hidden tests and by which files it changed. */
-export function codingAgent(seed: Readonly<Record<string, string>> = {}): BenchmarkAgent & { readonly files: Record<string, string> } {
-  const workspace = new MemoryWorkspace({ files: { ...FIXTURE, ...seed } });
+/** A coding agent with a real test runner, scored by hidden tests and by which files it changed from the project, which `start` adds files to. */
+export function codingAgent(seed: Readonly<Record<string, string>> = {}, start: Readonly<Record<string, string>> = {}): BenchmarkAgent & { readonly files: Record<string, string> } {
+  const project = { ...FIXTURE, ...start };
+  const workspace = new MemoryWorkspace({ files: { ...project, ...seed } });
   const fileTools = createFsTools(workspace).filter((tool) => ['read_file', 'list_dir', 'grep', 'edit_file', 'write_file'].includes(tool.name));
   const runTests = defineTool({
     name: 'run_tests',
@@ -192,8 +193,8 @@ export function codingAgent(seed: Readonly<Record<string, string>> = {}): Benchm
     tasks: TASKS.map((task) => ({
       id: task.id,
       input: task.input,
-      check: () => failedChecks(workspace.snapshot(), task).length === 0,
-      failure: () => failedChecks(workspace.snapshot(), task).join('; ') || undefined,
+      check: () => failedChecks(workspace.snapshot(), task, project).length === 0,
+      failure: () => failedChecks(workspace.snapshot(), task, project).join('; ') || undefined,
     })),
   };
 }

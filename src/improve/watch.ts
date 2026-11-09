@@ -35,6 +35,8 @@ export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' 
   reloadSettings?: () => ImproveSettings;
   /** Called with each cycle that ran. */
   onCycle?: (cycle: HealCycle) => void;
+  /** Called with each tick that finished, whether or not a cycle ran. */
+  onTick?: (tick: WatchTick) => void;
   /** Called with an error a tick threw; the watcher keeps running (default: printed to stderr). */
   onError?: (error: unknown) => void;
   /** Holds the one-watcher-per-directory lease; it must support leases (default a file store in `.lousho/watch`). */
@@ -163,7 +165,7 @@ async function runCycle(options: WatchOptions, context: WatchContext, trigger: H
     .filter((mark) => mark.revision === null || mark.revision === key.revision)
     .at(-1)?.at;
   if (marked === undefined && sameFailures(last, key)) return { state: 'deduped', reason: 'The same failures as the last cycle and nothing new, so no cycle ran.' };
-  const { intervalMs: _interval, reloadSettings: _reload, onCycle, onError: _onError, store: _store, alerter: _alerter, log: _log, registry: _registry, ...heal } = options;
+  const { intervalMs: _interval, reloadSettings: _reload, onCycle, onTick: _onTick, onError: _onError, store: _store, alerter: _alerter, log: _log, registry: _registry, ...heal } = options;
   const cycle = await healOnce({ ...heal, editor: context.editor, trigger: marked === undefined ? trigger : 'score', maxTokens: budgetLeft(options.dir, options.settings, now), ...(context.signal && { signal: context.signal }) });
   if (!NOT_WORKED.includes(cycle.outcome)) await saveWatch(options.dir, { revision: key.revision, signatures: key.signatures, failed: key.failed, ...(key.newest && { newest: key.newest }), ...(marked !== undefined && { scoreAt: marked }) });
   await countOutage(options.dir, cycle, context.notify);
@@ -173,17 +175,26 @@ async function runCycle(options: WatchOptions, context: WatchContext, trigger: H
   return { state: 'ran', reason: cycle.reason, cycle };
 }
 
-function holdLease(context: WatchContext, ttl: number): { signal: AbortSignal; release(): void } {
+function holdLease(context: WatchContext, ttl: number): { signal: AbortSignal; release(): Promise<void> } {
   const lost = new AbortController();
+  let renewing: Promise<void> | undefined;
   const renew = () => {
-    context.store.acquireLease?.(context.leaseId, context.owner, ttl).then(
-      (held) => (held ? undefined : lost.abort()),
-      () => lost.abort()
-    );
+    renewing ??= (context.store.acquireLease?.(context.leaseId, context.owner, ttl) ?? Promise.resolve(true))
+      .then(
+        (held) => (held ? undefined : lost.abort()),
+        () => lost.abort()
+      )
+      .finally(() => {
+        renewing = undefined;
+      });
   };
   const timer = setInterval(renew, Math.max(MIN_RENEW_MS, Math.floor(ttl / RENEW_FRACTION)));
   (timer as { unref?: () => void }).unref?.();
-  return { signal: context.signal ? AbortSignal.any([context.signal, lost.signal]) : lost.signal, release: () => clearInterval(timer) };
+  const release = async (): Promise<void> => {
+    clearInterval(timer);
+    await renewing;
+  };
+  return { signal: context.signal ? AbortSignal.any([context.signal, lost.signal]) : lost.signal, release };
 }
 
 async function steps(options: WatchOptions, context: WatchContext, trigger: HealCycle['trigger'], now: number): Promise<WatchTick> {
@@ -214,7 +225,7 @@ export async function watchTick(options: WatchOptions, context: WatchContext, tr
   try {
     return await steps({ ...options, settings: settings as ImproveSettings }, { ...context, signal: lease.signal }, trigger, now);
   } finally {
-    lease.release();
+    await lease.release();
   }
 }
 
@@ -232,7 +243,13 @@ export function watchAgent(options: WatchOptions): {
   const loop = (): void => {
     running = watchTick(options, context)
       .then(
-        () => undefined,
+        (tick) => {
+          try {
+            options.onTick?.(tick);
+          } catch (error) {
+            report(error);
+          }
+        },
         (error: unknown) => (controller.signal.aborted ? undefined : report(error))
       )
       .finally(() => {

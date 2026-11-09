@@ -33,7 +33,7 @@ import { improveAgent } from './improve';
 import { savePending } from './pending';
 import { casesFromRecoveries, readableInput } from './recoveries';
 import { harnessHash, readAgentHarness } from './revisions';
-import type { ImproveSettings } from './settings';
+import { editorsOf, type ImproveSettings } from './settings';
 import type { Harness, ImproveOptions, ImproveResult, RecoveryEvidence } from './types';
 
 /** Options for {@link healOnce}. */
@@ -164,6 +164,7 @@ async function admit(state: HealState, captured: Captured): Promise<CorpusCase[]
 
 function propose(state: HealState, captured: Captured, holdout: readonly string[]): Promise<ImproveResult> {
   const { options, settings } = state;
+  const { proposers, mode, select, parallel } = editorsOf(settings);
   const recoveries = checkedRecoveries(captured, options.check);
   const library = state.library?.files ?? {};
   return improveAgent({
@@ -177,11 +178,30 @@ function propose(state: HealState, captured: Captured, holdout: readonly string[
     maxAlwaysOnChars: MAX_ALWAYS_ON,
     editorTimeoutMs: options.editorTimeoutMs ?? DEFAULT_EDITOR_TIMEOUT_MS,
     cacheDir: path.join(state.dir, LOUSHO, 'cache'),
+    proposers,
+    mode,
+    select,
+    parallelEditors: parallel,
     ...(recoveries.length > 0 && { recoveries }),
     ...(Object.keys(library).length > 0 && { library }),
     ...(options.editorHooks && { editorHooks: options.editorHooks }),
     ...(options.signal && { signal: options.signal }),
   });
+}
+
+const proposersIn = (result: ImproveResult): number => Math.max(1, result.stages.filter((stage) => stage.label.startsWith('invariant')).length);
+
+function editorShortfall(state: HealState): string | undefined {
+  const k = editorsOf(state.settings).proposers;
+  if (k <= 1) return undefined;
+  const last = readCycles(state.dir).find((cycle) => cycle.id !== state.cycle.id && cycle.result !== undefined);
+  if (!last?.result) return undefined;
+  const before = proposersIn(last.result);
+  const after = (last.canary?.tokens ?? 0) + (last.guard?.tokens ?? 0);
+  const needed = Math.ceil((last.result.spend.tokens / before) * k) + after;
+  const left = state.cap - state.spent;
+  if (needed <= left) return undefined;
+  return `With ${k} proposers the editors, their runs and what follows need about ${needed} tokens, scaled from the last cycle's ${last.result.spend.tokens} with ${before}, more than the ${Math.max(0, left)} left, so the editors didn't run.`;
 }
 
 async function noProposal(state: HealState, result: ImproveResult & { outcome: Exclude<ImproveResult['outcome'], 'proposal'> }): Promise<HealCycle> {
@@ -244,6 +264,8 @@ async function work(state: HealState, captured: Captured): Promise<HealCycle> {
     const paused = pausedStop(state, 'before the editors ran');
     if (paused) return paused;
     if (state.spent >= state.cap) throw new BudgetSpent();
+    const shortfall = editorShortfall(state);
+    if (shortfall) return finish(state, 'budget-exceeded', shortfall);
     const result = await propose(state, captured, holdout);
     state.cycle.result = result;
     state.spent += result.spend.tokens;

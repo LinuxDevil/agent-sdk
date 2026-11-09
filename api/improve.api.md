@@ -891,6 +891,26 @@ interface GenerateResult {
 }
 
 // @public
+export function guardApproval(dir: string, applied: {
+    from: string;
+    to: string;
+}, options: GuardApprovalOptions): Promise<GuardApprovalResult>;
+
+// @public
+export interface GuardApprovalOptions {
+    probe: ImproveOptions['probe'];
+    runs?: number;
+}
+
+// @public
+export interface GuardApprovalResult {
+    guard?: GuardCorpusResult;
+    passed: boolean;
+    reason: string;
+    rolledBackTo?: string;
+}
+
+// @public
 export function guardCorpus(dir: string, options: GuardCorpusOptions): Promise<GuardCorpusResult>;
 
 // @public
@@ -1225,6 +1245,12 @@ export interface ImproveSettings {
         };
     };
     cooldownHours: number;
+    editors: {
+        proposers: number;
+        mode: 'agg' | 'seq';
+        select: boolean;
+        parallel: boolean;
+    };
     enabled: boolean;
     guard: {
         runs: number;
@@ -1249,6 +1275,12 @@ export interface ImproveSettings {
         minNewFailures: number;
         requireRecurring: boolean;
     };
+}
+
+// @public
+export interface ImproveSettingsOverrides {
+    approval?: ImproveSettings['approval'];
+    editors?: Partial<ImproveSettings['editors']>;
 }
 
 // @public
@@ -1282,6 +1314,7 @@ export interface ImproveStatus {
     };
     cooldownUntil: string | null;
     dir: string;
+    editors: ImproveSettings['editors'];
     lastCycle: {
         id: string;
         outcome: string;
@@ -1404,7 +1437,7 @@ interface LLMProvider {
 }
 
 // @public
-export function loadImproveSettings(dir: string, overrides?: Partial<Pick<ImproveSettings, 'approval'>>, env?: NodeJS.ProcessEnv): ImproveSettings;
+export function loadImproveSettings(dir: string, overrides?: ImproveSettingsOverrides, env?: NodeJS.ProcessEnv): ImproveSettings;
 
 // @public (undocumented)
 type MaybePromise<T> = T | Promise<T>;
@@ -2544,6 +2577,7 @@ export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' 
     log?: (line: string) => void;
     onCycle?: (cycle: HealCycle) => void;
     onError?: (error: unknown) => void;
+    onTick?: (tick: WatchTick) => void;
     registry?: string;
     reloadSettings?: () => ImproveSettings;
     store?: CheckpointStore;

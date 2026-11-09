@@ -1,6 +1,6 @@
 {
   "name": "create-lousho",
-  "version": "0.1.2-alpha.85",
+  "version": "0.1.2-alpha.89",
   "description": "npm create lousho: scaffold a new lousho project (runs `lousho init`)",
   "license": "MIT",
   "homepage": "https://lousho.com",
@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "lousho": "^1.0.0-alpha.106",
+    "lousho": "^1.0.0-alpha.110",
     "prompts": "^2.4.2"
   },
   "devDependencies": {

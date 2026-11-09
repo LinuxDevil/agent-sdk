@@ -12,6 +12,7 @@ import { nextItemId } from '../../graph/v2/nodeIds';
 import { triggerSiblingIds } from '../../graph/v2/kinds/trigger';
 import type { TriggerSpec } from '../../graph/v2/specTypes';
 import type { NodeOfKind } from '../../graph/v2/types';
+import { clipFirstLine } from './clipFirstLine';
 import { TriggerFields } from './trigger/TriggerFields';
 import { emptyTriggerItem, triggerTitle } from './trigger/triggerItem';
 import type { KindView, NodeRow, PaletteEntry } from './index';
@@ -32,24 +33,18 @@ function chip(item: TriggerSpec): string | undefined {
   }
 }
 
-/** The first line of `text`, clipped to 40 characters — the card's `prompt`/`template` row value. */
-function clip(text: string): string {
-  const line = text.split('\n', 1)[0];
-  return line.length > 40 ? `${line.slice(0, 39)}…` : line;
-}
-
 /** The card rows: the prompt/template text when set, the cron time zone and the optional filter. */
 function rows(node: NodeOfKind<'trigger'>): NodeRow[] {
   const { item } = node.data;
   const result: NodeRow[] = [];
   if (item.type === 'cron') {
-    if (item.prompt !== '') result.push({ k: 'prompt', v: clip(item.prompt) });
+    if (item.prompt !== '') result.push({ k: 'prompt', v: clipFirstLine(item.prompt) });
     if (item.timezone !== undefined && item.timezone !== '') {
       result.push({ k: 'zone', v: item.timezone });
     }
   }
   if ((item.type === 'webhook' || item.type === 'agent') && item.promptTemplate !== '') {
-    result.push({ k: 'template', v: clip(item.promptTemplate) });
+    result.push({ k: 'template', v: clipFirstLine(item.promptTemplate) });
   }
   if ((item.type === 'webhook' || item.type === 'channel') && item.filter !== undefined && item.filter !== '') {
     result.push({ k: 'filter', v: item.filter });

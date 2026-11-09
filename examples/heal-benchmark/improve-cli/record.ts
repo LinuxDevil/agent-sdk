@@ -130,7 +130,7 @@ export async function spawnCollector(db: string): Promise<Collector> {
   return { url, stop: () => stopChild(child, db) };
 }
 
-function rootTracking(reporter: ObserveReporter): { exporter: TraceExporter; lastRoot(): string | undefined } {
+export function rootTracking(reporter: ObserveReporter): { exporter: TraceExporter; lastRoot(): string | undefined } {
   let root: string | undefined;
   return {
     exporter: {

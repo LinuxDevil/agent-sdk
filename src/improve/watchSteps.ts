@@ -4,7 +4,7 @@ import { readAudit } from './audit';
 import { admitProtectedCases, type CapturedCase } from './cases';
 import { addToCorpus, readCorpus, type CorpusCase } from './corpus';
 import { guardCorpus, type GuardCorpusResult } from './corpusGuard';
-import { dayStart, readCycles, usageToday, type HealCycle } from './cycles';
+import { addSpentToday, readCycles, usageToday, type HealCycle } from './cycles';
 import { corpusCases } from './healApply';
 import { BudgetSpent, caseProbe, libraryOf, unscored } from './healState';
 import type { MonitorVerdict } from './monitor';
@@ -61,15 +61,6 @@ export function budgetLeft(dir: string, settings: ImproveSettings, now: number):
   return settings.budget.maxTokensPerDay - usageToday(dir, now).tokens;
 }
 
-async function addSpent(dir: string, tokens: number, now: number): Promise<void> {
-  if (tokens <= 0) return;
-  const day = dayStart(now);
-  await updateState<WatchState>(dir, (current) => {
-    const watch = current.watch ?? {};
-    return { watch: { ...watch, spentDay: day, spent: (watch.spentDay === day ? (watch.spent ?? 0) : 0) + tokens } };
-  });
-}
-
 interface Spend {
   tokens: number;
   limit: number;
@@ -93,7 +84,7 @@ async function withSpend<T>(options: WatchOptions, now: number, task: (spend: Sp
     if (error instanceof BudgetSpent) return undefined;
     throw error;
   } finally {
-    await addSpent(options.dir, spend.tokens, now);
+    await addSpentToday(options.dir, spend.tokens, now);
   }
 }
 

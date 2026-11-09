@@ -13,6 +13,11 @@ const STATUS: CommandSpec = { command: 'improve status', usage: 'Usage: lousho i
 const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g;
 const safe = (value: unknown): string => String(value ?? '-').replace(CONTROL, ' ');
 const short = (id: string | null): string => (id === null ? '-' : id.slice(0, 12));
+const onOff = (value: boolean): string => (value ? 'on' : 'off');
+
+function editorsLine({ editors }: ImproveStatus): string {
+  return `Editors: ${editors.proposers} proposer${editors.proposers === 1 ? '' : 's'}, ${editors.mode} mode, selector ${onOff(editors.select)}, parallel ${onOff(editors.parallel)}`;
+}
 
 function lines(status: ImproveStatus): string[] {
   const { budget, canary, monitor } = status;
@@ -22,6 +27,7 @@ function lines(status: ImproveStatus): string[] {
     `Monitor: ${monitor ? safe(monitor.state) : 'nothing applied to watch'}`,
     `Budget today: ${budget.cycles.used}/${budget.cycles.max} cycles, ${budget.applies.used}/${budget.applies.max} automatic applies, ${budget.tokens.used}/${budget.tokens.max} tokens`,
     `Cooldown: ${status.cooldownUntil ?? 'none'}`,
+    editorsLine(status),
     `Canary: traffic ${canary.traffic ? `on (${canary.traffic.share} of ${canary.traffic.sessions} sessions)` : 'off'}; last replay ${canary.last ? `${canary.last.passed ? 'passed' : 'failed'}: ${safe(canary.last.reason)}` : 'none'}`,
     `Last cycle: ${status.lastCycle ? `${safe(status.lastCycle.outcome)}: ${safe(status.lastCycle.reason)}` : 'none'}`,
     `Pending: ${status.pending.length === 0 ? 'none' : status.pending.map((item) => `${item.id}${item.stale ? ' (stale)' : ''}`).join(', ')}`,

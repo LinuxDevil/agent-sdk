@@ -21,6 +21,7 @@ import {
 import { nextItemId } from '../../graph/v2/nodeIds';
 import type { Graph, NodeOfKind } from '../../graph/v2/types';
 import { AbortFields } from './abort/AbortFields';
+import { clipFirstLine } from './clipFirstLine';
 import { triggerTitle } from './trigger/triggerItem';
 import type { KindView, NodeRow, PaletteEntry } from './index';
 
@@ -37,18 +38,12 @@ const SCOPE_CHIP: Record<string, string> = {
   both: 'queued + running',
 };
 
-/** The first line of `text`, clipped to 40 characters — the card's `when`/`match` row values. */
-function clip(text: string): string {
-  const line = text.split('\n', 1)[0];
-  return line.length > 40 ? `${line.slice(0, 39)}…` : line;
-}
-
 /** The card rows: the `when` and `match` expressions while they are set. */
 function rows(node: NodeOfKind<'abort'>): NodeRow[] {
   const { when, match } = node.data.item;
   const result: NodeRow[] = [];
-  if (when !== '') result.push({ k: 'when', v: clip(when) });
-  if (match !== '') result.push({ k: 'match', v: clip(match) });
+  if (when !== '') result.push({ k: 'when', v: clipFirstLine(when) });
+  if (match !== '') result.push({ k: 'match', v: clipFirstLine(match) });
   return result;
 }
 

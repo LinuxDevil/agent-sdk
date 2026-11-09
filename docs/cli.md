@@ -39,7 +39,7 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
-lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--dry-run] [--watch [--interval 15m]]
+lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--proposers 1-4] [--mode agg|seq] [--select] [--no-parallel-editors] [--dry-run] [--watch [--interval 15m]]
 lousho improve <revisions|rollback|audit|pending|approve|reject|pause|resume|status> <agent-dir> ...
 lousho --version
 ```
@@ -431,6 +431,16 @@ don't live in `instructions.md`, always runs dry.
   for the person who approves it; in `auto` mode it is sent back to the editor
   once and then dropped. An `improve.json` that doesn't validate stops the
   run. See [Approval modes](./improve.md#approval-modes).
+- `--proposers <1-4>`, `--mode agg|seq`, `--select` and
+  `--no-parallel-editors` set the cycle's
+  [Harness² options](./improve.md#harness-options), over the `editors` block in
+  `improve.json`. `--select` can only turn the selector on and
+  `--no-parallel-editors` can only turn parallel off. `--proposers k` runs k invariant and k domain editors (or k
+  rounds with `--mode seq`), and costs about k times the editor sessions and
+  proposal runs. `--select` gates every candidate and lets the advisory selector
+  choose among those that pass. `--no-parallel-editors` runs the editors and
+  their probes one at a time, for a rate-limited model. They apply to dry runs
+  and `--watch` too.
 - `--dry-run` writes nothing: no apply, no queue, no audit entry. It reads
   every failed run whatever its revision, and ignores the kill switch and the
   daily caps.
@@ -488,7 +498,7 @@ In manual mode a proposal that passed the gate waits in
 
 ```bash
 npx lousho improve pending ./my-agent
-npx lousho improve approve ./my-agent 3f9c0a1b2d4e --by ali
+npx lousho improve approve ./my-agent 3f9c0a1b2d4e --by ali --check ./check.mjs
 npx lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
 ```
 
@@ -496,11 +506,22 @@ npx lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
   stale and refused entries. The id is the first 12 characters of the proposed
   harness's hash, and a file whose content doesn't match its id is left out.
   `--show <id>` prints that proposal's review card.
-- `approve <dir> <id> --by <name>` applies the proposal through
+- `approve <dir> <id> --by <name> [--check <module>] [--model provider/model]
+  [--read-only tool]... [--no-guard]` applies the proposal through
   `applyProposal()` as that person's approval and removes it from the queue. A
   proposal whose agent directory changed since it was made is refused and
   marked stale; run improve again. Any other refusal is recorded on the entry
-  and shown by `pending`.
+  and shown by `pending`. Right after the write it runs the corpus guard, as an
+  automatic apply does: `guard.runs` fresh runs of every corpus case, scored by
+  `--check`, with tools simulated unless `--read-only` names them. If a case
+  regressed or the guard can't judge (a run that errors counts as unscored, and
+  its error goes to stderr), the edit is rolled back to the approved
+  revision's parent and `approve` exits 1. If the directory changed between the
+  write and the guard, the guard doesn't run and `approve` exits 1 too. The guard's tokens count toward
+  today's budget. With cases in the corpus, `--check` is required, and the
+  agent and the check are loaded before anything is written. `--no-guard`
+  skips the guard and leaves it to a watcher's next scheduled guard. An empty
+  corpus needs neither.
 - `reject <dir> <id> --by <name> [--reason text]` records a `reject` audit entry
   and moves the file to `.lousho/proposals/rejected/`. A rejected proposal is
   never queued again.
@@ -531,7 +552,8 @@ watcher runs the monitor: a single `lousho improve` cycle doesn't. See
 `lousho improve status <dir> [--json]` prints the mode and active revision, the
 last 5 audit entries, pending proposals, the monitor's verdict (with a warning
 while it waits for runs or kept an edit unverified), what is left of today's
-budget, the cooldown, the kill switch and the canary. The watcher's events go
+budget, the cooldown, the kill switch, the canary and the editor options a
+cycle uses (from `improve.json` and the defaults). The watcher's events go
 to the `alerts.json` webhooks beside the observe db (see
 [Observability](./observability.md)).
 
@@ -551,12 +573,14 @@ optional, and an unknown key or a bad value is an error
   "guard": { "runs": 3, "everyHours": 24, "maxCases": 30 },
   "cooldownHours": 24,
   "rateLimit": { "rpm": 20 },
-  "library": { "enabled": true }
+  "library": { "enabled": true },
+  "editors": { "proposers": 1, "mode": "agg", "select": false, "parallel": true }
 }
 ```
 
 These are the defaults. Counts are whole numbers of 1 or more, and `maxDrop` is
-between 0 and 1. `requireRecurring` defaults to `false` in manual mode.
+between 0 and 1, and `editors.proposers` is 1 to 4. `requireRecurring`
+defaults to `false` in manual mode.
 `"enabled": false` stops the loop for this agent. `budget.maxTokensPerCycle`,
 `canary.traffic` (`share` up to 0.25, `sessions` up to 50) and `library.domain`
 are unset unless you set them. `canary.traffic` is accepted and shown by

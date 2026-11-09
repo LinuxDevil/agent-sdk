@@ -213,16 +213,9 @@ declare global {
 
 const AppStateContext = createContext<AppState | undefined>(undefined);
 
-export function AppStateProvider({ children }: { children: ReactNode }) {
-  // Agents live in the server workspace (.lousho/agents/), not the browser.
-  const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
-  const [railTab, setRailTab] = useState<RailTab>('agents');
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('test');
-  const nodeSpans = useNodeSpans();
-  // A reload of an agents URL (`#/agents/:id`, `#/agents/:id/canvas`, `#/agents/:id/:tab`) reopens that agent.
-  const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
-  const doc = useAgentDocument(store, initialAgentId);
-  const { agentId, spec, save, graph, layout, nodeIdMap } = doc;
+type AgentDocument = ReturnType<typeof useAgentDocument>;
+
+function useProposalOverlay({ graph, layout, nodeIdMap }: AgentDocument) {
   const [proposal, setProposal] = useState<ProposalOverlay | undefined>(undefined);
   const showProposal = useCallback((p: ProposalOverlay) => setProposal(p), []);
   const hideProposal = useCallback(() => setProposal(undefined), []);
@@ -232,21 +225,6 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     () => (proposal === undefined ? graph : mergeProposal(graph, proposal.spec, layout, nodeIdMap)),
     [graph, proposal, layout, nodeIdMap]
   );
-  // A ref (not state) so a caller reading `latestVersion` after `await
-  // saveVersion()` sees the version that call just reported, not the one
-  // captured when its closure was created.
-  const latestVersionRef = useRef<number | null>(null);
-  const saveVersion = useCallback(async (): Promise<VersionListItem | undefined> => {
-    await save();
-    const { item, created } = await runtimeClient.saveVersion(agentId);
-    latestVersionRef.current = item.version;
-    return created ? item : undefined;
-  }, [save, agentId]);
-  const agentStatuses = useAgentStatuses(doc.agents);
-  const stream = useAgentStream(agentId);
-  const run = useRunControls({ agentId, spec, ...stream });
-  const chatControls = useChatControls({ agentId, spec, ...stream });
-  const { activeProfile, refreshActiveProfile } = useActiveProfile();
 
   // Dev-only manual trigger for the proposal overlay (AA18 wires the real
   // one): `window.__forgeShowProposal(spec)` in a dev build.
@@ -258,13 +236,68 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     };
   }, [showProposal]);
 
+  return { proposal, showProposal, hideProposal, displayGraph };
+}
+
+function useSaveVersion({ save, agentId }: AgentDocument) {
+  // A ref (not state) so a caller reading `latestVersion` after `await
+  // saveVersion()` sees the version that call just reported, not the one
+  // captured when its closure was created.
+  const latestVersionRef = useRef<number | null>(null);
+  const saveVersion = useCallback(async (): Promise<VersionListItem | undefined> => {
+    await save();
+    const { item, created } = await runtimeClient.saveVersion(agentId);
+    latestVersionRef.current = item.version;
+    return created ? item : undefined;
+  }, [save, agentId]);
+  return { saveVersion, latestVersionRef };
+}
+
+// A proposal overlay belongs to the document it was made for: switching,
+// creating, renaming or deleting an agent clears it.
+function agentActionsClearing(doc: AgentDocument, hideProposal: () => void) {
+  return {
+    switchAgent: async (id: string) => {
+      hideProposal();
+      return doc.switchAgent(id);
+    },
+    createAgent: async (id: string, template: TemplateId) => {
+      hideProposal();
+      return doc.createAgent(id, template);
+    },
+    renameAgent: async (fromId: string, toId: string) => {
+      hideProposal();
+      return doc.renameAgent(fromId, toId);
+    },
+    deleteAgent: async (id: string) => {
+      hideProposal();
+      return doc.deleteAgent(id);
+    },
+  };
+}
+
+export function AppStateProvider({ children }: { children: ReactNode }) {
+  // Agents live in the server workspace (.lousho/agents/), not the browser.
+  const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
+  const [railTab, setRailTab] = useState<RailTab>('agents');
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>('test');
+  // A reload of an agents URL (`#/agents/:id`, `#/agents/:id/canvas`, `#/agents/:id/:tab`) reopens that agent.
+  const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
+  const doc = useAgentDocument(store, initialAgentId);
+  const { agentId, spec } = doc;
+  const nodeSpans = useNodeSpans();
+  const overlay = useProposalOverlay(doc);
+  const { saveVersion, latestVersionRef } = useSaveVersion(doc);
+  const agentStatuses = useAgentStatuses(doc.agents);
+  const stream = useAgentStream(agentId);
+  const run = useRunControls({ agentId, spec, ...stream });
+  const chatControls = useChatControls({ agentId, spec, ...stream });
+  const { activeProfile, refreshActiveProfile } = useActiveProfile();
+
   const value: AppState = {
     store,
     ...doc,
-    proposal,
-    showProposal,
-    hideProposal,
-    displayGraph,
+    ...overlay,
     saveVersion,
     get latestVersion() {
       return latestVersionRef.current;
@@ -273,28 +306,12 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setRailTab,
     drawerTab,
     setDrawerTab,
-    // A proposal overlay belongs to the document it was made for: switching,
-    // creating, renaming or deleting an agent clears it.
-    switchAgent: async (id: string) => {
-      setProposal(undefined);
+    // A proposal overlay and the node-spans sheet belong to the document
+    // they were opened for: agent mutations clear both.
+    ...agentActionsClearing(doc, () => {
+      overlay.hideProposal();
       nodeSpans.closeNodeSpans();
-      return doc.switchAgent(id);
-    },
-    createAgent: async (id: string, template: TemplateId) => {
-      setProposal(undefined);
-      nodeSpans.closeNodeSpans();
-      return doc.createAgent(id, template);
-    },
-    renameAgent: async (fromId: string, toId: string) => {
-      setProposal(undefined);
-      nodeSpans.closeNodeSpans();
-      return doc.renameAgent(fromId, toId);
-    },
-    deleteAgent: async (id: string) => {
-      setProposal(undefined);
-      nodeSpans.closeNodeSpans();
-      return doc.deleteAgent(id);
-    },
+    }),
     ...nodeSpans,
     ...run,
     agentStatuses,

@@ -25,11 +25,15 @@ import {
 import { scoreCase } from '../improve/cases';
 import { agentInputOf } from '../improve/recoveries';
 import type { HealCycle } from '../improve/cycles';
+import { guardApproval } from '../improve/approveGuard';
+import { readCorpus } from '../improve/corpus';
 import { healOnce } from '../improve/heal';
+import { corpusCases } from '../improve/healApply';
+import { caseProbe, unscored } from '../improve/healState';
 import { watchAgent } from '../improve/watch';
 import { writtenHash } from '../improve/harnessWriter';
 import { readAgentHarness } from '../improve/revisions';
-import { loadImproveSettings, type ImproveSettings } from '../improve/settings';
+import { loadImproveSettings, type ImproveSettings, type ImproveSettingsOverrides } from '../improve/settings';
 import { createAlerter, resolveAlertConfig, type Alerter } from '../observe/alerts';
 import { openDb } from '../observe/store';
 import type { AgentInput, LLMProvider } from '../providers';
@@ -37,11 +41,11 @@ import { defineSkill } from '../skills/defineSkill';
 import { memoryStore } from '../storage/agentStore';
 import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { detectTarget, agentModuleConfig, type DevTarget } from './devReload';
-import { isImproveAdmin, runImproveAdmin } from './improveAdmin';
+import { isImproveAdmin, runImproveAdmin, type PrepareGuard } from './improveAdmin';
 import { dbPathOf, resolveAgent, sinceMs } from './observe';
 
 const USAGE =
-  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--dry-run] [--watch [--interval 15m]]\n       lousho improve revisions|rollback|audit|pending|approve|reject|pause|resume|status <agent-dir> ...';
+  'Usage: lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--proposers 1-4] [--mode agg|seq] [--select] [--no-parallel-editors] [--dry-run] [--watch [--interval 15m]]\n       lousho improve revisions|rollback|audit|pending|approve|reject|pause|resume|status <agent-dir> ...';
 
 const HELP = `${USAGE}
 
@@ -86,6 +90,15 @@ Options:
   --approval auto|manual    the approval mode, over LOUSHO_IMPROVE_APPROVAL and improve.json
                             (default auto). Manual queues a passing proposal for a person, and
                             keeps an edit that quotes a failed check, flagged on the card
+  --proposers <1-4>         k invariant and k domain editors, or k rounds with --mode seq,
+                            over improve.json's editors.proposers (default 1); each costs
+                            about one more set of editor sessions and proposal runs
+  --mode agg|seq            agg proposes side by side; seq runs rounds that build on each
+                            other (default agg, or improve.json's editors.mode)
+  --select                  gate every candidate and let an advisory selector choose among
+                            those that pass (improve.json editors.select)
+  --no-parallel-editors     run the editors and their probes one at a time, for a
+                            rate-limited model (improve.json editors.parallel)
   --dry-run                 print the review card and change nothing, from every failed run
                             whatever its revision, as before self-healing
   --watch                   keep running: every --interval (default 15m) check the kill
@@ -101,7 +114,8 @@ Revisions, rollback, the audit log and pending proposals (run one with --help fo
   lousho improve rollback <agent-dir> --by <name> [--to <revision>] [--reason text]
   lousho improve audit <agent-dir> [--verify] [--json]
   lousho improve pending <agent-dir> [--json]
-  lousho improve approve <agent-dir> <id> --by <name>
+  lousho improve approve <agent-dir> <id> --by <name> [--check <module>] [--model provider/model]
+                         [--read-only tool]... [--no-guard]
   lousho improve reject <agent-dir> <id> --by <name> [--reason text]
   lousho improve pause <agent-dir> [--reason text] [--by <name>]   write the kill switch file
   lousho improve resume <agent-dir> [--by <name>]                  remove it
@@ -126,6 +140,10 @@ const SPEC: CommandSpec = {
     'max-tokens': { type: 'string' },
     'with-recoveries': { type: 'boolean' },
     approval: { type: 'string' },
+    proposers: { type: 'string' },
+    mode: { type: 'string' },
+    select: { type: 'boolean' },
+    'no-parallel-editors': { type: 'boolean' },
     'dry-run': { type: 'boolean' },
     watch: { type: 'boolean' },
     interval: { type: 'string' },
@@ -148,6 +166,8 @@ export interface ImproveArgs {
   withRecoveries?: boolean;
   /** The approval mode from `--approval`. */
   approval?: ImproveSettings['approval'];
+  /** Editor options from `--proposers`, `--mode`, `--select` and `--no-parallel-editors`, over improve.json. */
+  editors: Partial<ImproveSettings['editors']>;
   /** `--dry-run`: print the card and write nothing. */
   dryRun?: boolean;
   /** `--watch`: keep running cycles on a timer. */
@@ -193,10 +213,23 @@ function approvalOf(text: string | undefined): Pick<ImproveArgs, 'approval'> {
   return { approval: text };
 }
 
+function editorsOf(values: Record<string, unknown>): ImproveArgs['editors'] {
+  const proposers = stringValue(values.proposers as string | undefined);
+  const mode = stringValue(values.mode as string | undefined);
+  if (proposers !== undefined && !/^[1-4]$/.test(proposers)) throw usageError(SPEC, `--proposers must be a whole number from 1 to 4, not '${proposers}'.`);
+  if (mode !== undefined && mode !== 'agg' && mode !== 'seq') throw usageError(SPEC, `--mode must be 'agg' or 'seq', not '${mode}'.`);
+  return {
+    ...(proposers !== undefined && { proposers: Number(proposers) }),
+    ...(mode !== undefined && { mode }),
+    ...(values.select === true && { select: true }),
+    ...(values['no-parallel-editors'] === true && { parallel: false }),
+  };
+}
+
 /** Parses the arguments after `improve`; throws `LOUSHO_CONFIG_INVALID` for a missing path or `--check`, an unknown flag, a bad `--since` or a bad `--max-tokens`. */
 export function parseImproveArgs(args: string[]): ImproveArgs {
   const { values, positionals, help } = parseCommand(SPEC, args);
-  if (help) return { path: '', check: '', protect: [], readOnly: [], help };
+  if (help) return { path: '', check: '', protect: [], readOnly: [], editors: {}, help };
   if (positionals.length !== 1) throw usageError(SPEC, 'a path is required (an agent directory or a .ts/.js agent module).');
   const check = stringValue(values.check);
   if (check === undefined) {
@@ -219,6 +252,7 @@ export function parseImproveArgs(args: string[]): ImproveArgs {
     watch: values.watch === true,
     ...intervalOf(stringValue(values.interval)),
     ...approvalOf(stringValue(values.approval)),
+    editors: editorsOf(values),
   };
 }
 
@@ -283,7 +317,7 @@ function skillsOf(harness: Harness, directories: ReadonlyMap<string, string | un
   });
 }
 
-function runCaseWith(config: CreateAgentConfig, args: ImproveArgs, io: ImproveIo, decoded: ReadonlyMap<string, AgentInput>) {
+function runCaseWith(config: CreateAgentConfig, args: Pick<ImproveArgs, 'model' | 'readOnly'>, io: ImproveIo, decoded: ReadonlyMap<string, AgentInput>) {
   const {
     store: _store,
     approvalStore: _approvalStore,
@@ -374,7 +408,9 @@ async function withoutObserve<T>(run: () => Promise<T>): Promise<T> {
 }
 
 async function proposeOnly(args: ImproveArgs, io: ImproveIo, target: DevTarget, config: CreateAgentConfig, harness: Harness): Promise<number> {
-  const approval = args.approval ?? loadImproveSettings(target.kind === 'dir' ? target.path : path.dirname(target.path)).approval;
+  const settings = loadImproveSettings(target.kind === 'dir' ? target.path : path.dirname(target.path), overridesOf(args));
+  const { approval } = settings;
+  const { proposers, mode, select, parallel } = settings.editors;
   const quotedChecks = approval === 'manual' ? 'flag' : 'reject';
   const editor = editorOf(args, config, io);
   const check = await loadCheck(args.check);
@@ -401,6 +437,10 @@ async function proposeOnly(args: ImproveArgs, io: ImproveIo, target: DevTarget, 
       probe,
       editor,
       quotedChecks,
+      proposers,
+      mode,
+      select,
+      parallelEditors: parallel,
       ...(args.maxTokens !== undefined && { maxTokens: args.maxTokens }),
       ...(recoveries.length > 0 && { recoveries }),
     });
@@ -452,8 +492,12 @@ function reportCycle(cycle: HealCycle, args: ImproveArgs, io: ImproveIo): void {
   }
 }
 
+function overridesOf(args: ImproveArgs): ImproveSettingsOverrides {
+  return { ...(args.approval && { approval: args.approval }), editors: args.editors };
+}
+
 async function cycleInputs(args: ImproveArgs, io: ImproveIo, dir: string, config: CreateAgentConfig) {
-  const settings = loadImproveSettings(dir, args.approval ? { approval: args.approval } : {});
+  const settings = loadImproveSettings(dir, overridesOf(args));
   const editor = editorOf(args, config, io);
   const check = await loadCheck(args.check);
   return { settings, editor, check, db: openObserveDb(args) };
@@ -532,7 +576,7 @@ async function watchDir(args: ImproveArgs, io: ImproveIo, dir: string, config: C
         runCase: runCaseWith(config, args, io, new Map()),
         editor,
         settings,
-        reloadSettings: () => loadImproveSettings(dir, args.approval ? { approval: args.approval } : {}),
+        reloadSettings: () => loadImproveSettings(dir, overridesOf(args)),
         registry: path.join(path.dirname(dbPathOf(args.db)), 'watchers.json'),
         agent,
         protect: args.protect,
@@ -575,10 +619,25 @@ async function improve(args: ImproveArgs, io: ImproveIo): Promise<number> {
   return args.watch ? watchDir(args, io, target.path, config) : healDir(args, io, target.path, config);
 }
 
+function approveGuardOf(io: ImproveIo): PrepareGuard {
+  return async (dir, flags) => {
+    const config = await loadConfig({ kind: 'dir', path: dir });
+    const check = await loadCheck(flags.check);
+    const { runs } = loadImproveSettings(dir).guard;
+    const errors = new Set<string>();
+    const probe = unscored(caseProbe(corpusCases(readCorpus(dir)), runCaseWith(config, flags, io, new Map()), check), errors, undefined);
+    return async (applied) => {
+      const result = await withoutObserve(() => guardApproval(dir, applied, { probe, runs }));
+      for (const message of errors) io.stderr.write(`lousho improve approve: a guard run failed and was left unscored: ${message}\n`);
+      return result;
+    };
+  };
+}
+
 /** Runs `lousho improve` with the arguments after `improve`; resolves with the exit code. */
 export async function runImprove(args: string[], io: ImproveIo = { stdout: process.stdout, stderr: process.stderr }): Promise<number> {
   try {
-    if (isImproveAdmin(args)) return await runImproveAdmin(args, io);
+    if (isImproveAdmin(args)) return await runImproveAdmin(args, { ...io, prepareGuard: approveGuardOf(io) });
     const parsed = parseImproveArgs(args);
     if (parsed.help) {
       io.stdout.write(`${HELP}\n`);

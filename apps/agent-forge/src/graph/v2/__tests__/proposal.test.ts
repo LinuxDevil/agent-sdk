@@ -115,6 +115,42 @@ describe('mergeProposal layout and order', () => {
     expect(proposedOf(merged, 'tool:web_fetch')).toBe('remove');
   });
 
+  it('keeps the current order when the first child of an owner is removed', () => {
+    const current = specToGraph(spec({ tools: [{ builtin: 'http' }, { builtin: 'web_fetch' }] }));
+    const merged = mergeProposal(current, spec({ tools: [{ builtin: 'web_fetch' }] }), layoutOf(current));
+
+    expect(merged.nodes.map((n) => n.id)).toEqual(current.nodes.map((n) => n.id));
+    expect(proposedOf(merged, 'tool:http')).toBe('remove');
+  });
+
+  it('keeps the current order when every non-agent node is removed', () => {
+    const current = specToGraph(spec({ tools: [{ builtin: 'http' }, { builtin: 'web_fetch' }] }));
+    const merged = mergeProposal(current, spec({ tools: [], guardrails: [] }), layoutOf(current));
+
+    expect(merged.nodes.map((n) => n.id)).toEqual(current.nodes.map((n) => n.id));
+    expect(proposalCounts(merged)).toEqual({ added: 0, removed: 3, edited: 0 });
+  });
+
+  it('takes the collapsed flag from the current node for unchanged and edited nodes', () => {
+    const current = specToGraph(spec());
+    node(current, 'tool:http').collapsed = true;
+    node(current, 'agent').collapsed = false;
+    const layout = layoutOf(current);
+    layout.nodes['guard:g1'] = { ...layout.nodes['guard:g1'], collapsed: true };
+    const merged = mergeProposal(
+      current,
+      spec({ model: 'openai/gpt-5', guardrails: [{ id: 'g1', name: 'max-length', on: 'output' }] }),
+      layout
+    );
+
+    expect(node(merged, 'tool:http').proposed).toBeUndefined();
+    expect(node(merged, 'tool:http').collapsed).toBe(true);
+    expect(node(merged, 'agent').proposed).toBe('edit');
+    expect(node(merged, 'agent').collapsed).toBe(false);
+    expect(node(merged, 'guard:g1').proposed).toBe('edit');
+    expect('collapsed' in node(merged, 'guard:g1')).toBe(false);
+  });
+
   it('carries notes over untouched and keeps the viewport', () => {
     const current = specToGraph(spec());
     current.nodes.push({
