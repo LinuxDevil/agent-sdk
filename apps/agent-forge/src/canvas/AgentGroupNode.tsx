@@ -59,7 +59,7 @@ function AgentGroupNodeImpl({ data, selected }: NodeProps) {
     >
       {ports.in && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {ports.out && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
-      <NodeCardHead node={graphNode} status={nodeData.status} className="rf-group-head">
+      <NodeCardHead node={graphNode} status={nodeData.status} className="rf-group-head" graph={nodeData.graph}>
         {toggle}
       </NodeCardHead>
     </div>

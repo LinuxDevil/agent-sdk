@@ -17,6 +17,15 @@ const graph = specToGraph({
 } as unknown as Parameters<typeof specToGraph>[0]);
 const nodeOf = (kind: GraphNode['kind']) => graph.nodes.find((n) => n.kind === kind)!;
 
+/** A `flow` node built by hand — specToGraph does not emit flow nodes yet (C15), and `flow` is the one kind still on the generic view. */
+const flowNode: GraphNode = {
+  id: 'flow:e1',
+  kind: 'flow',
+  owner: 'agent',
+  position: { x: 0, y: 0 },
+  data: { step: { type: 'end', id: 'e1' }, children: { shape: 'none' } },
+};
+
 /** The `agent` node of a spec built just for this test (fields as given). */
 function agentOf(over: Record<string, unknown>): GraphNode {
   return specToGraph({
@@ -111,7 +120,7 @@ describe('AgentNode card', () => {
   });
 
   it('draws both ports and the neutral kind tile of the generic view', () => {
-    const card = renderCard(nodeOf('abort'), { status: 'done' });
+    const card = renderCard(flowNode, { status: 'done' });
     expect(card.querySelector('.rf-port-in')).not.toBeNull();
     expect(card.querySelector('.rf-port-out')).not.toBeNull();
     expect(card.querySelector('.node-kind')?.classList.contains('kind-neutral')).toBe(true);
@@ -133,7 +142,7 @@ describe('AgentNode card', () => {
   });
 
   it('renders the generic card markup', () => {
-    const card = renderCard(nodeOf('abort'), { status: 'paused' });
+    const card = renderCard(flowNode, { status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();
   });
 });

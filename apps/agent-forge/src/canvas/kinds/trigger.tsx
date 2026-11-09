@@ -9,31 +9,12 @@
  */
 import { Zap } from 'lucide-react';
 import { nextItemId } from '../../graph/v2/nodeIds';
-import { CHANNEL_LABELS, triggerSiblingIds } from '../../graph/v2/kinds/trigger';
+import { triggerSiblingIds } from '../../graph/v2/kinds/trigger';
 import type { TriggerSpec } from '../../graph/v2/specTypes';
 import type { NodeOfKind } from '../../graph/v2/types';
 import { TriggerFields } from './trigger/TriggerFields';
-import { emptyTriggerItem } from './trigger/triggerItem';
+import { emptyTriggerItem, triggerTitle } from './trigger/triggerItem';
 import type { KindView, NodeRow, PaletteEntry } from './index';
-
-/** The card title per trigger type: a fixed label, the channel's label or `After <agent>`. */
-function title(item: TriggerSpec): string {
-  switch (item.type) {
-    case 'chat':
-      return 'Chat';
-    case 'cron':
-      return 'Schedule';
-    case 'webhook':
-      return 'Webhook';
-    case 'channel':
-      return CHANNEL_LABELS[item.channel] ?? item.channel;
-    case 'agent':
-      return item.after === '' ? 'After another agent' : `After ${item.after}`;
-    default:
-      // A catalog type outside the five PLAN kinds renders under its own name.
-      return (item as { type: string }).type;
-  }
-}
 
 /** The chip text per trigger type; chat and catalog-extra types carry none. */
 function chip(item: TriggerSpec): string | undefined {
@@ -105,7 +86,7 @@ export const TRIGGER_VIEW: KindView<'trigger'> = {
   label: 'Trigger',
   tone: 'accent',
   Icon: Zap,
-  title: (node) => title(node.data.item),
+  title: (node) => triggerTitle(node.data.item),
   chip: (node) => chip(node.data.item),
   rows,
   ports: { in: false, out: true },

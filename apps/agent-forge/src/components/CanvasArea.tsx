@@ -196,6 +196,7 @@ export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSize
       ...(size === undefined ? {} : { style: size }),
       data: {
         graphNode: n,
+        graph,
         highlighted: n.id === highlightedNodeId,
         hasBreakpoint: hasBreakpointOn(n, breakpoints),
         status: statuses[n.id],

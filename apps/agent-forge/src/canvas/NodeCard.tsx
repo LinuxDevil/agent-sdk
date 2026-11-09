@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import type { GraphNode } from '../graph/v2/types';
+import type { Graph, GraphNode } from '../graph/v2/types';
 import { StatusPill } from '../ui/StatusPill';
 import { viewFor } from './kinds';
 
@@ -21,6 +21,8 @@ export interface CanvasNodeData extends Record<string, unknown> {
   hasBreakpoint?: boolean;
   /** This node's status in the current run (see nodeStatus.ts); omitted reads idle. */
   status?: string;
+  /** The whole graph, for kind titles that read sibling nodes (the abort listener names its trigger). */
+  graph?: Graph;
   /** Group nodes only: how many descendants the group hides while collapsed. */
   insideCount?: number;
 }
@@ -65,14 +67,16 @@ export function NodeCardHead({
   status,
   className,
   children,
+  graph,
 }: {
   node: GraphNode;
   status?: string;
   className?: string;
   children?: ReactNode;
+  graph?: Graph;
 }): JSX.Element {
   const view = viewFor(node.kind);
-  const title = view.title(node as never);
+  const title = view.title(node as never, graph);
   const { Icon } = view;
   return (
     <div className={['rf-node-head', className].filter(Boolean).join(' ')}>
@@ -116,7 +120,7 @@ export function NodeCard({
     <div className={cardClassName('rf-node', selected, data)} data-node-kind={graphNode.kind} data-node-id={graphNode.id}>
       {view.ports.in && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {view.ports.out && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
-      <NodeCardHead node={graphNode} status={status}>
+      <NodeCardHead node={graphNode} status={status} graph={data.graph}>
         {headAction}
       </NodeCardHead>
       {chips.length > 0 && (

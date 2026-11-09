@@ -880,6 +880,10 @@ button.breakpoint-toggle {
 .rf-node .node-row > span {
   flex: none;
 }
+/* Abort listeners draw dashed, matching Wakeel's "aborts the run" node (C16). */
+.rf-node[data-node-kind='abort'] {
+  border-style: dashed;
+}
 /* Ports: 10px surface circles with a clearly visible ring (above the edges), accent on hover and while connecting. */
 .canvas-wrap .rf-port.rf-port-in,
 .canvas-wrap .rf-port.rf-port-out {
