@@ -583,7 +583,9 @@ between 0 and 1, and `editors.proposers` is 1 to 4. `requireRecurring`
 defaults to `false` in manual mode.
 `"enabled": false` stops the loop for this agent. `budget.maxTokensPerCycle`,
 `canary.traffic` (`share` up to 0.25, `sessions` up to 50) and `library.domain`
-are unset unless you set them. `canary.traffic` is accepted and shown by
-`status`, but no cycle uses it yet: the replay canary always runs.
+are unset unless you set them. With `canary.traffic` set, a proposal that
+passes the replay canary starts the
+[live traffic canary](./improve.md#live-traffic-canary-opt-in), which serves it
+to real sessions, instead of being written.
 `loadImproveSettings()` reads the file. See
 [Settings](./improve.md#settings) for what each key does.
