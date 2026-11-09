@@ -1467,6 +1467,12 @@ export function compilePolicy(policy: AgentSpecPolicy | undefined): CompiledPoli
 // @public
 export function compileSpec(spec: AgentSpecV2, host: SpecHost): Promise<CompiledSpec>;
 
+// @public
+export function compileSpecWithNodeIds(spec: AgentSpecV2, host: SpecHost, index?: {
+    spec?: AgentSpecV2;
+    toolNamesByRef?: (compiled: CompiledSpec) => readonly (readonly string[])[];
+}): Promise<CompiledSpec>;
+
 // @public (undocumented)
 interface ConditionNode {
     // (undocumented)
@@ -7862,7 +7868,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.102";
+export const VERSION = "1.0.0-alpha.105";
 
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;

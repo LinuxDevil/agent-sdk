@@ -31,13 +31,18 @@ export interface CanvasNodeData extends Record<string, unknown> {
 export function cardClassName(
   base: 'rf-node' | 'rf-group',
   selected: boolean | undefined,
-  data: Pick<CanvasNodeData, 'highlighted' | 'hasBreakpoint' | 'status'>
+  data: Pick<CanvasNodeData, 'highlighted' | 'hasBreakpoint' | 'status' | 'graphNode'>
 ): string {
   const flags: [string, boolean | undefined][] = [
     ['selected', selected],
     ['highlighted', data.highlighted],
     ['has-breakpoint', data.hasBreakpoint],
     ['running', data.status === 'running'],
+    ['paused', data.status === 'paused'],
+    ['error', data.status === 'error'],
+    ['done', data.status === 'done'],
+    // The proposal overlay's marker (C21): 'proposed-add' | 'proposed-remove' | 'proposed-edit'.
+    [`proposed-${data.graphNode.proposed}`, data.graphNode.proposed !== undefined],
   ];
   return [base, ...flags.filter(([, on]) => on).map(([name]) => name)].join(' ');
 }
@@ -115,6 +120,8 @@ export function NodeCard({
   const chip = view.chip?.(graphNode as never);
   const rows = view.rows(graphNode as never);
   const chips = [...(chip !== undefined ? [chip] : []), ...(extraChips ?? [])];
+  // A proposal-edited node carries an "edited" marker chip (C21).
+  const edited = graphNode.proposed === 'edit';
 
   return (
     <div className={cardClassName('rf-node', selected, data)} data-node-kind={graphNode.kind} data-node-id={graphNode.id}>
@@ -123,13 +130,18 @@ export function NodeCard({
       <NodeCardHead node={graphNode} status={status} graph={data.graph}>
         {headAction}
       </NodeCardHead>
-      {chips.length > 0 && (
+      {(chips.length > 0 || edited) && (
         <div className="rf-node-meta">
           {chips.map((c) => (
             <code className="node-chip" title={c} key={c}>
               {c}
             </code>
           ))}
+          {edited && (
+            <code className="node-chip node-chip-edited" title="Changed by the proposal">
+              edited
+            </code>
+          )}
         </div>
       )}
       <NodeRows rows={rows} />

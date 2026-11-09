@@ -451,6 +451,8 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     spec,
     setSpec,
     edges,
+    /** The `layout.json` `graphToSpec` derives alongside `spec` — the proposal overlay's position source (C21). */
+    layout: derived.layout,
     nodeIdMap: derived.nodeIdMap,
     dirty,
     save,

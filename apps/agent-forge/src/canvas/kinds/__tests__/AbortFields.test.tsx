@@ -17,6 +17,9 @@ const app = vi.hoisted(() => ({
 vi.mock('../../../state/AppState', () => ({
   useAppState: () => ({
     graph: app.graph,
+    // The Inspector reads displayGraph (the proposal overlay's graph, C21);
+    // these tests have no proposal, so it mirrors graph.
+    displayGraph: app.graph,
     setGraph: app.setGraph,
     selectedNodeId: app.selectedNodeId,
     debugMode: false,

@@ -141,9 +141,41 @@ describe('AgentNode card', () => {
     for (const state of ['running', 'selected', 'highlighted', 'has-breakpoint']) expect(card.classList).toContain(state);
   });
 
+  it.each(['paused', 'error', 'done'] as const)('marks a %s node with its state class', (status) => {
+    const card = renderCard(nodeOf('tool'), { status });
+    expect(card.classList).toContain(status);
+    expect(card.classList).not.toContain('running');
+  });
+
   it('renders the generic card markup', () => {
     const card = renderCard(flowNode, { status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();
+  });
+});
+
+describe('proposal overlay classes (C21)', () => {
+  const proposed = (kind: GraphNode['kind'], flag: 'add' | 'remove' | 'edit'): GraphNode => ({
+    ...nodeOf(kind),
+    proposed: flag,
+  });
+
+  it.each([
+    ['add', 'proposed-add'],
+    ['remove', 'proposed-remove'],
+    ['edit', 'proposed-edit'],
+  ] as const)('marks a %s node with .%s', (flag, cls) => {
+    const card = renderCard(proposed('tool', flag));
+    expect(card.classList).toContain(cls);
+  });
+
+  it('shows the "edited" chip only on an edited node', () => {
+    const edited = renderCard(proposed('tool', 'edit'));
+    const chip = edited.querySelector('.node-chip-edited');
+    expect(chip?.textContent).toBe('edited');
+    for (const flag of ['add', 'remove'] as const) {
+      expect(renderCard(proposed('tool', flag)).querySelector('.node-chip-edited')).toBeNull();
+    }
+    expect(renderCard(nodeOf('tool')).querySelector('.node-chip-edited')).toBeNull();
   });
 });
 

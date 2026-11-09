@@ -525,7 +525,10 @@ still apply. The daemon never writes to an agent directory. A watcher lists
 itself in `watchers.json` beside the db while it runs (informational: the sweep
 records every regression, once per agent and revision, across daemon restarts).
 A score cycle learns from the revision's failed and low-scored runs; a
-regression with neither ends `idle`.
+regression with neither ends `idle`. The `score_regressions` table is a schema
+migration, so once this daemon has opened a db, a process on an older `lousho`
+refuses it with `LOUSHO_STORAGE_FAILED`; upgrade every process that shares the
+db. See [Running it continuously](./improve.md#running-it-continuously).
 
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an

@@ -9,7 +9,11 @@ const appState = vi.hoisted(() => ({
   setSelectedNodeId: vi.fn(),
   switchAgent: vi.fn(),
 }));
-vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
+vi.mock('../../state/AppState', () => ({
+  // EmptyCanvas reads displayGraph (the proposal overlay's graph, C21);
+  // these tests have no proposal, so it mirrors graph.
+  useAppState: () => ({ ...appState, displayGraph: appState.graph }),
+}));
 
 import { render } from '../../ui/__tests__/render';
 import { EmptyCanvas } from '../EmptyCanvas';
