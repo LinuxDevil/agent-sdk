@@ -266,7 +266,7 @@ async function decide(state: HealState, result: ImproveResult, candidate: Harnes
   const now = recheck(state);
   if (now.paused) return finish(state, 'paused', `Paused before the write: ${now.paused}. Nothing was applied.`);
   state.cycle.approval = now.approval;
-  if (state.settings.canary.traffic) return startTraffic(state, result, canary);
+  if (state.settings.canary.traffic && now.approval === 'auto') return startTraffic(state, result, canary);
   return now.approval === 'auto' ? applyAndGuard(state, result) : queue(state, result);
 }
 

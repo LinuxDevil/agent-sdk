@@ -4,7 +4,11 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigurationError } from '../execution/errors';
 import { readAudit } from './audit';
-import { approvePending, listPending, readPendingProposal, rejectPending, savePending } from './pending';
+import { openDb } from '../observe/store';
+import { approvePending } from './approvePending';
+import { canaryArm, routesToCandidate } from './canaryArm';
+import { listPending, readPendingProposal, rejectPending, savePending } from './pending';
+import { readCanary } from './trafficCanary';
 import { harnessHash, readAgentHarness } from './revisions';
 import type { Harness, ImproveResult } from './types';
 
@@ -46,9 +50,32 @@ describe('pending proposals', () => {
   it('approve applies and removes the pending file', async () => {
     const pending = await queue();
     const applied = await approvePending(dir, pending.id, 'ali');
+    expect('to' in applied && applied.to).toBeTruthy();
     expect(read('instructions.md')).toBe('Be very careful.\n');
     expect(listPending(dir)).toEqual([]);
-    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'apply', actor: 'person:ali', to: applied.to, cycle: 'c1' });
+    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'apply', actor: 'person:ali', to: 'to' in applied ? applied.to : '', cycle: 'c1' });
+  });
+
+  it('manual with canary.traffic: no session routes to the candidate before approve, and approve starts the canary in the person\'s name', async () => {
+    writeFileSync(path.join(dir, 'improve.json'), JSON.stringify({ approval: 'manual', canary: { traffic: { share: 0.25, sessions: 10 } } }));
+    const ids = Array.from({ length: 400 }, (_, i) => `s${i}`).filter((id) => routesToCandidate(id, 0.25));
+    const arm = canaryArm(dir, { instructions: 'Be careful.', skills: [] });
+    const pending = await queue();
+    expect(ids.some((id) => arm({ sessionId: id }) !== undefined)).toBe(false);
+    await expect(approvePending(dir, pending.id, 'ali')).rejects.toThrow(/observe database/);
+    expect(ids.some((id) => arm({ sessionId: id }) !== undefined)).toBe(false);
+    const db = openDb(':memory:');
+    try {
+      const approved = await approvePending(dir, pending.id, 'ali', { db });
+      expect('canary' in approved && approved.canary).toMatchObject({ approvedBy: 'ali', revision: harnessHash({ instructions: 'Be very careful.', skills: {} }) });
+    } finally {
+      db.close();
+    }
+    expect(read('instructions.md')).toBe('Be careful.\n');
+    expect(listPending(dir)).toEqual([]);
+    expect(readCanary(dir)).toMatchObject({ approvedBy: 'ali' });
+    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'canary-start', actor: 'person:ali' });
+    expect(arm({ sessionId: ids[0] })).toMatchObject({ instructions: 'Be very careful.' });
   });
 
   it('approve of a stale proposal is refused and marks it stale', async () => {

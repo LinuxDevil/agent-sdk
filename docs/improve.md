@@ -386,9 +386,9 @@ The session never sees a held-out case's id: each held-out case appears as `held
 
 `startCanary` takes a proposal that passed the gate and writes `.lousho/canary.json`. While that file exists, an agent loaded with `loadAgentDir` serves the candidate to a stable share of new sessions (by a hash of the session id; a run without a session id always gets the base) and stamps those runs with the candidate's revision. The opt-in must be in `improve.json` when the agent loads. The session cap is kept in `.lousho/canary-sessions.txt`, so it holds across restarts and processes on one host.
 
-`healOnce()` (`lousho improve`) starts it for you. When `canary.traffic` is set, a proposal that passes the gate and the replay canary starts a traffic canary instead of being applied or queued, and the cycle ends `canary-started`. While the canary runs, every cycle ends `busy`. `lousho improve --watch` settles the trial on each tick. A promote then counts toward `maxAppliesPerDay` and is followed by the corpus guard, and the watcher waits a day when the cap is spent. A pause ends the canary.
+`healOnce()` (`lousho improve`) starts it for you in auto mode. When `canary.traffic` is set, a proposal that passes the gate and the replay canary starts a traffic canary instead of being applied, and the cycle ends `canary-started`. In manual mode no candidate reaches users before a person approves it: the cycle queues the proposal as usual, and `lousho improve approve` (`approvePending(dir, id, by, { db })`) starts the traffic canary instead of applying. When that canary passes, it is applied in the approver's name without a second approval. While the canary runs, every cycle ends `busy`. `lousho improve --watch` settles the trial on each tick. A promote then counts toward `maxAppliesPerDay` and is followed by the corpus guard, and the watcher waits a day when the cap is spent. A pause ends the canary.
 
-`settleCanary` reads the trial; call it yourself on a timer when you don't use the watcher. After `sessions` candidate sessions it promotes when the share of flagged sessions is 0 or at least 0.05 below the base's rate over its last 20 runs, and no failure class appeared that the base didn't have. It retires early once a promotion is ruled out, and when the directory changed, the loop is paused, the opt-in is removed or `monitor.giveUpDays` pass. A promote goes through `applyProposal` (auto) or the pending queue (manual), which check the proposal again. In manual mode the candidate still reaches users before a person approves it; only the apply waits.
+`settleCanary` reads the trial; call it yourself on a timer when you don't use the watcher. After `sessions` candidate sessions it promotes when the share of flagged sessions is 0 or at least 0.05 below the base's rate over its last 20 runs, and no failure class appeared that the base didn't have. It retires early once a promotion is ruled out, and when the directory changed, the loop is paused, the opt-in is removed or `monitor.giveUpDays` pass. A promote goes through `applyProposal`, which checks the proposal again. A canary started in auto mode is queued for a person instead when `improve.json` has since switched to manual. In manual mode, `startCanary` refuses without `approvedBy`, and a canary without an approver serves no one.
 
 ```ts
 import { loadImproveSettings, settleCanary, startCanary, type Harness, type ImproveResult, type SqlDatabase } from 'lousho/improve';
@@ -533,6 +533,7 @@ Both modes run the same gate and canary. They differ in who writes.
 | A stale proposal | Refused; the cycle ends `stale` | Refused at approve time and marked stale |
 | Corpus guard after the write | Right away, in the cycle | Right after `approve`, which rolls back to the approved revision's parent on a regression; with `--no-guard`, at the watcher's next scheduled guard |
 | Monitor and automatic rollback | Yes, in a watcher | Yes, in a watcher |
+| Traffic canary (`canary.traffic`) | Starts right after the replay canary; a pass is applied | Starts only on `approve`; a pass is applied as that approval |
 
 Set the mode with `"approval"` in `improve.json`, `LOUSHO_IMPROVE_APPROVAL`, or
 `--approval` (flag first, then the variable, then the file). Automatic rollback
@@ -756,8 +757,8 @@ npx lousho improve ./my-agent --check ./check.mjs --dry-run --since 7d --out pro
 
 On an agent directory, `lousho improve` runs one self-healing cycle with
 `healOnce()`. In auto mode it **applies** a proposal that passes the gate and
-the canary, and in manual mode it queues it. With `canary.traffic` set, it
-starts the [traffic canary](#live-traffic-canary-opt-in) instead. It needs a module whose default
+the canary, and in manual mode it queues it. With `canary.traffic` set, auto
+mode starts the [traffic canary](#live-traffic-canary-opt-in) instead. It needs a module whose default
 export is your `CaseCheck` (return `failure` to name the check a failed answer
 missed). It reads cases only from your local observe database, simulates tools
 other than loading skills unless `--read-only` names them, and prints the review

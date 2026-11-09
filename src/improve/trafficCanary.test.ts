@@ -192,11 +192,28 @@ describe('canaryVerdict and settleCanary', () => {
     ]);
   });
 
-  it('manual mode turns promote into a pending proposal', async () => {
+  it('manual mode: no canary starts without a person, and an approved one promotes in their name without a second approval', async () => {
     optIn({ approval: 'manual' });
+    seedBase(10);
+    await expect(start()).rejects.toThrow(/approves/);
+    expect(existsSync(path.join(dir, CANARY))).toBe(false);
+    const base = readAgentHarness(dir);
+    const canary = await startCanary(db, dir, { result: proposal({ ...base, instructions: 'Be very careful.' }), base, approvedBy: 'ali' }, settings());
+    expect(readAudit(dir).at(-1)).toMatchObject({ action: 'canary-start', actor: 'person:ali' });
+    seedCandidate(canary.revision, [undefined, undefined, undefined, undefined]);
+    const settled = await settleCanary(db, dir, settings());
+    expect(settled).toMatchObject({ outcome: 'applied', applied: { to: canary.revision } });
+    expect(read('instructions.md')).toBe('Be very careful.\n');
+    expect(listPending(dir)).toEqual([]);
+    expect(readAudit(dir).find((entry) => entry.action === 'apply')).toMatchObject({ actor: 'person:ali' });
+  });
+
+  it('a canary started in auto mode is queued, not applied, when improve.json switches to manual', async () => {
+    optIn();
     seedBase(10);
     const canary = await start();
     seedCandidate(canary.revision, [undefined, undefined, undefined, undefined]);
+    optIn({ approval: 'manual' });
     const settled = await settleCanary(db, dir, settings());
     expect(settled).toMatchObject({ outcome: 'queued' });
     expect(listPending(dir).map((item) => item.id)).toEqual([canary.revision.slice(0, 12)]);
@@ -420,6 +437,14 @@ describe('canaryArm', () => {
     expect(arm({ sessionId: id })).toBeDefined();
     await stopCanary(dir, { actor: 'scheduler', reason: 'Done.' });
     expect(arm({ sessionId: id })).toBeUndefined();
+  });
+
+  it('serves nothing in manual mode unless a person approved the canary', async () => {
+    optIn();
+    await start();
+    optIn({ approval: 'manual' });
+    const arm = canaryArm(dir, base);
+    expect(routed(0.1).some((id) => arm({ sessionId: id }) !== undefined)).toBe(false);
   });
 
   it('serves nothing when LOUSHO_IMPROVE=off', async () => {

@@ -253,6 +253,15 @@ describe('healOnce', () => {
     expect(actions()).toEqual(['canary-end', 'canary-start']);
   });
 
+  it('manual with canary.traffic: the fix is queued and no traffic canary starts before a person approves', async () => {
+    seedFailures();
+    const cycle = await heal({ settings: settings({ approval: 'manual', trigger: { minNewFailures: 3, requireRecurring: false }, canary: { replayRuns: 6, traffic: { share: 0.1, sessions: 10 } } }) });
+    expect(cycle.outcome).toBe('pending');
+    expect(readCanary(dir)).toBeUndefined();
+    expect(instructions()).toBe(BASE);
+    expect(actions()).toEqual(['canary-end', 'propose']);
+  });
+
   it('with canary.traffic, a replay canary failure starts no traffic canary', async () => {
     seedFailures();
     vi.mocked(canaryReplay).mockResolvedValueOnce({ passed: false, cases: [], reason: 'A training case fell below 5 in 6 fresh runs (x).', tokens: 7 });

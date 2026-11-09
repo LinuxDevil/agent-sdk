@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import * as path from 'node:path';
 import type { Writable } from 'node:stream';
 import { ConfigurationError } from '../execution/errors';
@@ -5,7 +6,11 @@ import { rollbackHarness, type ApplyResult } from '../improve/apply';
 import type { GuardApprovalResult } from '../improve/approveGuard';
 import { readCorpus } from '../improve/corpus';
 import { readAudit, verifyAudit, type AuditEntry } from '../improve/audit';
-import { approvePending, isPendingId, listPending, readPendingProposal, rejectPending } from '../improve/pending';
+import { approvePending, type ApprovedPending } from '../improve/approvePending';
+import { isPendingId, listPending, readPendingProposal, rejectPending } from '../improve/pending';
+import { loadImproveSettings } from '../improve/settings';
+import { openDb } from '../observe/store';
+import { dbPathOf } from './observe';
 import { currentRevision, listRevisions, type HarnessRevision } from '../improve/revisions';
 import { parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { pause, resume } from './improvePause';
@@ -149,9 +154,9 @@ function audit(args: readonly string[], io: AdminIo): number {
 const PENDING: CommandSpec = { command: 'improve pending', usage: 'Usage: lousho improve pending <agent-dir> [--show <id>] [--json]', positionals: 1, options: { json: { type: 'boolean' }, show: { type: 'string' } } };
 const APPROVE: CommandSpec = {
   command: 'improve approve',
-  usage: 'Usage: lousho improve approve <agent-dir> <id> --by <name> [--check <module>] [--model provider/model] [--read-only tool]... [--no-guard]',
+  usage: 'Usage: lousho improve approve <agent-dir> <id> --by <name> [--check <module>] [--model provider/model] [--read-only tool]... [--no-guard] [--db path]',
   positionals: 2,
-  options: { by: { type: 'string' }, check: { type: 'string' }, model: { type: 'string' }, 'read-only': { type: 'string', multiple: true }, 'no-guard': { type: 'boolean' } },
+  options: { by: { type: 'string' }, check: { type: 'string' }, model: { type: 'string' }, 'read-only': { type: 'string', multiple: true }, 'no-guard': { type: 'boolean' }, db: { type: 'string' } },
 };
 const REJECT: CommandSpec = { command: 'improve reject', usage: 'Usage: lousho improve reject <agent-dir> <id> --by <name> [--reason text]', positionals: 2, options: { by: { type: 'string' }, reason: { type: 'string' } } };
 
@@ -198,21 +203,50 @@ async function guardFor(command: { values: Record<string, unknown>; dir: string 
   return io.prepareGuard(command.dir, { check, model: stringValue(command.values.model as string | undefined), readOnly });
 }
 
+function trafficDb(dir: string, value: unknown): ReturnType<typeof openDb> | undefined {
+  if (!loadImproveSettings(dir).canary.traffic) return undefined;
+  const file = dbPathOf(value as string | undefined);
+  if (!existsSync(file)) throw new ConfigurationError(`lousho improve approve: improve.json turns on the traffic canary, which reads the observe database, and there is none at ${file}. Pass --db.`, 'db');
+  return openDb(file);
+}
+
+function approvedLine(id: string, result: ApprovedPending): string {
+  if (!('canary' in result)) return `Applied ${id}: ${short(result.from)} -> ${short(result.to)} (${result.written.join(', ')}).\n`;
+  const { canary } = result;
+  return `Approved ${id}: the traffic canary now serves ${short(canary.revision)} to ${Math.round(canary.share * 100)}% of new sessions for ${canary.sessions} sessions. If it passes, it is applied as your approval; nothing changes until then.\n`;
+}
+
+function startedCanary(id: string, result: ApprovedPending, io: AdminIo): number {
+  io.stdout.write(approvedLine(id, result));
+  return 0;
+}
+
+async function guardedApply(command: { values: Record<string, unknown>; dir: string }, id: string, by: string, io: AdminIo): Promise<number> {
+  const guard = await guardFor(command, io);
+  const result = await approvePending(command.dir, id, by);
+  if ('canary' in result) return startedCanary(id, result, io);
+  const line = `Applied ${id}: ${short(result.from)} -> ${short(result.to)} (${result.written.join(', ')}).`;
+  if (typeof guard === 'string') {
+    io.stdout.write(`${line} ${guard}\n`);
+    return 0;
+  }
+  const guarded = await guard(result);
+  io.stdout.write(`${line} The corpus guard ${guarded.passed ? 'passed' : 'did not pass'}: ${safe(guarded.reason)}\n`);
+  return guarded.passed ? 0 : 1;
+}
+
 async function approve(args: readonly string[], io: AdminIo): Promise<number> {
   const command = parsed(APPROVE, args, io);
   if (!command) return 0;
   const id = idOf(APPROVE, command.id);
   const by = personOf(APPROVE, command.values);
-  const guard = await guardFor(command, io);
-  const applied = await approvePending(command.dir, id, by);
-  const line = `Applied ${id}: ${short(applied.from)} -> ${short(applied.to)} (${applied.written.join(', ')}).`;
-  if (typeof guard === 'string') {
-    io.stdout.write(`${line} ${guard}\n`);
-    return 0;
+  const db = trafficDb(command.dir, command.values.db);
+  try {
+    if (db) return startedCanary(command.id, await approvePending(command.dir, id, by, { db }), io);
+    return await guardedApply(command, id, by, io);
+  } finally {
+    db?.close();
   }
-  const guarded = await guard(applied);
-  io.stdout.write(`${line} The corpus guard ${guarded.passed ? 'passed' : 'did not pass'}: ${safe(guarded.reason)}\n`);
-  return guarded.passed ? 0 : 1;
 }
 
 async function reject(args: readonly string[], io: AdminIo): Promise<number> {

@@ -36,6 +36,8 @@ export interface StartCanaryInput {
   agent?: string;
   /** The instructions length limit the proposal was gated with (default 8000). */
   maxAlwaysOnChars?: number;
+  /** The person who approved the proposal; required in manual mode, where the promote then applies in their name. */
+  approvedBy?: string;
 }
 
 /** What the forward trial says about the running canary. */
@@ -129,6 +131,13 @@ function checkedTraffic(dir: string, settings: ImproveSettings): { share: number
   return traffic;
 }
 
+function approverOf(input: StartCanaryInput, settings: ImproveSettings): string | undefined {
+  const approvedBy = input.approvedBy?.trim();
+  if (input.approvedBy !== undefined && !approvedBy) refuse('approvedBy is empty; pass the name of the person who approved the proposal.', 'approvedBy');
+  if (settings.approval === 'manual' && !approvedBy) refuse('in manual mode the traffic canary starts only when a person approves the proposal (lousho improve approve).', 'approvedBy');
+  return approvedBy;
+}
+
 function checkedCandidate(dir: string, input: StartCanaryInput, settings: ImproveSettings, now: number): Harness {
   const { result, base } = input;
   if (result.outcome !== 'proposal' || !result.harness) refuse(`only a proposal with a harness can be trialled; this result is '${result.outcome}'.`, 'result');
@@ -137,24 +146,26 @@ function checkedCandidate(dir: string, input: StartCanaryInput, settings: Improv
   if (cooldownUntil(dir, settings.cooldownHours) > now) refuse('a rollback cooldown is active; no canary starts until it ends.', 'cooldown');
   if (harnessHash(readAgentHarness(dir)) !== harnessHash(base)) refuse('the proposal is stale: the agent directory changed after it was made.', 'base');
   if (harnessHash(result.harness) === harnessHash(base)) refuse('the proposal changes nothing.', 'result');
-  const errors = validateHarness(result.harness, base, { maxAlwaysOnChars: input.maxAlwaysOnChars ?? DEFAULT_MAX_ALWAYS_ON, failedChecks: result.failedChecks ?? [] });
+  const failedChecks = input.approvedBy === undefined ? (result.failedChecks ?? []) : [];
+  const errors = validateHarness(result.harness, base, { maxAlwaysOnChars: input.maxAlwaysOnChars ?? DEFAULT_MAX_ALWAYS_ON, failedChecks });
   if (errors.length > 0) refuse(`the candidate fails validation: ${errors.join(' ')}`, 'result');
   return result.harness;
 }
 
 function newCanary(input: StartCanaryInput, traffic: { share: number; sessions: number }, candidate: Harness, p0: number, now: number): TrafficCanary {
-  const { cycle, agent, maxAlwaysOnChars } = input;
-  const optional = { ...(cycle && { cycle }), ...(agent && { agent }), ...(maxAlwaysOnChars !== undefined && { maxAlwaysOnChars }) };
+  const { cycle, agent, maxAlwaysOnChars, approvedBy } = input;
+  const optional = { ...(cycle && { cycle }), ...(agent && { agent }), ...(maxAlwaysOnChars !== undefined && { maxAlwaysOnChars }), ...(approvedBy && { approvedBy }) };
   return { candidate, revision: harnessHash(candidate), base: input.base, baseRevision: harnessHash(input.base), share: traffic.share, sessions: traffic.sessions, startedAt: new Date(now).toISOString(), p0, result: input.result, ...optional };
 }
 
 async function startLocked(db: SqlDatabase, dir: string, input: StartCanaryInput, settings: ImproveSettings, now: number): Promise<TrafficCanary> {
   const traffic = checkedTraffic(dir, settings);
-  const candidate = checkedCandidate(dir, input, settings, now);
+  const approvedBy = approverOf(input, settings);
+  const candidate = checkedCandidate(dir, { ...input, ...(approvedBy && { approvedBy }) }, settings, now);
   const history = finishedRuns(db, { revision: harnessHash(input.base), ...(input.agent && { agent: input.agent }), endedBefore: now, byEnd: true, limit: HISTORY });
-  const canary = newCanary(input, traffic, candidate, flaggedRate(history), now);
+  const canary = newCanary({ ...input, ...(approvedBy && { approvedBy }) }, traffic, candidate, flaggedRate(history), now);
   rmSync(path.join(dir, SESSIONS_FILE), { force: true });
-  await appendAudit(dir, { actor: 'canary', action: 'canary-start', from: canary.baseRevision, to: canary.revision, ...(canary.cycle && { cycle: canary.cycle }), reason: `Serving the candidate to ${Math.round(canary.share * 100)}% of new sessions for ${canary.sessions} sessions (base flagged rate ${canary.p0.toFixed(2)}).` });
+  await appendAudit(dir, { actor: approvedBy ? cleanActor(`person:${approvedBy}`) : 'canary', action: 'canary-start', from: canary.baseRevision, to: canary.revision, ...(canary.cycle && { cycle: canary.cycle }), reason: `Serving the candidate to ${Math.round(canary.share * 100)}% of new sessions for ${canary.sessions} sessions (base flagged rate ${canary.p0.toFixed(2)}).` });
   writeCanary(dir, canary);
   return canary;
 }
@@ -264,6 +275,11 @@ async function endCanary(dir: string, canary: TrafficCanary | undefined, actor: 
 async function promote(dir: string, canary: TrafficCanary, verdict: CanaryVerdict, settings: ImproveSettings): Promise<CanarySettlement> {
   const input = { result: canary.result, base: canary.base, ...(canary.cycle && { cycle: canary.cycle }), ...(canary.maxAlwaysOnChars !== undefined && { maxAlwaysOnChars: canary.maxAlwaysOnChars }) };
   try {
+    if (canary.approvedBy) {
+      const applied = await applyProposal(dir, input, { mode: 'manual', approvedBy: canary.approvedBy });
+      await endCanary(dir, canary, 'canary', `Promoted and applied as approved by ${canary.approvedBy}: ${verdict.reason}`);
+      return { verdict, outcome: 'applied', applied, reason: verdict.reason };
+    }
     if (settings.approval === 'manual') {
       const queued = await savePending(dir, { ...input, card: formatImproveResult(canary.result) });
       await endCanary(dir, canary, 'canary', `Promoted to a pending proposal ${queued.id}: ${verdict.reason}`);

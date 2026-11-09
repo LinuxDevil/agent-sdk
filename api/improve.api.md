@@ -298,7 +298,17 @@ interface ApprovalSignIn {
 }
 
 // @public
-export function approvePending(dir: string, id: string, approvedBy: string): Promise<ApplyResult>;
+export type ApprovedPending = ApplyResult | {
+    canary: TrafficCanary;
+};
+
+// @public
+export function approvePending(dir: string, id: string, approvedBy: string, options?: ApprovePendingOptions): Promise<ApprovedPending>;
+
+// @public
+export interface ApprovePendingOptions {
+    db?: SqlDatabase;
+}
 
 // @public
 export interface AuditEntry {
@@ -2325,6 +2335,7 @@ export function startCanary(db: SqlDatabase, dir: string, input: StartCanaryInpu
 // @public
 export interface StartCanaryInput {
     agent?: string;
+    approvedBy?: string;
     base: Harness;
     cycle?: string;
     maxAlwaysOnChars?: number;
@@ -2592,6 +2603,7 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
 // @public
 export interface TrafficCanary {
     agent?: string;
+    approvedBy?: string;
     base: Harness;
     baseRevision: string;
     candidate: Harness;

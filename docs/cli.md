@@ -507,8 +507,13 @@ npx lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
   harness's hash, and a file whose content doesn't match its id is left out.
   `--show <id>` prints that proposal's review card.
 - `approve <dir> <id> --by <name> [--check <module>] [--model provider/model]
-  [--read-only tool]... [--no-guard]` applies the proposal through
-  `applyProposal()` as that person's approval and removes it from the queue. A
+  [--read-only tool]... [--no-guard] [--db path]` applies the proposal through
+  `applyProposal()` as that person's approval and removes it from the queue.
+  With `canary.traffic` set, it starts the
+  [traffic canary](./improve.md#live-traffic-canary-opt-in) instead and writes
+  nothing yet, reading the observe database at `--db` (default
+  `~/.lousho/observe.db`); the proposal is applied as that approval when the
+  canary passes, and the watcher guards it then. A
   proposal whose agent directory changed since it was made is refused and
   marked stale; run improve again. Any other refusal is recorded on the entry
   and shown by `pending`. Right after the write it runs the corpus guard, as an
@@ -584,7 +589,8 @@ defaults to `false` in manual mode.
 `"enabled": false` stops the loop for this agent. `budget.maxTokensPerCycle`,
 `canary.traffic` (`share` up to 0.25, `sessions` up to 50) and `library.domain`
 are unset unless you set them. With `canary.traffic` set, a proposal that
-passes the replay canary starts the
+passes the replay canary (in auto mode), or that a person approves (in manual
+mode), starts the
 [live traffic canary](./improve.md#live-traffic-canary-opt-in), which serves it
 to real sessions, instead of being written.
 `loadImproveSettings()` reads the file. See

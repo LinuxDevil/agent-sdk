@@ -35,6 +35,8 @@ export interface TrafficCanary {
   agent?: string;
   /** The instructions length limit the proposal was gated with. */
   maxAlwaysOnChars?: number;
+  /** The person who approved the proposal in manual mode; the promote applies in their name. */
+  approvedBy?: string;
 }
 
 export const MAX_CANARY_SHARE = 0.25;
@@ -60,6 +62,7 @@ function isTrial(value: TrafficCanary): boolean {
 function isShaped(value: TrafficCanary): boolean {
   if (!isHarness(value.candidate) || !isHarness(value.base) || typeof value.startedAt !== 'string' || Number.isNaN(Date.parse(value.startedAt))) return false;
   if (!SHA.test(value.revision) || value.revision !== harnessHash(value.candidate) || value.baseRevision !== harnessHash(value.base)) return false;
+  if (value.approvedBy !== undefined && (typeof value.approvedBy !== 'string' || value.approvedBy.trim() === '')) return false;
   return value.result?.outcome === 'proposal' && isHarness(value.result.harness) && harnessHash(value.result.harness) === value.revision;
 }
 
@@ -75,7 +78,7 @@ function startedInAudit(dir: string, canary: TrafficCanary): boolean {
 function checked(dir: string, value: TrafficCanary): TrafficCanary {
   if (!isShaped(value)) refuse('canary.json does not match its revisions; it was edited or is corrupted.');
   if (!isTrial(value)) refuse(`canary.json asks for more than the caps allow (share ≤ ${MAX_CANARY_SHARE}, sessions ≤ ${MAX_CANARY_SESSIONS}).`);
-  const failedChecks = Array.isArray(value.result.failedChecks) ? value.result.failedChecks : [];
+  const failedChecks = value.approvedBy === undefined && Array.isArray(value.result.failedChecks) ? value.result.failedChecks : [];
   const errors = validateHarness(value.candidate, value.base, { maxAlwaysOnChars: value.maxAlwaysOnChars ?? DEFAULT_MAX_ALWAYS_ON, failedChecks });
   if (errors.length > 0) refuse(`the candidate fails validation: ${errors.join(' ')}`);
   if (!startedInAudit(dir, value)) refuse('the audit log has no matching canary-start entry, or its hash chain is broken.');
@@ -141,6 +144,7 @@ function serving(dir: string, baseRevision: string, skills: readonly Skill[], en
     if (!traffic || isPaused(dir, settings, env)) return closed;
     const canary = readCanary(dir);
     if (!canary || canary.baseRevision !== baseRevision) return closed;
+    if (settings.approval === 'manual' && canary.approvedBy === undefined) return closed;
     const arm = { instructions: canary.candidate.instructions, skills: armSkills(canary.candidate, skills) };
     return { key, arm, share: Math.min(canary.share, traffic.share), cap: Math.min(canary.sessions, traffic.sessions), trial: `${canary.revision}:${canary.startedAt}` };
   } catch {
