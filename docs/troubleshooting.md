@@ -137,7 +137,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 
 ## Getting help
 
-Open an issue at <https://github.com/LinuxDevil/agent-sdk/issues>. Include:
+Open an issue at <https://github.com/LinuxDevil/lousho/issues>. Include:
 
 - the output of `npx lousho doctor --json`,
 - the error code (`LOUSHO_...`) and the full message,

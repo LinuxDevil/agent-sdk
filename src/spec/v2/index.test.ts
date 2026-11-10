@@ -54,6 +54,7 @@ describe('lousho/spec (S23)', () => {
       'secretRefSchema',
       'skillRefSchema',
       'specNodeIds',
+      'specToAgentDir',
       'specToCode',
       'subAgentNodeIndexes',
       'toolRefSchema',

@@ -82,7 +82,18 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
     await runtimeClient.steer(agentId, message);
   }, [agentId]);
 
-  return { debugMode, setDebugMode, runAgent, setBreakpoints, continueDebug, stepDebug, stopAgent, approveAgent, steerRun };
+  const answerQuestion = useCallback(
+    async (answer: string) => {
+      const approvalId = runStatus?.pendingApproval?.approvalId;
+      if (!approvalId) {
+        throw new Error('answerQuestion: no pending question for this agent');
+      }
+      await runtimeClient.answer(agentId, approvalId, answer);
+    },
+    [agentId, runStatus]
+  );
+
+  return { debugMode, setDebugMode, runAgent, setBreakpoints, continueDebug, stepDebug, stopAgent, approveAgent, steerRun, answerQuestion };
 }
 
 interface ChatControlDeps {

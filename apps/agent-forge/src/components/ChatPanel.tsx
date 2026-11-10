@@ -20,6 +20,7 @@ import { CornerDownRight, Play, Plus, Sparkles, User, Wrench, type LucideIcon } 
 import { useAppState } from '../state/AppState';
 import type { ChatMessage } from '../../shared/wireTypes';
 import { ApprovalCard } from './ApprovalCard';
+import { QuestionCard } from './test/QuestionCard';
 import { ChatComposer } from './ChatComposer';
 import { formatTime } from './formatTime';
 
@@ -223,11 +224,20 @@ function ApprovalBubble({ pendingApproval }: { pendingApproval: PendingApproval 
       <Avatar Icon={Sparkles} />
       <div className="chat-msg-body">
         <Speaker name="Agent" />
-        <ApprovalCard
-          className="chat-approval-card"
-          toolName={pendingApproval.toolName}
-          args={pendingApproval.args}
-        />
+        {pendingApproval.kind === 'question' && pendingApproval.question !== undefined ? (
+          <QuestionCard
+            className="chat-question-card"
+            question={pendingApproval.question}
+            deadline={pendingApproval.deadline}
+          />
+        ) : (
+          <ApprovalCard
+            className="chat-approval-card"
+            toolName={pendingApproval.toolName}
+            args={pendingApproval.args}
+            deadline={pendingApproval.deadline}
+          />
+        )}
       </div>
     </div>
   );
@@ -295,6 +305,7 @@ export function ChatPanel({ aboveComposer }: { aboveComposer?: ReactNode }) {
       <ChatComposer
         viewing={viewing}
         isPausedForApproval={!!pendingApproval}
+        pausedForQuestion={pendingApproval?.kind === 'question'}
         inputDisabled={isInputDisabled(viewing, liveRunState)}
       />
     </div>

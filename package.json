@@ -183,6 +183,16 @@
         "default": "./dist/improve/index.js"
       }
     },
+    "./workspaces": {
+      "import": {
+        "types": "./dist/workspaces/index.d.mts",
+        "default": "./dist/workspaces/index.mjs"
+      },
+      "require": {
+        "types": "./dist/workspaces/index.d.ts",
+        "default": "./dist/workspaces/index.js"
+      }
+    },
     "./traces": {
       "import": {
         "types": "./dist/traces/index.d.mts",
@@ -412,10 +422,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LinuxDevil/agent-sdk.git"
+    "url": "git+https://github.com/LinuxDevil/lousho.git"
   },
   "bugs": {
-    "url": "https://github.com/LinuxDevil/agent-sdk/issues"
+    "url": "https://github.com/LinuxDevil/lousho/issues"
   },
   "homepage": "https://lousho.com/introduction",
   "engines": {

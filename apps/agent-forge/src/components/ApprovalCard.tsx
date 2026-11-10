@@ -8,10 +8,11 @@
  * (Topbar renders it inline in its button row; ChatPanel renders it as a
  * message-thread bubble), which is left to the caller via `className`.
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, ShieldAlert, X, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { JsonView } from '../ui/JsonView';
+import { useDeadline } from './test/useDeadline';
 
 export interface ApprovalCardProps {
   toolName: string;
@@ -23,6 +24,38 @@ export interface ApprovalCardProps {
    * toolbar's one-line version, the arguments in its tooltip.
    */
   variant?: 'card' | 'inline';
+  /** The pause's self-resolution deadline (PendingApprovalInfo.deadline, ISO) - the "Decide within" line's countdown target. */
+  deadline?: string;
+}
+
+/**
+ * The pause's live deadline line ("Decide within 4m 12s", or "Answer
+ * within" on a question card): the visible text ticks every second while
+ * the `aria-live` announcement is re-spoken at most every fifteen, so a
+ * screen reader isn't drowned by the countdown. Shared by ApprovalCard
+ * (verb 'Decide') and test/QuestionCard (verb 'Answer').
+ */
+export function DeadlineLine({ deadline, verb }: { deadline: string; verb: 'Decide' | 'Answer' }) {
+  const { remaining, urgent } = useDeadline(deadline);
+  const [spoken, setSpoken] = useState(remaining);
+  const lastSpokenAt = useRef(Date.now());
+  useEffect(() => {
+    const elapsed = Date.now() - lastSpokenAt.current;
+    if (elapsed >= 15_000) {
+      lastSpokenAt.current = Date.now();
+      setSpoken(remaining);
+    }
+  }, [remaining]);
+  return (
+    <div className={`deadline-line${urgent ? ' urgent' : ''}`}>
+      <span aria-hidden="true">
+        {verb} within {remaining}
+      </span>
+      <span className="visually-hidden" aria-live="polite">
+        {verb} within {spoken}
+      </span>
+    </div>
+  );
 }
 
 type Decision = 'approve' | 'reject';
@@ -99,7 +132,7 @@ function DecisionButtons({ size, tooltip = false }: { size: string; tooltip?: bo
   );
 }
 
-export function ApprovalCard({ toolName, args, className, variant = 'card' }: ApprovalCardProps) {
+export function ApprovalCard({ toolName, args, className, variant = 'card', deadline }: ApprovalCardProps) {
   const classes = `approval-card approval-card-${variant}${className ? ` ${className}` : ''}`;
   if (variant === 'inline') {
     // The tool name is the one fact this prompt must show: it is the only text, and the tooltip repeats it with the args.
@@ -111,6 +144,7 @@ export function ApprovalCard({ toolName, args, className, variant = 'card' }: Ap
           <b className="approval-tool">{toolName}</b>
           <span className="visually-hidden">?</span>
         </span>
+        {deadline !== undefined && <DeadlineLine deadline={deadline} verb="Decide" />}
         <DecisionButtons size=" btn-sm" tooltip />
       </div>
     );
@@ -131,6 +165,7 @@ export function ApprovalCard({ toolName, args, className, variant = 'card' }: Ap
       <div className="approval-args">
         <JsonView value={args} />
       </div>
+      {deadline !== undefined && <DeadlineLine deadline={deadline} verb="Decide" />}
       <DecisionButtons size="" />
     </div>
   );

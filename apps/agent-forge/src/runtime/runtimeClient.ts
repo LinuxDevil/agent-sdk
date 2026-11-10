@@ -412,6 +412,18 @@ class RuntimeClient implements AgentApi {
     });
   }
 
+  /**
+   * Answers a `kind: 'question'` pause (an `ask_question` call) - the same
+   * `/approve` route as approve(), with `{ answer }` instead of
+   * `{ approved }`; the server 400s the mismatched shape.
+   */
+  async answer(agentId: string, approvalId: string, answer: string): Promise<AgentRunStatusPayload> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ approvalId, answer }),
+    });
+  }
+
   /** Current breakpoints + pause state for `agentId` (see debugController.ts). */
   async debugState(agentId: string): Promise<DebugStatePayload> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/debug`, { method: 'GET' });
