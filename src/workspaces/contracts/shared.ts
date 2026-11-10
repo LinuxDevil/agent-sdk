@@ -10,8 +10,7 @@ export type SharedFolder = (typeof SHARED_FOLDERS)[number];
 /** The only file that may declare the workspace policy. */
 export const SHARED_POLICY_FILE = 'shared/policies/policy.json';
 
-/** The shared folders whose files other files may reference as `shared:<path>`. */
-export const REFERENCEABLE_SHARED_FOLDERS = Object.freeze(['knowledge', 'brand', 'resources'] as const);
+const REFERENCEABLE_SHARED_FOLDERS = Object.freeze(['knowledge', 'brand', 'resources'] as const);
 
 /** Where files of each shared folder must sit, as workspace-relative path patterns. */
 export const SHARED_PATH_PATTERNS: Readonly<Record<SharedFolder, RegExp>> = Object.freeze({
