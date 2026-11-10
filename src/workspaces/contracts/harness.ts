@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isSafeRelativePath } from '../../spec/v2/common';
+import { isSafeRelativePath, refineUniqueIds } from '../../spec/v2/common';
 import { isRawJsonSchema } from '../../utils/zodCompat';
 import { KEBAB_CASE, SEMVER, workspacePathSchema } from './common';
 import { harnessKeyErrors } from './forbiddenKeys';
@@ -14,7 +14,7 @@ export interface Harness {
   version?: string;
   /** Profile refs this harness extends, composed in order. */
   extends?: string[];
-  /** Prose `.md` files, relative to the harness folder. */
+  /** Prose `.md` files, relative to the folder that owns the harness: the page folder, the workspace root for the base harness, or the profile's folder. */
   instructions?: string[];
   /** Who the output is for. */
   audience?: {
@@ -100,7 +100,7 @@ export interface Harness {
   };
   /** Extra context for the page. */
   context?: {
-    /** Relative paths of resources to load. */
+    /** Resources to load, relative to the folder that owns the harness: the page folder, the workspace root for the base harness, or the profile's folder. */
     resources?: string[];
   };
 }
@@ -133,15 +133,12 @@ const outputSchemaRef = z.custom<Record<string, unknown> | string>(
   'must be a JSON Schema object, or a relative path to one inside the workspace'
 );
 
-function uniqueBy<K extends string, T extends Record<K, string>>(field: K) {
-  return (items: T[], ctx: z.RefinementCtx): void => {
-    const seen = new Set<string>();
-    items.forEach((item, index) => {
-      const value = item[field];
-      if (seen.has(value)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate '${value}'`, path: [index, field] });
-      seen.add(value);
-    });
-  };
+function refineUniqueNames(items: { name: string }[], ctx: z.RefinementCtx): void {
+  const seen = new Set<string>();
+  items.forEach(({ name }, index) => {
+    if (seen.has(name)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: `duplicate name '${name}'`, path: [index, 'name'] });
+    seen.add(name);
+  });
 }
 
 const criterionSchema = z
@@ -170,7 +167,7 @@ export const harnessObjectSchema = z
         schema: outputSchemaRef.optional(),
         artifacts: z
           .array(z.object({ name: nonEmpty, mediaType: nonEmpty, required: z.boolean().optional() }).strict())
-          .superRefine(uniqueBy('name'))
+          .superRefine(refineUniqueNames)
           .optional(),
       })
       .strict()
@@ -181,10 +178,10 @@ export const harnessObjectSchema = z
       .optional(),
     constraints: z
       .array(z.object({ id: kebabId, text: nonEmpty }).strict())
-      .superRefine(uniqueBy('id'))
+      .superRefine(refineUniqueIds)
       .optional(),
     evaluation: z
-      .object({ criteria: z.array(criterionSchema).superRefine(uniqueBy('id')), threshold: z.number().min(0).max(1).optional() })
+      .object({ criteria: z.array(criterionSchema).superRefine(refineUniqueIds), threshold: z.number().min(0).max(1).optional() })
       .strict()
       .optional(),
     runtime: z

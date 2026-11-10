@@ -26,7 +26,7 @@ const instagram: Harness = {
     threshold: 0.8,
   },
   runtime: { limits: { maxDurationMs: 120000, maxTurns: 20, maxCostUsd: 0.5 }, modelHints: { temperature: 0.7, reasoning: 'low' } },
-  context: { resources: ['shared/brand/palette.md'] },
+  context: { resources: ['resources/brand-palette.md'] },
 };
 
 function issuesOf(value: unknown, schema = harnessSchema): { path: (string | number)[]; message: string }[] {
@@ -123,13 +123,53 @@ describe('harnessSchema', () => {
     expect(issuesOf(doc).map((i) => i.message)).toEqual([r13('platform.requirements.properties.tools', 'tools')]);
   });
 
+  it('accepts dependentRequired names under an embedded JSON Schema', () => {
+    const schema = { type: 'object', properties: { model: { type: 'string' }, brand: { type: 'string' } }, dependentRequired: { model: ['brand'] }, dependencies: { tools: ['brand'] } };
+    expect(issuesOf({ ...instagram, inputs: { schema } })).toEqual([]);
+  });
+
+  it('scans a name-map entry whose value is not a schema', () => {
+    const schema = { type: 'object', $defs: { tools: ['Bash'] } };
+    expect(issuesOf({ ...instagram, inputs: { schema } }).map((i) => i.message)).toEqual([r13('inputs.schema.$defs.tools', 'tools')]);
+    const required = { type: 'object', dependentRequired: { model: { type: 'string' } } };
+    expect(issuesOf({ ...instagram, inputs: { schema: required } }).map((i) => i.message)).toEqual([r13('inputs.schema.dependentRequired.model', 'model')]);
+  });
+
+  it('reports deep nesting and cycles as issues instead of throwing', () => {
+    let deep: unknown = ['x'];
+    for (let level = 0; level < 2000; level++) deep = [deep];
+    const deepIssues = issuesOf({ ...instagram, platform: { id: 'x', requirements: { deep } } });
+    expect(deepIssues).toHaveLength(1);
+    expect(deepIssues[0].message).toMatch(/^harness\.platform\.requirements\.deep(\[0\])+: nests deeper than 64 levels$/);
+    const cyclic: Record<string, unknown> = { id: 'x' };
+    cyclic.requirements = { self: cyclic };
+    const cyclicIssues = issuesOf({ ...instagram, platform: cyclic });
+    expect(cyclicIssues).toHaveLength(1);
+    expect(cyclicIssues[0].message).toContain('nests deeper than 64 levels');
+  });
+
+  it('rejects inherited properties, getters, Maps and class instances as not plain JSON data', () => {
+    const inherited = Object.assign(Object.create({ platform: { id: 'x', requirements: { tools: ['Bash'] } } }) as object, { schema: 'lousho.harness/1' });
+    expect(issuesOf(inherited)).toEqual([{ path: [], message: 'harness: must be plain JSON data: no class instances, Maps, inherited properties or getters' }]);
+    let reads = 0;
+    const getter = Object.defineProperty({ schema: 'lousho.harness/1' }, 'platform', { enumerable: true, get: () => (++reads > 1 ? { id: 'x', requirements: { tools: ['Bash'] } } : { id: 'x' }) });
+    expect(issuesOf(getter).map((i) => i.path)).toEqual([['platform']]);
+    const hidden = Object.defineProperty({ schema: 'lousho.harness/1' }, 'platform', { enumerable: false, value: { id: 'x', requirements: { tools: ['Bash'] } } });
+    expect(issuesOf(hidden).map((i) => i.message)).toEqual([r13('platform.requirements.tools', 'tools')]);
+    expect(issuesOf({ ...instagram, platform: { id: 'x', requirements: { map: new Map([['tools', ['Bash']]]) } } }).map((i) => i.path)).toEqual([['platform', 'requirements', 'map']]);
+    const properties = Object.defineProperty({}, 'name', { enumerable: true, get: () => ({ type: 'string' }) });
+    expect(issuesOf({ ...instagram, inputs: { schema: { type: 'object', properties } } }).map((i) => i.path)).toEqual([['inputs', 'schema', 'properties', 'name']]);
+    class Requirements { tools = ['Bash']; }
+    expect(issuesOf({ ...instagram, platform: { id: 'x', requirements: new Requirements() } }).map((i) => i.path)).toEqual([['platform', 'requirements']]);
+  });
+
   it('a profile without id and version is an error', () => {
     const profile = { schema: 'lousho.harness/1', id: 'social-post', version: '2.0.1', instructions: ['social.md'] };
     expect(issuesOf(profile, harnessProfileSchema)).toEqual([]);
     const { id: _id, ...noId } = profile;
     const { version: _version, ...noVersion } = profile;
-    expect(issuesOf(noId, harnessProfileSchema)).toEqual([{ path: ['id'], message: 'Required' }]);
-    expect(issuesOf(noVersion, harnessProfileSchema)).toEqual([{ path: ['version'], message: 'Required' }]);
+    expect(issuesOf(noId, harnessProfileSchema).map((issue) => issue.path)).toEqual([['id']]);
+    expect(issuesOf(noVersion, harnessProfileSchema).map((issue) => issue.path)).toEqual([['version']]);
     expect(issuesOf({ ...profile, version: 'v2' }, harnessProfileSchema)[0].path).toEqual(['version']);
     expect(issuesOf({ ...profile, id: 'Social Post' }, harnessProfileSchema)[0].path).toEqual(['id']);
     expect(issuesOf({ ...profile, tools: [] }, harnessProfileSchema).map((i) => i.message)).toEqual([r13('tools', 'tools')]);
@@ -174,9 +214,9 @@ describe('harnessSchema', () => {
       outputs: { artifacts: [{ name: 'image', mediaType: 'image/png' }, { name: 'image', mediaType: 'image/jpeg' }] },
     };
     expect(issuesOf(doc)).toEqual([
-      { path: ['outputs', 'artifacts', 1, 'name'], message: "duplicate 'image'" },
-      { path: ['constraints', 1, 'id'], message: "duplicate 'a'" },
-      { path: ['evaluation', 'criteria', 1, 'id'], message: "duplicate 'c'" },
+      { path: ['outputs', 'artifacts', 1, 'name'], message: "duplicate name 'image'" },
+      { path: ['constraints', 1, 'id'], message: "duplicate id 'a'" },
+      { path: ['evaluation', 'criteria', 1, 'id'], message: "duplicate id 'c'" },
     ]);
   });
 
