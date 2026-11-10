@@ -133,10 +133,10 @@
     "audience.description": [
       "workspace:platforms/instagram"
     ],
-    "audience.traits.persona": [
+    "audience.traits[\"persona\"]": [
       "workspace:platforms/instagram"
     ],
-    "audience.traits.tone": [
+    "audience.traits[\"tone\"]": [
       "workspace:platforms/instagram"
     ],
     "capabilities.require": [
@@ -147,16 +147,16 @@
       "workspace:platforms/instagram",
       "page"
     ],
-    "constraints.caption-length": [
+    "constraints[\"caption-length\"]": [
       "workspace:platforms/instagram"
     ],
-    "constraints.cta": [
+    "constraints[\"cta\"]": [
       "page"
     ],
-    "constraints.no-competitors": [
+    "constraints[\"no-competitors\"]": [
       "workspace base"
     ],
-    "constraints.plain-language": [
+    "constraints[\"plain-language\"]": [
       "workspace base"
     ],
     "context.resources": [
@@ -168,13 +168,13 @@
       "workspace:platforms/instagram",
       "page"
     ],
-    "evaluation.criteria.caption-length": [
+    "evaluation.criteria[\"caption-length\"]": [
       "workspace:platforms/instagram"
     ],
-    "evaluation.criteria.has-cta": [
+    "evaluation.criteria[\"has-cta\"]": [
       "page"
     ],
-    "evaluation.criteria.on-brand": [
+    "evaluation.criteria[\"on-brand\"]": [
       "workspace base"
     ],
     "evaluation.threshold": [
@@ -191,10 +191,10 @@
     "outputs.artifacts": [
       "page"
     ],
-    "outputs.artifacts.caption": [
+    "outputs.artifacts[\"caption\"]": [
       "page"
     ],
-    "outputs.artifacts.image": [
+    "outputs.artifacts[\"image\"]": [
       "page"
     ],
     "outputs.schema": [
@@ -204,16 +204,16 @@
     "platform.id": [
       "page"
     ],
-    "platform.requirements.aspectRatio": [
+    "platform.requirements[\"aspectRatio\"]": [
       "workspace:platforms/instagram"
     ],
-    "platform.requirements.captionMaxChars": [
+    "platform.requirements[\"captionMaxChars\"]": [
       "page"
     ],
-    "platform.requirements.hashtags.banned": [
+    "platform.requirements[\"hashtags\"][\"banned\"]": [
       "workspace:platforms/instagram"
     ],
-    "platform.requirements.hashtags.max": [
+    "platform.requirements[\"hashtags\"][\"max\"]": [
       "workspace:platforms/instagram"
     ],
     "runtime.limits.maxCostUsd": [

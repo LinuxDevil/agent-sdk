@@ -57,48 +57,56 @@ function isPlainObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function refName(ref: string): string {
-  const at = ref.lastIndexOf('@');
-  return at > 0 ? ref.slice(0, at) : ref;
+interface Walk {
+  bySource: Map<string, HarnessLayer>;
+  ordered: HarnessLayer[];
+  chains: Map<HarnessLayer, string[]>;
 }
 
-function findLayer(layers: readonly HarnessLayer[], ref: string): HarnessLayer | undefined {
-  const exact = layers.find((layer) => layer.source === ref);
-  if (exact) return exact;
-  const named = layers.filter((layer) => refName(layer.source) === refName(ref));
-  return named.length === 1 ? named[0] : undefined;
+function indexBySource(layers: readonly HarnessLayer[]): Map<string, HarnessLayer> {
+  const bySource = new Map<string, HarnessLayer>();
+  for (const layer of layers) {
+    if (bySource.has(layer.source)) throw invalid(`two layers have the source '${layer.source}'; each source must appear once`);
+    bySource.set(layer.source, layer);
+  }
+  return bySource;
 }
 
-function rootRank(layer: HarnessLayer): number {
-  if (layer.source === BASE_SOURCE) return 0;
-  return layer.source === PAGE_SOURCE ? 2 : 1;
-}
-
-function resolveTarget(layers: readonly HarnessLayer[], owner: HarnessLayer, ref: string): HarnessLayer {
-  const target = findLayer(layers, ref);
+function resolveTarget(walk: Walk, owner: HarnessLayer, ref: string): HarnessLayer {
+  const target = walk.bySource.get(ref);
   if (!target) throw invalid(`${owner.source} extends '${ref}', but no layer has that source`);
   return target;
 }
 
-function visit(layers: readonly HarnessLayer[], layer: HarnessLayer, path: string[], ordered: HarnessLayer[]): void {
-  if (path.length - 1 > MAX_DEPTH) throw invalid(`harness extends deeper than ${MAX_DEPTH}: ${path.join(' -> ')}`);
+function childChain(walk: Walk, target: HarnessLayer, trail: string[]): string[] {
+  return walk.chains.get(target) ?? visit(walk, target, trail);
+}
+
+function visit(walk: Walk, layer: HarnessLayer, path: string[]): string[] {
+  let longest: string[] = [];
   for (const ref of layer.harness.extends ?? []) {
-    const target = resolveTarget(layers, layer, ref);
+    const target = resolveTarget(walk, layer, ref);
     const trail = [...path, target.source];
     if (path.includes(target.source)) throw invalid(`harness extends cycle: ${trail.join(' -> ')}`);
-    if (!ordered.includes(target)) visit(layers, target, trail, ordered);
+    const chain = childChain(walk, target, trail);
+    if (chain.length > longest.length) longest = chain;
   }
-  if (!ordered.includes(layer)) ordered.push(layer);
+  const chain = [layer.source, ...longest];
+  if (path.length + longest.length - 1 > MAX_DEPTH) throw invalid(`harness extends deeper than ${MAX_DEPTH}: ${[...path, ...longest].join(' -> ')}`);
+  walk.chains.set(layer, chain);
+  walk.ordered.push(layer);
+  return chain;
 }
 
 function orderLayers(layers: readonly HarnessLayer[]): HarnessLayer[] {
-  const referenced = new Set(layers.flatMap((layer) => (layer.harness.extends ?? []).map((ref) => findLayer(layers, ref))));
-  const roots = layers.filter((layer) => !referenced.has(layer)).sort((a, b) => rootRank(a) - rootRank(b));
-  const ordered: HarnessLayer[] = [];
-  for (const layer of [...roots, ...layers]) {
-    if (!ordered.includes(layer)) visit(layers, layer, [layer.source], ordered);
+  const walk: Walk = { bySource: indexBySource(layers), ordered: [], chains: new Map() };
+  for (const source of [BASE_SOURCE, PAGE_SOURCE]) {
+    const root = walk.bySource.get(source);
+    if (root && !walk.chains.has(root)) visit(walk, root, [source]);
   }
-  return ordered;
+  const unreached = layers.filter((layer) => !walk.chains.has(layer)).map((layer) => layer.source);
+  if (unreached.length > 0) throw invalid(`layers not reached from the workspace base or the page: ${unreached.sort().join(', ')}`);
+  return walk.ordered;
 }
 
 function addSource(draft: Draft, path: string, source: string): void {
@@ -112,7 +120,7 @@ function setSource(draft: Draft, path: string, source: string): void {
 
 function clearBelow(draft: Draft, path: string): void {
   for (const key of Object.keys(draft.provenance)) {
-    if (key.startsWith(`${path}.`)) delete draft.provenance[key];
+    if (key.startsWith(`${path}.`) || key.startsWith(`${path}[`)) delete draft.provenance[key];
   }
 }
 
@@ -128,7 +136,15 @@ function composeInstructions(draft: Draft, layer: HarnessLayer): void {
   addSource(draft, 'instructions', layer.source);
 }
 
-function deepMerge(draft: Draft, current: unknown, next: unknown, path: string, source: string): unknown {
+function keyPath(path: string, key: string): string {
+  return `${path}[${JSON.stringify(key)}]`;
+}
+
+function setOwn(target: JsonObject, key: string, value: unknown): void {
+  Object.defineProperty(target, key, { value, enumerable: true, writable: true, configurable: true });
+}
+
+function deepMerge(draft: Draft, current: unknown, next: unknown, path: string, source: string, freeText = false): unknown {
   if (!isPlainObject(next)) {
     clearBelow(draft, path);
     setSource(draft, path, source);
@@ -136,7 +152,10 @@ function deepMerge(draft: Draft, current: unknown, next: unknown, path: string, 
   }
   if (!isPlainObject(current)) delete draft.provenance[path];
   const merged: JsonObject = isPlainObject(current) ? { ...current } : {};
-  for (const [key, value] of Object.entries(next)) merged[key] = deepMerge(draft, merged[key], value, `${path}.${key}`, source);
+  for (const [key, value] of Object.entries(next)) {
+    const own = Object.prototype.hasOwnProperty.call(merged, key) ? merged[key] : undefined;
+    setOwn(merged, key, deepMerge(draft, own, value, freeText ? keyPath(path, key) : `${path}.${key}`, source, true));
+  }
   return merged;
 }
 
@@ -170,9 +189,9 @@ function unionBy<T>(draft: Draft, current: T[] | undefined, next: T[] | undefine
   const items = new Map((current ?? []).map((item) => [key(item), item]));
   for (const item of next) {
     items.set(key(item), item);
-    setSource(draft, `${path}.${key(item)}`, source);
+    setSource(draft, keyPath(path, key(item)), source);
   }
-  draft.provenance[path] = [...new Set([...items.keys()].flatMap((id) => draft.provenance[`${path}.${id}`] ?? []))];
+  draft.provenance[path] = [...new Set([...items.keys()].flatMap((id) => draft.provenance[keyPath(path, id)] ?? []))];
   return [...items.values()];
 }
 
@@ -277,7 +296,7 @@ function sortedProvenance(provenance: Record<string, string[]>): Record<string, 
   );
 }
 
-/** Compose resolved harness layers, in order, into one effective harness. */
+/** Compose resolved harness layers into one effective harness: the base harness, then each `extends` ref matched exactly to a layer `source`, depth first, then the page. */
 export function composeHarness(layers: readonly HarnessLayer[]): EffectiveHarness {
   const ordered = orderLayers(layers);
   const draft: Draft = { fields: {}, sections: [], provenance: {} };

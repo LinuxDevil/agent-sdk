@@ -137,13 +137,13 @@
     "audience.description": [
       "global:audiences/general@1.2.0"
     ],
-    "audience.traits.level": [
+    "audience.traits[\"level\"]": [
       "workspace:formats/educational"
     ],
-    "audience.traits.persona": [
+    "audience.traits[\"persona\"]": [
       "workspace:platforms/instagram"
     ],
-    "audience.traits.tone": [
+    "audience.traits[\"tone\"]": [
       "workspace:platforms/instagram"
     ],
     "capabilities.require": [
@@ -156,16 +156,16 @@
       "global:audiences/general@1.2.0",
       "page"
     ],
-    "constraints.caption-length": [
+    "constraints[\"caption-length\"]": [
       "workspace:platforms/instagram"
     ],
-    "constraints.cta": [
+    "constraints[\"cta\"]": [
       "page"
     ],
-    "constraints.no-jargon": [
+    "constraints[\"no-jargon\"]": [
       "global:audiences/general@1.2.0"
     ],
-    "constraints.one-idea": [
+    "constraints[\"one-idea\"]": [
       "workspace:formats/educational"
     ],
     "context.resources": [
@@ -177,13 +177,13 @@
       "workspace:formats/educational",
       "page"
     ],
-    "evaluation.criteria.caption-length": [
+    "evaluation.criteria[\"caption-length\"]": [
       "workspace:platforms/instagram"
     ],
-    "evaluation.criteria.has-cta": [
+    "evaluation.criteria[\"has-cta\"]": [
       "page"
     ],
-    "evaluation.criteria.teaches-one-idea": [
+    "evaluation.criteria[\"teaches-one-idea\"]": [
       "workspace:formats/educational"
     ],
     "evaluation.threshold": [
@@ -201,10 +201,10 @@
     "outputs.artifacts": [
       "page"
     ],
-    "outputs.artifacts.caption": [
+    "outputs.artifacts[\"caption\"]": [
       "page"
     ],
-    "outputs.artifacts.image": [
+    "outputs.artifacts[\"image\"]": [
       "page"
     ],
     "outputs.schema": [
@@ -214,16 +214,16 @@
     "platform.id": [
       "page"
     ],
-    "platform.requirements.aspectRatio": [
+    "platform.requirements[\"aspectRatio\"]": [
       "workspace:platforms/instagram"
     ],
-    "platform.requirements.captionMaxChars": [
+    "platform.requirements[\"captionMaxChars\"]": [
       "page"
     ],
-    "platform.requirements.hashtags.banned": [
+    "platform.requirements[\"hashtags\"][\"banned\"]": [
       "workspace:platforms/instagram"
     ],
-    "platform.requirements.hashtags.max": [
+    "platform.requirements[\"hashtags\"][\"max\"]": [
       "workspace:formats/educational"
     ],
     "runtime.limits.maxCostUsd": [

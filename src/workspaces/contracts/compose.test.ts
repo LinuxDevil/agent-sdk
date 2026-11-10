@@ -79,7 +79,7 @@ const general = layer(
 const page = layer(
   'page',
   {
-    extends: ['workspace:platforms/instagram', 'workspace:formats/educational', 'global:audiences/general@^1.2.0'],
+    extends: ['workspace:platforms/instagram', 'workspace:formats/educational', 'global:audiences/general@1.2.0'],
     instructions: ['page.md'],
     platform: { id: 'instagram', requirements: { captionMaxChars: 1000 } },
     outputs: { schema: { merge: 'allOf', type: 'object', required: ['caption'] }, artifacts: [{ name: 'image', mediaType: 'image/jpeg', required: true }, { name: 'caption', mediaType: 'text/plain' }] },
@@ -112,8 +112,8 @@ describe('composeHarness', () => {
       { id: 'no-competitors', text: 'Name competitors only when comparing prices.' },
       { id: 'plain-language', text: 'Use plain language.' },
     ]);
-    expect(effective.provenance['constraints.no-competitors']).toEqual(['page']);
-    expect(effective.provenance['constraints.plain-language']).toEqual(['workspace base']);
+    expect(effective.provenance['constraints["no-competitors"]']).toEqual(['page']);
+    expect(effective.provenance['constraints["plain-language"]']).toEqual(['workspace base']);
   });
 
   it('a page criterion with a base id replaces the base criterion', () => {
@@ -144,7 +144,7 @@ describe('composeHarness', () => {
   });
 
   it('swapping two extends changes the instruction order and the hash', () => {
-    const swapped = layer('page', { ...page.harness, extends: ['workspace:formats/educational', 'workspace:platforms/instagram', 'global:audiences/general@^1.2.0'] }, page.texts);
+    const swapped = layer('page', { ...page.harness, extends: ['workspace:formats/educational', 'workspace:platforms/instagram', 'global:audiences/general@1.2.0'] }, page.texts);
     const before = composeHarness([...profiles, page]);
     const after = composeHarness([...profiles, swapped]);
     expect(before.sources.slice(0, 2)).toEqual(['workspace:platforms/instagram', 'workspace:formats/educational']);
@@ -177,14 +177,69 @@ describe('composeHarness', () => {
     const top = layer('page', { extends: ['workspace:a'] });
     expect(() => composeHarness([a, b, top])).toThrow(ValidationError);
     expect(() => composeHarness([a, b, top])).toThrow('harness extends cycle: page -> workspace:a -> workspace:b -> workspace:a');
-    expect(() => composeHarness([a, b])).toThrow('harness extends cycle: workspace:a -> workspace:b -> workspace:a');
   });
 
   it('extends deeper than 4 is an error naming the path', () => {
     const chain = ['page', 'workspace:p1', 'workspace:p2', 'workspace:p3', 'workspace:p4', 'workspace:p5'];
     const layers = chain.map((source, index) => layer(source, chain[index + 1] ? { extends: [chain[index + 1] as string] } : {}));
     expect(() => composeHarness(layers)).toThrow(`harness extends deeper than 4: ${chain.join(' -> ')}`);
-    expect(composeHarness(layers.slice(1)).sources).toEqual(chain.slice(1).reverse());
+    expect(composeHarness(layers.slice(0, 4).concat(layer('workspace:p4', {}))).sources).toEqual(chain.slice(0, 5).reverse());
+  });
+
+  it('the depth check does not depend on extends order', () => {
+    const pool = [
+      layer('workspace:A', { extends: ['workspace:X'] }),
+      layer('workspace:B', { extends: ['workspace:C'] }),
+      layer('workspace:C', { extends: ['workspace:D'] }),
+      layer('workspace:D', { extends: ['workspace:X'] }),
+      layer('workspace:X', { extends: ['workspace:Y'] }),
+      layer('workspace:Y', {}),
+    ];
+    const message = 'harness extends deeper than 4: page -> workspace:B -> workspace:C -> workspace:D -> workspace:X -> workspace:Y';
+    expect(() => composeHarness([...pool, layer('page', { extends: ['workspace:A', 'workspace:B'] })])).toThrow(message);
+    expect(() => composeHarness([...pool, layer('page', { extends: ['workspace:B', 'workspace:A'] })])).toThrow(message);
+  });
+
+  it('a layer not reached from the base or the page is an error', () => {
+    const a = layer('workspace:a', {});
+    const orphan = layer('workspace:orphan', { runtime: { limits: { maxTurns: 1 } } });
+    const top = layer('page', { extends: ['workspace:a'] });
+    expect(() => composeHarness([a, orphan, top])).toThrow(ValidationError);
+    expect(() => composeHarness([a, orphan, top])).toThrow('layers not reached from the workspace base or the page: workspace:orphan');
+    expect(() => composeHarness([layer('workspace:a', { extends: ['workspace:b'] }), layer('workspace:b', { extends: ['workspace:a'] })])).toThrow('workspace:a, workspace:b');
+  });
+
+  it('the hash does not depend on the input order of the pool', () => {
+    const forward = composeHarness([base, ...profiles, page]);
+    const backward = composeHarness([page, ...[...profiles].reverse(), base]);
+    expect(backward.hash).toBe(forward.hash);
+    expect(backward.sources).toEqual(forward.sources);
+  });
+
+  it('a duplicate source is an error', () => {
+    expect(() => composeHarness([layer('page', {}), layer('page', { runtime: { limits: { maxTurns: 3 } } })])).toThrow("two layers have the source 'page'");
+    expect(() => composeHarness([instagram, structuredClone(instagram), layer('page', { extends: ['workspace:platforms/instagram'] })])).toThrow(
+      "two layers have the source 'workspace:platforms/instagram'"
+    );
+  });
+
+  it('an extends ref must equal a layer source exactly', () => {
+    const pool = [layer('global:x@1.0.0', {}), layer('page', { extends: ['global:x@^2.0.0'] })];
+    expect(() => composeHarness(pool)).toThrow("page extends 'global:x@^2.0.0', but no layer has that source");
+  });
+
+  it('provenance keys put ids and free-text keys in brackets', () => {
+    const effective = composeHarness([layer('page', { outputs: { artifacts: [{ name: 'image.png', mediaType: 'image/png' }] }, platform: { id: 'x', requirements: { 'a.b': 1 } } })]);
+    expect(effective.provenance['outputs.artifacts["image.png"]']).toEqual(['page']);
+    expect(effective.provenance['platform.requirements["a.b"]']).toEqual(['page']);
+    expect(effective.provenance['platform.id']).toEqual(['page']);
+  });
+
+  it('a __proto__ key merges as data, never as a prototype', () => {
+    const requirements = JSON.parse('{"__proto__":{"polluted":1},"a":1}') as Record<string, unknown>;
+    const effective = composeHarness([layer('workspace base', { platform: { id: 'x', requirements: { a: 0 } } }), layer('page', { platform: { id: 'x', requirements } })]);
+    expect(Object.keys(effective.platform?.requirements ?? {})).toEqual(['a', '__proto__']);
+    expect((effective.platform?.requirements as Record<string, unknown>).polluted).toBeUndefined();
   });
 
   it('an extends ref with no layer is an error', () => {
@@ -206,8 +261,8 @@ describe('composeHarness', () => {
     const effective = composeHarness([base, ...profiles, page]);
     expect(effective.audience).toEqual({ description: 'A general audience.', traits: { tone: 'playful', persona: 'creator', level: 'beginner' } });
     expect(effective.platform).toEqual({ id: 'instagram', requirements: { aspectRatio: '4:5', captionMaxChars: 1000, hashtags: { max: 10, banned: ['#ad'] } } });
-    expect(effective.provenance['platform.requirements.hashtags.max']).toEqual(['workspace:formats/educational']);
-    expect(effective.provenance['audience.traits.tone']).toEqual(['workspace:platforms/instagram']);
+    expect(effective.provenance['platform.requirements["hashtags"]["max"]']).toEqual(['workspace:formats/educational']);
+    expect(effective.provenance['audience.traits["tone"]']).toEqual(['workspace:platforms/instagram']);
     expect(effective.outputs?.schema).toEqual({ allOf: [{ type: 'object', properties: { caption: { type: 'string' } } }, { type: 'object', required: ['caption'] }] });
     expect(effective.provenance['outputs.schema']).toEqual(['workspace:platforms/instagram', 'page']);
     expect(effective.outputs?.artifacts).toEqual([{ name: 'image', mediaType: 'image/jpeg', required: true }, { name: 'caption', mediaType: 'text/plain' }]);
@@ -218,18 +273,18 @@ describe('composeHarness', () => {
   });
 
   it('a later schema without merge replaces the whole schema', () => {
-    const replace = layer('page', { inputs: { schema: { type: 'object', properties: { topic: { type: 'string' } } } } });
+    const replace = layer('page', { extends: ['workspace:platforms/instagram'], inputs: { schema: { type: 'object', properties: { topic: { type: 'string' } } } } });
     const effective = composeHarness([instagram, replace]);
     expect(effective.inputs?.schema).toEqual({ type: 'object', properties: { topic: { type: 'string' } } });
     expect(effective.provenance['inputs.schema']).toEqual(['page']);
   });
 
   it('a later deep-merge scalar clears the provenance under the object it replaces', () => {
-    const flatten = layer('page', { platform: { id: 'instagram', requirements: { hashtags: 'none' } } });
+    const flatten = layer('page', { extends: ['workspace:platforms/instagram'], platform: { id: 'instagram', requirements: { hashtags: 'none' } } });
     const effective = composeHarness([instagram, flatten]);
     expect(effective.platform?.requirements?.hashtags).toBe('none');
-    expect(effective.provenance['platform.requirements.hashtags']).toEqual(['page']);
-    expect(effective.provenance['platform.requirements.hashtags.max']).toBeUndefined();
+    expect(effective.provenance['platform.requirements["hashtags"]']).toEqual(['page']);
+    expect(effective.provenance['platform.requirements["hashtags"]["max"]']).toBeUndefined();
   });
 
   it('does not change its input and holds no state between calls', () => {
