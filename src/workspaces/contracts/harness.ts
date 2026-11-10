@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { isSafeRelativePath, refineUniqueIds } from '../../spec/v2/common';
 import { isRawJsonSchema } from '../../utils/zodCompat';
 import { KEBAB_CASE, SEMVER, workspacePathSchema } from './common';
-import { harnessKeyErrors } from './forbiddenKeys';
+import { checkForbiddenKeys, HARNESS_JSON_SCHEMA_PATHS, HARNESS_KEY_RULES } from './forbiddenKeys';
 
 /** A `harness.json` document (`lousho.harness/1`): how a page performs its task, never security or the execution process (R13, R18). */
 export interface Harness {
@@ -212,15 +212,17 @@ export const harnessProfileObjectSchema = harnessObjectSchema.extend({
   version: z.string().regex(SEMVER, 'must be a semver version, e.g. 1.0.0'),
 });
 
-function rejectForbiddenKeys(value: unknown, ctx: z.RefinementCtx): void {
-  for (const error of harnessKeyErrors(value)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error.message, path: error.path });
+function scannedCopy(value: unknown, ctx: z.RefinementCtx): unknown {
+  const { errors, data } = checkForbiddenKeys(value, HARNESS_KEY_RULES, 'harness', HARNESS_JSON_SCHEMA_PATHS);
+  for (const error of errors) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error.message, path: error.path });
+  return errors.length > 0 ? z.NEVER : data;
 }
 
 /** Zod schema for `harness.json` (`lousho.harness/1`) as used by a page or the base harness; a forbidden key anywhere is an R13 or R18 error, and every object is strict. */
-export const harnessSchema: z.ZodType<Harness> = z.any().superRefine(rejectForbiddenKeys).pipe(harnessObjectSchema);
+export const harnessSchema: z.ZodType<Harness> = z.any().transform(scannedCopy).pipe(harnessObjectSchema);
 
 /** Zod schema for a harness profile: `harnessSchema` with `id` and `version` required. */
-export const harnessProfileSchema: z.ZodType<HarnessProfile> = z.any().superRefine(rejectForbiddenKeys).pipe(harnessProfileObjectSchema);
+export const harnessProfileSchema: z.ZodType<HarnessProfile> = z.any().transform(scannedCopy).pipe(harnessProfileObjectSchema);
 
 /** Whether the harness has at least one criterion with an executable `check` (R19). */
 export function hasExecutableCriterion(harness: Harness): boolean {

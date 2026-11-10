@@ -163,6 +163,25 @@ describe('harnessSchema', () => {
     expect(issuesOf({ ...instagram, platform: { id: 'x', requirements: new Requirements() } }).map((i) => i.path)).toEqual([['platform', 'requirements']]);
   });
 
+  it('validates the scanned copy, so a Proxy get trap cannot add keys after the scan', () => {
+    const proxy = new Proxy(
+      { schema: 'lousho.harness/1', platform: { id: 'x' } },
+      { get: (target, key, receiver) => (key === 'platform' ? { id: 'x', requirements: { tools: ['Bash'] } } : Reflect.get(target, key, receiver)) }
+    );
+    const result = harnessSchema.safeParse(proxy);
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toEqual({ schema: 'lousho.harness/1', platform: { id: 'x' } });
+  });
+
+  it('reports a throwing Proxy trap as an issue instead of throwing', () => {
+    const throwingGet = new Proxy({ id: 'x' }, { get: () => { throw new Error('boom'); } });
+    expect(issuesOf({ schema: 'lousho.harness/1', platform: throwingGet })).toEqual([]);
+    const throwingKeys = new Proxy({ schema: 'lousho.harness/1' }, { ownKeys: () => { throw new Error('boom'); } });
+    expect(issuesOf(throwingKeys)).toEqual([{ path: [], message: 'harness: must be plain JSON data: it could not be read' }]);
+    const nested = { ...instagram, platform: { id: 'x', requirements: { deep: new Proxy({}, { getPrototypeOf: () => { throw new Error('boom'); } }) } } };
+    expect(issuesOf(nested)).toEqual([{ path: ['platform', 'requirements', 'deep'], message: 'harness.platform.requirements.deep: must be plain JSON data: it could not be read' }]);
+  });
+
   it('a profile without id and version is an error', () => {
     const profile = { schema: 'lousho.harness/1', id: 'social-post', version: '2.0.1', instructions: ['social.md'] };
     expect(issuesOf(profile, harnessProfileSchema)).toEqual([]);
