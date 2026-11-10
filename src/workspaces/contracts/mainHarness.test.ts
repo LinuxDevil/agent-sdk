@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   crossCheckMainHarness,
-  findForbiddenMainHarnessKeys,
   mainHarnessSchema,
   MAIN_HARNESS_OPTIONALITY,
   type MainHarness,
@@ -39,6 +38,11 @@ const manifest: WorkspaceManifest = workspaceManifestSchema.parse({
   defaults: { limits: { maxConcurrentPages: 3 } },
 });
 
+function messagesOf(value: unknown): string[] {
+  const result = mainHarnessSchema.safeParse(value);
+  return result.success ? [] : result.error.issues.map((issue) => issue.message);
+}
+
 describe('mainHarnessSchema', () => {
   it('accepts the Marketing main harness', () => {
     const result = mainHarnessSchema.safeParse(marketingHarness);
@@ -56,8 +60,8 @@ describe('mainHarnessSchema', () => {
   });
 
   it('a forbidden key is an error naming R13', () => {
-    const errors = findForbiddenMainHarnessKeys({ ...marketingHarness, limits: { maxConcurrentPages: 2, tools: ['x'] } });
-    expect(errors).toEqual(['harness.limits.tools: harnesses describe the task; the runtime enforces tools (R13)']);
+    const errors = messagesOf({ ...marketingHarness, limits: { maxConcurrentPages: 2, tools: ['x'] } });
+    expect(errors).toEqual(['main-harness.limits.tools: harnesses describe the task; the runtime enforces tools (R13)']);
     const result = mainHarnessSchema.safeParse({ ...marketingHarness, permissions: {} });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.issues.some((i) => i.message.includes('(R13)'))).toBe(true);
@@ -74,13 +78,13 @@ describe('mainHarnessSchema', () => {
 
   it('each forbidden key at any depth is an error naming R13 or R18', () => {
     for (const key of ['permissions', 'tools', 'secrets', 'sandbox', 'approvals', 'mcpServers', 'hooks', 'model', 'provider', 'network']) {
-      expect(findForbiddenMainHarnessKeys({ routes: [{ page: 'a', when: 'b', [key]: 1 }] })).toEqual([
-        `harness.routes[0].${key}: harnesses describe the task; the runtime enforces ${key} (R13)`,
+      expect(messagesOf({ routes: [{ page: 'a', when: 'b', [key]: 1 }] })).toEqual([
+        `main-harness.routes[0].${key}: harnesses describe the task; the runtime enforces ${key} (R13)`,
       ]);
     }
     for (const key of ['execution', 'workflow', 'goal', 'steps', 'lead', 'delegates']) {
-      expect(findForbiddenMainHarnessKeys({ presentation: { [key]: 1 } })).toEqual([
-        `harness.presentation.${key}: a harness says what, not how; execution lives in page.json (R18)`,
+      expect(messagesOf({ presentation: { [key]: 1 } })).toEqual([
+        `main-harness.presentation.${key}: a harness says what, not how; execution lives in page.json (R18)`,
       ]);
     }
   });

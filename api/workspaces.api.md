@@ -7,6 +7,9 @@
 import { z } from 'zod';
 
 // @public
+export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
+
+// @public
 export interface Harness {
     audience?: {
         description: string;
@@ -79,6 +82,62 @@ export const harnessSchema: z.ZodType<Harness>;
 
 // @public
 export function hasExecutableCriterion(harness: Harness): boolean;
+
+// @public
+export const MAIN_HARNESS_OPTIONALITY: readonly MainHarnessOptionalityRow[];
+
+// @public
+export interface MainHarness {
+    clarify?: MainHarnessClarify;
+    instructions?: string[];
+    limits?: MainHarnessLimits;
+    onPageFailure?: MainHarnessPageFailure;
+    presentation?: MainHarnessPresentation;
+    routes?: MainHarnessRoute[];
+    schema: 'lousho.main-harness/1';
+}
+
+// @public
+export interface MainHarnessClarify {
+    askWhen: string[];
+    runImmediatelyWhen: string[];
+}
+
+// @public
+export interface MainHarnessCrossCheck {
+    errors: string[];
+    warnings: string[];
+}
+
+// @public
+export interface MainHarnessLimits {
+    maxConcurrentPages?: number;
+}
+
+// @public
+export interface MainHarnessOptionalityRow {
+    behaviour: string;
+    situation: 'No main agent' | 'Main agent, no main harness' | 'Main agent and main harness';
+}
+
+// @public
+export type MainHarnessPageFailure = 'report' | 'retry-once' | 'ask';
+
+// @public
+export interface MainHarnessPresentation {
+    followUps: string;
+    revisions: string;
+    style: string;
+}
+
+// @public
+export interface MainHarnessRoute {
+    page: string;
+    when: string;
+}
+
+// @public
+export const mainHarnessSchema: z.ZodType<MainHarness>;
 
 // @public
 export interface WorkspaceLimits {

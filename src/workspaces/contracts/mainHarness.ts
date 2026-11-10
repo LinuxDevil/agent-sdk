@@ -1,21 +1,7 @@
 import { z } from 'zod';
 import { DEFAULT_MAX_CONCURRENT_PAGES, type WorkspaceManifest } from './workspace';
 import { workspacePathSchema } from './common';
-
-const SECURITY_KEYS: ReadonlySet<string> = new Set([
-  'permissions',
-  'tools',
-  'secrets',
-  'sandbox',
-  'approvals',
-  'mcpServers',
-  'hooks',
-  'model',
-  'provider',
-  'network',
-]);
-
-const EXECUTION_KEYS: ReadonlySet<string> = new Set(['execution', 'workflow', 'goal', 'steps', 'lead', 'delegates']);
+import { checkForbiddenKeys, HARNESS_KEY_RULES } from './forbiddenKeys';
 
 /** A page the main agent may route to, and when. */
 export interface MainHarnessRoute {
@@ -95,27 +81,6 @@ export interface MainHarnessCrossCheck {
 
 const nonEmpty = z.string().min(1, 'must not be empty');
 
-function scan(value: unknown, path: string, out: string[]): void {
-  if (Array.isArray(value)) {
-    value.forEach((item, index) => scan(item, `${path}[${index}]`, out));
-    return;
-  }
-  if (typeof value !== 'object' || value === null) return;
-  for (const [key, child] of Object.entries(value)) {
-    const childPath = `${path}.${key}`;
-    if (SECURITY_KEYS.has(key)) out.push(`${childPath}: harnesses describe the task; the runtime enforces ${key} (R13)`);
-    else if (EXECUTION_KEYS.has(key)) out.push(`${childPath}: a harness says what, not how; execution lives in page.json (R18)`);
-    scan(child, childPath, out);
-  }
-}
-
-/** Finds R13 and R18 forbidden keys at any depth of an unparsed main harness. */
-export function findForbiddenMainHarnessKeys(raw: unknown): string[] {
-  const out: string[] = [];
-  scan(raw, 'harness', out);
-  return out;
-}
-
 export const mainHarnessObjectSchema = z
   .object({
     schema: z.literal('lousho.main-harness/1'),
@@ -128,13 +93,14 @@ export const mainHarnessObjectSchema = z
   })
   .strict();
 
+function scannedCopy(value: unknown, ctx: z.RefinementCtx): unknown {
+  const { errors, data } = checkForbiddenKeys(value, HARNESS_KEY_RULES, 'main-harness');
+  for (const error of errors) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error.message, path: error.path });
+  return errors.length > 0 ? z.NEVER : data;
+}
+
 /** Zod schema for the main-agent harness (`lousho.main-harness/1`); forbidden R13 and R18 keys are errors at any depth. */
-export const mainHarnessSchema: z.ZodType<MainHarness> = z
-  .any()
-  .superRefine((raw, ctx) => {
-    for (const message of findForbiddenMainHarnessKeys(raw)) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
-  })
-  .pipe(mainHarnessObjectSchema);
+export const mainHarnessSchema: z.ZodType<MainHarness> = z.any().transform(scannedCopy).pipe(mainHarnessObjectSchema);
 
 /** Cross-checks a parsed main harness against the parsed workspace manifest; route page ids are left to `validateWorkspace`. */
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck {
