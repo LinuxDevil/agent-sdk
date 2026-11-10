@@ -20,7 +20,7 @@ export function parseCommit(subject) {
   };
 }
 
-export function changesSince(subjects) {
+function changesSince(subjects) {
   return subjects.filter((s) => s.trim() && !RELEASE_COMMIT.test(s));
 }
 
