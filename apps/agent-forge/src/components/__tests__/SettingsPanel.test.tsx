@@ -140,6 +140,8 @@ describe('SettingsPanel', () => {
       'Ctrl/Cmd+J',
       '?',
       'Ctrl/Cmd+S',
+      'Ctrl/Cmd+Z',
+      'Ctrl/Cmd+Shift+Z',
       'j',
       'k',
       'Enter',

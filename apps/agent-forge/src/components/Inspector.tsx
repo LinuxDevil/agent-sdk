@@ -122,7 +122,12 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
   const props: KindFieldsProps<typeof selected.kind> = {
     node: selected as never,
     graph: displayGraph,
-    patch: (patch) => setGraph((g) => patchNode(g, selectedId, patch)),
+    // Field edits coalesce per node+key into one undo step while typing
+    // (C20): 'field:<nodeId>:<firstPatchKey>' within COALESCE_MS.
+    patch: (patch) =>
+      setGraph((g) => patchNode(g, selectedId, patch), {
+        history: { label: 'Edit', coalesceKey: `field:${selectedId}:${Object.keys(patch)[0] ?? ''}` },
+      }),
     replace: (data) => setGraph((g) => setNodeData(g, selectedId, data)),
     // validateGraph's per-node problems arrive with C19; nothing to show before.
     problems: [] as Problem[],
