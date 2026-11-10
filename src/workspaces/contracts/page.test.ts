@@ -40,7 +40,7 @@ describe('pageSchema', () => {
     const full: PageManifest = {
       ...fixtures.single,
       domain: 'marketing',
-      execution: { type: 'single', single: { agent: 'writer' }, limits: { maxSteps: 20, maxCostUsd: 1.5, timeoutSeconds: 300 }, onFailure: 'ask', checkpoint: true },
+      execution: { type: 'single', single: { agent: 'writer' }, limits: { maxDurationMs: 300000, maxTurns: 20, maxCostUsd: 1.5 }, onFailure: 'ask', checkpoint: true },
       improve: { enabled: false },
       platform: { profile: 'social', adapter: 'instagram' },
       ui: './ui/page.ui.json',
@@ -106,14 +106,27 @@ describe('pageSchema', () => {
     expect(issuesOf({ ...fixtures.single, execution: { type: 'single', single: { agent: 'writer' }, onFailure: 'retry' } })[0].path).toEqual(['execution', 'onFailure']);
   });
 
+  it('rejects invalid limits and allows pages deeper in a path', () => {
+    const limited = (limits: unknown) => issuesOf({ ...fixtures.single, execution: { type: 'single', single: { agent: 'writer' }, limits } });
+    expect(limited({ maxSteps: 3 })[0].path).toEqual(['execution', 'limits']);
+    expect(limited({ maxTurns: 1.5 })[0].path).toEqual(['execution', 'limits', 'maxTurns']);
+    expect(limited({ maxDurationMs: 0 })[0].path).toEqual(['execution', 'limits', 'maxDurationMs']);
+    expect(issuesOf({ ...fixtures.single, ui: './ui/pages/main.json' })).toEqual([]);
+  });
+
+  it('accepts a page without agents', () => {
+    const { agents: _agents, ...withoutAgents } = fixtures.single;
+    expect(issuesOf(withoutAgents)).toEqual([]);
+  });
+
   it('rejects nested pages in a path field', () => {
     expect(issuesOf({ ...fixtures.single, agents: './pages/inner/agents.json' })).toEqual([{ path: ['agents'], message: 'nested pages are not supported in v1' }]);
   });
 });
 
 describe('findNestedPages', () => {
-  it('returns the paths that sit under a pages/ folder inside the page', () => {
-    expect(findNestedPages(['page.json', 'agents.json', 'harness/rules.md', 'pages/inner/page.json', 'ui/pages/x.json'])).toEqual(['pages/inner/page.json', 'ui/pages/x.json']);
+  it('flags only paths whose first segment is pages', () => {
+    expect(findNestedPages(['page.json', 'agents.json', 'harness/rules.md', 'pages/x/page.json', './pages/y/page.json', 'ui/pages/x.json', 'resources/pages/landing.md', './ui/pages/main.json'])).toEqual(['pages/x/page.json', './pages/y/page.json']);
     expect(findNestedPages(['page.json', 'pages.md'])).toEqual([]);
   });
 });

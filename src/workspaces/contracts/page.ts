@@ -10,19 +10,23 @@ export const WORK_TYPES: readonly WorkType[] = ['single', 'multi-agent', 'workfl
 
 const NESTED_PAGES_MESSAGE = 'nested pages are not supported in v1';
 
-/** Returns the page-relative paths that sit under a `pages/` folder inside the page (nested pages are not supported in v1). */
+function isNestedPagesPath(path: string): boolean {
+  return path.replace(/^\.\//, '').split('/')[0] === 'pages';
+}
+
+/** Returns the page-relative paths whose first segment is `pages` (nested pages are not supported in v1). */
 export function findNestedPages(relativePaths: readonly string[]): string[] {
-  return relativePaths.filter((path) => path.split('/').slice(0, -1).includes('pages'));
+  return relativePaths.filter(isNestedPagesPath);
 }
 
 /** Per-run limits for one page's execution. */
 export interface PageExecutionLimits {
-  /** Most steps one run may take. */
-  maxSteps?: number;
+  /** Wall-clock cap in milliseconds for one run. */
+  maxDurationMs?: number;
+  /** Most model turns one run may take. */
+  maxTurns?: number;
   /** Spend cap in US dollars for one run. */
   maxCostUsd?: number;
-  /** Wall-clock cap in seconds for one run. */
-  timeoutSeconds?: number;
 }
 
 /** The `execution` block of `page.json`: the active type plus one config block per type. */
@@ -83,7 +87,7 @@ export interface PageManifest {
     overrides?: string;
   };
   /** The page's agents file (default `./agents.json`). */
-  agents: string;
+  agents?: string;
   /** How the page runs. */
   execution: PageExecution;
   /** Self-improvement override for this page. */
@@ -118,13 +122,13 @@ const REF_PREFIX = /^(?:workspace|local|global):/;
 
 const agentAliasSchema = nonEmpty.refine((value) => !REF_PREFIX.test(value), 'must be an agent alias from agents.json, not a ref');
 
-const pagePathSchema = workspacePathSchema.refine((value) => !value.split('/').includes('pages'), NESTED_PAGES_MESSAGE);
+const pagePathSchema = workspacePathSchema.refine((value) => !isNestedPagesPath(value), NESTED_PAGES_MESSAGE);
 
 const limitsSchema = z
   .object({
-    maxSteps: z.number().int().positive().optional(),
+    maxDurationMs: z.number().int().positive().optional(),
+    maxTurns: z.number().int().positive().optional(),
     maxCostUsd: z.number().positive().optional(),
-    timeoutSeconds: z.number().positive().optional(),
   })
   .strict();
 
@@ -164,14 +168,14 @@ export const pageObjectSchema = z
     description: nonEmpty,
     domain: nonEmpty.optional(),
     harness: z.object({ extends: z.array(nonEmpty), overrides: pagePathSchema.optional() }).strict(),
-    agents: pagePathSchema,
+    agents: pagePathSchema.optional(),
     execution: executionSchema,
     improve: z.object({ enabled: z.boolean().optional() }).strict().optional(),
     platform: z.object({ profile: nonEmpty.optional(), adapter: nonEmpty.optional() }).strict().optional(),
     ui: pagePathSchema.optional(),
     defaults: z.object({ model: modelIdSchema.optional() }).strict().optional(),
     runtime: z
-      .object({ kind: z.literal('local', { errorMap: () => ({ message: "only 'local' is accepted; other runtime kinds are reserved" }) }) })
+      .object({ kind: z.custom<'local'>((value) => value === 'local', { message: "only 'local' is accepted; other runtime kinds are reserved" }) })
       .strict()
       .optional(),
   })
