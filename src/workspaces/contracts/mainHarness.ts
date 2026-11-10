@@ -1,8 +1,6 @@
 import { z } from 'zod';
-import type { WorkspaceManifest } from './workspace';
+import { DEFAULT_MAX_CONCURRENT_PAGES, type WorkspaceManifest } from './workspace';
 import { workspacePathSchema } from './common';
-
-const DEFAULT_MAX_CONCURRENT_PAGES = 3;
 
 const SECURITY_KEYS: ReadonlySet<string> = new Set([
   'permissions',

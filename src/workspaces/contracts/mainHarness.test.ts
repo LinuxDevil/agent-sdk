@@ -63,6 +63,15 @@ describe('mainHarnessSchema', () => {
     if (!result.success) expect(result.error.issues.some((i) => i.message.includes('(R13)'))).toBe(true);
   });
 
+  it('an execution key is an error naming R18', () => {
+    const result = mainHarnessSchema.safeParse({
+      ...marketingHarness,
+      routes: [{ page: 'instagram', when: 'x', steps: ['a'] }],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.issues.some((i) => i.message.includes('routes[0].steps') && i.message.includes('(R18)'))).toBe(true);
+  });
+
   it('each forbidden key at any depth is an error naming R13 or R18', () => {
     for (const key of ['permissions', 'tools', 'secrets', 'sandbox', 'approvals', 'mcpServers', 'hooks', 'model', 'provider', 'network']) {
       expect(findForbiddenMainHarnessKeys({ routes: [{ page: 'a', when: 'b', [key]: 1 }] })).toEqual([
@@ -104,6 +113,12 @@ describe('crossCheckMainHarness', () => {
 
   it('uses the default of 3 when the workspace sets no limit', () => {
     const bare = { ...manifest, defaults: undefined };
-    expect(crossCheckMainHarness({ ...marketingHarness, limits: { maxConcurrentPages: 4 } }, bare).warnings).toHaveLength(1);
+    expect(crossCheckMainHarness({ ...marketingHarness, limits: { maxConcurrentPages: 4 } }, bare).warnings).toEqual([
+      "limits.maxConcurrentPages 4 is above the workspace's 3; it is clamped to 3",
+    ]);
+  });
+
+  it('gives no warning when the value equals the limit', () => {
+    expect(crossCheckMainHarness({ ...marketingHarness, limits: { maxConcurrentPages: 3 } }, manifest).warnings).toEqual([]);
   });
 });

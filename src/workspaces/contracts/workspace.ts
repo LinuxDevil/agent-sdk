@@ -89,6 +89,8 @@ const pagesSchema = z.array(pageNameSchema).superRefine((pages, ctx) => {
   });
 });
 
+export const DEFAULT_MAX_CONCURRENT_PAGES = 3;
+
 const limitsSchema = z
   .object({
     maxConcurrentPages: z.number().int().positive().optional(),
