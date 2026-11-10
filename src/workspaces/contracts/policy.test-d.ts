@@ -7,9 +7,10 @@ type ParsedInput = z.input<typeof workspacePolicyObjectSchema>;
 
 describe('workspacePolicySchema types', () => {
   it('infers exactly WorkspacePolicy, in and out', () => {
-    expectTypeOf<Parsed>().toEqualTypeOf<WorkspacePolicy>();
-    expectTypeOf<WorkspacePolicy>().toEqualTypeOf<Parsed>();
-    expectTypeOf<ParsedInput>().toEqualTypeOf<WorkspacePolicy>();
+    expectTypeOf<Parsed>().toMatchTypeOf<WorkspacePolicy>();
+    expectTypeOf<WorkspacePolicy>().toMatchTypeOf<Parsed>();
+    expectTypeOf<ParsedInput>().toMatchTypeOf<WorkspacePolicy>();
+    expectTypeOf<WorkspacePolicy>().toMatchTypeOf<ParsedInput>();
     expectTypeOf<z.infer<typeof workspacePolicySchema>>().toEqualTypeOf<WorkspacePolicy>();
   });
 

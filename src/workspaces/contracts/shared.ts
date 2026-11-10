@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { isSafeRelativePath } from '../../spec/v2/common';
 
 /** The folders under a workspace's `shared/`. */
-export const SHARED_FOLDERS = ['instructions', 'knowledge', 'brand', 'resources', 'skills', 'memory', 'policies'] as const;
+export const SHARED_FOLDERS = Object.freeze(['instructions', 'knowledge', 'brand', 'resources', 'skills', 'memory', 'policies'] as const);
 
 /** One folder name under `shared/`. */
 export type SharedFolder = (typeof SHARED_FOLDERS)[number];
@@ -11,10 +11,10 @@ export type SharedFolder = (typeof SHARED_FOLDERS)[number];
 export const SHARED_POLICY_FILE = 'shared/policies/policy.json';
 
 /** The shared folders whose files other files may reference as `shared:<path>`. */
-export const REFERENCEABLE_SHARED_FOLDERS = ['knowledge', 'brand', 'resources'] as const;
+export const REFERENCEABLE_SHARED_FOLDERS = Object.freeze(['knowledge', 'brand', 'resources'] as const);
 
 /** Where files of each shared folder must sit, as workspace-relative path patterns. */
-export const SHARED_PATH_PATTERNS: Readonly<Record<SharedFolder, RegExp>> = {
+export const SHARED_PATH_PATTERNS: Readonly<Record<SharedFolder, RegExp>> = Object.freeze({
   instructions: /^shared\/instructions\/[^/]+\.md$/,
   knowledge: /^shared\/knowledge\/.+$/,
   brand: /^shared\/brand\/.+$/,
@@ -22,7 +22,7 @@ export const SHARED_PATH_PATTERNS: Readonly<Record<SharedFolder, RegExp>> = {
   skills: /^shared\/skills\/[a-z][a-z0-9]*(?:-[a-z0-9]+)*\/SKILL\.md$/,
   memory: /^shared\/memory\/[^/]+\.ts$/,
   policies: /^shared\/policies\/policy\.json$/,
-};
+});
 
 const REFERENCE_PREFIX = 'shared:';
 
@@ -35,7 +35,7 @@ function isSharedReference(value: string): boolean {
 }
 
 /** Zod schema for a `shared:<path>` reference to a file under `shared/knowledge`, `shared/brand` or `shared/resources`. */
-export const sharedReferenceSchema = z
+export const sharedReferenceSchema: z.ZodType<string> = z
   .string()
   .refine(isSharedReference, 'must be shared:<folder>/<path> with <folder> one of knowledge, brand or resources, and a path that stays inside shared/');
 
@@ -57,8 +57,7 @@ export interface InheritanceRule {
   folders: readonly SharedFolder[];
 }
 
-/** How each shared folder reaches pages and the main agent; read by the composer (P1.4) and the docs. */
-export const INHERITANCE_RULES: readonly InheritanceRule[] = [
+const inheritanceRows: InheritanceRule[] = [
   { item: 'instructions', rule: 'Shared first, then harness, then the agent', folders: ['instructions'] },
   { item: 'skills', rule: 'Union; a clash is an error unless `override: true`', folders: ['skills'] },
   { item: 'memory', rule: 'Shared slots are shared instances, page slots are private', folders: ['memory'] },
@@ -66,3 +65,8 @@ export const INHERITANCE_RULES: readonly InheritanceRule[] = [
   { item: 'policies', rule: "Apply to every page and to the main agent, and can't be opted out of", folders: ['policies'] },
   { item: 'main agent', rule: 'Gets shared *context* only if `inheritsShared` (A2), but always gets shared *policy*', folders: [] },
 ];
+
+/** How each shared folder reaches pages and the main agent; read by the composer (P1.4) and the docs. */
+export const INHERITANCE_RULES: readonly InheritanceRule[] = Object.freeze(
+  inheritanceRows.map((row) => Object.freeze({ ...row, folders: Object.freeze([...row.folders]) }))
+);

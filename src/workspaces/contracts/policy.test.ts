@@ -10,7 +10,7 @@ const marketing: WorkspacePolicy = {
   secrets: [{ env: 'INSTAGRAM_TOKEN' }, { secret: 'brand-api-key' }],
   network: { allowHosts: ['graph.facebook.com', '*.cdn.example.com'] },
   approvals: { require: ['publish_*'] },
-  sandbox: { mode: 'process' },
+  sandbox: { required: true },
 };
 
 const wide: PolicyCeiling = {
@@ -19,32 +19,44 @@ const wide: PolicyCeiling = {
   secrets: [{ env: 'INSTAGRAM_TOKEN' }, { secret: 'brand-api-key' }, { env: 'OTHER' }],
   network: { allowHosts: ['*.facebook.com', '*.example.com'] },
   approvals: { require: ['delete_*'] },
-  sandbox: { mode: 'none' },
+  sandbox: { required: false },
 };
 
-describe('workspacePolicySchema', () => {
+const empty: WorkspacePolicy = { permissions: [], tools: { allow: [] }, secrets: [] };
+
+function policy(overrides: Partial<WorkspacePolicy>): WorkspacePolicy {
+  return { ...empty, ...overrides };
+}
+
+describe('policy schema', () => {
   it('accepts the Marketing policy', () => {
     const result = workspacePolicySchema.safeParse(marketing);
     expect(result.success).toBe(true);
     if (result.success) expect(result.data).toEqual(marketing);
   });
 
-  it('accepts an empty policy', () => {
-    expect(workspacePolicySchema.safeParse({}).success).toBe(true);
+  it('accepts a policy with only the required fields', () => {
+    expect(workspacePolicySchema.safeParse(empty).success).toBe(true);
   });
 
   it.each([
-    ['an unknown key', { mcpServers: {} }],
-    ['an unknown nested key', { tools: { allow: [], deny: [] } }],
-    ['a tool allowlist without allow', { tools: {} }],
-    ['a bad tool name', { tools: { allow: ['a b'] } }],
-    ['a host with a scheme', { network: { allowHosts: ['https://example.com'] } }],
-    ['a host with a port', { network: { allowHosts: ['example.com:8080'] } }],
-    ['an upper-case host', { network: { allowHosts: ['Example.com'] } }],
-    ['a bad secret ref', { secrets: [{ env: 'A', secret: 'b' }] }],
-    ['a bad sandbox mode', { sandbox: { mode: 'vm' } }],
-    ['a permission rule without an id', { permissions: [{ tool: 'shell', action: 'deny' }] }],
-    ['an auto permission rule', { permissions: [{ id: 'a', tool: 'shell', action: 'auto' }] }],
+    ['an empty object', {}],
+    ['a missing permissions list', { tools: { allow: [] }, secrets: [] }],
+    ['a missing tools allowlist', { permissions: [], secrets: [] }],
+    ['a missing secrets list', { permissions: [], tools: { allow: [] } }],
+    ['an unknown key', { ...empty, mcpServers: {} }],
+    ['an unknown nested key', { ...empty, tools: { allow: [], deny: [] } }],
+    ['a tools object without allow', { ...empty, tools: {} }],
+    ['a bad tool name', { ...empty, tools: { allow: ['a b'] } }],
+    ['a host with a scheme', { ...empty, network: { allowHosts: ['https://example.com'] } }],
+    ['a host with a port', { ...empty, network: { allowHosts: ['example.com:8080'] } }],
+    ['an upper-case host', { ...empty, network: { allowHosts: ['Example.com'] } }],
+    ['a bare wildcard host', { ...empty, network: { allowHosts: ['*'] } }],
+    ['a bad secret ref', { ...empty, secrets: [{ env: 'A', secret: 'b' }] }],
+    ['a sandbox mode', { ...empty, sandbox: { mode: 'container' } }],
+    ['a non-boolean sandbox flag', { ...empty, sandbox: { required: 'yes' } }],
+    ['a permission rule without an id', { ...empty, permissions: [{ tool: 'shell', action: 'deny' }] }],
+    ['an auto permission rule', { ...empty, permissions: [{ id: 'a', tool: 'shell', action: 'auto' }] }],
   ])('rejects %s', (_name, value) => {
     expect(workspacePolicySchema.safeParse(value).success).toBe(false);
   });
@@ -52,16 +64,16 @@ describe('workspacePolicySchema', () => {
 
 describe('narrowPolicy', () => {
   it('never returns a tool, host or secret outside the ceiling', () => {
-    const ceiling: PolicyCeiling = {
+    const ceiling = policy({
       tools: { allow: ['search_facts', 'github_*'] },
       network: { allowHosts: ['api.example.com', '*.cdn.example.com'] },
       secrets: [{ env: 'A' }, { secret: 'b' }],
-    };
-    const workspace: WorkspacePolicy = {
+    });
+    const workspace = policy({
       tools: { allow: ['search_facts', 'shell', 'github_read', '*', 'github_*'] },
       network: { allowHosts: ['api.example.com', 'evil.com', 'a.cdn.example.com', '*.example.com', 'cdn.example.com', 'api.example.com.evil.com'] },
       secrets: [{ env: 'A' }, { env: 'b' }, { secret: 'A' }, { secret: 'c' }],
-    };
+    });
     const result = narrowPolicy(ceiling, workspace);
     expect(result.tools.allow.sort()).toEqual(['github_*', 'github_read', 'search_facts']);
     expect(result.network.allowHosts.sort()).toEqual(['*.cdn.example.com', 'a.cdn.example.com', 'api.example.com']);
@@ -70,8 +82,8 @@ describe('narrowPolicy', () => {
 
   it('keeps the ceiling entry a narrower workspace pattern covers', () => {
     const result = narrowPolicy(
-      { tools: { allow: ['github_read', 'github_write', 'shell'] }, network: { allowHosts: ['a.example.com', 'b.other.com'] } },
-      { tools: { allow: ['github_*'] }, network: { allowHosts: ['*.example.com'] } }
+      policy({ tools: { allow: ['github_read', 'github_write', 'shell'] }, network: { allowHosts: ['a.example.com', 'b.other.com'] } }),
+      policy({ tools: { allow: ['github_*'] }, network: { allowHosts: ['*.example.com'] } })
     );
     expect(result.tools.allow).toEqual(['github_read', 'github_write']);
     expect(result.network.allowHosts).toEqual(['a.example.com']);
@@ -79,51 +91,45 @@ describe('narrowPolicy', () => {
 
   it('does not let a wildcard host cover its own apex or a look-alike', () => {
     const result = narrowPolicy(
-      { network: { allowHosts: ['*.example.com'] } },
-      { network: { allowHosts: ['example.com', 'badexample.com', 'a.example.com.evil.com', 'x.y.example.com'] } }
+      policy({ network: { allowHosts: ['*.example.com'] } }),
+      policy({ network: { allowHosts: ['example.com', 'badexample.com', 'a.example.com.evil.com', 'x.y.example.com'] } })
     );
     expect(result.network.allowHosts).toEqual(['x.y.example.com']);
   });
 
-  it('grants nothing when the ceiling omits a list, whatever the workspace asks for', () => {
-    const result = narrowPolicy(
-      {},
-      { tools: { allow: ['shell'] }, network: { allowHosts: ['example.com'] }, secrets: [{ env: 'A' }] }
-    );
+  it('grants nothing when the ceiling lists nothing', () => {
+    const result = narrowPolicy(empty, policy({ tools: { allow: ['shell'] }, network: { allowHosts: ['example.com'] }, secrets: [{ env: 'A' }] }));
     expect(result.tools.allow).toEqual([]);
     expect(result.network.allowHosts).toEqual([]);
     expect(result.secrets).toEqual([]);
   });
 
-  it('grants nothing when both sides omit a list', () => {
-    expect(narrowPolicy({}, {})).toEqual({
-      permissions: [],
+  it('grants nothing when both sides list nothing', () => {
+    expect(narrowPolicy(empty, empty)).toEqual({
+      permissions: { ceiling: [], workspace: [] },
       tools: { allow: [] },
       secrets: [],
       network: { allowHosts: [] },
       approvals: { require: [] },
-      sandbox: { mode: 'none' },
+      sandbox: { required: false },
     });
   });
 
-  it('inherits the ceiling lists when the workspace omits them', () => {
-    const result = narrowPolicy(wide, {});
-    expect(result.tools.allow).toEqual(['*']);
-    expect(result.network.allowHosts).toEqual(['*.facebook.com', '*.example.com']);
-    expect(result.secrets).toEqual(wide.secrets);
+  it('inherits the ceiling hosts when the workspace has no network section', () => {
+    expect(narrowPolicy(wide, empty).network.allowHosts).toEqual(['*.facebook.com', '*.example.com']);
   });
 
-  it('treats an explicit empty workspace list as granting nothing', () => {
-    const result = narrowPolicy(wide, { tools: { allow: [] }, network: { allowHosts: [] }, secrets: [] });
-    expect(result.tools.allow).toEqual([]);
-    expect(result.network.allowHosts).toEqual([]);
-    expect(result.secrets).toEqual([]);
+  it('grants no hosts when the workspace lists none', () => {
+    expect(narrowPolicy(wide, policy({ network: { allowHosts: [] } })).network.allowHosts).toEqual([]);
   });
 
-  it('treats an explicit empty ceiling list as granting nothing', () => {
-    const result = narrowPolicy({ tools: { allow: [] }, network: { allowHosts: [] }, secrets: [] }, marketing);
+  it('grants no hosts when the ceiling has no network section', () => {
+    expect(narrowPolicy(empty, marketing).network.allowHosts).toEqual([]);
+  });
+
+  it('grants nothing when the workspace lists no tools or secrets', () => {
+    const result = narrowPolicy(wide, empty);
     expect(result.tools.allow).toEqual([]);
-    expect(result.network.allowHosts).toEqual([]);
     expect(result.secrets).toEqual([]);
   });
 
@@ -136,91 +142,82 @@ describe('narrowPolicy', () => {
 
   it('removes duplicate entries', () => {
     const result = narrowPolicy(
-      { tools: { allow: ['a', 'a'] }, secrets: [{ env: 'A' }] },
-      { tools: { allow: ['a', 'a'] }, secrets: [{ env: 'A' }, { env: 'A' }] }
+      policy({ tools: { allow: ['a', 'a'] }, secrets: [{ env: 'A' }] }),
+      policy({ tools: { allow: ['a', 'a'] }, secrets: [{ env: 'A' }, { env: 'A' }] })
     );
     expect(result.tools.allow).toEqual(['a']);
     expect(result.secrets).toEqual([{ env: 'A' }]);
   });
 
+  it('throws on an invalid workspace policy', () => {
+    expect(() => narrowPolicy(wide, { ...marketing, tools: { allow: ['a b'] } })).toThrow();
+  });
+
+  it('throws on an invalid ceiling, so a typo fails closed', () => {
+    expect(() => narrowPolicy({ ...wide, network: { allowHosts: ['https://x.com'] } }, marketing)).toThrow();
+    expect(() => narrowPolicy({ tools: { allow: ['*'] } } as unknown as PolicyCeiling, marketing)).toThrow();
+  });
+
   describe('permissions', () => {
-    const allow = { id: 'c-allow', tool: 'shell', action: 'allow' } as const;
+    const ceilingAllow = { id: 'c-allow', tool: 'shell', action: 'allow' } as const;
     const ceilingDeny = { id: 'c-deny', tool: 'rm', action: 'deny' } as const;
     const wsDeny = { id: 'w-deny', tool: 'shell', action: 'deny' } as const;
     const wsAsk = { id: 'w-ask', tool: 'shell', action: 'ask' } as const;
     const wsAllow = { id: 'w-allow', tool: 'rm', action: 'allow' } as const;
+    const ids = (rules: readonly { id: string }[]) => rules.map((rule) => rule.id);
+
+    it('keeps the layers apart: the ceiling unchanged and the workspace rules without its allows', () => {
+      const result = narrowPolicy(policy({ permissions: [ceilingAllow, ceilingDeny] }), policy({ permissions: [wsAllow, wsDeny, wsAsk] }));
+      expect(ids(result.permissions.ceiling)).toEqual(['c-allow', 'c-deny']);
+      expect(ids(result.permissions.workspace)).toEqual(['w-deny', 'w-ask']);
+    });
 
     it('a workspace deny holds under a ceiling allow', () => {
-      const result = narrowPolicy({ permissions: [allow] }, { permissions: [wsDeny] });
-      expect(result.permissions.map((rule) => rule.id)).toEqual(['w-deny', 'c-allow']);
-      expect(result.permissions[0]).toMatchObject({ tool: 'shell', action: 'deny' });
+      const result = narrowPolicy(policy({ permissions: [ceilingAllow] }), policy({ permissions: [wsDeny] }));
+      expect(result.permissions.workspace).toEqual([wsDeny]);
+      expect(result.permissions.ceiling).toEqual([ceilingAllow]);
     });
 
-    it('puts a workspace deny ahead of an earlier ceiling allow with a condition', () => {
-      const conditional = { id: 'c-ls', tool: 'shell', when: { command: '^ls' }, action: 'allow' } as const;
-      const result = narrowPolicy({ permissions: [conditional] }, { permissions: [wsDeny] });
-      expect(result.permissions.map((rule) => rule.id)).toEqual(['w-deny', 'c-ls']);
+    it('a workspace ask survives a wide ceiling allow-all and no workspace allow does', () => {
+      const result = narrowPolicy(wide, policy({ permissions: [...marketing.permissions, wsAllow] }));
+      expect(result.permissions.ceiling).toEqual(wide.permissions);
+      expect(ids(result.permissions.workspace)).toEqual(['no-shell', 'ask-publish']);
+      expect(result.permissions.workspace.some((rule) => rule.action === 'allow')).toBe(false);
     });
 
-    it('keeps the ceiling rules in their own order', () => {
-      const result = narrowPolicy({ permissions: [allow, ceilingDeny] }, {});
-      expect(result.permissions.map((rule) => rule.id)).toEqual(['c-allow', 'c-deny']);
+    it('is empty on both sides when neither has rules', () => {
+      expect(narrowPolicy(empty, empty).permissions).toEqual({ ceiling: [], workspace: [] });
     });
 
-    it('drops workspace allow rules, which could only widen', () => {
-      const result = narrowPolicy({ permissions: [ceilingDeny] }, { permissions: [wsAllow] });
-      expect(result.permissions.map((rule) => rule.id)).toEqual(['c-deny']);
-    });
-
-    it('keeps a workspace ask behind the ceiling rules, so it cannot unlock a ceiling deny', () => {
-      const result = narrowPolicy({ permissions: [{ id: 'c-deny-shell', tool: 'shell', action: 'deny' }] }, { permissions: [wsAsk] });
-      expect(result.permissions.map((rule) => rule.id)).toEqual(['c-deny-shell', 'w-ask']);
-    });
-
-    it('applies a workspace deny and ask when the ceiling has no rules', () => {
-      expect(narrowPolicy({}, { permissions: [wsAllow, wsAsk, wsDeny] }).permissions.map((rule) => rule.id)).toEqual(['w-deny', 'w-ask']);
-    });
-
-    it('is empty when neither side has rules', () => {
-      expect(narrowPolicy({ permissions: [] }, { permissions: [] }).permissions).toEqual([]);
+    it('keeps workspace rules when the ceiling has none', () => {
+      expect(ids(narrowPolicy(empty, policy({ permissions: [wsAllow, wsAsk, wsDeny] })).permissions.workspace)).toEqual(['w-ask', 'w-deny']);
     });
   });
 
   describe('approvals', () => {
     it('only grows: the union of both sides', () => {
-      const result = narrowPolicy({ approvals: { require: ['delete_*', 'pay'] } }, { approvals: { require: ['publish_*', 'pay'] } });
+      const result = narrowPolicy(policy({ approvals: { require: ['delete_*', 'pay'] } }), policy({ approvals: { require: ['publish_*', 'pay'] } }));
       expect(result.approvals.require).toEqual(['delete_*', 'pay', 'publish_*']);
     });
 
     it('keeps the ceiling requirements when the workspace has none', () => {
-      expect(narrowPolicy({ approvals: { require: ['pay'] } }, {}).approvals.require).toEqual(['pay']);
-      expect(narrowPolicy({ approvals: { require: ['pay'] } }, { approvals: { require: [] } }).approvals.require).toEqual(['pay']);
+      expect(narrowPolicy(policy({ approvals: { require: ['pay'] } }), empty).approvals.require).toEqual(['pay']);
+      expect(narrowPolicy(policy({ approvals: { require: ['pay'] } }), policy({ approvals: { require: [] } })).approvals.require).toEqual(['pay']);
     });
 
     it('keeps the workspace requirements when the ceiling has none', () => {
-      expect(narrowPolicy({}, { approvals: { require: ['pay'] } }).approvals.require).toEqual(['pay']);
-      expect(narrowPolicy({ approvals: { require: [] } }, { approvals: { require: ['pay'] } }).approvals.require).toEqual(['pay']);
+      expect(narrowPolicy(empty, policy({ approvals: { require: ['pay'] } })).approvals.require).toEqual(['pay']);
+      expect(narrowPolicy(policy({ approvals: { require: [] } }), policy({ approvals: { require: ['pay'] } })).approvals.require).toEqual(['pay']);
     });
   });
 
   describe('sandbox', () => {
-    const modes = ['none', 'process', 'container'] as const;
+    const states = [undefined, false, true] as const;
+    const sandboxOf = (required: boolean | undefined) => (required === undefined ? {} : { sandbox: { required } });
 
-    it.each(modes.flatMap((c) => modes.map((w) => [c, w] as const)))('ceiling %s with workspace %s gives the stricter', (c, w) => {
-      const expected = modes[Math.max(modes.indexOf(c), modes.indexOf(w))];
-      expect(narrowPolicy({ sandbox: { mode: c } }, { sandbox: { mode: w } }).sandbox.mode).toBe(expected);
-    });
-
-    it('keeps the ceiling mode when the workspace omits it', () => {
-      expect(narrowPolicy({ sandbox: { mode: 'container' } }, {}).sandbox.mode).toBe('container');
-    });
-
-    it('lets the workspace tighten an absent ceiling mode', () => {
-      expect(narrowPolicy({}, { sandbox: { mode: 'process' } }).sandbox.mode).toBe('process');
-    });
-
-    it('is none when both omit it', () => {
-      expect(narrowPolicy({}, {}).sandbox.mode).toBe('none');
+    it.each(states.flatMap((c) => states.map((w) => [c, w] as const)))('ceiling %s with workspace %s requires it only if either does', (c, w) => {
+      const result = narrowPolicy(policy(sandboxOf(c)), policy(sandboxOf(w)));
+      expect(result.sandbox.required).toBe(c === true || w === true);
     });
   });
 
@@ -233,7 +230,10 @@ describe('narrowPolicy', () => {
       expect(workspace).toEqual(marketing);
       result.tools.allow.push('x');
       result.secrets.push({ env: 'X' });
-      result.permissions.forEach((rule) => {
+      result.permissions.workspace.forEach((rule) => {
+        rule.tool = 'x';
+      });
+      result.permissions.ceiling.forEach((rule) => {
         rule.tool = 'x';
       });
       expect(ceiling).toEqual(wide);
