@@ -223,15 +223,16 @@ export interface PageEngine {
   run(input: PageInput, ctx: PageRunContext): Promise<PageResult>;
 }
 
-const SEGMENT_RULE = 'must be non-empty, must not start with `.`, and must not contain `/`, `\\` or control characters';
+const SEGMENT_RULE = 'must be 1 to 255 UTF-8 bytes of well-formed text, must not start with `.`, and must not contain `/`, `\\`, control, format or line and paragraph separator characters';
 
-function isForbiddenChar(char: string): boolean {
-  const code = char.charCodeAt(0);
-  return char === '/' || char === '\\' || code < 0x20 || code === 0x7f;
-}
+const MAX_SEGMENT_BYTES = 255;
+
+const FORBIDDEN_CHARS = /[/\\\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
+
+const utf8 = new TextEncoder();
 
 function isSafeSegment(segment: string): boolean {
-  return segment.length > 0 && !segment.startsWith('.') && ![...segment].some(isForbiddenChar);
+  return segment.length > 0 && !segment.startsWith('.') && !FORBIDDEN_CHARS.test(segment) && utf8.encode(segment).length <= MAX_SEGMENT_BYTES;
 }
 
 function uriProblems(parts: ArtifactUriParts): Record<string, string[]> {

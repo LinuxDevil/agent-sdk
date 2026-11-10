@@ -51,6 +51,26 @@ describe('execution contract', () => {
     expect(() => formatArtifactUri(parts)).toThrow(ValidationError);
   });
 
+  it('formatArtifactUri rejects a lone surrogate with ValidationError, not URIError', () => {
+    expect(() => formatArtifactUri({ workspace: 'marketing', runId: 'run', name: '\uD800' })).toThrow(ValidationError);
+    expect(() => formatArtifactUri({ workspace: 'marketing', runId: '\uDC00x', name: 'a.md' })).toThrow(ValidationError);
+    expect(formatArtifactUri({ workspace: 'marketing', runId: 'run', name: '😀.md' })).toBe('artifact://marketing/run/%F0%9F%98%80.md');
+  });
+
+  it.each(['a\u0085b', 'a b', 'a b', 'evil‮txt.md', 'a​b'])('rejects C1, line separator, bidi and other format characters: %j', (name) => {
+    expect(() => formatArtifactUri({ workspace: 'marketing', runId: 'run', name })).toThrow(ValidationError);
+    expect(parseArtifactUri(`artifact://marketing/run/${encodeURIComponent(name)}`)).toBeUndefined();
+  });
+
+  it('caps each segment at 255 UTF-8 bytes', () => {
+    const fits = `${'é'.repeat(127)}a`;
+    const tooLong = 'é'.repeat(128);
+    expect(parseArtifactUri(formatArtifactUri({ workspace: 'marketing', runId: 'run', name: fits }))).toEqual({ workspace: 'marketing', runId: 'run', name: fits });
+    expect(() => formatArtifactUri({ workspace: 'marketing', runId: 'run', name: tooLong })).toThrow(ValidationError);
+    expect(() => formatArtifactUri({ workspace: 'marketing', runId: 'r'.repeat(256), name: 'a.md' })).toThrow(ValidationError);
+    expect(parseArtifactUri(`artifact://marketing/run/${encodeURIComponent(tooLong)}`)).toBeUndefined();
+  });
+
   it('formatArtifactUri names every bad part with LOUSHO_VALIDATION_FAILED', () => {
     let caught: unknown;
     try {
