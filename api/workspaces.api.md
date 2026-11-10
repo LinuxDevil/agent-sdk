@@ -7,6 +7,12 @@
 import { z } from 'zod';
 
 // @public
+export function baseHarnessLayer(tree: WorkspaceTree): HarnessLayer | undefined;
+
+// @public
+export const baseHarnessSchema: z.ZodType<Harness>;
+
+// @public
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
 
 // @public
@@ -66,6 +72,13 @@ export interface Harness {
     };
     schema: 'lousho.harness/1';
     version?: string;
+}
+
+// @public
+export interface HarnessLayer {
+    harness: Harness;
+    source: string;
+    texts: Record<string, string>;
 }
 
 // @public
@@ -183,6 +196,9 @@ export interface WorkspaceManifest {
 
 // @public
 export const workspaceManifestSchema: z.ZodType<WorkspaceManifest>;
+
+// @public
+export type WorkspaceTree = Readonly<Record<string, unknown>>;
 
 // (No @packageDocumentation comment for this package)
 
