@@ -20,11 +20,16 @@ import { paletteOwnerTitle } from './paletteModel';
  * "Added <label> to <owner title>.".
  */
 export function usePaletteActions() {
-  const { graph, setGraph, selectedNodeId, setSelectedNodeId } = useAppState();
+  const { graph, setGraph, selectedNodeId, setSelectedNodeId, proposal } = useAppState();
   const flow = useStoreApi();
   const [notice, setNotice] = useState<string | undefined>(undefined);
 
   function addAtViewportCentre(entry: PaletteEntry) {
+    // The canvas is read-only while a proposal overlay is shown (C21).
+    if (proposal !== undefined) {
+      setNotice('Hide the proposal to edit.');
+      return;
+    }
     const { transform, width, height } = flow.getState();
     const position = viewportCentrePosition(transform, width, height);
     const owner = ownerForNewNode(graph, entry.kind, selectedNodeId);

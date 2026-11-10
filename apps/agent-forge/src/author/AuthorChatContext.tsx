@@ -40,6 +40,7 @@ import {
   type AuthorChatAction,
   type AuthorChatState,
 } from './authorChatReducer';
+import { resetAuthorFocusCleared } from './authorEntry';
 import { fireAgentSaved, fireOpenPage } from './authorEvents';
 import {
   loadPendingRequest,
@@ -496,6 +497,8 @@ export function AuthorChatProvider({ children }: { children: ReactNode }): JSX.E
       },
       newChat: (focus?: AuthorFocus) => {
         if (stateRef.current.saving !== null) return;
+        // A new chat re-arms route focus: the cleared flag only lasts "in this chat" (AA19).
+        resetAuthorFocusCleared();
         closeStream();
         writeSessionId(null);
         dispatch({ type: 'session.reset', focus: focus ?? { mode: 'create' } });

@@ -4,11 +4,12 @@
  * checks the id pattern, the cron expression and time zone, the webhook
  * path and its uniqueness, required prompt(promptTemplate)s, the channel's
  * required secret keys and the chain target, and warns on a second chat
- * trigger. No `connectFrom`: `trigger → agent` is always refused (the
- * `starts` edge is derived) and `trigger → abort` takes the default effect
- * until C16. `duplicateData` gives the copy a fresh `t<n>` id and, for a
- * webhook, a `-copy` path.
+ * trigger. `connectFrom` implements `trigger → abort` (the `cancels` edge)
+ * via `watchTrigger` in `kinds/abort.ts`; `trigger → agent` stays refused
+ * (`canConnect`). `duplicateData` gives the copy a fresh `t<n>` id and,
+ * for a webhook, a `-copy` path.
  */
+import { watchTrigger } from './abort';
 import { nextItemId } from '../nodeIds';
 import { arrayItemSpecPath, sectionChildren } from '../order';
 import { CHANNEL_SECRET_KEYS } from '../specTypes';
@@ -193,12 +194,15 @@ function triggerProblems(node: NodeOfKind<'trigger'>, graph: Graph): Problem[] {
 }
 
 /**
- * `trigger` kind rules: validation plus the duplicate naming rule. No
- * `connectFrom` — `trigger → agent` is refused by `canConnect` (the
- * `starts` edge is derived) and `trigger → abort`'s effect lands with C16.
+ * `trigger` kind rules: validation, the duplicate naming rule and the
+ * `trigger → abort` connect effect — `watchTrigger` rewires the listener's
+ * `triggerId` (or refuses a non-event trigger / an already-watched one).
+ * `trigger → agent` never reaches here: `canConnect` refuses it first.
  */
 export const triggerRules: KindRules<'trigger'> = {
   validate: triggerProblems,
+  connectFrom: (source, target, graph) =>
+    target.kind === 'abort' ? watchTrigger(graph, target.id, source.data.item) : { ok: true, graph },
   duplicateData: (node, graph) => {
     const item = structuredClone(node.data.item);
     item.id = nextItemId('t', triggerSiblingIds(graph));

@@ -43,6 +43,7 @@ const entry = {
     'cli/traces': 'src/cli/traces.ts',
     'cli/observe': 'src/cli/observe.ts',
     'cli/prompt': 'src/cli/prompt.ts',
+    'cli/improve': 'src/cli/improve.ts',
     'execution/otel': 'src/execution/otel.ts',
     'execution/hooks': 'src/execution/hooks.ts',
     'storage/sqlite/index': 'src/storage/sqlite/index.ts',

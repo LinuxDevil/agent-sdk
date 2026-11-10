@@ -13,8 +13,9 @@ import { navigate } from '../router/router';
 import { useAuthorChat, type AuthorChat } from './AuthorChatContext';
 import type { AuthorChatState } from './authorChatReducer';
 import { onOpenPage } from './authorEvents';
+import { usePendingAuthorOpen } from './usePendingAuthorOpen';
 import { useAuthorDock } from './authorDock';
-import { AuthorComposer } from './AuthorComposer';
+import { AuthorComposer, type AuthorComposerHandle } from './AuthorComposer';
 import { AuthorHistory } from './AuthorHistory';
 import { AuthorMessages } from './AuthorMessages';
 import { SetupCard } from './SetupCard';
@@ -103,6 +104,60 @@ function AuthorBody({ state, chat }: { state: AuthorChatState; chat: AuthorChat 
   return <AuthorMessages messages={state.messages} active={state.active} chat={chat} />;
 }
 
+/** The panel chrome: mark, live title, connection state, and the action buttons. */
+function AuthorPanelHeader({
+  chat,
+  onClose,
+  historyOpen,
+  onToggleHistory,
+}: {
+  chat: AuthorChat;
+  onClose(): void;
+  historyOpen: boolean;
+  onToggleHistory(): void;
+}): JSX.Element {
+  const { state } = chat;
+  const conn = state.connection === 'reconnecting' || state.connection === 'closed' ? state.connection : null;
+  return (
+    <header className="author-header">
+      <Sparkles className="author-header-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
+      <h2 className="author-title" title={state.title}>
+        {state.title}
+      </h2>
+      {conn !== null && (
+        <span className="author-conn" data-state={conn} role="status">
+          {conn === 'reconnecting' ? 'Reconnecting…' : 'Offline'}
+        </span>
+      )}
+      <div className="author-header-actions">
+        <button
+          type="button"
+          className="icon-btn"
+          aria-label="New chat"
+          title={state.saving !== null ? 'Wait for the save to finish' : 'New chat'}
+          disabled={state.saving !== null}
+          onClick={() => chat.newChat(state.focus)}
+        >
+          <SquarePen size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className="icon-btn author-history-btn"
+          aria-label="Chat history"
+          aria-pressed={historyOpen}
+          title={historyOpen ? 'Back to chat' : 'Chat history'}
+          onClick={onToggleHistory}
+        >
+          <History size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+        <button type="button" className="icon-btn" aria-label="Close Agent Author" title="Close (Ctrl+J)" onClick={onClose}>
+          <X size={16} strokeWidth={1.75} aria-hidden="true" />
+        </button>
+      </div>
+    </header>
+  );
+}
+
 /**
  * The docked Agent Author panel: header (title, connection, actions), the
  * conversation log (blank slate or messages + live turn), and the
@@ -116,12 +171,15 @@ export function AuthorPanel(): JSX.Element {
   const { state } = chat;
   const [historyOpen, setHistoryOpen] = useState(false);
   const { bodyRef, onScroll, pin } = usePinnedScroll();
+  const composerRef = useRef<AuthorComposerHandle>(null);
 
   // A live openPage tool.result moves the app; replays never reach this
   // (the provider only fires `onOpenPage` outside reattach passes).
   useEffect(() => onOpenPage(navigate), []);
 
   useEffect(pin);
+
+  usePendingAuthorOpen(chat, composerRef);
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLElement>): void => {
     if (e.key !== 'Escape') return;
@@ -136,52 +194,14 @@ export function AuthorPanel(): JSX.Element {
     }
   };
 
-  const conn = state.connection === 'reconnecting' || state.connection === 'closed' ? state.connection : null;
-
   return (
     <section className="author-panel" aria-label="Agent Author" onKeyDown={onKeyDown}>
-      <header className="author-header">
-        <Sparkles className="author-header-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
-        <h2 className="author-title" title={state.title}>
-          {state.title}
-        </h2>
-        {conn !== null && (
-          <span className="author-conn" data-state={conn} role="status">
-            {conn === 'reconnecting' ? 'Reconnecting…' : 'Offline'}
-          </span>
-        )}
-        <div className="author-header-actions">
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="New chat"
-            title={state.saving !== null ? 'Wait for the save to finish' : 'New chat'}
-            disabled={state.saving !== null}
-            onClick={() => chat.newChat(state.focus)}
-          >
-            <SquarePen size={16} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="icon-btn author-history-btn"
-            aria-label="Chat history"
-            aria-pressed={historyOpen}
-            title={historyOpen ? 'Back to chat' : 'Chat history'}
-            onClick={() => setHistoryOpen((open) => !open)}
-          >
-            <History size={16} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Close Agent Author"
-            title="Close (Ctrl+J)"
-            onClick={() => dock.setOpen(false)}
-          >
-            <X size={16} strokeWidth={1.75} aria-hidden="true" />
-          </button>
-        </div>
-      </header>
+      <AuthorPanelHeader
+        chat={chat}
+        onClose={() => dock.setOpen(false)}
+        historyOpen={historyOpen}
+        onToggleHistory={() => setHistoryOpen((open) => !open)}
+      />
       {historyOpen ? (
         <AuthorHistory onClose={() => setHistoryOpen(false)} />
       ) : (
@@ -196,7 +216,11 @@ export function AuthorPanel(): JSX.Element {
           <AuthorBody state={state} chat={chat} />
         </div>
       )}
-      <AuthorComposer chat={chat} disabledReason={historyOpen ? 'Close history to keep chatting' : undefined} />
+      <AuthorComposer
+        ref={composerRef}
+        chat={chat}
+        disabledReason={historyOpen ? 'Close history to keep chatting' : undefined}
+      />
     </section>
   );
 }

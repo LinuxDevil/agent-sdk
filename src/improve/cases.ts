@@ -2,12 +2,34 @@ import { ConfigurationError } from '../execution/errors';
 import { exampleFromTrace } from '../observe/datasets';
 import { failureReportFromDb } from '../observe/failures';
 import type { SqlDatabase } from '../storage/sqlite/driver';
-import type { Harness, ImproveOptions } from './types';
+import type { Harness, ImproveOptions, ProbeRun, RecoveryEvidence } from './types';
 
 const DEFAULT_ADMISSION_RUNS = 6;
 
-/** Scores an answer to a captured case: `true` or `false`, or `null` when it can't be scored. */
-export type CaseCheck = (input: string, answer: string) => boolean | null;
+/** Scores an answer to a captured case: `true` or `false`, `null` when it can't be scored, or a verdict that also names the check a failed answer missed. */
+export type CaseCheck = (
+  input: string,
+  answer: string
+) =>
+  | boolean
+  | null
+  | {
+      /** Whether the answer passed. */
+      passed: boolean;
+      /** Which check a failed answer missed, shown to the editors as data on one line. Name the requirement, not the fix. */
+      failure?: string;
+    };
+
+export function scoreCase(check: CaseCheck, input: string, answer: string): Pick<ProbeRun, 'passed' | 'failure'> {
+  const result: unknown = check(input, answer);
+  if (result === null || typeof result === 'boolean') return { passed: result };
+  const { passed, failure } = (typeof result === 'object' ? result : {}) as { passed?: unknown; failure?: unknown };
+  if (typeof passed !== 'boolean' || (failure !== undefined && typeof failure !== 'string')) {
+    const got = result instanceof Promise ? 'a Promise; a CaseCheck must be synchronous' : JSON.stringify(result) ?? String(result);
+    throw new ConfigurationError(`A CaseCheck must return true, false, null or { passed: boolean; failure?: string }, not ${got}.`, 'check');
+  }
+  return !passed && failure ? { passed, failure } : { passed };
+}
 
 /** A real run of your own agent, turned into a case for {@link improveAgent}. */
 export interface CapturedCase {
@@ -19,6 +41,8 @@ export interface CapturedCase {
   traceId: string;
   /** `failure` for a case to learn from, `protected` for one that must keep passing. */
   kind: 'failure' | 'protected';
+  /** From {@link casesFromRecoveries}: the `.heal` retry that passed, for `ImproveOptions.recoveries`. It never makes the case protected. */
+  recovery?: RecoveryEvidence;
 }
 
 function captureCase(db: SqlDatabase, traceId: string, prefix: string, kind: CapturedCase['kind']): CapturedCase | undefined {
@@ -28,10 +52,23 @@ function captureCase(db: SqlDatabase, traceId: string, prefix: string, kind: Cap
 }
 
 /** Turns failed runs in your local trace database into cases to learn from, at most 5 traces per failure class, skipping traces with no recorded input. */
-export function casesFromFailures(db: SqlDatabase, filter: { since?: number; agent?: string; minScore?: number } = {}): CapturedCase[] {
+export function casesFromFailures(
+  db: SqlDatabase,
+  filter: {
+    since?: number;
+    agent?: string;
+    minScore?: number;
+    /** Only these traces, such as the runs of one harness revision. */
+    traceIds?: readonly string[];
+    /** Only failure groups seen in two or more traces. */
+    recurring?: boolean;
+  } = {}
+): CapturedCase[] {
   const seen = new Set<string>();
   const cases: CapturedCase[] = [];
-  for (const group of failureReportFromDb(db, filter).groups) {
+  const { recurring, ...report } = filter;
+  for (const group of failureReportFromDb(db, report).groups) {
+    if (recurring && !group.recurring) continue;
     for (const traceId of group.traceIds) {
       if (seen.has(traceId)) continue;
       seen.add(traceId);
@@ -58,7 +95,7 @@ export function probeCapturedCases(
     const captured = byId.get(caseId);
     if (!captured) throw new ConfigurationError(`Unknown captured case "${caseId}"`, 'cases');
     const { answer, transcript, tokens, ended } = await runCase(harness, captured.input);
-    return { passed: check(captured.input, answer), transcript, tokens, ended };
+    return { ...scoreCase(check, captured.input, answer), transcript, tokens, ended };
   };
 }
 

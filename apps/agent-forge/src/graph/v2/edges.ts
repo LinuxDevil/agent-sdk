@@ -185,9 +185,14 @@ function edgesFor(node: GraphNode, nodes: GraphNode[], ids: ReadonlySet<string>)
   }
 }
 
-/** Every edge of the graph, derived from node data in node-array order. */
-export function deriveEdges(graph: Graph): GraphEdge[] {
-  const nodes = graph.nodes.filter((n) => n.proposed !== 'remove');
+/**
+ * Every edge of the graph, derived from node data in node-array order.
+ * `proposed: 'remove'` nodes are skipped unless `includeRemoved` — the
+ * proposal overlay (C21) passes it so a removed node's edges still draw,
+ * faded, instead of vanishing with the node.
+ */
+export function deriveEdges(graph: Graph, options?: { includeRemoved?: boolean }): GraphEdge[] {
+  const nodes = graph.nodes.filter((n) => options?.includeRemoved === true || n.proposed !== 'remove');
   const ids = new Set(nodes.map((n) => n.id));
   const flowRootId = flowRoot(graph)?.id;
   const edges: GraphEdge[] = [];

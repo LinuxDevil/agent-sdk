@@ -5,6 +5,7 @@
  * stay a single mutation path and a single validation entry point that
  * never grow per-kind branches.
  */
+import { abortRules } from './kinds/abort';
 import { agentRules } from './kinds/agent';
 import { flowRules } from './kinds/flow';
 import { guardrailRules } from './kinds/guardrail';
@@ -57,6 +58,7 @@ export const KIND_RULES: { [K in NodeKind]?: KindRules<K> } = {
   skill: skillRules,
   memory: memoryRules,
   trigger: triggerRules,
+  abort: abortRules,
   guardrail: guardrailRules,
   permission: permissionRules,
   hook: hookRules,

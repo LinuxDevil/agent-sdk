@@ -33,7 +33,7 @@
  */
 import * as path from 'node:path';
 import {
-  compileSpec,
+  compileSpecWithNodeIds,
   createAgent,
   type AgentEvent,
   type AgentHook,
@@ -129,6 +129,34 @@ function splitLocalTools(spec: AgentSpecV2): { spec: AgentSpecV2; localTools: Re
   return { spec: stripped, localTools };
 }
 
+/**
+ * `toolNamesByRef` re-aligned to the ORIGINAL spec's `tools` array:
+ * `compiled` only saw the non-local refs (local tools were stripped for
+ * the compiler), so each stripped ref contributes its Studio-local
+ * model-facing name — the key `mergeLocalTools` registers it under —
+ * letting `nodeIdIndexOf` stamp `lousho.node.id` on its spans (including
+ * the `approval.wait` marker) with the canvas's `tool:<…>` id.
+ */
+function toolNamesByRefForIndex(
+  spec: AgentSpecV2,
+  compilable: AgentSpecV2,
+  compiledNames: readonly (readonly string[])[]
+): (readonly string[])[] {
+  const kept = compilable.tools ?? [];
+  const out: (readonly string[])[] = [];
+  let next = 0;
+  for (const ref of spec.tools ?? []) {
+    if (next < kept.length && kept[next] === ref) {
+      out.push(compiledNames[next] ?? []);
+      next += 1;
+    } else {
+      const local = localToolName(ref);
+      out.push(local === undefined ? [] : [local]);
+    }
+  }
+  return out;
+}
+
 /** `config.tools` as a mutable record (compileSpec only ever returns the record form; a function form is left alone). */
 function mergeLocalTools(configTools: unknown, localTools: Record<string, ToolDescriptor>): unknown {
   const base =
@@ -180,12 +208,23 @@ export async function buildRunnableAgent(
       seeded = true;
     }
   }
-  let config;
+  let compiled;
   try {
-    ({ config } = await compileSpec(compilable, host));
+    // compileSpecWithNodeIds applies specV2ToAgent's S20 wiring: the run's
+    // exporter is wrapped in the node-id exporter so every span carries
+    // `lousho.node.id` and RunManager can emit `node` frames for the canvas
+    // overlay. The index is built from the ORIGINAL spec (local tools were
+    // stripped only for the compiler) with toolNamesByRef re-aligned onto
+    // it, so Studio-local tools' spans - including `approval.wait` markers -
+    // still stamp their canvas `tool:<…>` ids.
+    compiled = await compileSpecWithNodeIds(compilable, host, {
+      spec,
+      toolNamesByRef: (c) => toolNamesByRefForIndex(spec, compilable, c.toolNamesByRef),
+    });
   } finally {
     if (seeded && envVar !== undefined) delete process.env[envVar];
   }
+  const { config } = compiled;
   // The compiled provider is Studio's (stored keys over env); `model` keeps
   // the spec's string for reporting/fallbacks (a provider INSTANCE wins
   // over `model` in createAgent's resolveModelSource).

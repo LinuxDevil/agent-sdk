@@ -6,7 +6,7 @@ import { SDKError } from '../execution/errors';
 
 const FRONTMATTER = /^﻿?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/;
 
-interface SkillSource {
+export interface SkillSource {
   /** Skill name implied by the folder / file name. */
   defaultName: string;
   file: string;
@@ -36,6 +36,11 @@ function parseFrontmatter(file: string, raw: string): { meta: Record<string, unk
   return { meta: (meta ?? {}) as Record<string, unknown>, body: raw.slice(match[0].length) };
 }
 
+/** Whether a markdown file starts with a YAML frontmatter block, which makes a loose file a skill. */
+export function hasFrontmatter(raw: string): boolean {
+  return FRONTMATTER.test(raw);
+}
+
 /** The skill a file defines, or undefined for a loose markdown file with no frontmatter (a README, notes), which is skipped with a warning. */
 async function readSkill(source: SkillSource): Promise<Skill | undefined> {
   let raw: string;
@@ -44,13 +49,18 @@ async function readSkill(source: SkillSource): Promise<Skill | undefined> {
   } catch (error) {
     throw problem(source.file, `cannot read file (${(error as Error).message})`);
   }
-  if (!source.directory && !FRONTMATTER.test(raw)) {
+  if (!source.directory && !hasFrontmatter(raw)) {
     console.warn(
       `[lousho] loadSkills: skipping ${source.file}: no YAML frontmatter, so it is not a skill. ` +
         'Add a leading block with a description to make it one:\n---\ndescription: When the model should use this skill\n---'
     );
     return undefined;
   }
+  return skillFromText(source, raw);
+}
+
+/** The skill a file's text defines, parsed the way {@link loadSkills} does; throws LOUSHO_SKILL_INVALID when it is malformed. */
+export function skillFromText(source: SkillSource, raw: string): Skill {
   const { meta, body } = parseFrontmatter(source.file, raw);
   if (typeof meta.description !== 'string' || meta.description.trim() === '') {
     throw problem(

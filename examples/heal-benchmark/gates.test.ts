@@ -63,6 +63,12 @@ describe('scriptedEditor', () => {
     expect(out.outcome).toBe('proposal');
   });
 
+  it('gives each editor its own recorded harness when the editors run in parallel', async () => {
+    const recorded = { invariant: SKILLED, domain: { ...BASE, instructions: `${BASE.instructions} Domain.` }, compose: FIXED };
+    const out = await improveAgent({ harness: BASE, cases: ['training'], probe: passesWith(FIXED), editor: scriptedEditor(BASE, recorded), repeats: 3 });
+    expect(out.candidates).toEqual(recorded);
+  });
+
   it('refuses a base that has skills', () => {
     expect(() => scriptedEditor(SKILLED, { invariant: SKILLED, domain: SKILLED, compose: SKILLED })).toThrow(/skills/);
   });

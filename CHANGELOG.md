@@ -7,6 +7,118 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0-alpha.117] - 2026-11-09
+
+## [1.0.0-alpha.116] - 2026-11-09
+
+## [1.0.0-alpha.115] - 2026-11-09
+
+## [1.0.0-alpha.114] - 2026-11-09
+
+## [1.0.0-alpha.113] - 2026-11-09
+
+## [1.0.0-alpha.112] - 2026-11-09
+
+## [1.0.0-alpha.111] - 2026-11-09
+
+## [1.0.0-alpha.110] - 2026-11-09
+
+## [1.0.0-alpha.109] - 2026-11-09
+
+## [1.0.0-alpha.108] - 2026-11-09
+
+## [1.0.0-alpha.107] - 2026-11-09
+
+## [1.0.0-alpha.106] - 2026-11-09
+
+## [1.0.0-alpha.105] - 2026-11-09
+
+## [1.0.0-alpha.104] - 2026-11-09
+
+## [1.0.0-alpha.103] - 2026-11-08
+
+## [1.0.0-alpha.102] - 2026-11-08
+
+## [1.0.0-alpha.101] - 2026-11-08
+
+## [1.0.0-alpha.100] - 2026-11-08
+
+## [1.0.0-alpha.99] - 2026-11-08
+
+## [1.0.0-alpha.98] - 2026-11-08
+
+## [1.0.0-alpha.97] - 2026-11-08
+
+## [1.0.0-alpha.96] - 2026-11-08
+
+## [1.0.0-alpha.95] - 2026-11-08
+
+## [1.0.0-alpha.94] - 2026-11-08
+
+## [1.0.0-alpha.93] - 2026-11-08
+
+## [1.0.0-alpha.92] - 2026-11-08
+
+## [1.0.0-alpha.91] - 2026-11-08
+
+## [1.0.0-alpha.90] - 2026-11-08
+
+## [1.0.0-alpha.89] - 2026-11-08
+
+## [1.0.0-alpha.88] - 2026-11-08
+
+## [1.0.0-alpha.87] - 2026-11-08
+
+## [1.0.0-alpha.86] - 2026-11-08
+
+## [1.0.0-alpha.85] - 2026-11-08
+
+## [1.0.0-alpha.84] - 2026-11-08
+
+## [1.0.0-alpha.83] - 2026-11-08
+
+## [1.0.0-alpha.82] - 2026-11-08
+
+## [1.0.0-alpha.81] - 2026-11-08
+
+## [1.0.0-alpha.80] - 2026-11-08
+
+## [1.0.0-alpha.79] - 2026-11-08
+
+## [1.0.0-alpha.78] - 2026-11-08
+
+## [1.0.0-alpha.77] - 2026-11-08
+
+## [1.0.0-alpha.76] - 2026-11-08
+
+## [1.0.0-alpha.75] - 2026-11-08
+
+## [1.0.0-alpha.74] - 2026-11-08
+
+## [1.0.0-alpha.73] - 2026-11-08
+
+## [1.0.0-alpha.72] - 2026-11-08
+
+## [1.0.0-alpha.71] - 2026-11-08
+
+## [1.0.0-alpha.70] - 2026-11-08
+
+## [1.0.0-alpha.69] - 2026-11-08
+
+## [1.0.0-alpha.68] - 2026-11-08
+
+## [1.0.0-alpha.67] - 2026-11-08
+
+## [1.0.0-alpha.66] - 2026-11-08
+
+## [1.0.0-alpha.65] - 2026-11-08
+
+## [1.0.0-alpha.64] - 2026-11-08
+
+## [1.0.0-alpha.63] - 2026-11-08
+
+## [1.0.0-alpha.62] - 2026-11-08
+
 ## [1.0.0-alpha.61] - 2026-11-08
 
 ## [1.0.0-alpha.60] - 2026-11-08
@@ -178,7 +290,7 @@ opt-out.
 - **Behavior change:** the built node-server (and the Docker image) now guards `POST /channels/<name>` and its approvals route for a channel without `verify` with `LOUSHO_API_TOKEN` / `auth.ts`, the same as `/chat`. Before, such a channel answered anyone even with a token set. Channels that verify their own requests (Slack, Discord, Telegram, GitHub, Teams, `webhookChannel` with a secret, any channel with `verify`) are unchanged, and the start-up log lists each channel route's guard (`self-verified`, `server-auth` or `open`).
 - **Behavior change:** `webhookChannel` replies with `{ sessionId, text, finishReason, approval? }` (plus `approvalPrompt` on a pause), as `httpChannel` does, instead of the full `ExecutionResult`. The full result echoed the system prompt and the whole transcript to the caller. `fullResult: true` restores the old body.
 - Channels answer a turn on a session that another process or replica is running (`LOUSHO_SESSION_BUSY`) with `409` and `Retry-After: 2` instead of a `500`, and report a turn that fails before the request is acknowledged to `onError` with stage `'turn'` (it said `'parse'`).
-- README and [Comparison](docs/comparison.md) no longer list ACP and MCP as differentiators, and describe Agent Forge as a local visual console.
+- README and [Comparison](https://github.com/LinuxDevil/agent-sdk/blob/995e21b7a835a4c869c1ae0b427fc92b0ee9c000/docs/comparison.md) no longer list ACP and MCP as differentiators, and describe Agent Forge as a local visual console.
 
 - CI is one workflow with two jobs: `ci` (type checks, lint, build, tests with coverage, docs, API and fallow gates, pack-smoke, size check, and a zod 4 type check) and `compat` (the newest peers, `ai` 7 with zod 4, plus the real-Docker sandbox tests). The separate Docker Engine, Agent Forge E2E and weekly registry-smoke workflows and the `ai` 6 / zod 3 matrix entries are gone; `npm run registry-smoke` and `npm run test:e2e:studio` still run locally. When the fallow gate fails, CI now prints its full health and duplication reports.
 

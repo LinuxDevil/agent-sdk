@@ -3,6 +3,7 @@ import { Box } from 'lucide-react';
 import type { NewNode } from '../../graph/v2/mutations';
 import type { Graph, NodeKind, NodeOfKind, Problem } from '../../graph/v2/types';
 import { AGENT_VIEW } from './agent';
+import { ABORT_VIEW } from './abort';
 import { GUARDRAIL_VIEW } from './guardrail';
 import { HANDOFF_VIEW } from './handoff';
 import { HOOK_VIEW } from './hook';
@@ -93,8 +94,8 @@ export interface KindView<K extends NodeKind> {
   /** Per-node tile tone — flow cards colour by step type. */
   toneFor?: (node: NodeOfKind<K>) => KindTone;
   Icon: LucideIcon;
-  /** The card title. */
-  title: (node: NodeOfKind<K>) => string;
+  /** The card title. `graph` is passed where the caller has it (card, Inspector head) for titles that read sibling nodes — the abort listener names its trigger. */
+  title: (node: NodeOfKind<K>, graph?: Graph) => string;
   /** One mono chip under the title. */
   chip?: (node: NodeOfKind<K>) => string | undefined;
   /** ≤ 4 key/value rows. */
@@ -118,6 +119,7 @@ export const KIND_VIEWS: { [K in NodeKind]?: KindView<K> } = {
   skill: SKILL_VIEW,
   memory: MEMORY_VIEW,
   trigger: TRIGGER_VIEW,
+  abort: ABORT_VIEW,
   guardrail: GUARDRAIL_VIEW,
   permission: PERMISSION_VIEW,
   hook: HOOK_VIEW,
