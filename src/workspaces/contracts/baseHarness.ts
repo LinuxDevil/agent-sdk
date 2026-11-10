@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ValidationError } from '../../execution/errors';
 import { isSafeRelativePath } from '../../spec/v2/common';
 import { harnessSchema, type Harness } from './harness';
 
@@ -100,6 +101,6 @@ export function readBaseHarness(tree: WorkspaceTree): BaseHarnessRead {
 /** The workspace base harness as layer 0, or `undefined` when the workspace has no base harness folder; throws one error listing every problem. */
 export function baseHarnessLayer(tree: WorkspaceTree): HarnessLayer | undefined {
   const { layer, problems } = readBaseHarness(tree);
-  if (problems.length > 0) throw new Error(problems.map((item) => `${item.path}: ${item.message}`).join('\n'));
+  if (problems.length > 0) throw new ValidationError(problems.map((item) => `${item.path}: ${item.message}`).join('\n'), undefined, 'LOUSHO_SPEC_INVALID');
   return layer;
 }

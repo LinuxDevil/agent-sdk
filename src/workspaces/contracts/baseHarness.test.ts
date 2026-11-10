@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { ValidationError } from '../../execution/errors';
 import { baseHarnessLayer, baseHarnessSchema, readBaseHarness } from './baseHarness';
 
 const base = { schema: 'lousho.harness/1', constraints: [{ id: 'no-competitors', text: 'Never name a competitor.' }], runtime: { limits: { maxTurns: 10 } } };
@@ -90,6 +91,21 @@ describe('baseHarnessLayer', () => {
     expect(problems).toHaveLength(1);
     expect(problems[0]?.message).toMatch(/^harness\.tools: .*\(R13\)$/);
     expect(() => baseHarnessLayer({ 'harness/harness.json': { ...base, tools: [] } })).toThrow(/^harness\/harness\.json: harness\.tools: .*R13/);
+  });
+});
+
+describe('baseHarnessLayer errors', () => {
+  it('throws a ValidationError with LOUSHO_SPEC_INVALID listing every problem', () => {
+    const tree = { 'harness/harness.json': { ...base, id: 'x', version: '1.0.0' } };
+    let caught: unknown;
+    try {
+      baseHarnessLayer(tree);
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ValidationError);
+    expect((caught as ValidationError).code).toBe('LOUSHO_SPEC_INVALID');
+    expect((caught as ValidationError).detail).toMatch(/'id'[\s\S]*'version'/);
   });
 });
 
