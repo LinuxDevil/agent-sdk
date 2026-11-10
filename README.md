@@ -2,7 +2,7 @@
   <a href="https://lousho.com">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset=".github/assets/lousho-dark.svg">
-      <img alt="Lousho logo" src=".github/assets/lousho.svg" height="96">
+      <img alt="Lousho logo" src=".github/assets/lousho.svg" height="80">
     </picture>
   </a>
 
@@ -23,7 +23,7 @@ TypeScript AI agents you can test in CI, pause for approval, and resume after a 
   <a href="https://lousho.com/agent-forge">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="docs/images/studio-trace-dark.png">
-      <img alt="Agent Forge, the local studio, showing one agent run as a trace" src="docs/images/studio-trace.png" width="640">
+      <img alt="Agent Forge, the local studio, showing one agent run as a trace" src="docs/images/studio-trace.png" width="560">
     </picture>
   </a>
   <br>
