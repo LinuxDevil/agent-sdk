@@ -224,7 +224,7 @@ nothing (an npm quirk with absolute drive-letter paths). Use a relative path
 (`npx ./create-lousho-<version>.tgz my-agent`) or a `file:` spec
 (`npx file:C:/abs/path/create-lousho-<version>.tgz my-agent`) instead.
 
-`npm install github:LinuxDevil/agent-sdk` does **not** work: `dist/` is not in
+`npm install github:LinuxDevil/lousho` does **not** work: `dist/` is not in
 git and the repository has no `prepare` build step, so the install has no
 entry points.
 

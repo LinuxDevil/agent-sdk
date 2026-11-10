@@ -995,7 +995,8 @@
   align-items: center;
   gap: 10px;
 }
-.approval-icon-tile {
+.approval-icon-tile,
+.question-icon-tile {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1033,6 +1034,61 @@
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+/* The Chat thread's question card (test/QuestionCard.tsx): the same
+   warning-soft shell as the approval card, with the question's options
+   and free-text answer inside it. */
+.question-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in srgb, var(--warning) 40%, transparent);
+  background: var(--warning-soft);
+  color: var(--text);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+}
+.question-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.question-text {
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+.question-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.question-answer {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+.question-input {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.question-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--ring);
+}
+.question-error {
+  font-size: 12px;
+  color: var(--danger);
 }
 .chat-action-error {
   padding: var(--space-1) var(--space-4);

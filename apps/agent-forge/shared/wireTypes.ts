@@ -33,17 +33,39 @@ import type { AuthorSettings } from './authorWire';
 export type RunStatus = 'idle' | 'running' | 'done' | 'stopped' | 'error' | 'paused';
 
 /**
- * A tool call an in-progress run is paused on, awaiting a human decision
- * via `POST /agents/:id/approve`. Mirrors the subset of
+ * A pause an in-progress run is waiting on a human for - a tool-call
+ * decision or an `ask_question` answer - resolved via
+ * `POST /agents/:id/approve`. Mirrors the subset of
  * `PendingApproval` (src/execution/ApprovalGate.ts) the UI needs to render
- * an inline approve/reject card, without leaking the full ExecutionSnapshot.
+ * its inline card, without leaking the full ExecutionSnapshot.
  */
 export interface PendingApprovalInfo {
   approvalId: string;
   toolName: string;
   args: Record<string, unknown>;
   createdAt: string;
+  /**
+   * What the pause asks for, always set so the client never guesses:
+   * 'tool' for an approve/reject decision (a 'sign-in' pause stays 'tool'),
+   * 'question' for an `ask_question` call awaiting an answer.
+   */
+  kind: 'tool' | 'question';
+  /** The question an `ask_question` pause asks (the SDK's `ApprovalQuestion`); set only when `kind` is 'question'. */
+  question?: { text: string; options?: string[]; allowFreeText?: boolean };
+  /** ISO instant Studio resolves the pause itself (nobody answered/decided) - the countdown's target. */
+  deadline: string;
+  /** The sub-agent chain the paused call belongs to, outermost first; absent for the top-level agent's own calls. */
+  subagentPath?: string[];
 }
+
+/**
+ * `POST /agents/:id/approve`'s body: a decision for a `kind: 'tool'`
+ * pause, or the answer to a `kind: 'question'` pause (1..4000 chars).
+ * Sending one shape to the other kind is a 400 `LOUSHO_APPROVAL_KIND`.
+ */
+export type ApproveRequest =
+  | { approvalId: string; approved: boolean; note?: string }
+  | { approvalId: string; answer: string };
 
 /**
  * The full status record the server keeps per agent ID and reports back to

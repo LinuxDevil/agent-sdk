@@ -9,6 +9,14 @@ import { graphFromTemplate, type TemplateId } from '../canvas/templates';
 import { agentIdProblem } from '../../shared/agentId';
 import type { CanvasLayout, StudioEvent } from '../../shared/wireTypes';
 import { useStudioEvents } from './useStudioEvents';
+import {
+  emptyHistory,
+  record as recordHistory,
+  redo as redoHistory,
+  undo as undoHistory,
+  type DocState,
+  type History,
+} from './history/history';
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 /** How long `agent.changed` events collect before the agents list re-fetches - a burst (rename = save+delete) is one refresh. */
@@ -125,14 +133,35 @@ function useExplicitSave({ store, agentId, derived, setDirty, refreshAgents, las
   }, [store, agentId, derived, setDirty, refreshAgents, lastSavedJson, latestJson]);
 }
 
+/** How one `setGraph` edit is recorded for undo/redo; `false` records nothing (e.g. C17's unplaced-node layout). */
+export interface SetGraphHistory {
+  /** The undo stack's entry label, shown in the toolbar tooltip ('Edit', 'Move', …). */
+  label: string;
+  /** Edits sharing a key within COALESCE_MS merge into one undo step. */
+  coalesceKey?: string;
+}
+
+/** Options of `setGraph`/`setSpec`: `dirty` (default true) and the history record (default `{ label: 'Edit' }`). */
+export interface SetGraphOptions {
+  dirty?: boolean;
+  history?: SetGraphHistory | false;
+}
+
 /** The setters of the open document that loading, switching, renaming and deleting agents write. */
 interface DocumentSetters {
   setAgentId: (id: string) => void;
   setGraphState: Dispatch<SetStateAction<Graph>>;
+  /** Always mirrors `graph` state — `setGraph` reads it so two edits in one tick chain correctly. */
+  graphRef: MutableRefObject<Graph>;
   lastDerived: MutableRefObject<GraphToSpecResult>;
   lastSavedJson: MutableRefObject<{ spec: string; layout: string }>;
-  setSelectedNodeId: (id: string | undefined) => void;
+  setSelectedNodeId: Dispatch<SetStateAction<string | undefined>>;
   setDirty: (dirty: boolean) => void;
+  /** The undo/redo stacks; replaced wholesale (never mutated) by every recorded edit. */
+  historyRef: MutableRefObject<History>;
+  setHistory: (history: History) => void;
+  /** Clears the stacks — every full-document swap (load/switch/create/rename/delete) calls it. */
+  resetHistory: () => void;
 }
 
 /**
@@ -153,8 +182,12 @@ function showAgent(
   const derived = graphToSpec(nextGraph, nextSpec);
   doc.setAgentId(id);
   doc.setGraphState(nextGraph);
+  doc.graphRef.current = nextGraph;
   doc.lastDerived.current = derived;
   doc.lastSavedJson.current = jsonOf(derived);
+  // A different document starts with an empty undo history — patches are
+  // only meaningful against the document they were recorded on.
+  doc.resetHistory();
   if (!keepSelection) doc.setSelectedNodeId(undefined);
   if (clean) doc.setDirty(false);
 }
@@ -306,33 +339,124 @@ function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters
 }
 
 /**
+ * The `{ spec, layout }` document `graph` currently derives to — the same
+ * value the render-time `useDerivedDocument` computes. Used as the `before`
+ * of a history record; two `setGraph` calls in one tick chain correctly
+ * because `graphRef` (not React state) is the edit base.
+ */
+function docOfGraph(graph: Graph, fallback: GraphToSpecResult): DocState {
+  const derived = deriveSpec(graph, fallback);
+  return { spec: derived.spec, layout: derived.layout };
+}
+
+/**
  * `setGraph` / `setSpec`: edit the document's graph directly or through its
- * derived spec, marking it dirty. `setGraph(updater, { dirty: false })`
- * applies the update without dirtying — the elkjs unplaced-node layout
- * (C17) recomputes positions that are saved with the next real edit, or
- * never, which is fine since they are recomputed on every open.
+ * derived spec, marking it dirty and recording undo history. `options.dirty
+ * === false` applies the update without dirtying — the elkjs unplaced-node
+ * layout (C17) recomputes positions saved with the next real edit, or
+ * never, which is fine since they are recomputed on every open;
+ * `options.history === false` records no undo entry.
  */
 function useGraphEditors(doc: DocumentSetters) {
-  const { setGraphState, setDirty, setSelectedNodeId, lastDerived } = doc;
-  const setGraph = useCallback((updater: (graph: Graph) => Graph, options?: { dirty?: boolean }) => {
-    setGraphState((prev) => updater(prev));
-    if (options?.dirty !== false) setDirty(true);
-  }, []);
+  const { setGraphState, setDirty, setSelectedNodeId, lastDerived, graphRef, historyRef, setHistory } = doc;
+
+  /** Records `before → graphToSpec(next)` as one history entry (skipped when the diff is empty). */
+  const recordEdit = useCallback(
+    (before: DocState, next: Graph, history: SetGraphHistory) => {
+      const afterDerived = deriveSpec(next, { ...lastDerived.current, spec: before.spec, layout: before.layout });
+      const after: DocState = { spec: afterDerived.spec, layout: afterDerived.layout };
+      const nextHistory = recordHistory(historyRef.current, before, after, history.label, Date.now(), history.coalesceKey);
+      if (nextHistory !== historyRef.current) setHistory(nextHistory);
+    },
+    [lastDerived, historyRef, setHistory]
+  );
+
+  const setGraph = useCallback(
+    (updater: (graph: Graph) => Graph, options: SetGraphOptions = {}) => {
+      const before = docOfGraph(graphRef.current, lastDerived.current);
+      const next = updater(graphRef.current);
+      graphRef.current = next;
+      setGraphState(next);
+      const history = options.history === false ? undefined : options.history ?? { label: 'Edit' };
+      if (history !== undefined) recordEdit(before, next, history);
+      // `dirty: false` means "don't dirty" (the late elkjs layout write),
+      // never "clean" — clearing here could hide a user edit that landed
+      // while the async layout was still resolving.
+      if (options.dirty !== false) setDirty(true);
+    },
+    [graphRef, lastDerived, recordEdit, setDirty, setGraphState]
+  );
 
   const setSpec = useCallback(
     (updater: (spec: AgentSpecV2) => AgentSpecV2) => {
-      setGraphState((prev) => {
-        const current = deriveSpec(prev, lastDerived.current);
-        // A whole-spec write keeps the current layout: positions survive an import.
-        return specToGraph(updater(current.spec), current.layout);
-      });
+      const before = docOfGraph(graphRef.current, lastDerived.current);
+      // A whole-spec write keeps the current layout: positions survive an import.
+      const next = specToGraph(updater(before.spec), before.layout);
+      graphRef.current = next;
+      setGraphState(next);
+      recordEdit(before, next, { label: 'Import' });
       setSelectedNodeId(undefined);
       setDirty(true);
     },
-    []
+    [graphRef, lastDerived, recordEdit, setDirty, setGraphState, setSelectedNodeId]
   );
 
   return { setGraph, setSpec };
+}
+
+/** Undo/redo over the recorded `{ spec, layout }` patches; both rebuild the graph via `specToGraph`. */
+function useHistoryControls(doc: DocumentSetters, history: History) {
+  const { graphRef, setGraphState, setSelectedNodeId, setDirty, lastDerived, historyRef, setHistory } = doc;
+
+  /** Applies a history step's resulting DocState as the new graph; keeps the selection when its node survives. */
+  const applyStep = useCallback(
+    (state: DocState, nextHistory: History) => {
+      const nextGraph = specToGraph(state.spec, state.layout);
+      graphRef.current = nextGraph;
+      setGraphState(nextGraph);
+      setHistory(nextHistory);
+      // The rebuilt graph's ids are the canonical spec ids: keep the
+      // selection only when that node still exists.
+      setSelectedNodeId((prev) =>
+        prev !== undefined && nextGraph.nodes.some((n) => n.id === prev) ? prev : undefined
+      );
+      // Undo/redo are edits like any other: dirty so autosave persists them.
+      setDirty(true);
+    },
+    [graphRef, setDirty, setGraphState, setHistory, setSelectedNodeId]
+  );
+
+  const undo = useCallback(() => {
+    const current = { spec: lastDerived.current.spec, layout: lastDerived.current.layout };
+    let result: ReturnType<typeof undoHistory>;
+    try {
+      result = undoHistory(historyRef.current, current);
+    } catch {
+      // The document drifted from the recorded state (an unrecorded edit
+      // landed after the entry): the patch cannot apply — ignore the key.
+      return;
+    }
+    if (result === undefined) return;
+    applyStep(result.state, result.history);
+  }, [applyStep, historyRef, lastDerived]);
+
+  const redo = useCallback(() => {
+    const current = { spec: lastDerived.current.spec, layout: lastDerived.current.layout };
+    let result: ReturnType<typeof redoHistory>;
+    try {
+      result = redoHistory(historyRef.current, current);
+    } catch {
+      return;
+    }
+    if (result === undefined) return;
+    applyStep(result.state, result.history);
+  }, [applyStep, historyRef, lastDerived]);
+
+  const canUndo = history.past.length > 0;
+  const canRedo = history.future.length > 0;
+  const undoLabel = history.past[history.past.length - 1]?.label ?? '';
+  const redoLabel = history.future[history.future.length - 1]?.label ?? '';
+  return { undo, redo, canUndo, canRedo, undoLabel, redoLabel };
 }
 
 /** Switching to, creating, renaming and deleting saved agents. */
@@ -391,16 +515,36 @@ function useAgentActions(
 function useDocumentState() {
   const [agentId, setAgentId] = useState('untitled-agent');
   const [graph, setGraphState] = useState<Graph>(() => specToGraph(DEFAULT_SPEC));
+  // Mirrors `graph` for `setGraph`'s synchronous edit base (see DocumentSetters).
+  const graphRef = useRef(graph);
   const [dirty, setDirty] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>(undefined);
+  const [history, setHistoryState] = useState<History>(emptyHistory);
+  const historyRef = useRef(history);
+  const setHistory = useCallback((next: History) => {
+    historyRef.current = next;
+    setHistoryState(next);
+  }, []);
+  const resetHistory = useCallback(() => setHistory(emptyHistory()), [setHistory]);
   const lastDerived = useRef<GraphToSpecResult>(graphToSpec(specToGraph(DEFAULT_SPEC), DEFAULT_SPEC));
   // Canonical JSON of what the server is known to hold: autosave only writes what differs.
   const lastSavedJson = useRef(jsonOf(lastDerived.current));
   // Canonical JSON of the document as currently derived; compared against an
   // in-flight save's JSON so a stale write never clears a newer edit's dirty.
   const latestJson = useRef(lastSavedJson.current);
-  const doc: DocumentSetters = { setAgentId, setGraphState, lastDerived, lastSavedJson, setSelectedNodeId, setDirty };
-  return { agentId, graph, dirty, selectedNodeId, latestJson, doc };
+  const doc: DocumentSetters = {
+    setAgentId,
+    setGraphState,
+    graphRef,
+    lastDerived,
+    lastSavedJson,
+    setSelectedNodeId,
+    setDirty,
+    historyRef,
+    setHistory,
+    resetHistory,
+  };
+  return { agentId, graph, dirty, selectedNodeId, latestJson, history, doc };
 }
 
 function useDerivedDocument(
@@ -426,7 +570,7 @@ function useDerivedDocument(
  * `initialId` when that agent is saved (the `#/agents/:id` of a reload).
  */
 export function useAgentDocument(store: AgentStore, initialId?: string) {
-  const { agentId, graph, dirty, selectedNodeId, latestJson, doc } = useDocumentState();
+  const { agentId, graph, dirty, selectedNodeId, latestJson, history, doc } = useDocumentState();
   // The agent the document currently shows, readable from async
   // continuations: a `reload()` whose fetch resolves after an agent
   // switch must not flip the document back to the agent it started on.
@@ -444,6 +588,7 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
   const save = useExplicitSave(saveDeps);
 
   const { setGraph, setSpec } = useGraphEditors(doc);
+  const historyControls = useHistoryControls(doc, history);
 
   useAutosave({ ...saveDeps, dirty });
 
@@ -494,5 +639,6 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     agentsLoaded,
     switchAgent,
     createAgent,
+    ...historyControls,
   };
 }
