@@ -36,7 +36,7 @@ export type PolicyCeiling = WorkspacePolicy;
 
 /** What the runtime enforces: every field present, an empty list meaning nothing is granted. */
 export interface EffectivePolicy {
-  /** The runtime evaluates each list first-match and applies the stricter decision (deny > ask > allow > none). */
+  /** The runtime evaluates each list first-match and applies the stricter decision (deny > ask > none > allow). */
   permissions: {
     /** The ceiling's rules, unchanged. */
     ceiling: PermissionRuleSpec[];
@@ -126,7 +126,7 @@ function narrowSecrets(ceiling: readonly SecretRef[], workspace: readonly Secret
   });
 }
 
-/** Narrows a host ceiling with a workspace policy (both validated, invalid input throws); the per-field rules are in the P0.6 PR. */
+/** Narrows a workspace policy under a host ceiling; per-field rules are documented in docs/workspaces.md (P0.13). */
 export function narrowPolicy(ceiling: PolicyCeiling, workspace: WorkspacePolicy): EffectivePolicy {
   const host = workspacePolicySchema.parse(ceiling);
   const own = workspacePolicySchema.parse(workspace);
