@@ -379,7 +379,10 @@ function useGraphEditors(doc: DocumentSetters) {
       setGraphState(next);
       const history = options.history === false ? undefined : options.history ?? { label: 'Edit' };
       if (history !== undefined) recordEdit(before, next, history);
-      setDirty(options.dirty ?? true);
+      // `dirty: false` means "don't dirty" (the late elkjs layout write),
+      // never "clean" — clearing here could hide a user edit that landed
+      // while the async layout was still resolving.
+      if (options.dirty !== false) setDirty(true);
     },
     [graphRef, lastDerived, recordEdit, setDirty, setGraphState]
   );
