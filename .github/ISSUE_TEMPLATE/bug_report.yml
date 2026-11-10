@@ -7,7 +7,7 @@ body:
     attributes:
       value: |
         Thanks for taking the time to report a bug.
-        Please do not report security problems here. See [SECURITY.md](https://github.com/LinuxDevil/agent-sdk/blob/main/SECURITY.md) instead.
+        Please do not report security problems here. See [SECURITY.md](https://github.com/LinuxDevil/lousho/blob/main/SECURITY.md) instead.
   - type: input
     id: lousho-version
     attributes:

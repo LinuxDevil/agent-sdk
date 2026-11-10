@@ -9,11 +9,11 @@
 # Lousho — TypeScript AI agent SDK
 
 [![npm](https://img.shields.io/npm/v/lousho)](https://www.npmjs.com/package/lousho)
-![CI](https://github.com/LinuxDevil/agent-sdk/actions/workflows/ci.yml/badge.svg?branch=main)
+![CI](https://github.com/LinuxDevil/lousho/actions/workflows/ci.yml/badge.svg?branch=main)
 [![Docs](https://img.shields.io/badge/docs-lousho.com-0F9D74)](https://lousho.com)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/node/v/lousho)](https://www.npmjs.com/package/lousho)
-[![GitHub stars](https://img.shields.io/github/stars/LinuxDevil/agent-sdk)](https://github.com/LinuxDevil/agent-sdk)
+[![GitHub stars](https://img.shields.io/github/stars/LinuxDevil/lousho)](https://github.com/LinuxDevil/lousho)
 
 </div>
 
@@ -203,8 +203,8 @@ Alpha. The API may change before 1.0. Pin a version. [Upgrading](docs/upgrading.
 
 ## Community
 
-- Questions and ideas: [GitHub Discussions](https://github.com/LinuxDevil/agent-sdk/discussions).
-- Bugs and feature requests: [GitHub issues](https://github.com/LinuxDevil/agent-sdk/issues).
+- Questions and ideas: [GitHub Discussions](https://github.com/LinuxDevil/lousho/discussions).
+- Bugs and feature requests: [GitHub issues](https://github.com/LinuxDevil/lousho/issues).
 - Arabic docs: [lousho.com/ar](https://lousho.com/ar).
 
 ## Contributing

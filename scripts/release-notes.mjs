@@ -19,7 +19,7 @@ if (mode === 'check') {
   }
   console.log(hasReleasableChanges(subjects, norelease) ? 'true' : 'false');
 } else if (mode === 'notes') {
-  const repo = `${process.env.GITHUB_SERVER_URL ?? 'https://github.com'}/${process.env.GITHUB_REPOSITORY ?? 'LinuxDevil/agent-sdk'}`;
+  const repo = `${process.env.GITHUB_SERVER_URL ?? 'https://github.com'}/${process.env.GITHUB_REPOSITORY ?? 'LinuxDevil/lousho'}`;
   process.stdout.write(
     renderNotes({
       subjects,

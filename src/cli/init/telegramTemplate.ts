@@ -733,7 +733,7 @@ function readme(config: ProjectConfig, bot: BotOptions): string {
   const tokenSet = bot.token ? ' (token already in .env)' : '';
   return `# ${config.name}
 
-${(bot.persona ?? 'A Telegram bot').trim()} — built with [lousho](https://github.com/LinuxDevil/agent-sdk).
+${(bot.persona ?? 'A Telegram bot').trim()} — built with [lousho](https://github.com/LinuxDevil/lousho).
 
 ## Next 3 commands
 

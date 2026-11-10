@@ -15,7 +15,7 @@ reads the default registry at `https://registry.lousho.com/index.json`, which
 is the `registry/dist/` folder of the SDK's repository served as static JSON.
 When that host cannot be reached, `lousho add` reads the same committed folder
 from GitHub instead: the release tag of the installed SDK version
-(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/<version>/registry/dist/index.json`),
+(`https://raw.githubusercontent.com/LinuxDevil/lousho/<version>/registry/dist/index.json`),
 then the same tag with a `v` prefix (older releases), then `main`.
 If GitHub cannot be reached either (offline, an outage, a version whose tag was
 never pushed), `lousho add` reads the copy of `registry/dist/` that ships inside

@@ -1,10 +1,10 @@
 blank_issues_enabled: false
 contact_links:
   - name: Questions
-    url: https://github.com/LinuxDevil/agent-sdk/discussions
+    url: https://github.com/LinuxDevil/lousho/discussions
     about: Ask how to use Lousho, or share what you built.
   - name: Security problem
-    url: https://github.com/LinuxDevil/agent-sdk/security/advisories/new
+    url: https://github.com/LinuxDevil/lousho/security/advisories/new
     about: Report a vulnerability in private. Please do not open a public issue.
   - name: Documentation
     url: https://lousho.com
