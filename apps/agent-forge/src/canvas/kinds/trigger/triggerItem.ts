@@ -5,10 +5,34 @@
  * any other catalog type keeps just `id` and `type` so its schema form
  * fills the rest.
  */
+import { CHANNEL_LABELS } from '../../../graph/v2/kinds/trigger';
 import type { TriggerSpec } from '../../../graph/v2/specTypes';
 
 /** The five PLAN trigger types with a hand-written form, in palette order. */
 export const FORM_TRIGGER_TYPES = ['chat', 'cron', 'webhook', 'channel', 'agent'] as const;
+
+/**
+ * The trigger card's C12 title (`trigger.tsx`'s `title`): a fixed label,
+ * the channel's label or `After <agent>`. Shared with the abort
+ * listener's "Cancel on …" title and its Inspector's trigger options.
+ */
+export function triggerTitle(item: TriggerSpec): string {
+  switch (item.type) {
+    case 'chat':
+      return 'Chat';
+    case 'cron':
+      return 'Schedule';
+    case 'webhook':
+      return 'Webhook';
+    case 'channel':
+      return CHANNEL_LABELS[item.channel] ?? item.channel;
+    case 'agent':
+      return item.after === '' ? 'After another agent' : `After ${item.after}`;
+    default:
+      // A catalog type outside the five PLAN kinds renders under its own name.
+      return (item as { type: string }).type;
+  }
+}
 
 /**
  * A fresh `triggers[]` entry of `type` with id `id` — the palette table's

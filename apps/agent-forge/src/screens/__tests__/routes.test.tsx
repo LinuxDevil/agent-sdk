@@ -74,6 +74,8 @@ describe('screenFor', () => {
     expect(screenFor('#/agents/support-bot')).toBe('agents');
     expect(screenFor('#/agents/support-bot/canvas')).toBe('agents');
     expect(screenFor('#/agents/support-bot/overview')).toBe('agentDetail');
+    expect(screenFor('#/templates')).toBe('templates');
+    expect(screenFor('#/templates?category=Support&template=pr-reviewer')).toBe('templates');
     expect(screenFor('#/traces')).toBe('traces');
     expect(screenFor('#/traces/abc?obs=1')).toBe('trace');
     expect(screenFor('#/monitoring?window=24h')).toBe('monitoring');

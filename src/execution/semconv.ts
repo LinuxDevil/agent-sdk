@@ -134,6 +134,8 @@ export const SdkAttr = {
   RETRY_ERRORS: 'lousho.retry.errors',
   /** On a sub-agent's `invoke_agent` span, the name the lead knows it by (the `task` tool's `agent`). */
   SUBAGENT_NAME: 'lousho.subagent.name',
+  /** On an `invoke_agent` span: the harness revision of the agent's instructions and skills, the id `harnessHash` gives; absent when the instructions are resolved per run. */
+  HARNESS_REVISION: 'lousho.harness.revision',
   /** On a sub-agent's `invoke_agent` span, 1 for a sub-agent of the top-level run, 2 for its sub-agent, and so on. */
   SUBAGENT_DEPTH: 'lousho.subagent.depth',
   /** On a sub-agent's `invoke_agent` span, the `task` call's taskId. */

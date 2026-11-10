@@ -144,13 +144,18 @@ describe('validateGraph: core checks', () => {
     ['permission', { id: 'p1', tool: '*', action: 'ask' }, 'permission rules'],
     ['hook', { id: 'h1', file: 'hooks/h.ts' }, 'hooks'],
     ['trigger', { id: 't1', type: 'cron', cron: '0 9 * * *', prompt: 'go' }, 'triggers'],
-    ['abort', { id: 'a1', triggerId: 't1', when: 'true', match: 'true', scope: 'both' }, 'abort listeners'],
+    // The abort listener watches 'tw', the webhook trigger below (only webhook/channel triggers can be watched).
+    ['abort', { id: 'a1', triggerId: 'tw', when: 'true', match: 'true', scope: 'both' }, 'abort listeners'],
   ] as Array<[NodeKind, Record<string, unknown>, string]>)(
     'reports two %s items sharing an id across the graph',
     (kind, item, label) => {
       let g = specToGraph(
         minimalSpec({
-          triggers: [{ id: 't9', type: 'chat' }],
+          triggers: [
+            { id: 't9', type: 'chat' },
+            // A webhook trigger the abort listener rows can validly watch.
+            { id: 'tw', type: 'webhook', path: '/hooks/x', promptTemplate: 'x' },
+          ],
           // A tool under each owner so a permission rule's '*' matches (no
           // 'No tool on this agent matches this rule' warning).
           tools: [{ builtin: 'http' }],

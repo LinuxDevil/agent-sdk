@@ -49,6 +49,7 @@ export interface AgentConfig {
     expectedResult?: unknown;
     // (undocumented)
     flows?: AgentFlow[];
+    harnessRevision?: string;
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -1466,6 +1467,12 @@ export function compilePolicy(policy: AgentSpecPolicy | undefined): CompiledPoli
 // @public
 export function compileSpec(spec: AgentSpecV2, host: SpecHost): Promise<CompiledSpec>;
 
+// @public
+export function compileSpecWithNodeIds(spec: AgentSpecV2, host: SpecHost, index?: {
+    spec?: AgentSpecV2;
+    toolNamesByRef?: (compiled: CompiledSpec) => readonly (readonly string[])[];
+}): Promise<CompiledSpec>;
+
 // @public (undocumented)
 interface ConditionNode {
     // (undocumented)
@@ -1531,6 +1538,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     fallbackModels?: readonly string[];
     guardrails?: AgentGuardrails;
     handoffs?: ReadonlyArray<SimpleAgent | Handoff>;
+    harnessCanary?: (ctx: RunConfigContext) => HarnessArm | undefined;
     hooks?: readonly AgentHook[];
     limits?: RunLimits;
     maxHandoffs?: number;
@@ -3203,6 +3211,12 @@ interface HandoffSpec {
 // @public
 export interface HandoffTarget extends SubagentSpec {
     handoffs?: readonly ResolvedHandoff[];
+}
+
+// @public
+export interface HarnessArm {
+    instructions: string;
+    skills: readonly Skill[];
 }
 
 // @public
@@ -6152,6 +6166,7 @@ export const SdkAttr: {
     readonly RETRY_COUNT: "lousho.retry.count";
     readonly RETRY_ERRORS: "lousho.retry.errors";
     readonly SUBAGENT_NAME: "lousho.subagent.name";
+    readonly HARNESS_REVISION: "lousho.harness.revision";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
     readonly TASK_ID: "lousho.task.id";
     readonly GUARDRAIL_NAME: "lousho.guardrail.name";
@@ -7860,7 +7875,7 @@ export type VectorMemoryProvider = MemoryProvider & {
 };
 
 // @public
-export const VERSION = "1.0.0-alpha.49";
+export const VERSION = "1.0.0-alpha.117";
 
 // @public
 export function warnUnknownContextWindow(feature: string, model: string | undefined, assumed: number): void;

@@ -11,6 +11,7 @@ import { Screens } from './screens/routes';
 import { ToastProvider } from './ui/Toast';
 import { AuthorChatProvider } from './author/AuthorChatContext';
 import { AuthorPanel } from './author/AuthorPanel';
+import { AuthorRouteFocus } from './author/useRouteFocus';
 
 export function App() {
   return (
@@ -21,6 +22,8 @@ export function App() {
           <ToastProvider>
             {/* The Author conversation lives above the dock: closing the panel is a pause, not an end. */}
             <AuthorChatProvider>
+              {/* Keeps the composer focus chip on the agent on screen (AA19). */}
+              <AuthorRouteFocus />
               <AppShell dock={<AuthorPanel />}>
                 <Screens />
               </AppShell>

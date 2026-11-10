@@ -308,12 +308,18 @@ function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters
   return { agents, setAgents, refreshAgents, agentsLoaded };
 }
 
-/** `setGraph` / `setSpec`: edit the document's graph directly or through its derived spec, marking it dirty. */
+/**
+ * `setGraph` / `setSpec`: edit the document's graph directly or through its
+ * derived spec, marking it dirty. `setGraph(updater, { dirty: false })`
+ * applies the update without dirtying — the elkjs unplaced-node layout
+ * (C17) recomputes positions that are saved with the next real edit, or
+ * never, which is fine since they are recomputed on every open.
+ */
 function useGraphEditors(doc: DocumentSetters) {
   const { setGraphState, setDirty, setSelectedNodeId, lastDerived } = doc;
-  const setGraph = useCallback((updater: (graph: Graph) => Graph) => {
+  const setGraph = useCallback((updater: (graph: Graph) => Graph, options?: { dirty?: boolean }) => {
     setGraphState((prev) => updater(prev));
-    setDirty(true);
+    if (options?.dirty !== false) setDirty(true);
   }, []);
 
   const setSpec = useCallback(
@@ -472,6 +478,8 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     spec,
     setSpec,
     edges,
+    /** The `layout.json` `graphToSpec` derives alongside `spec` — the proposal overlay's position source (C21). */
+    layout: derived.layout,
     nodeIdMap: derived.nodeIdMap,
     specPaths: derived.specPaths,
     problems,

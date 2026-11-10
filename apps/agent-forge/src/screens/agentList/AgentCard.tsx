@@ -7,6 +7,7 @@ import { StatusBadge, StatusDot } from '../../ui/StatusBadge';
 import { statusKey } from '../../ui/status';
 import { Switch } from '../../ui/controls';
 import { agentTabPath } from '../agents/agentTabs';
+import '../../ui/tileCard.css';
 import './agentCard.css';
 
 /**
@@ -115,7 +116,7 @@ export function AgentCard({ agent, onOpen, onToggleEnabled, toggling = false, no
   return (
     <li className="agent-card-item">
       <article
-        className={['agent-card', 'agent-tile-host', enabled ? undefined : 'agent-card-off'].filter(Boolean).join(' ')}
+        className={['agent-card', 'tile-card', 'agent-tile-host', enabled ? undefined : 'agent-card-off'].filter(Boolean).join(' ')}
         aria-labelledby={nameId}
       >
         <div className="agent-card-body">

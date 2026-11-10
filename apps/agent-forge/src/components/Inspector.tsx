@@ -1,12 +1,13 @@
 import { useRef } from 'react';
-import type { RefObject } from 'react';
-import { CircleAlert, MousePointerClick, TriangleAlert } from 'lucide-react';
+import type { ReactNode, RefObject } from 'react';
+import { Activity, CircleAlert, MousePointerClick, TriangleAlert } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { patchNode, setNodeData } from '../graph/v2/mutations';
 import { toolNodeName } from '../graph/v2/nodeIds';
-import type { GraphNode, Problem, ToolNodeData } from '../graph/v2/types';
+import type { Graph, GraphNode, Problem, ToolNodeData } from '../graph/v2/types';
 import { ROOT_AGENT_ID } from '../graph/v2/types';
 import { viewFor, type KindFieldsProps } from '../canvas/kinds';
+import { spansForNode } from './test/nodeSpans';
 import { InspectorSection } from './InspectorSection';
 
 /**
@@ -53,8 +54,8 @@ function breakpointKeyFor(node: GraphNode): string | undefined {
   return undefined;
 }
 
-/** The header: the node's kind icon tile, its view label as an overline, and its title (truncated, full text in the tooltip). */
-function InspectorHead({ node }: { node: GraphNode }) {
+/** The header: the node's kind icon tile, its view label as an overline, its title (truncated, full text in the tooltip) and an optional action. */
+function InspectorHead({ node, graph, action }: { node: GraphNode; graph: Graph; action?: ReactNode }) {
   const view = viewFor(node.kind);
   const { Icon } = view;
   return (
@@ -64,10 +65,11 @@ function InspectorHead({ node }: { node: GraphNode }) {
       </span>
       <div className="inspector-head-text">
         <div className="k overline">Selected node ({view.label})</div>
-        <div className="v" title={view.title(node as never)}>
-          {view.title(node as never)}
+        <div className="v" title={view.title(node as never, graph)}>
+          {view.title(node as never, graph)}
         </div>
       </div>
+      {action}
     </div>
   );
 }
@@ -196,14 +198,19 @@ function BreakpointSection({ breakpointKey }: { breakpointKey: string }) {
 }
 
 function NodeInspector({ selected }: { selected: GraphNode }) {
-  const { graph, setGraph, problems, specPaths } = useAppState();
+  const { displayGraph, setGraph, proposal, spans, openNodeSpans, problems, specPaths } = useAppState();
   const selectedId = selected.id;
   const view = viewFor(selected.kind);
   const nodeProblems = problems.filter((p) => p.nodeId === selectedId);
   const bodyRef = useRef<HTMLDivElement>(null);
+  // "View spans" opens the node spans sheet; disabled until the node has
+  // spans in the live/last run's feed (components/test/nodeSpans.ts).
+  // `?? []`: AppState always provides `spans`, but lightweight test doubles
+  // of useAppState may not.
+  const spanCount = spansForNode(spans ?? [], selectedId).length;
   const props: KindFieldsProps<typeof selected.kind> = {
     node: selected as never,
-    graph,
+    graph: displayGraph,
     patch: (patch) => setGraph((g) => patchNode(g, selectedId, patch)),
     replace: (data) => setGraph((g) => setNodeData(g, selectedId, data)),
     problems: nodeProblems,
@@ -213,14 +220,40 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
 
   return (
     <aside className="inspector" id="studio-inspector" aria-label="Inspector">
-      <InspectorHead node={selected} />
+      <InspectorHead
+        node={selected}
+        graph={displayGraph}
+        action={
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm inspector-view-spans"
+            disabled={spanCount === 0}
+            title={spanCount === 0 ? 'Run the agent to see spans for this node' : undefined}
+            onClick={() => openNodeSpans(selectedId)}
+          >
+            <Activity size={16} strokeWidth={1.75} aria-hidden="true" />
+            <span>View spans</span>
+          </button>
+        }
+      />
       <div className="inspector-body" ref={bodyRef}>
         {/* Collapsible sections, each remembered per viewer (InspectorSection.tsx). */}
         {nodeProblems.length > 0 && (
           <ProblemsSection problems={nodeProblems} specPath={specPaths[selectedId]} rootRef={bodyRef} />
         )}
         <InspectorSection id="node" title="Settings">
-          <Fields {...props} />
+          {proposal === undefined ? (
+            <Fields {...props} />
+          ) : (
+            <>
+              {/* Read-only while the proposal overlay is shown (C21): the
+                  fields render the PROPOSED data, edits wait for Apply. */}
+              <p className="hint inspector-proposal-hint">This is a proposal. Apply it from the chat to edit.</p>
+              <fieldset disabled className="inspector-proposal-fieldset">
+                <Fields {...props} />
+              </fieldset>
+            </>
+          )}
         </InspectorSection>
         {breakpointKey && <BreakpointSection breakpointKey={breakpointKey} />}
       </div>
@@ -237,7 +270,9 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
  * registers one).
  */
 export function Inspector() {
-  const { graph, selectedNodeId } = useAppState();
-  const selected = graph.nodes.find((n) => n.id === selectedNodeId);
+  // The Inspector reads the DISPLAY graph: while a proposal is shown the
+  // selected node's fields are the proposed ones (C21).
+  const { displayGraph, selectedNodeId } = useAppState();
+  const selected = displayGraph.nodes.find((n) => n.id === selectedNodeId);
   return selected ? <NodeInspector selected={selected} /> : <EmptyInspector />;
 }

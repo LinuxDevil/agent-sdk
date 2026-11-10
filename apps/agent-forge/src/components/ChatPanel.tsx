@@ -1,5 +1,5 @@
 /**
- * Chat with a running agent - the Chat tab's real content, replacing
+ * Chat with a running agent - the Test tab's real content, replacing
  * BottomDrawer's former placeholder. Renders `AppState.chat` (the server's
  * real `Message[]` history, reconciled and streamed over the existing
  * `WS /agents/:id/stream` channel - see runRegistry.ts/chatReconcile.ts)
@@ -15,6 +15,7 @@
  * real `status: 'running'` from the runtime server rather than a fake timeout.
  */
 import { useEffect, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { Play, Plus, Sparkles, User, Wrench, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import type { ChatMessage } from '../../shared/wireTypes';
@@ -232,7 +233,7 @@ interface MessageListProps {
 
 function EmptyChatNotice({ count, isRunning }: { count: number; isRunning: boolean }) {
   return count === 0 && !isRunning ? (
-    <div className="chat-empty">Send a message to start chatting with this agent.</div>
+    <div className="chat-empty">Send a message to test this agent. Nodes light up on the canvas as it runs.</div>
   ) : null;
 }
 
@@ -258,7 +259,11 @@ function MessageList({ messages, isRunning, pendingApproval }: MessageListProps)
   );
 }
 
-export function ChatPanel() {
+/**
+ * `aboveComposer` is the Test pane's middle slot (T05's steer box, T07's
+ * pending question): rendered between the error notice and the composer.
+ */
+export function ChatPanel({ aboveComposer }: { aboveComposer?: ReactNode }) {
   const { chat, chatActionError, viewedChatSession, runStatus } = useAppState();
 
   const viewing = viewedChatSession !== undefined;
@@ -276,6 +281,8 @@ export function ChatPanel() {
           {chatActionError}
         </div>
       )}
+
+      {aboveComposer}
 
       <ChatComposer
         viewing={viewing}
