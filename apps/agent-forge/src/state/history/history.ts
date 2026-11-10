@@ -45,19 +45,20 @@ export function emptyHistory(): History {
 
 /**
  * The state the last entry started from: `before` is the state just before
- * the new change, i.e. the last entry's result — applying its `backward`
- * patch recovers the entry's own `before`. Returns undefined when `before`
- * is not that result (an unrecorded edit landed in between), which makes
- * merging unsafe.
+ * the new change, i.e. the last entry's result (possibly carrying an
+ * unrecorded `history: false` edit) — applying its `backward` patch
+ * recovers the entry's own `before`. Returns undefined when the patch no
+ * longer applies (the unrecorded edit removed a path it needs), in which
+ * case merging is unsafe and the change gets its own entry.
  */
 function entryStart(h: History, before: DocState): DocState | undefined {
   const last = h.past[h.past.length - 1];
   if (!last) return undefined;
-  const start = applyPatch(before, last.backward);
-  // Only merge when `before` really is the last entry's result — an
-  // unrecorded change (history: false) would make the merged patches
-  // describe a state the document was never in.
-  return diffJson(applyPatch(start, last.forward), before).length === 0 ? start : undefined;
+  try {
+    return applyPatch(before, last.backward);
+  } catch {
+    return undefined;
+  }
 }
 
 /**

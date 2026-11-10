@@ -111,43 +111,51 @@ function fail(path: string): never {
   throw new Error(`Patch does not apply: ${path}`);
 }
 
+/** The op's leaf position inside an array: add inserts, remove deletes, replace overwrites. */
+function applyToArrayLeaf(arr: unknown[], index: number, op: PatchOp): unknown[] {
+  if (op.op === 'add') {
+    if (index > arr.length) fail(op.path);
+    const next = arr.slice();
+    next.splice(index, 0, op.value);
+    return next;
+  }
+  if (index >= arr.length) fail(op.path);
+  const next = arr.slice();
+  if (op.op === 'remove') next.splice(index, 1);
+  else next[index] = op.value;
+  return next;
+}
+
+function applyToArray(arr: unknown[], head: string, rest: string[], op: PatchOp): unknown[] {
+  if (!/^\d+$/.test(head)) fail(op.path);
+  const index = Number(head);
+  if (rest.length === 0) return applyToArrayLeaf(arr, index, op);
+  if (index >= arr.length) fail(op.path);
+  const next = arr.slice();
+  next[index] = applyAt(arr[index], rest, op);
+  return next;
+}
+
+/** The op's leaf position inside a record: replace/remove need an existing key, add does not. */
+function applyToRecordLeaf(rec: Record<string, unknown>, key: string, op: PatchOp): Record<string, unknown> {
+  if (op.op !== 'add' && !Object.prototype.hasOwnProperty.call(rec, key)) fail(op.path);
+  const next = { ...rec };
+  if (op.op === 'remove') delete next[key];
+  else next[key] = op.value;
+  return next;
+}
+
+function applyToRecord(rec: Record<string, unknown>, head: string, rest: string[], op: PatchOp): unknown {
+  if (rest.length === 0) return applyToRecordLeaf(rec, head, op);
+  if (!Object.prototype.hasOwnProperty.call(rec, head)) fail(op.path);
+  return { ...rec, [head]: applyAt(rec[head], rest, op) };
+}
+
 /** Applies one op at `segments` under `node`, returning the new subtree (never mutates). */
 function applyAt(node: unknown, segments: string[], op: PatchOp): unknown {
   const [head, ...rest] = segments;
-  if (Array.isArray(node)) {
-    if (!/^\d+$/.test(head)) fail(op.path);
-    const index = Number(head);
-    if (rest.length === 0) {
-      if (op.op === 'add') {
-        if (index > node.length) fail(op.path);
-        const next = node.slice();
-        next.splice(index, 0, op.value);
-        return next;
-      }
-      if (index >= node.length) fail(op.path);
-      const next = node.slice();
-      if (op.op === 'remove') next.splice(index, 1);
-      else next[index] = op.value;
-      return next;
-    }
-    if (index >= node.length) fail(op.path);
-    const child = applyAt(node[index], rest, op);
-    const next = node.slice();
-    next[index] = child;
-    return next;
-  }
-  if (isRecord(node)) {
-    if (rest.length === 0) {
-      const exists = Object.prototype.hasOwnProperty.call(node, head);
-      if (op.op !== 'add' && !exists) fail(op.path);
-      const next = { ...node };
-      if (op.op === 'remove') delete next[head];
-      else next[head] = op.value;
-      return next;
-    }
-    if (!Object.prototype.hasOwnProperty.call(node, head)) fail(op.path);
-    return { ...node, [head]: applyAt(node[head], rest, op) };
-  }
+  if (Array.isArray(node)) return applyToArray(node, head, rest, op);
+  if (isRecord(node)) return applyToRecord(node, head, rest, op);
   return fail(op.path);
 }
 

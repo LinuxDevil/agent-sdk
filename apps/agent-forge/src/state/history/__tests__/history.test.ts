@@ -14,7 +14,7 @@ import {
 function doc(name: string, x = 0): DocState {
   return {
     spec: { version: 2, name, model: 'mock/mock-1', instructions: 'hi' } as AgentSpecV2,
-    layout: { schemaVersion: 1, nodes: { agent: { x, y: 0 } } } satisfies CanvasLayout,
+    layout: { schemaVersion: 1, nodes: { agent: { x, y: 0 } }, notes: [] } satisfies CanvasLayout,
   };
 }
 
@@ -117,17 +117,29 @@ describe('coalescing', () => {
     expect(h.past).toHaveLength(2);
   });
 
-  it('does not merge when an unrecorded edit landed in between', () => {
+  it('merges across an unrecorded edit, which keeps its effect in the merged entry', () => {
     const d0 = doc('a');
     const d1 = renamed(d0, 'b');
     const drifted = moved(d1, 9); // a history:false change: never recorded
     const d2 = renamed(drifted, 'c');
     let h = record(emptyHistory(), d0, d1, 'Edit', 1000, 'k');
-    // `before` for the second record is `drifted`, not d1 — merging would
-    // produce patches describing a state the document was never in.
+    // `before` for the second record is `drifted`: the merge folds the
+    // unrecorded move into the reconstructed start, so undoing the merged
+    // entry keeps the move (x: 9) while reverting both recorded renames.
     h = record(h, drifted, d2, 'Edit', 1100, 'k');
+    expect(h.past).toHaveLength(1);
+    expect(undo(h, d2)?.state).toEqual({ spec: d0.spec, layout: drifted.layout });
+  });
+
+  it('starts a new entry when the backward patch no longer applies', () => {
+    const d0 = doc('a');
+    const d1 = renamed(d0, 'b');
+    // An unrecorded change that deletes the very key the recorded patch
+    // edits: entryStart cannot reconstruct, so the change is its own entry.
+    const broken = { spec: { version: 2, model: 'm' } } as unknown as DocState;
+    const d2 = renamed({ ...broken, spec: { ...broken.spec, name: 'x' } }, 'c');
+    let h = record(emptyHistory(), d0, d1, 'Edit', 1000, 'k');
+    h = record(h, broken, d2, 'Edit', 1100, 'k');
     expect(h.past).toHaveLength(2);
-    // The second entry still undoes correctly to `drifted`.
-    expect(undo(h, d2)?.state).toEqual(drifted);
   });
 });
