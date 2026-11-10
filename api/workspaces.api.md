@@ -57,6 +57,27 @@ export const baseHarnessSchema: z.ZodType<Harness>;
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
 
 // @public
+export interface EffectivePolicy {
+    approvals: {
+        require: string[];
+    };
+    network: {
+        allowHosts: string[];
+    };
+    permissions: {
+        ceiling: PermissionRuleSpec[];
+        workspace: PermissionRuleSpec[];
+    };
+    sandbox: {
+        required: boolean;
+    };
+    secrets: SecretRef[];
+    tools: {
+        allow: string[];
+    };
+}
+
+// @public
 export interface Harness {
     audience?: {
         description: string;
@@ -138,6 +159,16 @@ export const harnessSchema: z.ZodType<Harness>;
 export function hasExecutableCriterion(harness: Harness): boolean;
 
 // @public
+export const INHERITANCE_RULES: readonly InheritanceRule[];
+
+// @public
+export interface InheritanceRule {
+    folders: readonly SharedFolder[];
+    item: 'instructions' | 'skills' | 'memory' | 'context files' | 'policies' | 'main agent';
+    rule: string;
+}
+
+// @public
 export const MAIN_HARNESS_OPTIONALITY: readonly MainHarnessOptionalityRow[];
 
 // @public
@@ -194,6 +225,9 @@ export interface MainHarnessRoute {
 export const mainHarnessSchema: z.ZodType<MainHarness>;
 
 // @public
+export function narrowPolicy(ceiling: PolicyCeiling, workspace: WorkspacePolicy): EffectivePolicy;
+
+// @public
 export const PAGE_OWNED: readonly ["as", "role", "model", "limits", "tools.only", "harness"];
 
 // @public
@@ -207,6 +241,50 @@ export type ParseAgentRefResult = {
     ok: false;
     error: string;
 };
+
+// @public
+interface PermissionRuleSpec {
+    action: 'allow' | 'deny' | 'ask' | 'auto';
+    id: string;
+    reason?: string;
+    tool: string | string[];
+    ttlMs?: number;
+    when?: Record<string, string | WhenArgMatcher>;
+}
+
+// @public
+export type PolicyCeiling = WorkspacePolicy;
+
+// @public
+type SecretRef = {
+    env: string;
+} | {
+    secret: string;
+};
+
+// @public
+const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources", "skills", "memory", "policies"];
+
+// @public
+type SharedFolder = (typeof SHARED_FOLDERS)[number];
+
+// @public
+interface WhenArgMatcher {
+    // (undocumented)
+    eq?: string | number | boolean | null;
+    // (undocumented)
+    gt?: number;
+    // (undocumented)
+    gte?: number;
+    // (undocumented)
+    lt?: number;
+    // (undocumented)
+    lte?: number;
+    // (undocumented)
+    matches?: string;
+    // (undocumented)
+    ne?: string | number | boolean | null;
+}
 
 // @public
 export interface WorkspaceLimits {
@@ -252,6 +330,27 @@ export interface WorkspaceManifest {
 
 // @public
 export const workspaceManifestSchema: z.ZodType<WorkspaceManifest>;
+
+// @public
+export interface WorkspacePolicy {
+    approvals?: {
+        require: string[];
+    };
+    network?: {
+        allowHosts: string[];
+    };
+    permissions: PermissionRuleSpec[];
+    sandbox?: {
+        required: boolean;
+    };
+    secrets: SecretRef[];
+    tools: {
+        allow: string[];
+    };
+}
+
+// @public
+export const workspacePolicySchema: z.ZodType<WorkspacePolicy>;
 
 // @public
 export type WorkspaceTree = Readonly<Record<string, unknown>>;

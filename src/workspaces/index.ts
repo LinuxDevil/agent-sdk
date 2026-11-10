@@ -3,3 +3,5 @@ export { baseHarnessSchema, baseHarnessLayer, type HarnessLayer, type WorkspaceT
 export { harnessSchema, harnessProfileSchema, hasExecutableCriterion, type Harness, type HarnessProfile } from './contracts/harness';
 export { mainHarnessSchema, crossCheckMainHarness, MAIN_HARNESS_OPTIONALITY, type MainHarness, type MainHarnessRoute, type MainHarnessClarify, type MainHarnessPresentation, type MainHarnessLimits, type MainHarnessPageFailure, type MainHarnessOptionalityRow, type MainHarnessCrossCheck } from './contracts/mainHarness';
 export { attachmentsSchema, parseAgentRef, AGENT_OWNED, PAGE_OWNED, type Attachments, type Attachment, type AgentRef, type ParseAgentRefResult } from './contracts/agentRefs';
+export { workspacePolicySchema, narrowPolicy, type WorkspacePolicy, type PolicyCeiling, type EffectivePolicy } from './contracts/policy';
+export { INHERITANCE_RULES, type InheritanceRule } from './contracts/shared';
