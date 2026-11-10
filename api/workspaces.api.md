@@ -7,6 +7,80 @@
 import { z } from 'zod';
 
 // @public
+export interface Harness {
+    audience?: {
+        description: string;
+        traits?: Record<string, string>;
+    };
+    capabilities?: {
+        require?: string[];
+    };
+    constraints?: {
+        id: string;
+        text: string;
+    }[];
+    context?: {
+        resources?: string[];
+    };
+    evaluation?: {
+        criteria: {
+            id: string;
+            description: string;
+            check?: string;
+            rubric?: string;
+            weight?: number;
+        }[];
+        threshold?: number;
+    };
+    extends?: string[];
+    id?: string;
+    inputs?: {
+        schema: Record<string, unknown> | string;
+    };
+    instructions?: string[];
+    outputs?: {
+        schema?: Record<string, unknown> | string;
+        artifacts?: {
+            name: string;
+            mediaType: string;
+            required?: boolean;
+        }[];
+    };
+    platform?: {
+        id: string;
+        requirements?: Record<string, unknown>;
+    };
+    runtime?: {
+        limits?: {
+            maxDurationMs?: number;
+            maxTurns?: number;
+            maxCostUsd?: number;
+        };
+        modelHints?: {
+            temperature?: number;
+            reasoning?: 'none' | 'minimal' | 'low' | 'medium' | 'high';
+        };
+    };
+    schema: 'lousho.harness/1';
+    version?: string;
+}
+
+// @public
+export interface HarnessProfile extends Harness {
+    id: string;
+    version: string;
+}
+
+// @public
+export const harnessProfileSchema: z.ZodType<HarnessProfile>;
+
+// @public
+export const harnessSchema: z.ZodType<Harness>;
+
+// @public
+export function hasExecutableCriterion(harness: Harness): boolean;
+
+// @public
 export interface WorkspaceLimits {
     maxConcurrentPages?: number;
     maxCostUsdPerRun?: number;

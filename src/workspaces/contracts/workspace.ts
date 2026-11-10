@@ -1,8 +1,6 @@
 import { z } from 'zod';
 import { modelIdSchema } from '../../spec/v2/common';
-import { KEBAB_CASE, workspacePathSchema } from './common';
-
-const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
+import { KEBAB_CASE, SEMVER, workspacePathSchema } from './common';
 
 /** Per-run limits a workspace sets for its pages. */
 export interface WorkspaceLimits {
