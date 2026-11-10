@@ -23,6 +23,30 @@ export type AgentRef = {
 };
 
 // @public
+type ApprovalKind = 'tool' | 'question' | 'sign-in';
+
+// @public
+export interface ArtifactRef {
+    bytes: number;
+    mediaType: string;
+    name: string;
+    sha256: string;
+    uri: string;
+}
+
+// @public
+export interface ArtifactSink {
+    put(name: string, data: string | Uint8Array, mediaType: string): Promise<ArtifactRef>;
+}
+
+// @public
+export interface ArtifactUriParts {
+    name: string;
+    runId: string;
+    workspace: string;
+}
+
+// @public
 export interface Attachment {
     as: string;
     limits?: {
@@ -79,6 +103,9 @@ export interface EffectivePolicy {
 
 // @public
 export function findNestedPages(relativePaths: readonly string[]): string[];
+
+// @public
+export function formatArtifactUri(parts: ArtifactUriParts): string;
 
 // @public
 export interface Harness {
@@ -172,6 +199,9 @@ export interface InheritanceRule {
 }
 
 // @public
+export function isTerminalStatus(status: PageRunStatus): boolean;
+
+// @public
 export const MAIN_HARNESS_OPTIONALITY: readonly MainHarnessOptionalityRow[];
 
 // @public
@@ -234,6 +264,32 @@ export function narrowPolicy(ceiling: PolicyCeiling, workspace: WorkspacePolicy)
 export const PAGE_OWNED: readonly ["as", "role", "model", "limits", "tools.only", "harness"];
 
 // @public
+export const PAGE_RUN_STATUSES: readonly PageRunStatus[];
+
+// @public
+export interface PageApprovalEvent {
+    approvalId: string;
+    expiresAt?: string;
+    kind: ApprovalKind;
+    type: 'approval';
+}
+
+// @public
+export interface PageArtifactEvent {
+    artifact: ArtifactRef;
+    type: 'artifact';
+}
+
+// @public
+export interface PageEngine {
+    run(input: PageInput, ctx: PageRunContext): Promise<PageResult>;
+    type: WorkType;
+}
+
+// @public
+export type PageErrorKind = 'invalid-input' | 'invalid-output' | 'budget' | 'timeout' | 'cancelled' | 'stalled' | 'engine' | (string & {});
+
+// @public
 export interface PageExecution {
     checkpoint?: boolean;
     goal?: {
@@ -261,6 +317,24 @@ export interface PageExecutionLimits {
     maxCostUsd?: number;
     maxDurationMs?: number;
     maxTurns?: number;
+}
+
+// @public
+export interface PageFinishedEvent {
+    status: PageRunStatus;
+    type: 'finished';
+}
+
+// @public
+export interface PageInput {
+    inputs?: unknown;
+    pageId: string;
+    parentRunId?: string;
+    revise?: {
+        runId: string;
+        instruction: string;
+    };
+    task: string;
 }
 
 // @public
@@ -293,7 +367,81 @@ export interface PageManifest {
 }
 
 // @public
+export interface PageProgressEvent {
+    fraction?: number;
+    message: string;
+    type: 'progress';
+}
+
+// @public
+export interface PageResult {
+    artifacts: ArtifactRef[];
+    checkpointId?: string;
+    error?: {
+        kind: PageErrorKind;
+        message: string;
+    };
+    output?: unknown;
+    runId: string;
+    status: PageRunStatus;
+    summary: string;
+    traceId?: string;
+    usage: PageUsage;
+}
+
+// @public
+export interface PageRunContext {
+    artifacts: ArtifactSink;
+    emit(event: PageRunEvent): void;
+    labels: PageRunLabels;
+    limits: PageExecutionLimits;
+    runId: string;
+    signal: AbortSignal;
+}
+
+// @public
+export type PageRunEvent = PageStartedEvent | PageStepEvent | PageArtifactEvent | PageApprovalEvent | PageProgressEvent | PageFinishedEvent;
+
+// @public
+export type PageRunLabels = Pick<PageStepLabels, 'page' | 'harnessHash' | 'executionType'>;
+
+// @public
+export type PageRunStatus = 'ok' | 'failed' | 'timed-out' | 'cancelled' | 'needs-approval';
+
+// @public
 export const pageSchema: z.ZodType<PageManifest>;
+
+// @public
+export interface PageStartedEvent extends PageRunLabels {
+    type: 'started';
+}
+
+// @public
+export interface PageStepEvent extends PageStepLabels {
+    phase: 'start' | 'done';
+    type: 'step';
+}
+
+// @public
+export interface PageStepLabels {
+    attachment: string;
+    executionType: WorkType;
+    harnessHash: string;
+    page: string;
+    parentStepIndex?: number;
+    stepIndex: number;
+    stepKind: StepKind;
+}
+
+// @public
+export interface PageUsage {
+    costPartial?: boolean;
+    costUsd?: number;
+    inputTokens: number;
+    modelCalls?: number;
+    outputTokens: number;
+    totalTokens: number;
+}
 
 // @public
 export function parseAgentRef(ref: string): ParseAgentRefResult;
@@ -306,6 +454,9 @@ export type ParseAgentRefResult = {
     ok: false;
     error: string;
 };
+
+// @public
+export function parseArtifactUri(uri: string): ArtifactUriParts | undefined;
 
 // @public
 interface PermissionRuleSpec {
@@ -334,6 +485,12 @@ const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources
 type SharedFolder = (typeof SHARED_FOLDERS)[number];
 
 // @public
+export const STEP_KINDS: readonly StepKind[];
+
+// @public
+export type StepKind = 'single' | 'workflow-step' | 'delegate' | 'goal-iteration';
+
+// @public
 interface WhenArgMatcher {
     // (undocumented)
     eq?: string | number | boolean | null;
@@ -350,6 +507,9 @@ interface WhenArgMatcher {
     // (undocumented)
     ne?: string | number | boolean | null;
 }
+
+// @public
+export const WORK_TYPE_STEP_KINDS: Readonly<Record<WorkType, readonly StepKind[]>>;
 
 // @public
 export const WORK_TYPES: readonly WorkType[];
