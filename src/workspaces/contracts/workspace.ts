@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { isSafeRelativePath, modelIdSchema } from '../../spec/v2/common';
+import { modelIdSchema } from '../../spec/v2/common';
+import { KEBAB_CASE, workspacePathSchema } from './common';
 
-const KEBAB_CASE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\+[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*)?$/;
 
 /** Per-run limits a workspace sets for its pages. */
@@ -77,10 +77,6 @@ export interface WorkspaceManifest {
 
 const nonEmpty = z.string().min(1, 'must not be empty');
 
-const folderSchema = z
-  .string()
-  .refine(isSafeRelativePath, "must be a relative path with forward slashes that stays inside the workspace's folder");
-
 const rangeMapSchema = z.record(nonEmpty, nonEmpty);
 
 const pageNameSchema = z
@@ -102,8 +98,7 @@ const limitsSchema = z
   })
   .strict();
 
-/** Zod schema for `workspace.json` (`lousho.workspace/1`); every object is strict, so an unknown key is an error. */
-export const workspaceManifestSchema: z.ZodType<WorkspaceManifest> = z
+export const workspaceManifestObjectSchema = z
   .object({
     schema: z.literal('lousho.workspace/1'),
     id: z.string().regex(KEBAB_CASE, 'must be kebab-case'),
@@ -115,15 +110,15 @@ export const workspaceManifestSchema: z.ZodType<WorkspaceManifest> = z
       .object({
         dir: z.literal('./main-agent'),
         inheritsShared: z.boolean().optional(),
-        harness: folderSchema.optional(),
+        harness: workspacePathSchema.optional(),
       })
       .strict()
       .nullable(),
-    harness: folderSchema.optional(),
+    harness: workspacePathSchema.optional(),
     pages: pagesSchema,
-    agents: folderSchema.optional(),
-    harnessProfiles: folderSchema.optional(),
-    workflows: folderSchema.optional(),
+    agents: workspacePathSchema.optional(),
+    harnessProfiles: workspacePathSchema.optional(),
+    workflows: workspacePathSchema.optional(),
     dependencies: z
       .object({ agents: rangeMapSchema.optional(), profiles: rangeMapSchema.optional() })
       .strict()
@@ -146,3 +141,6 @@ export const workspaceManifestSchema: z.ZodType<WorkspaceManifest> = z
       .optional(),
   })
   .strict();
+
+/** Zod schema for `workspace.json` (`lousho.workspace/1`); every object is strict, so an unknown key is an error. */
+export const workspaceManifestSchema: z.ZodType<WorkspaceManifest> = workspaceManifestObjectSchema;
