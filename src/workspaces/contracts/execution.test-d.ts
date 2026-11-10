@@ -1,6 +1,6 @@
 import { describe, it, expectTypeOf } from 'vitest';
 import type { PageExecutionLimits, WorkType } from './page';
-import type { PageEngine, PageRunContext, PageRunEvent, PageStepLabels, StepKind } from './execution';
+import type { PageEngine, PageErrorKind, PageResult, PageRunContext, PageRunEvent, PageStepLabels, PageUsage, StepKind } from './execution';
 
 describe('execution contract types', () => {
   it('an engine that returns a missing status does not compile', () => {
@@ -21,6 +21,23 @@ describe('execution contract types', () => {
   it('a step event carries every PageStepLabels field', () => {
     expectTypeOf<Extract<PageRunEvent, { type: 'step' }>>().toMatchTypeOf<PageStepLabels>();
     expectTypeOf<PageStepLabels['stepKind']>().toEqualTypeOf<StepKind>();
+  });
+
+  it('a delegate step names the step it runs under', () => {
+    expectTypeOf<PageStepLabels['parentStepIndex']>().toEqualTypeOf<number | undefined>();
+    const delegate: PageRunEvent = { type: 'step', phase: 'start', page: 'instagram', attachment: 'writer', harnessHash: 'h', executionType: 'goal-oriented', stepKind: 'delegate', stepIndex: 4, parentStepIndex: 3 };
+    expectTypeOf(delegate).toMatchTypeOf<PageRunEvent>();
+  });
+
+  it('error.kind is PageErrorKind and accepts the named kinds and engine-specific ones', () => {
+    expectTypeOf<NonNullable<PageResult['error']>['kind']>().toEqualTypeOf<PageErrorKind>();
+    expectTypeOf<'invalid-input'>().toMatchTypeOf<PageErrorKind>();
+    expectTypeOf<'stalled'>().toMatchTypeOf<PageErrorKind>();
+    expectTypeOf<'custom-engine-kind'>().toMatchTypeOf<PageErrorKind>();
+  });
+
+  it('usage mirrors RunUsage costPartial', () => {
+    expectTypeOf<PageUsage['costPartial']>().toEqualTypeOf<boolean | undefined>();
   });
 
   it('the run context reuses the page execution limits', () => {

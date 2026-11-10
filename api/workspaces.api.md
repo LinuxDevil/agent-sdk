@@ -287,6 +287,9 @@ export interface PageEngine {
 }
 
 // @public
+export type PageErrorKind = 'invalid-input' | 'invalid-output' | 'budget' | 'timeout' | 'cancelled' | 'stalled' | 'engine' | (string & {});
+
+// @public
 export interface PageExecution {
     checkpoint?: boolean;
     goal?: {
@@ -375,7 +378,7 @@ export interface PageResult {
     artifacts: ArtifactRef[];
     checkpointId?: string;
     error?: {
-        kind: string;
+        kind: PageErrorKind;
         message: string;
     };
     output?: unknown;
@@ -425,12 +428,14 @@ export interface PageStepLabels {
     executionType: WorkType;
     harnessHash: string;
     page: string;
+    parentStepIndex?: number;
     stepIndex: number;
     stepKind: StepKind;
 }
 
 // @public
 export interface PageUsage {
+    costPartial?: boolean;
     costUsd?: number;
     inputTokens: number;
     modelCalls?: number;

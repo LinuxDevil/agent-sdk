@@ -1,4 +1,5 @@
 import type { ApprovalKind } from '../../execution/ApprovalGate';
+import { ValidationError } from '../../execution/errors';
 import { KEBAB_CASE } from './common';
 import type { PageExecutionLimits, WorkType } from './page';
 
@@ -39,8 +40,10 @@ export interface PageStepLabels {
   executionType: WorkType;
   /** What kind of step this is. */
   stepKind: StepKind;
-  /** The step's position in the run, from 0; for a goal, the iteration index. */
+  /** The step's position in one sequence across the whole run, from 0, whatever the step kind. */
   stepIndex: number;
+  /** The `stepIndex` of the goal iteration or lead step a delegate runs under; absent on a top-level step. */
+  parentStepIndex?: number;
 }
 
 /** The run-level labels the runtime hands an engine; the engine adds the per-step ones. */
@@ -99,9 +102,14 @@ export interface PageUsage {
   totalTokens: number;
   /** USD for the run; absent when a model's price is unknown. */
   costUsd?: number;
+  /** `true` when `costUsd` is a lower bound because some model call had no known price. */
+  costPartial?: boolean;
   /** Model calls made, including delegates. */
   modelCalls?: number;
 }
+
+/** Why a page run did not end `ok`; the named kinds are the ones the runtime sets, and engines may add their own. */
+export type PageErrorKind = 'invalid-input' | 'invalid-output' | 'budget' | 'timeout' | 'cancelled' | 'stalled' | 'engine' | (string & {});
 
 /** What a page run returns; plain JSON, so the wire contract reuses it. */
 export interface PageResult {
@@ -123,8 +131,8 @@ export interface PageResult {
   checkpointId?: string;
   /** Why the run did not end `ok`. */
   error?: {
-    /** A short machine-readable kind, for example `limit` or `engine`. */
-    kind: string;
+    /** A short machine-readable kind, for example `invalid-input`, `budget` or `engine`. */
+    kind: PageErrorKind;
     /** What went wrong, for people. */
     message: string;
   };
@@ -215,31 +223,55 @@ export interface PageEngine {
   run(input: PageInput, ctx: PageRunContext): Promise<PageResult>;
 }
 
-/** Builds `artifact://<workspace>/<runId>/<name>`, percent-encoding each segment. */
+const SEGMENT_RULE = 'must be non-empty, must not start with `.`, and must not contain `/`, `\\` or control characters';
+
+function isForbiddenChar(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return char === '/' || char === '\\' || code < 0x20 || code === 0x7f;
+}
+
+function isSafeSegment(segment: string): boolean {
+  return segment.length > 0 && !segment.startsWith('.') && ![...segment].some(isForbiddenChar);
+}
+
+function uriProblems(parts: ArtifactUriParts): Record<string, string[]> {
+  const problems: Record<string, string[]> = {};
+  if (!KEBAB_CASE.test(parts.workspace)) problems.workspace = ['must be kebab-case'];
+  if (!isSafeSegment(parts.runId)) problems.runId = [SEGMENT_RULE];
+  if (!isSafeSegment(parts.name)) problems.name = [SEGMENT_RULE];
+  return problems;
+}
+
+function describeProblems(problems: Record<string, string[]>): string {
+  return Object.entries(problems)
+    .map(([field, messages]) => `${field}: ${messages.join('; ')}`)
+    .join('\n');
+}
+
+/** Builds `artifact://<workspace>/<runId>/<name>`, percent-encoding each segment; throws `ValidationError` on a part `parseArtifactUri` would reject. */
 export function formatArtifactUri(parts: ArtifactUriParts): string {
+  const problems = uriProblems(parts);
+  if (Object.keys(problems).length > 0) throw new ValidationError(`invalid artifact uri parts:\n${describeProblems(problems)}`, problems, 'LOUSHO_VALIDATION_FAILED');
   return `artifact://${parts.workspace}/${encodeURIComponent(parts.runId)}/${encodeURIComponent(parts.name)}`;
 }
 
 const ARTIFACT_URI = /^artifact:\/\/([^/]+)\/([^/]+)\/([^/]+)$/;
 
-function decodeSegment(segment: string): string | undefined {
+function decodeParts(match: RegExpExecArray): ArtifactUriParts | undefined {
   try {
-    return decodeURIComponent(segment);
+    return { workspace: match[1], runId: decodeURIComponent(match[2]), name: decodeURIComponent(match[3]) };
   } catch {
     return undefined;
   }
 }
 
-function isSafeName(name: string | undefined): name is string {
-  return name !== undefined && name !== '.' && name !== '..';
+function isValidParts(parts: ArtifactUriParts): boolean {
+  return Object.keys(uriProblems(parts)).length === 0;
 }
 
-/** Parses an artifact uri, or returns `undefined` when it is not one. */
+/** Parses an artifact uri, or returns `undefined` when it is not one; the decoded runId and name follow the same segment rule as `formatArtifactUri`. */
 export function parseArtifactUri(uri: string): ArtifactUriParts | undefined {
   const match = ARTIFACT_URI.exec(uri);
-  if (!match || !KEBAB_CASE.test(match[1])) return undefined;
-  const runId = decodeSegment(match[2]);
-  const name = decodeSegment(match[3]);
-  if (!isSafeName(runId) || !isSafeName(name)) return undefined;
-  return { workspace: match[1], runId, name };
+  const decoded = match ? decodeParts(match) : undefined;
+  return decoded && isValidParts(decoded) ? decoded : undefined;
 }
