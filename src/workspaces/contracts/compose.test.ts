@@ -223,6 +223,13 @@ describe('composeHarness', () => {
     );
   });
 
+  it('extending the workspace base or the page is an error naming the layer', () => {
+    const profile = layer('workspace:p', { extends: ['workspace base'] });
+    expect(() => composeHarness([base, profile, layer('page', { extends: ['workspace:p'] })])).toThrow(ValidationError);
+    expect(() => composeHarness([base, profile, layer('page', { extends: ['workspace:p'] })])).toThrow("workspace:p extends 'workspace base'; only profiles can be extended");
+    expect(() => composeHarness([layer('page', { extends: ['page'] })])).toThrow("page extends 'page'; only profiles can be extended");
+  });
+
   it('an extends ref must equal a layer source exactly', () => {
     const pool = [layer('global:x@1.0.0', {}), layer('page', { extends: ['global:x@^2.0.0'] })];
     expect(() => composeHarness(pool)).toThrow("page extends 'global:x@^2.0.0', but no layer has that source");

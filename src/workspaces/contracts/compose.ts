@@ -73,6 +73,7 @@ function indexBySource(layers: readonly HarnessLayer[]): Map<string, HarnessLaye
 }
 
 function resolveTarget(walk: Walk, owner: HarnessLayer, ref: string): HarnessLayer {
+  if (ref === BASE_SOURCE || ref === PAGE_SOURCE) throw invalid(`${owner.source} extends '${ref}'; only profiles can be extended`);
   const target = walk.bySource.get(ref);
   if (!target) throw invalid(`${owner.source} extends '${ref}', but no layer has that source`);
   return target;
