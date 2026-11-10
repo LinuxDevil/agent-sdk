@@ -43,6 +43,7 @@ interface AgentConfig {
     expectedResult?: unknown;
     // (undocumented)
     flows?: AgentFlow[];
+    harnessRevision?: string;
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -1020,6 +1021,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     fallbackModels?: readonly string[];
     guardrails?: AgentGuardrails;
     handoffs?: ReadonlyArray<SimpleAgent | Handoff>;
+    harnessCanary?: (ctx: RunConfigContext) => HarnessArm | undefined;
     hooks?: readonly AgentHook[];
     limits?: RunLimits;
     maxHandoffs?: number;
@@ -1804,6 +1806,12 @@ interface HandoffOptions {
         sessionId?: string;
     }) => void | Promise<void>;
     toolName?: string;
+}
+
+// @public
+interface HarnessArm {
+    instructions: string;
+    skills: readonly Skill[];
 }
 
 // @public

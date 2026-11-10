@@ -164,3 +164,27 @@ a.readiness-chip:focus-visible {
     justify-content: flex-start;
   }
 }
+
+/* Enabled pill, auto-disable notice and labels editor (A09). */
+.enabled-control { display: inline-flex; align-items: center; gap: var(--space-2); height: 28px; padding: 0 var(--space-2) 0 10px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); cursor: pointer;
+  font-size: 12px; font-weight: 500; color: var(--text); transition: background-color var(--dur-fast) var(--ease); }
+.enabled-control:hover { background: var(--surface-2); }
+.enabled-control[data-pending] { cursor: progress; }
+.agent-detail-notice { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  background: var(--warning-soft); border: 1px solid var(--warning-border); border-radius: var(--radius); font-size: 12px; color: var(--text); }
+.agent-detail-notice svg { flex: none; margin-top: 2px; color: var(--warning); }
+.agent-detail-notice p { margin: 0; }
+.agent-detail-labels { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.agent-detail-label, .agent-detail-label-more { height: 20px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius-full);
+  background: var(--surface-2); font-size: 11px; line-height: 18px; color: var(--text-muted); }
+.labels-input { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 36px; padding: 4px 6px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius); background: var(--surface); cursor: text; }
+.labels-input:focus-within { border-color: var(--accent); box-shadow: var(--ring); }
+.labels-chip { display: inline-flex; align-items: center; gap: 2px; height: 22px; padding: 0 2px 0 8px; border-radius: var(--radius-full);
+  background: var(--surface-2); border: 1px solid var(--border); font: 12px var(--font-mono); color: var(--text); }
+.labels-chip-remove { display: inline-flex; padding: 3px; border: 0; border-radius: var(--radius-full); background: transparent; color: var(--text-muted); cursor: pointer; }
+.labels-chip-remove:hover { background: var(--surface-3); color: var(--text); }
+.labels-chip-remove:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.labels-input-field { flex: 1; min-width: 96px; height: 24px; border: 0; outline: none; background: transparent; color: var(--text); font: inherit; font-size: 13px; }
+@media (prefers-reduced-motion: reduce) { .enabled-control { transition: none; } }

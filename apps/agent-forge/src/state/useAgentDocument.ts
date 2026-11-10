@@ -349,7 +349,14 @@ function docOfGraph(graph: Graph, fallback: GraphToSpecResult): DocState {
   return { spec: derived.spec, layout: derived.layout };
 }
 
-/** `setGraph` / `setSpec`: edit the document's graph directly or through its derived spec, marking it dirty and recording undo history. */
+/**
+ * `setGraph` / `setSpec`: edit the document's graph directly or through its
+ * derived spec, marking it dirty and recording undo history. `options.dirty
+ * === false` applies the update without dirtying — the elkjs unplaced-node
+ * layout (C17) recomputes positions saved with the next real edit, or
+ * never, which is fine since they are recomputed on every open;
+ * `options.history === false` records no undo entry.
+ */
 function useGraphEditors(doc: DocumentSetters) {
   const { setGraphState, setDirty, setSelectedNodeId, lastDerived, graphRef, historyRef, setHistory } = doc;
 
@@ -592,6 +599,8 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     spec,
     setSpec,
     edges,
+    /** The `layout.json` `graphToSpec` derives alongside `spec` — the proposal overlay's position source (C21). */
+    layout: derived.layout,
     nodeIdMap: derived.nodeIdMap,
     dirty,
     save,

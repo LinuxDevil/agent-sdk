@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { LayoutTemplate, Plus, Sparkles, Zap, type LucideIcon } from 'lucide-react';
+import { openAuthor } from '../author/authorEntry';
 import { useAppState } from '../state/AppState';
 import { AGENT_TEMPLATES, graphFromTemplate, type TemplateId } from './templates';
 import { ROOT_AGENT_ID } from '../graph/v2/types';
@@ -41,13 +42,15 @@ function useDragInProgress(): boolean {
  * the drop lands on the React Flow pane rather than on the card.
  */
 export function EmptyCanvas() {
-  const { graph, spec, setGraph, setSelectedNodeId } = useAppState();
+  const { displayGraph, spec, setGraph, setSelectedNodeId, proposal, agentId } = useAppState();
   const dragging = useDragInProgress();
   // "Empty" is the root agent node and nothing else (no capability nodes, no notes).
-  const onlyRoot = graph.nodes.every((n) => n.id === ROOT_AGENT_ID && n.kind === 'agent');
+  const onlyRoot = displayGraph.nodes.every((n) => n.id === ROOT_AGENT_ID && n.kind === 'agent');
   if (!onlyRoot || dragging) return null;
 
   function choose(id: TemplateId) {
+    // The canvas is read-only while a proposal overlay is shown (C21).
+    if (proposal !== undefined) return;
     const next = graphFromTemplate(id, spec.name || undefined);
     setGraph(() => next);
     setSelectedNodeId(ROOT_AGENT_ID);
@@ -65,6 +68,19 @@ export function EmptyCanvas() {
         <p className="canvas-empty-hint">
           This agent&apos;s canvas is empty. Pick a template, or drag a node in from the Nodes palette.
         </p>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={() =>
+            openAuthor({
+              source: 'empty-canvas',
+              focus: { mode: 'edit', agentId },
+              draft: 'Build this agent so it ',
+            })
+          }
+        >
+          Describe it to the Agent Author
+        </button>
         <button type="button" className="btn btn-primary canvas-empty-action" onClick={() => choose('blank')}>
           <Plus aria-hidden="true" />
           Start with a blank agent

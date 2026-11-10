@@ -17,7 +17,8 @@ import { useAppState } from '../state/AppState';
 import { downloadSpec, importSpecFile } from '../persistence/importExport';
 import { ApprovalCard } from './ApprovalCard';
 import { errorMessage } from './errorMessage';
-import { RunStatus, lastRunTraceId } from './RunStatus';
+import { RunStatus } from './RunStatus';
+import { useOpenTrace } from './test/useOpenTrace';
 import { ToolbarMoreMenu, type ToolbarMenuItem } from './ToolbarMoreMenu';
 import { navigate } from '../router/router';
 import { useSaveVersionAction } from '../screens/agents/useSaveVersionShortcut';
@@ -306,8 +307,8 @@ function RunOrStop({ isRunning, onRun, onStop }: { isRunning: boolean; onRun: ()
 
 /** The narrow "More" menu: Debug, Import, Export, Observe surface and (once known) Open trace. */
 function useNarrowMenuItems(openImport: () => void, exportSpec: () => void): ToolbarMenuItem[] {
-  const { runStatus, spans, debugMode, setDebugMode, setDrawerTab } = useAppState();
-  const traceId = lastRunTraceId(runStatus, spans);
+  const { debugMode, setDebugMode, setDrawerTab } = useAppState();
+  const { traceId, openTrace } = useOpenTrace();
   return [
     {
       label: 'Debug',
@@ -325,7 +326,7 @@ function useNarrowMenuItems(openImport: () => void, exportSpec: () => void): Too
     { label: 'Observe surface', Icon: Eye, onSelect: () => navigate('/traces') },
     // The wide bar's "Open trace" link, which has no room next to Run at 375px.
     ...(traceId
-      ? [{ label: 'Open trace', Icon: ExternalLink, onSelect: () => navigate(`/traces/${encodeURIComponent(traceId)}`) }]
+      ? [{ label: 'Open trace', Icon: ExternalLink, onSelect: openTrace }]
       : []),
   ];
 }

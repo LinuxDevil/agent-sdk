@@ -7,7 +7,7 @@
  * with its reason as the tooltip and the `role="status"` notice.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent } from 'react';
+import type { DragEvent, KeyboardEvent as ReactKeyboardEvent, RefObject } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppState } from '../../state/AppState';
 import { PALETTE_DRAG_MIME } from '../dnd';
@@ -56,9 +56,14 @@ interface PaletteItemProps {
  * controls say why" copy rule.
  */
 function PaletteItem({ entry, tabbable, onFocusItem, onActivate }: PaletteItemProps) {
-  const { graph, selectedNodeId } = useAppState();
+  const { graph, selectedNodeId, proposal } = useAppState();
   const { tone, Icon } = viewFor(entry.kind);
-  const reason = entry.unavailable?.(graph, ownerForNewNode(graph, entry.kind, selectedNodeId));
+  // While a proposal overlay is shown the canvas is read-only (C21): every
+  // entry is disabled with the reason in its tooltip.
+  const reason =
+    proposal === undefined
+      ? entry.unavailable?.(graph, ownerForNewNode(graph, entry.kind, selectedNodeId))
+      : 'Hide the proposal to edit';
   const descriptionId = `palette-${entry.id}-desc`;
   return (
     <button
@@ -156,29 +161,19 @@ function PaletteGroupSection({
   );
 }
 
-/** The Nodes tab body: search box, owner hint, collapsible groups, add notice. */
-export function NodePalette() {
-  // KIND_VIEWS is a mutable registry the kind tests extend; sections are
-  // recomputed per mount, which is all the palette needs.
-  const sections = useMemo(() => paletteSections(KIND_VIEWS), []);
-  const { graph, selectedNodeId } = useAppState();
-  const { notice, addAtViewportCentre } = usePaletteActions();
-  const [query, setQuery] = useState('');
+function useCollapsedGroups() {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(readCollapsedGroups);
-  const [rovingId, setRovingId] = useState<string | undefined>(undefined);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  function toggleGroup(group: PaletteGroup) {
+    const next = new Set(collapsed);
+    if (next.has(group)) next.delete(group);
+    else next.add(group);
+    writeStored(COLLAPSED_KEY, JSON.stringify([...next]));
+    setCollapsed(next);
+  }
+  return { collapsed, toggleGroup };
+}
 
-  const searching = query.trim().length > 0;
-  const visible = searching ? filterPalette(sections, query) : sections;
-  // Only expanded groups render items (a search expands every match), so the
-  // roving list - and its single tab stop - must be computed from these.
-  const expandedSections = visible.filter((section) => searching || !collapsed.has(section.group));
-  // The hint uses a representative non-note kind: ownerForNewNode only reads
-  // the kind for notes and root-only sections, so 'tool' gives the real owner.
-  const owner = ownerForNewNode(graph, 'tool', selectedNodeId);
-  const ownerTitle = owner === ROOT_AGENT_ID ? undefined : paletteOwnerTitle(graph, owner);
-
+function useSlashFocus(searchRef: RefObject<HTMLInputElement>) {
   // `/` focuses the search box from anywhere that is not an editable target
   // (inputs, CodeMirror, the Author composer keep their keystrokes).
   useEffect(() => {
@@ -189,74 +184,141 @@ export function NodePalette() {
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [searchRef]);
+}
 
-  function toggleGroup(group: PaletteGroup) {
-    const next = new Set(collapsed);
-    if (next.has(group)) next.delete(group);
-    else next.add(group);
-    writeStored(COLLAPSED_KEY, JSON.stringify([...next]));
-    setCollapsed(next);
+function usePaletteOwnerTitle(): string | undefined {
+  const { graph, selectedNodeId } = useAppState();
+  // The hint uses a representative non-note kind: ownerForNewNode only reads
+  // the kind for notes and root-only sections, so 'tool' gives the real owner.
+  const owner = ownerForNewNode(graph, 'tool', selectedNodeId);
+  return owner === ROOT_AGENT_ID ? undefined : paletteOwnerTitle(graph, owner);
+}
+
+function focusEdgeItem(list: HTMLElement | null, key: string): HTMLElement | undefined {
+  const items = list ? [...list.querySelectorAll<HTMLElement>('[data-roving]')] : [];
+  const target = key === 'ArrowDown' ? items[0] : items[items.length - 1];
+  target?.focus();
+  return target;
+}
+
+interface PaletteSearchProps {
+  query: string;
+  setQuery: (query: string) => void;
+  searchRef: RefObject<HTMLInputElement>;
+  listRef: RefObject<HTMLDivElement>;
+}
+
+function PaletteSearch({ query, setQuery, searchRef, listRef }: PaletteSearchProps) {
+  function onKeyDown(e: ReactKeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') {
+      setQuery('');
+      return;
+    }
+    // "/, type, Down, Enter" (the acceptance flow): ArrowDown lands on
+    // the first rendered item, ArrowUp on the last.
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    if (focusEdgeItem(listRef.current, e.key) !== undefined) e.preventDefault();
   }
+  return (
+    <div className="palette-search">
+      <Input
+        ref={searchRef}
+        type="search"
+        aria-label="Search nodes"
+        placeholder="Search nodes"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={onKeyDown}
+      />
+    </div>
+  );
+}
 
-  const itemIds = expandedSections.flatMap((section) => section.entries.map((entry) => entry.id));
+interface PaletteListProps {
+  visible: readonly PaletteSection[];
+  isExpanded: (section: PaletteSection) => boolean;
+  listRef: RefObject<HTMLDivElement>;
+  rovingId: string | undefined;
+  setRovingId: (id: string) => void;
+  onToggle: (group: PaletteGroup) => void;
+  onActivate: (entry: PaletteEntry) => void;
+}
+
+function PaletteList({ visible, isExpanded, listRef, rovingId, setRovingId, onToggle, onActivate }: PaletteListProps) {
+  // Only expanded groups render items (a search expands every match), so the
+  // roving list - and its single tab stop - must be computed from these.
+  const itemIds = visible
+    .filter(isExpanded)
+    .flatMap((section) => section.entries.map((entry) => entry.id));
   const tabbableId = rovingId !== undefined && itemIds.includes(rovingId) ? rovingId : itemIds[0];
+  return (
+    <div className="palette-list" ref={listRef} onKeyDown={onRovingKeyDown}>
+      {visible.map((section) => (
+        <PaletteGroupSection
+          key={section.group}
+          section={section}
+          expanded={isExpanded(section)}
+          tabbableId={tabbableId}
+          onToggle={onToggle}
+          onFocusItem={setRovingId}
+          onActivate={onActivate}
+        />
+      ))}
+    </div>
+  );
+}
+
+function PaletteEmpty({ query, onClear }: { query: string; onClear: () => void }) {
+  return (
+    <div className="palette-empty">
+      <span className="hint">No nodes match '{query.trim()}'.</span>
+      <button type="button" className="btn btn-ghost btn-sm" onClick={onClear}>
+        Clear search
+      </button>
+    </div>
+  );
+}
+
+/** The Nodes tab body: search box, owner hint, collapsible groups, add notice. */
+export function NodePalette() {
+  // KIND_VIEWS is a mutable registry the kind tests extend; sections are
+  // recomputed per mount, which is all the palette needs.
+  const sections = useMemo(() => paletteSections(KIND_VIEWS), []);
+  const { notice, addAtViewportCentre } = usePaletteActions();
+  const [query, setQuery] = useState('');
+  const { collapsed, toggleGroup } = useCollapsedGroups();
+  const [rovingId, setRovingId] = useState<string | undefined>(undefined);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const ownerTitle = usePaletteOwnerTitle();
+  useSlashFocus(searchRef);
+
+  const searching = query.trim().length > 0;
+  const visible = searching ? filterPalette(sections, query) : sections;
+  const isExpanded = (section: PaletteSection) => searching || !collapsed.has(section.group);
+
+  let body;
+  if (sections.length === 0) body = <div className="hint">Node types arrive with the next updates.</div>;
+  else if (visible.length === 0) body = <PaletteEmpty query={query} onClear={() => setQuery('')} />;
+  else
+    body = (
+      <PaletteList
+        visible={visible}
+        isExpanded={isExpanded}
+        listRef={listRef}
+        rovingId={rovingId}
+        setRovingId={setRovingId}
+        onToggle={toggleGroup}
+        onActivate={addAtViewportCentre}
+      />
+    );
 
   return (
     <div className="rail-body palette">
-      <div className="palette-search">
-        <Input
-          ref={searchRef}
-          type="search"
-          aria-label="Search nodes"
-          placeholder="Search nodes"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') {
-              setQuery('');
-              return;
-            }
-            // "/, type, Down, Enter" (the acceptance flow): ArrowDown lands on
-            // the first rendered item, ArrowUp on the last.
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-              const items = listRef.current
-                ? [...listRef.current.querySelectorAll<HTMLElement>('[data-roving]')]
-                : [];
-              const target = e.key === 'ArrowDown' ? items[0] : items[items.length - 1];
-              if (target !== undefined) {
-                e.preventDefault();
-                target.focus();
-              }
-            }
-          }}
-        />
-      </div>
+      <PaletteSearch query={query} setQuery={setQuery} searchRef={searchRef} listRef={listRef} />
       {ownerTitle !== undefined && <div className="palette-owner">Adding to: {ownerTitle}</div>}
-      {sections.length === 0 ? (
-        <div className="hint">Node types arrive with the next updates.</div>
-      ) : visible.length === 0 ? (
-        <div className="palette-empty">
-          <span className="hint">No nodes match '{query.trim()}'.</span>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setQuery('')}>
-            Clear search
-          </button>
-        </div>
-      ) : (
-        <div className="palette-list" ref={listRef} onKeyDown={onRovingKeyDown}>
-          {visible.map((section) => (
-            <PaletteGroupSection
-              key={section.group}
-              section={section}
-              expanded={searching || !collapsed.has(section.group)}
-              tabbableId={tabbableId}
-              onToggle={toggleGroup}
-              onFocusItem={setRovingId}
-              onActivate={addAtViewportCentre}
-            />
-          ))}
-        </div>
-      )}
+      {body}
       <div className="hint palette-notice" role="status">
         {notice}
       </div>

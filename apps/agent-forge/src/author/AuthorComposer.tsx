@@ -1,8 +1,18 @@
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { ArrowUp, Square, X } from 'lucide-react';
 import type { AuthorChat } from './AuthorChatContext';
 import type { AuthorChatState } from './authorChatReducer';
 import type { AuthorFocus, AuthorMessage } from '../../shared/authorWire';
+import { markAuthorFocusCleared } from './authorEntry';
 import { ErrorNote } from './ErrorNote';
 
 /** The textarea never grows past this; longer drafts scroll inside it. */
@@ -61,12 +71,33 @@ function FocusChip({ focus, onClear }: { focus: AuthorFocus; onClear: () => void
     <div className="author-focus">
       <span className="author-focus-chip">
         Editing: <strong>{focus.agentId}</strong>
-        <button type="button" className="author-focus-clear" aria-label="Start a new agent instead" onClick={onClear}>
+        <button
+          type="button"
+          className="author-focus-clear"
+          aria-label="Start a new agent instead"
+          onClick={() => {
+            // Clearing also stops route focus from re-applying it until the next new chat (AA19).
+            markAuthorFocusCleared();
+            onClear();
+          }}
+        >
           <X size={12} strokeWidth={1.75} aria-hidden="true" />
         </button>
       </span>
     </div>
   );
+}
+
+/** What the panel can ask of the composer (AA19's pending opens). */
+export interface AuthorComposerHandle {
+  /**
+   * Places `text` as the draft only while the composer is empty - text the
+   * user already typed is never overwritten. The caret lands at the end.
+   * Composer text only; it is never sent.
+   */
+  placeDraft(text: string): void;
+  /** Moves focus to the textarea (the open request's `focusComposer`). */
+  focusInput(): void;
 }
 
 /**
@@ -78,10 +109,41 @@ function FocusChip({ focus, onClear }: { focus: AuthorFocus; onClear: () => void
  * history to keep chatting"): the textarea greys out with the reason and
  * send is blocked the same way.
  */
-export function AuthorComposer({ chat, disabledReason }: { chat: AuthorChat; disabledReason?: string }): JSX.Element {
-  const { state } = chat;
-  const [value, setValue] = useState('');
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+export const AuthorComposer = forwardRef<AuthorComposerHandle, { chat: AuthorChat; disabledReason?: string }>(
+  function AuthorComposer({ chat, disabledReason }, ref) {
+    const { state } = chat;
+    const [value, setValue] = useState('');
+    const inputRef = useRef<HTMLTextAreaElement>(null);
+    // placeDraft reads the latest draft without re-subscribing the handle.
+    const valueRef = useRef(value);
+    valueRef.current = value;
+    // Set by placeDraft; the layout effect below parks the caret once the new value commits.
+    const caretEndRef = useRef(false);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        placeDraft(text: string) {
+          if (valueRef.current !== '') return;
+          caretEndRef.current = true;
+          setValue(text);
+        },
+        focusInput() {
+          inputRef.current?.focus();
+        },
+      }),
+      []
+    );
+
+    // After a placed draft commits, park the caret at its end and grow the box.
+    useLayoutEffect(() => {
+      if (!caretEndRef.current) return;
+      caretEndRef.current = false;
+      const el = inputRef.current;
+      if (el === null) return;
+      el.setSelectionRange(el.value.length, el.value.length);
+      grow();
+    });
 
   // A refused send (offline, busy, no provider key) puts its text back.
   useEffect(() => {
@@ -159,4 +221,5 @@ export function AuthorComposer({ chat, disabledReason }: { chat: AuthorChat; dis
       )}
     </form>
   );
-}
+  },
+);

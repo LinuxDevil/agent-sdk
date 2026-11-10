@@ -92,6 +92,8 @@ const PAIRS: [text: string, background: string][] = [
   ['text-muted', 'info-soft'],
   // The SuccessCard's missing-requirements warning draws --warning on the card's --success-soft (AA18).
   ['warning', 'success-soft'],
+  // The proposal overlay's "edited" chip draws --warning on the neutral chip tint --surface-2 (C21).
+  ['warning', 'surface-2'],
 ];
 
 describe('theme contrast', () => {

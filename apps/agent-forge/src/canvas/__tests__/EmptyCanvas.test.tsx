@@ -5,13 +5,19 @@ import type { Graph } from '../../graph/v2/types';
 const appState = vi.hoisted(() => ({
   graph: { version: 2, nodes: [], emptySections: [], unplaced: [] } as unknown as Graph,
   spec: { version: 2, name: 'my-agent', model: 'mock/mock-1', instructions: '' },
+  agentId: 'my-agent',
   setGraph: vi.fn(),
   setSelectedNodeId: vi.fn(),
   switchAgent: vi.fn(),
 }));
-vi.mock('../../state/AppState', () => ({ useAppState: () => appState }));
+vi.mock('../../state/AppState', () => ({
+  // EmptyCanvas reads displayGraph (the proposal overlay's graph, C21);
+  // these tests have no proposal, so it mirrors graph.
+  useAppState: () => ({ ...appState, displayGraph: appState.graph }),
+}));
 
 import { render } from '../../ui/__tests__/render';
+import { takePendingOpen } from '../../author/authorEntry';
 import { EmptyCanvas } from '../EmptyCanvas';
 import { AGENT_TEMPLATES } from '../templates';
 import { specToGraph } from '../../graph/v2/specToGraph';
@@ -81,5 +87,21 @@ describe('EmptyCanvas', () => {
     const next = appState.setGraph.mock.calls[0][0](appState.graph) as Graph;
     expect(next.nodes.some((n) => n.kind === 'agent')).toBe(true);
     expect(next.nodes.some((n) => n.kind === 'tool')).toBe(false);
+  });
+
+  it('"Describe it to the Agent Author" queues an edit-focus open with a draft (AA19)', () => {
+    takePendingOpen();
+    const container = render(<EmptyCanvas />);
+    const button = [...container.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes('Describe it to the Agent Author')
+    )!;
+    expect(button.classList.contains('btn-secondary')).toBe(true);
+    act(() => button.click());
+    expect(takePendingOpen()).toEqual({
+      source: 'empty-canvas',
+      focus: { mode: 'edit', agentId: 'my-agent' },
+      draft: 'Build this agent so it ',
+    });
+    takePendingOpen();
   });
 });

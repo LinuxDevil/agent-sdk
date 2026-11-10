@@ -1,7 +1,7 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { benchmarkProbe } from './probe';
-import { cachedProbe, emptyCounts, type ProbeCounts } from './probeCache';
+import { cachedProbe, emptyLedger, type ImproveLedger } from 'lousho/improve';
 import { assertRowModel, LABELS, replayRow, type RecordedRow, type ReplayLine } from './replayRows';
 
 const { values } = parseArgs({
@@ -19,7 +19,7 @@ const { values } = parseArgs({
 const live = process.env.OPENROUTER_API_KEY !== undefined;
 const cacheModel = live ? values.model : `mock:${values.model}`;
 const probe = benchmarkProbe({ agent: values.agent, model: values.model, live, gapMs: Number(values['gap-ms']) });
-const counts: Record<ReplayLine['label'], ProbeCounts> = { invariant: emptyCounts(), domain: emptyCounts(), compose: emptyCounts() };
+const counts: Record<ReplayLine['label'], ImproveLedger> = { invariant: emptyLedger(), domain: emptyLedger(), compose: emptyLedger() };
 
 function onlyLabel(row: RecordedRow, label: ReplayLine['label']): RecordedRow {
   const base = row.baseHarness;
@@ -35,7 +35,7 @@ async function replayFile(file: string, dir: string): Promise<void> {
   for (const row of rows) {
     assertRowModel(row, values.model);
     for (const label of LABELS) {
-      const cached = cachedProbe(probe, { dir, model: cacheModel, salt: `confirm-${row.attempt}`, counts: counts[label] });
+      const cached = cachedProbe(probe, { dir, model: cacheModel, salt: `confirm-${row.attempt}`, ledger: counts[label] });
       const lines = await replayRow(onlyLabel(row, label), cached, Number(values.confirm));
       for (const line of lines) if (values.out !== undefined) appendFileSync(values.out, `${JSON.stringify(line)}\n`);
     }

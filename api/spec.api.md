@@ -1000,6 +1000,11 @@ interface StepNode {
 type StepPath = (string | number)[];
 
 // @public
+export function subAgentNodeIndexes(subagents: Readonly<Record<string, unknown>> | {
+    list: unknown;
+} | undefined): Record<string, NodeIdIndex>;
+
+// @public
 interface SubagentOptions {
     awaitBackgroundOnFinish?: boolean;
     background?: boolean;

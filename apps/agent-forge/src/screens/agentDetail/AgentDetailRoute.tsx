@@ -6,6 +6,9 @@ import { useRoute } from '../../router/useRoute';
 import { Skeleton } from '../../ui/Skeleton';
 import { EmptyState } from '../../ui/EmptyState';
 import { AgentDetailHeader } from './AgentDetailHeader';
+import { AgentActionsMenu } from './AgentActionsMenu';
+import { AutoDisableNotice, EnabledControl } from './EnabledControl';
+import { HeaderLabels } from './LabelsEditor';
 import { AgentDetailContext, type AgentDetailContextValue } from './AgentDetailContext';
 import { useAgentRecord } from './useAgentRecord';
 import { TAB_SCREENS } from './tabScreens';
@@ -91,7 +94,14 @@ export function AgentDetailRoute() {
   return (
     <div className="app app-screen agent-detail">
       <AgentDetailContext.Provider value={context}>
-        <AgentDetailHeader record={record} tab={tab} />
+        <AgentDetailHeader
+          record={record}
+          tab={tab}
+          enabledControl={<EnabledControl record={record} />}
+          labelsItem={<HeaderLabels record={record} />}
+          notices={<AutoDisableNotice record={record} />}
+          menu={<AgentActionsMenu record={record} />}
+        />
         <main className="screen-main" id="agent-tab-panel">
           {content}
         </main>

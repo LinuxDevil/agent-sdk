@@ -36,6 +36,8 @@ export type { MemorySpec, MemoryScopeSpec, MemoryProviderSpec } from '../../../.
 export type { McpServerSpecV2 as McpServerSpec } from '../../../../../src/spec/v2/mcpServers';
 /** The `mcpServers` record-key pattern the SDK enforces (`^[A-Za-z0-9_-]{1,64}$`). */
 export { MCP_SERVER_NAME } from '../../../../../src/spec/v2/mcpServers';
+/** The longest approval deadline the spec schema accepts (`approvalTtlMs`/`ttlMs`), in ms. */
+export { MAX_APPROVAL_TTL_MS } from '../../../../../src/execution/approvalTtl';
 /** One `spec.handoffs` entry. */
 export type { HandoffSpec } from '../../../../../src/spec/v2/handoffs';
 /**
