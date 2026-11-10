@@ -21,7 +21,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, Redo2, Undo2, type LucideIcon } from 'lucide-react';
+import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, Redo2, Sparkles, Undo2, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
 import { GROUP_NODE_TYPE, NODE_TYPES, flowNodeType, miniMapNodeClassName, type CanvasNodeData } from '../canvas/AgentNode';
@@ -498,6 +498,28 @@ function useDropHandlers(
 }
 
 /**
+ * The readOnly-gated edit gestures as one unit: node/edge changes and
+ * deletes, connections and palette drops. While a proposal overlay is
+ * shown the canvas is read-only (C21) — no drags, connects, drops or
+ * deletes; selection stays on so the Inspector can show the proposed node.
+ */
+function useCanvasEditGestures(
+  displayGraph: Graph,
+  setGraph: SetGraph,
+  selectedNodeId: string | undefined,
+  setSelectedNodeId: SetSelectedNodeId,
+  setMeasured: (updater: (prev: MeasuredSizes) => MeasuredSizes) => void,
+  setSelectedEdgeId: (id: string | undefined) => void,
+  flashError: (reason: string) => void,
+  readOnly: boolean
+) {
+  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
+  const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
+  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
+  return { editHandlers, onConnect, isValidConnection, onDragOver, onDrop };
+}
+
+/**
  * A viewport animation's duration, or none under `prefers-reduced-motion:
  * reduce` - every pan/fit animation on the canvas goes through this.
  */
@@ -833,6 +855,20 @@ function ToolbarButton({
   );
 }
 
+/**
+ * The proposal pill (AA18) at the head of the canvas toolbar while an
+ * Author overlay is shown: a dashed-accent button that opens the Author
+ * dock on the proposal card (`onShowProposal`, wired by AgentsScreen).
+ */
+function ProposalPill({ onShow }: { onShow: () => void }) {
+  return (
+    <button type="button" className="canvas-proposal-pill" onClick={onShow}>
+      <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />
+      Proposed change · review in the Author
+    </button>
+  );
+}
+
 /** What the canvas toolbar renders; kept an object so {@link CanvasView} can forward it as one prop. */
 interface CanvasToolbarProps {
   canUndo: boolean;
@@ -845,6 +881,9 @@ interface CanvasToolbarProps {
   canDuplicate: boolean;
   /** A proposal overlay is showing: edits (auto layout, duplicate) are disabled; fit view stays. */
   readOnly: boolean;
+  /** AA18: the open proposal's id - with `onShowProposal`, renders the toolbar pill. */
+  proposalId?: string | null;
+  onShowProposal?: () => void;
   /** The elkjs auto-layout request is in flight. */
   layoutBusy: boolean;
   onAutoLayout: () => void;
@@ -861,6 +900,8 @@ export function CanvasToolbar({
   onRedo,
   canDuplicate,
   readOnly,
+  proposalId,
+  onShowProposal,
   layoutBusy,
   onAutoLayout,
   onFitView,
@@ -870,6 +911,7 @@ export function CanvasToolbar({
   const redoName = redoLabel ? `Redo ${redoLabel}` : 'Redo';
   return (
     <div className="canvas-toolbar" role="group" aria-label="Canvas tools">
+      {proposalId != null && onShowProposal !== undefined && <ProposalPill onShow={onShowProposal} />}
       <ToolbarButton
         Icon={Undo2}
         label={undoName}
@@ -909,6 +951,16 @@ export interface InspectorToggleProps {
   inspectorCollapsed?: boolean;
   onToggleInspector?: () => void;
 }
+
+/** AA18's wiring from the builder screen: the open proposal's id and the "show its card" action. */
+export interface CanvasProposalSyncProps {
+  /** The open Author proposal's id (drives the toolbar pill); null/absent = no overlay. */
+  proposalId?: string | null;
+  /** Opens the Author dock and scrolls to `[data-proposal-id]` - the pill's and dashed nodes' click. */
+  onShowProposal?: () => void;
+}
+
+export type CanvasAreaProps = InspectorToggleProps & CanvasProposalSyncProps;
 
 /**
  * The docked Inspector's Show/Hide toggle, on the canvas's top-right edge
@@ -955,6 +1007,16 @@ export function ProposalBanner() {
       <button type="button" className="btn btn-ghost btn-sm" onClick={hideProposal}>
         Hide
       </button>
+    </div>
+  );
+}
+
+/** The auto-clearing "connection rejected" banner (useConnectError), top-centre under the toolbar. */
+function ConnectError({ message }: { message?: string }) {
+  if (message === undefined) return null;
+  return (
+    <div className="canvas-connect-error" role="alert">
+      {message}
     </div>
   );
 }
@@ -1057,6 +1119,22 @@ function useCanvasElements() {
 }
 
 /**
+ * AA18: a click on a dashed (proposed) node opens the Author card it
+ * belongs to - the same action as the toolbar pill. `proposed` flags only
+ * exist on the display graph while an overlay is shown, so the flag check
+ * alone gates the click; node selection still happens through
+ * `onNodesChange`, keeping the Inspector on the proposed node.
+ */
+function useProposalNodeClick(onShowProposal?: () => void) {
+  return useCallback(
+    (_event: unknown, node: Node<CanvasNodeData>) => {
+      if (node.data.graphNode.proposed !== undefined) onShowProposal?.();
+    },
+    [onShowProposal]
+  );
+}
+
+/**
  * Real ReactFlow canvas. `AppState.graph` is the single source
  * of truth: every handler below reads it and, on a real mutation, calls
  * `setGraph()` - ReactFlow's `nodes`/`edges` props are recomputed from
@@ -1081,6 +1159,7 @@ function CanvasView({
   onNodesChange,
   onEdgesChange,
   onNodesDelete,
+  onNodeClick,
   onConnect,
   isValidConnection,
   readOnly,
@@ -1097,6 +1176,8 @@ function CanvasView({
   onNodesChange: (changes: NodeChange[]) => void;
   onEdgesChange: (changes: EdgeChange[]) => void;
   onNodesDelete: (deleted: Node[]) => void;
+  /** AA18: clicking a proposed (dashed) node opens the Author dock on its card. */
+  onNodeClick?: (event: unknown, node: Node<CanvasNodeData>) => void;
   onConnect: (connection: Connection) => void;
   isValidConnection: (connection: Connection | Edge) => boolean;
   readOnly: boolean;
@@ -1107,11 +1188,7 @@ function CanvasView({
       <InspectorToggle {...inspectorToggle} />
       <EmptyCanvas />
       <ProposalBanner />
-      {connectError && (
-        <div className="canvas-connect-error" role="alert">
-          {connectError}
-        </div>
-      )}
+      <ConnectError message={connectError} />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -1120,6 +1197,7 @@ function CanvasView({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onNodesDelete={onNodesDelete}
+        onNodeClick={onNodeClick}
         onConnect={onConnect}
         isValidConnection={isValidConnection}
         nodesDraggable={!readOnly}
@@ -1136,7 +1214,7 @@ function CanvasView({
   );
 }
 
-function CanvasInner(inspectorToggle: InspectorToggleProps) {
+function CanvasInner({ inspectorCollapsed, onToggleInspector, proposalId, onShowProposal }: CanvasAreaProps) {
   const {
     agentId,
     graph,
@@ -1164,9 +1242,16 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
   // the Inspector can show the proposed node.
   const readOnly = proposal !== undefined;
 
-  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
-  const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
-  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
+  const { editHandlers, onConnect, isValidConnection, onDragOver, onDrop } = useCanvasEditGestures(
+    displayGraph,
+    setGraph,
+    selectedNodeId,
+    setSelectedNodeId,
+    setMeasured,
+    setSelectedEdgeId,
+    flashError,
+    readOnly
+  );
   const { handleAutoLayout, handleFitView, handleDuplicate, layoutBusy } = useToolbarActions(
     setGraph,
     selectedNodeId,
@@ -1180,6 +1265,8 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
   const fitting = useFitViewOnLoad(agentId, displayGraph, measured);
   useLayoutUnplaced(agentId, layoutGraph, measured, setGraph);
   useUndoRedoShortcuts(undo, redo);
+
+  const onNodeClick = useProposalNodeClick(onShowProposal);
 
   return (
     <CanvasView
@@ -1195,12 +1282,14 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
         onRedo: redo,
         canDuplicate: !!selectedNodeId,
         readOnly,
+        proposalId,
+        onShowProposal,
         layoutBusy,
         onAutoLayout: handleAutoLayout,
         onFitView: handleFitView,
         onDuplicate: handleDuplicate,
       }}
-      inspectorToggle={inspectorToggle}
+      inspectorToggle={{ inspectorCollapsed, onToggleInspector }}
       connectError={connectError}
       nodes={nodes}
       edges={edges}
@@ -1208,6 +1297,7 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
       onNodesChange={editHandlers.onNodesChange}
       onEdgesChange={editHandlers.onEdgesChange}
       onNodesDelete={editHandlers.onNodesDelete}
+      onNodeClick={onNodeClick}
       onConnect={onConnect}
       isValidConnection={isValidConnection}
       readOnly={readOnly}
@@ -1223,6 +1313,6 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
  * adopters at `@xyflow/react` (same team, actively released); see the
  * epic's PR description for the full rationale.
  */
-export function CanvasArea(props: InspectorToggleProps) {
+export function CanvasArea(props: CanvasAreaProps) {
   return <CanvasInner {...props} />;
 }

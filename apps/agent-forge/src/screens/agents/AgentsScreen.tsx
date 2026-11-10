@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Topbar, type SidePanel } from '../../components/Topbar';
 import { LeftRail } from '../../components/LeftRail';
 import { CanvasArea } from '../../components/CanvasArea';
@@ -12,6 +12,9 @@ import { useAgentRouteSync } from './useAgentRouteSync';
 import { BuilderTabs } from './BuilderTabs';
 import { useInspectorCollapsed } from './useInspectorCollapsed';
 import { useSaveVersionShortcut } from './useSaveVersionShortcut';
+import { useAuthorCanvasSync } from '../../author/useAuthorCanvasSync';
+import { useAuthorDock } from '../../author/authorDock';
+import { focusProposalCard } from '../../author/proposalFocus';
 
 /**
  * Below 860px the rail and the Inspector are slide-over drawers,
@@ -54,6 +57,16 @@ export function AgentsScreen() {
   useSaveVersionShortcut();
   const panels = useSidePanels();
   const { agentId, agents, selectedNodeId } = useAppState();
+  // AA18: the Author's open update card draws dashed nodes on this canvas;
+  // the pill and dashed-node clicks open the dock on its card.
+  const { overlayProposalId } = useAuthorCanvasSync(agentId);
+  const { setOpen: openAuthorDock } = useAuthorDock();
+  const showProposalCard = useCallback(() => {
+    if (overlayProposalId === null) return;
+    openAuthorDock(true);
+    // The dock mounts the transcript on open; the card exists a tick later.
+    window.setTimeout(() => focusProposalCard(overlayProposalId), 0);
+  }, [overlayProposalId, openAuthorDock]);
   const inspector = useInspectorCollapsed(selectedNodeId);
   // The agent tab strip shows only for a saved agent (BuilderTabs renders null otherwise).
   const showBuilderTabs = agents.some((a) => a.id === agentId);
@@ -65,7 +78,12 @@ export function AgentsScreen() {
       <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} />
       <div className={shellClass}>
         <LeftRail />
-        <CanvasArea inspectorCollapsed={inspector.collapsed} onToggleInspector={inspector.toggle} />
+        <CanvasArea
+          inspectorCollapsed={inspector.collapsed}
+          onToggleInspector={inspector.toggle}
+          proposalId={overlayProposalId}
+          onShowProposal={showProposalCard}
+        />
         <Inspector />
         {panels.open && <div className="shell-scrim" aria-hidden="true" onClick={panels.close} />}
       </div>

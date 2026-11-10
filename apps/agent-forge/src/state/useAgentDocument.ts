@@ -571,6 +571,11 @@ function useDerivedDocument(
  */
 export function useAgentDocument(store: AgentStore, initialId?: string) {
   const { agentId, graph, dirty, selectedNodeId, latestJson, history, doc } = useDocumentState();
+  // The agent the document currently shows, readable from async
+  // continuations: a `reload()` whose fetch resolves after an agent
+  // switch must not flip the document back to the agent it started on.
+  const agentIdRef = useRef(agentId);
+  agentIdRef.current = agentId;
   const { setDirty, lastSavedJson, setSelectedNodeId } = doc;
   const { agents, setAgents, refreshAgents, agentsLoaded } = useAgentList(store, initialId ?? agentId, doc);
   // `WS /events`: another tab's write refreshes this tab's agents list.
@@ -586,6 +591,26 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
   const historyControls = useHistoryControls(doc, history);
 
   useAutosave({ ...saveDeps, dirty });
+
+  /**
+   * Re-reads the open agent (`store.load` → `GET /agents/:id`) and shows
+   * the record's spec and layout in place - the Author canvas sync's
+   * post-save refresh (AA18). `discardLocal` also clears the dirty flag
+   * (the loaded document replaces unsaved edits); without it the document
+   * keeps its dirty state so an in-progress edit still autosaves.
+   * Resolves `true` when the document was replaced, `false` when the
+   * agent is gone or the screen switched agents while the fetch ran.
+   */
+  const reload = useCallback(
+    async (options?: { discardLocal?: boolean }): Promise<boolean> => {
+      const id = agentId;
+      const loaded = await store.load(id);
+      if (!loaded || agentIdRef.current !== id) return false;
+      showAgent(doc, id, loaded.spec, graphOfRecord(loaded), { clean: options?.discardLocal === true });
+      return true;
+    },
+    [store, agentId]
+  );
 
   const { switchAgent, createAgent, renameAgent, deleteAgent } = useAgentActions(
     { store, agents, agentId, refreshAgents, doc },
@@ -607,6 +632,7 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     nodeIdMap: derived.nodeIdMap,
     dirty,
     save,
+    reload,
     selectedNodeId,
     setSelectedNodeId,
     agents,
