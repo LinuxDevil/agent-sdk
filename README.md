@@ -30,7 +30,7 @@ TypeScript AI agents you can test in CI, pause for approval, and resume after a 
   <sub>Agent Forge, the local studio. Open it with <code>npx lousho studio</code>.</sub>
 </div>
 
-<!-- demo.gif goes here (Phase 6) -->
+![Lousho demo: scaffold a project, replay an eval offline, change the prompt, and see the replay flag it](.github/assets/demo.gif)
 
 ## Why Lousho
 
