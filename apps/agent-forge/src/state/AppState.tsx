@@ -159,6 +159,8 @@ interface AppState {
   stopAgent: () => Promise<void>;
   /** Resolves the run's current pending approval, if any, via `/agents/:id/approve`. */
   approveAgent: (approved: boolean, note?: string) => Promise<void>;
+  /** Pushes `message` into the live run's input queue via `/agents/:id/steer`; rejects when nothing is running (or a flow run). */
+  steerRun: (message: string) => Promise<void>;
   /** Answers the run's current pending `ask_question` pause, if any, via `/agents/:id/approve` (`{ answer }`). */
   answerQuestion: (answer: string) => Promise<void>;
   /**

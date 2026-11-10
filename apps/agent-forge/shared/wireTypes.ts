@@ -95,7 +95,39 @@ export interface AgentRunStatusPayload {
   provider?: string;
   /** Trace id (root span id) of the latest run, once its first span started - the top bar's "Open trace" link. */
   traceId?: string;
+  /**
+   * This run's steer messages (`POST /agents/:id/steer`), oldest first -
+   * each one's delivery flips queued -> delivered/undelivered as the run
+   * consumes it or ends. Reset to `[]` when the next run launches; the
+   * last run's list stays on the status after it settles so the Test
+   * pane can keep showing it.
+   */
+  steering?: SteerInfo[];
   updatedAt: string;
+}
+
+/** How far a steered message got: still waiting, joined the transcript, or the run ended first. */
+export type SteerDelivery = 'queued' | 'delivered' | 'undelivered';
+
+/** One `POST /agents/:id/steer` message and its delivery state, as `AgentRunStatusPayload.steering` carries it. */
+export interface SteerInfo {
+  id: string;
+  message: string;
+  at: string;
+  delivery: SteerDelivery;
+  /** How `AgentRun.steer()` took it: aborted the in-flight model call, or waits for the next safe point. */
+  mode: 'immediate' | 'queued';
+}
+
+/** `POST /agents/:id/steer` request body - `message` is 1..3000 chars after trim. */
+export interface SteerRequest {
+  message: string;
+}
+
+/** `POST /agents/:id/steer` 202 response. */
+export interface SteerResponse {
+  id: string;
+  applied: 'immediate' | 'queued';
 }
 
 /**
@@ -198,8 +230,8 @@ export interface ChatMessage {
   toolName?: string;
   toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
   timestamp: string;
-  /** `'run'` marks the user turn a top-bar Run added (shown as "Run input", not as a typed message). */
-  source?: 'run';
+  /** `'run'` marks the user turn a top-bar Run added (shown as "Run input"); `'steer'` a delivered steer message (shown as "Steered"). */
+  source?: 'run' | 'steer';
 }
 
 /** The live chat transcript for one agent's current session, pushed over WS and returned by `GET /agents/:id/chat`. */
