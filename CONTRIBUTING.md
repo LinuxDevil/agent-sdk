@@ -4,7 +4,7 @@ Thank you for your interest in contributing to the Build AI Agent SDK! This docu
 
 ## Code of Conduct
 
-By participating in this project, you agree to maintain a respectful and inclusive environment for everyone.
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md). By taking part, you agree to follow it. The code of conduct says how to report a problem.
 
 ## Getting Started
 
