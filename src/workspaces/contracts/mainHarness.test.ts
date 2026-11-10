@@ -89,6 +89,32 @@ describe('mainHarnessSchema', () => {
     }
   });
 
+  it('matches forbidden keys ignoring case, hyphens and underscores', () => {
+    expect(messagesOf({ schema: 'lousho.main-harness/1', presentation: { 'MCP-Servers': 1 } })).toEqual([
+      'main-harness.presentation["MCP-Servers"]: harnesses describe the task; the runtime enforces mcpServers (R13)',
+    ]);
+  });
+
+  it('reports a getter as unscannable instead of throwing', () => {
+    const route = { page: 'instagram' };
+    Object.defineProperty(route, 'when', { enumerable: true, get: () => 'x' });
+    const messages = messagesOf({ schema: 'lousho.main-harness/1', routes: [route] });
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toContain('main-harness.routes[0].when');
+    expect(messages[0]).toContain('plain JSON data');
+  });
+
+  it('parses only what the scan read, ignoring a key a Proxy hides from ownKeys', () => {
+    const target = { page: 'instagram', when: 'x' };
+    const route = new Proxy(target, {
+      get: (obj, key) => (key === 'steps' ? ['a'] : Reflect.get(obj, key)),
+      ownKeys: (obj) => Reflect.ownKeys(obj),
+    });
+    const result = mainHarnessSchema.safeParse({ schema: 'lousho.main-harness/1', routes: [route] });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.routes?.[0]).toEqual({ page: 'instagram', when: 'x' });
+  });
+
   it('exposes the optionality table', () => {
     expect(MAIN_HARNESS_OPTIONALITY.map((row) => row.situation)).toEqual([
       'No main agent',
