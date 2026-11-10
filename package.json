@@ -183,6 +183,16 @@
         "default": "./dist/improve/index.js"
       }
     },
+    "./workspaces": {
+      "import": {
+        "types": "./dist/workspaces/index.d.mts",
+        "default": "./dist/workspaces/index.mjs"
+      },
+      "require": {
+        "types": "./dist/workspaces/index.d.ts",
+        "default": "./dist/workspaces/index.js"
+      }
+    },
     "./traces": {
       "import": {
         "types": "./dist/traces/index.d.mts",
