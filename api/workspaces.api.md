@@ -7,6 +7,47 @@
 import { z } from 'zod';
 
 // @public
+export const AGENT_OWNED: readonly ["instructions", "skills", "tools", "memory", "default model"];
+
+// @public
+export type AgentRef = {
+    kind: 'workspace';
+    name: string;
+} | {
+    kind: 'local';
+    name: string;
+} | {
+    kind: 'global';
+    name: string;
+    range: string;
+};
+
+// @public
+export interface Attachment {
+    as: string;
+    limits?: {
+        maxDurationMs?: number;
+        maxTurns?: number;
+        maxCostUsd?: number;
+    };
+    model?: string;
+    ref: string;
+    role?: string;
+    tools?: {
+        only?: string[];
+    };
+}
+
+// @public
+export interface Attachments {
+    agents: Attachment[];
+    schema: 'lousho.agents/1';
+}
+
+// @public
+export const attachmentsSchema: z.ZodType<Attachments>;
+
+// @public
 export function baseHarnessLayer(tree: WorkspaceTree): HarnessLayer | undefined;
 
 // @public
@@ -151,6 +192,21 @@ export interface MainHarnessRoute {
 
 // @public
 export const mainHarnessSchema: z.ZodType<MainHarness>;
+
+// @public
+export const PAGE_OWNED: readonly ["as", "role", "model", "limits", "tools.only", "harness"];
+
+// @public
+export function parseAgentRef(ref: string): ParseAgentRefResult;
+
+// @public
+export type ParseAgentRefResult = {
+    ok: true;
+    ref: AgentRef;
+} | {
+    ok: false;
+    error: string;
+};
 
 // @public
 export interface WorkspaceLimits {
