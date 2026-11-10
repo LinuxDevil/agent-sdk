@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { modelIdSchema } from '../../spec/v2/common';
 import { KEBAB_CASE, SEMVER, workspacePathSchema } from './common';
+import { globalRefKeySchema } from './globalRefKey';
+import { isVersionRange } from './versionRange';
 
 /** Per-run limits a workspace sets for its pages. */
 export interface WorkspaceLimits {
@@ -45,9 +47,9 @@ export interface WorkspaceManifest {
   workflows?: string;
   /** Version ranges for referenced global agents and harness profiles, keyed by ref. */
   dependencies?: {
-    /** Agent ref to version range. */
+    /** `global:<name>` agent ref to version range (exact, `^` or `~`). */
     agents?: Record<string, string>;
-    /** Harness profile ref to version range. */
+    /** `global:<name>` harness profile ref to version range (exact, `^` or `~`). */
     profiles?: Record<string, string>;
   };
   /** Defaults that pages inherit. */
@@ -75,7 +77,9 @@ export interface WorkspaceManifest {
 
 const nonEmpty = z.string().min(1, 'must not be empty');
 
-const rangeMapSchema = z.record(nonEmpty, nonEmpty);
+const dependencyRangeSchema = z.string().refine(isVersionRange, 'must be an exact x.y.z, ^x.y.z or ~x.y.z version range');
+
+const rangeMapSchema = z.record(globalRefKeySchema, dependencyRangeSchema);
 
 const pageNameSchema = z
   .string()

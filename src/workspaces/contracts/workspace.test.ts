@@ -64,6 +64,24 @@ describe('workspaceManifestSchema', () => {
     expect(issuesOf({ ...marketing, pages: ['instagram', 'tiktok', 'instagram'] })).toEqual([{ path: ['pages', 2], message: "duplicate page 'instagram'" }]);
   });
 
+  it('requires dependency keys to be global:<name> refs', () => {
+    for (const key of ['copy-editor', 'workspace:copy-editor', 'local:copy-editor', 'global:copy-editor@^1.0.0', 'global:Copy_Editor', 'global:']) {
+      const issues = issuesOf({ ...marketing, dependencies: { agents: { [key]: '^1.0.0' } } });
+      expect(issues.length, key).toBeGreaterThan(0);
+      expect(issues[0].path.slice(0, 2), key).toEqual(['dependencies', 'agents']);
+    }
+    expect(issuesOf({ ...marketing, dependencies: { profiles: { 'workspace:x': '1.0.0' } } }).length).toBeGreaterThan(0);
+  });
+
+  it('requires dependency values to be valid version ranges', () => {
+    for (const range of ['', 'latest', '*', '>=1.0.0', '1.x', '1.2']) {
+      expect(issuesOf({ ...marketing, dependencies: { agents: { 'global:copy-editor': range } } }), range).toEqual([
+        { path: ['dependencies', 'agents', 'global:copy-editor'], message: expect.stringContaining('version range') },
+      ]);
+    }
+    expect(issuesOf({ ...marketing, dependencies: { agents: { 'global:a': '1.2.3', 'global:b': '~1.2', 'global:c': '^1' } } })).toEqual([]);
+  });
+
   it('rejects a non-semver version', () => {
     for (const version of ['1.0', 'v1.0.0', '1.0.0.0', '01.0.0', 'latest']) {
       expect(issuesOf({ ...marketing, version })).toEqual([{ path: ['version'], message: expect.stringContaining('semver') }]);

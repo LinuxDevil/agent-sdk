@@ -54,6 +54,9 @@ export function baseHarnessLayer(tree: WorkspaceTree): HarnessLayer | undefined;
 export const baseHarnessSchema: z.ZodType<Harness>;
 
 // @public
+export function checkLock(manifest: WorkspaceManifest, refs: LockRef[], lock: WorkspaceLock | undefined, mode: LockMode_2): LockCheckResult;
+
+// @public
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
 
 // @public
@@ -169,6 +172,30 @@ export interface InheritanceRule {
     folders: readonly SharedFolder[];
     item: 'instructions' | 'skills' | 'memory' | 'context files' | 'policies' | 'main agent';
     rule: string;
+}
+
+// @public
+export interface LockCheckResult {
+    errors: string[];
+    ok: boolean;
+    warnings: string[];
+}
+
+// @public
+export interface LockEntry {
+    sha256: string;
+    source: 'project' | 'vendor';
+    version: string;
+}
+
+// @public
+type LockMode_2 = 'dev' | 'strict';
+export { LockMode_2 as LockMode }
+
+// @public
+export interface LockRef {
+    ref: string;
+    sha256?: string;
 }
 
 // @public
@@ -359,6 +386,20 @@ export interface WorkspaceLimits {
     maxConcurrentPages?: number;
     maxCostUsdPerRun?: number;
 }
+
+// @public
+export interface WorkspaceLock {
+    generatedAt: string;
+    resolved: Record<string, LockEntry>;
+    schema: 'lousho.lock/1';
+    workspace: {
+        id: string;
+        version: string;
+    };
+}
+
+// @public
+export const workspaceLockSchema: z.ZodType<WorkspaceLock>;
 
 // @public
 export interface WorkspaceManifest {
