@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { SPEC_FIELD_ORDER } from '../../../../shared/specFields';
-import type { VersionListItem } from '../../../../shared/wireTypes';
-import { FIELD_LABELS, fieldLabel, kindLabel, SOURCE_LABELS, summaryPending } from '../versionLabels';
+import type { SpecChange, VersionListItem } from '../../../../shared/wireTypes';
+import {
+  FIELD_LABELS,
+  fieldLabel,
+  groupChanges,
+  kindLabel,
+  SECTION_ORDER,
+  sectionOf,
+  SOURCE_LABELS,
+  summaryPending,
+  type DiffSection,
+} from '../versionLabels';
 
 function item(over: Partial<VersionListItem> = {}): VersionListItem {
   return {
@@ -52,6 +62,78 @@ describe('SOURCE_LABELS', () => {
     }
     expect(SOURCE_LABELS.author).toBe('via Author');
     expect(SOURCE_LABELS.external_file_edit).toBe('file edited outside Studio');
+  });
+});
+
+function change(over: Partial<SpecChange> = {}): SpecChange {
+  return { field: 'model', label: 'Model', section: 'Model', op: 'edit', ...over };
+}
+
+describe('sectionOf', () => {
+  it('groups a keyed-list item under its top-level field', () => {
+    expect(sectionOf('tools[web_fetch]')).toBe('Tools');
+    expect(sectionOf('mcpServers.github')).toBe('Tools');
+    expect(sectionOf('guardrails[gr-1]')).toBe('Safety');
+  });
+
+  it('maps one plain field per section', () => {
+    const pairs: Array<[string, DiffSection]> = [
+      ['name', 'Identity'],
+      ['labels', 'Identity'],
+      ['model', 'Model'],
+      ['instructions', 'Instructions'],
+      ['tools', 'Tools'],
+      ['skills', 'Knowledge'],
+      ['guardrails', 'Safety'],
+      ['triggers', 'Triggers'],
+      ['flow', 'Flow'],
+    ];
+    for (const [field, section] of pairs) {
+      expect(sectionOf(field), field).toBe(section);
+    }
+  });
+
+  it('puts unknown fields under Other', () => {
+    expect(sectionOf('someFutureField')).toBe('Other');
+    expect(sectionOf('someFutureField.nested')).toBe('Other');
+    expect(sectionOf('someFutureField[item]')).toBe('Other');
+  });
+});
+
+describe('groupChanges', () => {
+  it('orders sections by SECTION_ORDER and drops empty ones', () => {
+    const groups = groupChanges([
+      change({ field: 'tools[web_fetch]', label: 'Tool: web_fetch' }),
+      change({ field: 'name', label: 'Name', section: 'Identity' }),
+      change({ field: 'someFutureField', label: 'Future' }),
+      change({ field: 'model' }),
+      change({ field: 'tools[calculator]', label: 'Tool: calculator' }),
+    ]);
+    expect(groups.map((g) => g.section)).toEqual(['Identity', 'Model', 'Tools', 'Other']);
+    expect(groups.find((g) => g.section === 'Tools')?.changes.map((c) => c.field)).toEqual([
+      'tools[web_fetch]',
+      'tools[calculator]',
+    ]);
+  });
+
+  it('keeps a section per field across the whole order', () => {
+    const fields: Array<[string, DiffSection]> = [
+      ['name', 'Identity'],
+      ['model', 'Model'],
+      ['instructions', 'Instructions'],
+      ['tools', 'Tools'],
+      ['skills', 'Knowledge'],
+      ['guardrails', 'Safety'],
+      ['triggers', 'Triggers'],
+      ['flow', 'Flow'],
+      ['someFutureField', 'Other'],
+    ];
+    const groups = groupChanges(fields.map(([field]) => change({ field })));
+    expect(groups.map((g) => g.section)).toEqual([...SECTION_ORDER]);
+  });
+
+  it('returns an empty list for no changes', () => {
+    expect(groupChanges([])).toEqual([]);
   });
 });
 
