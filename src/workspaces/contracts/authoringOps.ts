@@ -303,8 +303,8 @@ export interface WriteWorkflowOp {
   op: 'write_workflow';
   /** Page id. */
   page: string;
-  /** The workflow document, whose agent names are the page's attachment aliases. Required; an omitted value is rejected. */
-  workflow?: unknown;
+  /** The workflow document, whose agent names are the page's attachment aliases. */
+  workflow: Record<string, unknown>;
 }
 
 /** Writes a page's `goal.json`. */
@@ -313,8 +313,8 @@ export interface WriteGoalOp {
   op: 'write_goal';
   /** Page id. */
   page: string;
-  /** The goal document. Required; an omitted value is rejected. */
-  goal?: unknown;
+  /** The goal document. */
+  goal: Record<string, unknown>;
 }
 
 /** Writes a page's declarative UI file. */
@@ -323,8 +323,8 @@ export interface WritePageUiOp {
   op: 'write_page_ui';
   /** Page id. */
   page: string;
-  /** The page UI document. Required; an omitted value is rejected. */
-  ui?: unknown;
+  /** The page UI document. */
+  ui: Record<string, unknown>;
 }
 
 /** Deletes a page's UI file so the default UI applies. */
@@ -409,6 +409,7 @@ const id = z.string().regex(KEBAB_CASE, 'must be kebab-case');
 const text = z.string();
 const fileName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*\.md$/, 'must be a .md file name with no folder');
 const value = z.custom<unknown>(() => true).optional();
+const document = z.custom<Record<string, unknown>>((candidate) => typeof candidate === 'object' && candidate !== null && !Array.isArray(candidate), 'must be a JSON object');
 
 const manifest = workspaceManifestObjectSchema.shape;
 const page = pageObjectSchema.shape;
@@ -442,9 +443,9 @@ export const authoringOpObjectSchema = z.discriminatedUnion('op', [
   op('set_attachment_field', { page: id, as: id, field: z.enum(['role', 'model', 'limits', 'tools']), value }),
   op('set_execution_type', { page: id, type: z.enum(WORK_TYPES as unknown as [PageExecution['type'], ...PageExecution['type'][]]) }),
   op('set_execution_config', { page: id, key: z.enum(['single', 'multiAgent', 'workflow', 'goal', 'limits', 'onFailure', 'checkpoint']), value }),
-  op('write_workflow', { page: id, workflow: z.custom<unknown>(() => true) }),
-  op('write_goal', { page: id, goal: z.custom<unknown>(() => true) }),
-  op('write_page_ui', { page: id, ui: z.custom<unknown>(() => true) }),
+  op('write_workflow', { page: id, workflow: document }),
+  op('write_goal', { page: id, goal: document }),
+  op('write_page_ui', { page: id, ui: document }),
   op('reset_page_ui', { page: id }),
   op('write_shared_instruction', { file: fileName, text }),
 ]);

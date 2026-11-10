@@ -197,8 +197,11 @@ describe('authoring operations', () => {
   it('only known files at default locations are written, even from a tree with custom folders', () => {
     const tree = build();
     const custom = { ...tree, 'workspace.json': { ...(tree['workspace.json'] as object), harness: 'shared/policies', agents: 'shared/policies' } };
-    expect(opFiles({ op: 'write_harness_prose', target: { kind: 'base' }, file: 'x.md', text: 'x' }, custom)).toEqual(['harness/harness.json', 'harness/x.md']);
-    expect(opFiles({ op: 'create_agent', name: 'evil', description: 'd', instructions: 'i' }, custom)).toEqual(['agents/evil/agent.json', 'agents/evil/instructions.md']);
+    expect(opFiles({ op: 'write_harness_prose', target: { kind: 'base' }, file: 'x.md', text: 'x' }, custom)).toEqual([]);
+    expect(opFiles({ op: 'create_agent', name: 'evil', description: 'd', instructions: 'i' }, custom)).toEqual([]);
+    const result = apply(custom, [{ op: 'create_agent', name: 'evil', description: 'd', instructions: 'i' }]);
+    expect(result.tree).toBe(custom);
+    expect(result.problems[0].message).toContain('edit it by hand');
   });
 
   it('setting mainAgent to null removes the main-agent files', () => {
@@ -222,5 +225,42 @@ describe('authoring operations', () => {
   it('a required validator runs on the final tree', () => {
     const result = applyOps(build(), [{ op: 'set_workspace_field', field: 'name', value: 'M2' }], { validate: () => [{ path: 'workspace.json', message: 'stub says no' }] });
     expect(result.problems[0]).toMatchObject({ opIndex: 0, message: 'stub says no' });
+  });
+
+  it('refuses to list or delete tree keys that climb out of a page folder', () => {
+    const tree = build();
+    for (const key of ['pages/instagram-videos/../../shared/policies/p.json', 'pages/instagram-videos/./x.json']) {
+      const hostile = { ...tree, [key]: '{}' };
+      const result = apply(hostile, [{ op: 'remove_page', page: 'instagram-videos' }]);
+      expect(result.tree, key).toBe(hostile);
+      expect(result.problems[0], key).toMatchObject({ opIndex: 0, path: key });
+    }
+  });
+
+  it('leaves a backslash key beside a page folder alone', () => {
+    const key = 'pages/instagram-videos\\..\\shared\\p.json';
+    const hostile = { ...build(), [key]: '{}' };
+    expect(opFiles({ op: 'remove_page', page: 'instagram-videos' }, hostile)).not.toContain(key);
+    expect(apply(hostile, [{ op: 'remove_page', page: 'instagram-videos' }]).tree[key]).toBe('{}');
+  });
+
+  it('a page with a custom ui path gets a problem, not a file the runtime never reads', () => {
+    const tree = build();
+    const page = { ...(tree['pages/instagram-videos/page.json'] as object), ui: './custom/ui.json' };
+    const custom = { ...tree, 'pages/instagram-videos/page.json': page };
+    const result = apply(custom, [{ op: 'write_page_ui', page: 'instagram-videos', ui: { schema: 'x' } }]);
+    expect(result.tree).toBe(custom);
+    expect(result.problems[0].message).toContain('edit it by hand');
+    expect(apply(custom, [{ op: 'write_page_ui', page: 'facebook-videos', ui: { schema: 'x' } }]).problems).toEqual([]);
+  });
+
+  it('setting a main agent on a workspace without one writes the same template as create_workspace', () => {
+    const none = apply({}, [{ op: 'create_workspace', id: 'solo', name: 'Solo', description: 'd' }]).tree;
+    const result = apply(none, [{ op: 'set_workspace_field', field: 'mainAgent', value: { dir: './main-agent' } }]);
+    expect(result.problems).toEqual([]);
+    expect(Object.keys(result.tree).filter((path) => path.startsWith('main-agent/')).sort()).toEqual(['main-agent/agent.json', 'main-agent/instructions.md']);
+    const created = apply({}, [{ op: 'create_workspace', id: 'solo', name: 'Solo', description: 'd', mainAgent: { dir: './main-agent' } }]).tree;
+    expect(result.tree['main-agent/agent.json']).toEqual(created['main-agent/agent.json']);
+    expect(result.tree['main-agent/instructions.md']).toBe(created['main-agent/instructions.md']);
   });
 });
