@@ -56,9 +56,14 @@ interface PaletteItemProps {
  * controls say why" copy rule.
  */
 function PaletteItem({ entry, tabbable, onFocusItem, onActivate }: PaletteItemProps) {
-  const { graph, selectedNodeId } = useAppState();
+  const { graph, selectedNodeId, proposal } = useAppState();
   const { tone, Icon } = viewFor(entry.kind);
-  const reason = entry.unavailable?.(graph, ownerForNewNode(graph, entry.kind, selectedNodeId));
+  // While a proposal overlay is shown the canvas is read-only (C21): every
+  // entry is disabled with the reason in its tooltip.
+  const reason =
+    proposal === undefined
+      ? entry.unavailable?.(graph, ownerForNewNode(graph, entry.kind, selectedNodeId))
+      : 'Hide the proposal to edit';
   const descriptionId = `palette-${entry.id}-desc`;
   return (
     <button

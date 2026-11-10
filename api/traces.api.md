@@ -200,6 +200,7 @@ export interface TraceSummary {
     name: string;
     // (undocumented)
     outputTokens: number;
+    revision?: string;
     // (undocumented)
     startTime: number;
     status: 'ok' | 'error';

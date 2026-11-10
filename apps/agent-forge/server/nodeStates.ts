@@ -39,6 +39,12 @@ function isApprovalWait(span: Span): boolean {
 export function nodeStateFor(span: Span, phase: 'start' | 'end', now: Date): NodeStatePayload | undefined {
   const nodeId = span.attributes[NODE_ID_ATTRIBUTE];
   if (typeof nodeId !== 'string' || nodeId === '') return undefined;
+  // The `approval.wait` marker is zero-length (markSpan fires start and
+  // end in the same tick): its `end` must not emit a `done` frame over
+  // the `waiting` one - the node stays paused until the gated tool's real
+  // span (or the run's own status) moves it on. The `span` frame itself
+  // is still forwarded; only the node-state derivation is suppressed.
+  if (phase === 'end' && isApprovalWait(span)) return undefined;
   const state: NodeRunState =
     phase === 'start'
       ? isApprovalWait(span)

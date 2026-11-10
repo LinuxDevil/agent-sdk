@@ -76,6 +76,7 @@ describe('canConnect kind table', () => {
     ['agent', 'note'],
     ['tool', 'agent'],
     ['output', 'agent'],
+    ['abort', 'trigger'],
     ['subagent', 'tool'],
   ] as Array<[NodeKind, NodeKind]>)('refuses %s -> %s', (sourceKind, targetKind) => {
     const source = node(sourceKind, { id: `${sourceKind}:s`, owner: 'agent' });

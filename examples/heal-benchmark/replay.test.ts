@@ -2,9 +2,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { improveAgent, type Harness, type ImproveOptions, type ProbeRun } from 'lousho/improve';
+import { cachedProbe, emptyLedger, improveAgent, probeCacheKey, type Harness, type ImproveOptions, type ProbeRun } from 'lousho/improve';
 import { mockModel, type MockTurn } from 'lousho/testing';
-import { cacheKey, cachedProbe, emptyCounts } from './probeCache';
 import { assertRowModel, replayRow, type RecordedRow } from './replayRows';
 
 const BASE: Harness = { instructions: 'Fix the bug.', skills: {} };
@@ -24,32 +23,32 @@ afterEach(() => {
 });
 
 describe('probe cache', () => {
-  it('cacheKey changes with model, salt, case, repeat and harness, but not with skill order', () => {
+  it('probeCacheKey changes with model, salt, case, repeat and harness, but not with skill order', () => {
     const skills = { a: { description: 'A', content: 'a' }, b: { description: 'B', content: 'b' } };
     const parts = { model: 'm', salt: 's', caseId: 'c', repeat: 0, harness: { instructions: 'i', skills } };
-    const key = cacheKey(parts);
+    const key = probeCacheKey(parts);
     expect(key).toMatch(/^[0-9a-f]{64}$/);
-    expect(cacheKey({ ...parts, model: 'm2' })).not.toBe(key);
-    expect(cacheKey({ ...parts, salt: 's2' })).not.toBe(key);
-    expect(cacheKey({ ...parts, caseId: 'c2' })).not.toBe(key);
-    expect(cacheKey({ ...parts, repeat: 1 })).not.toBe(key);
-    expect(cacheKey({ ...parts, harness: { instructions: 'j', skills } })).not.toBe(key);
-    expect(cacheKey({ ...parts, harness: { instructions: 'i', skills: { b: skills.b, a: skills.a } } })).toBe(key);
+    expect(probeCacheKey({ ...parts, model: 'm2' })).not.toBe(key);
+    expect(probeCacheKey({ ...parts, salt: 's2' })).not.toBe(key);
+    expect(probeCacheKey({ ...parts, caseId: 'c2' })).not.toBe(key);
+    expect(probeCacheKey({ ...parts, repeat: 1 })).not.toBe(key);
+    expect(probeCacheKey({ ...parts, harness: { instructions: 'j', skills } })).not.toBe(key);
+    expect(probeCacheKey({ ...parts, harness: { instructions: 'i', skills: { b: skills.b, a: skills.a } } })).toBe(key);
   });
 
   it('cachedProbe runs a miss once, serves the repeat from disk, and never caches an unscored run', async () => {
     const dir = tempDir();
     const probe = vi.fn(async () => scored(true));
-    const counts = emptyCounts();
-    const cached = cachedProbe(probe, { dir, model: 'm', salt: 's', counts });
+    const counts = emptyLedger();
+    const cached = cachedProbe(probe, { dir, model: 'm', salt: 's', ledger: counts });
     expect(await cached(BASE, 'c', 0)).toEqual(scored(true));
-    expect(await cached(BASE, 'c', 0)).toEqual(scored(true));
+    expect(await cached(BASE, 'c', 0)).toEqual({ ...scored(true), cached: true });
     expect(probe).toHaveBeenCalledTimes(1);
     expect(counts).toEqual({ planned: 2, run: 1, cached: 1, excluded: 0 });
 
     const unscored = vi.fn(async () => scored(null));
-    const unscoredCounts = emptyCounts();
-    const retrying = cachedProbe(unscored, { dir, model: 'm', salt: 'other', counts: unscoredCounts });
+    const unscoredCounts = emptyLedger();
+    const retrying = cachedProbe(unscored, { dir, model: 'm', salt: 'other', ledger: unscoredCounts });
     await retrying(BASE, 'c', 0);
     await retrying(BASE, 'c', 0);
     expect(unscored).toHaveBeenCalledTimes(2);
@@ -58,11 +57,11 @@ describe('probe cache', () => {
 
   it('cachedProbe treats an unparsable cache file as a miss and rewrites it whole', async () => {
     const dir = tempDir();
-    const file = path.join(dir, `${cacheKey({ model: 'm', salt: 's', caseId: 'c', repeat: 0, harness: BASE })}.json`);
+    const file = path.join(dir, `${probeCacheKey({ model: 'm', salt: 's', caseId: 'c', repeat: 0, harness: BASE })}.json`);
     writeFileSync(file, '{"passed":tr');
     const probe = vi.fn(async () => scored(true));
-    const counts = emptyCounts();
-    expect(await cachedProbe(probe, { dir, model: 'm', salt: 's', counts })(BASE, 'c', 0)).toEqual(scored(true));
+    const counts = emptyLedger();
+    expect(await cachedProbe(probe, { dir, model: 'm', salt: 's', ledger: counts })(BASE, 'c', 0)).toEqual(scored(true));
     expect(probe).toHaveBeenCalledTimes(1);
     expect(counts).toMatchObject({ run: 1, cached: 0 });
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual(scored(true));
@@ -73,7 +72,7 @@ describe('probe cache', () => {
     const dir = tempDir();
     const turns = ['<notes>KEEP_BASE.</notes>', write(FIXED.instructions), '<notes>Fixed.</notes>', write(FIXED.instructions), '<notes>Composed.</notes>'];
     const attempt = async (probe: ImproveOptions['probe']) =>
-      improveAgent({ harness: BASE, cases: ['c'], probe: cachedProbe(probe, { dir, model: 'm', salt: 'attempt-0', counts: emptyCounts(), distinct: true }), editor: { provider: mockModel(turns) }, repeats: 2 });
+      improveAgent({ harness: BASE, cases: ['c'], probe: cachedProbe(probe, { dir, model: 'm', salt: 'attempt-0', ledger: emptyLedger(), distinct: true }), editor: { provider: mockModel(turns) }, repeats: 2 });
 
     const probe = vi.fn(async (harness: Harness) => scored(harness.instructions.includes('new Date')));
     const result = await attempt(probe);
@@ -113,13 +112,13 @@ describe('replayRow', () => {
       { attempt: 0, label: 'compose', passed: 6, scored: 6, containsFix: true },
     ];
 
-    const first = emptyCounts();
-    expect(await replayRow(row, cachedProbe(fake, { dir, model: 'm', salt: 'confirm-0', counts: first }), 6)).toEqual(expected);
+    const first = emptyLedger();
+    expect(await replayRow(row, cachedProbe(fake, { dir, model: 'm', salt: 'confirm-0', ledger: first }), 6)).toEqual(expected);
     expect(first).toMatchObject({ run: 6, cached: 6 });
 
-    const second = emptyCounts();
+    const second = emptyLedger();
     const probe = vi.fn(fake);
-    expect(await replayRow(row, cachedProbe(probe, { dir, model: 'm', salt: 'confirm-0', counts: second }), 6)).toEqual(expected);
+    expect(await replayRow(row, cachedProbe(probe, { dir, model: 'm', salt: 'confirm-0', ledger: second }), 6)).toEqual(expected);
     expect(second).toMatchObject({ run: 0, cached: 12 });
     expect(probe).not.toHaveBeenCalled();
   });

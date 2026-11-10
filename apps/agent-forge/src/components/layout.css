@@ -12,6 +12,10 @@
   /* the toolbar and drawer never widen the screen past its column */
   grid-template-columns: minmax(0, 1fr);
 }
+/* The agent tab strip (BuilderTabs.tsx) adds a 40px row above the toolbar. */
+.app.app-builder-tabs {
+  grid-template-rows: 40px 52px minmax(0, 1fr) auto;
+}
 .screen-main {
   min-width: 0;
   min-height: 0;

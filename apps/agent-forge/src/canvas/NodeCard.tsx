@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import type { GraphNode } from '../graph/v2/types';
+import type { Graph, GraphNode } from '../graph/v2/types';
 import { StatusPill } from '../ui/StatusPill';
 import { viewFor } from './kinds';
 
@@ -21,6 +21,10 @@ export interface CanvasNodeData extends Record<string, unknown> {
   hasBreakpoint?: boolean;
   /** This node's status in the current run (see nodeStatus.ts); omitted reads idle. */
   status?: string;
+  /** Opens the node spans sheet for this node (AppState.openNodeSpans); omitted renders the pill inert. */
+  onViewSpans?: (nodeId: string) => void;
+  /** The whole graph, for kind titles that read sibling nodes (the abort listener names its trigger). */
+  graph?: Graph;
   /** Group nodes only: how many descendants the group hides while collapsed. */
   insideCount?: number;
 }
@@ -29,13 +33,18 @@ export interface CanvasNodeData extends Record<string, unknown> {
 export function cardClassName(
   base: 'rf-node' | 'rf-group',
   selected: boolean | undefined,
-  data: Pick<CanvasNodeData, 'highlighted' | 'hasBreakpoint' | 'status'>
+  data: Pick<CanvasNodeData, 'highlighted' | 'hasBreakpoint' | 'status' | 'graphNode'>
 ): string {
   const flags: [string, boolean | undefined][] = [
     ['selected', selected],
     ['highlighted', data.highlighted],
     ['has-breakpoint', data.hasBreakpoint],
     ['running', data.status === 'running'],
+    ['paused', data.status === 'paused'],
+    ['error', data.status === 'error'],
+    ['done', data.status === 'done'],
+    // The proposal overlay's marker (C21): 'proposed-add' | 'proposed-remove' | 'proposed-edit'.
+    [`proposed-${data.graphNode.proposed}`, data.graphNode.proposed !== undefined],
   ];
   return [base, ...flags.filter(([, on]) => on).map(([name]) => name)].join(' ');
 }
@@ -65,15 +74,38 @@ export function NodeCardHead({
   status,
   className,
   children,
+  graph,
+  onViewSpans,
 }: {
   node: GraphNode;
   status?: string;
   className?: string;
   children?: ReactNode;
+  graph?: Graph;
+  onViewSpans?: (nodeId: string) => void;
 }): JSX.Element {
   const view = viewFor(node.kind);
-  const title = view.title(node as never);
+  const title = view.title(node as never, graph);
   const { Icon } = view;
+  const pill = <StatusPill status={status ?? 'idle'} />;
+  // A node that ran (status not idle) turns its pill into the spans-sheet
+  // opener; `nodrag` keeps React Flow from starting a drag on the click.
+  const pillOrButton =
+    onViewSpans !== undefined && (status ?? 'idle') !== 'idle' ? (
+      <button
+        type="button"
+        className="node-status-button nodrag"
+        aria-label={`View spans for ${title}`}
+        onClick={(event) => {
+          event.stopPropagation();
+          onViewSpans(node.id);
+        }}
+      >
+        {pill}
+      </button>
+    ) : (
+      pill
+    );
   return (
     <div className={['rf-node-head', className].filter(Boolean).join(' ')}>
       <span className={`node-kind kind-${view.tone}`} aria-hidden="true">
@@ -82,7 +114,7 @@ export function NodeCardHead({
       <span className="rf-node-title" title={title}>
         {title}
       </span>
-      <StatusPill status={status ?? 'idle'} />
+      {pillOrButton}
       {children}
     </div>
   );
@@ -111,21 +143,28 @@ export function NodeCard({
   const chip = view.chip?.(graphNode as never);
   const rows = view.rows(graphNode as never);
   const chips = [...(chip !== undefined ? [chip] : []), ...(extraChips ?? [])];
+  // A proposal-edited node carries an "edited" marker chip (C21).
+  const edited = graphNode.proposed === 'edit';
 
   return (
     <div className={cardClassName('rf-node', selected, data)} data-node-kind={graphNode.kind} data-node-id={graphNode.id}>
       {view.ports.in && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {view.ports.out && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
-      <NodeCardHead node={graphNode} status={status}>
+      <NodeCardHead node={graphNode} status={status} graph={data.graph} onViewSpans={data.onViewSpans}>
         {headAction}
       </NodeCardHead>
-      {chips.length > 0 && (
+      {(chips.length > 0 || edited) && (
         <div className="rf-node-meta">
           {chips.map((c) => (
             <code className="node-chip" title={c} key={c}>
               {c}
             </code>
           ))}
+          {edited && (
+            <code className="node-chip node-chip-edited" title="Changed by the proposal">
+              edited
+            </code>
+          )}
         </div>
       )}
       <NodeRows rows={rows} />

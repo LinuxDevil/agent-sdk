@@ -56,7 +56,7 @@ export { specToCode, type SpecToCodeOptions } from '../generators/typescript';
 
 // S20a–S20c: stable node ids and the span exporter that stamps them.
 export { specNodeIds, type SpecNodeIds } from './nodeIds';
-export { isNodeIdExporter, nodeIdExporter, nodeIdIndexOf, type NodeIdIndex } from './nodeIdExporter';
+export { isNodeIdExporter, nodeIdExporter, nodeIdIndexOf, subAgentNodeIndexes, type NodeIdIndex } from './nodeIdExporter';
 
 // S21b/S21c: the `flow` spec key's schema and validation.
 export { flowProblems, flowSpecSchema, type FlowProblem } from './flow';

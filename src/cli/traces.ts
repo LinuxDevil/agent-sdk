@@ -169,21 +169,25 @@ function hostedDetail(span: Span): string[] {
   return Array.isArray(hosted) && hosted.length > 0 ? [`provider ran ${hosted.join(', ')}`] : [];
 }
 
+function chatDetail(span: Span): string[] {
+  const parts: string[] = [];
+  const model = attr(span, 'gen_ai.response.model') ?? attr(span, 'gen_ai.request.model');
+  if (typeof model === 'string') parts.push(model);
+  const input = attr(span, 'gen_ai.usage.input_tokens');
+  const output = attr(span, 'gen_ai.usage.output_tokens');
+  if (typeof input === 'number' || typeof output === 'number') parts.push(`in ${input ?? 0} out ${output ?? 0}`);
+  return [...parts, ...hostedDetail(span)];
+}
+
+const labelled = (label: string, value: unknown, chars = Infinity): string[] => (typeof value === 'string' ? [`${label} ${value.slice(0, chars)}`] : []);
+
 /** Model, tokens and cost of a `chat` span; tool name of an `execute_tool` span. */
 function details(span: Span): string {
   const op = attr(span, 'gen_ai.operation.name');
   const parts: string[] = [];
-  if (op === 'chat') {
-    const model = attr(span, 'gen_ai.response.model') ?? attr(span, 'gen_ai.request.model');
-    if (typeof model === 'string') parts.push(model);
-    const input = attr(span, 'gen_ai.usage.input_tokens');
-    const output = attr(span, 'gen_ai.usage.output_tokens');
-    if (typeof input === 'number' || typeof output === 'number') parts.push(`in ${input ?? 0} out ${output ?? 0}`);
-    parts.push(...hostedDetail(span));
-  } else if (op === 'execute_tool') {
-    const tool = attr(span, 'gen_ai.tool.name');
-    if (typeof tool === 'string') parts.push(`tool ${tool}`);
-  }
+  if (op === 'chat') parts.push(...chatDetail(span));
+  else if (op === 'execute_tool') parts.push(...labelled('tool', attr(span, 'gen_ai.tool.name')));
+  else if (op === 'invoke_agent') parts.push(...labelled('revision', attr(span, 'lousho.harness.revision'), 12));
   const cost = attr(span, 'lousho.cost_usd');
   if (typeof cost === 'number') parts.push(formatCost(cost));
   return parts.join('  ');

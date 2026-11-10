@@ -9,31 +9,13 @@
  */
 import { Zap } from 'lucide-react';
 import { nextItemId } from '../../graph/v2/nodeIds';
-import { CHANNEL_LABELS, triggerSiblingIds } from '../../graph/v2/kinds/trigger';
+import { triggerSiblingIds } from '../../graph/v2/kinds/trigger';
 import type { TriggerSpec } from '../../graph/v2/specTypes';
 import type { NodeOfKind } from '../../graph/v2/types';
+import { clipFirstLine } from './clipFirstLine';
 import { TriggerFields } from './trigger/TriggerFields';
-import { emptyTriggerItem } from './trigger/triggerItem';
+import { emptyTriggerItem, triggerTitle } from './trigger/triggerItem';
 import type { KindView, NodeRow, PaletteEntry } from './index';
-
-/** The card title per trigger type: a fixed label, the channel's label or `After <agent>`. */
-function title(item: TriggerSpec): string {
-  switch (item.type) {
-    case 'chat':
-      return 'Chat';
-    case 'cron':
-      return 'Schedule';
-    case 'webhook':
-      return 'Webhook';
-    case 'channel':
-      return CHANNEL_LABELS[item.channel] ?? item.channel;
-    case 'agent':
-      return item.after === '' ? 'After another agent' : `After ${item.after}`;
-    default:
-      // A catalog type outside the five PLAN kinds renders under its own name.
-      return (item as { type: string }).type;
-  }
-}
 
 /** The chip text per trigger type; chat and catalog-extra types carry none. */
 function chip(item: TriggerSpec): string | undefined {
@@ -51,24 +33,18 @@ function chip(item: TriggerSpec): string | undefined {
   }
 }
 
-/** The first line of `text`, clipped to 40 characters — the card's `prompt`/`template` row value. */
-function clip(text: string): string {
-  const line = text.split('\n', 1)[0];
-  return line.length > 40 ? `${line.slice(0, 39)}…` : line;
-}
-
 /** The card rows: the prompt/template text when set, the cron time zone and the optional filter. */
 function rows(node: NodeOfKind<'trigger'>): NodeRow[] {
   const { item } = node.data;
   const result: NodeRow[] = [];
   if (item.type === 'cron') {
-    if (item.prompt !== '') result.push({ k: 'prompt', v: clip(item.prompt) });
+    if (item.prompt !== '') result.push({ k: 'prompt', v: clipFirstLine(item.prompt) });
     if (item.timezone !== undefined && item.timezone !== '') {
       result.push({ k: 'zone', v: item.timezone });
     }
   }
   if ((item.type === 'webhook' || item.type === 'agent') && item.promptTemplate !== '') {
-    result.push({ k: 'template', v: clip(item.promptTemplate) });
+    result.push({ k: 'template', v: clipFirstLine(item.promptTemplate) });
   }
   if ((item.type === 'webhook' || item.type === 'channel') && item.filter !== undefined && item.filter !== '') {
     result.push({ k: 'filter', v: item.filter });
@@ -105,7 +81,7 @@ export const TRIGGER_VIEW: KindView<'trigger'> = {
   label: 'Trigger',
   tone: 'accent',
   Icon: Zap,
-  title: (node) => title(node.data.item),
+  title: (node) => triggerTitle(node.data.item),
   chip: (node) => chip(node.data.item),
   rows,
   ports: { in: false, out: true },

@@ -109,7 +109,7 @@ describe('resolveAgentDir', () => {
  * unknown key.
  */
 const CREATE_AGENT_OPTIONS = {
-  tools: true, mcpServers: true, skills: true, name: true, description: true, subagents: true, subagentOptions: true,
+  tools: true, mcpServers: true, skills: true, harnessCanary: true, name: true, description: true, subagents: true, subagentOptions: true,
   handoffs: true, maxHandoffs: true, toolSearch: true, codeMode: true, maxSubagentDepth: true, maxSteps: true, limits: true,
   guardrails: true, toolConcurrency: true, onAgentDrift: true, reasoning: true, modelSettings: true, onEvent: true, exporter: true,
   captureContent: true, redactContent: true, projectInstructions: true, store: true, approvalStore: true, approve: true,

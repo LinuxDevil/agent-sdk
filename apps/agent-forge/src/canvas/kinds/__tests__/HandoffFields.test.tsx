@@ -33,6 +33,7 @@ const app = vi.hoisted(() => {
 vi.mock('../../../state/AppState', () => ({
   useAppState: () => ({
     graph: app.graph,
+    displayGraph: app.graph,
     setGraph: app.setGraph,
     selectedNodeId: app.selectedNodeId,
     agentId: app.agentId,

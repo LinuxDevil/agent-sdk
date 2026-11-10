@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { agentSpecV2JsonSchema, type AgentSpecV2 } from 'lousho/spec';
 
 import type { AgentRecord } from '../../../../shared/wireTypes';
-import type { JsonSchema } from '../../../ui/schemaForm/types';
-import { issuesByPath, validateSchemaValue, type SchemaIssue } from '../../../ui/schemaForm/validate';
+import type { JsonSchema, SchemaIssue } from '../../../ui/schemaForm/types';
+import { issuesByPath, validateSchemaValue } from '../../../ui/schemaForm/validate';
 import { changedSections, sectionOf } from './sections';
 
 /** What {@link useConfigureDraft} hands the Configure tab. */

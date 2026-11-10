@@ -167,3 +167,27 @@ describe('lousho traces: hosted tools', () => {
     }
   });
 });
+
+describe('lousho traces: harness revision', () => {
+  it("shows the root span's revision in the tree and in --json", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traces-revision-'));
+    try {
+      const id = '3f2a9c1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f';
+      const revision = `${'c0ffee'.repeat(10)}beef`;
+      const source = path.join(fixtures, 'traces', '2026-10-01', `${id}.jsonl`);
+      const lines = fs.readFileSync(source, 'utf8').trim().split('\n').map((line) => JSON.parse(line) as { attributes: Record<string, unknown> });
+      lines.find((span) => span.attributes['gen_ai.operation.name'] === 'invoke_agent')!.attributes['lousho.harness.revision'] = revision;
+      fs.mkdirSync(path.join(dir, 'traces', '2026-10-01'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'traces', '2026-10-01', `${id}.jsonl`), lines.map((span) => JSON.stringify(span)).join('\n') + '\n');
+      const out: string[] = [];
+      const options = { cwd: dir, now: NOW, color: false, log: (text: string) => out.push(text) };
+      expect(await runTraces(['3f2a', '--dir', 'traces'], options)).toBe(0);
+      expect(out.join('\n')).toContain('revision c0ffeec0ffee');
+      out.length = 0;
+      expect(await runTraces(['--dir', 'traces', '--json'], options)).toBe(0);
+      expect((JSON.parse(out.join('\n')) as { revision?: string }[])[0].revision).toBe(revision);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

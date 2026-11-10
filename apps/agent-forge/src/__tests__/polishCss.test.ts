@@ -56,6 +56,21 @@ describe('sticky side panels', () => {
   });
 });
 
+describe('canvas node status rings', () => {
+  const css = sheet('screens/agents/agents.css');
+  it('paused rings in --warning-border, error in --danger-border, done rings nothing', () => {
+    expect(rulesFor(css, '.canvas-wrap .rf-node.paused::after')).toMatch(/border:\s*2px solid var\(--warning-border\)/);
+    expect(rulesFor(css, '.canvas-wrap .rf-node.error::after')).toMatch(/border:\s*2px solid var\(--danger-border\)/);
+    expect(rulesFor(css, '.canvas-wrap .rf-node.done::after')).toBe('');
+  });
+  it('turns the ring animation off under prefers-reduced-motion', () => {
+    const reduced = css.slice(css.indexOf('prefers-reduced-motion'));
+    expect(reduced).toContain('.canvas-wrap .rf-node.running::after');
+    expect(reduced).toContain('.canvas-wrap .rf-node.paused::after');
+    expect(reduced).toMatch(/animation:\s*none/);
+  });
+});
+
 describe('U01 tokens', () => {
   const theme = sheet('theme.css');
   it.each(['success', 'warning', 'danger', 'info'])('--%s-border is the status colour at 40%%', (s) => {
@@ -67,6 +82,21 @@ describe('U01 tokens', () => {
   });
   it('--nav-bg is a light-dark pair', () => {
     expect(theme).toMatch(/--nav-bg:\s*light-dark\(#efeff2,\s*#060608\);/);
+  });
+});
+
+describe('A12 builder tab strip', () => {
+  it('.app.app-builder-tabs adds the 40px strip row above the 52px toolbar', () => {
+    expect(rulesFor(sheet('components/layout.css'), '.app.app-builder-tabs')).toMatch(
+      /grid-template-rows:\s*40px 52px minmax\(0, 1fr\) auto/,
+    );
+  });
+
+  it('.builder-tabs aligns its tabs to the bottom edge over a surface background', () => {
+    const rules = rulesFor(sheet('screens/agents/builderTabs.css'), '.builder-tabs');
+    expect(rules).toMatch(/align-items:\s*flex-end/);
+    expect(rules).toMatch(/background:\s*var\(--surface\)/);
+    expect(rules).toMatch(/border-bottom:\s*1px solid var\(--border\)/);
   });
 });
 

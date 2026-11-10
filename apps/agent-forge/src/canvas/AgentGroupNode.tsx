@@ -18,7 +18,7 @@ import { viewFor } from './kinds';
 
 /** The collapse/expand toggle in the group's head: ChevronDown while expanded, ChevronRight while collapsed. */
 function CollapseButton({ node, collapsed }: { node: GraphNode; collapsed: boolean }): JSX.Element {
-  const { setGraph } = useAppState();
+  const { setGraph, proposal } = useAppState();
   const key = (node.data as AgentData).subagentKey ?? node.id;
   const Icon = collapsed ? ChevronRight : ChevronDown;
   return (
@@ -26,10 +26,14 @@ function CollapseButton({ node, collapsed }: { node: GraphNode; collapsed: boole
       type="button"
       className="btn btn-ghost btn-icon btn-sm rf-group-toggle"
       aria-expanded={!collapsed}
+      // Read-only while the proposal overlay is shown (C21): collapsing would edit the graph.
+      disabled={proposal !== undefined}
+      title={proposal !== undefined ? 'Hide the proposal to edit' : undefined}
       aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${key}`}
       onClick={(event) => {
         // Keep the click from selecting the node underneath the button.
         event.stopPropagation();
+        if (proposal !== undefined) return;
         setGraph((g) => setCollapsed(g, node.id, !collapsed));
       }}
     >
@@ -59,7 +63,19 @@ function AgentGroupNodeImpl({ data, selected }: NodeProps) {
     >
       {ports.in && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {ports.out && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
-      <NodeCardHead node={graphNode} status={nodeData.status} className="rf-group-head">
+      <NodeCardHead
+        node={graphNode}
+        status={nodeData.status}
+        className="rf-group-head"
+        graph={nodeData.graph}
+        onViewSpans={nodeData.onViewSpans}
+      >
+        {/* A proposal-edited group carries the same "edited" marker chip as a card (C21). */}
+        {graphNode.proposed === 'edit' && (
+          <code className="node-chip node-chip-edited" title="Changed by the proposal">
+            edited
+          </code>
+        )}
         {toggle}
       </NodeCardHead>
     </div>

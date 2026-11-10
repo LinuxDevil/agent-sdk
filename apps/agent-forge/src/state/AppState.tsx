@@ -1,6 +1,7 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { AgentSpecV2 } from 'lousho';
+import { mergeProposal, type ProposalOverlay } from '../graph/v2/proposal';
 import { HttpAgentStore } from '../persistence/HttpAgentStore';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { AgentStore } from '../persistence/AgentStore';
@@ -18,13 +19,15 @@ import type {
   VersionListItem,
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
+import type { NodeStates } from './nodeStateReducer';
 import { useAgentDocument } from './useAgentDocument';
+import { useNodeSpans } from './useNodeSpans';
 import { agentRouteId } from '../screens/agents/agentRoute';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
 
 type RailTab = 'agents' | 'nodes';
-export type DrawerTab = 'chat' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
+export type DrawerTab = 'test' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
 
 interface AppState {
   store: AgentStore;
@@ -36,7 +39,12 @@ interface AppState {
    * state that could drift from this.
    */
   graph: Graph;
-  setGraph: (updater: (graph: Graph) => Graph) => void;
+  /**
+   * `{ dirty: false }` applies the update without marking the document
+   * dirty — used by the automatic unplaced-node layout (C17), whose
+   * recomputed positions need no save of their own.
+   */
+  setGraph: (updater: (graph: Graph) => Graph, options?: { dirty?: boolean }) => void;
   /**
    * Derived, read-mostly view of `graph` as the SDK's `AgentSpecV2` (via
    * `graphToSpec()`), kept for components that read the spec shape
@@ -51,6 +59,22 @@ interface AppState {
   edges: GraphEdge[];
   /** Graph node id → the id `specToGraph(spec)` gives it today, from the same `graphToSpec` call as `spec`. */
   nodeIdMap: Record<string, string>;
+  /**
+   * The proposal overlay (C21): an Agent Author proposal spec shown on top
+   * of the canvas — added nodes dashed, removed faded, changed marked —
+   * while `graph` itself stays untouched. `undefined` = normal editing.
+   */
+  proposal: ProposalOverlay | undefined;
+  /** Shows `p` as the canvas overlay (the canvas turns read-only until `hideProposal`). */
+  showProposal: (p: ProposalOverlay) => void;
+  /** Clears the overlay; the canvas returns to `graph` with nothing written. */
+  hideProposal: () => void;
+  /**
+   * What the canvas and Inspector render: `graph`, or `mergeProposal(graph,
+   * proposal.spec, layout)` while a proposal is shown. Never persisted —
+   * `graphToSpec(displayGraph)` is the proposed spec, `graph` is unchanged.
+   */
+  displayGraph: Graph;
   /** True when there are unsaved changes since the last successful `save()`. */
   dirty: boolean;
   save: () => Promise<void>;
@@ -97,6 +121,13 @@ interface AppState {
    * the WS subscription's initial push arrives).
    */
   runStatus: AgentRunStatusPayload | undefined;
+  /**
+   * The latest `node` frame per canvas node id for the current run -
+   * the status overlay's feed (canvas/nodeStatus.ts). Reset on agent
+   * switch, on each `runAgent()` call and on a new run's first
+   * `running` status.
+   */
+  nodeStates: NodeStates;
   /** POSTs the current graph's compiled spec + `input` to `/agents/:id/run`. */
   runAgent: (input: string) => Promise<void>;
   /** POSTs `/agents/:id/stop` - see runtimeClient.ts/runRegistry.ts for what this can and can't interrupt. */
@@ -136,6 +167,16 @@ interface AppState {
   setHighlightedNodeId: (nodeId: string | undefined) => void;
 
   /**
+   * The node whose spans the node spans sheet (components/test/NodeSpansSheet)
+   * is showing — set by a node card's status pill or the Inspector's "View
+   * spans" button, cleared by `closeNodeSpans` (Esc, scrim, close button).
+   * `undefined` = the sheet is closed.
+   */
+  spansNodeId: string | undefined;
+  openNodeSpans: (nodeId: string) => void;
+  closeNodeSpans: () => void;
+
+  /**
    * This agent's live chat transcript - the server's real
    * `Message[]` history (see runRegistry.ts/chatReconcile.ts), pushed over
    * `WS /agents/:id/stream` as `{type:'chat'}` and applied through the pure
@@ -152,9 +193,9 @@ interface AppState {
   startNewChat: () => Promise<void>;
   /** A past session's full transcript, loaded for read-only browsing (undefined = viewing the live session). */
   viewedChatSession: ChatSessionRecord | undefined;
-  /** Loads a past session for read-only viewing in the Chat tab. */
+  /** Loads a past session for read-only viewing in the Test tab. */
   viewChatSession: (sessionId: string) => Promise<void>;
-  /** Switches the Chat tab back to the live session. */
+  /** Switches the Test tab back to the live session. */
   returnToLiveChat: () => void;
 
   /**
@@ -168,17 +209,42 @@ interface AppState {
   refreshActiveProfile: () => Promise<void>;
 }
 
+declare global {
+  interface Window {
+    /** Dev-only manual trigger for the proposal overlay (C21); set by AppStateProvider under `import.meta.env.DEV`. */
+    __forgeShowProposal?: (spec: AgentSpecV2) => void;
+  }
+}
+
 const AppStateContext = createContext<AppState | undefined>(undefined);
 
-export function AppStateProvider({ children }: { children: ReactNode }) {
-  // Agents live in the server workspace (.lousho/agents/), not the browser.
-  const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
-  const [railTab, setRailTab] = useState<RailTab>('agents');
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('chat');
-  // A reload of an agents URL (`#/agents/:id`, `#/agents/:id/canvas`, `#/agents/:id/:tab`) reopens that agent.
-  const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
-  const doc = useAgentDocument(store, initialAgentId);
-  const { agentId, spec, save } = doc;
+type AgentDocument = ReturnType<typeof useAgentDocument>;
+
+function useProposalOverlay({ graph, layout, nodeIdMap }: AgentDocument) {
+  const [proposal, setProposal] = useState<ProposalOverlay | undefined>(undefined);
+  const showProposal = useCallback((p: ProposalOverlay) => setProposal(p), []);
+  const hideProposal = useCallback(() => setProposal(undefined), []);
+  // Memoised on (graph, proposal): mergeProposal is pure and cheap, and the
+  // canvas rebuilds its node list from this on every render.
+  const displayGraph = useMemo(
+    () => (proposal === undefined ? graph : mergeProposal(graph, proposal.spec, layout, nodeIdMap)),
+    [graph, proposal, layout, nodeIdMap]
+  );
+
+  // Dev-only manual trigger for the proposal overlay (AA18 wires the real
+  // one): `window.__forgeShowProposal(spec)` in a dev build.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    window.__forgeShowProposal = (spec) => showProposal({ proposalId: 'dev', spec });
+    return () => {
+      delete window.__forgeShowProposal;
+    };
+  }, [showProposal]);
+
+  return { proposal, showProposal, hideProposal, displayGraph };
+}
+
+function useSaveVersion({ save, agentId }: AgentDocument) {
   // A ref (not state) so a caller reading `latestVersion` after `await
   // saveVersion()` sees the version that call just reported, not the one
   // captured when its closure was created.
@@ -189,6 +255,44 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     latestVersionRef.current = item.version;
     return created ? item : undefined;
   }, [save, agentId]);
+  return { saveVersion, latestVersionRef };
+}
+
+// A proposal overlay belongs to the document it was made for: switching,
+// creating, renaming or deleting an agent clears it.
+function agentActionsClearing(doc: AgentDocument, hideProposal: () => void) {
+  return {
+    switchAgent: async (id: string) => {
+      hideProposal();
+      return doc.switchAgent(id);
+    },
+    createAgent: async (id: string, template: TemplateId) => {
+      hideProposal();
+      return doc.createAgent(id, template);
+    },
+    renameAgent: async (fromId: string, toId: string) => {
+      hideProposal();
+      return doc.renameAgent(fromId, toId);
+    },
+    deleteAgent: async (id: string) => {
+      hideProposal();
+      return doc.deleteAgent(id);
+    },
+  };
+}
+
+export function AppStateProvider({ children }: { children: ReactNode }) {
+  // Agents live in the server workspace (.lousho/agents/), not the browser.
+  const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
+  const [railTab, setRailTab] = useState<RailTab>('agents');
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>('test');
+  // A reload of an agents URL (`#/agents/:id`, `#/agents/:id/canvas`, `#/agents/:id/:tab`) reopens that agent.
+  const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
+  const doc = useAgentDocument(store, initialAgentId);
+  const { agentId, spec } = doc;
+  const nodeSpans = useNodeSpans();
+  const overlay = useProposalOverlay(doc);
+  const { saveVersion, latestVersionRef } = useSaveVersion(doc);
   const agentStatuses = useAgentStatuses(doc.agents);
   const stream = useAgentStream(agentId);
   const run = useRunControls({ agentId, spec, ...stream });
@@ -198,6 +302,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const value: AppState = {
     store,
     ...doc,
+    ...overlay,
     saveVersion,
     get latestVersion() {
       return latestVersionRef.current;
@@ -206,6 +311,13 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     setRailTab,
     drawerTab,
     setDrawerTab,
+    // A proposal overlay and the node-spans sheet belong to the document
+    // they were opened for: agent mutations clear both.
+    ...agentActionsClearing(doc, () => {
+      overlay.hideProposal();
+      nodeSpans.closeNodeSpans();
+    }),
+    ...nodeSpans,
     ...run,
     agentStatuses,
     ...stream,

@@ -1,0 +1,12 @@
+/* The agent tab strip above the builder toolbar (BuilderTabs.tsx, A12). */
+.builder-tabs {
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+  padding: 0 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.builder-tabs .tabs-tab {
+  height: 39px;
+}

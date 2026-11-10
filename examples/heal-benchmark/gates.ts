@@ -33,6 +33,7 @@ export interface ArmContext {
 }
 
 type Recorded = NonNullable<ImproveResult['candidates']>;
+type Stage = 'invariant' | 'domain' | 'compose';
 type GateInput = Pick<ImproveResult, 'base' | 'final' | 'holdout' | 'costOnPassingCases'>;
 type Cost = NonNullable<ImproveResult['costOnPassingCases']>;
 
@@ -74,7 +75,20 @@ function stageTurns(base: Harness, harness: Harness): MockTurn[] {
 
 export function scriptedEditor(base: Harness, recorded: Recorded): ImproveOptions['editor'] {
   if (Object.keys(base.skills).length > 0) throw new Error('scriptedEditor replays onto a base with no skills, as improveAgent always starts from one.');
-  return { provider: mockModel([...stageTurns(base, recorded.invariant), ...stageTurns(base, recorded.domain), ...stageTurns(base, recorded.compose)]) };
+  const queues: Record<Stage, MockTurn[]> = { invariant: stageTurns(base, recorded.invariant), domain: stageTurns(base, recorded.domain), compose: stageTurns(base, recorded.compose) };
+  const next: MockTurn = (request) => {
+    const stage = stageOf(String(request.messages.find((message) => message.role === 'system')?.content ?? ''));
+    const turn = queues[stage].shift();
+    if (turn === undefined || typeof turn === 'function') throw new Error(`scriptedEditor has no turn left for the ${stage} editor.`);
+    return turn;
+  };
+  const count = queues.invariant.length + queues.domain.length + queues.compose.length;
+  return { provider: mockModel(Array.from({ length: count }, () => next)) };
+}
+
+function stageOf(system: string): Stage {
+  if (system.includes('You are the composer.')) return 'compose';
+  return system.includes('earliest point of divergence') ? 'invariant' : 'domain';
 }
 
 export function loggedProbe(probe: ImproveOptions['probe'], log: LoggedRun[]): ImproveOptions['probe'] {
