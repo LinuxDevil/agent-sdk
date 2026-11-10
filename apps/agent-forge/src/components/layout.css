@@ -325,6 +325,20 @@
   flex: none;
 }
 
+/* A pause's self-resolution countdown (ApprovalCard.tsx's DeadlineLine,
+   on both the approval and the question card): muted until under a
+   minute is left, then warning. */
+.deadline-line {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex: none;
+  white-space: nowrap;
+}
+.deadline-line.urgent {
+  color: var(--warning);
+  font-weight: 600;
+}
+
 /* a run's error message, surfaced inline in the toolbar next to the
    status pill - full log/trace display is a later job, this is just
    "don't silently swallow it". */

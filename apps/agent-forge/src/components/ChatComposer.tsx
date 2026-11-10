@@ -5,8 +5,9 @@ import { useAppState } from '../state/AppState';
 /** The composer grows with its text up to this many lines, then scrolls. */
 const MAX_LINES = 8;
 
-function placeholderFor(viewing: boolean, isPausedForApproval: boolean): string {
+function placeholderFor(viewing: boolean, isPausedForApproval: boolean, pausedForQuestion: boolean): string {
   if (viewing) return 'Return to the live chat to send a message';
+  if (pausedForQuestion) return 'Answer the question above to continue.';
   if (isPausedForApproval) return 'Resolve the approval above to continue';
   return 'Message the agent to test it';
 }
@@ -31,6 +32,8 @@ function useAutosize(value: string) {
 export interface ChatComposerProps {
   viewing: boolean;
   isPausedForApproval: boolean;
+  /** The pause is an `ask_question` waiting on an answer - the placeholder names it ("Answer the question above"). */
+  pausedForQuestion?: boolean;
   inputDisabled: boolean;
 }
 
@@ -39,7 +42,7 @@ export interface ChatComposerProps {
  * with its text (up to eight lines), the accent Send icon button, and a
  * "Shift+Enter for newline" hint. Enter sends; Shift+Enter adds a line.
  */
-export function ChatComposer({ viewing, isPausedForApproval, inputDisabled }: ChatComposerProps) {
+export function ChatComposer({ viewing, isPausedForApproval, pausedForQuestion = false, inputDisabled }: ChatComposerProps) {
   const { sendChatMessage } = useAppState();
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -74,7 +77,7 @@ export function ChatComposer({ viewing, isPausedForApproval, inputDisabled }: Ch
           aria-label="Message"
           className="chat-input"
           rows={1}
-          placeholder={placeholderFor(viewing, isPausedForApproval)}
+          placeholder={placeholderFor(viewing, isPausedForApproval, pausedForQuestion)}
           value={input}
           disabled={inputDisabled}
           onChange={(e) => setInput(e.target.value)}

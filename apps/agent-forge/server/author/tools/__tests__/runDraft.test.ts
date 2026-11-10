@@ -212,7 +212,7 @@ describe('runDraft', () => {
         agentId,
         status: 'paused',
         reason: 'awaiting_approval',
-        pendingApproval: { approvalId: 'ap-1', toolName: 'charge_card', args: {}, createdAt: 'x' },
+        pendingApproval: { approvalId: 'ap-1', toolName: 'charge_card', args: {}, createdAt: 'x', kind: 'tool', deadline: 'x' },
         updatedAt: 'x',
       } satisfies AgentRunStatusPayload);
     });
