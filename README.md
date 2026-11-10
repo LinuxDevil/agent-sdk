@@ -30,7 +30,7 @@ TypeScript AI agents you can test in CI, pause for approval, and resume after a 
   <sub>Agent Forge, the local studio. Open it with <code>npx lousho studio</code>.</sub>
 </div>
 
-<!-- demo.gif goes here (Phase 6) -->
+![Lousho demo: scaffold a project, replay an eval offline, change the prompt, and see the replay flag it](.github/assets/demo.gif)
 
 ## Why Lousho
 
@@ -203,7 +203,8 @@ Alpha. The API may change before 1.0. Pin a version. [Upgrading](docs/upgrading.
 
 ## Community
 
-- Questions, bugs and ideas: [GitHub issues](https://github.com/LinuxDevil/agent-sdk/issues). GitHub Discussions are not open yet.
+- Questions and ideas: [GitHub Discussions](https://github.com/LinuxDevil/agent-sdk/discussions).
+- Bugs and feature requests: [GitHub issues](https://github.com/LinuxDevil/agent-sdk/issues).
 - Arabic docs: [lousho.com/ar](https://lousho.com/ar).
 
 ## Contributing
