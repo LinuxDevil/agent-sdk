@@ -18,7 +18,7 @@ problem.
 
 Use GitHub private vulnerability reporting: open the repository's **Security**
 tab and choose **Report a vulnerability**, or go straight to
-<https://github.com/LinuxDevil/agent-sdk/security/advisories/new>.
+<https://github.com/LinuxDevil/lousho/security/advisories/new>.
 
 Please include:
 
