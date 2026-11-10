@@ -7,7 +7,7 @@ import { pageSchema } from './page';
 import { SHARED_PATH_PATTERNS } from './shared';
 import { workspaceManifestSchema } from './workspace';
 import { flowProblems, flowSpecSchema } from '../../spec/v2/flow';
-import { checkForbiddenKeys } from './forbiddenKeys';
+import { checkForbiddenKeys, FORBIDDEN_HARNESS_KEYS, type ForbiddenKeyRule } from './forbiddenKeys';
 import type { AuthoringOp, AuthoringProblem, AuthoringValidator, ProseTarget } from './authoringOps';
 
 type Doc = Record<string, unknown>;
@@ -30,7 +30,6 @@ const isRecord = (value: unknown): value is Doc => typeof value === 'object' && 
 const clean = (path: string): string => path.replace(/^(\.\/)+/, '').replace(/\/+$/, '');
 const join = (...parts: string[]): string => parts.map(clean).filter((part) => part !== '').join('/');
 const fail = (path: string, message: string): Plan => ({ problems: [{ path, message }] });
-const str = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
 
 function readDoc(tree: WorkspaceTree, path: string): Doc | undefined {
   const raw = tree[path];
@@ -74,22 +73,10 @@ function pageDoc(tree: WorkspaceTree, page: string): Doc | undefined {
 
 const missingPage = (page: string): Plan => fail(`pages/${page}/page.json`, `page '${page}' does not exist`);
 
-function pageRel(page: Doc, key: 'agents' | 'ui', fallback: string): string {
-  return str(page[key]) ?? fallback;
-}
-
-function pageHarnessDir(tree: WorkspaceTree, page: string): string {
-  const harness = pageDoc(tree, page)?.harness;
-  return join(`pages/${page}`, (isRecord(harness) ? str(harness.overrides) : undefined) ?? 'harness');
-}
-
-const agentsDirOf = (tree: WorkspaceTree): string => clean(str(manifestOf(tree)?.agents) ?? 'agents');
-const baseDirOf = (tree: WorkspaceTree): string => clean(str(manifestOf(tree)?.harness) ?? 'harness');
+const MAIN_DIR = 'main-agent/harness';
 
 function mainDirOf(tree: WorkspaceTree): string | undefined {
-  const mainAgent = manifestOf(tree)?.mainAgent;
-  if (!isRecord(mainAgent)) return undefined;
-  return clean(str(mainAgent.harness) ?? 'main-agent/harness');
+  return isRecord(manifestOf(tree)?.mainAgent) ? MAIN_DIR : undefined;
 }
 
 interface HarnessFile {
@@ -103,7 +90,7 @@ interface HarnessFile {
 
 function harnessFile(tree: WorkspaceTree, target: ProseTarget): HarnessFile | Plan {
   if (target.kind === 'base') {
-    const dir = baseDirOf(tree);
+    const dir = 'harness';
     return { path: `${dir}/harness.json`, dir, schema: baseHarnessSchema, owner: dir, prefix: '', empty: { schema: HARNESS_SCHEMA } };
   }
   if (target.kind === 'main') {
@@ -112,7 +99,7 @@ function harnessFile(tree: WorkspaceTree, target: ProseTarget): HarnessFile | Pl
     return { path: `${dir}/main-harness.json`, dir, schema: mainHarnessSchema, owner: dir, prefix: '', empty: { schema: 'lousho.main-harness/1' } };
   }
   if (pageDoc(tree, target.page) === undefined) return missingPage(target.page);
-  const dir = pageHarnessDir(tree, target.page);
+  const dir = `pages/${target.page}/harness`;
   return { path: `${dir}/harness.json`, dir, schema: harnessSchema, owner: `pages/${target.page}`, prefix: dir.slice(`pages/${target.page}/`.length), empty: { schema: HARNESS_SCHEMA } };
 }
 
@@ -131,12 +118,25 @@ function setDocField(tree: WorkspaceTree, path: string, schema: SafeParser<unkno
 
 function createWorkspace(op: Op<'create_workspace'>, tree: WorkspaceTree): Plan {
   if ('workspace.json' in tree) return fail('workspace.json', 'already exists');
+  const problem = folderFieldProblem(op.mainAgent);
+  if (problem !== undefined) return fail('workspace.json', problem);
   const doc = { schema: 'lousho.workspace/1', id: op.id, name: op.name, version: op.version ?? '0.1.0', description: op.description, ...(op.domain !== undefined && { domain: op.domain }), mainAgent: op.mainAgent ?? null, pages: [] };
-  return build([{ path: 'workspace.json', doc, schema: workspaceManifestSchema }]);
+  const main = op.mainAgent == null ? [] : [{ path: 'main-agent/agent.json', doc: { name: 'main', version: '1.0.0', description: `Routes work in ${op.name}.` } }, { path: 'main-agent/instructions.md', doc: op.mainInstructions ?? 'Route each request to the page that fits it.' }];
+  return build([{ path: 'workspace.json', doc, schema: workspaceManifestSchema }, ...main]);
+}
+
+function folderFieldProblem(value: unknown): string | undefined {
+  if (!isRecord(value)) return undefined;
+  const extra = Object.keys(value).filter((key) => key !== 'dir' && key !== 'inheritsShared');
+  return extra.length > 0 ? `mainAgent.${extra[0]} cannot be set by an operation; the main agent uses ./main-agent and its default harness folder` : undefined;
 }
 
 function setWorkspaceField(op: Op<'set_workspace_field'>, tree: WorkspaceTree): Plan {
-  return setDocField(tree, 'workspace.json', workspaceManifestSchema, op.field, op.value);
+  const problem = op.field === 'mainAgent' ? folderFieldProblem(op.value) : undefined;
+  if (problem !== undefined) return fail('workspace.json', problem);
+  const plan = setDocField(tree, 'workspace.json', workspaceManifestSchema, op.field, op.value);
+  if (op.field !== 'mainAgent' || op.value !== null || !('writes' in plan)) return plan;
+  return { ...plan, deletes: Object.keys(tree).filter((path) => path.startsWith('main-agent/') && isAllowedWrite(path)) };
 }
 
 function createPage(op: Op<'create_page'>, tree: WorkspaceTree): Plan {
@@ -250,20 +250,27 @@ function removeCriterion(op: Op<'remove_criterion'>, tree: WorkspaceTree): Plan 
   return writeCriteria(tree, op.target, (criteria) => (criteria.some((item) => hasId(item, op.id)) ? criteria.filter((item) => !hasId(item, op.id)) : `criterion '${op.id}' does not exist`));
 }
 
-function agentDir(tree: WorkspaceTree, name: string, page?: string): string {
-  return page === undefined ? `${agentsDirOf(tree)}/${name}` : `pages/${page}/agents/${name}`;
+function agentDir(name: string, page?: string): string {
+  return page === undefined ? `agents/${name}` : `pages/${page}/agents/${name}`;
 }
 
 function createAgent(op: Op<'create_agent'>, tree: WorkspaceTree): Plan {
   if (op.page !== undefined && pageDoc(tree, op.page) === undefined) return missingPage(op.page);
-  const dir = agentDir(tree, op.name, op.page);
+  const dir = agentDir(op.name, op.page);
   if (`${dir}/agent.json` in tree) return fail(`${dir}/agent.json`, `agent '${op.name}' already exists`);
   const spec = { name: op.name, version: op.version ?? '1.0.0', description: op.description, ...(op.model !== undefined && { model: op.model }) };
   return build([{ path: `${dir}/agent.json`, doc: spec }, { path: `${dir}/instructions.md`, doc: op.instructions }]);
 }
 
+function writeMainProse(op: Op<'write_agent_prose'>, tree: WorkspaceTree): Plan {
+  if (op.agent !== undefined || op.page !== undefined) return fail('target', "target 'main' takes no agent or page");
+  return mainDirOf(tree) === undefined ? fail('workspace.json', 'mainAgent is null; there is no main agent') : build([{ path: 'main-agent/instructions.md', doc: op.text }]);
+}
+
 function writeAgentProse(op: Op<'write_agent_prose'>, tree: WorkspaceTree): Plan {
-  const dir = agentDir(tree, op.agent, op.page);
+  if (op.target === 'main') return writeMainProse(op, tree);
+  if (op.agent === undefined) return fail('agent', "needs an agent name, or target 'main'");
+  const dir = agentDir(op.agent, op.page);
   if (!(`${dir}/agent.json` in tree)) return fail(`${dir}/agent.json`, `agent '${op.agent}' does not exist`);
   return build([{ path: `${dir}/instructions.md`, doc: op.text }]);
 }
@@ -271,7 +278,7 @@ function writeAgentProse(op: Op<'write_agent_prose'>, tree: WorkspaceTree): Plan
 function agentsFile(tree: WorkspaceTree, page: string): { path: string; doc: Doc } | Plan {
   const doc = pageDoc(tree, page);
   if (doc === undefined) return missingPage(page);
-  const path = join(`pages/${page}`, pageRel(doc, 'agents', 'agents.json'));
+  const path = `pages/${page}/agents.json`;
   return { path, doc: readDoc(tree, path) ?? { schema: 'lousho.agents/1', agents: [] } };
 }
 
@@ -319,8 +326,10 @@ function setExecutionConfig(op: Op<'set_execution_config'>, tree: WorkspaceTree)
   return setExecution(tree, op.page, (execution) => withField(execution, op.key, op.value));
 }
 
+const R13_RULES: readonly ForbiddenKeyRule[] = [{ keys: FORBIDDEN_HARNESS_KEYS, message: (at, key) => `${at}: ${key} is granted by policy and the runtime, never by a document (R13)` }];
+
 function plainData(value: unknown, root: string): { data: unknown } | Problem[] {
-  const { errors, data } = checkForbiddenKeys(value, [], root);
+  const { errors, data } = checkForbiddenKeys(value, R13_RULES, root);
   return errors.length > 0 ? errors.map((error) => ({ path: root, message: error.message })) : { data };
 }
 
@@ -351,18 +360,15 @@ function writeGoal(op: Op<'write_goal'>, tree: WorkspaceTree): Plan {
   return writePageDoc(tree, op.page, 'goal.json', op.goal);
 }
 
-function uiRel(tree: WorkspaceTree, page: string): string {
-  const doc = pageDoc(tree, page);
-  return clean(doc === undefined ? 'ui/page.ui.json' : pageRel(doc, 'ui', 'ui/page.ui.json'));
-}
+const UI_REL = 'ui/page.ui.json';
 
 function writePageUi(op: Op<'write_page_ui'>, tree: WorkspaceTree): Plan {
-  return writePageDoc(tree, op.page, uiRel(tree, op.page), op.ui);
+  return writePageDoc(tree, op.page, UI_REL, op.ui);
 }
 
 function resetPageUi(op: Op<'reset_page_ui'>, tree: WorkspaceTree): Plan {
   if (pageDoc(tree, op.page) === undefined) return missingPage(op.page);
-  const path = `pages/${op.page}/${uiRel(tree, op.page)}`;
+  const path = `pages/${op.page}/${UI_REL}`;
   return path in tree ? { writes: {}, deletes: [path] } : fail(path, 'does not exist; the default UI already applies');
 }
 
@@ -402,13 +408,34 @@ const HANDLERS: Handlers = {
   write_shared_instruction: writeSharedInstruction,
 };
 
+const NAME = '[a-z][a-z0-9]*(?:-[a-z0-9]+)*';
+const PROSE = '[A-Za-z0-9][A-Za-z0-9._-]*\\.md';
+const ALLOWED_PATHS: readonly RegExp[] = [
+  /^workspace\.json$/,
+  new RegExp(`^harness/(?:harness\\.json|${PROSE})$`),
+  new RegExp(`^main-agent/(?:agent\\.json|instructions\\.md|harness/(?:main-harness\\.json|${PROSE}))$`),
+  new RegExp(`^agents/${NAME}/(?:agent|instructions)\\.(?:json|md)$`),
+  new RegExp(`^pages/${NAME}/(?:page\\.json|agents\\.json|workflow\\.json|goal\\.json|ui/page\\.ui\\.json|harness/(?:harness\\.json|${PROSE})|agents/${NAME}/(?:agent|instructions)\\.(?:json|md))$`),
+  new RegExp(`^shared/instructions/${PROSE}$`),
+];
+const PAGE_FOLDER = new RegExp(`^pages/${NAME}/`);
+
+const isAllowedWrite = (path: string): boolean => ALLOWED_PATHS.some((pattern) => pattern.test(path));
+const isAllowedDelete = (path: string): boolean => isAllowedWrite(path) || PAGE_FOLDER.test(path);
+
+function pathProblems(plan: { writes: Record<string, unknown>; deletes?: string[] }): Problem[] {
+  const refused = [...Object.keys(plan.writes).filter((path) => !isAllowedWrite(path)), ...(plan.deletes ?? []).filter((path) => !isAllowedDelete(path))];
+  return refused.map((path) => ({ path, message: 'is outside the paths authoring operations may change' }));
+}
+
 export function planOp(op: AuthoringOp, tree: WorkspaceTree): Plan {
   return (HANDLERS[op.op] as (op: AuthoringOp, tree: WorkspaceTree) => Plan)(op, tree);
 }
 
 export function applyOp(state: State, op: AuthoringOp, opIndex: number): State {
   const plan = planOp(op, state.tree);
-  if ('problems' in plan) return { ...state, problems: plan.problems.map((problem) => ({ opIndex, op: op.op, ...problem })) };
+  const problems = 'problems' in plan ? plan.problems : pathProblems(plan);
+  if ('problems' in plan || problems.length > 0) return { ...state, problems: problems.map((problem) => ({ opIndex, op: op.op, ...problem })) };
   const tree: Record<string, unknown> = { ...state.tree, ...plan.writes };
   const touched = new Map(state.touched);
   for (const path of plan.deletes ?? []) delete tree[path];
@@ -440,7 +467,12 @@ function pageProblems(tree: WorkspaceTree, page: string): Problem[] {
   return prose;
 }
 
+function strayMainProblems(tree: WorkspaceTree): Problem[] {
+  return Object.keys(tree).filter((path) => path.startsWith('main-agent/')).map((path) => ({ path, message: 'exists but workspace.json sets mainAgent to null; remove it or set a main agent' }));
+}
+
 function mainProblems(tree: WorkspaceTree, manifest: Doc): Problem[] {
+  if (mainDirOf(tree) === undefined) return strayMainProblems(tree);
   const dir = mainDirOf(tree);
   const path = `${dir}/main-harness.json`;
   const doc = dir === undefined ? undefined : readDoc(tree, path);
@@ -457,8 +489,8 @@ function builtInProblems(tree: WorkspaceTree): Problem[] {
   return [...pageListProblems(tree, manifest), ...pagesOf(manifest).flatMap((page) => pageProblems(tree, page)), ...base, ...mainProblems(tree, manifest)];
 }
 
-export function finalProblems(tree: WorkspaceTree, touched: Map<string, number>, ops: readonly AuthoringOp[], validate?: AuthoringValidator): AuthoringProblem[] {
-  return [...builtInProblems(tree), ...(validate?.(tree) ?? [])].map((problem) => {
+export function finalProblems(tree: WorkspaceTree, touched: Map<string, number>, ops: readonly AuthoringOp[], validate: AuthoringValidator): AuthoringProblem[] {
+  return [...builtInProblems(tree), ...validate(tree)].map((problem) => {
     const opIndex = touched.get(problem.path);
     return opIndex === undefined ? problem : { opIndex, op: ops[opIndex]?.op, ...problem };
   });

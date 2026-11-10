@@ -1,15 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { attachmentsSchema } from './agentRefs';
 import { AUTHORING_OP_NAMES, applyOps, authoringOpJsonSchema, authoringOpSchema, opFiles, type AuthoringOp } from './authoringOps';
-import { MARKETING_BUILD_OPS } from './authoringOps.fixtures';
+import { MARKETING_BUILD_OPS } from './__fixtures__/authoringOps';
 import type { WorkspaceTree } from './baseHarness';
 import { harnessSchema } from './harness';
 import { mainHarnessSchema } from './mainHarness';
 import { pageSchema } from './page';
 import { workspaceManifestSchema } from './workspace';
 
+const apply = (tree: WorkspaceTree, ops: readonly unknown[]) => applyOps(tree, ops, { validate: () => [] });
+
 function build(): WorkspaceTree {
-  const result = applyOps({}, MARKETING_BUILD_OPS);
+  const result = apply({}, MARKETING_BUILD_OPS);
   expect(result.problems).toEqual([]);
   return result.tree;
 }
@@ -42,7 +44,7 @@ describe('authoring operations', () => {
     let tree: WorkspaceTree = {};
     for (const operation of MARKETING_BUILD_OPS) {
       const listed = opFiles(operation, tree);
-      const result = applyOps(tree, [operation]);
+      const result = apply(tree, [operation]);
       expect(result.problems).toEqual([]);
       expect(listed.length).toBeGreaterThan(0);
       expect(changedPaths(tree, result.tree).filter((path) => !listed.includes(path))).toEqual([]);
@@ -50,7 +52,7 @@ describe('authoring operations', () => {
     }
     for (const operation of EXTRA_OPS) {
       const listed = opFiles(operation, tree);
-      const result = applyOps(tree, [operation]);
+      const result = apply(tree, [operation]);
       expect(result.problems, operation.op).toEqual([]);
       expect(changedPaths(tree, result.tree).filter((path) => !listed.includes(path)), operation.op).toEqual([]);
       expect(changedPaths(tree, result.tree).length, operation.op).toBeGreaterThan(0);
@@ -69,8 +71,10 @@ describe('authoring operations', () => {
       'agents/voice-maker/instructions.md',
       'harness/harness.json',
       'harness/voice.md',
+      'main-agent/agent.json',
       'main-agent/harness/main-harness.json',
       'main-agent/harness/routing.md',
+      'main-agent/instructions.md',
       'pages/facebook-videos/agents.json',
       'pages/facebook-videos/harness/harness.json',
       'pages/facebook-videos/harness/task.md',
@@ -103,7 +107,7 @@ describe('authoring operations', () => {
       { op: 'set_page_field', page: 'instagram-videos', field: 'domain', value: 'marketing' },
       { op: 'set_harness_field', page: 'instagram-videos', field: 'audience', value: { description: '' } },
     ];
-    const result = applyOps(tree, ops);
+    const result = apply(tree, ops);
     expect(result.tree).toBe(tree);
     expect(result.problems).toHaveLength(1);
     expect(result.problems[0]).toMatchObject({ opIndex: 1, op: 'set_harness_field', path: 'pages/instagram-videos/harness/harness.json' });
@@ -112,11 +116,11 @@ describe('authoring operations', () => {
 
   it('a malformed op, a missing target and a broken final tree each name their op', () => {
     const tree = build();
-    expect(applyOps(tree, [{ op: 'remove_page', page: 'Bad Id' }]).problems[0]).toMatchObject({ opIndex: 0, path: 'page' });
-    expect(applyOps(tree, [{ op: 'remove_page', page: 'ghost' }]).problems[0]).toMatchObject({ opIndex: 0, op: 'remove_page' });
-    const unlisted = applyOps(tree, [{ op: 'set_workspace_field', field: 'name', value: 'Marketing 2' }, { op: 'write_harness_prose', target: { kind: 'base' }, file: 'x.md', text: 'x' }]);
+    expect(apply(tree, [{ op: 'remove_page', page: 'Bad Id' }]).problems[0]).toMatchObject({ opIndex: 0, path: 'page' });
+    expect(apply(tree, [{ op: 'remove_page', page: 'ghost' }]).problems[0]).toMatchObject({ opIndex: 0, op: 'remove_page' });
+    const unlisted = apply(tree, [{ op: 'set_workspace_field', field: 'name', value: 'Marketing 2' }, { op: 'write_harness_prose', target: { kind: 'base' }, file: 'x.md', text: 'x' }]);
     expect(unlisted.problems).toEqual([]);
-    const dropped = applyOps({ ...tree, 'harness/voice.md': undefined }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }]);
+    const dropped = apply({ ...tree, 'harness/voice.md': undefined }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }]);
     expect(dropped.problems[0].message).toContain('missing');
   });
 
@@ -129,14 +133,13 @@ describe('authoring operations', () => {
       { op: 'set_attachment_field', page: 'instagram-videos', as: 'script', field: 'tools', value: { only: ['a'], add: ['shell'] } },
     ];
     for (const attempt of attempts) {
-      const result = applyOps(tree, [attempt]);
+      const result = apply(tree, [attempt]);
       expect(result.tree, attempt.op).toBe(tree);
       expect(result.problems.length, attempt.op).toBeGreaterThan(0);
     }
-    const harness = applyOps(tree, [attempts[0]]);
+    const harness = apply(tree, [attempts[0]]);
     expect(harness.problems[0].message).toContain('R13');
-    expect(applyOps(tree, [{ op: 'attach_agent', page: 'instagram-videos', attachment: { as: 'x', ref: 'workspace:x', permissions: [] } as never }]).problems.length).toBeGreaterThan(0);
-    expect(applyOps(tree, [{ op: 'write_page_ui', page: 'instagram-videos', ui: JSON.parse('{"__proto__":{"a":1}}') }]).problems).toEqual([]);
+    expect(apply(tree, [{ op: 'attach_agent', page: 'instagram-videos', attachment: { as: 'x', ref: 'workspace:x', permissions: [] } as never }]).problems.length).toBeGreaterThan(0);
   });
 
   it('there is no op that touches shared/policies', () => {
@@ -149,7 +152,7 @@ describe('authoring operations', () => {
     let tree: WorkspaceTree = {};
     for (const operation of [...MARKETING_BUILD_OPS, ...EXTRA_OPS]) {
       expect(opFiles(operation, tree).filter((path) => path.startsWith('shared/') && !path.startsWith('shared/instructions/'))).toEqual([]);
-      tree = applyOps(tree, [operation]).tree;
+      tree = apply(tree, [operation]).tree;
     }
     expect(Object.keys(tree).filter((path) => path.startsWith('shared/policies'))).toEqual([]);
   });
@@ -162,7 +165,62 @@ describe('authoring operations', () => {
   });
 
   it('create_workspace refuses an existing workspace and other ops need one', () => {
-    expect(applyOps(build(), [MARKETING_BUILD_OPS[0]]).problems[0].message).toContain('already exists');
-    expect(applyOps({}, [{ op: 'create_page', page: 'x', name: 'X', description: 'X', execution: { type: 'workflow', workflow: { workflow: './workflow.json' } } }]).problems[0].path).toBe('workspace.json');
+    expect(apply(build(), [MARKETING_BUILD_OPS[0]]).problems[0].message).toContain('already exists');
+    expect(apply({}, [{ op: 'create_page', page: 'x', name: 'X', description: 'X', execution: { type: 'workflow', workflow: { workflow: './workflow.json' } } }]).problems[0].path).toBe('workspace.json');
+  });
+
+  it('accepts a __proto__ key in a UI document as plain data', () => {
+    const tree = build();
+    const result = apply(tree, [{ op: 'write_page_ui', page: 'instagram-videos', ui: JSON.parse('{"schema":"lousho.page-ui/1","__proto__":{"a":1}}') }]);
+    expect(result.problems).toEqual([]);
+    expect(Object.prototype).not.toHaveProperty('a');
+  });
+
+  it('refuses R13 keys in goal and UI documents', () => {
+    const tree = build();
+    expect(apply(tree, [{ op: 'write_page_ui', page: 'instagram-videos', ui: { schema: 'x', tools: ['bash'] } }]).problems[0].message).toContain('R13');
+    expect(apply(tree, [{ op: 'write_goal', page: 'instagram-videos', goal: { schema: 'lousho.goal/1', stop: { secrets: ['x'] } } }]).problems[0].message).toContain('R13');
+  });
+
+  it('a main-agent harness folder cannot be redirected into shared/policies or another page', () => {
+    const tree = build();
+    const prose = { op: 'write_harness_prose', target: { kind: 'main' }, file: 'evil.md', text: 'x' };
+    const presentation = { op: 'set_main_harness_field', field: 'presentation', value: { style: 'a', followUps: 'b', revisions: 'c' } };
+    for (const harness of ['shared/policies', 'pages/instagram-videos/harness', 'harness']) {
+      const result = apply(tree, [{ op: 'set_workspace_field', field: 'mainAgent', value: { dir: './main-agent', harness } }, prose, presentation]);
+      expect(result.tree, harness).toBe(tree);
+      expect(result.problems[0], harness).toMatchObject({ opIndex: 0, op: 'set_workspace_field' });
+    }
+    expect(apply({}, [{ ...MARKETING_BUILD_OPS[0], mainAgent: { dir: './main-agent', harness: 'shared/policies' } }]).problems.length).toBeGreaterThan(0);
+  });
+
+  it('only known files at default locations are written, even from a tree with custom folders', () => {
+    const tree = build();
+    const custom = { ...tree, 'workspace.json': { ...(tree['workspace.json'] as object), harness: 'shared/policies', agents: 'shared/policies' } };
+    expect(opFiles({ op: 'write_harness_prose', target: { kind: 'base' }, file: 'x.md', text: 'x' }, custom)).toEqual(['harness/harness.json', 'harness/x.md']);
+    expect(opFiles({ op: 'create_agent', name: 'evil', description: 'd', instructions: 'i' }, custom)).toEqual(['agents/evil/agent.json', 'agents/evil/instructions.md']);
+  });
+
+  it('setting mainAgent to null removes the main-agent files', () => {
+    const tree = build();
+    const result = apply(tree, [{ op: 'set_workspace_field', field: 'mainAgent', value: null }]);
+    expect(result.problems).toEqual([]);
+    expect(Object.keys(result.tree).filter((path) => path.startsWith('main-agent/'))).toEqual([]);
+    const stray = apply({ ...tree, 'workspace.json': { ...(tree['workspace.json'] as object), mainAgent: null } }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }]);
+    expect(stray.problems[0].message).toContain('mainAgent to null');
+  });
+
+  it('the main agent has instructions prose and write_agent_prose can target it', () => {
+    const tree = build();
+    expect(tree['main-agent/instructions.md']).toBeDefined();
+    const result = apply(tree, [{ op: 'write_agent_prose', target: 'main', text: 'Route well.' }]);
+    expect(result.tree['main-agent/instructions.md']).toBe('Route well.');
+    expect(apply({}, [{ op: 'create_workspace', id: 'solo', name: 'Solo', description: 'd' }, { op: 'write_agent_prose', target: 'main', text: 'x' }]).problems[0].message).toContain('no main agent');
+    expect(apply(tree, [{ op: 'write_agent_prose', text: 'x' }]).problems.length).toBeGreaterThan(0);
+  });
+
+  it('a required validator runs on the final tree', () => {
+    const result = applyOps(build(), [{ op: 'set_workspace_field', field: 'name', value: 'M2' }], { validate: () => [{ path: 'workspace.json', message: 'stub says no' }] });
+    expect(result.problems[0]).toMatchObject({ opIndex: 0, message: 'stub says no' });
   });
 });

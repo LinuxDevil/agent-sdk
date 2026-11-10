@@ -65,6 +65,8 @@ export interface CreateWorkspaceOp {
   domain?: string;
   /** The main agent, or `null` for none (default `null`). */
   mainAgent?: WorkspaceManifest['mainAgent'];
+  /** Instructions for the main agent, written to `main-agent/instructions.md` when there is one. */
+  mainInstructions?: string;
 }
 
 /** Sets or, with no value, removes one workspace field. */
@@ -225,14 +227,16 @@ export interface CreateAgentOp {
   instructions: string;
 }
 
-/** Replaces the instructions prose of a workspace agent, or a page-local one. */
+/** Replaces the instructions prose of a workspace agent, a page-local one, or with `target: 'main'` the main agent's `main-agent/instructions.md`. */
 export interface WriteAgentProseOp {
   /** Operation name. */
   op: 'write_agent_prose';
-  /** Agent folder name. */
-  agent: string;
+  /** Agent folder name; omit when `target` is `main`. */
+  agent?: string;
   /** Page id for a page-local agent; omit for a workspace agent. */
   page?: string;
+  /** `main` writes the main agent's instructions. */
+  target?: 'main';
   /** The new instructions. */
   text: string;
 }
@@ -299,8 +303,8 @@ export interface WriteWorkflowOp {
   op: 'write_workflow';
   /** Page id. */
   page: string;
-  /** The workflow document, whose agent names are the page's attachment aliases. */
-  workflow: unknown;
+  /** The workflow document, whose agent names are the page's attachment aliases. Required; an omitted value is rejected. */
+  workflow?: unknown;
 }
 
 /** Writes a page's `goal.json`. */
@@ -309,8 +313,8 @@ export interface WriteGoalOp {
   op: 'write_goal';
   /** Page id. */
   page: string;
-  /** The goal document. */
-  goal: unknown;
+  /** The goal document. Required; an omitted value is rejected. */
+  goal?: unknown;
 }
 
 /** Writes a page's declarative UI file. */
@@ -319,8 +323,8 @@ export interface WritePageUiOp {
   op: 'write_page_ui';
   /** Page id. */
   page: string;
-  /** The page UI document. */
-  ui: unknown;
+  /** The page UI document. Required; an omitted value is rejected. */
+  ui?: unknown;
 }
 
 /** Deletes a page's UI file so the default UI applies. */
@@ -416,8 +420,8 @@ const harnessFields = z.enum(['audience', 'platform', 'inputs', 'outputs', 'capa
 
 const op = <N extends string, S extends z.ZodRawShape>(name: N, shape: S) => z.object({ op: z.literal(name), ...shape }).strict();
 
-const authoringOpObjectSchema = z.discriminatedUnion('op', [
-  op('create_workspace', { id: manifest.id, name: manifest.name, version: z.string().regex(SEMVER, 'must be a semver version, e.g. 1.0.0').optional(), description: manifest.description, domain: manifest.domain, mainAgent: manifest.mainAgent.optional() }),
+export const authoringOpObjectSchema = z.discriminatedUnion('op', [
+  op('create_workspace', { id: manifest.id, name: manifest.name, version: z.string().regex(SEMVER, 'must be a semver version, e.g. 1.0.0').optional(), description: manifest.description, domain: manifest.domain, mainAgent: manifest.mainAgent.optional(), mainInstructions: text.optional() }),
   op('set_workspace_field', { field: z.enum(['name', 'version', 'description', 'domain', 'mainAgent', 'dependencies', 'defaults', 'budget', 'improve']), value }),
   op('create_page', { page: id, name: page.name, description: page.description, domain: page.domain, execution: page.execution }),
   op('remove_page', { page: id }),
@@ -432,7 +436,7 @@ const authoringOpObjectSchema = z.discriminatedUnion('op', [
   op('add_criterion', { target: harnessTarget, criterion: criterionSchema }),
   op('remove_criterion', { target: harnessTarget, id }),
   op('create_agent', { name: id, page: id.optional(), description: z.string().min(1, 'must not be empty'), model: modelIdSchema.optional(), version: z.string().regex(SEMVER, 'must be a semver version, e.g. 1.0.0').optional(), instructions: text }),
-  op('write_agent_prose', { agent: id, page: id.optional(), text }),
+  op('write_agent_prose', { agent: id.optional(), page: id.optional(), target: z.literal('main').optional(), text }),
   op('attach_agent', { page: id, attachment: attachmentObjectSchema }),
   op('detach_agent', { page: id, as: id }),
   op('set_attachment_field', { page: id, as: id, field: z.enum(['role', 'model', 'limits', 'tools']), value }),
@@ -445,7 +449,7 @@ const authoringOpObjectSchema = z.discriminatedUnion('op', [
   op('write_shared_instruction', { file: fileName, text }),
 ]);
 
-/** Zod schema for one {@link AuthoringOp}: a union on `op` whose payloads reuse the workspace, page, harness and attachment schemas; free-form values are checked against their file's schema, forbidden-key scan included, when the operation is applied. */
+/** Zod schema for one {@link AuthoringOp}: a union on `op` whose payloads reuse the workspace, page, harness and attachment schemas; free-form values are checked against their file's schema, forbidden-key scan included, when the operation is applied; goal and UI documents are scanned for the R13 keys. */
 export const authoringOpSchema: z.ZodType<AuthoringOp> = authoringOpObjectSchema as unknown as z.ZodType<AuthoringOp>;
 
 /** The names of every operation, in the order the ticket lists them. */
@@ -474,8 +478,8 @@ function parseOps(ops: readonly unknown[]): { ops: AuthoringOp[]; problems: Auth
   return { ops: parsed, problems };
 }
 
-/** Applies `ops` in order to `tree` and validates the result; pure, it never writes. With any problem the original tree comes back with every problem, each naming the operation index that caused it. */
-export function applyOps(tree: WorkspaceTree, ops: readonly unknown[], options: { validate?: AuthoringValidator } = {}): ApplyOpsResult {
+/** Applies `ops` in order to `tree`, writing only known files at their default paths (never `shared/policies/**`); pure, and `validate` is required so callers pass `validateWorkspace` (P0.10). With any problem the original tree comes back with every problem, each naming its operation index. */
+export function applyOps(tree: WorkspaceTree, ops: readonly unknown[], options: { validate: AuthoringValidator }): ApplyOpsResult {
   const parsed = parseOps(ops);
   if (parsed.problems.length > 0) return { tree, problems: parsed.problems };
   const applied = parsed.ops.reduce<{ tree: WorkspaceTree; problems: AuthoringProblem[]; touched: Map<string, number> }>(

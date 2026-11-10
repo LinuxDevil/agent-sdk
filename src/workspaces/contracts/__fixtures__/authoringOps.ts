@@ -1,5 +1,5 @@
-import type { AuthoringOp } from './authoringOps';
-import type { PageExecution } from './page';
+import type { AuthoringOp } from '../authoringOps';
+import type { PageExecution } from '../page';
 
 const workflow = {
   code: 'instagram-videos',
