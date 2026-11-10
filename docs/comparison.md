@@ -5,7 +5,7 @@ AI SDK (`ToolLoopAgent`), the OpenAI Agents SDK for JavaScript, Mastra and
 LangGraph.js. Each competitor cell comes from that project's official docs.
 
 Last checked: 9 Nov 2026. These projects move fast, so a cell may be out of
-date. Corrections welcome: [open an issue](https://github.com/LinuxDevil/agent-sdk/issues).
+date. Corrections welcome: [open an issue](https://github.com/LinuxDevil/lousho/issues).
 
 ## How to read the table
 

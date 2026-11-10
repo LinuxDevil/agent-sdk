@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-gh repo edit LinuxDevil/agent-sdk \
+gh repo edit LinuxDevil/lousho \
   --description "TypeScript AI agent SDK: offline CI evals, durable runs, human approvals, MCP. Runs in your own Node process." \
   --homepage "https://lousho.com" \
   --enable-discussions
 
-gh repo edit LinuxDevil/agent-sdk \
+gh repo edit LinuxDevil/lousho \
   --add-topic agent-framework --add-topic durable-execution \
   --add-topic human-in-the-loop --add-topic llm-evals \
   --add-topic vercel-ai-sdk --add-topic opentelemetry \

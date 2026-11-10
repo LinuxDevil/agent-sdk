@@ -412,10 +412,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LinuxDevil/agent-sdk.git"
+    "url": "git+https://github.com/LinuxDevil/lousho.git"
   },
   "bugs": {
-    "url": "https://github.com/LinuxDevil/agent-sdk/issues"
+    "url": "https://github.com/LinuxDevil/lousho/issues"
   },
   "homepage": "https://lousho.com/introduction",
   "engines": {
