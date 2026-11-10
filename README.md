@@ -203,7 +203,8 @@ Alpha. The API may change before 1.0. Pin a version. [Upgrading](docs/upgrading.
 
 ## Community
 
-- Questions, bugs and ideas: [GitHub issues](https://github.com/LinuxDevil/agent-sdk/issues). GitHub Discussions are not open yet.
+- Questions and ideas: [GitHub Discussions](https://github.com/LinuxDevil/agent-sdk/discussions).
+- Bugs and feature requests: [GitHub issues](https://github.com/LinuxDevil/agent-sdk/issues).
 - Arabic docs: [lousho.com/ar](https://lousho.com/ar).
 
 ## Contributing
