@@ -579,9 +579,10 @@ export class RunManager extends EventEmitter {
       throw new NoActiveRunError('Nothing is running, so there is nothing to steer.');
     }
 
+    const hostRunId = entry.hostRunId;
     let result;
     try {
-      result = await this.opts.host.steer(entry.hostRunId, message);
+      result = await this.opts.host.steer(hostRunId, message);
     } catch (error) {
       if (error instanceof HostRunNotActiveError) {
         throw new NoActiveRunError('Nothing is running, so there is nothing to steer.');
@@ -601,7 +602,11 @@ export class RunManager extends EventEmitter {
       mode: result.applied,
     };
     const current = this.entries.get(agentId);
-    if (current !== undefined) {
+    // The run may have settled AND a new one launched during the await -
+    // the entry existing is not enough: without the hostRunId check run1's
+    // SteerInfo would land in run2's `steering` list (and run2's launch
+    // reset would never clear it again).
+    if (current !== undefined && current.hostRunId === hostRunId) {
       this.setEntry(agentId, { steering: [...(current.steering ?? []), info] });
     }
     return { id: result.id, applied: result.applied };
