@@ -151,6 +151,8 @@ interface AppState {
   stopAgent: () => Promise<void>;
   /** Resolves the run's current pending approval, if any, via `/agents/:id/approve`. */
   approveAgent: (approved: boolean, note?: string) => Promise<void>;
+  /** Answers the run's current pending `ask_question` pause, if any, via `/agents/:id/approve` (`{ answer }`). */
+  answerQuestion: (answer: string) => Promise<void>;
   /**
    * Live run status for every saved agent, keyed by agent id -
    * what the LeftRail's agent-list status pills render, replacing the
