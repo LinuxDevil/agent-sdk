@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isSafeRelativePath } from '../../spec/v2/common';
 import { harnessSchema, type Harness } from './harness';
 
 /** The files of a workspace by path relative to its root; each value is parsed JSON or text. */
@@ -54,19 +55,23 @@ function manifestDir(tree: WorkspaceTree): { dir: string; named: boolean; proble
   if (!('workspace.json' in tree)) return { dir: DEFAULT_DIR, named: false };
   const { value, problem } = parseText('workspace.json', tree['workspace.json']);
   if (problem) return { dir: DEFAULT_DIR, named: false, problem };
-  const named = isRecord(value) && typeof value.harness === 'string' ? normalizeDir(value.harness) : '';
-  return named ? { dir: named, named: true } : { dir: DEFAULT_DIR, named: false };
+  if (!isRecord(value) || typeof value.harness !== 'string') return { dir: DEFAULT_DIR, named: false };
+  const dir = normalizeDir(value.harness);
+  if (!isSafeRelativePath(value.harness) || dir.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) {
+    return { dir: DEFAULT_DIR, named: false, problem: { path: 'workspace.json', message: `harness '${value.harness}' must be a relative folder path inside the workspace` } };
+  }
+  return { dir, named: true };
 }
 
 function issueMessage(issue: z.ZodIssue): string {
-  if (issue.message.startsWith('harness')) return issue.message;
+  if (/^harness[.[]/.test(issue.message)) return issue.message;
   return `${issue.path.length > 0 ? `${issue.path.join('.')}: ` : ''}${issue.message}`;
 }
 
 function readTexts(tree: WorkspaceTree, dir: string, harness: Harness, problems: BaseHarnessProblem[]): Record<string, string> {
   const texts: Record<string, string> = {};
   for (const instruction of harness.instructions ?? []) {
-    const path = `${dir}/${instruction}`;
+    const path = `${dir}/${normalizeDir(instruction)}`;
     const text = tree[path];
     if (typeof text === 'string') texts[instruction] = text;
     else problems.push({ path, message: 'is listed in instructions but missing from the workspace' });

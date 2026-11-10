@@ -45,6 +45,19 @@ describe('baseHarnessLayer', () => {
     expect(readBaseHarness({ 'workspace.json': '{' }).problems).toEqual([{ path: 'workspace.json', message: 'is not valid JSON' }]);
   });
 
+  it.each(['../out', '/abs', '.', 'a//b', 'a/../b', 'a\\b'])('a manifest harness folder %s is a problem on workspace.json', (folder) => {
+    const result = readBaseHarness({ 'workspace.json': { harness: folder }, 'harness/harness.json': base });
+    expect(result.layer).toBeUndefined();
+    expect(result.problems).toHaveLength(1);
+    expect(result.problems[0]?.path).toBe('workspace.json');
+    expect(result.problems[0]?.message).toContain('relative folder path');
+  });
+
+  it('finds an instruction listed with a leading ./', () => {
+    const tree = { 'harness/harness.json': { ...base, instructions: ['./voice.md'] }, 'harness/voice.md': 'Be kind.' };
+    expect(baseHarnessLayer(tree)?.texts).toEqual({ './voice.md': 'Be kind.' });
+  });
+
   it('a folder named by workspace.json with no files is a problem, not no layer', () => {
     const tree = { 'workspace.json': { harness: 'rules/base' }, 'harness/harness.json': base };
     expect(readBaseHarness(tree).problems).toEqual([{ path: 'rules/base', message: 'is named by workspace.json harness but has no files' }]);
