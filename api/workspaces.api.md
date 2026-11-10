@@ -78,6 +78,9 @@ export interface EffectivePolicy {
 }
 
 // @public
+export function findNestedPages(relativePaths: readonly string[]): string[];
+
+// @public
 export interface Harness {
     audience?: {
         description: string;
@@ -231,6 +234,68 @@ export function narrowPolicy(ceiling: PolicyCeiling, workspace: WorkspacePolicy)
 export const PAGE_OWNED: readonly ["as", "role", "model", "limits", "tools.only", "harness"];
 
 // @public
+export interface PageExecution {
+    checkpoint?: boolean;
+    goal?: {
+        lead: string;
+        delegates?: string[];
+        goal: './goal.json';
+    };
+    limits?: PageExecutionLimits;
+    multiAgent?: {
+        lead: string;
+        delegates?: string[];
+    };
+    onFailure?: 'return-to-main' | 'stop' | 'ask';
+    single?: {
+        agent: string;
+    };
+    type: WorkType;
+    workflow?: {
+        workflow: string;
+    };
+}
+
+// @public
+export interface PageExecutionLimits {
+    maxCostUsd?: number;
+    maxDurationMs?: number;
+    maxTurns?: number;
+}
+
+// @public
+export interface PageManifest {
+    agents?: string;
+    defaults?: {
+        model?: string;
+    };
+    description: string;
+    domain?: string;
+    execution: PageExecution;
+    harness: {
+        extends: string[];
+        overrides?: string;
+    };
+    id: string;
+    improve?: {
+        enabled?: boolean;
+    };
+    name: string;
+    platform?: {
+        profile?: string;
+        adapter?: string;
+    };
+    runtime?: {
+        kind: 'local';
+    };
+    schema: 'lousho.page/1';
+    ui?: string;
+}
+
+// @public
+export const pageSchema: z.ZodType<PageManifest>;
+
+// @public
 export function parseAgentRef(ref: string): ParseAgentRefResult;
 
 // @public
@@ -285,6 +350,9 @@ interface WhenArgMatcher {
     // (undocumented)
     ne?: string | number | boolean | null;
 }
+
+// @public
+export const WORK_TYPES: readonly WorkType[];
 
 // @public
 export interface WorkspaceLimits {
@@ -354,6 +422,9 @@ export const workspacePolicySchema: z.ZodType<WorkspacePolicy>;
 
 // @public
 export type WorkspaceTree = Readonly<Record<string, unknown>>;
+
+// @public
+export type WorkType = 'single' | 'multi-agent' | 'workflow' | 'goal-oriented';
 
 // (No @packageDocumentation comment for this package)
 
