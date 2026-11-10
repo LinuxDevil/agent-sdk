@@ -175,7 +175,7 @@ export const pageObjectSchema = z
     ui: pagePathSchema.optional(),
     defaults: z.object({ model: modelIdSchema.optional() }).strict().optional(),
     runtime: z
-      .object({ kind: z.custom<'local'>((value) => value === 'local', { message: "only 'local' is accepted; other runtime kinds are reserved" }) })
+      .object({ kind: z.enum(['local'], { message: "only 'local' is accepted; other runtime kinds are reserved" }) })
       .strict()
       .optional(),
   })

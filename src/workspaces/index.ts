@@ -5,3 +5,4 @@ export { mainHarnessSchema, crossCheckMainHarness, MAIN_HARNESS_OPTIONALITY, typ
 export { attachmentsSchema, parseAgentRef, AGENT_OWNED, PAGE_OWNED, type Attachments, type Attachment, type AgentRef, type ParseAgentRefResult } from './contracts/agentRefs';
 export { workspacePolicySchema, narrowPolicy, type WorkspacePolicy, type PolicyCeiling, type EffectivePolicy } from './contracts/policy';
 export { INHERITANCE_RULES, type InheritanceRule } from './contracts/shared';
+export { pageSchema, findNestedPages, WORK_TYPES, type PageManifest, type PageExecution, type PageExecutionLimits, type WorkType } from './contracts/page';
