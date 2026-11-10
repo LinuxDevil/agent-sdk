@@ -490,6 +490,28 @@ function useDropHandlers(
 }
 
 /**
+ * The readOnly-gated edit gestures as one unit: node/edge changes and
+ * deletes, connections and palette drops. While a proposal overlay is
+ * shown the canvas is read-only (C21) — no drags, connects, drops or
+ * deletes; selection stays on so the Inspector can show the proposed node.
+ */
+function useCanvasEditGestures(
+  displayGraph: Graph,
+  setGraph: SetGraph,
+  selectedNodeId: string | undefined,
+  setSelectedNodeId: SetSelectedNodeId,
+  setMeasured: (updater: (prev: MeasuredSizes) => MeasuredSizes) => void,
+  setSelectedEdgeId: (id: string | undefined) => void,
+  flashError: (reason: string) => void,
+  readOnly: boolean
+) {
+  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
+  const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
+  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
+  return { editHandlers, onConnect, isValidConnection, onDragOver, onDrop };
+}
+
+/**
  * A viewport animation's duration, or none under `prefers-reduced-motion:
  * reduce` - every pan/fit animation on the canvas goes through this.
  */
@@ -921,6 +943,16 @@ export function ProposalBanner() {
   );
 }
 
+/** The auto-clearing "connection rejected" banner (useConnectError), top-centre under the toolbar. */
+function ConnectError({ message }: { message?: string }) {
+  if (message === undefined) return null;
+  return (
+    <div className="canvas-connect-error" role="alert">
+      {message}
+    </div>
+  );
+}
+
 /** The MiniMap (bottom-right) and zoom/fit Controls (bottom-left), both themed in agents.css. */
 function CanvasNavigator() {
   return (
@@ -1048,9 +1080,16 @@ function CanvasInner({ inspectorCollapsed, onToggleInspector, proposalId, onShow
   // the Inspector can show the proposed node.
   const readOnly = proposal !== undefined;
 
-  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
-  const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
-  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
+  const { editHandlers, onConnect, isValidConnection, onDragOver, onDrop } = useCanvasEditGestures(
+    displayGraph,
+    setGraph,
+    selectedNodeId,
+    setSelectedNodeId,
+    setMeasured,
+    setSelectedEdgeId,
+    flashError,
+    readOnly
+  );
   const { handleAutoLayout, handleFitView, handleDuplicate, layoutBusy } = useToolbarActions(
     setGraph,
     selectedNodeId,
@@ -1081,11 +1120,7 @@ function CanvasInner({ inspectorCollapsed, onToggleInspector, proposalId, onShow
       <InspectorToggle inspectorCollapsed={inspectorCollapsed} onToggleInspector={onToggleInspector} />
       <EmptyCanvas />
       <ProposalBanner />
-      {connectError && (
-        <div className="canvas-connect-error" role="alert">
-          {connectError}
-        </div>
-      )}
+      <ConnectError message={connectError} />
       <ReactFlow
         nodes={nodes}
         edges={edges}

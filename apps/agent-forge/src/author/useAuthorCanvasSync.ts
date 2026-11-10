@@ -27,7 +27,7 @@ import type {
   ProposalOutput,
 } from '../../shared/authorWire';
 import { useAppState } from '../state/AppState';
-import { useToast } from '../ui/Toast';
+import { useToast, type ToastApi } from '../ui/Toast';
 import { useAuthorChat } from './AuthorChatContext';
 import { onAgentSaved } from './authorEvents';
 import { proposalActionState, type ProposalActionState } from './proposalActionState';
@@ -71,30 +71,15 @@ onAgentSaved((id, change) => {
 });
 
 /**
- * Mount once in the canvas screen. `agentId` is the agent on screen.
- * Returns the proposal id actually overlaying the canvas (for the toolbar
- * pill) or null - read off `AppState.proposal`, the single source of
- * truth, so an external `hideProposal` (banner Hide, agent mutations)
- * can never leave the pill showing a phantom overlay.
+ * The open update card for `agentId` plus the two spec hashes that key the
+ * overlay effect (`docSpecHash` on the live document, `cardSpecHash` on
+ * the card): a stream frame that changes neither never re-runs it.
  */
-export function useAuthorCanvasSync(agentId: string): { overlayProposalId: string | null } {
-  const { spec, proposal, showProposal, hideProposal, dirty, reload } = useAppState();
+function useOpenCard(
+  agentId: string,
+  spec: unknown
+): { card: ProposalOutput | null; docSpecHash: string; cardSpecHash: string } {
   const { state: chatState } = useAuthorChat();
-  const toast = useToast();
-  // The key of the overlay this hook last put up (`proposalId` + the doc
-  // spec hash + the card spec hash): a stream frame that changes neither
-  // never re-calls the setter, so `mergeProposal` does not rerun.
-  const shownKeyRef = useRef<string | null>(null);
-  // Latest-value refs for the save path: the listener, the Reload toast
-  // action and the mount-time drain all outlive the render (and possibly
-  // the agent) they were created in, so they re-resolve at call time.
-  const agentIdRef = useRef(agentId);
-  agentIdRef.current = agentId;
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
-  const reloadRef = useRef(reload);
-  reloadRef.current = reload;
-
   const messages = chatState.messages;
   const active = chatState.active?.assistant ?? null;
   const actionState = useMemo(() => proposalActionState(messages, active), [messages, active]);
@@ -104,6 +89,124 @@ export function useAuthorCanvasSync(agentId: string): { overlayProposalId: strin
   );
   const docSpecHash = useMemo(() => specHash(spec), [spec]);
   const cardSpecHash = useMemo(() => (card === null ? '' : specHash(card.spec)), [card]);
+  return { card, docSpecHash, cardSpecHash };
+}
+
+/** `reload` from AppState: resolves false when the document could not be reloaded. */
+type ReloadAgent = (options?: { discardLocal?: boolean }) => Promise<boolean>;
+
+/**
+ * The dirty-document branch of an Author save: the canvas keeps its local
+ * edits, warns, and offers a Reload action that discards them. The toast
+ * outlives an agent switch: it only reloads while the canvas still shows
+ * the agent the save was for (`agentIdRef` re-resolves at click time).
+ */
+function showDirtySaveToast(
+  toast: ToastApi,
+  forAgent: string,
+  agentIdRef: { readonly current: string },
+  reloadRef: { readonly current: ReloadAgent }
+): void {
+  toast.show({
+    message:
+      'The Author saved a new version, but you have unsaved edits here. Save or undo them, then reload.',
+    tone: 'warning',
+    action: {
+      label: 'Reload',
+      onClick: () => {
+        if (agentIdRef.current !== forAgent) return;
+        void reloadRef
+          .current({ discardLocal: true })
+          .then((ok) => {
+            if (ok === false) {
+              toast.show({ message: 'The canvas could not be reloaded.', tone: 'warning' });
+            }
+          })
+          .catch(() => {
+            toast.show({ message: 'The canvas could not be reloaded.', tone: 'error' });
+          });
+      },
+    },
+  });
+}
+
+/**
+ * The save half of the sync: an Author spec-save for the agent on screen
+ * reloads the canvas from disk - a dirty document keeps its edits and gets
+ * a Reload offer instead. Live saves plus the mount-time drain of
+ * `savedWhileAway`: a spec save that landed while this screen was
+ * unmounted is honoured now, same as a live one. Everything re-resolves
+ * through refs at call time, so an agent switch mid-flight or a stale
+ * toast action can never write the old agent back over the new one.
+ */
+function useAuthorSavedSync(agentId: string, clearOverlay: () => void): void {
+  const { dirty, reload } = useAppState();
+  const toast = useToast();
+  // Latest-value refs: the listener, the Reload toast action and the
+  // mount-time drain all outlive the render (and possibly the agent) they
+  // were created in, so they re-resolve at call time.
+  const agentIdRef = useRef(agentId);
+  agentIdRef.current = agentId;
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+
+  const handleSaved = useCallback(
+    (savedId: string) => {
+      if (savedId !== agentIdRef.current) return;
+      savedWhileAway.delete(savedId);
+      const forAgent = savedId;
+      void (async () => {
+        if (dirtyRef.current) {
+          clearOverlay();
+          showDirtySaveToast(toast, forAgent, agentIdRef, reloadRef);
+          return;
+        }
+        let reloaded = false;
+        try {
+          reloaded = await reloadRef.current();
+        } catch {
+          reloaded = false;
+        }
+        // The screen moved to another agent while the fetch ran: the
+        // reload itself already refused to clobber it, and neither the
+        // overlay clear nor the toast applies here anymore.
+        if (agentIdRef.current !== forAgent) return;
+        clearOverlay();
+        toast.show(
+          reloaded
+            ? { message: "Canvas updated with the Author's change.", tone: 'info' }
+            : { message: 'The Author saved, but the canvas could not be reloaded.', tone: 'warning' }
+        );
+      })();
+    },
+    [toast, clearOverlay]
+  );
+
+  useEffect(() => {
+    const off = onAgentSaved((id, change) => {
+      if (change !== 'meta') handleSaved(id);
+    });
+    if (savedWhileAway.delete(agentId)) handleSaved(agentId);
+    return off;
+  }, [agentId, handleSaved]);
+}
+
+/**
+ * Mount once in the canvas screen. `agentId` is the agent on screen.
+ * Returns the proposal id actually overlaying the canvas (for the toolbar
+ * pill) or null - read off `AppState.proposal`, the single source of
+ * truth, so an external `hideProposal` (banner Hide, agent mutations)
+ * can never leave the pill showing a phantom overlay.
+ */
+export function useAuthorCanvasSync(agentId: string): { overlayProposalId: string | null } {
+  const { spec, proposal, showProposal, hideProposal } = useAppState();
+  // The key of the overlay this hook last put up (`proposalId` + the doc
+  // spec hash + the card spec hash): a stream frame that changes neither
+  // never re-calls the setter, so `mergeProposal` does not rerun.
+  const shownKeyRef = useRef<string | null>(null);
+  const { card, docSpecHash, cardSpecHash } = useOpenCard(agentId, spec);
 
   // The overlay follows the open card: show it while a card for this
   // agent is actionable, and let it come down when the card is saved,
@@ -135,75 +238,7 @@ export function useAuthorCanvasSync(agentId: string): { overlayProposalId: strin
     hideProposal();
   }, [hideProposal]);
 
-  // An Author spec-save for the agent on screen: reload the canvas from
-  // disk (a dirty document keeps its edits and gets a Reload offer
-  // instead). Everything re-resolves through refs at call time, so an
-  // agent switch mid-flight or a stale toast action can never write the
-  // old agent back over the new one.
-  const handleSaved = useCallback(
-    (savedId: string) => {
-      if (savedId !== agentIdRef.current) return;
-      savedWhileAway.delete(savedId);
-      const forAgent = savedId;
-      void (async () => {
-        if (!dirtyRef.current) {
-          let reloaded = false;
-          try {
-            reloaded = await reloadRef.current();
-          } catch {
-            reloaded = false;
-          }
-          // The screen moved to another agent while the fetch ran: the
-          // reload itself already refused to clobber it, and neither the
-          // overlay clear nor the toast applies here anymore.
-          if (agentIdRef.current !== forAgent) return;
-          clearOverlay();
-          toast.show(
-            reloaded
-              ? { message: "Canvas updated with the Author's change.", tone: 'info' }
-              : { message: 'The Author saved, but the canvas could not be reloaded.', tone: 'warning' }
-          );
-          return;
-        }
-        clearOverlay();
-        toast.show({
-          message:
-            'The Author saved a new version, but you have unsaved edits here. Save or undo them, then reload.',
-          tone: 'warning',
-          action: {
-            label: 'Reload',
-            onClick: () => {
-              // The toast outlives an agent switch: only reload while the
-              // canvas still shows the agent the save was for.
-              if (agentIdRef.current !== forAgent) return;
-              void reloadRef
-                .current({ discardLocal: true })
-                .then((ok) => {
-                  if (ok === false) {
-                    toast.show({ message: 'The canvas could not be reloaded.', tone: 'warning' });
-                  }
-                })
-                .catch(() => {
-                  toast.show({ message: 'The canvas could not be reloaded.', tone: 'error' });
-                });
-            },
-          },
-        });
-      })();
-    },
-    [toast, clearOverlay]
-  );
-
-  // Live saves plus the mount-time drain of `savedWhileAway`: a spec save
-  // that landed while this screen was unmounted is honoured now (reload
-  // or dirty-warn, same as a live one).
-  useEffect(() => {
-    const off = onAgentSaved((id, change) => {
-      if (change !== 'meta') handleSaved(id);
-    });
-    if (savedWhileAway.delete(agentId)) handleSaved(agentId);
-    return off;
-  }, [agentId, handleSaved]);
+  useAuthorSavedSync(agentId, clearOverlay);
 
   // The shown proposal id, derived from AppState.proposal and gated on
   // the card still being the open one - the toolbar pill's source.
