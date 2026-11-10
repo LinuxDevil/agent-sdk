@@ -1,0 +1,233 @@
+{
+  "sources": [
+    "workspace base",
+    "workspace:platforms/instagram",
+    "page"
+  ],
+  "instructions": "### From workspace base\n\nWrite as the brand: warm and direct.\n\n### From workspace:platforms/instagram\n\nSound like a person, not a brochure.\n\nLead with a hook in the first line.\n\n### From page\n\nWrite the weekly tip post.",
+  "audience": {
+    "description": "Followers who skim on mobile.",
+    "traits": {
+      "tone": "playful",
+      "persona": "creator"
+    }
+  },
+  "platform": {
+    "id": "instagram",
+    "requirements": {
+      "aspectRatio": "4:5",
+      "captionMaxChars": 1000,
+      "hashtags": {
+        "max": 30,
+        "banned": [
+          "#ad"
+        ]
+      }
+    }
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "brief": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "brief"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "caption": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "caption"
+          ]
+        }
+      ]
+    },
+    "artifacts": [
+      {
+        "name": "image",
+        "mediaType": "image/jpeg",
+        "required": true
+      },
+      {
+        "name": "caption",
+        "mediaType": "text/plain"
+      }
+    ]
+  },
+  "capabilities": {
+    "require": [
+      "image.generate"
+    ]
+  },
+  "constraints": [
+    {
+      "id": "no-competitors",
+      "text": "Never name a competitor."
+    },
+    {
+      "id": "plain-language",
+      "text": "Use plain language."
+    },
+    {
+      "id": "caption-length",
+      "text": "Keep the caption under 2200 characters."
+    },
+    {
+      "id": "cta",
+      "text": "End with one call to action."
+    }
+  ],
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "on-brand",
+        "description": "The voice matches the brand.",
+        "rubric": "Warm, never sarcastic."
+      },
+      {
+        "id": "caption-length",
+        "description": "The caption fits Instagram.",
+        "check": "checks/caption-length.ts",
+        "weight": 2
+      },
+      {
+        "id": "has-cta",
+        "description": "The post ends with a call to action.",
+        "check": "checks/has-cta.ts"
+      }
+    ],
+    "threshold": 0.7
+  },
+  "runtime": {
+    "limits": {
+      "maxTurns": 10,
+      "maxCostUsd": 1,
+      "maxDurationMs": 60000
+    },
+    "modelHints": {
+      "temperature": 0.9
+    }
+  },
+  "context": {
+    "resources": [
+      "shared/brand-palette.md",
+      "resources/instagram-specs.md"
+    ]
+  },
+  "provenance": {
+    "audience.description": [
+      "workspace:platforms/instagram"
+    ],
+    "audience.traits.persona": [
+      "workspace:platforms/instagram"
+    ],
+    "audience.traits.tone": [
+      "workspace:platforms/instagram"
+    ],
+    "capabilities.require": [
+      "workspace:platforms/instagram"
+    ],
+    "constraints": [
+      "workspace base",
+      "workspace:platforms/instagram",
+      "page"
+    ],
+    "constraints.caption-length": [
+      "workspace:platforms/instagram"
+    ],
+    "constraints.cta": [
+      "page"
+    ],
+    "constraints.no-competitors": [
+      "workspace base"
+    ],
+    "constraints.plain-language": [
+      "workspace base"
+    ],
+    "context.resources": [
+      "workspace base",
+      "workspace:platforms/instagram"
+    ],
+    "evaluation.criteria": [
+      "workspace base",
+      "workspace:platforms/instagram",
+      "page"
+    ],
+    "evaluation.criteria.caption-length": [
+      "workspace:platforms/instagram"
+    ],
+    "evaluation.criteria.has-cta": [
+      "page"
+    ],
+    "evaluation.criteria.on-brand": [
+      "workspace base"
+    ],
+    "evaluation.threshold": [
+      "workspace:platforms/instagram"
+    ],
+    "inputs.schema": [
+      "workspace:platforms/instagram"
+    ],
+    "instructions": [
+      "workspace base",
+      "workspace:platforms/instagram",
+      "page"
+    ],
+    "outputs.artifacts": [
+      "page"
+    ],
+    "outputs.artifacts.caption": [
+      "page"
+    ],
+    "outputs.artifacts.image": [
+      "page"
+    ],
+    "outputs.schema": [
+      "workspace:platforms/instagram",
+      "page"
+    ],
+    "platform.id": [
+      "page"
+    ],
+    "platform.requirements.aspectRatio": [
+      "workspace:platforms/instagram"
+    ],
+    "platform.requirements.captionMaxChars": [
+      "page"
+    ],
+    "platform.requirements.hashtags.banned": [
+      "workspace:platforms/instagram"
+    ],
+    "platform.requirements.hashtags.max": [
+      "workspace:platforms/instagram"
+    ],
+    "runtime.limits.maxCostUsd": [
+      "workspace base"
+    ],
+    "runtime.limits.maxDurationMs": [
+      "page"
+    ],
+    "runtime.limits.maxTurns": [
+      "workspace base"
+    ],
+    "runtime.modelHints.temperature": [
+      "workspace:platforms/instagram"
+    ]
+  },
+  "hash": "dd6b8fdb709020d4e7a479f3977b91024a084b7773a87138e4028479e6cbf9d8"
+}

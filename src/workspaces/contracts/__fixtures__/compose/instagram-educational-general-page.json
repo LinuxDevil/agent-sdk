@@ -1,0 +1,246 @@
+{
+  "sources": [
+    "workspace:platforms/instagram",
+    "workspace:formats/educational",
+    "global:audiences/general@1.2.0",
+    "page"
+  ],
+  "instructions": "### From workspace:platforms/instagram\n\nSound like a person, not a brochure.\n\nLead with a hook in the first line.\n\n### From workspace:formats/educational\n\nExplain one idea with one example.\n\n### From global:audiences/general@1.2.0\n\nAssume no prior knowledge.\n\n### From page\n\nWrite the weekly tip post.",
+  "audience": {
+    "description": "A general audience.",
+    "traits": {
+      "tone": "playful",
+      "persona": "creator",
+      "level": "beginner"
+    }
+  },
+  "platform": {
+    "id": "instagram",
+    "requirements": {
+      "aspectRatio": "4:5",
+      "captionMaxChars": 1000,
+      "hashtags": {
+        "max": 10,
+        "banned": [
+          "#ad"
+        ]
+      }
+    }
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "brief": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "brief"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "caption": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "caption"
+          ]
+        }
+      ]
+    },
+    "artifacts": [
+      {
+        "name": "image",
+        "mediaType": "image/jpeg",
+        "required": true
+      },
+      {
+        "name": "caption",
+        "mediaType": "text/plain"
+      }
+    ]
+  },
+  "capabilities": {
+    "require": [
+      "image.generate",
+      "web.search"
+    ]
+  },
+  "constraints": [
+    {
+      "id": "caption-length",
+      "text": "Keep the caption under 2200 characters."
+    },
+    {
+      "id": "one-idea",
+      "text": "Teach one idea per post."
+    },
+    {
+      "id": "no-jargon",
+      "text": "Avoid jargon."
+    },
+    {
+      "id": "cta",
+      "text": "End with one call to action."
+    }
+  ],
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "caption-length",
+        "description": "The caption fits Instagram.",
+        "check": "checks/caption-length.ts",
+        "weight": 2
+      },
+      {
+        "id": "teaches-one-idea",
+        "description": "The post teaches exactly one idea.",
+        "rubric": "One idea, explained simply."
+      },
+      {
+        "id": "has-cta",
+        "description": "The post ends with a call to action.",
+        "check": "checks/has-cta.ts"
+      }
+    ],
+    "threshold": 0.7
+  },
+  "runtime": {
+    "limits": {
+      "maxDurationMs": 60000,
+      "maxTurns": 12,
+      "maxCostUsd": 0.5
+    },
+    "modelHints": {
+      "temperature": 0.5,
+      "reasoning": "medium"
+    }
+  },
+  "context": {
+    "resources": [
+      "resources/instagram-specs.md",
+      "resources/glossary.md"
+    ]
+  },
+  "provenance": {
+    "audience.description": [
+      "global:audiences/general@1.2.0"
+    ],
+    "audience.traits.level": [
+      "workspace:formats/educational"
+    ],
+    "audience.traits.persona": [
+      "workspace:platforms/instagram"
+    ],
+    "audience.traits.tone": [
+      "workspace:platforms/instagram"
+    ],
+    "capabilities.require": [
+      "workspace:platforms/instagram",
+      "workspace:formats/educational"
+    ],
+    "constraints": [
+      "workspace:platforms/instagram",
+      "workspace:formats/educational",
+      "global:audiences/general@1.2.0",
+      "page"
+    ],
+    "constraints.caption-length": [
+      "workspace:platforms/instagram"
+    ],
+    "constraints.cta": [
+      "page"
+    ],
+    "constraints.no-jargon": [
+      "global:audiences/general@1.2.0"
+    ],
+    "constraints.one-idea": [
+      "workspace:formats/educational"
+    ],
+    "context.resources": [
+      "workspace:platforms/instagram",
+      "workspace:formats/educational"
+    ],
+    "evaluation.criteria": [
+      "workspace:platforms/instagram",
+      "workspace:formats/educational",
+      "page"
+    ],
+    "evaluation.criteria.caption-length": [
+      "workspace:platforms/instagram"
+    ],
+    "evaluation.criteria.has-cta": [
+      "page"
+    ],
+    "evaluation.criteria.teaches-one-idea": [
+      "workspace:formats/educational"
+    ],
+    "evaluation.threshold": [
+      "workspace:platforms/instagram"
+    ],
+    "inputs.schema": [
+      "workspace:platforms/instagram"
+    ],
+    "instructions": [
+      "workspace:platforms/instagram",
+      "workspace:formats/educational",
+      "global:audiences/general@1.2.0",
+      "page"
+    ],
+    "outputs.artifacts": [
+      "page"
+    ],
+    "outputs.artifacts.caption": [
+      "page"
+    ],
+    "outputs.artifacts.image": [
+      "page"
+    ],
+    "outputs.schema": [
+      "workspace:platforms/instagram",
+      "page"
+    ],
+    "platform.id": [
+      "page"
+    ],
+    "platform.requirements.aspectRatio": [
+      "workspace:platforms/instagram"
+    ],
+    "platform.requirements.captionMaxChars": [
+      "page"
+    ],
+    "platform.requirements.hashtags.banned": [
+      "workspace:platforms/instagram"
+    ],
+    "platform.requirements.hashtags.max": [
+      "workspace:formats/educational"
+    ],
+    "runtime.limits.maxCostUsd": [
+      "global:audiences/general@1.2.0"
+    ],
+    "runtime.limits.maxDurationMs": [
+      "page"
+    ],
+    "runtime.limits.maxTurns": [
+      "workspace:formats/educational"
+    ],
+    "runtime.modelHints.reasoning": [
+      "workspace:formats/educational"
+    ],
+    "runtime.modelHints.temperature": [
+      "workspace:formats/educational"
+    ]
+  },
+  "hash": "36813055da2308e9371484b83d79a7f80f045605b60616c13fc0f39c4e62e557"
+}

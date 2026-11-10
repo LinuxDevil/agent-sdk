@@ -78,7 +78,27 @@ export function baseHarnessLayer(tree: WorkspaceTree): HarnessLayer | undefined;
 export const baseHarnessSchema: z.ZodType<Harness>;
 
 // @public
+export function composeHarness(layers: readonly HarnessLayer[]): EffectiveHarness;
+
+// @public
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
+
+// @public
+export interface EffectiveHarness {
+    audience?: Harness['audience'];
+    capabilities?: Harness['capabilities'];
+    constraints?: Harness['constraints'];
+    context?: Harness['context'];
+    evaluation?: Harness['evaluation'];
+    hash: string;
+    inputs?: Harness['inputs'];
+    instructions: string;
+    outputs?: Harness['outputs'];
+    platform?: Harness['platform'];
+    provenance: Record<string, string[]>;
+    runtime?: Harness['runtime'];
+    sources: string[];
+}
 
 // @public
 export interface EffectivePolicy {
