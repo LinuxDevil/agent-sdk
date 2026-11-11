@@ -170,8 +170,8 @@ export interface UiProblem {
 export type UiBindingTarget = Pick<Harness, 'inputs' | 'outputs'>;
 
 const MARKUP = /<[A-Za-z!/?]/;
-const SQUASHED_URL = /[A-Za-z][\w+.-]*:\/\/|(?:java|vb)script:|data:[\w.+-]+\/|mailto:|\]\(|\\\\/i;
-const SPACED_URL = /(?:^|\s)(?:\/\/\S|www\.)/i;
+const SQUASHED_URL = /(?:java|vb)script:/i;
+const SPACED_URL = /[A-Za-z][\w+.-]*:\/\/|data:[\w.+-]+\/|mailto:|\]\(|\\\\|(?:^|\s)(?:\/\/\S|www\.)/i;
 const NAMED_ENTITIES: Record<string, string> = { colon: ':', lt: '<', gt: '>', sol: '/', bsol: '\\', lpar: '(', rpar: ')', lsqb: '[', rsqb: ']', period: '.', tab: '', newline: '' };
 const PROTOTYPE_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
 const SEGMENT = '[A-Za-z_][\\w-]*';
@@ -198,7 +198,7 @@ function readings(text: string): { spaced: string; squashed: string } {
 }
 
 function hasMarkup(text: string): boolean {
-  return MARKUP.test(readings(text).squashed);
+  return MARKUP.test(readings(text).spaced);
 }
 
 function hasUrl(text: string): boolean {

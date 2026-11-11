@@ -161,7 +161,9 @@ describe('pageUiSchema', () => {
     for (const text of attacks) {
       expect(issuesOf(inStack({ type: 'runButton', label: text })).map((issue) => issue.path), JSON.stringify(text)).toEqual([['layout', 'children', 0, 'label']]);
     }
-    expect(issuesOf(inStack({ type: 'runButton', label: 'Tone & voice: pick one (or two) [optional]' }))).toEqual([]);
+    for (const text of ['Tone & voice: pick one (or two) [optional]', 'Score < threshold', 'a < b', 'Choose 1 < n < 10', 'Step A: // optional', 'Source data: image/png files']) {
+      expect(issuesOf(inStack({ type: 'runButton', label: text })), text).toEqual([]);
+    }
   });
 
   it('option values are compared to the enum, not checked as text', () => {
