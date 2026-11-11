@@ -243,6 +243,44 @@ describe('cross-file checks', () => {
     expect(validateWorkspace(tree)).toEqual([expect.objectContaining({ code: 'PRD032', file: 'pages/main/schemas/input.json' })]);
   });
 
+  it('a base harness schema, check and resource resolve from the base harness folder', () => {
+    const doc = { schema: 'lousho.harness/1', inputs: { schema: 'schemas/in.json' }, evaluation: { criteria: [{ id: 'c', description: 'd', check: 'checks/c.ts' }] }, context: { resources: ['notes/n.md'] } };
+    const listed = withFile(base(), 'harness/harness.json', doc);
+    const missing = validateWorkspace(listed).filter((problem) => problem.code === 'PRD032');
+    expect(missing.map((problem) => problem.file).sort()).toEqual(['harness/checks/c.ts', 'harness/notes/n.md', 'harness/schemas/in.json']);
+    const present = { ...listed, 'harness/schemas/in.json': { type: 'object', properties: { brief: { type: 'string' } } }, 'harness/checks/c.ts': 'x', 'harness/notes/n.md': 'x' };
+    expect(validateWorkspace(present)).toEqual([]);
+    const fromRoot = { ...listed, 'schemas/in.json': { type: 'object' }, 'checks/c.ts': 'x', 'notes/n.md': 'x' };
+    expect(validateWorkspace(fromRoot).filter((problem) => problem.code === 'PRD032')).toHaveLength(3);
+  });
+
+  it('a profile schema, check and resource resolve from the profile folder', () => {
+    const profile = { schema: 'lousho.harness/1', id: 'tone', version: '1.0.0', outputs: { schema: 'schemas/out.json' }, evaluation: { criteria: [{ id: 'p', description: 'd', check: 'checks/p.ts' }] }, context: { resources: ['n.md'] } };
+    const withProfile = withFile(edit(base(), 'pages/main/page.json', (page) => ({ ...page, harness: { extends: ['workspace:tone'] } })), 'harness-profiles/tone/harness.json', profile);
+    const missing = validateWorkspace(withProfile).filter((problem) => problem.code === 'PRD032');
+    expect(missing.map((problem) => problem.file).sort()).toEqual(['harness-profiles/tone/checks/p.ts', 'harness-profiles/tone/n.md', 'harness-profiles/tone/schemas/out.json']);
+    const present = { ...withProfile, 'harness-profiles/tone/schemas/out.json': { type: 'object' }, 'harness-profiles/tone/checks/p.ts': 'x', 'harness-profiles/tone/n.md': 'x' };
+    expect(validateWorkspace(present)).toEqual([]);
+  });
+
+  it('a global profile schema file is scanned for policy keys like an inline schema', () => {
+    const tree = edit(base(), 'pages/main/page.json', (doc) => ({ ...doc, harness: { extends: ['global:tones/calm@^1.0.0'] } }));
+    const resolveWith = (schema: unknown) => (): WorkspaceTree => ({
+      'harness.json': { schema: 'lousho.harness/1', id: 'calm', version: '1.0.0', outputs: { schema: 's.json' } },
+      's.json': schema,
+    });
+    const bad = validateWorkspace(tree, { resolveGlobal: resolveWith({ type: 'object', permissions: ['all'] }) });
+    expect(bad).toEqual([expect.objectContaining({ code: 'PRD001', file: 'global:tones/calm@^1.0.0/s.json' })]);
+    const clean = validateWorkspace(tree, { resolveGlobal: resolveWith({ type: 'object', properties: { tools: { type: 'string' } } }) });
+    expect(clean.filter((problem) => problem.code === 'PRD001')).toEqual([]);
+  });
+
+  it('a base schema written in a layer binds the page UI from that layer folder', () => {
+    const tree = edit(readNegativeTree('ui-bind-missing-input'), 'pages/main/harness/harness.json', ({ inputs: _inputs, ...doc }) => doc);
+    const withBase = { ...tree, 'harness/harness.json': { schema: 'lousho.harness/1', inputs: { schema: 'schemas/in.json' } }, 'harness/schemas/in.json': { type: 'object', properties: { brief: { type: 'string' } } } };
+    expect(validateWorkspace(withBase).filter((problem) => problem.code === 'PRD032')).toEqual([]);
+  });
+
   it('goal and workflow files a page names must exist and be well formed', () => {
     const goal = withoutFiles(readNegativeTree('goal-check-missing-criterion'), 'pages/main/goal.json');
     expect(validateWorkspace(goal)).toEqual([expect.objectContaining({ code: 'PRD030', file: 'pages/main/goal.json' })]);

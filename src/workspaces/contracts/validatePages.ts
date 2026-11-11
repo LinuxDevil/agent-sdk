@@ -4,7 +4,7 @@ import { harnessSchema, type Harness } from './harness';
 import { findNestedPages, pageSchema, type PageManifest } from './page';
 import { pageUiSchema } from './ui';
 import { layerProblems } from './validateLayers';
-import { agentFolder, dotted, missingFile, schemaFileProblems, schemaFiles, folderOf, goalCriteria, harnessCode, isRecord, joinPath, problem, readDoc, subtree, type Ctx, type Issue, type PageView, type WorkspaceProblem, type WorkspaceProblemCode } from './validateModel';
+import { agentFolder, dotted, layerFileProblems, folderOf, goalCriteria, harnessCode, isRecord, joinPath, problem, readDoc, subtree, type Ctx, type Issue, type PageView, type WorkspaceProblem, type WorkspaceProblemCode } from './validateModel';
 
 const EMPTY_HARNESS: Harness = { schema: 'lousho.harness/1' };
 const EMPTY_ATTACHMENTS: Attachments = { schema: 'lousho.agents/1', agents: [] };
@@ -101,21 +101,9 @@ function goalFileProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
   return [problem('PRD030', file, 'checks', 'checks must be a list of { criterion } entries')];
 }
 
-function listedFiles(harness: Harness): [string, string][] {
-  const checks = (harness.evaluation?.criteria ?? []).flatMap((criterion, index): [string, string][] => (criterion.check && /\.[cm]?[jt]s$/.test(criterion.check) ? [[`evaluation.criteria.${index}.check`, criterion.check]] : []));
-  const instructions = (harness.instructions ?? []).map((file, index): [string, string] => [`instructions.${index}`, file]);
-  const resources = (harness.context?.resources ?? []).map((file, index): [string, string] => [`context.resources.${index}`, file]);
-  return [...instructions, ...checks, ...resources, ...schemaFiles(harness)];
-}
-
 function listedFileProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
   if (!view.harness) return [];
-  const scanned = schemaFiles(view.harness).flatMap(([, file]) => schemaFileProblems(ctx, joinPath(view.dir, file)));
-  const missing = listedFiles(view.harness).flatMap(([field, file]) => {
-    const path = joinPath(view.dir, file);
-    return path in ctx.tree ? [] : [missingFile(view, field, path)];
-  });
-  return [...missing, ...scanned];
+  return layerFileProblems(ctx, { dir: view.dir, file: view.harnessPath, files: subtree(ctx.tree, view.dir) }, view.harness, true);
 }
 
 const PAGE_CHECKS: readonly ((ctx: Ctx, view: PageView) => WorkspaceProblem[])[] = [aliasProblems, refProblems, workflowProblems, goalFileProblems, listedFileProblems, layerProblems];

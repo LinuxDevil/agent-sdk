@@ -1,0 +1,173 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lousho.com/schemas/lousho.workspace.v1.json",
+  "title": "lousho.workspace/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "lousho.workspace/1"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\\+[0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*)?$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "domain": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mainAgent": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "dir": {
+              "type": "string",
+              "const": "./main-agent"
+            },
+            "inheritsShared": {
+              "type": "boolean"
+            },
+            "harness": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "dir"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "harness": {
+      "type": "string"
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+      }
+    },
+    "agents": {
+      "type": "string"
+    },
+    "harnessProfiles": {
+      "type": "string"
+    },
+    "workflows": {
+      "type": "string"
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "agents": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "propertyNames": {
+            "minLength": 1
+          }
+        },
+        "profiles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "propertyNames": {
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*\\/\\S+$"
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "maxConcurrentPages": {
+              "type": "integer",
+              "exclusiveMinimum": 0
+            },
+            "maxCostUsdPerRun": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "budget": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "shared",
+            "per-page"
+          ]
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "additionalProperties": false
+    },
+    "improve": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "healer": {
+          "type": "string",
+          "enum": [
+            "shared",
+            "per-page"
+          ]
+        },
+        "proposerModel": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*\\/\\S+$"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "name",
+    "version",
+    "description",
+    "mainAgent",
+    "pages"
+  ],
+  "additionalProperties": false
+}

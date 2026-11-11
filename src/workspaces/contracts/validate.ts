@@ -6,7 +6,7 @@ import { workspacePolicySchema } from './policy';
 import { SHARED_POLICY_FILE } from './shared';
 import { workspaceManifestSchema, type WorkspaceManifest } from './workspace';
 import { pageProblems } from './validatePages';
-import { dotted, folderOf, harnessCode, joinPath, normalizeDir, problem, readDoc, type Ctx, type Files, type ValidateWorkspaceOptions, type WorkspaceProblem } from './validateModel';
+import { dotted, folderOf, harnessCode, joinPath, layerFileProblems, normalizeDir, problem, readDoc, subtree, type Ctx, type Files, type ValidateWorkspaceOptions, type WorkspaceProblem } from './validateModel';
 
 export type { ValidateWorkspaceOptions, WorkspaceProblem, WorkspaceProblemCode, WorkspaceProblemSeverity } from './validateModel';
 
@@ -136,10 +136,13 @@ function pageListingProblems(ctx: Ctx): WorkspaceProblem[] {
 }
 
 function baseHarnessProblems(ctx: Ctx): WorkspaceProblem[] {
-  ctx.read.add(`${normalizeDir(ctx.manifest.harness ?? 'harness')}/harness.json`);
-  return readBaseHarness(ctx.tree)
-    .problems.filter((item) => !ctx.broken.has(item.path))
-    .map((item) => problem(harnessCode(item.message, 'PRD004'), item.path, '', item.message));
+  const dir = normalizeDir(ctx.manifest.harness ?? 'harness');
+  const file = `${dir}/harness.json`;
+  ctx.read.add(file);
+  const read = readBaseHarness(ctx.tree);
+  const problems = read.problems.filter((item) => !ctx.broken.has(item.path)).map((item) => problem(harnessCode(item.message, 'PRD004'), item.path, '', item.message));
+  const listed = read.layer ? layerFileProblems(ctx, { dir, file, files: subtree(ctx.tree, dir) }, read.layer.harness, false) : [];
+  return [...problems, ...listed];
 }
 
 function profileFileProblems(ctx: Ctx): WorkspaceProblem[] {

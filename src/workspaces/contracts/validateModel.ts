@@ -179,18 +179,58 @@ export function resolveGlobal(ctx: Ctx, ref: string): { files?: WorkspaceTree; e
   }
 }
 
-export function schemaFiles(harness: Pick<Harness, 'inputs' | 'outputs'>): [string, string][] {
-  const inputs = harness.inputs?.schema;
-  const outputs = harness.outputs?.schema;
-  return [...(typeof inputs === 'string' ? [['inputs.schema', inputs] as [string, string]] : []), ...(typeof outputs === 'string' ? [['outputs.schema', outputs] as [string, string]] : [])];
+export interface LayerOwner {
+  dir: string;
+  file: string;
+  files: Readonly<Record<string, unknown>>;
 }
 
-export function missingFile(view: PageView, field: string, path: string): WorkspaceProblem {
-  return problem('PRD032', path, '', `is listed in ${view.harnessPath} ${field} but missing from the workspace`);
+const SCRIPT_PATH = /\.[cm]?[jt]s$/;
+
+function listedFiles(harness: Harness, withInstructions: boolean): [string, string, boolean][] {
+  const instructions = withInstructions ? (harness.instructions ?? []).map((file, index): [string, string, boolean] => [`instructions.${index}`, file, false]) : [];
+  const checks = (harness.evaluation?.criteria ?? []).flatMap((criterion, index): [string, string, boolean][] =>
+    criterion.check && SCRIPT_PATH.test(criterion.check) ? [[`evaluation.criteria.${index}.check`, criterion.check, false]] : []
+  );
+  const resources = (harness.context?.resources ?? []).map((file, index): [string, string, boolean] => [`context.resources.${index}`, file, false]);
+  const schemas = (['inputs', 'outputs'] as const).flatMap((side): [string, string, boolean][] => {
+    const schema = harness[side]?.schema;
+    return typeof schema === 'string' ? [[`${side}.schema`, schema, true]] : [];
+  });
+  return [...instructions, ...checks, ...resources, ...schemas];
 }
 
-export function schemaFileProblems(ctx: Ctx, path: string): WorkspaceProblem[] {
+function schemaScan(ctx: Ctx, owner: LayerOwner, rel: string): WorkspaceProblem[] {
+  const path = joinPath(owner.dir, rel);
+  const key = joinPath('', rel);
   ctx.read.add(path);
-  if (!(path in ctx.tree) || ctx.broken.has(path)) return [];
-  return forbiddenKeyErrors(ctx.tree[path], HARNESS_KEY_RULES, path, ['']).map((error) => problem(harnessCode(error.message, 'PRD001'), path, dotted(error.path), error.message));
+  if (!(key in owner.files) || ctx.broken.has(path)) return [];
+  return forbiddenKeyErrors(owner.files[key], HARNESS_KEY_RULES, path, ['']).map((error) => problem(harnessCode(error.message, 'PRD001'), path, dotted(error.path), error.message));
+}
+
+function isPresent(ctx: Ctx, owner: LayerOwner, rel: string, isSchema: boolean): boolean {
+  const key = joinPath('', rel);
+  if (!(key in owner.files)) return false;
+  return !isSchema || isRecord(owner.files[key]) || ctx.broken.has(joinPath(owner.dir, rel));
+}
+
+export function layerFileProblems(ctx: Ctx, owner: LayerOwner, harness: Harness, withInstructions: boolean): WorkspaceProblem[] {
+  const listed = listedFiles(harness, withInstructions);
+  const scans = listed.filter(([, , isSchema]) => isSchema).flatMap(([, rel]) => schemaScan(ctx, owner, rel));
+  const missing = listed
+    .filter(([, rel, isSchema]) => !isPresent(ctx, owner, rel, isSchema))
+    .map(([field, rel]) => problem('PRD032', joinPath(owner.dir, rel), '', `is listed in ${owner.file} ${field} but missing from the workspace`));
+  return [...missing, ...scans];
+}
+
+export function inlineSchemas(harness: Harness, files: Readonly<Record<string, unknown>>): Harness {
+  const inline = (schema: Record<string, unknown> | string): Record<string, unknown> | string => {
+    const doc = typeof schema === 'string' ? files[joinPath('', schema)] : undefined;
+    return isRecord(doc) ? doc : schema;
+  };
+  return {
+    ...harness,
+    ...(harness.inputs && { inputs: { schema: inline(harness.inputs.schema) } }),
+    ...(harness.outputs && { outputs: { ...harness.outputs, ...(harness.outputs.schema !== undefined && { schema: inline(harness.outputs.schema) }) } }),
+  };
 }

@@ -114,7 +114,7 @@ function missingFiles(tree: WorkspaceTree, id: string): string[] {
     ...(own.instructions ?? []).map((file) => `pages/${id}/${file}`),
     ...(own.evaluation?.criteria ?? []).flatMap((criterion) => (criterion.check ? [`pages/${id}/${criterion.check}`] : [])),
     ...(own.context?.resources ?? []).map((file) => `pages/${id}/${file}`),
-    ...(base.evaluation?.criteria ?? []).flatMap((criterion) => (criterion.check ? [criterion.check] : [])),
+    ...(base.evaluation?.criteria ?? []).flatMap((criterion) => (criterion.check ? [`harness/${criterion.check}`] : [])),
     ...(page.execution.goal ? [`pages/${id}/goal.json`] : []),
     ...(page.execution.workflow?.workflow === './workflow.json' ? [`pages/${id}/workflow.json`] : []),
     ...(page.execution.workflow?.workflow.startsWith('workspace:') ? [`workflows/${page.execution.workflow.workflow.slice('workspace:'.length)}/workflow.json`] : []),

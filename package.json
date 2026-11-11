@@ -340,6 +340,7 @@
     "README.md",
     "llms.txt",
     "docs/*.md",
+    "schemas/*.json",
     "LICENSE",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
@@ -411,6 +412,8 @@
     "pack-smoke": "tsx scripts/pack-smoke.ts",
     "registry:build": "tsx scripts/build-registry.ts",
     "registry:check": "tsx scripts/build-registry.ts --check",
+    "workspaces:schema": "tsx scripts/workspaces-schema.ts",
+    "workspaces:schema:check": "tsx scripts/workspaces-schema.ts --check",
     "registry-smoke": "tsx scripts/registrySmoke.ts",
     "prepare": "husky"
   },
