@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pglitePool } from '../__fixtures__/pglitePool';
 import { loadDatabaseSync, type SqlValue } from '../../storage/sqlite/driver';
 import { postgresSqlClient, sqliteSqlClient, type PgPool, type PgQueryable, type SqlClient } from '../runtime/sql';
 import { postgresWorkspaceSource, sqliteWorkspaceSource } from './dbSource';
@@ -92,6 +94,8 @@ function uniqueViolation(): Error {
 }
 
 sourceContract('db (sqlite)', async (files) => tracked(await sqliteWorkspaceSource(':memory:', { files })));
+
+sourceContract('db (postgres over pglite)', async (files) => tracked(await postgresWorkspaceSource(pglitePool(), { files, ownsPool: true })));
 
 sourceContract('db (postgres client over a fake pool)', async (files) => tracked(await postgresWorkspaceSource(fakePool().pool, { files, ownsPool: true })));
 
@@ -260,6 +264,26 @@ describe('dbSource', () => {
   });
 });
 
+describe('the Postgres adapter on real Postgres (pglite)', () => {
+  it('a sequential stale writer on one pglite connection gets StaleRevisionError (real concurrency is covered only under LOUSHO_TEST_PG_URL)', async () => {
+    const pool = pglitePool();
+    const ann = tracked(await postgresWorkspaceSource(pool, { files: CONTRACT_FILES }));
+    const bob = await postgresWorkspaceSource(pool, { ref: ann.ref });
+    const base = await ann.revision();
+    const results = await Promise.allSettled([ann.write({ 'a.md': 'ann' }, edit(base, 'person:ann')), bob.write({ 'a.md': 'bob' }, edit(base, 'person:bob'))]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((result) => result.status === 'rejected')?.reason).toBeInstanceOf(StaleRevisionError);
+    expect(await ann.history()).toHaveLength(1);
+    await pool.end?.();
+  });
+
+  it('refuses NUL content, which Postgres TEXT rejects', async () => {
+    const source = tracked(await postgresWorkspaceSource(pglitePool(), { files: CONTRACT_FILES, ownsPool: true }));
+    await expect(source.write({ 'n.md': 'a\u0000b' }, edit(await source.revision(), 'person:ann'))).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED' });
+    expect(await source.history()).toHaveLength(0);
+  });
+});
+
 describe('the Postgres adapter', () => {
   it('runs a write in one transaction on one pooled connection, with numbered placeholders', async () => {
     const { pool, calls, releases } = fakePool();
@@ -332,23 +356,35 @@ describe('the Postgres adapter', () => {
 });
 
 const PG_URL = process.env.LOUSHO_TEST_PG_URL;
-const PG_MODULE = 'pg';
 
 describe.skipIf(PG_URL === undefined)('db (postgres at LOUSHO_TEST_PG_URL)', () => {
-  async function newPool(): Promise<PgPool> {
-    const pg = (await import(PG_MODULE)) as { default: { Pool: new (config: { connectionString?: string }) => PgPool } };
-    return new pg.default.Pool({ connectionString: PG_URL });
+  async function newPool(schema: string): Promise<PgPool> {
+    return new pg.Pool({ connectionString: PG_URL, options: `-c search_path=${schema}` });
+  }
+
+  async function newSchema(): Promise<string> {
+    const schema = `lousho_${randomUUID().replaceAll('-', '')}`;
+    const admin = new pg.Pool({ connectionString: PG_URL });
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    tracked({
+      async close() {
+        await admin.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+        await admin.end();
+      },
+    });
+    return schema;
   }
 
   async function make(files: Record<string, string>) {
-    return tracked(await postgresWorkspaceSource(await newPool(), { files, ref: { projectId: 'lousho-test', workspaceId: randomUUID() }, ownsPool: true }));
+    const schema = await newSchema();
+    return tracked(await postgresWorkspaceSource(await newPool(schema), { files, ref: { projectId: 'lousho-test', workspaceId: randomUUID() }, ownsPool: true }));
   }
 
   sourceContract('db (postgres)', make);
 
   it('two writers on separate pools with the same expectedRevision: one wins, one gets StaleRevisionError', async () => {
     const ann = await make(CONTRACT_FILES);
-    const bob = tracked(await postgresWorkspaceSource(await newPool(), { ref: ann.ref, ownsPool: true }));
+    const bob = tracked(await postgresWorkspaceSource(await newPool(await newSchema()), { ref: ann.ref, ownsPool: true }));
     const base = await ann.revision();
     const results = await Promise.allSettled([ann.write({ 'a.md': 'ann' }, edit(base, 'person:ann')), bob.write({ 'a.md': 'bob' }, edit(base, 'person:bob'))]);
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);

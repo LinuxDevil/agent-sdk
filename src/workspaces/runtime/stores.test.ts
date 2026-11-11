@@ -1,10 +1,13 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import pg from 'pg';
+import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Checkpoint } from '../../execution/checkpoint';
 import type { PageRunEvent } from '../contracts/execution';
 import { appendFileSync, writeFileSync } from 'node:fs';
+import { pglitePool } from '../__fixtures__/pglitePool';
 import { fileHostBackend, postgresHostBackend, sqlHostBackend, sqliteHostBackend } from './backends';
 import { postgresSqlClient, sqliteSqlClient, type PgQueryable } from './sql';
 import { createWorkspaceStores, type HostBackend, type WorkspaceScope } from './stores';
@@ -14,6 +17,7 @@ const open: HostBackend[] = [];
 
 afterEach(async () => {
   for (const backend of open.splice(0)) await backend.close();
+  await dropLiveSchemas();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -23,10 +27,37 @@ function scratch(): string {
   return dir;
 }
 
+const PG_URL = process.env.LOUSHO_TEST_PG_URL;
+
+const sharedSchemas = new Map<string, string>();
+
+async function dropLiveSchemas(): Promise<void> {
+  const schemas = [...sharedSchemas.values()];
+  sharedSchemas.clear();
+  if (schemas.length === 0) return;
+  const cleanup = new pg.Pool({ connectionString: PG_URL });
+  for (const schema of schemas) await cleanup.query(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
+  await cleanup.end();
+}
+
+async function liveBackend(dir: string): Promise<HostBackend> {
+  let schema = sharedSchemas.get(dir);
+  if (schema === undefined) {
+    schema = `lousho_${randomUUID().replaceAll('-', '')}`;
+    sharedSchemas.set(dir, schema);
+    const setup = new pg.Pool({ connectionString: PG_URL });
+    await setup.query(`CREATE SCHEMA ${schema}`);
+    await setup.end();
+  }
+  return postgresHostBackend(new pg.Pool({ connectionString: PG_URL, options: `-c search_path=${schema}` }), { ownsPool: true });
+}
+
 const BACKENDS: Array<[string, (dir: string) => Promise<HostBackend>]> = [
   ['file', async (dir) => fileHostBackend(join(dir, 'files'))],
   ['sqlite', (dir) => sqliteHostBackend(join(dir, 'host.db'))],
   ['sql tables on sqlite', (dir) => sqlHostBackend(sqliteSqlClient(join(dir, 'sql.db')))],
+  ['postgres over pglite', (dir) => postgresHostBackend(pglitePool(join(dir, 'pg')), { ownsPool: true })],
+  ...(PG_URL === undefined ? [] : [['postgres at LOUSHO_TEST_PG_URL', liveBackend] as [string, (dir: string) => Promise<HostBackend>]]),
 ];
 
 const A: WorkspaceScope = { projectId: 'proj-1', workspaceId: 'marketing' };
