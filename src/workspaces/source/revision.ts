@@ -12,7 +12,7 @@ function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
 }
 
-function contentHash(content: string): string {
+export function contentHash(content: string): string {
   return sha256(content);
 }
 

@@ -342,6 +342,18 @@ export function createWorkspaceStores(backend: HostBackend, scope: WorkspaceScop
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
 
 // @public
+export interface DbSourceOptions {
+    files?: Readonly<Record<string, string>>;
+    ref?: Partial<SourceRef>;
+}
+
+// @public
+export interface DbWorkspaceSource extends WorkspaceSource {
+    close(): Promise<void>;
+    write(changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta>;
+}
+
+// @public
 interface DelegatedUsage {
     costPartial?: boolean;
     costUsd: number | undefined;
@@ -931,6 +943,16 @@ interface PermissionRuleSpec {
 }
 
 // @public
+export interface PgPool extends PgQueryable {
+    connect(): Promise<PgPoolClient>;
+}
+
+// @public
+export interface PgPoolClient extends PgQueryable {
+    release(error?: Error | boolean): void;
+}
+
+// @public
 export interface PgQueryable {
     end?(): Promise<void>;
     query(text: string, values?: unknown[]): Promise<{
@@ -949,6 +971,9 @@ export function postgresHostBackend(pool: PgQueryable, options?: PostgresOptions
 export interface PostgresOptions {
     ownsPool?: boolean;
 }
+
+// @public
+export function postgresWorkspaceSource(pool: PgPool, options?: DbSourceOptions & PostgresOptions): Promise<DbWorkspaceSource>;
 
 // @public
 interface Principal {
@@ -1192,7 +1217,34 @@ export interface SourceWriteOptions {
 }
 
 // @public
+export interface SqlClient extends SqlStatements {
+    close(): Promise<void>;
+    transaction<T>(work: (tx: SqlStatements) => Promise<T>): Promise<T>;
+}
+
+// @public
 export function sqliteHostBackend(path: string): Promise<HostBackend>;
+
+// @public
+export function sqliteSqlClient(path: string): SqlClient;
+
+// @public
+export function sqliteWorkspaceSource(db: string | SqlClient, options?: DbSourceOptions): Promise<DbWorkspaceSource>;
+
+// @public (undocumented)
+type SqlParam = SqlValue;
+
+// @public
+type SqlRow = Record<string, unknown>;
+
+// @public
+export interface SqlStatements {
+    execute(sql: string, params?: readonly SqlParam[]): Promise<number>;
+    query(sql: string, params?: readonly SqlParam[]): Promise<SqlRow[]>;
+}
+
+// @public
+type SqlValue = string | number | Uint8Array | null;
 
 // @public
 export interface StartRun {
