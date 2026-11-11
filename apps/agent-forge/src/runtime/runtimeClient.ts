@@ -665,6 +665,33 @@ class RuntimeClient implements AgentApi {
   }
 
   /**
+   * `GET /agents/:id/export?format=yaml|bundle` (L07) as a Blob plus the
+   * server's `Content-Disposition` filename and the bundle's
+   * `X-Lousho-Export-Warnings` list (empty for YAML and a clean bundle).
+   */
+  async downloadExport(agentId: string, format: 'yaml' | 'bundle'): Promise<{ blob: Blob; filename: string; warnings: string[] }> {
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/export?format=${format}`, { method: 'GET' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw apiError(body, `Export of '${agentId}' failed with ${res.status}`, res.status);
+    }
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1]
+      ?? (format === 'yaml' ? `${agentId}.yaml` : `${agentId}.lousho-agent.json`);
+    const warningsHeader = res.headers.get('X-Lousho-Export-Warnings');
+    let warnings: string[] = [];
+    if (warningsHeader !== null) {
+      try {
+        const parsed: unknown = JSON.parse(decodeURIComponent(warningsHeader));
+        if (Array.isArray(parsed)) warnings = parsed.filter((w): w is string => typeof w === 'string');
+      } catch {
+        // A malformed warnings header degrades to no warnings, never a failed download.
+      }
+    }
+    return { blob: await res.blob(), filename, warnings };
+  }
+
+  /**
    * Subscribes to `WS /agents/:id/stream`. Returns an unsubscribe function.
    * Reconnects are NOT handled here - a dropped connection just stops
    * updates until the caller re-subscribes (e.g. on next mount); the app

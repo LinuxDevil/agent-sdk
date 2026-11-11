@@ -37,11 +37,19 @@ function formatFromFilename(filename: string): ExportFormat {
 /**
  * Triggers a browser download of `text` as `filename` with MIME `type`, via
  * a Blob object URL (no server round-trip). `document`-dependent, so only
- * usable in a browser/jsdom environment. Shared by {@link downloadSpec},
- * {@link downloadYaml} and the Code tab's Download buttons (A08).
+ * usable in a browser/jsdom environment. Shared by {@link downloadSpec}
+ * and the Code tab's Download buttons (A08).
  */
 export function downloadText(text: string, filename: string, type: string): void {
-  const blob = new Blob([text], { type });
+  downloadBlob(new Blob([text], { type }), filename);
+}
+
+/**
+ * Triggers a browser download of an already-built `Blob` (the export
+ * routes' YAML/bundle responses, L07) via a temporary `<a download>` +
+ * object URL - the same mechanism {@link downloadText} uses.
+ */
+export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   try {
     const anchor = document.createElement('a');
@@ -64,15 +72,6 @@ export function downloadSpec(spec: AgentSpecV2, filename: string): void {
   const format = formatFromFilename(filename);
   const text = serializeSpec(spec, format);
   downloadText(text, filename, format === 'json' ? 'application/json' : 'text/yaml');
-}
-
-/**
- * Triggers a browser download of `spec` as YAML text, whatever the filename's
- * extension - the detail header's "Export YAML" (A12) until L07's export
- * sheet replaces it.
- */
-export function downloadYaml(spec: AgentSpecV2, filename: string): void {
-  downloadText(stringifyYaml(spec), filename, 'text/yaml');
 }
 
 /**

@@ -13,6 +13,7 @@
  *   PATCH /agents/:id/meta           -> toggle enabled / set labels (body: PatchAgentMetaRequest), 200 AgentMeta
  *   PUT  /agents/:id/layout          -> save the canvas layout (body: CanvasLayout), 204
  *   DELETE /agents/:id               -> remove the saved spec, 204
+ *   GET  /agents/:id/export?format=yaml|bundle -> spec YAML or a lousho.agent-bundle JSON download (lifecycle/export.ts)
  *   GET/POST/DELETE /agents/:id/draft -> the pending ChangeDraft (routes/draftRoutes.ts)
  *   POST /agents/:id/draft/approve · /reject -> settle the pending draft
  *   GET/POST /agents/:id/versions     -> VersionListItem[] newest first · explicit save (routes/versionRoutes.ts)
@@ -131,6 +132,7 @@ import { AuthorTurnRunner } from './author/turnRunner';
 import { createAuthorServices } from './author/services';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { registerSuggestionRoutes } from './routes/suggestionRoutes';
+import { registerExportRoutes } from './lifecycle/export';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { sdkRootDir } from './sdkRoot';
 
@@ -1005,6 +1007,9 @@ export function createApp(options: CreateAppOptions): Express {
   // routes/suggestionRoutes.ts - stores come from workspaceOf(req), the
   // workspace seam, like drafts and versions).
   registerSuggestionRoutes(app);
+  // Agent export: `GET /agents/:id/export?format=yaml|bundle` (lifecycle/
+  // export.ts - the repo comes from workspaceOf(req), the workspace seam).
+  registerExportRoutes(app);
   registerWorkspaceRoute(app);
   // The workspace registry's routes (`GET/POST /workspaces`,
   // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:
