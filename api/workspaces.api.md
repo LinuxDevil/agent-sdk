@@ -129,8 +129,10 @@ export interface AuthoringProblem {
 
 // @public
 export interface AuthoringTreeProblem {
+    file?: string;
     message: string;
     path: string;
+    severity?: 'error' | 'warning' | 'info';
 }
 
 // @public
@@ -864,6 +866,15 @@ export interface UiText extends UiComponentBase {
 export function validateUiBindings(ui: PageUi, harness: UiBindingTarget): UiProblem[];
 
 // @public
+export function validateWorkspace(tree: WorkspaceTree, options?: ValidateWorkspaceOptions): WorkspaceProblem[];
+
+// @public
+export interface ValidateWorkspaceOptions {
+    mode?: 'default' | 'strict';
+    resolveGlobal?: (ref: string) => WorkspaceTree | undefined;
+}
+
+// @public
 interface WhenArgMatcher {
     // (undocumented)
     eq?: string | number | boolean | null;
@@ -955,6 +966,21 @@ export interface WorkspacePolicy {
 
 // @public
 export const workspacePolicySchema: z.ZodType<WorkspacePolicy>;
+
+// @public
+export interface WorkspaceProblem {
+    code: WorkspaceProblemCode;
+    file: string;
+    message: string;
+    path: string;
+    severity: WorkspaceProblemSeverity;
+}
+
+// @public
+export type WorkspaceProblemCode = 'PRD001' | 'PRD002' | 'PRD003' | 'PRD004' | 'PRD005' | 'PRD006' | 'PRD007' | 'PRD008' | 'PRD009' | 'PRD010' | 'PRD011' | 'PRD012' | 'PRD013' | 'PRD014' | 'PRD015' | 'PRD016' | 'PRD017' | 'PRD018' | 'PRD019' | 'PRD020' | 'PRD021' | 'PRD022' | 'PRD023' | 'PRD024' | 'PRD025' | 'PRD026' | 'PRD027' | 'PRD028' | 'PRD029' | 'PRD030' | 'PRD031' | 'PRD032';
+
+// @public
+export type WorkspaceProblemSeverity = 'error' | 'warning' | 'info';
 
 // @public
 export type WorkspaceTree = Readonly<Record<string, unknown>>;

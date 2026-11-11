@@ -8,7 +8,7 @@ import { SHARED_PATH_PATTERNS } from './shared';
 import { workspaceManifestSchema } from './workspace';
 import { flowProblems, flowSpecSchema } from '../../spec/v2/flow';
 import { checkForbiddenKeys, FORBIDDEN_HARNESS_KEYS, type ForbiddenKeyRule } from './forbiddenKeys';
-import type { AuthoringOp, AuthoringProblem, AuthoringValidator, ProseTarget } from './authoringOps';
+import type { AuthoringOp, AuthoringProblem, AuthoringTreeProblem, AuthoringValidator, ProseTarget } from './authoringOps';
 
 type Doc = Record<string, unknown>;
 type Problem = { path: string; message: string };
@@ -549,8 +549,15 @@ function builtInProblems(tree: WorkspaceTree): Problem[] {
   return [...pageListProblems(tree, manifest), ...pagesOf(manifest).flatMap((page) => pageProblems(tree, page)), ...base, ...mainProblems(tree, manifest)];
 }
 
+function treeProblem(problem: AuthoringTreeProblem): AuthoringProblem {
+  if (problem.file === undefined) return problem;
+  return { ...problem, path: problem.file, message: problem.path === '' ? problem.message : `${problem.path}: ${problem.message}` };
+}
+
+const isError = (problem: AuthoringTreeProblem): boolean => (problem.severity ?? 'error') === 'error';
+
 export function finalProblems(tree: WorkspaceTree, touched: Map<string, number>, ops: readonly AuthoringOp[], validate: AuthoringValidator): AuthoringProblem[] {
-  return [...builtInProblems(tree), ...validate(tree)].map((problem) => {
+  return [...builtInProblems(tree), ...validate(tree).filter(isError).map(treeProblem)].map((problem) => {
     const opIndex = touched.get(problem.path);
     return opIndex === undefined ? problem : { opIndex, op: ops[opIndex]?.op, ...problem };
   });
