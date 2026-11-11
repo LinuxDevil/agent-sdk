@@ -169,6 +169,8 @@ export const ERROR_CODES = {
   LOUSHO_WORKSPACE_SOURCE_LIMIT: 'Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().',
   /** A database workspace source refused file content it cannot store, such as a NUL character. */
   LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: 'Remove the NUL characters from the file the message names; a database workspace source stores text only.',
+  /** A workspace read through a source has validation errors. */
+  LOUSHO_WORKSPACE_INVALID: 'Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.',
 } as const;
 
 /** A stable error code, e.g. `'LOUSHO_CONFIG_MISSING_PROVIDER'`. */
