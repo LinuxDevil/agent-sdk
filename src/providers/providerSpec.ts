@@ -122,8 +122,38 @@ export function detectProviderFromEnv(env: Record<string, string | undefined> = 
 export function findPeerPairing(packageName: string, aiMajor: AiMajor): PeerPairing | undefined {
   return Object.values(PROVIDERS)
     .map((entry) => entry.peers[aiMajor])
-    .find((pairing) => pairing.name === packageName);
+    .find((pairing) => pairing.name === packageName) ?? (packageName.startsWith('@ai-sdk/') ? AI_SDK_PACKAGE_PEERS[aiMajor](packageName) : undefined);
 }
+
+const AI_SDK_PACKAGE_PEERS: Record<AiMajor, (name: string) => PeerPairing> = {
+  4: (name) => ({ name, range: '^1.0.0', accepts: '^1.0.0' }),
+  6: (name) => ({ name, range: '^3.0.0', accepts: '^3.0.0' }),
+  7: (name) => ({ name, range: '^4.0.0', accepts: '^4.0.0' }),
+};
+
+const AI_SDK_PREFIX = 'ai-sdk';
+
+export const AI_SDK_VENDORS: Readonly<Record<string, string>> = {
+  azure: 'azure',
+  bedrock: 'amazon-bedrock',
+  'amazon-bedrock': 'amazon-bedrock',
+  vertex: 'google-vertex',
+  'google-vertex': 'google-vertex',
+  mistral: 'mistral',
+  groq: 'groq',
+  xai: 'xai',
+  deepseek: 'deepseek',
+  cerebras: 'cerebras',
+  together: 'togetherai',
+  togetherai: 'togetherai',
+  fireworks: 'fireworks',
+  deepinfra: 'deepinfra',
+  cohere: 'cohere',
+  perplexity: 'perplexity',
+  baseten: 'baseten',
+  huggingface: 'huggingface',
+  vercel: 'vercel',
+};
 
 /**
  * The `npm install` command for an optional provider package, with the range
@@ -236,6 +266,7 @@ function otherRoutes(providerName: string, model: string): string {
   const lower = providerName.toLowerCase();
   const routes = [`'openrouter/${lower}/${model}' (OpenRouter serves most vendors; needs OPENROUTER_API_KEY)`];
   if (PI_NESTED_VENDORS.includes(lower)) routes.push(`'pi/${lower}/${model}' (through @earendil-works/pi-ai)`);
+  routes.push(`'${AI_SDK_PREFIX}/${lower}/${model}' (when @ai-sdk/${lower} exists)`);
   routes.push(`createAgent({ provider: fromAiSdk(${factoryName(lower)}('${model}')) }) with the vendor's own AI SDK provider package`);
   return ` To use '${providerName}' anyway: ${routes.slice(0, -1).join(', ')}, or ${routes[routes.length - 1]}.`;
 }
@@ -338,6 +369,21 @@ function createProvider(caller: string, providerName: string, entry: ProviderEnt
   }
 }
 
+function createAiSdkPackageProvider(
+  caller: string,
+  name: string,
+  vendorPackage: string,
+  model: string,
+  registry: ProviderResolver,
+  extra: LLMProviderConfig
+): LLMProvider {
+  const config = { ...extra, name, packageName: `@ai-sdk/${vendorPackage}`, defaultModel: model };
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(vendorPackage)) {
+    throw new ConfigurationError(`${caller}: '${vendorPackage}' is not an AI SDK provider package name.`, 'model', 'LOUSHO_PROVIDER_SPEC_INVALID');
+  }
+  return registry.create(AI_SDK_PREFIX, config);
+}
+
 /**
  * Resolve a "<provider>/<model>" spec into a configured LLMProvider, with
  * errors reported in `caller`'s name. See `resolveProvider()`. `registry`
@@ -358,8 +404,23 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
   const providerName = spec.slice(0, separatorIndex).toLowerCase();
   const model = spec.slice(separatorIndex + 1);
 
+  if (providerName === AI_SDK_PREFIX) {
+    const vendorEnd = model.indexOf('/');
+    if (vendorEnd <= 0 || vendorEnd === model.length - 1) {
+      throw new ConfigurationError(
+        `${caller}: expected "${AI_SDK_PREFIX}/<vendor>/<model>", got '${spec}'. Example: '${AI_SDK_PREFIX}/mistral/mistral-large-latest' loads @ai-sdk/mistral.`,
+        'model',
+        'LOUSHO_PROVIDER_SPEC_INVALID'
+      );
+    }
+    const vendor = model.slice(0, vendorEnd).toLowerCase();
+    return createAiSdkPackageProvider(caller, vendor, vendor, model.slice(vendorEnd + 1), registry, extra);
+  }
+
   const entry = PROVIDERS[providerName];
   if (!entry) {
+    const aiSdkPackage = AI_SDK_VENDORS[providerName];
+    if (aiSdkPackage && !registry.has?.(providerName)) return createAiSdkPackageProvider(caller, providerName, aiSdkPackage, model, registry, extra);
     // A provider added with LLMProviderRegistry.register() can be named in a model string too; its factory reads its own credentials.
     // 'mock' is built in: create() registers it on first use, whichever entry point (ESM or CJS copy) loaded this.
     if (registry.has?.(providerName) || providerName === MOCK_PROVIDER) return registry.create(providerName, { ...extra, defaultModel: model });
