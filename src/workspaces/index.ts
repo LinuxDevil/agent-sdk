@@ -6,6 +6,7 @@ export { attachmentsSchema, parseAgentRef, AGENT_OWNED, PAGE_OWNED, type Attachm
 export { workspacePolicySchema, narrowPolicy, type WorkspacePolicy, type PolicyCeiling, type EffectivePolicy } from './contracts/policy';
 export { INHERITANCE_RULES, type InheritanceRule } from './contracts/shared';
 export { authoringOpSchema, authoringOpJsonSchema, applyOps, opFiles, AUTHORING_OP_NAMES, type AuthoringOp, type AuthoringProblem, type AuthoringValidator, type AuthoringTreeProblem, type ApplyOpsResult, type HarnessTarget, type ProseTarget } from './contracts/authoringOps';
+export { resolvePageModel, type PageModelInputs, type ResolvedPageModel, type PageModelSource } from './contracts/models';
 export { pageSchema, findNestedPages, WORK_TYPES, type PageManifest, type PageExecution, type PageExecutionLimits, type WorkType } from './contracts/page';
 export { isTerminalStatus, formatArtifactUri, parseArtifactUri, PAGE_RUN_STATUSES, STEP_KINDS, WORK_TYPE_STEP_KINDS, type PageRunStatus, type PageErrorKind, type StepKind, type PageStepLabels, type PageRunLabels, type PageInput, type PageResult, type PageUsage, type ArtifactRef, type ArtifactUriParts, type ArtifactData, type ArtifactSink, type PageRunContext, type PageEngine, type PageRunEvent, type PageStartedEvent, type PageStepEvent, type PageArtifactEvent, type PageApprovalEvent, type PageProgressEvent, type PageFinishedEvent } from './contracts/execution';
 export { composeHarness, type EffectiveHarness } from './contracts/compose';

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { modelIdSchema } from '../../spec/v2/common';
 import { KEBAB_CASE, SEMVER, workspacePathSchema } from './common';
+import { modelsObjectSchema } from './models';
 
 /** Per-run limits a workspace sets for its pages. */
 export interface WorkspaceLimits {
@@ -68,8 +69,13 @@ export interface WorkspaceManifest {
     enabled?: boolean;
     /** One healer for the workspace (`shared`) or one per page (`per-page`). */
     healer?: 'shared' | 'per-page';
-    /** Model the proposer uses, as `provider/model`, separate from any page's model. */
+    /** Model the proposer uses, as `provider/model`, separate from any page's model; never wrapped by `models.provider` (R8). */
     proposerModel?: string;
+  };
+  /** Provider wrapper for page models. */
+  models?: {
+    /** Built-in provider name (e.g. `pi`) that wraps every page model as `<provider>/<model>`; `null` means none. */
+    provider?: string | null;
   };
 }
 
@@ -139,6 +145,7 @@ export const workspaceManifestObjectSchema = z
       })
       .strict()
       .optional(),
+    models: modelsObjectSchema.optional(),
   })
   .strict();
 
