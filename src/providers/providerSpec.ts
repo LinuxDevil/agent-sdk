@@ -133,7 +133,7 @@ const AI_SDK_PACKAGE_PEERS: Record<AiMajor, (name: string) => PeerPairing> = {
 
 const AI_SDK_PREFIX = 'ai-sdk';
 
-export const AI_SDK_VENDORS: Readonly<Record<string, string>> = {
+const AI_SDK_VENDORS: Readonly<Record<string, string>> = {
   azure: 'azure',
   bedrock: 'amazon-bedrock',
   'amazon-bedrock': 'amazon-bedrock',
@@ -384,6 +384,28 @@ function createAiSdkPackageProvider(
   return registry.create(AI_SDK_PREFIX, config);
 }
 
+function resolveExplicitAiSdkSpec(spec: string, model: string, caller: string, registry: ProviderResolver, extra: LLMProviderConfig): LLMProvider {
+  const vendorEnd = model.indexOf('/');
+  if (vendorEnd <= 0 || vendorEnd === model.length - 1) {
+    throw new ConfigurationError(
+      `${caller}: expected "${AI_SDK_PREFIX}/<vendor>/<model>", got '${spec}'. Example: '${AI_SDK_PREFIX}/mistral/mistral-large-latest' loads @ai-sdk/mistral.`,
+      'model',
+      'LOUSHO_PROVIDER_SPEC_INVALID'
+    );
+  }
+  const vendor = model.slice(0, vendorEnd).toLowerCase();
+  return createAiSdkPackageProvider(caller, vendor, vendor, model.slice(vendorEnd + 1), registry, extra);
+}
+
+function resolveUnlistedProvider(spec: string, providerName: string, model: string, caller: string, registry: ProviderResolver, extra: LLMProviderConfig): LLMProvider {
+  const aiSdkPackage = AI_SDK_VENDORS[providerName];
+  if (aiSdkPackage && !registry.has?.(providerName)) return createAiSdkPackageProvider(caller, providerName, aiSdkPackage, model, registry, extra);
+  // A provider added with LLMProviderRegistry.register() can be named in a model string too; its factory reads its own credentials.
+  // 'mock' is built in: create() registers it on first use, whichever entry point (ESM or CJS copy) loaded this.
+  if (registry.has?.(providerName) || providerName === MOCK_PROVIDER) return registry.create(providerName, { ...extra, defaultModel: model });
+  throw unknownProviderError(caller, spec.slice(0, spec.indexOf('/')), spec);
+}
+
 /**
  * Resolve a "<provider>/<model>" spec into a configured LLMProvider, with
  * errors reported in `caller`'s name. See `resolveProvider()`. `registry`
@@ -404,28 +426,10 @@ export function resolveProviderSpec(spec: string, caller: string, registry: Prov
   const providerName = spec.slice(0, separatorIndex).toLowerCase();
   const model = spec.slice(separatorIndex + 1);
 
-  if (providerName === AI_SDK_PREFIX) {
-    const vendorEnd = model.indexOf('/');
-    if (vendorEnd <= 0 || vendorEnd === model.length - 1) {
-      throw new ConfigurationError(
-        `${caller}: expected "${AI_SDK_PREFIX}/<vendor>/<model>", got '${spec}'. Example: '${AI_SDK_PREFIX}/mistral/mistral-large-latest' loads @ai-sdk/mistral.`,
-        'model',
-        'LOUSHO_PROVIDER_SPEC_INVALID'
-      );
-    }
-    const vendor = model.slice(0, vendorEnd).toLowerCase();
-    return createAiSdkPackageProvider(caller, vendor, vendor, model.slice(vendorEnd + 1), registry, extra);
-  }
+  if (providerName === AI_SDK_PREFIX) return resolveExplicitAiSdkSpec(spec, model, caller, registry, extra);
 
   const entry = PROVIDERS[providerName];
-  if (!entry) {
-    const aiSdkPackage = AI_SDK_VENDORS[providerName];
-    if (aiSdkPackage && !registry.has?.(providerName)) return createAiSdkPackageProvider(caller, providerName, aiSdkPackage, model, registry, extra);
-    // A provider added with LLMProviderRegistry.register() can be named in a model string too; its factory reads its own credentials.
-    // 'mock' is built in: create() registers it on first use, whichever entry point (ESM or CJS copy) loaded this.
-    if (registry.has?.(providerName) || providerName === MOCK_PROVIDER) return registry.create(providerName, { ...extra, defaultModel: model });
-    throw unknownProviderError(caller, spec.slice(0, separatorIndex), spec);
-  }
+  if (!entry) return resolveUnlistedProvider(spec, providerName, model, caller, registry, extra);
 
   const envValue = process.env[entry.envKey];
   const provider = () =>
