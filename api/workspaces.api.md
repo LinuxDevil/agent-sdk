@@ -142,6 +142,36 @@ export interface Attachments {
 export const attachmentsSchema: z.ZodType<Attachments>;
 
 // @public
+interface AuditEntry {
+    action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'unverified' | 'pause' | 'resume' | 'canary-start' | 'canary-end' | 'reflect-fail';
+    actor: 'gate' | 'canary' | 'monitor' | 'guard' | 'scheduler' | `person:${string}`;
+    at: string;
+    cycle?: string;
+    evidence?: {
+        gate?: string;
+        cases?: {
+            caseId: string;
+            base: string;
+            final: string;
+        }[];
+        score?: {
+            before: number;
+            after: number;
+            runs: number;
+        };
+    };
+    from?: string;
+    hash: string;
+    prev: string;
+    reason: string;
+    seq: number;
+    to?: string;
+}
+
+// @public
+type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
+
+// @public
 export const AUTHORING_OP_NAMES: readonly AuthoringOp['op'][];
 
 // @public
@@ -421,6 +451,18 @@ interface FlowPendingApproval {
 }
 
 // @public
+export function folderSource(dir: string, options?: FolderSourceOptions): WorkspaceSource;
+
+// @public
+export interface FolderSourceOptions {
+    keep?: number;
+    maxFileBytes?: number;
+    maxFiles?: number;
+    maxTreeBytes?: number;
+    ref?: Partial<SourceRef>;
+}
+
+// @public
 export function formatArtifactUri(parts: ArtifactUriParts): string;
 
 // @public
@@ -607,6 +649,14 @@ export function memoryArtifactStore(options?: ArtifactStoreOptions): ArtifactSto
 
 // @public
 export function memoryBlobClient(): BlobClient;
+
+// @public
+export function memorySource(files: Readonly<Record<string, string>>, options?: MemorySourceOptions): WorkspaceSource;
+
+// @public
+export interface MemorySourceOptions {
+    ref?: Partial<SourceRef>;
+}
 
 // @public
 interface Message {
@@ -914,6 +964,9 @@ interface ProviderUsage {
 }
 
 // @public
+export function readSourceTree(source: WorkspaceSource, options?: SourceReadOptions): Promise<SourceTree>;
+
+// @public
 interface ReasoningBlock {
     // (undocumented)
     redactedData?: string;
@@ -953,6 +1006,27 @@ interface ReorderPagesOp {
 interface ResetPageUiOp {
     op: 'reset_page_ui';
     page: string;
+}
+
+// @public
+export type RevisionActor = AuditEntry['actor'];
+
+// @public
+export type RevisionId = string;
+
+// @public
+export type RevisionKind = 'authoring' | 'improvement' | 'rollback' | 'import';
+
+// @public
+export interface RevisionMeta {
+    audit?: AuditInput;
+    by: RevisionActor;
+    createdAt: string;
+    kind: RevisionKind;
+    message: string;
+    parent?: RevisionId;
+    revision: RevisionId;
+    seq: number;
 }
 
 // @public
@@ -1065,6 +1139,32 @@ const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources
 
 // @public
 type SharedFolder = (typeof SHARED_FOLDERS)[number];
+
+// @public
+export interface SourceReadOptions {
+    revision?: RevisionId;
+}
+
+// @public
+export interface SourceRef {
+    projectId: string;
+    workspaceId: string;
+}
+
+// @public
+export interface SourceTree {
+    revision: RevisionId;
+    tree: Readonly<Record<string, string>> & WorkspaceTree;
+}
+
+// @public
+export interface SourceWriteOptions {
+    audit?: AuditInput;
+    by: RevisionActor;
+    expectedRevision: RevisionId;
+    kind?: RevisionKind;
+    message: string;
+}
 
 // @public
 export function sqliteHostBackend(path: string): Promise<HostBackend>;
@@ -1287,6 +1387,9 @@ export const WORK_TYPE_STEP_KINDS: Readonly<Record<WorkType, readonly StepKind[]
 export const WORK_TYPES: readonly WorkType[];
 
 // @public
+export type WorkspaceChanges = Readonly<Record<string, string | null>>;
+
+// @public
 export interface WorkspaceCheckpointStore {
     delete(runId: string): Promise<void>;
     list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
@@ -1397,6 +1500,16 @@ export interface WorkspaceRunStore {
 export interface WorkspaceScope {
     projectId: string;
     workspaceId: string;
+}
+
+// @public
+export interface WorkspaceSource {
+    history(): Promise<RevisionMeta[]>;
+    list(prefix: string, options?: SourceReadOptions): Promise<string[]>;
+    read(path: string, options?: SourceReadOptions): Promise<string | undefined>;
+    readonly ref: SourceRef;
+    revision(): Promise<RevisionId>;
+    write?(changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta>;
 }
 
 // @public

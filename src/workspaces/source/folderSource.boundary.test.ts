@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const WORKSPACES = fileURLToPath(new URL('..', import.meta.url));
 const FS_IMPORT = /from\s+['"](?:node:)?fs(?:\/promises)?['"]|require\(\s*['"](?:node:)?fs(?:\/promises)?['"]\s*\)/;
-const ALLOWED = /^(?:source\/folder[^/]*|runtime\/file[A-Za-z]*Store)\.ts$/;
+const ALLOWED = /^(?:source\/folder[^/]*|runtime\/fileArtifactStore|runtime\/fileLedger)\.ts$/;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

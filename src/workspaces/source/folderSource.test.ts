@@ -183,7 +183,10 @@ describe('folderSource', () => {
     ]);
     expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
     const head = await two.revision();
-    await two.write!({ 'b.md': 'two' }, { expectedRevision: head, by: 'person:bob', message: 'two again' });
+    const loser = results[0].status === 'rejected' ? { source: one, changes: { 'a.md': 'one' } as WorkspaceChanges } : { source: two, changes: { 'b.md': 'two' } as WorkspaceChanges };
+    await loser.source.write!(loser.changes, { expectedRevision: head, by: 'person:bob', message: 'retry' });
+    expect(await one.read('a.md')).toBe('one');
+    expect(await one.read('b.md')).toBe('two');
     expect((await one.history()).map((meta) => meta.seq)).toEqual([2, 1]);
   });
 
