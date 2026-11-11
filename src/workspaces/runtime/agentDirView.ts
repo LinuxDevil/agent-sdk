@@ -34,6 +34,8 @@ export interface AgentOwned {
   memory: string[];
   /** The agent's own permission rules, which a page and the workspace policy can only narrow. */
   permissions?: AgentPermission[];
+  /** Tools whose Studio ref says `approval: 'always'`: every call asks. */
+  approvals?: string[];
   /** The agent's own run limits, which a page can only tighten. */
   limits?: RunLimits;
 }
@@ -56,6 +58,14 @@ const CODE_KEYS = ['hooks', 'approve', 'store'] as const;
 
 const STUDIO_CODE_KEYS = ['hooks'] as const;
 
+const STUDIO_HOST_KEYS = ['mcpServers', 'guardrails', 'subagents', 'handoffs', 'triggers', 'flow'] as const;
+
+const HOST_FOLDERS = ['subagents', 'schedules', 'channels'] as const;
+
+const STUDIO_POLICY_KEYS = ['permissionMode', 'approvalTtlMs', 'codeMode', 'toolSearch', 'output', 'promptRef'] as const;
+
+const DIR_POLICY_KEYS = ['permissionMode', 'projectInstructions'] as const;
+
 function parseData(file: string, text: string): unknown {
   try {
     return file.endsWith('.json') ? (JSON.parse(text) as unknown) : (parseYaml(text) as unknown);
@@ -67,6 +77,8 @@ function parseData(file: string, text: string): unknown {
 function refuseCodeFiles(agent: AgentFiles): void {
   const code = Object.keys(agent.files).find((path) => CODE_ROOT_FILE.test(path));
   if (code !== undefined) fail(`${agent.dir}/${code}`, 'code files cannot be loaded from a workspace source; use agent.json, and let the host supply hooks, approvers and auth.');
+  const folder = HOST_FOLDERS.find((name) => Object.keys(agent.files).some((path) => path.startsWith(`${name}/`)));
+  if (folder !== undefined) fail(`${agent.dir}/${folder}/`, `a workspace agent does not run ${folder}; remove the folder, and attach other agents through the page's agents.json or let the host supply it.`);
 }
 
 function configFile(agent: AgentFiles): string | undefined {
@@ -81,12 +93,25 @@ function refuseKeys(file: string, value: object, keys: readonly string[]): void 
   if (key !== undefined) fail(file, `'${key}' needs code or a folder on disk, which a workspace source cannot give; remove it and let the host supply it.`);
 }
 
+const setKey = (value: object, keys: readonly string[]): string | undefined => keys.find((name) => (value as Record<string, unknown>)[name] !== undefined);
+
+function refuseHostKeys(file: string, spec: object): void {
+  const key = setKey(spec, STUDIO_HOST_KEYS);
+  if (key !== undefined) fail(file, `'${key}' is not run for a workspace agent; remove it, attach other agents through the page's agents.json, and let the host supply MCP servers, guardrails and triggers.`);
+}
+
+function refusePolicyKeys(file: string, value: object, keys: readonly string[]): void {
+  const key = setKey(value, keys);
+  if (key !== undefined) fail(file, `'${key}' is not applied to a workspace agent; remove it, and set it through the workspace policy, the page or the host.`);
+}
+
 function readDirConfig(agent: AgentFiles): { file: string; config: AgentDirConfig } {
   const name = configFile(agent);
   if (name === undefined) return { file: agent.dir, config: {} };
   const file = `${agent.dir}/${name}`;
   const config = validateConfig(file, parseData(file, agent.files[name]));
   refuseKeys(file, config, CODE_KEYS);
+  refusePolicyKeys(file, config, DIR_POLICY_KEYS);
   return { file, config };
 }
 
@@ -147,11 +172,27 @@ function readDir(agent: AgentFiles): AgentOwned {
 
 const LABEL_KEYS = ['id', 'builtin', 'registry', 'file', 'hosted', 'integration', 'dir', 'name'];
 
-function refLabel(ref: object): string {
+const TOOL_LABEL_KEYS = ['builtin', 'registry', 'hosted', 'integration', 'name', 'id'];
+
+function refLabel(ref: object, keys: readonly string[] = LABEL_KEYS): string {
   const record = ref as Record<string, unknown>;
   const inline = record.inline as Record<string, unknown> | undefined;
-  const key = LABEL_KEYS.find((name) => typeof record[name] === 'string');
+  const key = keys.find((name) => typeof record[name] === 'string');
   return key !== undefined ? String(record[key]) : String(inline?.name ?? 'hub');
+}
+
+const studioToolFile = (ref: object): string[] => {
+  const file = (ref as { file?: unknown }).file;
+  return typeof file === 'string' ? [file] : [];
+};
+
+const studioToolName = (ref: object): string => studioToolFile(ref).map((file) => stem(file.split('/').pop() ?? file))[0] ?? refLabel(ref, TOOL_LABEL_KEYS);
+
+const asksAlways = (ref: object): boolean => (ref as { approval?: unknown }).approval === 'always';
+
+function studioTools(refs: readonly object[] = []): Pick<AgentOwned, 'tools' | 'toolFiles' | 'approvals'> {
+  const approvals = refs.filter(asksAlways).map(studioToolName);
+  return { tools: refs.map(studioToolName), toolFiles: refs.flatMap(studioToolFile), ...(approvals.length > 0 && { approvals }) };
 }
 
 const withoutId = ({ id: _id, ...rule }: PermissionRuleSpec): AgentPermission => rule;
@@ -160,14 +201,15 @@ function readStudio(agent: AgentFiles): AgentOwned {
   const [file, text] = Object.entries(agent.files)[0] ?? [agent.dir, ''];
   const spec: AgentSpecV2 = parseAgentSpecV2(parseData(file, text), agent.dir);
   refuseKeys(agent.dir, spec, STUDIO_CODE_KEYS);
+  refuseHostKeys(agent.dir, spec);
+  refusePolicyKeys(agent.dir, spec, STUDIO_POLICY_KEYS);
   return {
     name: spec.name,
     ...(spec.description !== undefined && { description: spec.description }),
     ...(typeof spec.instructions === 'string' && { instructions: spec.instructions }),
     defaultModel: spec.model,
-    skills: (spec.skills ?? []).map(refLabel),
-    tools: (spec.tools ?? []).map(refLabel),
-    toolFiles: [],
+    skills: (spec.skills ?? []).map((ref) => refLabel(ref)),
+    ...studioTools(spec.tools),
     memory: (spec.memory ?? []).map((slot) => slot.name),
     ...(spec.permissions !== undefined && { permissions: spec.permissions.map(withoutId) }),
     ...(spec.limits !== undefined && { limits: spec.limits }),

@@ -11,7 +11,7 @@
 import type { ExecuteOptions } from './AgentExecutor';
 import { runEventsOf } from './agentRun';
 import { APPROVAL_TTL_RULE, isApprovalTtl } from './approvalTtl';
-import type { ToolDescriptor } from '../types';
+import type { ApprovalCheckContext, ApprovalOutcome, ToolDescriptor } from '../types';
 import type { HostedTool } from '../tools/hosted';
 import { SDKError } from '../utils/sdkError';
 import { ConfigurationError } from './errors';
@@ -216,9 +216,23 @@ const enforcedApprovals = new WeakSet<object>();
  * permission mode (`acceptEdits`) say. A deny from either still denies. Used
  * for an install receipt's `exec` / `needsApproval` items (docs/registry.md).
  */
-export function enforceApproval<T extends object>(policy: T): T {
+function enforceApproval<T extends object>(policy: T): T {
   enforcedApprovals.add(policy);
   return policy;
+}
+
+/** A tool's own `needsApproval`, marked by {@link enforceApproval} so no `allow` rule or mode lifts its ask. */
+export function keepOwnApproval(own: NonNullable<ToolDescriptor['needsApproval']>): NonNullable<ToolDescriptor['needsApproval']> {
+  return enforceApproval(async (args: unknown, ctx: ApprovalCheckContext): Promise<ApprovalOutcome> => (typeof own === 'function' ? own(args, ctx) : own));
+}
+
+/** A `needsApproval` policy that always asks, marked by {@link enforceApproval}; the tool's own deny stays a deny. */
+export function alwaysAsk(own: ToolDescriptor['needsApproval']): NonNullable<ToolDescriptor['needsApproval']> {
+  return enforceApproval(async (args: unknown, ctx: ApprovalCheckContext): Promise<ApprovalOutcome> => {
+    const outcome = typeof own === 'function' ? await own(args, ctx) : own;
+    if (outcome === 'deny' || (typeof outcome === 'object' && outcome !== null)) return outcome;
+    return 'ask';
+  });
 }
 
 /** Whether `tool`'s `needsApproval` is marked by {@link enforceApproval}. */

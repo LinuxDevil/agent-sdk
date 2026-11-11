@@ -175,6 +175,8 @@ export const ERROR_CODES = {
   LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.",
   /** A main harness lists an instruction file for which no text was supplied. */
   LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: 'Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.',
+  /** A page requires a capability no tool in its effective toolset provides (`capability-missing`). */
+  LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.",
 } as const;
 
 /** A stable error code, e.g. `'LOUSHO_CONFIG_MISSING_PROVIDER'`. */

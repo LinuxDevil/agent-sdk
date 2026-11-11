@@ -419,6 +419,53 @@ console.log(effective.tools.allow, effective.secrets, effective.network.allowHos
 
 The result keeps `search_facts`, `API_KEY` and `api.example.com`, and turns the sandbox on. `publish` and `OTHER_KEY` are not in the ceiling and are dropped.
 
+### How the runtime enforces the policy
+
+The runtime enforces the narrowed policy. No harness, `page.json` or `agents.json` key can widen it. The host injects its tools as a `HostToolRegistry`: each entry has a `descriptor`, the `secrets` it reads and the `capabilities` it provides. The runtime never imports a workspace `.ts` file, so **a tool file's name is its tool name**: `tools/search_facts.ts` maps to the host tool named `search_facts`. An agent tool with no host tool of that name is left out and reported as a load warning. A Studio `{ file }` tool ref is named by its file stem too, and other tool refs by the name the model sees (`builtin`, `registry`, ...), not their canvas `id`.
+
+Agent settings a workspace agent would silently drop are refused at load: on a Studio spec `mcpServers`, `guardrails`, `subagents`, `handoffs`, `triggers`, `flow`, `permissionMode`, `approvalTtlMs`, `codeMode`, `toolSearch`, `output` and `promptRef`; on a folder agent `permissionMode`, `projectInstructions` and the `subagents/`, `schedules/` and `channels/` folders.
+
+| What | Rule |
+| --- | --- |
+| Tools | `effectiveToolset(policy, attachment, agentTools, registry)` keeps `agentTools ∩ registry ∩ policy.tools.allow ∩ (attachment.tools.only ?? all)`. `tools.only` is a list of literal names and can only narrow |
+| Permissions | `effectivePermissions(policy, agentPerms)` checks the ceiling, workspace and agent lists first-match each and decides `deny > ask > none > allow`. Only an agent `allow` can allow. An agent `allow`, a name or a pattern such as `*`, that a policy `deny` or `ask` shadows is a load warning |
+| Secrets | A tool gets the secrets it declares that the policy also lists, and nothing else. A page has no secret store |
+| Network and sandbox | The policy's values. An agent's own `network.allowHosts` can only narrow them, and its `sandbox.required` can only turn sandboxing on |
+| Approvals | A tool in `approvals.require` asks for approval every time, in an agent run and in a workflow `toolCall` step, whatever an `allow` rule or the permission mode says. So does a Studio tool ref with `approval: 'always'`. A host tool's own `needsApproval` ask is kept the same way: an agent `allow` never lifts it. A deny still denies |
+| Capabilities | `pagePolicy()` fails page start with `LOUSHO_WORKSPACE_CAPABILITY_MISSING` (`capability-missing`) when `capabilities.require` names something no tool in the page's effective toolsets provides. A tool that a ceiling or workspace rule denies outright provides nothing. A capability never grants a tool |
+
+`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset.
+
+```ts
+import { narrowPolicy, pagePolicy, type HostToolRegistry } from 'lousho/workspaces';
+import { defineTool } from 'lousho';
+import { z } from 'zod';
+
+const registry: HostToolRegistry = {
+  render_video: {
+    descriptor: defineTool({ name: 'render_video', description: 'Render a video', input: z.object({ script: z.string() }), execute: () => 'video.mp4' }),
+    capabilities: ['video.render'],
+  },
+};
+
+const policy = narrowPolicy(
+  { permissions: [], tools: { allow: ['*'] }, secrets: [] },
+  { permissions: [], tools: { allow: ['render_video'] }, secrets: [], approvals: { require: ['render_video'] } }
+);
+
+const page = pagePolicy(
+  policy,
+  {
+    capabilities: ['video.render'],
+    attachments: [{ alias: 'video', agentOwned: { tools: ['render_video'] }, pageOwned: {} }],
+  },
+  registry
+);
+console.log(Object.keys(page.attachments.video.tools), page.warnings);
+```
+
+A workspace agent is read from its files and nothing in it is run. So a Studio agent that sets `mcpServers`, `guardrails`, `subagents`, `handoffs`, `triggers` or `flow`, and a folder agent with a `subagents/`, `schedules/` or `channels/` folder, are refused with `LOUSHO_AGENT_DIR_INVALID`, as hooks are. A memory slot's name is its file name.
+
 ## The execution contract
 
 Every engine implements one interface, so the main agent, the wire contract and the page UI do not care which type a page runs under. These are plain JSON types.

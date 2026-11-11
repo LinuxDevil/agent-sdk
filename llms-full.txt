@@ -9473,7 +9473,7 @@ Find a code by area:
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
 | [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
-| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved), [`LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING`](#lousho_workspace_main_harness_text_missing) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, resolving page agents with `resolveAttachments()`, and assembling prompts with `assembleMainInstructions()`. |
+| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved), [`LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING`](#lousho_workspace_main_harness_text_missing), [`LOUSHO_WORKSPACE_CAPABILITY_MISSING`](#lousho_workspace_capability_missing) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, resolving page agents with `resolveAttachments()`, assembling prompts with `assembleMainInstructions()`, and applying the policy at page start with `pagePolicy()`. |
 
 ## Configuration
 
@@ -10830,6 +10830,21 @@ silently lose that section, so the call throws.
 `instructions` in `main-harness.json`.
 
 **Example:** `instructions: ['routing.md']` with `texts: {}`.
+
+### LOUSHO_WORKSPACE_CAPABILITY_MISSING
+
+**Means:** `pagePolicy()` stopped a page at start (`capability-missing`): the
+harness's `capabilities.require` names a capability that no tool in the page's
+effective toolsets provides. A tool counts only when an attached agent has it,
+the host registry supplies it, the workspace policy and host ceiling allow
+it, and no ceiling or workspace rule denies it outright. A capability never
+grants a tool.
+
+**Fix:** give an attached agent a host tool that declares the capability and
+that the policy allows, or remove the capability from `capabilities.require`.
+
+**Example:** the harness requires `image.generate`, and the only tool that
+provides it is not in `shared/policies/policy.json` `tools.allow`.
 
 ## Auth
 
@@ -25066,6 +25081,53 @@ console.log(effective.tools.allow, effective.secrets, effective.network.allowHos
 ```
 
 The result keeps `search_facts`, `API_KEY` and `api.example.com`, and turns the sandbox on. `publish` and `OTHER_KEY` are not in the ceiling and are dropped.
+
+### How the runtime enforces the policy
+
+The runtime enforces the narrowed policy. No harness, `page.json` or `agents.json` key can widen it. The host injects its tools as a `HostToolRegistry`: each entry has a `descriptor`, the `secrets` it reads and the `capabilities` it provides. The runtime never imports a workspace `.ts` file, so **a tool file's name is its tool name**: `tools/search_facts.ts` maps to the host tool named `search_facts`. An agent tool with no host tool of that name is left out and reported as a load warning. A Studio `{ file }` tool ref is named by its file stem too, and other tool refs by the name the model sees (`builtin`, `registry`, ...), not their canvas `id`.
+
+Agent settings a workspace agent would silently drop are refused at load: on a Studio spec `mcpServers`, `guardrails`, `subagents`, `handoffs`, `triggers`, `flow`, `permissionMode`, `approvalTtlMs`, `codeMode`, `toolSearch`, `output` and `promptRef`; on a folder agent `permissionMode`, `projectInstructions` and the `subagents/`, `schedules/` and `channels/` folders.
+
+| What | Rule |
+| --- | --- |
+| Tools | `effectiveToolset(policy, attachment, agentTools, registry)` keeps `agentTools ∩ registry ∩ policy.tools.allow ∩ (attachment.tools.only ?? all)`. `tools.only` is a list of literal names and can only narrow |
+| Permissions | `effectivePermissions(policy, agentPerms)` checks the ceiling, workspace and agent lists first-match each and decides `deny > ask > none > allow`. Only an agent `allow` can allow. An agent `allow`, a name or a pattern such as `*`, that a policy `deny` or `ask` shadows is a load warning |
+| Secrets | A tool gets the secrets it declares that the policy also lists, and nothing else. A page has no secret store |
+| Network and sandbox | The policy's values. An agent's own `network.allowHosts` can only narrow them, and its `sandbox.required` can only turn sandboxing on |
+| Approvals | A tool in `approvals.require` asks for approval every time, in an agent run and in a workflow `toolCall` step, whatever an `allow` rule or the permission mode says. So does a Studio tool ref with `approval: 'always'`. A host tool's own `needsApproval` ask is kept the same way: an agent `allow` never lifts it. A deny still denies |
+| Capabilities | `pagePolicy()` fails page start with `LOUSHO_WORKSPACE_CAPABILITY_MISSING` (`capability-missing`) when `capabilities.require` names something no tool in the page's effective toolsets provides. A tool that a ceiling or workspace rule denies outright provides nothing. A capability never grants a tool |
+
+`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset.
+
+```ts
+import { narrowPolicy, pagePolicy, type HostToolRegistry } from 'lousho/workspaces';
+import { defineTool } from 'lousho';
+import { z } from 'zod';
+
+const registry: HostToolRegistry = {
+  render_video: {
+    descriptor: defineTool({ name: 'render_video', description: 'Render a video', input: z.object({ script: z.string() }), execute: () => 'video.mp4' }),
+    capabilities: ['video.render'],
+  },
+};
+
+const policy = narrowPolicy(
+  { permissions: [], tools: { allow: ['*'] }, secrets: [] },
+  { permissions: [], tools: { allow: ['render_video'] }, secrets: [], approvals: { require: ['render_video'] } }
+);
+
+const page = pagePolicy(
+  policy,
+  {
+    capabilities: ['video.render'],
+    attachments: [{ alias: 'video', agentOwned: { tools: ['render_video'] }, pageOwned: {} }],
+  },
+  registry
+);
+console.log(Object.keys(page.attachments.video.tools), page.warnings);
+```
+
+A workspace agent is read from its files and nothing in it is run. So a Studio agent that sets `mcpServers`, `guardrails`, `subagents`, `handoffs`, `triggers` or `flow`, and a folder agent with a `subagents/`, `schedules/` or `channels/` folder, are refused with `LOUSHO_AGENT_DIR_INVALID`, as hooks are. A memory slot's name is its file name.
 
 ## The execution contract
 

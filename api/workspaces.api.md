@@ -4,6 +4,7 @@
 
 ```ts
 
+import { Tool } from 'ai';
 import { z } from 'zod';
 
 // @public
@@ -48,6 +49,7 @@ interface AgentFingerprint {
 
 // @public
 export interface AgentOwned {
+    approvals?: string[];
     defaultModel?: string;
     description?: string;
     instructions?: string;
@@ -63,6 +65,27 @@ export interface AgentOwned {
 
 // @public
 type AgentPermission = Omit<PermissionRuleSpec, 'id'>;
+
+// @public
+export interface AgentPolicyOptions {
+    network: {
+        allowHosts: string[];
+    };
+    permissions: PermissionRule[];
+    sandbox: {
+        required: boolean;
+    };
+    secrets: Record<string, SecretRef[]>;
+    toolRegistry: ToolRegistry;
+    tools: Record<string, ToolDescriptor>;
+    warnings: string[];
+}
+
+// @public
+export function agentPolicyOptions(policy: EffectivePolicy, input: {
+    attachment?: Pick<Attachment, 'tools'>;
+    agent: PolicyAgent;
+}, registry: HostToolRegistry): AgentPolicyOptions;
 
 // @public
 export type AgentRef = {
@@ -102,7 +125,29 @@ export interface ApplyOpsResult {
 }
 
 // @public
+interface ApprovalCheckContext {
+    messages: readonly Message[];
+    principal?: Readonly<Principal>;
+    // (undocumented)
+    sessionId?: string;
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
+}
+
+// @public
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
+
+// @public
+type ApprovalOutcome = boolean | 'approve' | 'deny' | 'ask' | {
+    deny: string;
+};
+
+// @public
+type ApprovalPredicate = {
+    check(args: unknown, ctx: ApprovalCheckContext): ApprovalOutcome | Promise<ApprovalOutcome>;
+}['check'];
 
 // @public
 export type ArtifactData = string | Uint8Array | AsyncIterable<Uint8Array>;
@@ -450,6 +495,9 @@ interface CreateWorkspaceOp {
 export function createWorkspaceStores(backend: HostBackend, scope: WorkspaceScope): WorkspaceStores;
 
 // @public
+type CredentialOwner = 'app' | 'user';
+
+// @public
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
 
 // @public
@@ -462,6 +510,23 @@ export interface DbSourceOptions {
 export interface DbWorkspaceSource extends WorkspaceSource {
     close(): Promise<void>;
     write(changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta>;
+}
+
+// @public
+interface DefinedTool<S extends StandardSchemaV1 = StandardSchemaV1, O = unknown, X = O> extends ToolDescriptor {
+    // (undocumented)
+    readonly description: string;
+    // (undocumented)
+    execute(args: InferSchemaOutput<S>, ctx: ToolExecutionContext): Promise<X>;
+    // (undocumented)
+    readonly input: S;
+    readonly inputSchema: S;
+    // (undocumented)
+    readonly name: string;
+    readonly _types?: {
+        input: InferSchemaOutput<S>;
+        output: O;
+    };
 }
 
 // @public
@@ -529,6 +594,15 @@ export interface EffectiveHarness {
 }
 
 // @public
+export interface EffectivePermissions {
+    rules: PermissionRule[];
+    warnings: string[];
+}
+
+// @public
+export function effectivePermissions(policy: EffectivePolicy, agentPerms: readonly AgentPermission[] | undefined): EffectivePermissions;
+
+// @public
 export interface EffectivePolicy {
     approvals: {
         require: string[];
@@ -548,6 +622,23 @@ export interface EffectivePolicy {
         allow: string[];
     };
 }
+
+// @public
+export interface EffectiveTool {
+    capabilities: readonly string[];
+    descriptor: ToolDescriptor;
+    name: string;
+    secrets: SecretRef[];
+}
+
+// @public
+export interface EffectiveToolset {
+    missing: string[];
+    tools: EffectiveTool[];
+}
+
+// @public
+export function effectiveToolset(policy: EffectivePolicy, attachment: Pick<Attachment, 'tools'> | undefined, agentTools: readonly string[], registry: HostToolRegistry): EffectiveToolset;
 
 // @public
 const ERROR_CODES: {
@@ -670,6 +761,7 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
     readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
     readonly LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: "Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.";
+    readonly LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.";
 };
 
 // @public
@@ -859,6 +951,31 @@ export interface HostBackend {
 }
 
 // @public
+interface HostedTool {
+    readonly aiSdkTool?: unknown;
+    // (undocumented)
+    readonly kind: 'hosted-tool';
+    readonly name: string;
+    // (undocumented)
+    readonly options: Record<string, unknown>;
+    // (undocumented)
+    readonly type: HostedToolType | 'custom';
+}
+
+// @public
+type HostedToolType = 'web_search' | 'code_interpreter' | 'file_search';
+
+// @public
+export interface HostTool {
+    capabilities?: readonly string[];
+    descriptor: ToolDescriptor;
+    secrets?: readonly SecretRef[];
+}
+
+// @public
+export type HostToolRegistry = Readonly<Record<string, HostTool>>;
+
+// @public
 interface ImageContentPart {
     // (undocumented)
     image: string | Uint8Array;
@@ -867,6 +984,9 @@ interface ImageContentPart {
     // (undocumented)
     type: 'image';
 }
+
+// @public
+type InferSchemaOutput<S extends StandardSchemaV1> = NonNullable<S['~standard']['types']>['output'];
 
 // @public
 export const INHERITANCE_RULES: readonly InheritanceRule[];
@@ -975,6 +1095,18 @@ export interface MainPageInfo {
 }
 
 // @public
+interface McpToolAnnotations {
+    destructiveHint?: boolean;
+    // (undocumented)
+    idempotentHint?: boolean;
+    // (undocumented)
+    openWorldHint?: boolean;
+    readOnlyHint?: boolean;
+    // (undocumented)
+    title?: string;
+}
+
+// @public
 export function memoryArtifactStore(options?: ArtifactStoreOptions): ArtifactStore;
 
 // @public
@@ -1074,7 +1206,59 @@ interface ModelUsage {
 }
 
 // @public
+type NamedToolDescriptor = ToolDescriptor & {
+    readonly name: string;
+};
+
+// @public
 export function narrowPolicy(ceiling: PolicyCeiling, workspace: WorkspacePolicy): EffectivePolicy;
+
+// @public
+type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
+
+// @public
+interface OAuthProvider extends Readonly<Omit<OAuthProviderOptions, 'displayName' | 'credentialOwner' | 'clientAuth' | 'scopes'>> {
+    // (undocumented)
+    readonly clientAuth: OAuthClientAuth;
+    // (undocumented)
+    readonly credentialOwner: CredentialOwner;
+    // (undocumented)
+    readonly displayName: string;
+    // (undocumented)
+    readonly kind: 'oauth-provider';
+    // (undocumented)
+    readonly scopes: readonly string[];
+}
+
+// @public
+interface OAuthProviderOptions {
+    authorizationParams?: Record<string, string>;
+    authorizationUrl: string;
+    clientAuth?: OAuthClientAuth;
+    // (undocumented)
+    clientId: string;
+    clientSecret?: string;
+    credentialOwner?: CredentialOwner;
+    displayName?: string;
+    fetch?: typeof fetch;
+    name: string;
+    redirectUri: string;
+    // (undocumented)
+    scopes?: readonly string[];
+    tokenUrl: string;
+}
+
+// @public
+interface OAuthToken {
+    // (undocumented)
+    accessToken: string;
+    expiresAt?: number;
+    // (undocumented)
+    refreshToken?: string;
+    // (undocumented)
+    scope?: string;
+    tokenType?: string;
+}
 
 // @public
 export function opFiles(operation: AuthoringOp, tree: WorkspaceTree): string[];
@@ -1219,6 +1403,18 @@ export interface PageModelInputs {
 export type PageModelSource = 'attachment' | 'page' | 'agent' | 'workspace' | 'none';
 
 // @public
+export interface PagePolicy {
+    attachments: Record<string, AgentPolicyOptions>;
+    warnings: string[];
+}
+
+// @public
+export function pagePolicy(policy: EffectivePolicy, page: {
+    capabilities?: readonly string[];
+    attachments: readonly PolicyAttachment[];
+}, registry: HostToolRegistry): PagePolicy;
+
+// @public
 export interface PageProgressEvent {
     fraction?: number;
     message: string;
@@ -1321,6 +1517,31 @@ export type ParseAgentRefResult = {
 export function parseArtifactUri(uri: string): ArtifactUriParts | undefined;
 
 // @public
+type PermissionAction = 'allow' | 'deny' | 'ask';
+
+// @public
+interface PermissionContext {
+    principal?: Readonly<Principal>;
+    // (undocumented)
+    sessionId?: string;
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
+}
+
+// @public
+interface PermissionRule {
+    // (undocumented)
+    action: PermissionAction;
+    reason?: string;
+    // (undocumented)
+    tool: PermissionToolMatcher;
+    ttlMs?: number;
+    when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
+}
+
+// @public
 interface PermissionRuleSpec {
     action: 'allow' | 'deny' | 'ask' | 'auto';
     id: string;
@@ -1329,6 +1550,9 @@ interface PermissionRuleSpec {
     ttlMs?: number;
     when?: Record<string, string | WhenArgMatcher>;
 }
+
+// @public
+type PermissionToolMatcher = string | readonly string[] | RegExp;
 
 // @public
 export interface PgPool extends PgQueryable {
@@ -1347,6 +1571,26 @@ export interface PgQueryable {
         rows: Array<Record<string, unknown>>;
         rowCount: number | null;
     }>;
+}
+
+// @public
+export interface PolicyAgent {
+    approvals?: readonly string[];
+    network?: {
+        allowHosts: readonly string[];
+    };
+    permissions?: readonly AgentPermission[];
+    sandbox?: {
+        required: boolean;
+    };
+    tools: readonly string[];
+}
+
+// @public
+export interface PolicyAttachment {
+    agentOwned: PolicyAgent;
+    alias: string;
+    pageOwned: Pick<Attachment, 'tools'>;
 }
 
 // @public
@@ -1573,6 +1817,49 @@ interface RunUsage {
     reasoningTokens?: number;
     // (undocumented)
     totalTokens: number;
+}
+
+// @public
+interface SandboxAdapter {
+    readonly name: string;
+    run(cmd: string, args: string[], opts?: SandboxRunOptions): Promise<SandboxResult>;
+    writeFile(path: string, content: string): Promise<void>;
+}
+
+// @public
+interface SandboxCallOptions {
+    args?: unknown[];
+}
+
+// @public
+interface SandboxDriver {
+    readonly name?: string;
+    run(code: string, opts?: SandboxCallOptions): Promise<unknown>;
+}
+
+// @public
+type SandboxDriverName = 'isolate' | 'docker' | 'e2b';
+
+// @public
+type SandboxDriverRef = SandboxDriverName | SandboxDriver;
+
+// @public
+interface SandboxResult {
+    // (undocumented)
+    exitCode: number;
+    // (undocumented)
+    stderr: string;
+    // (undocumented)
+    stdout: string;
+}
+
+// @public
+interface SandboxRunOptions {
+    cwd?: string;
+    env?: Record<string, string>;
+    inheritEnv?: boolean;
+    signal?: AbortSignal;
+    timeoutMs?: number;
 }
 
 // @public
@@ -1865,6 +2152,9 @@ interface TextContentPart {
 }
 
 // @public
+type ToolArrayEntry = DefinedTool | NamedToolDescriptor | HostedTool | Record<string, ToolDescriptor | HostedTool>;
+
+// @public
 interface ToolCall {
     // (undocumented)
     function: {
@@ -1876,6 +2166,76 @@ interface ToolCall {
     // (undocumented)
     type: 'function';
 }
+
+// @public (undocumented)
+interface ToolDescriptor {
+    deferLoading?: boolean;
+    // (undocumented)
+    displayName: string;
+    execute?(args: unknown, ctx: ToolExecutionContext): unknown;
+    inputSchema?: StandardSchemaV1;
+    metadata?: ToolMetadata;
+    // (undocumented)
+    needsApproval?: boolean | ApprovalPredicate;
+    requiresSandbox?: boolean;
+    sandbox?: ToolSandboxOptions;
+    sandboxExecute?: (args: unknown, sandbox: SandboxAdapter, ctx?: ToolExecutionContext) => Promise<unknown>;
+    tool: Tool;
+    transient?: boolean;
+}
+
+// @public
+interface ToolExecutionContext {
+    abortSignal?: AbortSignal;
+    approval?: {
+        id?: string;
+        note?: string;
+        by?: Readonly<Principal>;
+    };
+    getToken(provider: OAuthProvider): Promise<OAuthToken>;
+    messages: readonly Message[];
+    onDelegatedUsage?: (usage: RunUsage, toolErrors?: number) => void;
+    principal?: Readonly<Principal>;
+    requireAuth(provider: OAuthProvider): never;
+    sessionId?: string;
+    toolCallId: string;
+}
+
+// @public
+interface ToolMetadata {
+    editsFiles?: boolean;
+    // (undocumented)
+    mcp?: {
+        annotations?: McpToolAnnotations;
+        server?: string;
+        tool?: string;
+        annotationsTrusted?: boolean;
+    };
+}
+
+// @public
+class ToolRegistry {
+    clear(): void;
+    get(name: string): ToolDescriptor | undefined;
+    getAll(): Record<string, ToolDescriptor>;
+    has(name: string): boolean;
+    list(): string[];
+    register(tool: DefinedTool): void;
+    register(name: string, descriptor: ToolDescriptor): void;
+    registerMany(tools: ToolsOption): void;
+    size(): number;
+    unregister(name: string): boolean;
+}
+
+// @public
+interface ToolSandboxOptions {
+    driver?: SandboxDriverRef;
+    memoryMb?: number;
+    timeoutMs?: number;
+}
+
+// @public
+type ToolsOption = ReadonlyArray<ToolArrayEntry> | Record<string, ToolDescriptor | HostedTool>;
 
 // @public
 export const UI_COMPONENTS: {
