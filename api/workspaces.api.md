@@ -582,6 +582,16 @@ export interface PageStepLabels {
 }
 
 // @public
+export interface PageUi {
+    layout: UiComponent;
+    schema: 'lousho.ui/1';
+    title?: string;
+}
+
+// @public
+export const pageUiSchema: z.ZodType<PageUi>;
+
+// @public
 export interface PageUsage {
     costPartial?: boolean;
     costUsd?: number;
@@ -735,6 +745,123 @@ export const STEP_KINDS: readonly StepKind[];
 
 // @public
 export type StepKind = 'single' | 'workflow-step' | 'delegate' | 'goal-iteration';
+
+// @public
+export const UI_COMPONENTS: {
+    readonly layout: readonly ["stack", "row", "tabs", "section", "card"];
+    readonly inputs: readonly ["text", "textarea", "number", "select", "radio", "toggle", "slider", "file", "schemaForm"];
+    readonly actions: readonly ["runButton", "cancelButton", "reviseBox"];
+    readonly outputs: readonly ["text", "markdown", "json", "table", "artifact", "artifactGallery"];
+    readonly status: readonly ["runStatus", "progress", "traceLink"];
+    readonly revisions: readonly ["versionList", "compare"];
+};
+
+// @public
+export interface UiArtifactView extends UiComponentBase {
+    artifact: string;
+    type: 'artifact';
+}
+
+// @public
+export type UiBindingTarget = Pick<Harness, 'inputs' | 'outputs'>;
+
+// @public
+export interface UiChoiceField extends UiComponentBase {
+    bind: string;
+    options?: UiOption[];
+    type: 'select' | 'radio';
+}
+
+// @public
+export type UiComponent = UiContainer | UiTabs | UiText | UiInputField | UiNumberField | UiChoiceField | UiFileField | UiOutputField | UiArtifactView | UiRunWidget;
+
+// @public
+export interface UiComponentBase {
+    label?: string;
+    visibleWhen?: string;
+}
+
+// @public
+export type UiComponentType = (typeof UI_COMPONENTS)[keyof typeof UI_COMPONENTS][number];
+
+// @public
+export interface UiContainer extends UiComponentBase {
+    children: UiComponent[];
+    type: 'stack' | 'row' | 'section' | 'card';
+}
+
+// @public
+export interface UiFileField extends UiComponentBase {
+    accept?: string[];
+    bind: string;
+    type: 'file';
+}
+
+// @public
+export interface UiInputField extends UiComponentBase {
+    bind: string;
+    placeholder?: string;
+    type: 'textarea' | 'toggle' | 'schemaForm';
+}
+
+// @public
+export interface UiNumberField extends UiComponentBase {
+    bind: string;
+    max?: number;
+    min?: number;
+    step?: number;
+    type: 'number' | 'slider';
+}
+
+// @public
+export interface UiOption {
+    label?: string;
+    value: string | number | boolean;
+}
+
+// @public
+export interface UiOutputField extends UiComponentBase {
+    source: string;
+    type: 'markdown' | 'json' | 'table';
+}
+
+// @public
+export interface UiProblem {
+    code: UiProblemCode;
+    message: string;
+    path: (string | number)[];
+}
+
+// @public
+export type UiProblemCode = 'UI001' | 'UI002' | 'UI003' | 'UI004' | 'UI005' | 'UI006' | 'UI007' | 'UI008';
+
+// @public
+export interface UiRunWidget extends UiComponentBase {
+    type: 'runButton' | 'cancelButton' | 'reviseBox' | 'artifactGallery' | 'runStatus' | 'progress' | 'traceLink' | 'versionList' | 'compare';
+}
+
+// @public
+export interface UiTab {
+    children: UiComponent[];
+    label: string;
+}
+
+// @public
+export interface UiTabs extends UiComponentBase {
+    tabs: UiTab[];
+    type: 'tabs';
+}
+
+// @public
+export interface UiText extends UiComponentBase {
+    bind?: string;
+    placeholder?: string;
+    source?: string;
+    type: 'text';
+}
+
+// @public
+export function validateUiBindings(ui: PageUi, harness: UiBindingTarget): UiProblem[];
 
 // @public
 interface WhenArgMatcher {
