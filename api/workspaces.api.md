@@ -949,7 +949,7 @@ export interface PgPool extends PgQueryable {
 
 // @public
 export interface PgPoolClient extends PgQueryable {
-    release(): void;
+    release(error?: Error | boolean): void;
 }
 
 // @public
@@ -1217,10 +1217,34 @@ export interface SourceWriteOptions {
 }
 
 // @public
+export interface SqlClient extends SqlStatements {
+    close(): Promise<void>;
+    transaction<T>(work: (tx: SqlStatements) => Promise<T>): Promise<T>;
+}
+
+// @public
 export function sqliteHostBackend(path: string): Promise<HostBackend>;
 
 // @public
-export function sqliteWorkspaceSource(path: string, options?: DbSourceOptions): Promise<DbWorkspaceSource>;
+export function sqliteSqlClient(path: string): SqlClient;
+
+// @public
+export function sqliteWorkspaceSource(db: string | SqlClient, options?: DbSourceOptions): Promise<DbWorkspaceSource>;
+
+// @public (undocumented)
+type SqlParam = SqlValue;
+
+// @public
+type SqlRow = Record<string, unknown>;
+
+// @public
+export interface SqlStatements {
+    execute(sql: string, params?: readonly SqlParam[]): Promise<number>;
+    query(sql: string, params?: readonly SqlParam[]): Promise<SqlRow[]>;
+}
+
+// @public
+type SqlValue = string | number | Uint8Array | null;
 
 // @public
 export interface StartRun {
