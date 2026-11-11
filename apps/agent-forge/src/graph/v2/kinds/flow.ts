@@ -185,6 +185,59 @@ function isSelfOrAncestor(graph: Graph, ancestorId: string, nodeId: string): boo
  * 4. root is a sequence → append to the root;
  * 5. otherwise → wrap root + new node in a new sequence root.
  */
+/** Rules 2–3: attach next to the selected flow step, or `undefined` when no rule applies. */
+function attachNearSelected(graph: Graph, selected: GraphNode, newNodeId: string): Graph | undefined {
+  if (selected.kind !== 'flow') return undefined;
+  const children = effectiveChildren(selected.data as FlowNodeData);
+  // Rule 2: the selected node is a container.
+  if (children.shape === 'steps') return appendStep(graph, selected.id, newNodeId);
+  if (children.shape === 'options') return appendOption(graph, selected.id, newNodeId);
+  if (children.shape === 'step' && children.id === null) return setLoopStep(graph, selected.id, newNodeId);
+  // Rule 3: insert right after the selected step inside its sequence parent.
+  const parentId = flowParent(graph, selected.id);
+  if (parentId === undefined) return undefined;
+  const parent = nodeOf(graph, parentId);
+  const parentChildren = parent?.kind === 'flow' ? (parent.data as FlowNodeData).children : undefined;
+  if (parentChildren?.shape === 'steps') return insertAfter(graph, parentId, selected.id, newNodeId);
+  return undefined;
+}
+
+/** Rules 4–5: append to a sequence root, else wrap root + new step in a new sequence root. */
+function attachToRoot(graph: Graph, root: NodeOfKind<'flow'>, newNodeId: string): Graph {
+  const rootData = root.data as FlowNodeData;
+  // Rule 4: the root is a sequence — append there.
+  if (rootData.step.type === 'sequence' && rootData.children.shape === 'steps') {
+    return appendStep(graph, root.id, newNodeId);
+  }
+  // Rule 5: wrap the old root and the new step in a new sequence root.
+  const wrapperId = nextStepId(graph);
+  const taken = new Set(graph.nodes.map((n) => n.id));
+  const wrapperNodeId = dedupeId(`flow:${wrapperId}`, taken);
+  const wrapperData: FlowNodeData = {
+    step: { type: 'sequence', id: wrapperId },
+    children: { shape: 'steps', ids: [root.id, newNodeId] },
+  };
+  if (rootData.flowMeta !== undefined) wrapperData.flowMeta = rootData.flowMeta;
+  const wrapper: GraphNode = {
+    id: wrapperNodeId,
+    kind: 'flow',
+    owner: ROOT_AGENT_ID,
+    position: { ...root.position },
+    data: wrapperData,
+  };
+  const stripped = { ...rootData };
+  delete stripped.flowMeta;
+  return {
+    ...graph,
+    nodes: [
+      ...graph.nodes.map((n) =>
+        n.id === root.id && n.kind === 'flow' ? { ...n, data: stripped } : n
+      ),
+      wrapper,
+    ],
+  };
+}
+
 export function attachNewStep(graph: Graph, newNodeId: string, selectedNodeId?: string): Graph {
   const newNode = nodeOf(graph, newNodeId);
   if (newNode === undefined || newNode.kind !== 'flow') return graph;
@@ -199,55 +252,9 @@ export function attachNewStep(graph: Graph, newNodeId: string, selectedNodeId?: 
     const flowMeta = { code: flowCode(name), name } as FlowNodeData['flowMeta'];
     return withNodeData(graph, newNodeId, { ...(newNode.data as FlowNodeData), flowMeta });
   }
-  const selected =
-    selectedNodeId === undefined ? undefined : nodeOf(graph, selectedNodeId);
-  if (selected !== undefined && selected.kind === 'flow') {
-    const children = effectiveChildren(selected.data as FlowNodeData);
-    // Rule 2: the selected node is a container.
-    if (children.shape === 'steps') return appendStep(graph, selected.id, newNodeId);
-    if (children.shape === 'options') return appendOption(graph, selected.id, newNodeId);
-    if (children.shape === 'step' && children.id === null) return setLoopStep(graph, selected.id, newNodeId);
-    // Rule 3: insert right after the selected step inside its sequence parent.
-    const parentId = flowParent(graph, selected.id);
-    if (parentId !== undefined) {
-      const parent = nodeOf(graph, parentId);
-      const parentChildren = parent?.kind === 'flow' ? (parent.data as FlowNodeData).children : undefined;
-      if (parentChildren?.shape === 'steps') return insertAfter(graph, parentId, selected.id, newNodeId);
-    }
-  }
-  const rootChildren = (root.data as FlowNodeData).children;
-  // Rule 4: the root is a sequence — append there.
-  if ((root.data as FlowNodeData).step.type === 'sequence' && rootChildren.shape === 'steps') {
-    return appendStep(graph, root.id, newNodeId);
-  }
-  // Rule 5: wrap the old root and the new step in a new sequence root.
-  const wrapperId = nextStepId(graph);
-  const taken = new Set(graph.nodes.map((n) => n.id));
-  const wrapperNodeId = dedupeId(`flow:${wrapperId}`, taken);
-  const wrapperData: FlowNodeData = {
-    step: { type: 'sequence', id: wrapperId },
-    children: { shape: 'steps', ids: [root.id, newNodeId] },
-  };
-  const rootFlowMeta = (root.data as FlowNodeData).flowMeta;
-  if (rootFlowMeta !== undefined) wrapperData.flowMeta = rootFlowMeta;
-  const wrapper: GraphNode = {
-    id: wrapperNodeId,
-    kind: 'flow',
-    owner: ROOT_AGENT_ID,
-    position: { ...root.position },
-    data: wrapperData,
-  };
-  const rootData = { ...(root.data as FlowNodeData) };
-  delete rootData.flowMeta;
-  return {
-    ...graph,
-    nodes: [
-      ...graph.nodes.map((n) =>
-        n.id === root.id && n.kind === 'flow' ? { ...n, data: rootData } : n
-      ),
-      wrapper,
-    ],
-  };
+  const selected = selectedNodeId === undefined ? undefined : nodeOf(graph, selectedNodeId);
+  const near = selected === undefined ? undefined : attachNearSelected(graph, selected, newNodeId);
+  return near ?? attachToRoot(graph, root, newNodeId);
 }
 
 /**
@@ -320,53 +327,111 @@ function rootToolNames(graph: Graph): Set<string> {
   return names;
 }
 
+/** One problem, or none — the shape every per-type check returns. */
+function maybeProblem(
+  node: NodeOfKind<'flow'>,
+  graph: Graph,
+  severity: Problem['severity'],
+  message: string,
+  field?: string,
+  applies = true
+): Problem[] {
+  return applies ? [flowProblem(node, graph, severity, message, field)] : [];
+}
+
+function containerProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
+  const children = node.data.children;
+  const count = children.shape === 'steps' ? children.ids.length : 0;
+  return maybeProblem(node, graph, 'warning', 'This step has nothing inside', undefined, count === 0);
+}
+
+function routerProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
+  const children = node.data.children;
+  const options = children.shape === 'options' ? children.options : [];
+  if (options.length < 2) {
+    return [flowProblem(node, graph, 'error', 'A router needs at least two branches')];
+  }
+  const defaults = options.filter((o) => o.condition === undefined).length;
+  return maybeProblem(node, graph, 'error', 'A router can have only one default branch', 'options', defaults > 1);
+}
+
+function loopProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
+  const children = node.data.children;
+  return maybeProblem(
+    node,
+    graph,
+    'warning',
+    'This loop has no step to run',
+    'step',
+    children.shape !== 'step' || children.id === null
+  );
+}
+
+function llmCallProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
+  return maybeProblem(node, graph, 'error', 'Write the prompt for this model call', 'prompt', blank(node.data.step.prompt));
+}
+
+function toolCallProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
+  const tool = node.data.step.tool;
+  if (blank(tool)) return [flowProblem(node, graph, 'error', 'Pick the tool to call', 'tool')];
+  return maybeProblem(
+    node,
+    graph,
+    'warning',
+    `The agent has no tool named '${String(tool)}'`,
+    'tool',
+    !rootToolNames(graph).has(String(tool))
+  );
+}
+
+function variableProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
+  const value = node.data.step.variable;
+  return maybeProblem(
+    node,
+    graph,
+    'error',
+    'Use a variable name like order_id',
+    'variable',
+    blank(value) || !VARIABLE_PATTERN.test(String(value))
+  );
+}
+
+function agentStepProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
+  return maybeProblem(node, graph, 'error', 'Pick the agent to run', 'agent', blank(node.data.step.agent));
+}
+
+function approvalProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
+  return maybeProblem(node, graph, 'error', 'Write what the person approves', 'message', blank(node.data.step.message));
+}
+
+/** The type-specific checks; types without a row produce no problems. */
+const TYPE_PROBLEMS: Record<string, (node: NodeOfKind<'flow'>, graph: Graph) => Problem[]> = {
+  sequence: containerProblems,
+  parallel: containerProblems,
+  oneOf: routerProblems,
+  forEach: loopProblems,
+  llmCall: llmCallProblems,
+  toolCall: toolCallProblems,
+  setVariable: variableProblems,
+  agent: agentStepProblems,
+  approval: approvalProblems,
+};
+
 /** The type-specific rows of `flowRules.validate`; each returns its problems. */
 function typeProblems(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
-  const { step, children } = node.data;
+  const step = node.data.step;
   const type = String(step.type);
-  const problems: Problem[] = [];
-  const error = (message: string, field?: string) => problems.push(flowProblem(node, graph, 'error', message, field));
-  const warning = (message: string, field?: string) => problems.push(flowProblem(node, graph, 'warning', message, field));
   if (!RUNNABLE_TYPES.has(type)) {
-    error('This step type cannot run', 'type');
-    return problems;
+    return [flowProblem(node, graph, 'error', 'This step type cannot run', 'type')];
   }
-  if (type === 'sequence' || type === 'parallel') {
-    const count = children.shape === 'steps' ? children.ids.length : 0;
-    if (count === 0) warning('This step has nothing inside');
-  } else if (type === 'oneOf') {
-    const options = children.shape === 'options' ? children.options : [];
-    if (options.length < 2) {
-      error('A router needs at least two branches');
-    } else if (options.filter((o) => o.condition === undefined).length > 1) {
-      error('A router can have only one default branch', 'options');
-    }
-  } else if (type === 'forEach') {
-    if (children.shape !== 'step' || children.id === null) warning('This loop has no step to run', 'step');
-  } else if (type === 'llmCall') {
-    if (blank(step.prompt)) error('Write the prompt for this model call', 'prompt');
-  } else if (type === 'toolCall') {
-    if (blank(step.tool)) {
-      error('Pick the tool to call', 'tool');
-    } else if (!rootToolNames(graph).has(String(step.tool))) {
-      warning(`The agent has no tool named '${String(step.tool)}'`, 'tool');
-    }
-  } else if (type === 'setVariable') {
-    if (blank(step.variable) || !VARIABLE_PATTERN.test(String(step.variable))) {
-      error('Use a variable name like order_id', 'variable');
-    }
-  } else if (type === 'agent') {
-    if (blank(step.agent)) error('Pick the agent to run', 'agent');
-  } else if (type === 'approval') {
-    if (blank(step.message)) error('Write what the person approves', 'message');
-  }
+  const problems = TYPE_PROBLEMS[type]?.(node, graph) ?? [];
   const outputVariable = step.outputVariable;
   if (
     typeof outputVariable === 'string' &&
     outputVariable !== '' &&
     !VARIABLE_PATTERN.test(outputVariable)
   ) {
-    error('Use a variable name like order_id', 'outputVariable');
+    problems.push(flowProblem(node, graph, 'error', 'Use a variable name like order_id', 'outputVariable'));
   }
   return problems;
 }

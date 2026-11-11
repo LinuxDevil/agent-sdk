@@ -233,7 +233,7 @@ function arbFlowStep(rng: Rng, depth: number, nextId: () => string): Record<stri
  * `description`/`inputs`/`agents` — the shape `addFlowNodes` must turn
  * into a lossless node tree.
  */
-export function arbFlow(rng: Rng): Record<string, unknown> {
+function arbFlow(rng: Rng): Record<string, unknown> {
   let n = 0;
   const nextId = () => `s${(n += 1)}`;
   const flow: Record<string, unknown> = {

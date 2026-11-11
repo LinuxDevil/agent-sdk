@@ -134,19 +134,21 @@ export function sectionChildren(graph: Graph, ownerId: string, key: SectionKey):
  * under one. `specToGraph` pushes nodes in exactly this order, which is
  * what makes `graphToSpec`'s index-zip `nodeIdMap` correct.
  */
+/** Flow nodes form a tree, not a section list: emit them pre-order from the flow root for the root agent (orphans are excluded, like `proposed: 'remove'`). */
+function emitFlowTree(graph: Graph, ownerId: string, result: GraphNode[]): void {
+  if (ownerId !== ROOT_AGENT_ID) return;
+  for (const node of flowTree(graph)) {
+    if (node.owner === ownerId) result.push(node);
+  }
+}
+
 export function orderedNodes(graph: Graph): GraphNode[] {
   const result: GraphNode[] = [];
   const emit = (ownerId: string) => {
     for (const key of SECTION_ORDER) {
       if (!HANDLED_SECTIONS.has(key)) continue;
-      // Flow nodes form a tree, not a section list: emit them pre-order from
-      // the flow root (orphans are excluded, like `proposed: 'remove'`).
       if (key === 'flow') {
-        if (ownerId === ROOT_AGENT_ID) {
-          for (const node of flowTree(graph)) {
-            if (node.owner === ownerId) result.push(node);
-          }
-        }
+        emitFlowTree(graph, ownerId, result);
         continue;
       }
       for (const child of sectionChildren(graph, ownerId, key)) {
