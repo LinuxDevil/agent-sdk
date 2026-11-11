@@ -3,60 +3,11 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { isZod4Schema } from '../src/utils/zodCompat';
 import { workspaceManifestObjectSchema } from '../src/workspaces/contracts/workspace';
-import { jsonSchemaToStandardSchema } from '../src/spec/v2/jsonSchemaAdapter';
 import { MARKETING_BUILD_OPS } from '../src/workspaces/contracts/__fixtures__/authoringOps';
 import { readFixtureTree, readNegativeIndex, readNegativeTree } from '../src/workspaces/__fixtures__/readTree';
-import { renderWorkspaceSchemas, workspaceJsonSchemas } from './workspacesSchema';
+import { NOT_EXPRESSIBLE, renderWorkspaceSchemas, schemaFileOf, validatorFor, workspaceJsonSchemas } from './workspacesSchema';
 
 const SCHEMAS_DIR = path.resolve(__dirname, '..', 'schemas');
-
-const ROUTES: [RegExp, string][] = [
-  [/^workspace\.json$/, 'lousho.workspace.v1.json'],
-  [/^harness\/harness\.json$/, 'lousho.harness.v1.json'],
-  [/^harness-profiles\/.+\/harness\.json$/, 'lousho.harness.v1.json'],
-  [/^pages\/[^/]+\/harness\/harness\.json$/, 'lousho.harness.v1.json'],
-  [/^pages\/[^/]+\/page\.json$/, 'lousho.page.v1.json'],
-  [/^pages\/[^/]+\/agents\.json$/, 'lousho.agents.v1.json'],
-  [/^pages\/[^/]+\/ui\/page\.ui\.json$/, 'lousho.ui.v1.json'],
-  [/^main-agent\/harness\/main-harness\.json$/, 'lousho.main-harness.v1.json'],
-  [/^shared\/policies\/policy\.json$/, 'lousho.policy.v1.json'],
-];
-
-const NOT_EXPRESSIBLE = [
-  'harness-duplicate-constraint-id',
-  'base-harness-has-extends',
-  'attachment-duplicate-alias',
-  'attachment-ref-no-prefix',
-  'page-nested-pages',
-];
-
-const REF = /^#\/definitions\/(.+)$/;
-
-function unroll(node: unknown, definitions: Record<string, unknown>, depth: number): unknown {
-  if (Array.isArray(node)) return node.map((item) => unroll(item, definitions, depth));
-  if (typeof node !== 'object' || node === null) return node;
-  const target = REF.exec(String((node as { $ref?: unknown }).$ref ?? ''))?.[1];
-  if (target !== undefined) return depth === 0 ? {} : unroll(definitions[target], definitions, depth - 1);
-  return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, unroll(value, definitions, depth)]));
-}
-
-function unrolled(schema: Record<string, unknown>): Record<string, unknown> {
-  const { definitions, ...rest } = schema;
-  return unroll(rest, (definitions ?? {}) as Record<string, unknown>, 6) as Record<string, unknown>;
-}
-
-function validatorFor(file: string): (value: unknown) => boolean {
-  const schema = unrolled(workspaceJsonSchemas()[file]);
-  const standard = jsonSchemaToStandardSchema(schema)['~standard'];
-  return (value) => {
-    const result = standard.validate(value) as { issues?: unknown };
-    return result.issues === undefined;
-  };
-}
-
-function schemaFileOf(filePath: string): string | undefined {
-  return ROUTES.find(([pattern]) => pattern.test(filePath))?.[1];
-}
 
 describe('exported workspace JSON Schemas', () => {
   it.skipIf(isZod4Schema(workspaceManifestObjectSchema))('are current: schemas/ holds exactly what npm run workspaces:schema writes', () => {

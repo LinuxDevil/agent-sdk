@@ -184,3 +184,7 @@ export const MARKETING_BUILD_OPS: readonly AuthoringOp[] = [
   { op: 'set_main_harness_field', field: 'onPageFailure', value: 'ask' },
   { op: 'write_harness_prose', target: { kind: 'main' }, file: 'routing.md', text: 'Route to the page that matches the channel.' },
 ];
+
+export const NOT_WRITABLE: readonly RegExp[] = [/^shared\/(brand|policies)\//, /^harness-profiles\//, /^workflows\//, /\/tools\/[^/]+\.ts$/, /\/checks\/[^/]+\.ts$/, /\/resources\/[^/]+\.md$/];
+
+export const normal = (value: unknown): unknown => (typeof value === 'string' ? value.trimEnd() : value);
