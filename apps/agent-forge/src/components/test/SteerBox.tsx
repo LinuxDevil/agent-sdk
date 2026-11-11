@@ -1,10 +1,10 @@
-import { useState } from 'react';
 import { CornerDownRight } from 'lucide-react';
 import { useAppState } from '../../state/AppState';
 import type { SteerDelivery, SteerInfo } from '../../../shared/wireTypes';
 import { StatusBadge } from '../../ui/StatusBadge';
 import type { StatusKey } from '../../ui/status';
 import { formatTime } from '../formatTime';
+import { useDraftSender } from '../useDraftSender';
 
 /** `SteerRequest.message`'s server-side cap (1..3000 chars after trim). */
 const MAX_MESSAGE = 3000;
@@ -44,39 +44,13 @@ function SteerItem({ item }: { item: SteerInfo }) {
  */
 export function SteerBox() {
   const { runStatus, steerRun } = useAppState();
-  const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const { draft, setDraft, sending, error, send, onKeyDown } = useDraftSender(steerRun);
 
   const running = runStatus?.status === 'running';
   const steering = runStatus?.steering ?? [];
   // Hidden entirely when idle with no steer history; the list alone stays
   // visible after the run ends.
   if (!running && steering.length === 0) return null;
-
-  async function handleSend() {
-    const text = draft.trim();
-    if (!text || sending) return;
-    setSending(true);
-    setError(undefined);
-    try {
-      await steerRun(text);
-      setDraft('');
-    } catch (err) {
-      // Keep the draft so the user can retry; the 409s (run ended, flow
-      // run) surface verbatim.
-      setError((err as Error).message);
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
-    }
-  }
 
   return (
     <div className="steer-box">
@@ -95,12 +69,12 @@ export function SteerBox() {
               placeholder="Correct or add to the run in flight"
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onKeyDown={onKeyDown}
             />
             <button
               type="button"
               className="btn btn-primary btn-sm steer-send"
-              onClick={() => void handleSend()}
+              onClick={() => void send()}
               disabled={sending || !draft.trim()}
             >
               <CornerDownRight size={14} strokeWidth={1.75} aria-hidden="true" />

@@ -38,7 +38,7 @@ export interface SteerGateScript {
   gate: Promise<void>;
 }
 
-export class GatedSteerProvider implements LLMProvider {
+class GatedSteerProvider implements LLMProvider {
   readonly name = 'steergate';
   readonly calls: GenerateOptions[] = [];
   blockCalls = 0;
