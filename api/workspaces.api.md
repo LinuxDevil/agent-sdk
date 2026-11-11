@@ -551,6 +551,9 @@ type ErrorCode = keyof typeof ERROR_CODES;
 type ExecutionKey = 'single' | 'multiAgent' | 'workflow' | 'goal' | 'limits' | 'onFailure' | 'checkpoint';
 
 // @public
+export function explainHarness(effective: EffectiveHarness): string;
+
+// @public
 export function fileArtifactStore(root: string, options?: ArtifactStoreOptions): ArtifactStore;
 
 // @public
@@ -607,6 +610,9 @@ export interface FolderSourceOptions {
 
 // @public
 export function formatArtifactUri(parts: ArtifactUriParts): string;
+
+// @public
+export function globalProfiles(resolve: (ref: string) => WorkspaceTree | undefined): ProfileStore;
 
 // @public
 export interface Harness {
@@ -666,6 +672,9 @@ export interface Harness {
     schema: 'lousho.harness/1';
     version?: string;
 }
+
+// @public
+export type HarnessCache = Map<string, EffectiveHarness>;
 
 // @public
 type HarnessField = 'audience' | 'platform' | 'inputs' | 'outputs' | 'capabilities' | 'constraints' | 'evaluation' | 'runtime' | 'context';
@@ -1149,6 +1158,14 @@ interface Principal {
 }
 
 // @public
+export interface ProfileStore {
+    get(ref: string): HarnessLayer;
+}
+
+// @public
+export function profileStoreFor(workspace: LoadedWorkspace, global?: ProfileStore): ProfileStore;
+
+// @public
 export type ProseTarget = HarnessTarget | {
     kind: 'main';
 };
@@ -1217,6 +1234,14 @@ export interface ResolvedPageModel {
     model: string | undefined;
     source: PageModelSource;
 }
+
+// @public
+export interface ResolveHarnessOptions {
+    cache?: HarnessCache;
+}
+
+// @public
+export function resolvePageHarness(workspace: LoadedWorkspace, pageId: string, store: ProfileStore, options?: ResolveHarnessOptions): EffectiveHarness;
 
 // @public
 export function resolvePageModel(inputs: PageModelInputs): ResolvedPageModel;
@@ -1756,6 +1781,9 @@ export type WorkspaceProblemCode = 'PRD001' | 'PRD002' | 'PRD003' | 'PRD004' | '
 
 // @public
 export type WorkspaceProblemSeverity = 'error' | 'warning' | 'info';
+
+// @public
+export function workspaceProfiles(tree: WorkspaceTree, dir?: string): ProfileStore;
 
 // @public
 export interface WorkspaceRunEvents {

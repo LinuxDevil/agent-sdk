@@ -206,6 +206,19 @@ describe('cross-file checks', () => {
     expect(validateWorkspace(missing).map((problem) => problem.code)).toEqual(['PRD024', 'PRD024']);
   });
 
+  it('a global ref with a bad path or version range is PRD024 without asking resolveGlobal', () => {
+    const asked: string[] = [];
+    const resolveGlobal = (ref: string): WorkspaceTree => {
+      asked.push(ref);
+      return {};
+    };
+    for (const ref of ['global:tones/calm@latest', 'global:Tones/Calm@^1.0.0', 'global:tones//calm@^1.0.0', 'global:tones/calm@>=1']) {
+      const tree = edit(base(), 'pages/main/page.json', (doc) => ({ ...doc, harness: { extends: [ref] } }));
+      expect(validateWorkspace(tree, { resolveGlobal }), ref).toEqual([expect.objectContaining({ code: 'PRD024', path: 'harness.extends.0' })]);
+    }
+    expect(asked).toEqual([]);
+  });
+
   it('a global profile that fails its schema is reported against its ref', () => {
     const tree = edit(base(), 'pages/main/page.json', (doc) => ({ ...doc, harness: { extends: ['global:tones/calm@^1.0.0'] } }));
     const resolveGlobal = (): WorkspaceTree => ({ 'harness.json': { schema: 'lousho.harness/1', version: '1.0.0' } });
