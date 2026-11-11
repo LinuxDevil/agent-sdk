@@ -7,6 +7,21 @@
 import { z } from 'zod';
 
 // @public
+interface AddCriterionOp {
+    criterion: NonNullable<Harness['evaluation']>['criteria'][number];
+    op: 'add_criterion';
+    target: HarnessTarget;
+}
+
+// @public
+interface AddExtendsOp {
+    index?: number;
+    op: 'add_extends';
+    page: string;
+    ref: string;
+}
+
+// @public
 export const AGENT_OWNED: readonly ["instructions", "skills", "tools", "memory", "default model"];
 
 // @public
@@ -21,6 +36,17 @@ export type AgentRef = {
     name: string;
     range: string;
 };
+
+// @public
+export function applyOps(tree: WorkspaceTree, ops: readonly unknown[], options: {
+    validate: AuthoringValidator;
+}): ApplyOpsResult;
+
+// @public
+export interface ApplyOpsResult {
+    problems: AuthoringProblem[];
+    tree: WorkspaceTree;
+}
 
 // @public
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
@@ -47,6 +73,13 @@ export interface ArtifactUriParts {
 }
 
 // @public
+interface AttachAgentOp {
+    attachment: Attachment;
+    op: 'attach_agent';
+    page: string;
+}
+
+// @public
 export interface Attachment {
     as: string;
     limits?: {
@@ -63,6 +96,9 @@ export interface Attachment {
 }
 
 // @public
+type AttachmentField = 'role' | 'model' | 'limits' | 'tools';
+
+// @public
 export interface Attachments {
     agents: Attachment[];
     schema: 'lousho.agents/1';
@@ -70,6 +106,35 @@ export interface Attachments {
 
 // @public
 export const attachmentsSchema: z.ZodType<Attachments>;
+
+// @public
+export const AUTHORING_OP_NAMES: readonly AuthoringOp['op'][];
+
+// @public
+export type AuthoringOp = CreateWorkspaceOp | SetWorkspaceFieldOp | CreatePageOp | RemovePageOp | ReorderPagesOp | SetPageFieldOp | SetHarnessFieldOp | WriteHarnessProseOp | AddExtendsOp | RemoveExtendsOp | SetBaseHarnessFieldOp | SetMainHarnessFieldOp | AddCriterionOp | RemoveCriterionOp | CreateAgentOp | WriteAgentProseOp | AttachAgentOp | DetachAgentOp | SetAttachmentFieldOp | SetExecutionTypeOp | SetExecutionConfigOp | WriteWorkflowOp | WriteGoalOp | WritePageUiOp | ResetPageUiOp | WriteSharedInstructionOp;
+
+// @public
+export function authoringOpJsonSchema(): Record<string, unknown>;
+
+// @public
+export const authoringOpSchema: z.ZodType<AuthoringOp>;
+
+// @public
+export interface AuthoringProblem {
+    message: string;
+    op?: string;
+    opIndex?: number;
+    path: string;
+}
+
+// @public
+export interface AuthoringTreeProblem {
+    message: string;
+    path: string;
+}
+
+// @public
+export type AuthoringValidator = (tree: WorkspaceTree) => AuthoringTreeProblem[];
 
 // @public
 export function baseHarnessLayer(tree: WorkspaceTree): HarnessLayer | undefined;
@@ -81,7 +146,47 @@ export const baseHarnessSchema: z.ZodType<Harness>;
 export function composeHarness(layers: readonly HarnessLayer[]): EffectiveHarness;
 
 // @public
+interface CreateAgentOp {
+    description: string;
+    instructions: string;
+    model?: string;
+    name: string;
+    op: 'create_agent';
+    page?: string;
+    version?: string;
+}
+
+// @public
+interface CreatePageOp {
+    description: string;
+    domain?: string;
+    execution: PageExecution;
+    name: string;
+    op: 'create_page';
+    page: string;
+}
+
+// @public
+interface CreateWorkspaceOp {
+    description: string;
+    domain?: string;
+    id: string;
+    mainAgent?: WorkspaceManifest['mainAgent'];
+    mainInstructions?: string;
+    name: string;
+    op: 'create_workspace';
+    version?: string;
+}
+
+// @public
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
+
+// @public
+interface DetachAgentOp {
+    as: string;
+    op: 'detach_agent';
+    page: string;
+}
 
 // @public
 export interface EffectiveHarness {
@@ -120,6 +225,9 @@ export interface EffectivePolicy {
         allow: string[];
     };
 }
+
+// @public
+type ExecutionKey = 'single' | 'multiAgent' | 'workflow' | 'goal' | 'limits' | 'onFailure' | 'checkpoint';
 
 // @public
 export function findNestedPages(relativePaths: readonly string[]): string[];
@@ -187,6 +295,9 @@ export interface Harness {
 }
 
 // @public
+type HarnessField = 'audience' | 'platform' | 'inputs' | 'outputs' | 'capabilities' | 'constraints' | 'evaluation' | 'runtime' | 'context';
+
+// @public
 export interface HarnessLayer {
     harness: Harness;
     source: string;
@@ -204,6 +315,14 @@ export const harnessProfileSchema: z.ZodType<HarnessProfile>;
 
 // @public
 export const harnessSchema: z.ZodType<Harness>;
+
+// @public
+export type HarnessTarget = {
+    kind: 'page';
+    page: string;
+} | {
+    kind: 'base';
+};
 
 // @public
 export function hasExecutableCriterion(harness: Harness): boolean;
@@ -248,6 +367,9 @@ export interface MainHarnessCrossCheck {
 }
 
 // @public
+type MainHarnessField = 'routes' | 'clarify' | 'presentation' | 'limits' | 'onPageFailure';
+
+// @public
 export interface MainHarnessLimits {
     maxConcurrentPages?: number;
 }
@@ -279,6 +401,9 @@ export const mainHarnessSchema: z.ZodType<MainHarness>;
 
 // @public
 export function narrowPolicy(ceiling: PolicyCeiling, workspace: WorkspacePolicy): EffectivePolicy;
+
+// @public
+export function opFiles(operation: AuthoringOp, tree: WorkspaceTree): string[];
 
 // @public
 export const PAGE_OWNED: readonly ["as", "role", "model", "limits", "tools.only", "harness"];
@@ -338,6 +463,9 @@ export interface PageExecutionLimits {
     maxDurationMs?: number;
     maxTurns?: number;
 }
+
+// @public
+type PageField = 'name' | 'description' | 'domain' | 'improve' | 'platform' | 'defaults' | 'runtime';
 
 // @public
 export interface PageFinishedEvent {
@@ -492,11 +620,109 @@ interface PermissionRuleSpec {
 export type PolicyCeiling = WorkspacePolicy;
 
 // @public
+export type ProseTarget = HarnessTarget | {
+    kind: 'main';
+};
+
+// @public
+interface RemoveCriterionOp {
+    id: string;
+    op: 'remove_criterion';
+    target: HarnessTarget;
+}
+
+// @public
+interface RemoveExtendsOp {
+    op: 'remove_extends';
+    page: string;
+    ref: string;
+}
+
+// @public
+interface RemovePageOp {
+    op: 'remove_page';
+    page: string;
+}
+
+// @public
+interface ReorderPagesOp {
+    op: 'reorder_pages';
+    pages: string[];
+}
+
+// @public
+interface ResetPageUiOp {
+    op: 'reset_page_ui';
+    page: string;
+}
+
+// @public
 type SecretRef = {
     env: string;
 } | {
     secret: string;
 };
+
+// @public
+interface SetAttachmentFieldOp {
+    as: string;
+    field: AttachmentField;
+    op: 'set_attachment_field';
+    page: string;
+    value?: unknown;
+}
+
+// @public
+interface SetBaseHarnessFieldOp {
+    field: HarnessField;
+    op: 'set_base_harness_field';
+    value?: unknown;
+}
+
+// @public
+interface SetExecutionConfigOp {
+    key: ExecutionKey;
+    op: 'set_execution_config';
+    page: string;
+    value?: unknown;
+}
+
+// @public
+interface SetExecutionTypeOp {
+    op: 'set_execution_type';
+    page: string;
+    type: PageExecution['type'];
+}
+
+// @public
+interface SetHarnessFieldOp {
+    field: HarnessField;
+    op: 'set_harness_field';
+    page: string;
+    value?: unknown;
+}
+
+// @public
+interface SetMainHarnessFieldOp {
+    field: MainHarnessField;
+    op: 'set_main_harness_field';
+    value?: unknown;
+}
+
+// @public
+interface SetPageFieldOp {
+    field: PageField;
+    op: 'set_page_field';
+    page: string;
+    value?: unknown;
+}
+
+// @public
+interface SetWorkspaceFieldOp {
+    field: WorkspaceField;
+    op: 'set_workspace_field';
+    value?: unknown;
+}
 
 // @public
 const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources", "skills", "memory", "policies"];
@@ -533,6 +759,9 @@ export const WORK_TYPE_STEP_KINDS: Readonly<Record<WorkType, readonly StepKind[]
 
 // @public
 export const WORK_TYPES: readonly WorkType[];
+
+// @public
+type WorkspaceField = 'name' | 'version' | 'description' | 'domain' | 'mainAgent' | 'dependencies' | 'defaults' | 'budget' | 'improve';
 
 // @public
 export interface WorkspaceLimits {
@@ -605,6 +834,51 @@ export type WorkspaceTree = Readonly<Record<string, unknown>>;
 
 // @public
 export type WorkType = 'single' | 'multi-agent' | 'workflow' | 'goal-oriented';
+
+// @public
+interface WriteAgentProseOp {
+    agent?: string;
+    op: 'write_agent_prose';
+    page?: string;
+    target?: 'main';
+    text: string;
+}
+
+// @public
+interface WriteGoalOp {
+    goal: Record<string, unknown>;
+    op: 'write_goal';
+    page: string;
+}
+
+// @public
+interface WriteHarnessProseOp {
+    file: string;
+    op: 'write_harness_prose';
+    target: ProseTarget;
+    text: string;
+}
+
+// @public
+interface WritePageUiOp {
+    op: 'write_page_ui';
+    page: string;
+    ui: Record<string, unknown>;
+}
+
+// @public
+interface WriteSharedInstructionOp {
+    file: string;
+    op: 'write_shared_instruction';
+    text: string;
+}
+
+// @public
+interface WriteWorkflowOp {
+    op: 'write_workflow';
+    page: string;
+    workflow: Record<string, unknown>;
+}
 
 // (No @packageDocumentation comment for this package)
 
