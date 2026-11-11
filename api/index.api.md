@@ -2162,6 +2162,7 @@ export const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_SOURCE_LIMIT: "Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().";
     readonly LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: "Remove the NUL characters from the file the message names; a database workspace source stores text only.";
     readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
+    readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
 };
 
 // @public

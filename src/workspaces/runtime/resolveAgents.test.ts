@@ -167,6 +167,20 @@ describe('resolveAttachments', () => {
     }
   });
 
+  it('refuses broken agent configs and instructions with LOUSHO_AGENT_DIR_INVALID', async () => {
+    const files = marketing();
+    const broken: Record<string, string>[] = [
+      { 'agents/script-maker/agent.yaml': 'name: script-maker\n' },
+      { 'agents/script-maker/instructions.md': '   ' },
+      { 'agents/script-maker/agent.json': JSON.stringify({ name: 'script-maker', version: 1 }) },
+      { 'agents/script-maker/agent.json': JSON.stringify({ name: 'script-maker', instructions: 'twice' }) },
+    ];
+    for (const change of broken) {
+      const workspace = await load({ ...files, ...change });
+      await expect(resolveAttachments(workspace, 'instagram-videos', { mode: 'default' })).rejects.toMatchObject({ code: 'LOUSHO_AGENT_DIR_INVALID' });
+    }
+  });
+
   it('refuses a code config, which a workspace source cannot run', async () => {
     const files = marketing();
     const workspace = await load({ ...files, 'agents/script-maker/agent.ts': 'export default {};' });

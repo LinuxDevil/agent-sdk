@@ -20,7 +20,7 @@ export interface GlobalAgentRegistry {
 const EXACT = /^\d/;
 
 /** True when `version` is an exact `x.y.z` the ref grammar accepts. */
-export function isExactVersion(version: unknown): version is string {
+function isExactVersion(version: unknown): version is string {
   return typeof version === 'string' && EXACT.test(version) && isVersionRange(version);
 }
 
