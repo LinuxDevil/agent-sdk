@@ -32,6 +32,7 @@ import type { AgentHost } from '../host/agentHost';
 import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
+import type { PassRunner } from '../passes/passRunner';
 
 /** Everything a per-agent route needs for one workspace. */
 export interface WorkspaceContext {
@@ -65,6 +66,13 @@ export interface WorkspaceContext {
    * workspace's tabs. Per workspace, like the stores.
    */
   events: StudioEventBus;
+  /**
+   * The app's one PassRunner (passes/passRunner.ts) - Studio-global like
+   * settings, shared by every workspace: background passes a route or
+   * store kicks off enqueue here so dedupe, retries and the spend log
+   * apply app-wide.
+   */
+  passes: PassRunner;
 }
 
 /**
@@ -97,6 +105,8 @@ export interface WorkspaceServices {
   settingsStore: SettingsStore;
   /** Report runs to the observe daemon (`true` in the studio, `false` in embeddings/tests). */
   observe: boolean;
+  /** The app's one PassRunner, stamped onto every context this builds. */
+  passRunner: PassRunner;
 }
 
 /**
@@ -162,5 +172,6 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     runs,
     chatTriggers: chatTriggersFor(runs),
     events: new StudioEventBus(),
+    passes: services.passRunner,
   };
 }
