@@ -331,6 +331,9 @@ interface CreatePageOp {
 }
 
 // @public
+export function createSharedContextRun(): SharedContextRun;
+
+// @public
 interface CreateWorkspaceOp {
     description: string;
     domain?: string;
@@ -358,6 +361,28 @@ export interface DbSourceOptions {
 export interface DbWorkspaceSource extends WorkspaceSource {
     close(): Promise<void>;
     write(changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta>;
+}
+
+// @public
+interface DefineMemoryOptions {
+    description?: string;
+    expose?: {
+        remember?: boolean;
+        recall?: boolean;
+        forget?: boolean;
+    };
+    itemKey?: string | readonly string[];
+    itemSchema?: StandardSchemaV1;
+    name: string;
+    // (undocumented)
+    provider: MemoryProvider;
+    recall?: {
+        onSessionStart?: boolean;
+        maxItems?: number;
+        query?: 'last-input' | 'none';
+    };
+    // (undocumented)
+    scope: MemoryScope;
 }
 
 // @public
@@ -812,6 +837,62 @@ export function memoryArtifactStore(options?: ArtifactStoreOptions): ArtifactSto
 export function memoryBlobClient(): BlobClient;
 
 // @public
+interface MemoryItem {
+    createdAt: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    metadata?: Record<string, unknown>;
+    // (undocumented)
+    text: string;
+}
+
+// @public
+interface MemoryProvider {
+    add(scopeKey: string, item: {
+        text: string;
+        metadata?: Record<string, unknown>;
+    }): Promise<MemoryItem>;
+    // (undocumented)
+    list(scopeKey: string, options?: {
+        limit?: number;
+        query?: string;
+    }): Promise<MemoryItem[]>;
+    readonly ranking?: 'newest' | 'relevance';
+    // (undocumented)
+    remove(scopeKey: string, id: string): Promise<void>;
+    upsert?(scopeKey: string, item: {
+        id?: string;
+        text: string;
+        metadata?: Record<string, unknown>;
+    }): Promise<MemoryItem>;
+}
+
+// @public
+type MemoryScope = 'global' | 'session' | ((ctx: MemoryScopeContext) => string | undefined);
+
+// @public
+interface MemoryScopeContext {
+    // (undocumented)
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+    // (undocumented)
+    sessionId?: string;
+}
+
+// @public
+interface MemorySlot extends Readonly<Pick<DefineMemoryOptions, 'name' | 'description' | 'scope' | 'provider' | 'itemSchema'>> {
+    readonly expose: Required<NonNullable<DefineMemoryOptions['expose']>>;
+    readonly itemKey?: readonly string[];
+    // (undocumented)
+    readonly recall: {
+        onSessionStart: boolean;
+        maxItems: number;
+        query: 'last-input' | 'none';
+    };
+}
+
+// @public
 export function memorySource(files: Readonly<Record<string, string>>, options?: MemorySourceOptions): WorkspaceSource;
 
 // @public
@@ -1222,6 +1303,19 @@ export interface ResolvedPageModel {
 export function resolvePageModel(inputs: PageModelInputs): ResolvedPageModel;
 
 // @public
+export function resolveSharedContext(workspace: LoadedWorkspace, options?: ResolveSharedContextOptions): SharedContext;
+
+// @public
+export interface ResolveSharedContextOptions {
+    audience?: SharedAudience;
+    createMemory?: (file: SharedMemoryFile) => MemorySlot;
+    maxResourceBytes?: number;
+    override?: boolean;
+    run?: SharedContextRun;
+    skills?: readonly SharedSkill[];
+}
+
+// @public
 export type RevisionActor = AuditEntry['actor'];
 
 // @public
@@ -1277,6 +1371,16 @@ interface RunUsage {
     reasoningTokens?: number;
     // (undocumented)
     totalTokens: number;
+}
+
+// @public
+interface SchemaIssue {
+    // (undocumented)
+    readonly message: string;
+    // (undocumented)
+    readonly path?: ReadonlyArray<PropertyKey | {
+        readonly key: PropertyKey;
+    }>;
 }
 
 // @public
@@ -1377,7 +1481,70 @@ interface SetWorkspaceFieldOp {
 const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources", "skills", "memory", "policies"];
 
 // @public
+export type SharedAudience = {
+    page: string;
+} | 'main-agent';
+
+// @public
+export interface SharedContext {
+    instructions: SharedInstruction[];
+    memorySlots: SharedMemorySlot[];
+    resources: SharedResource[];
+    skills: SharedSkill[];
+}
+
+// @public
+export interface SharedContextRun {
+    readonly memory: Map<string, MemorySlot>;
+}
+
+// @public
 type SharedFolder = (typeof SHARED_FOLDERS)[number];
+
+// @public
+export interface SharedInstruction {
+    file: string;
+    text: string;
+}
+
+// @public
+export interface SharedMemoryFile {
+    file: string;
+    name: string;
+    scope: 'shared' | 'page';
+    source: string;
+}
+
+// @public
+export interface SharedMemorySlot extends SharedMemoryFile {
+    slot: MemorySlot;
+}
+
+// @public
+export interface SharedResource {
+    bytes: number;
+    inlined: boolean;
+    path: string;
+    ref: string;
+    text?: string;
+}
+
+// @public
+export interface SharedSkill {
+    file: string;
+    skill: Skill;
+}
+
+// @public
+interface Skill {
+    // (undocumented)
+    readonly content: string;
+    // (undocumented)
+    readonly description: string;
+    readonly directory?: string;
+    // (undocumented)
+    readonly name: string;
+}
 
 // @public
 export interface SourceReadOptions {
@@ -1434,6 +1601,27 @@ export interface SqlStatements {
 
 // @public
 type SqlValue = string | number | Uint8Array | null;
+
+// @public (undocumented)
+type StandardResult<Output> = {
+    readonly value: Output;
+    readonly issues?: undefined;
+} | {
+    readonly issues: ReadonlyArray<SchemaIssue>;
+};
+
+// @public
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+    readonly '~standard': {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown) => StandardResult<Output> | Promise<StandardResult<Output>>;
+        readonly types?: {
+            readonly input: Input;
+            readonly output: Output;
+        } | undefined;
+    };
+}
 
 // @public
 export interface StartRun {

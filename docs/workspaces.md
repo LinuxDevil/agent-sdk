@@ -373,6 +373,15 @@ Shared files sit under fixed patterns: `shared/instructions/<name>.md`, `shared/
 - `approvals.require`: tool names that must wait for a human.
 - `sandbox.required`: whether code and shell execution must be sandboxed.
 
+### Resolving the shared layer
+
+`resolveSharedContext(workspace, options)` reads a `LoadedWorkspace` and returns `{ instructions, skills, memorySlots, resources }` for one `audience`: a page (`{ page: id }`) or `'main-agent'`. The main agent gets nothing unless `mainAgent.inheritsShared` is true; policy is applied separately.
+
+- Instructions are ordered by file name.
+- Skills are the union of `shared/skills/*/SKILL.md` and the `skills` option. Two skills with one name throw `LOUSHO_SKILL_INVALID` naming both files, unless `override: true`, where the later one wins.
+- Memory files are never run by the core. The host builds each slot with `createMemory(file)` (the default is an in-process slot named after the file). Pass one `createSharedContextRun()` per workspace run: every page that passes it gets the same shared slot objects, while a page's own `pages/<id>/memory/*.ts` slots are built fresh for each call.
+- Files under `shared/knowledge`, `shared/brand` and `shared/resources` come back as frozen handles with a `shared:<path>` ref. A file over `maxResourceBytes` (default 262144) is listed with its size but its text is not inlined.
+
 ### How a workspace policy narrows the host's limit
 
 `narrowPolicy(ceiling, workspace)` is pure. It validates both arguments with `workspacePolicySchema` and throws on invalid input, so a typo in the ceiling fails closed. A workspace can only narrow.
