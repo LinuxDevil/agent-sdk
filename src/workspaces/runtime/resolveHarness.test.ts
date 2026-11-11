@@ -52,7 +52,7 @@ describe('resolvePageHarness', () => {
       'pages/instagram-videos/harness/harness.json': { ...page.harness, extends: undefined },
       'pages/instagram-videos/page.md': page.texts['page.md'],
     };
-    const workspace: LoadedWorkspace = { revision: 'r1', manifest: { id: 'm', name: 'M', pages: {} }, tree, problems: [] };
+    const workspace: LoadedWorkspace = { revision: 'r1', manifest: { id: 'm', name: 'M', inheritsShared: false, pages: {} }, tree, problems: [] };
     const effective = resolvePageHarness(workspace, 'instagram-videos', profileStoreFor(workspace));
     await expect(asJson(effective)).toMatchFileSnapshot(golden);
   });
@@ -151,7 +151,7 @@ function synthetic(files: Record<string, unknown>, extendsRefs: string[] = []): 
     [GLOBAL_PAGE]: { ...(fixture[GLOBAL_PAGE] as object), harness: { extends: extendsRefs } },
     ...files,
   };
-  return { revision: 'r1', manifest: { id: 'm', name: 'M', pages: {} }, tree, problems: [] };
+  return { revision: 'r1', manifest: { id: 'm', name: 'M', inheritsShared: false, pages: {} }, tree, problems: [] };
 }
 
 const resolveOf = (workspace: LoadedWorkspace): EffectiveHarness => resolvePageHarness(workspace, 'instagram-videos', profileStoreFor(workspace));

@@ -25,6 +25,18 @@ interface AddExtendsOp {
 export const AGENT_OWNED: readonly ["instructions", "skills", "tools", "memory", "default model"];
 
 // @public
+export interface AgentCache {
+    readonly kind: 'agent-cache';
+}
+
+// @public
+export interface AgentFiles {
+    dir: string;
+    files: Readonly<Record<string, string>>;
+    format: 'dir' | 'studio';
+}
+
+// @public
 interface AgentFingerprint {
     hash: string;
     instructions: string;
@@ -33,6 +45,24 @@ interface AgentFingerprint {
     // (undocumented)
     version: number;
 }
+
+// @public
+export interface AgentOwned {
+    defaultModel?: string;
+    description?: string;
+    instructions?: string;
+    limits?: RunLimits;
+    memory: string[];
+    name: string;
+    permissions?: AgentPermission[];
+    skills: string[];
+    toolFiles: string[];
+    tools: string[];
+    version?: string;
+}
+
+// @public
+type AgentPermission = Omit<PermissionRuleSpec, 'id'>;
 
 // @public
 export type AgentRef = {
@@ -310,6 +340,9 @@ export function composeHarness(layers: readonly HarnessLayer[]): EffectiveHarnes
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
 // @public
+export function createAgentCache(): AgentCache;
+
+// @public
 interface CreateAgentOp {
     description: string;
     instructions: string;
@@ -567,6 +600,7 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_SOURCE_LIMIT: "Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().";
     readonly LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: "Remove the NUL characters from the file the message names; a database workspace source stores text only.";
     readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
+    readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
 };
 
 // @public
@@ -635,6 +669,17 @@ export interface FolderSourceOptions {
 
 // @public
 export function formatArtifactUri(parts: ArtifactUriParts): string;
+
+// @public
+export interface GlobalAgent extends AgentFiles {
+    name: string;
+    version: string;
+}
+
+// @public
+export interface GlobalAgentRegistry {
+    resolve(name: string, range: string): Promise<GlobalAgent | undefined>;
+}
 
 // @public
 export function globalProfiles(resolve: (ref: string) => WorkspaceTree | undefined): ProfileStore;
@@ -1247,6 +1292,9 @@ export interface ProfileStore {
 export function profileStoreFor(workspace: LoadedWorkspace, global?: ProfileStore): ProfileStore;
 
 // @public
+export function projectAgentRegistry(root: string): GlobalAgentRegistry;
+
+// @public
 export type ProseTarget = HarnessTarget | {
     kind: 'main';
 };
@@ -1311,6 +1359,28 @@ interface ResetPageUiOp {
 }
 
 // @public
+export function resolveAttachments(workspace: LoadedWorkspace, pageId: string, options: ResolveAttachmentsOptions): Promise<ResolvedAttachment[]>;
+
+// @public
+export interface ResolveAttachmentsOptions {
+    cache?: AgentCache;
+    globalRegistry?: GlobalAgentRegistry;
+    mode: LoadWorkspaceOptions['mode'];
+}
+
+// @public
+export interface ResolvedAttachment {
+    agentOwned: AgentOwned;
+    alias: string;
+    dir: string;
+    model: ResolvedPageModel;
+    pageOwned: Attachment;
+    ref: string;
+    sha256: string;
+    version?: string;
+}
+
+// @public
 export interface ResolvedPageModel {
     model: string | undefined;
     source: PageModelSource;
@@ -1359,6 +1429,20 @@ export interface RevisionMeta {
     parent?: RevisionId;
     revision: RevisionId;
     seq: number;
+}
+
+// @public
+interface RunLimits {
+    maxCostUsd?: number;
+    maxDurationMs?: number;
+    // (undocumented)
+    maxInputTokens?: number;
+    // (undocumented)
+    maxOutputTokens?: number;
+    maxSteps?: number;
+    maxTokens?: number;
+    maxToolErrors?: number;
+    onExceeded?: 'stop' | 'throw';
 }
 
 // @public
@@ -1569,6 +1653,9 @@ interface Skill {
     // (undocumented)
     readonly name: string;
 }
+
+// @public
+export function sourceAgentRegistry(source: WorkspaceSource): GlobalAgentRegistry;
 
 // @public
 export interface SourceReadOptions {

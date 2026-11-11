@@ -28,3 +28,7 @@ export { WorkspaceValidationError } from './runtime/validationError';
 export type { WorkspaceManifestView, PageManifestView, PageInheritsView, AttachmentView } from './runtime/manifestView';
 export type { WorkspaceSource, SourceRef, RevisionId, RevisionKind, RevisionActor, RevisionMeta, SourceReadOptions, SourceWriteOptions, WorkspaceChanges } from './source/types';
 export { resolveSharedContext, createSharedContextRun, type ResolveSharedContextOptions, type SharedContext, type SharedContextRun, type SharedAudience, type SharedInstruction, type SharedSkill, type SharedMemoryFile, type SharedMemorySlot, type SharedResource } from './runtime/sharedContext';
+export { resolveAttachments, createAgentCache, type ResolvedAttachment, type ResolveAttachmentsOptions, type AgentCache } from './runtime/resolveAgents';
+export { sourceAgentRegistry, type GlobalAgent, type GlobalAgentRegistry } from './runtime/agentRegistry';
+export { projectAgentRegistry } from './source/projectAgentRegistry';
+export type { AgentOwned, AgentFiles } from './runtime/agentDirView';

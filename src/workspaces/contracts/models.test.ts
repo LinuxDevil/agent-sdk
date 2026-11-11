@@ -96,6 +96,16 @@ describe('resolvePageModel', () => {
     expect(resolvePageModel({ pageDefault: 'anthropic/p', pageProvider: null, workspaceProvider: 'pi' }).model).toBe('anthropic/p');
   });
 
+  it('workspace provider null and no page key leaves the model unwrapped', () => {
+    expect(resolvePageModel({ pageDefault: 'anthropic/p', workspaceProvider: null })).toEqual({ model: 'anthropic/p', source: 'page' });
+  });
+
+  it('page null and an absent workspace provider both leave the model unwrapped', () => {
+    expect(resolvePageModel({ agentDefault: 'anthropic/g', pageProvider: null }).model).toBe('anthropic/g');
+    expect(resolvePageModel({ agentDefault: 'anthropic/g' }).model).toBe('anthropic/g');
+    expect(resolvePageModel({ agentDefault: 'anthropic/g', pageProvider: 'pi' }).model).toBe('pi/anthropic/g');
+  });
+
   it('never double-wraps', () => {
     expect(resolvePageModel({ attachmentModel: 'pi/anthropic/a', workspaceProvider: 'pi' }).model).toBe('pi/anthropic/a');
   });
