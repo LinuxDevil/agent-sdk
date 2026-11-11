@@ -574,6 +574,10 @@ const ERROR_CODES: {
     readonly LOUSHO_FLOW_CHANGED: "Resume the run with the flow version that started it (same steps in the same order), or start a new run with another runId.";
     readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
     readonly LOUSHO_STORAGE_BUSY: "Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).";
+    readonly LOUSHO_ARTIFACT_FORBIDDEN: "Read only the run's own artifacts, or pass the artifact's uri to this run as a ref (through the main agent).";
+    readonly LOUSHO_ARTIFACT_TOO_LARGE: "Write a smaller artifact, or raise maxArtifactBytes on the artifact store.";
+    readonly LOUSHO_ARTIFACT_EXISTS: "Store the new content under a new artifact name; a stored artifact never changes.";
+    readonly LOUSHO_ARTIFACT_UNSAFE_PATH: "Remove the symlink or other entry the message names from the artifact store folder; the store reads and writes only plain folders and files inside its root.";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
     readonly LOUSHO_SERVER_UNPROTECTED: "Set LOUSHO_API_TOKEN, add an auth.ts to the agent directory, bind to 127.0.0.1, or set LOUSHO_ALLOW_PUBLIC=1 to serve an open agent on purpose.";
