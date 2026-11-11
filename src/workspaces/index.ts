@@ -21,4 +21,7 @@ export { folderSource, type FolderSourceOptions } from './source/folderSource';
 export { memorySource, type MemorySourceOptions } from './source/memorySource';
 export { readSourceTree, type SourceTree } from './source/tree';
 export { sqliteWorkspaceSource, postgresWorkspaceSource, type DbSourceOptions, type DbWorkspaceSource } from './source/dbSource';
+export { loadWorkspace, type LoadWorkspaceOptions, type LoadedWorkspace } from './runtime/loadWorkspace';
+export { WorkspaceValidationError } from './runtime/validationError';
+export type { WorkspaceManifestView, PageManifestView, PageInheritsView, AttachmentView } from './runtime/manifestView';
 export type { WorkspaceSource, SourceRef, RevisionId, RevisionKind, RevisionActor, RevisionMeta, SourceReadOptions, SourceWriteOptions, WorkspaceChanges } from './source/types';
