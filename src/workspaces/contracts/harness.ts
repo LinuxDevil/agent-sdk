@@ -141,7 +141,7 @@ function refineUniqueNames(items: { name: string }[], ctx: z.RefinementCtx): voi
   });
 }
 
-const criterionSchema = z
+export const criterionSchema = z
   .object({
     id: kebabId,
     description: nonEmpty,
