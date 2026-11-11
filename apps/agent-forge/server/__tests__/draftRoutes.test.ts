@@ -189,8 +189,9 @@ describe('draft routes', () => {
 
   it('approve applies the patch over the CURRENT spec and writes one source:draft version', async () => {
     await saveAgent();
-    const draft = (await createDraft('ops', { patch: { description: 'From draft.' }, origin: 'author', reason: 'x' }))
-      .body as ChangeDraft;
+    const draft = (
+      await createDraft('ops', { patch: { description: 'From draft.' }, origin: 'author', reason: 'Tighten the ops prompt.' })
+    ).body as ChangeDraft;
 
     // The working copy moved on after the draft was made: approve must keep this edit too.
     await saveAgent('ops', { ...V1_SPEC, prompt: 'Edited instructions.' });
@@ -204,7 +205,7 @@ describe('draft routes', () => {
 
     const items = indexLines('ops');
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ kind: 'update', source: 'draft' });
+    expect(items[0]).toMatchObject({ kind: 'update', source: 'draft', requestText: 'Tighten the ops prompt.' });
     expect(items[0].changedFields).toContain('description');
   });
 

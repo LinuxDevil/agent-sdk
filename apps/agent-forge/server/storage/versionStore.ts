@@ -36,9 +36,7 @@ import type {
 import type { AgentRepo } from './agentRepo';
 import { readJsonFile, writeJsonAtomic } from './atomic';
 import { specHash } from './specHash';
-
-/** `requestText` (the Author message behind a version) is stored clamped to this many chars. */
-const REQUEST_TEXT_MAX_CHARS = 400;
+import { clampVersionText, VERSION_REQUEST_MAX_CHARS } from './versionText';
 
 /** What a capture records beyond the snapshot itself; every omitted field lands on the item as `null`. */
 export interface CaptureInput {
@@ -47,18 +45,6 @@ export interface CaptureInput {
   restoredFromVersion?: number | null;
   requestText?: string | null;
   authorSessionId?: string | null;
-}
-
-/**
- * `value` collapsed to a single-line, ≤ `max`-char string: whitespace runs
- * become one space, the ends are trimmed, and anything longer is cut to
- * `max - 1` chars plus '…'. `null` when nothing remains (or nothing was
- * given) - the version fields stay nullable rather than empty.
- */
-function clampText(value: string | null | undefined, max: number): string | null {
-  const collapsed = value?.replace(/\s+/g, ' ').trim() ?? '';
-  if (collapsed === '') return null;
-  return collapsed.length > max ? `${collapsed.slice(0, max - 1)}…` : collapsed;
 }
 
 /** Same labels in the same order (label order is meaningful). */
@@ -162,7 +148,7 @@ export class VersionStore {
       changedFields: computeChangedFields(before, after),
       restoredFromVersion: input.restoredFromVersion ?? null,
       summary: null,
-      requestText: clampText(input.requestText, REQUEST_TEXT_MAX_CHARS),
+      requestText: clampVersionText(input.requestText, VERSION_REQUEST_MAX_CHARS),
       authorSessionId: input.authorSessionId ?? null,
       specHash: hash,
       createdAt: this.clock().toISOString(),

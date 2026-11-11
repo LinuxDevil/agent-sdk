@@ -169,7 +169,11 @@ export function registerSuggestionRoutes(app: Express): void {
           return;
         }
         await ws.repo.writeSpec(id, next);
-        const item = await ws.versions.capture(id, { kind: 'update', source: 'suggestion' });
+        const item = await ws.versions.capture(id, {
+          kind: 'update',
+          source: 'suggestion',
+          requestText: `From run ${suggestion.sourceTraceId}: ${suggestion.optimizationClass}`,
+        });
         await ws.suggestions.setStatus(id, sid, 'applied');
         res.status(201).json(item);
         ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'version' });
