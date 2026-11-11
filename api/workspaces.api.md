@@ -1481,7 +1481,7 @@ interface SetWorkspaceFieldOp {
 const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources", "skills", "memory", "policies"];
 
 // @public
-type SharedAudience = {
+export type SharedAudience = {
     page: string;
 } | 'main-agent';
 
@@ -1507,13 +1507,10 @@ export interface SharedInstruction {
     text: string;
 }
 
-// @public (undocumented)
-interface SharedMemoryFile {
-    // (undocumented)
+// @public
+export interface SharedMemoryFile {
     file: string;
-    // (undocumented)
     name: string;
-    // (undocumented)
     source: string;
 }
 

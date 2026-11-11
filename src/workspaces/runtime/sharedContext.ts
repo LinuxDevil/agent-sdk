@@ -25,9 +25,13 @@ export interface SharedSkill {
   skill: Skill;
 }
 
-interface SharedMemoryFile {
+/** A shared memory file as the host sees it when it builds the slot. */
+export interface SharedMemoryFile {
+  /** The slot name, the file name without `.ts`. */
   name: string;
+  /** The workspace-relative path of the memory file. */
   file: string;
+  /** The file's text; the core never runs it. */
   source: string;
 }
 
@@ -70,7 +74,7 @@ export interface SharedContextRun {
 }
 
 /** Who the context is for: a page by id, or the main agent. */
-type SharedAudience = { page: string } | 'main-agent';
+export type SharedAudience = { page: string } | 'main-agent';
 
 /** Options of {@link resolveSharedContext}. */
 export interface ResolveSharedContextOptions {
@@ -115,9 +119,10 @@ function instructionsOf(workspace: LoadedWorkspace): SharedInstruction[] {
   return orderInstructionFiles(Object.keys(workspace.tree)).map((file) => ({ file, text: textOf(workspace.tree[file]) }));
 }
 
-function clash(name: string, earlier: SharedSkill, later: SharedSkill): SDKError {
+function clash(name: string, earlier: SharedSkill, later: SharedSkill, canOverride = false): SDKError {
+  const fix = canOverride ? 'Rename one skill, or pass override: true to let the skills option win.' : 'Rename one skill.';
   return new SDKError(
-    `skill '${name}' is defined in ${earlier.file} and ${later.file}. Rename one skill, or pass override: true to let the later file win.`,
+    `skill '${name}' is defined in ${earlier.file} and ${later.file}. ${fix}`,
     'LOUSHO_SKILL_INVALID'
   );
 }
@@ -140,7 +145,7 @@ function skillsOf(workspace: LoadedWorkspace, options: ResolveSharedContextOptio
   for (const item of options.skills ?? []) {
     const earlier = byName.get(item.skill.name);
     const mayReplace = options.override === true && shared.has(item.skill.name);
-    if (earlier && !mayReplace) throw clash(item.skill.name, earlier, item);
+    if (earlier && !mayReplace) throw clash(item.skill.name, earlier, item, options.override !== true && shared.has(item.skill.name));
     byName.set(item.skill.name, item);
     shared.delete(item.skill.name);
   }
