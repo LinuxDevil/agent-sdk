@@ -48,7 +48,8 @@ import {
   type CheckpointStore,
 } from '../execution/checkpoint';
 import { ConfigurationError, SDKError } from '../execution/errors';
-import { decodeBytes, encodeBytes, FileSessionStore } from '../session/sessionStore';
+import { FileSessionStore } from '../session/sessionStore';
+import { decodeBytes, encodeBytes } from './jsonBytes';
 import type { AgentStore } from './agentStore';
 import { caseSafeName, findLegacyFile, idFromCaseSafeName, removeLegacyFile } from './fileNames';
 import { fileNameOf, HASHED_NAME_MARK, legacyNamesOf, readTextFile, writeFileAtomic } from './atomicFile';
