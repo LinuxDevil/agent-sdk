@@ -47,6 +47,8 @@ jobs:
       - run: npm run docs:llms:check
       # registry/dist is generated from registry/; fail if stale.
       - run: npm run registry:check
+      # schemas/ is generated from the workspace contracts; fail if stale.
+      - run: npm run workspaces:schema:check
       # Agent Forge imports the SDK as `lousho` via `file:../..`, i.e. the root dist/ built above.
       - run: npm run typecheck --workspace apps/agent-forge
       - run: npm run typecheck:server --workspace apps/agent-forge

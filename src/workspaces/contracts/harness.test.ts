@@ -232,7 +232,7 @@ describe('harnessSchema', () => {
   });
 
   it('rejects artifact names a page UI could never reference: URLs, separators, colons, control characters, dots and markup', () => {
-    const bad = ['https://example.com/a.png', 'a/b.png', 'a\\b.png', 'C:file', 'a\u0000b', 'a\u202eb', '.', '..', ' ', '<img src=x>', 'javascript:alert(1)', 'x'.repeat(201)];
+    const bad = ['https://example.com/a.png', 'a/b.png', 'a\\b.png', 'C:file', 'a\u0000b', 'a\u202eb', '.', '..', ' ', '<img src=x>', 'javascript:alert(1)', 'x'.repeat(201), '.env', '.hidden.txt', '\u5831'.repeat(150), '\u2028', 'a\u2029b'];
     for (const name of bad) {
       const found = issuesOf({ schema: 'lousho.harness/1', outputs: { artifacts: [{ name, mediaType: 'text/plain' }] } });
       expect(found.map((issue) => issue.path), JSON.stringify(name)).toEqual([['outputs', 'artifacts', 0, 'name']]);

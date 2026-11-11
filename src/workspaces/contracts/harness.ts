@@ -3,7 +3,7 @@ import { isSafeRelativePath, refineUniqueIds } from '../../spec/v2/common';
 import { isRawJsonSchema } from '../../utils/zodCompat';
 import { KEBAB_CASE, SEMVER, workspacePathSchema } from './common';
 import { checkForbiddenKeys, HARNESS_JSON_SCHEMA_PATHS, HARNESS_KEY_RULES } from './forbiddenKeys';
-import { isArtifactName } from './ui';
+import { artifactName } from './ui';
 
 /** A `harness.json` document (`lousho.harness/1`): how a page performs its task, never security or the execution process (R13, R18). */
 export interface Harness {
@@ -15,7 +15,7 @@ export interface Harness {
   version?: string;
   /** Profile refs this harness extends, composed in order. */
   extends?: string[];
-  /** Prose `.md` files, relative to the page folder for a page harness, to the base harness folder (`harness/` unless `workspace.json` names another) for the base harness, and to the profile's own folder for a profile. */
+  /** Prose `.md` files, relative to the folder that owns the harness: the page folder for a page, the base harness folder (`harness/` unless `workspace.json` names another) for the base harness, the profile's own folder for a profile. */
   instructions?: string[];
   /** Who the output is for. */
   audience?: {
@@ -33,16 +33,16 @@ export interface Harness {
   };
   /** The page's input. */
   inputs?: {
-    /** A JSON Schema object with `type: 'object'`, or a relative path to one. */
+    /** A JSON Schema object with `type: 'object'`, or a path to one relative to the folder that owns the harness. */
     schema: Record<string, unknown> | string;
   };
   /** The page's output. */
   outputs?: {
-    /** A JSON Schema object, or a relative path to one. */
+    /** A JSON Schema object, or a path to one relative to the folder that owns the harness. */
     schema?: Record<string, unknown> | string;
     /** Files the page produces. */
     artifacts?: {
-      /** Artifact name, unique in the harness; a plain file name that a page UI can reference (no URL, `/`, `\`, `:`, control character, markup, `.` or `..`). */
+      /** Artifact name, unique in the harness; a plain file name that a page UI can reference and that is a safe artifact URI segment (no URL, `/`, `\`, `:`, control character, markup, leading `.`, or more than 255 UTF-8 bytes). */
       name: string;
       /** Media type, for example `image/png`. */
       mediaType: string;
@@ -70,7 +70,7 @@ export interface Harness {
       id: string;
       /** What the criterion checks. */
       description: string;
-      /** An executable check, the form R19 requires. */
+      /** An executable check, the form R19 requires; a script path is relative to the folder that owns the harness and must exist. */
       check?: string;
       /** A rubric for a judge; never gates an edit on its own. */
       rubric?: string;
@@ -101,7 +101,7 @@ export interface Harness {
   };
   /** Extra context for the page. */
   context?: {
-    /** Resources to load, relative to the page folder; the validator checks they exist for a page harness and does not read them for the base harness or a profile. */
+    /** Resources to load, relative to the folder that owns the harness (the page folder, the base harness folder or the profile's folder); each must exist. */
     resources?: string[];
   };
 }
@@ -118,10 +118,6 @@ const nonEmpty = z.string().min(1, 'must not be empty');
 const kebabId = z.string().regex(KEBAB_CASE, 'must be kebab-case');
 const positive = z.number().positive();
 const positiveInt = z.number().int().positive();
-const artifactNameSchema = z
-  .string()
-  .max(200)
-  .refine(isArtifactName, 'must be a plain file name: no URL, path separator, colon, control character, markup, or . and ..');
 const CAPABILITY = /^[A-Za-z][\w-]*(?:\.[A-Za-z][\w-]*)*$/;
 
 function isObjectSchema(value: unknown): boolean {
@@ -171,7 +167,7 @@ export const harnessObjectSchema = z
       .object({
         schema: outputSchemaRef.optional(),
         artifacts: z
-          .array(z.object({ name: artifactNameSchema, mediaType: nonEmpty, required: z.boolean().optional() }).strict())
+          .array(z.object({ name: artifactName, mediaType: nonEmpty, required: z.boolean().optional() }).strict())
           .superRefine(refineUniqueNames)
           .optional(),
       })

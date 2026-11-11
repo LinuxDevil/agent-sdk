@@ -14,7 +14,7 @@
       {
         "id": "brand-voice-applied",
         "description": "The output follows the brand voice.",
-        "check": "harness/checks/brand-voice-applied.ts"
+        "check": "checks/brand-voice-applied.ts"
       }
     ]
   }

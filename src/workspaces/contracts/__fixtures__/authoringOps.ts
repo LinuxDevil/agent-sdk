@@ -137,7 +137,7 @@ export const MARKETING_BUILD_OPS: readonly AuthoringOp[] = [
   {
     op: 'add_criterion',
     target: { kind: 'base' },
-    criterion: { id: 'brand-voice-applied', description: 'The output follows the brand voice.', check: 'harness/checks/brand-voice-applied.ts' },
+    criterion: { id: 'brand-voice-applied', description: 'The output follows the brand voice.', check: 'checks/brand-voice-applied.ts' },
   },
   { op: 'write_harness_prose', target: { kind: 'base' }, file: 'brand-voice.md', text: 'Write the way the brand speaks.' },
   ...agents.map((agent): AuthoringOp => ({ op: 'create_agent', ...agent })),

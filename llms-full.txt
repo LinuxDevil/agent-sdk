@@ -24507,7 +24507,7 @@ The core is a library. A service and two clients are planned on top of it.
 
 ### WorkspaceSource and the virtual file tree
 
-Every contract works on a **file tree**: an object from a path relative to the workspace root to the file's content. A `.json` file's value is parsed JSON or its text; any other file's value is text. This is `WorkspaceTree`, and `validateWorkspace`, `readBaseHarness`, `baseHarnessLayer` and `applyOps` all take one.
+Every contract works on a **file tree**: an object from a path relative to the workspace root to the file's content. A `.json` file's value is parsed JSON or its text; any other file's value is text. This is `WorkspaceTree`, and `validateWorkspace`, `baseHarnessLayer` and `applyOps` all take one.
 
 A database-backed source stores each workspace as such a tree with immutable revisions, so a run is pinned to one revision and every file-oriented rule on this page still holds. Code under `src/workspaces/` reads a workspace only through a source and never calls `node:fs` outside the folder source and the file stores. The test fixtures read folders with `src/workspaces/__fixtures__/readTree.ts`, which is the one place that does.
 
@@ -24628,7 +24628,7 @@ The same document is used by a page, the base harness and a profile. A profile r
 | `platform` | `{ id, requirements? }`; `requirements` is free-form data |
 | `inputs.schema` | A JSON Schema object with `type: "object"`, or a relative path to one |
 | `outputs.schema` | A JSON Schema object, or a relative path to one |
-| `outputs.artifacts` | `{ name, mediaType, required? }`, unique by `name`. A name is a plain file name: no URL, `/`, `\`, `:`, control character, markup, `.` or `..`, at most 200 characters, the same rule a page UI uses |
+| `outputs.artifacts` | `{ name, mediaType, required? }`, unique by `name`. A name is a plain file name that is also a safe artifact URI segment: no URL, `/`, `\`, `:`, markup, name starting with `.`, or control, format or separator character (Cc, Cf, Cs, Zl, Zp), at most 200 characters and 255 UTF-8 bytes. The page UI's `artifact` component uses the same schema |
 | `capabilities.require` | Dotted names such as `image.generate`. Requirements, never grants |
 | `constraints` | `{ id, text }`, unique by `id` |
 | `evaluation` | `{ criteria, threshold? }`. A criterion is `{ id, description, check?, rubric?, weight? }` and needs a `check`, a `rubric` or both. `threshold` is 0 to 1 |
@@ -24673,27 +24673,22 @@ A main harness with `mainAgent: null`, and any `main-agent/` file in that case, 
 
 ## Path bases
 
-Each listed path resolves from exactly one base, set by the field that holds it. Paths use forward slashes and may not leave the folder they start from.
+One rule: **a file a harness lists resolves from the folder that owns that harness layer**, and a missing file is an error. Paths use forward slashes and may not leave the folder they start from.
 
 | Field | Resolved from |
 | --- | --- |
 | `workspace.json` `harness`, `agents`, `harnessProfiles`, `workflows`, `mainAgent.harness` | The workspace root |
 | `page.json` `agents`, `harness.overrides`, `ui`, `./workflow.json`, `./goal.json` | The page folder |
-| Page harness `instructions`, `context.resources`, `evaluation.criteria[].check` when it is a script path (ending `.js`, `.ts`, `.mjs`, `.cjs`, `.mts` or `.cts`) | The page folder. A page harness in `harness/` lists `harness/task.md`, not `task.md` |
-| Base harness `instructions` | The base harness folder (`harness/` unless `workspace.json` names another) |
-| Profile `instructions` | The profile's own folder |
-| `inputs.schema` and `outputs.schema` given as a path, in any layer | The folder of the page being validated, after composition. A missing file is an error (PRD032) |
+| Page harness `instructions`, `context.resources`, `evaluation.criteria[].check` when it is a script path (ending `.js`, `.ts`, `.mjs`, `.cjs`, `.mts` or `.cts`), and `inputs.schema` / `outputs.schema` given as a path | The page folder. A page harness in `harness/` lists `harness/task.md`, not `task.md` |
+| The same four fields in the base harness | The base harness folder (`harness/` unless `workspace.json` names another), so the base lists `checks/brand-voice-applied.ts` for `harness/checks/brand-voice-applied.ts` |
+| The same four fields in a profile | That profile's own folder |
 | Main harness `instructions` | The main harness folder |
 | `workspace:<name>` workflow | `<workflows>/<name>/workflow.json` |
 | `workspace:<name>` agent | `<agents>/<name>/` |
 | `local:<name>` agent | `pages/<page>/agents/<name>/` |
 | `workspace:<path>` profile | `<harnessProfiles>/<path>/harness.json` |
 
-Three consequences of this table are open points in v0:
-
-1. A schema path written in the base harness or in a profile resolves from the page folder, not from the folder that wrote it. Two pages can therefore resolve one base path to different files, and a path that is right for one page fails closed (PRD032) on another. **Proposed change**: resolve a path from the folder that owns the layer, and keep the page folder for the page layer. This changes `validateLayers.ts` and the P1 resolver together, so it is not part of v0.
-2. `evaluation.criteria[].check` and `context.resources` listed in the base harness or a profile are kept as written and are not checked for existence. The Marketing fixture's base check sits at `harness/checks/...` from the workspace root.
-3. The base harness reads its prose from the harness folder, and a page reads its prose from the page folder. The two bases differ because a page's harness folder is itself a path, `harness.overrides`.
+A listed file that is missing is PRD032 (PRD004 for base-harness prose, PRD011 for main-harness prose). A schema given as a path is read into its layer before composition, so the effective harness and the UI binding check see the schema object, and two pages never resolve one base path to different files. A `global:` profile is resolved from the files the host's `resolveGlobal` returns for it. A check script is only checked for existence; the runtime runs it in P1.
 
 ## Harness composition
 
@@ -24804,7 +24799,7 @@ Shared files sit under fixed patterns: `shared/instructions/<name>.md`, `shared/
 | `tools.allow` | The intersection. `*` and `name*` in the ceiling cover the workspace names they match, and a workspace pattern keeps the ceiling names it covers. A ceiling that lists nothing grants nothing |
 | `network.allowHosts` | The intersection, with `*.host` covering subdomains only, never the apex or a look-alike. A workspace with no `network` inherits the ceiling's hosts. A ceiling with no `network` grants none |
 | `secrets` | Only refs present in the ceiling (same `env` or `secret` name), without duplicates |
-| `permissions` | `{ ceiling, workspace }`. The ceiling's rules come back unchanged. The workspace's rules keep their `deny` and `ask` rules and lose their `allow` rules. The runtime evaluates each list first-match and applies the stricter decision, so a workspace deny or ask holds under a ceiling allow, and a ceiling deny holds under a workspace rule |
+| `permissions` | `{ ceiling, workspace }`. The ceiling's rules come back unchanged. The workspace's rules keep their `deny` and `ask` rules and lose their `allow` rules. The runtime evaluates each list first-match and decides in the order `deny > ask > none > allow`, where `none` means no rule matched. So a workspace deny or ask holds under a ceiling allow, and a ceiling deny holds under a workspace rule. A ceiling `allow` with no matching workspace rule yields `none`, not `allow`: the tool's own approval applies |
 | `approvals.require` | The union of both lists, so it only grows |
 | `sandbox.required` | OR of the two. A workspace can turn it on but never off. Absent means `false` |
 
@@ -24886,7 +24881,7 @@ A page UI is `{ schema: "lousho.ui/1", title?, layout }`. The catalog is closed 
 
 Every component may have `label` and `visibleWhen`. An input has `bind: inputs.<field>…`, an output has `source: outputs.<field>…`, and `artifact` has `artifact: <name>`. A `text` component takes exactly one of `bind` (an input) or `source` (an output). `number` and `slider` take `min`, `max` and `step`; `select` and `radio` take `options: [{ value, label? }]`; `file` takes `accept`, a list of media types. `visibleWhen` is a safe expression that may read only `inputs`, `outputs` and `status`.
 
-Text is plain: `label`, `title`, `placeholder` and option labels are 1 to 500 characters with no HTML or markup and no URL, after decoding entities and normalising. An artifact name must be a name declared in `outputs.artifacts`, never a URL, path or markup. These keys are refused at any depth: `html`, `innerHTML`, `outerHTML`, `dangerouslySetInnerHTML`, `script`, `eval`, `href`, `src`, `srcset`, `srcdoc`, `url`, `style`, `css`, `className`, `class`, `__proto__`, `constructor`, `prototype`, any `on*` handler key (R15), and the R13 harness keys. The schema blocklist is defence in depth: the renderer must draw model text as text nodes.
+Text is plain: `label`, `title`, `placeholder` and option labels are 1 to 500 characters with no HTML or markup and no URL, after decoding entities and normalising. An `artifact` component's name must pass the same artifact name rule as a harness (no URL, path, markup or leading dot) and must be declared in `outputs.artifacts` (UI006). These keys are refused at any depth: `html`, `innerHTML`, `outerHTML`, `dangerouslySetInnerHTML`, `script`, `eval`, `href`, `src`, `srcset`, `srcdoc`, `url`, `style`, `css`, `className`, `class`, `__proto__`, `constructor`, `prototype`, any `on*` handler key (R15), and the R13 harness keys. The schema blocklist is defence in depth: the renderer must draw model text as text nodes.
 
 ### Binding a UI to a harness
 
@@ -24981,14 +24976,14 @@ This prints PRD022, because `summarize` is listed but has no folder.
 | PRD001 | error | A harness carries an R13 key (a grant) |
 | PRD002 | error | A harness carries an R18 key (the process) |
 | PRD003 | error | A harness or profile is invalid |
-| PRD004 | error | The base harness is invalid, or its prose is missing |
+| PRD004 | error | The base harness is invalid, its prose is missing, or its folder has files but no `harness.json` |
 | PRD005 | error | An attachment carries an R13 key |
 | PRD006 | error | `agents.json` is invalid |
 | PRD007 | error | An agent ref is malformed |
 | PRD008 | error | `page.json` is invalid |
 | PRD009 | error | Nested pages |
 | PRD010 | error | The page UI is invalid |
-| PRD011 | error | The main harness is invalid, or a main harness or `main-agent/` file exists with `mainAgent: null` |
+| PRD011 | error | The main harness is invalid, a main-harness prose file is missing, or a main harness or `main-agent/` file exists with `mainAgent: null` |
 | PRD012 | error | A UI binding problem; the message starts with the UI code |
 | PRD013 | error | The harness layers do not compose (a cycle, too deep, or a missing source) |
 | PRD014 | error | Policy outside `shared/policies/policy.json` (R13) |
@@ -25009,7 +25004,7 @@ This prints PRD022, because `summarize` is listed but has no folder.
 | PRD029 | info | Strict mode in v1: there is no lock, so no lock or pin check ran |
 | PRD030 | error | A workflow or goal file is missing or invalid |
 | PRD031 | warning | A main-harness limit was clamped to the workspace's |
-| PRD032 | error | A file a harness lists (prose, check, resource, schema) is missing |
+| PRD032 | error | A file a page harness or profile lists as prose, or any harness layer lists as a check script, resource or schema, is missing |
 
 A refused tree is reported once: when a manifest is unreadable or its folders overlap, the cross-file checks do not run.
 
@@ -25047,7 +25042,9 @@ The structure of each file is exported as JSON Schema (draft 7) in the repositor
 | `lousho.policy.v1.json` | `shared/policies/policy.json` |
 | `lousho.authoring-ops.v1.json` | One authoring operation |
 
-Regenerate them with `npm run workspaces:schema`. A test fails when they are stale. The export follows `agentSpecV2JsonSchema()`: it comes from the zod schema, so it carries the structure, enums, patterns, bounds and strictness. Rules that need code are only in the zod schemas and `validateWorkspace`: unique ids and aliases, the agent ref grammar, safe relative paths, the active type's required block, the forbidden-key scans, the plain-text rules of the UI, the base harness having no `id`, `version` or `extends`, and every cross-file check. Use an editor's JSON Schema support for completion, and `validateWorkspace` for the answer.
+Each file has a stable `$id`, `https://lousho.com/schemas/<file>`, and the folder ships in the npm package (`node_modules/lousho/schemas/`). Regenerate them with `npm run workspaces:schema`; `npm run workspaces:schema:check` and a test fail when they are stale. The export follows `agentSpecV2JsonSchema()`: it comes from the zod schema, so it carries structure, enums, patterns, bounds and strictness. A page UI's recursive component is a `$ref` into `definitions`.
+
+Rules that need code are only in the zod schemas and `validateWorkspace`. The schema negatives JSON Schema cannot express are `harness-duplicate-constraint-id` (unique ids), `attachment-duplicate-alias` (unique aliases), `attachment-ref-no-prefix` (the agent ref grammar), `page-nested-pages` (nested pages, PRD009) and `base-harness-has-extends` (the base harness has no `id`, `version` or `extends`). The same holds for safe relative paths, the active type's required block (JSON Schema does reject a missing `goal.lead`), the forbidden-key scans below free-form maps, the plain-text rules of the UI, and every cross-file check. The schema test rejects five schema negatives: `harness-permissions`, `harness-execution-key`, `attachment-tools-add`, `page-goal-without-lead` and `ui-html-prop`; the last needs the recursive reference unrolled, because the test validator turns a recursive `$ref` into "any". Use an editor's JSON Schema support for completion, and `validateWorkspace` for the answer.
 
 ## What is deferred
 

@@ -34,6 +34,8 @@ function stripNestedSchemas(value: unknown): void {
   Object.values(value).forEach(stripNestedSchemas);
 }
 
+const SCHEMA_ID_BASE = 'https://lousho.com/schemas/';
+
 const COMPONENT_REF = { $ref: '#/definitions/component' };
 
 function isOpenChildren(value: unknown): value is { type: 'array'; items: JsonObject } {
@@ -57,7 +59,7 @@ function uiSchema(): JsonObject {
   const component = properties.layout;
   linkChildren(component);
   properties.layout = { ...COMPONENT_REF };
-  return { ...schema, definitions: { component } };
+  return { ...schema, definitions: { ...(schema.definitions as JsonObject | undefined), component } };
 }
 
 function quietly<T>(run: () => T): T {
@@ -84,7 +86,7 @@ const ENTRIES: readonly WorkspaceSchemaEntry[] = [
 function build(entry: WorkspaceSchemaEntry): JsonObject {
   const schema = entry.schema();
   stripNestedSchemas(schema);
-  return { $schema: 'http://json-schema.org/draft-07/schema#', title: entry.title, ...schema };
+  return { $schema: 'http://json-schema.org/draft-07/schema#', $id: `${SCHEMA_ID_BASE}${entry.file}`, title: entry.title, ...schema };
 }
 
 /** The exported workspace JSON Schemas by file name (`lousho.<kind>.v1.json`), as plain objects. */

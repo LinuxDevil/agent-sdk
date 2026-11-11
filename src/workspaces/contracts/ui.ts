@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ExpressionError, safeExpressionVariables } from '../../flows/safeExpression';
 import { checkForbiddenKeys, FORBIDDEN_HARNESS_KEYS, type ForbiddenKeyError, type ForbiddenKeyRule } from './forbiddenKeys';
+import { isSafeSegment } from './execution';
 import type { Harness } from './harness';
 
 /** The closed component catalog by palette group; a page UI may use no other component (R15). */
@@ -213,22 +214,18 @@ const uiText = z
   .refine((text) => !hasMarkup(text), 'must be plain text: no HTML or markup (R15)')
   .refine((text) => !hasUrl(text), 'must not contain a URL; artifacts come only from the artifact store (R15)');
 
-const RESERVED_NAMES = new Set(['.', '..']);
-
 function isPlainText(text: string): boolean {
   return !hasUrl(text) && !hasMarkup(text);
 }
 
-export function isArtifactName(name: string): boolean {
-  return ARTIFACT_NAME.test(name) && name.trim() !== '' && !RESERVED_NAMES.has(name) && isPlainText(name);
+function isArtifactName(name: string): boolean {
+  return ARTIFACT_NAME.test(name) && name.trim() !== '' && isPlainText(name) && isSafeSegment(name);
 }
 
-const ARTIFACT_NAME_RULE = 'must be an artifact name declared in outputs.artifacts, never a URL, path or markup';
+const ARTIFACT_NAME_RULE = 'must be a plain artifact name: never a URL, path, markup, a name starting with a dot, or one with control characters or more than 255 bytes';
 
-const artifactName = z
-  .string()
-  .max(200)
-  .refine(isArtifactName, ARTIFACT_NAME_RULE);
+/** Zod schema for an artifact name, shared by the harness `outputs.artifacts` and the page UI `artifact` component: a plain file name that is also a safe artifact URI segment. */
+export const artifactName: z.ZodType<string> = z.string().max(200).refine(isArtifactName, ARTIFACT_NAME_RULE);
 
 function fieldPath(pattern: RegExp, root: string): z.ZodType<string> {
   return z

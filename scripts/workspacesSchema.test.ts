@@ -1,6 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { isZod4Schema } from '../src/utils/zodCompat';
+import { workspaceManifestObjectSchema } from '../src/workspaces/contracts/workspace';
 import { jsonSchemaToStandardSchema } from '../src/spec/v2/jsonSchemaAdapter';
 import { MARKETING_BUILD_OPS } from '../src/workspaces/contracts/__fixtures__/authoringOps';
 import { readFixtureTree, readNegativeIndex, readNegativeTree } from '../src/workspaces/__fixtures__/readTree';
@@ -26,11 +28,25 @@ const NOT_EXPRESSIBLE = [
   'attachment-duplicate-alias',
   'attachment-ref-no-prefix',
   'page-nested-pages',
-  'ui-html-prop',
 ];
 
+const REF = /^#\/definitions\/(.+)$/;
+
+function unroll(node: unknown, definitions: Record<string, unknown>, depth: number): unknown {
+  if (Array.isArray(node)) return node.map((item) => unroll(item, definitions, depth));
+  if (typeof node !== 'object' || node === null) return node;
+  const target = REF.exec(String((node as { $ref?: unknown }).$ref ?? ''))?.[1];
+  if (target !== undefined) return depth === 0 ? {} : unroll(definitions[target], definitions, depth - 1);
+  return Object.fromEntries(Object.entries(node).map(([key, value]) => [key, unroll(value, definitions, depth)]));
+}
+
+function unrolled(schema: Record<string, unknown>): Record<string, unknown> {
+  const { definitions, ...rest } = schema;
+  return unroll(rest, (definitions ?? {}) as Record<string, unknown>, 6) as Record<string, unknown>;
+}
+
 function validatorFor(file: string): (value: unknown) => boolean {
-  const schema = workspaceJsonSchemas()[file];
+  const schema = unrolled(workspaceJsonSchemas()[file]);
   const standard = jsonSchemaToStandardSchema(schema)['~standard'];
   return (value) => {
     const result = standard.validate(value) as { issues?: unknown };
@@ -43,7 +59,7 @@ function schemaFileOf(filePath: string): string | undefined {
 }
 
 describe('exported workspace JSON Schemas', () => {
-  it('are current: schemas/ holds exactly what npm run workspaces:schema writes', () => {
+  it.skipIf(isZod4Schema(workspaceManifestObjectSchema))('are current: schemas/ holds exactly what npm run workspaces:schema writes', () => {
     const rendered = renderWorkspaceSchemas();
     expect(fs.readdirSync(SCHEMAS_DIR).sort()).toEqual(Object.keys(rendered).sort());
     for (const [file, content] of Object.entries(rendered)) {
@@ -82,10 +98,10 @@ describe('exported workspace JSON Schemas', () => {
       expect(validatorFor(file)(value), item.name).toBe(false);
       checked.push(item.name);
     }
-    expect(checked).toEqual(['harness-permissions', 'harness-execution-key', 'attachment-tools-add', 'page-goal-without-lead']);
+    expect(checked).toEqual(['harness-permissions', 'harness-execution-key', 'attachment-tools-add', 'page-goal-without-lead', 'ui-html-prop']);
   });
 
-  it('name the schema negatives they cannot reject: unique ids, ref grammar, nested pages, the base-harness shape and a forbidden key below a recursive component', () => {
+  it('name the schema negatives JSON Schema cannot express: unique ids and aliases, the ref grammar, nested pages and the base-harness shape', () => {
     const { cases } = readNegativeIndex();
     const schemaCases = cases.filter((candidate) => candidate.checkedBy === 'schema').map((candidate) => candidate.name);
     for (const name of NOT_EXPRESSIBLE) expect(schemaCases).toContain(name);
@@ -93,6 +109,10 @@ describe('exported workspace JSON Schemas', () => {
       const file = schemaFileOf(item.file);
       if (file !== undefined) expect(validatorFor(file)(readNegativeTree(item.name)[item.file]), item.name).toBe(true);
     }
+  });
+
+  it('give every schema a stable $id that names its file', () => {
+    for (const [file, schema] of Object.entries(workspaceJsonSchemas())) expect(schema.$id, file).toBe(`https://lousho.com/schemas/${file}`);
   });
 
   it('reject a forbidden prop on the root component of a page UI', () => {

@@ -231,7 +231,8 @@ const FORBIDDEN_CHARS = /[/\\\p{Cc}\p{Cf}\p{Cs}\p{Zl}\p{Zp}]/u;
 
 const utf8 = new TextEncoder();
 
-function isSafeSegment(segment: string): boolean {
+/** Whether `segment` is a safe artifact URI segment: 1 to 255 UTF-8 bytes, no leading dot, no separators or control characters. */
+export function isSafeSegment(segment: string): boolean {
   return segment.length > 0 && !segment.startsWith('.') && !FORBIDDEN_CHARS.test(segment) && utf8.encode(segment).length <= MAX_SEGMENT_BYTES;
 }
 

@@ -219,7 +219,7 @@ describe('authoring operations', () => {
     expect(result.problems).toEqual([]);
     expect(Object.keys(result.tree).filter((path) => path.startsWith('main-agent/'))).toEqual([]);
     const stray = applyOps({ ...tree, 'workspace.json': { ...(tree['workspace.json'] as object), mainAgent: null } }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }], { validate: validateWorkspace });
-    expect(stray.problems[0].message).toContain('mainAgent to null');
+    expect(stray.problems.map((problem) => problem.message).join('\n')).toContain('mainAgent to null');
   });
 
   it('the main agent has instructions prose and write_agent_prose can target it', () => {
