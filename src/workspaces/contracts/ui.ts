@@ -170,21 +170,65 @@ export interface UiProblem {
 export type UiBindingTarget = Pick<Harness, 'inputs' | 'outputs'>;
 
 const MARKUP = /<[A-Za-z!/?]/;
-const URL_LIKE = /[A-Za-z][\w+.-]*:\/\/|(?:^|\s)\/\/\S|(?:java|vb)script\s*:|data:[\w.+-]+\/[\w.+-]+/i;
+const SQUASHED_URL = /[A-Za-z][\w+.-]*:\/\/|(?:java|vb)script:|data:[\w.+-]+\/|mailto:|\]\(|\\\\/i;
+const SPACED_URL = /(?:^|\s)(?:\/\/\S|www\.)/i;
+const NAMED_ENTITIES: Record<string, string> = { colon: ':', lt: '<', gt: '>', sol: '/', bsol: '\\', lpar: '(', rpar: ')', lsqb: '[', rsqb: ']', period: '.', tab: '', newline: '' };
 const PROTOTYPE_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
 const SEGMENT = '[A-Za-z_][\\w-]*';
 const INPUT_PATH = new RegExp(`^inputs(?:\\.${SEGMENT})*$`);
 const OUTPUT_PATH = new RegExp(`^outputs(?:\\.${SEGMENT})*$`);
-const ARTIFACT_NAME = /^[A-Za-z0-9][\w.-]*$/;
+const ARTIFACT_NAME = /^[^/\\:\p{Cc}\p{Cf}]+$/u;
 const MEDIA_TYPE = /^[a-z]+\/(?:\*|[a-z0-9][\w.+-]*)$/i;
 const VISIBLE_WHEN_SCOPE = new Set(['inputs', 'outputs', 'status']);
+
+function codePoint(code: number): string {
+  return Number.isInteger(code) && code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : '';
+}
+
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-f]+);?/gi, (_, hex: string) => codePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);?/g, (_, dec: string) => codePoint(Number(dec)))
+    .replace(/&([a-z]+);/gi, (entity, name: string) => (Object.hasOwn(NAMED_ENTITIES, name.toLowerCase()) ? NAMED_ENTITIES[name.toLowerCase()] : entity));
+}
+
+function readings(text: string): { spaced: string; squashed: string } {
+  const spaced = decodeEntities(text.normalize('NFKC')).normalize('NFKC').replace(/[\p{Cc}\p{Cf}]/gu, '');
+  return { spaced, squashed: spaced.replace(/\s/g, '') };
+}
+
+function hasMarkup(text: string): boolean {
+  return MARKUP.test(readings(text).squashed);
+}
+
+function hasUrl(text: string): boolean {
+  const { spaced, squashed } = readings(text);
+  return SQUASHED_URL.test(squashed) || SPACED_URL.test(spaced);
+}
 
 const uiText = z
   .string()
   .min(1, 'must not be empty')
   .max(500)
-  .refine((text) => !MARKUP.test(text), 'must be plain text: no HTML or markup (R15)')
-  .refine((text) => !URL_LIKE.test(text), 'must not contain a URL; artifacts come only from the artifact store (R15)');
+  .refine((text) => !hasMarkup(text), 'must be plain text: no HTML or markup (R15)')
+  .refine((text) => !hasUrl(text), 'must not contain a URL; artifacts come only from the artifact store (R15)');
+
+const RESERVED_NAMES = new Set(['.', '..']);
+
+function isPlainText(text: string): boolean {
+  return !hasUrl(text) && !hasMarkup(text);
+}
+
+function isArtifactName(name: string): boolean {
+  return ARTIFACT_NAME.test(name) && name.trim() !== '' && !RESERVED_NAMES.has(name) && isPlainText(name);
+}
+
+const ARTIFACT_NAME_RULE = 'must be an artifact name declared in outputs.artifacts, never a URL, path or markup';
+
+const artifactName = z
+  .string()
+  .max(200)
+  .refine(isArtifactName, ARTIFACT_NAME_RULE);
 
 function fieldPath(pattern: RegExp, root: string): z.ZodType<string> {
   return z
@@ -207,7 +251,7 @@ function checkVisibleWhen(expression: string, ctx: z.RefinementCtx): void {
 }
 
 const base = {
-  visibleWhen: z.string().min(1).max(500).superRefine(checkVisibleWhen).optional(),
+  visibleWhen: z.string().trim().min(1).max(500).superRefine(checkVisibleWhen).optional(),
   label: uiText.optional(),
 };
 
@@ -227,12 +271,12 @@ export const uiComponentOptions = [
       ...base,
       type: z.enum(['select', 'radio']),
       bind: bindPath,
-      options: z.array(z.object({ value: z.union([uiText, z.number().finite(), z.boolean()]), label: uiText.optional() }).strict()).optional(),
+      options: z.array(z.object({ value: z.union([z.string().max(500), z.number().finite(), z.boolean()]), label: uiText.optional() }).strict()).optional(),
     })
     .strict(),
   z.object({ ...base, type: z.literal('file'), bind: bindPath, accept: z.array(z.string().regex(MEDIA_TYPE, 'must be a media type such as image/png or image/*')).optional() }).strict(),
   z.object({ ...base, type: z.enum(['markdown', 'json', 'table']), source: sourcePath }).strict(),
-  z.object({ ...base, type: z.literal('artifact'), artifact: z.string().max(200).regex(ARTIFACT_NAME, 'must be an artifact name declared in outputs.artifacts, never a URL or path') }).strict(),
+  z.object({ ...base, type: z.literal('artifact'), artifact: artifactName }).strict(),
   z.object({ ...base, type: z.enum(['runButton', 'cancelButton', 'reviseBox', 'artifactGallery', 'runStatus', 'progress', 'traceLink', 'versionList', 'compare']) }).strict(),
 ] as const;
 
@@ -302,44 +346,81 @@ function isRecord(value: unknown): value is JsonSchema {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const UNRESOLVED = 'unresolved';
+
+type Lookup = JsonSchema | typeof UNRESOLVED | undefined;
+
+function records(value: unknown): JsonSchema[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
 function parts(schema: JsonSchema): JsonSchema[] {
-  const allOf = Array.isArray(schema.allOf) ? schema.allOf.filter(isRecord) : [];
-  return [schema, ...allOf.flatMap(parts)];
+  return [schema, ...records(schema.allOf).flatMap(parts)];
 }
 
-function propertyOf(schema: JsonSchema, name: string): JsonSchema | undefined {
-  for (const part of parts(schema)) {
-    const properties = part.properties;
-    if (isRecord(properties) && Object.hasOwn(properties, name) && isRecord(properties[name])) return properties[name];
-  }
-  return undefined;
+function branches(part: JsonSchema): JsonSchema[] {
+  return [...records(part.anyOf), ...records(part.oneOf)];
 }
 
-function schemaAt(root: JsonSchema, path: string): JsonSchema | undefined {
+function variants(schema: JsonSchema): JsonSchema[] {
+  return parts(schema).flatMap((part) => [part, ...branches(part).flatMap(variants)]);
+}
+
+function hasRef(schema: JsonSchema): boolean {
+  return parts(schema).some((part) => typeof part.$ref === 'string');
+}
+
+function firstFound(found: readonly Lookup[]): Lookup {
+  return found.find(isRecord) ?? (found.includes(UNRESOLVED) ? UNRESOLVED : undefined);
+}
+
+function anyFound(found: readonly Lookup[]): Lookup {
+  const schemas = found.filter(isRecord);
+  return schemas.length > 1 ? { anyOf: schemas } : firstFound(found);
+}
+
+function partProperty(part: JsonSchema, name: string): Lookup {
+  const properties = part.properties;
+  if (isRecord(properties) && Object.hasOwn(properties, name) && isRecord(properties[name])) return properties[name];
+  if (typeof part.$ref === 'string') return UNRESOLVED;
+  return anyFound(branches(part).map((branch) => propertyOf(branch, name)));
+}
+
+function propertyOf(schema: JsonSchema, name: string): Lookup {
+  return firstFound(parts(schema).map((part) => partProperty(part, name)));
+}
+
+function schemaAt(root: JsonSchema, path: string): Lookup {
   return path
     .split('.')
     .slice(1)
-    .reduce<JsonSchema | undefined>((schema, name) => (schema === undefined ? undefined : propertyOf(schema, name)), root);
+    .reduce<Lookup>((schema, name) => (isRecord(schema) ? propertyOf(schema, name) : schema), root);
+}
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 function typesOf(schema: JsonSchema): string[] {
-  return parts(schema).flatMap((part) => (typeof part.type === 'string' ? [part.type] : Array.isArray(part.type) ? part.type.filter((t): t is string => typeof t === 'string') : []));
+  return variants(schema).flatMap((part) => (typeof part.type === 'string' ? [part.type] : strings(part.type)));
 }
 
 function enumOf(schema: JsonSchema): unknown[] | undefined {
-  for (const part of parts(schema)) {
-    if (Array.isArray(part.enum)) return part.enum;
-    if ('const' in part) return [part.const];
-  }
-  return undefined;
+  const values = variants(schema).flatMap((part) => [...(Array.isArray(part.enum) ? part.enum : []), ...('const' in part ? [part.const] : [])]);
+  return values.length > 0 ? values : undefined;
+}
+
+function requiredInAllBranches(part: JsonSchema): string[] {
+  const lists = branches(part).map(requiredOf);
+  return lists.length === 0 ? [] : lists[0].filter((name) => lists.every((list) => list.includes(name)));
 }
 
 function requiredOf(schema: JsonSchema): string[] {
-  return [...new Set(parts(schema).flatMap((part) => (Array.isArray(part.required) ? part.required.filter((name): name is string => typeof name === 'string') : [])))];
+  return [...new Set(parts(schema).flatMap((part) => [...strings(part.required), ...requiredInAllBranches(part)]))];
 }
 
 function hasDefault(schema: JsonSchema): boolean {
-  return parts(schema).some((part) => 'default' in part);
+  return variants(schema).some((part) => 'default' in part);
 }
 
 interface Accepts {
@@ -409,6 +490,10 @@ function fieldProblems(checker: Checker, side: Side, visit: Visit, prop: 'bind' 
     return [];
   }
   const field = side.root === undefined ? undefined : schemaAt(side.root.schema, at);
+  if (field === UNRESOLVED) {
+    checker.unresolved.add(side.name);
+    return [];
+  }
   if (field === undefined) return [{ code: side.missing, path, message: `${at}: no such field in the harness's ${side.name}.schema` }];
   return [...typeProblem(side, visit.node, field, path, at), ...optionProblems(visit.node, field, visit.path, at)];
 }
@@ -426,7 +511,8 @@ function isPartlyBound(path: string, binds: readonly string[]): boolean {
   return binds.some((bind) => bind.startsWith(`${path}.`));
 }
 
-function unboundField(field: JsonSchema | undefined, path: string, binds: readonly string[]): string[] {
+function unboundField(field: Lookup, path: string, binds: readonly string[]): string[] {
+  if (field === UNRESOLVED) return [];
   if (field === undefined) return [path];
   if (hasDefault(field)) return [];
   return isPartlyBound(path, binds) ? unboundRequired(field, path, binds) : [path];
@@ -473,16 +559,20 @@ function declaredArtifacts(harness: UiBindingTarget): Set<string> {
   return new Set((harness.outputs?.artifacts ?? []).map((artifact) => artifact.name));
 }
 
+function isUnresolved(root: Root): boolean {
+  return root === 'path' || (root !== undefined && hasRef(root.schema));
+}
+
 function unresolvedProblems(checker: Checker): UiProblem[] {
   return (['inputs', 'outputs'] as const)
     .filter((name) => checker.unresolved.has(name))
-    .map((name) => ({ code: 'UI008', path: [], message: `${name}.schema is a file path; resolve it before checking UI bindings` }));
+    .map((name) => ({ code: 'UI008', path: [], message: `${name}.schema is a file path or has a $ref; resolve it before checking UI bindings` }));
 }
 
 /** Checks a parsed page UI against the effective harness: binds, options, sources, artifacts and required inputs; pure, so `validateWorkspace` (P0.10) and the Studio call it on unsaved state. */
 export function validateUiBindings(ui: PageUi, harness: UiBindingTarget): UiProblem[] {
   const sides = sidesOf(harness);
-  const checker: Checker = { unresolved: new Set(sides.inputs.root === 'path' ? ['inputs'] : []) };
+  const checker: Checker = { unresolved: new Set(isUnresolved(sides.inputs.root) ? ['inputs'] : []) };
   const declared = declaredArtifacts(harness);
   const visits = visitAll(ui.layout, ['layout']);
   const problems = visits.flatMap((visit) => visitProblems(checker, sides, visit, declared));

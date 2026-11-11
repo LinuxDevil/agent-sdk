@@ -506,14 +506,19 @@ function childNodes(node: Node): readonly Node[] {
   return [];
 }
 
+function checkMember(expression: string, node: Extract<Node, { t: 'member' }>): void {
+  if (node.key.t !== 'lit' && node.key.t !== 'id') throw new ExpressionError(expression, node.pos, 'computed property keys must be a literal or a variable');
+  if (node.key.t === 'lit' && FORBIDDEN_KEYS.has(String(node.key.value))) throw new ExpressionError(expression, node.pos, `access to '${String(node.key.value)}' is not allowed`);
+}
+
+function isAllowedCall(node: Extract<Node, { t: 'call' }>): boolean {
+  return node.callee.t === 'member' && node.callee.key.t === 'lit' && STRING_METHODS.has(String(node.callee.key.value));
+}
+
 function collectVariables(expression: string, node: Node, names: Set<string>): void {
   if (node.t === 'id') names.add(node.name);
-  if (node.t === 'member' && node.key.t === 'lit' && FORBIDDEN_KEYS.has(String(node.key.value))) {
-    throw new ExpressionError(expression, node.pos, `access to '${String(node.key.value)}' is not allowed`);
-  }
-  if (node.t === 'call' && !(node.callee.t === 'member' && node.callee.key.t === 'lit' && STRING_METHODS.has(String(node.callee.key.value)))) {
-    throw new ExpressionError(expression, node.pos, 'only .includes(), .startsWith() and .endsWith() may be called');
-  }
+  if (node.t === 'member') checkMember(expression, node);
+  if (node.t === 'call' && !isAllowedCall(node)) throw new ExpressionError(expression, node.pos, 'only .includes(), .startsWith() and .endsWith() may be called');
   for (const child of childNodes(node)) collectVariables(expression, child, names);
 }
 

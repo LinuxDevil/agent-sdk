@@ -140,6 +140,47 @@ describe('pageUiSchema', () => {
     expect(issuesOf(inStack({ type: 'runButton', label: 'Input data: topic and tone' }))).toEqual([]);
   });
 
+  it('obfuscated schemes, markup and links in text props are rejected', () => {
+    const attacks = [
+      'java\tscript:alert(1)',
+      'java\nscript:',
+      '&#106;avascript:alert(1)',
+      '&#x6a;avascript:alert(1)',
+      'javascript&colon;alert(1)',
+      'ｊａｖａｓｃｒｉｐｔ:x',
+      'www.evil.com',
+      'visit www.evil.com',
+      '\\\\evil.com\\x',
+      '![x](//e.com/a.png)',
+      '[x](e)',
+      'http\u200B://e.com',
+      '＜script＞',
+      '&lt;script&gt;',
+      'mailto:a@b',
+    ];
+    for (const text of attacks) {
+      expect(issuesOf(inStack({ type: 'runButton', label: text })).map((issue) => issue.path), JSON.stringify(text)).toEqual([['layout', 'children', 0, 'label']]);
+    }
+    expect(issuesOf(inStack({ type: 'runButton', label: 'Tone & voice: pick one (or two) [optional]' }))).toEqual([]);
+  });
+
+  it('option values are compared to the enum, not checked as text', () => {
+    expect(issuesOf(inStack({ type: 'select', bind: 'inputs.a', options: [{ value: 'a < b' }, { value: 'x/y' }] }))).toEqual([]);
+  });
+
+  it('visibleWhen is trimmed and must not be blank', () => {
+    const parsed = pageUiSchema.safeParse(inStack({ type: 'runStatus', visibleWhen: "  status == 'ok'  " }));
+    expect(parsed.success && parsed.data.layout.type === 'stack' ? parsed.data.layout.children[0].visibleWhen : undefined).toBe("status == 'ok'");
+    expect(issuesOf(inStack({ type: 'runStatus', visibleWhen: '   ' })).map((issue) => issue.path)).toEqual([['layout', 'children', 0, 'visibleWhen']]);
+  });
+
+  it('artifact names follow the harness, minus URLs, paths and markup', () => {
+    expect(issuesOf(inStack({ type: 'artifact', artifact: 'cover image (1).png' }))).toEqual([]);
+    for (const name of ['a/b', 'a\\b', 'mailto:x', 'www.evil.com', '<b>', '..', ' ']) {
+      expect(issuesOf(inStack({ type: 'artifact', artifact: name })).map((issue) => issue.path), name).toEqual([['layout', 'children', 0, 'artifact']]);
+    }
+  });
+
   it('remote or inline assets are never an artifact name or media type', () => {
     expect(issuesOf(inStack({ type: 'artifact', artifact: 'https://evil.example/x.png' }))[0].path).toEqual(['layout', 'children', 0, 'artifact']);
     expect(issuesOf(inStack({ type: 'artifact', artifact: 'data:image/png;base64,AAAA' }))[0].path).toEqual(['layout', 'children', 0, 'artifact']);
@@ -281,9 +322,42 @@ describe('validateUiBindings', () => {
   it('a schema given as a file path must be resolved first', () => {
     const unresolved: Pick<Harness, 'inputs' | 'outputs'> = { inputs: { schema: 'schemas/in.json' }, outputs: { schema: 'schemas/out.json' } };
     expect(validateUiBindings(uiOf({ type: 'text', source: 'outputs.a' }, { type: 'text', source: 'outputs.b' }), unresolved)).toEqual([
-      { code: 'UI008', path: [], message: 'inputs.schema is a file path; resolve it before checking UI bindings' },
-      { code: 'UI008', path: [], message: 'outputs.schema is a file path; resolve it before checking UI bindings' },
+      { code: 'UI008', path: [], message: 'inputs.schema is a file path or has a $ref; resolve it before checking UI bindings' },
+      { code: 'UI008', path: [], message: 'outputs.schema is a file path or has a $ref; resolve it before checking UI bindings' },
     ]);
+  });
+
+  it('a $ref in the P0.4 allOf shape is unresolved, not missing', () => {
+    const composed: UiBindingTarget = {
+      inputs: { schema: { allOf: [{ $ref: 'schemas/in.json' }, { type: 'object', properties: { extra: { type: 'string' } }, required: ['extra'] }] } },
+    };
+    const ui: PageUi = { schema: 'lousho.ui/1', layout: { type: 'stack', children: [{ type: 'text', bind: 'inputs.topic' }, { type: 'toggle', bind: 'inputs.extra' }] } };
+    expect(validateUiBindings(ui, composed)).toEqual([
+      { code: 'UI008', path: [], message: 'inputs.schema is a file path or has a $ref; resolve it before checking UI bindings' },
+      { code: 'UI002', path: ['layout', 'children', 1, 'bind'], message: 'inputs.extra: toggle needs a boolean field, but the schema says string' },
+    ]);
+    const nested: UiBindingTarget = { outputs: { schema: { type: 'object', properties: { post: { $ref: '#/$defs/post' } } } } };
+    expect(codes(uiOf({ type: 'markdown', source: 'outputs.post.body' }), { inputs: { schema: { type: 'object' } }, ...nested })).toEqual(['UI008']);
+  });
+
+  it('anyOf and oneOf branches: a field in any branch exists; required only if required in all', () => {
+    const harness: UiBindingTarget = {
+      inputs: {
+        schema: {
+          type: 'object',
+          oneOf: [
+            { properties: { url: { type: 'string' }, kind: { const: 'link' } }, required: ['kind', 'url'] },
+            { properties: { file: { type: 'object' }, kind: { const: 'upload' } }, required: ['kind', 'file'] },
+          ],
+        },
+      },
+    };
+    const ui = (...children: UiComponent[]): PageUi => ({ schema: 'lousho.ui/1', layout: { type: 'stack', children } });
+    expect(codes(ui({ type: 'radio', bind: 'inputs.kind', options: [{ value: 'link' }, { value: 'upload' }] }, { type: 'text', bind: 'inputs.url' }, { type: 'file', bind: 'inputs.file' }), harness)).toEqual([]);
+    expect(validateUiBindings(ui({ type: 'text', bind: 'inputs.url' }), harness)).toEqual([
+      { code: 'UI007', path: ['layout'], message: 'inputs.kind is required and has no default, but no input binds it' },
+    ]);
+    expect(codes(ui({ type: 'radio', bind: 'inputs.kind', options: [{ value: 'paste' }] }, { type: 'text', bind: 'inputs.nope' }), harness)).toEqual(['UI003', 'UI001']);
   });
 
   it('a harness without inputs or outputs leaves every binding missing', () => {
