@@ -9,11 +9,18 @@ import { ToastProvider } from '../../../ui/Toast';
 const mocks = vi.hoisted(() => ({
   listVersions: vi.fn(),
   saveVersion: vi.fn(),
+  diffVersion: vi.fn(),
+  getVersion: vi.fn(),
   eventHandler: undefined as ((event: StudioEvent) => void) | undefined,
 }));
 
 vi.mock('../../../runtime/runtimeClient', () => ({
-  runtimeClient: { listVersions: mocks.listVersions, saveVersion: mocks.saveVersion },
+  runtimeClient: {
+    listVersions: mocks.listVersions,
+    saveVersion: mocks.saveVersion,
+    diffVersion: mocks.diffVersion,
+    getVersion: mocks.getVersion,
+  },
 }));
 
 vi.mock('../../../state/useStudioEvents', () => ({
@@ -108,6 +115,10 @@ beforeEach(() => {
   mocks.saveVersion.mockReset();
   mocks.listVersions.mockResolvedValue([]);
   mocks.saveVersion.mockResolvedValue({ item: item({ version: 9 }), created: true });
+  mocks.diffVersion.mockReset();
+  mocks.getVersion.mockReset();
+  mocks.diffVersion.mockResolvedValue([]);
+  mocks.getVersion.mockResolvedValue(item({ version: 1 }));
   mocks.eventHandler = undefined;
 });
 
@@ -241,6 +252,44 @@ describe('VersionsTab', () => {
     expect(host.querySelector('.empty-state-title')?.textContent).toBe("Couldn't load versions");
     expect(host.querySelector('.empty-state-hint')?.textContent).toBe('boom');
     expect(host.querySelector('.empty-state-action button')?.textContent).toContain('Retry');
+  });
+
+  it('gives every item a Changes button except a baseline v1, opening one shared diff sheet', async () => {
+    mocks.listVersions.mockResolvedValue([
+      item({ version: 3 }),
+      item({ version: 2, kind: 'baseline', source: 'external_file_edit', summary: null }),
+      item({ version: 1, kind: 'baseline', source: 'external_file_edit', summary: null }),
+    ]);
+    const host = renderTab();
+    await flush();
+
+    const rows = [...host.querySelectorAll<HTMLElement>('.version-item')];
+    const changesButton = (row: HTMLElement) =>
+      [...row.querySelectorAll<HTMLButtonElement>('.version-actions button')].find((b) =>
+        b.textContent?.includes('Changes'),
+      );
+    expect(changesButton(rows[0])).not.toBeNull();
+    expect(changesButton(rows[1])).not.toBeNull();
+    expect(changesButton(rows[2])).toBeUndefined();
+
+    // Opening v3's sheet fetches its diff against v2; Escape closes it and
+    // returns focus to the Changes button (U04 useModal behaviour).
+    const button = changesButton(rows[0])!;
+    button.focus();
+    act(() => button.click());
+    await flush();
+    expect(document.querySelector('.sheet-title')?.textContent).toBe('v3 changes');
+    expect(mocks.diffVersion).toHaveBeenCalledWith('support-bot', 3, 2);
+    expect(document.querySelectorAll('.sheet').length).toBe(1);
+
+    act(() => {
+      document
+        .querySelector('.sheet')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(document.querySelector('.sheet')).toBeNull();
+    expect(document.activeElement).toBe(button);
   });
 
   it('Save version toasts "Saved v<n>" and refreshes', async () => {
