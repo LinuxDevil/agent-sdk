@@ -9,6 +9,8 @@ import { EmptyState } from '../../ui/EmptyState';
 import { SkeletonRows } from '../../ui/Skeleton';
 import type { VersionKind, VersionListItem } from '../../../shared/wireTypes';
 import { useAgentDetail } from './AgentDetailContext';
+import { RestoreDialog } from './RestoreDialog';
+import { useAppState } from '../../state/AppState';
 import { VersionDiffSheet } from './VersionDiffSheet';
 import { fieldLabel, kindLabel, SOURCE_LABELS, summaryPending } from './versionLabels';
 import { useVersions } from './useVersions';
@@ -32,16 +34,18 @@ const MAX_FIELD_CHIPS = 4;
  * pass is still writing it, the baseline hint for external edits), the
  * quoted request text and the changed-field chips. `version-actions`
  * holds the Changes button (L02; hidden on a baseline v1, which has no
- * diff to show) - L03/L14b add Restore/Publish buttons there.
+ * diff to show) and, on every item but the current one, Restore (L03).
  */
 function VersionItem({
   item,
   isCurrent,
   onShowChanges,
+  onRestore,
 }: {
   item: VersionListItem;
   isCurrent: boolean;
   onShowChanges(version: number): void;
+  onRestore(version: number): void;
 }): JSX.Element {
   const Icon = KIND_ICONS[item.kind];
   const pending = summaryPending(item);
@@ -98,6 +102,16 @@ function VersionItem({
               Changes
             </button>
           )}
+          {!isCurrent && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onRestore(item.version)}
+            >
+              <RotateCcw size={14} strokeWidth={1.75} aria-hidden="true" />
+              Restore
+            </button>
+          )}
         </div>
       </div>
     </li>
@@ -116,6 +130,7 @@ function VersionList({
   onSave,
   onRetry,
   onShowChanges,
+  onRestore,
 }: {
   items: VersionListItem[] | undefined;
   error: string | undefined;
@@ -123,6 +138,7 @@ function VersionList({
   onSave(): void;
   onRetry(): void;
   onShowChanges(version: number): void;
+  onRestore(version: number): void;
 }): JSX.Element {
   if (error !== undefined) {
     return (
@@ -167,6 +183,7 @@ function VersionList({
           item={item}
           isCurrent={index === 0}
           onShowChanges={onShowChanges}
+          onRestore={onRestore}
         />
       ))}
     </ol>
@@ -182,12 +199,15 @@ function VersionList({
  * (L02) opens for whichever item's Changes button was clicked.
  */
 export function VersionsTab(): JSX.Element {
-  const { record } = useAgentDetail();
-  const { items, error, refresh } = useVersions(record.id);
+  const { record, refresh } = useAgentDetail();
+  const { items, error, refresh: refreshVersions } = useVersions(record.id);
+  const app = useAppState();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
   // The version whose diff sheet is open; null keeps the one shared sheet closed.
   const [diffFor, setDiffFor] = useState<number | null>(null);
+  // The version the restore dialog is confirming; null keeps it closed.
+  const [restoreFor, setRestoreFor] = useState<number | null>(null);
 
   const saveVersion = useCallback(async () => {
     setSaving(true);
@@ -197,13 +217,28 @@ export function VersionsTab(): JSX.Element {
         message: created ? `Saved v${item.version}` : `Nothing changed since v${item.version}`,
         tone: created ? 'success' : 'info',
       });
-      await refresh();
+      await refreshVersions();
     } catch (err) {
       toast.show({ message: errorMessage(err), tone: 'error' });
     } finally {
       setSaving(false);
     }
-  }, [record.id, refresh, toast]);
+  }, [record.id, refreshVersions, toast]);
+
+  // L03: the restore wrote a new version server-side; the open editor
+  // drops its local edits for the restored spec (`discardLocal`), the
+  // record and the timeline refetch, and the dialog closes.
+  const restored = useCallback(
+    (item: VersionListItem) => {
+      const from = item.restoredFromVersion ?? restoreFor;
+      setRestoreFor(null);
+      toast.show({ message: `Restored v${from} as v${item.version}`, tone: 'success' });
+      void app.reload({ discardLocal: true });
+      refresh();
+      void refreshVersions();
+    },
+    [app, refresh, refreshVersions, restoreFor, toast],
+  );
 
   return (
     <section className="versions" aria-labelledby="versions-title">
@@ -229,8 +264,9 @@ export function VersionsTab(): JSX.Element {
         error={error}
         saving={saving}
         onSave={() => void saveVersion()}
-        onRetry={() => void refresh()}
+        onRetry={() => void refreshVersions()}
         onShowChanges={setDiffFor}
+        onRestore={setRestoreFor}
       />
       <VersionDiffSheet
         agentId={record.id}
@@ -238,6 +274,15 @@ export function VersionsTab(): JSX.Element {
         versions={items ?? []}
         open={diffFor !== null}
         onClose={() => setDiffFor(null)}
+      />
+      <RestoreDialog
+        agentId={record.id}
+        version={restoreFor ?? 0}
+        nextVersion={(items?.[0]?.version ?? 0) + 1}
+        dirty={app.dirty}
+        open={restoreFor !== null}
+        onClose={() => setRestoreFor(null)}
+        onRestored={restored}
       />
     </section>
   );
