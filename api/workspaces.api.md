@@ -790,6 +790,9 @@ export interface PageManifest {
     improve?: {
         enabled?: boolean;
     };
+    models?: {
+        provider?: string | null;
+    };
     name: string;
     platform?: {
         profile?: string;
@@ -801,6 +804,19 @@ export interface PageManifest {
     schema: 'lousho.page/1';
     ui?: string;
 }
+
+// @public
+export interface PageModelInputs {
+    agentDefault?: string;
+    attachmentModel?: string;
+    pageDefault?: string;
+    pageProvider?: string | null;
+    workspaceDefault?: string;
+    workspaceProvider?: string | null;
+}
+
+// @public
+export type PageModelSource = 'attachment' | 'page' | 'agent' | 'workspace' | 'none';
 
 // @public
 export interface PageProgressEvent {
@@ -1007,6 +1023,15 @@ interface ResetPageUiOp {
     op: 'reset_page_ui';
     page: string;
 }
+
+// @public
+export interface ResolvedPageModel {
+    model: string | undefined;
+    source: PageModelSource;
+}
+
+// @public
+export function resolvePageModel(inputs: PageModelInputs): ResolvedPageModel;
 
 // @public
 export type RevisionActor = AuditEntry['actor'];
@@ -1435,6 +1460,9 @@ export interface WorkspaceManifest {
         inheritsShared?: boolean;
         harness?: string;
     } | null;
+    models?: {
+        provider?: string | null;
+    };
     name: string;
     pages: string[];
     schema: 'lousho.workspace/1';
