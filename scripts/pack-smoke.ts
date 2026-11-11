@@ -70,12 +70,12 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * CI counted 853 entries on 2026-10-29 (online evaluators); entry budget
  * raised to 940 (~10% headroom). The spec-v2 sections shipped since then
  * brought the count to 930; the templates/ folder (+18 starter-agent files)
- * takes it to 948. Entry budget raised to 1040 (~10% headroom), then to 1150 at 1041 entries (M4 S6).
+ * takes it to 948. Entry budget raised to 1040 (~10% headroom), then to 1150 at 1041 entries (M4 S6), then to 1300 at 1153 entries (workspace runtime P1).
  * The `lousho/spec` subpath (S23: dist/spec/{index.js,index.mjs,index.d.ts,
  * index.d.mts}) pushed the packed size to 5,276,320 bytes (~5.03 MiB);
  * packed budget raised to 5.5 MiB (~9% headroom).
  */
-const MAX_ENTRIES = 1150;
+const MAX_ENTRIES = 1300;
 const MAX_UNPACKED_BYTES = 24 * 1024 * 1024;
 const MAX_PACKED_BYTES = 7 * 1024 * 1024;
 
