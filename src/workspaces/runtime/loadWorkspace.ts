@@ -10,9 +10,9 @@ import { WorkspaceValidationError } from './validationError';
 export interface LoadWorkspaceOptions {
   /** The revision to load; defaults to the source's current revision. */
   revision?: RevisionId;
-  /** `strict` adds the publish-time checks of `validateWorkspace`. */
   /** Answers a `global:` harness profile or agent ref with that folder's files; see `validateWorkspace`. */
   resolveGlobal?: ValidateWorkspaceOptions['resolveGlobal'];
+  /** `strict` adds the publish-time checks of `validateWorkspace`. */
   mode: NonNullable<ValidateWorkspaceOptions['mode']>;
 }
 

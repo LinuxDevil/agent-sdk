@@ -1,4 +1,4 @@
-import { attachmentsSchema } from '../contracts/agentRefs';
+import { attachmentsSchema, parseAgentRef, type ParseAgentRefResult } from '../contracts/agentRefs';
 import type { WorkspaceTree } from '../contracts/baseHarness';
 import { pageSchema, type PageManifest } from '../contracts/page';
 import { SHARED_FOLDERS } from '../contracts/shared';
@@ -66,15 +66,19 @@ function sharedFolders(paths: readonly string[]): string[] {
 function attachmentsOf(tree: WorkspaceTree, page: PageManifest, id: string): AttachmentView[] {
   const path = joinPath(`pages/${id}`, page.agents ?? 'agents.json');
   if (!(path in tree)) return [];
-  return parse(tree, path, attachmentsSchema).agents.map(({ as, ref }) => ({ alias: as, ref, kind: ref.slice(0, ref.indexOf(':')) as AttachmentView['kind'] }));
+  return parse(tree, path, attachmentsSchema).agents.map(({ as, ref }) => ({ alias: as, ref, kind: (parseAgentRef(ref) as Extract<ParseAgentRefResult, { ok: true }>).ref.kind }));
 }
 
-function pageView(tree: WorkspaceTree, paths: readonly string[], id: string): PageManifestView {
+interface Layers {
+  base?: string;
+  shared: readonly string[];
+}
+
+function pageView(tree: WorkspaceTree, paths: readonly string[], layers: Layers, id: string): PageManifestView {
   const page = parse(tree, `pages/${id}/page.json`, pageSchema);
-  const base = baseFolder(tree, paths);
   return {
     files: paths.filter((path) => path.startsWith(`pages/${id}/`)),
-    inherits: { ...(base !== undefined && { base }), shared: sharedFolders(paths), profiles: [...page.harness.extends] },
+    inherits: { ...(layers.base !== undefined && { base: layers.base }), shared: [...layers.shared], profiles: [...page.harness.extends] },
     attachments: attachmentsOf(tree, page, id),
   };
 }
@@ -82,6 +86,7 @@ function pageView(tree: WorkspaceTree, paths: readonly string[], id: string): Pa
 export function buildManifestView(tree: WorkspaceTree): WorkspaceManifestView {
   const manifest = parse(tree, 'workspace.json', workspaceManifestSchema);
   const paths = Object.keys(tree).sort();
-  const pages = Object.fromEntries(manifest.pages.map((id) => [id, pageView(tree, paths, id)]));
+  const layers: Layers = { base: baseFolder(tree, paths), shared: sharedFolders(paths) };
+  const pages = Object.fromEntries(manifest.pages.map((id) => [id, pageView(tree, paths, layers, id)]));
   return { id: manifest.id, name: manifest.name, pages };
 }

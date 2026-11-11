@@ -740,7 +740,6 @@ export function loadWorkspace(source: WorkspaceSource, options: LoadWorkspaceOpt
 
 // @public
 export interface LoadWorkspaceOptions {
-    // (undocumented)
     mode: NonNullable<ValidateWorkspaceOptions['mode']>;
     resolveGlobal?: ValidateWorkspaceOptions['resolveGlobal'];
     revision?: RevisionId;
