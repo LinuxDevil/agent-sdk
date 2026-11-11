@@ -193,6 +193,16 @@
         "default": "./dist/workspaces/index.js"
       }
     },
+    "./workspaces/client": {
+      "import": {
+        "types": "./dist/workspaces/client/index.d.mts",
+        "default": "./dist/workspaces/client/index.mjs"
+      },
+      "require": {
+        "types": "./dist/workspaces/client/index.d.ts",
+        "default": "./dist/workspaces/client/index.js"
+      }
+    },
     "./traces": {
       "import": {
         "types": "./dist/traces/index.d.mts",
@@ -391,6 +401,7 @@
     "docs:verify-snippets": "tsx scripts/verify-docs-snippets.ts",
     "api:update": "tsx scripts/api-report.ts",
     "api:check": "tsx scripts/api-report.ts --check",
+    "gen:workspace-wire-fixtures": "tsx scripts/gen-workspace-wire-fixtures.ts",
     "docs:llms": "tsx scripts/generate-llms-txt.ts",
     "docs:llms:check": "tsx scripts/generate-llms-txt.ts --check",
     "fallow": "fallow",
