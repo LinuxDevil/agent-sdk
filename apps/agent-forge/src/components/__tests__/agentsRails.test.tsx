@@ -142,13 +142,13 @@ describe('BottomDrawer tabs', () => {
   it('show icons and counts while each tab keeps its bare label as its name', () => {
     const container = render(<BottomDrawer />);
     const tabs = [...container.querySelectorAll('[role="tab"]')];
-    expect(tabs.map(nameOf)).toEqual(['Test', 'Logs', 'Trace', 'Output', 'History', 'Settings']);
+    expect(tabs.map(nameOf)).toEqual(['Test', 'Problems', 'Logs', 'Trace', 'Output', 'History', 'Settings']);
     // The label is its own span (icon-only tabs at phone widths) and the tooltip.
     expect(tabs.map((t) => [t.querySelector('.drawer-tab-label')?.textContent, t.getAttribute('title')])).toEqual(
-      ['Test', 'Logs', 'Trace', 'Output', 'History', 'Settings'].map((l) => [l, l]),
+      ['Test', 'Problems', 'Logs', 'Trace', 'Output', 'History', 'Settings'].map((l) => [l, l]),
     );
     // System messages are not counted; an empty count is not drawn.
-    expect(tabs.map((t) => t.querySelector('.count')?.textContent ?? '')).toEqual(['2', '3', '', '', '', '']);
+    expect(tabs.map((t) => t.querySelector('.count')?.textContent ?? '')).toEqual(['2', '', '3', '', '', '', '']);
     expect(tabs.every((t) => t.querySelector('svg[aria-hidden="true"]'))).toBe(true);
     expect(container.querySelector('[role="separator"] svg.drawer-grip')).not.toBeNull();
   });

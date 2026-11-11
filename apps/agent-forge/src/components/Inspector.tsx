@@ -201,7 +201,9 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
   const { displayGraph, setGraph, proposal, spans, openNodeSpans, problems, specPaths } = useAppState();
   const selectedId = selected.id;
   const view = viewFor(selected.kind);
-  const nodeProblems = problems.filter((p) => p.nodeId === selectedId);
+  // `?? []`: AppState always provides `problems`, but lightweight test doubles
+  // of useAppState may not (same caveat as `spans` below).
+  const nodeProblems = (problems ?? []).filter((p) => p.nodeId === selectedId);
   const bodyRef = useRef<HTMLDivElement>(null);
   // "View spans" opens the node spans sheet; disabled until the node has
   // spans in the live/last run's feed (components/test/nodeSpans.ts).

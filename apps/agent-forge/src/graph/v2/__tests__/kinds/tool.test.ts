@@ -97,14 +97,14 @@ describe('specToGraph: tool worked example', () => {
 describe('toolRules.validate', () => {
   it('requires a built-in name', () => {
     const graph = graphOf([{ builtin: '' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('tool:new', 'Pick a tool', 'tools[0].builtin'),
     ]);
   });
 
   it('requires a registry name', () => {
     const graph = graphOf([{ registry: '' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('tool:new', 'Enter the registry item name', 'tools[0].registry'),
     ]);
   });
@@ -119,19 +119,19 @@ describe('toolRules.validate', () => {
     ['C:\\x.ts', 'tool:x'],
   ])('rejects the file path %j', (file, nodeId) => {
     const graph = graphOf([{ file }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(nodeId, 'Use a .ts or .js file inside the agent folder', 'tools[0].file'),
     ]);
   });
 
   it.each(['tools/search.ts', 'search.js', 'tools/deep/search.ts'])('accepts the file path %j', (file) => {
     const graph = graphOf([{ file }]);
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it('requires integration credentials', () => {
     const graph = graphOf([{ integration: 'github', credentials: {} }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('tool:github', 'Add the credentials this integration needs', 'tools[0].credentials'),
     ]);
   });
@@ -140,7 +140,7 @@ describe('toolRules.validate', () => {
     'rejects the OpenAPI url %j',
     (url) => {
       const graph = graphOf([{ openapi: { url } }]);
-      expect(validateGraph(graph)).toStrictEqual([
+      expect(validateGraph(graph, { schema: false })).toStrictEqual([
         error('tool:openapi', 'Enter the OpenAPI document URL', 'tools[0].openapi.url'),
       ]);
     },
@@ -148,21 +148,21 @@ describe('toolRules.validate', () => {
 
   it('requires a hosted tool name', () => {
     const graph = graphOf([{ hosted: '' as never }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('tool:new', 'Pick a provider-hosted tool', 'tools[0].hosted'),
     ]);
   });
 
   it('rejects an id outside the spec-id pattern', () => {
     const graph = graphOf([{ builtin: 'web_fetch', id: 'bad id!' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('tool:bad id!', 'The node id can use letters, digits, dash or underscore', 'tools[0].id'),
     ]);
   });
 
   it('warns when two id-less tools share a name under one owner', () => {
     const graph = graphOf([{ builtin: 'web_fetch' }, { builtin: 'web_fetch' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       warning('tool:web_fetch', 'This tool is added twice', 'tools[0]'),
       warning('tool:web_fetch#2', 'This tool is added twice', 'tools[1]'),
     ]);
@@ -170,7 +170,7 @@ describe('toolRules.validate', () => {
 
   it('does not warn when the repeat carries an id', () => {
     const graph = graphOf([{ builtin: 'web_fetch' }, { builtin: 'web_fetch', id: 'fetch-docs' }]);
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it.each([
@@ -182,7 +182,7 @@ describe('toolRules.validate', () => {
     'warns when the %s credential is a plain string',
     (key, integration) => {
       const graph = graphOf([{ integration, credentials: { [key]: 'literal' } }]);
-      expect(validateGraph(graph)).toStrictEqual([
+      expect(validateGraph(graph, { schema: false })).toStrictEqual([
         warning(`tool:${integration}`, 'Store this credential as a secret', `tools[0].credentials.${key}`),
       ]);
     },
@@ -195,7 +195,7 @@ describe('toolRules.validate', () => {
         credentials: { token: { secret: 'gh-token' }, owner: 'acme', repo: 'api' },
       },
     ]);
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it('maps problems to the nested spec path inside an inline agent', () => {
@@ -214,7 +214,7 @@ describe('toolRules.validate', () => {
         },
       }),
     );
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('sub:a/tool:new', 'Pick a tool', 'subagents.a.inline.tools[0].builtin'),
     ]);
   });

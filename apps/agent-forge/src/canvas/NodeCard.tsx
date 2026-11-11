@@ -64,7 +64,7 @@ function worstSeverity(problems: readonly Problem[]): Problem['severity'] {
  * `TriangleAlert` in `--warning`; the tooltip is the first message and
  * the count is the accessible name (`<n> problems`).
  */
-export function ProblemBadge({ problems }: { problems: readonly Problem[] }): JSX.Element | null {
+function ProblemBadge({ problems }: { problems: readonly Problem[] }): JSX.Element | null {
   if (problems.length === 0) return null;
   const severity = worstSeverity(problems);
   const Icon = severity === 'error' ? CircleAlert : TriangleAlert;

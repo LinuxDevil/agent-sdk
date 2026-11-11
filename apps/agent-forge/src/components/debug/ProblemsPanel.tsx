@@ -105,7 +105,8 @@ function problemColumns(): Column<ProblemRow>[] {
 /** The Problems tab's body: the sorted problem table, or the all-clear empty state. */
 export function ProblemsPanel() {
   const { graph, problems, setSelectedNodeId } = useAppState();
-  const rows = useMemo(() => problemRows(graph, problems), [graph, problems]);
+  // `?? []`: AppState always provides `problems`; lightweight test doubles may not.
+  const rows = useMemo(() => problemRows(graph, problems ?? []), [graph, problems]);
   const columns = useMemo(problemColumns, []);
 
   return (

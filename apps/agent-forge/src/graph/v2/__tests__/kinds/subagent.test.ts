@@ -82,7 +82,7 @@ describe('specToGraph: subagent worked example', () => {
 describe('subagentRules.validate', () => {
   it('requires a ref agent', () => {
     const graph = graphOf({ subagents: { billing: { ref: '' } } });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('sub:billing', 'Pick the agent this subagent runs', 'subagents.billing.ref'),
     ]);
   });
@@ -93,7 +93,7 @@ describe('subagentRules.validate', () => {
       const graph = graphOf({
         subagents: { search: { remote: { url, description: 'd' } } },
       });
-      expect(validateGraph(graph)).toStrictEqual([
+      expect(validateGraph(graph, { schema: false })).toStrictEqual([
         error('sub:search', 'The remote agent needs a full URL', 'subagents.search.remote.url'),
       ]);
     },
@@ -105,7 +105,7 @@ describe('subagentRules.validate', () => {
       const graph = graphOf({
         subagents: { search: { remote: { url, description: 'd' } } },
       });
-      expect(validateGraph(graph)).toStrictEqual([]);
+      expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
     },
   );
 
@@ -113,7 +113,7 @@ describe('subagentRules.validate', () => {
     const graph = graphOf({
       subagents: { search: { remote: { url: 'https://search.example.com', description: ' ' } } },
     });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('sub:search', 'A remote agent needs a description', 'subagents.search.remote.description'),
     ]);
   });
@@ -132,7 +132,7 @@ describe('subagentRules.validate', () => {
         },
       },
     });
-    expect(validateGraph(graph)).toEqual(
+    expect(validateGraph(graph, { schema: false })).toEqual(
       expect.arrayContaining([
         error('sub:a/sub:b', 'The remote agent needs a full URL', 'subagents.a.inline.subagents.b.remote.url'),
         error('sub:a/sub:b', 'A remote agent needs a description', 'subagents.a.inline.subagents.b.remote.description'),
@@ -159,14 +159,14 @@ describe('agentRules.validate: subagent depth', () => {
   };
 
   it('warns when an inline subagent is deeper than the default max depth of 1', () => {
-    expect(validateGraph(graphOf(nested))).toStrictEqual([
+    expect(validateGraph(graphOf(nested), { schema: false })).toStrictEqual([
       problem('sub:a/sub:b', 'warning', "This subagent is deeper than the agent's max subagent depth (1)", 'subagents.a.inline.subagents.b.inline'),
     ]);
   });
 
   it('reads the root agent\'s maxSubagentDepth', () => {
     const graph = specOf({ ...nested, maxSubagentDepth: 2 });
-    expect(validateGraph(specToGraph(graph))).toStrictEqual([]);
+    expect(validateGraph(specToGraph(graph), { schema: false })).toStrictEqual([]);
   });
 
   it('does not warn at depth 1', () => {
@@ -175,7 +175,7 @@ describe('agentRules.validate: subagent depth', () => {
         a: { inline: { name: 'a', description: 'd', model: 'mock/mock-1', instructions: 'x' } },
       },
     });
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 });
 

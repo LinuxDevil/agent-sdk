@@ -225,3 +225,40 @@ describe('agent card (KindView)', () => {
     expect(card.querySelector('.rf-node-title')?.textContent).toBe('research');
   });
 });
+
+describe('problem badge (C19)', () => {
+  const problems = (over: Partial<import('../../graph/v2/types').Problem>[]) =>
+    over as import('../../graph/v2/types').Problem[];
+
+  it('draws no badge without problems', () => {
+    const card = renderCard(nodeOf('agent'));
+    expect(card.querySelector('.node-problem')).toBeNull();
+    expect(card.className).not.toContain('has-error');
+  });
+
+  it('shows the error icon, count, first-message tooltip and aria-label', () => {
+    const card = renderCard(nodeOf('agent'), {
+      problems: problems([
+        { nodeId: 'agent', severity: 'error', message: 'first problem', fieldPath: '' },
+        { nodeId: 'agent', severity: 'warning', message: 'second', fieldPath: 'x' },
+      ]),
+    });
+    const badge = card.querySelector<HTMLElement>('.node-problem')!;
+    expect(badge.className).toContain('node-problem-error');
+    expect(badge.querySelector('.node-problem-count')?.textContent).toBe('2');
+    expect(badge.getAttribute('title')).toBe('first problem');
+    expect(badge.getAttribute('aria-label')).toBe('2 problems');
+    expect(badge.querySelector('svg')).not.toBeNull();
+    expect(card.className).toContain('has-error');
+  });
+
+  it('shows the warning icon when every problem is a warning', () => {
+    const card = renderCard(nodeOf('agent'), {
+      problems: problems([{ nodeId: 'agent', severity: 'warning', message: 'careful', fieldPath: '' }]),
+    });
+    const badge = card.querySelector<HTMLElement>('.node-problem')!;
+    expect(badge.className).toContain('node-problem-warning');
+    expect(badge.getAttribute('aria-label')).toBe('1 problem');
+    expect(card.className).not.toContain('has-error');
+  });
+});

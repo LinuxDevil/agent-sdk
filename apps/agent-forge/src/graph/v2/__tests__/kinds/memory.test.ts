@@ -99,7 +99,7 @@ describe('specToGraph: memory worked example', () => {
 
 describe('memoryRules.validate', () => {
   it('accepts the worked example', () => {
-    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2))).toStrictEqual([]);
+    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2), { schema: false })).toStrictEqual([]);
   });
 
   it.each(['', '  ', 'has space', 'dot.name', 'x'.repeat(56)])(
@@ -107,7 +107,7 @@ describe('memoryRules.validate', () => {
     (name) => {
       const graph = graphOf([{ ...BASE, name }]);
       const nodeId = name === '' ? 'memory:new' : `memory:${name}`;
-      expect(validateGraph(graph)).toStrictEqual([
+      expect(validateGraph(graph, { schema: false })).toStrictEqual([
         error(nodeId, 'The memory name can use letters, digits, dash or underscore', 'memory[0].name'),
       ]);
     },
@@ -115,47 +115,47 @@ describe('memoryRules.validate', () => {
 
   it('rejects an empty metadata key', () => {
     const graph = graphOf([{ ...BASE, scope: { metadataKey: '' } }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('memory:notes', 'Enter the metadata key', 'memory[0].scope.metadataKey'),
     ]);
   });
 
   it('rejects a file provider with an empty folder', () => {
     const graph = graphOf([{ ...BASE, provider: { type: 'file', dir: '' } }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('memory:notes', 'Enter the folder for memory files', 'memory[0].provider.dir'),
     ]);
   });
 
   it('rejects a sqlite-vector provider without an embedder', () => {
     const graph = graphOf([{ ...BASE, provider: { type: 'sqlite-vector', embedder: '' } }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('memory:notes', 'Pick an embedding model', 'memory[0].provider.embedder'),
     ]);
   });
 
   it('warns on an item key without an item schema', () => {
     const graph = graphOf([{ ...BASE, itemKey: 'customerId' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       warning('memory:notes', 'An item key needs an item schema', 'memory[0].itemKey'),
     ]);
   });
 
   it('warns on a global in-memory slot', () => {
     const graph = graphOf([{ ...BASE, scope: 'global' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       warning('memory:notes', 'In-memory items are lost when Studio restarts', 'memory[0].provider'),
     ]);
   });
 
   it('does not warn on a global file slot', () => {
     const graph = graphOf([{ ...BASE, scope: 'global', provider: { type: 'file', dir: 'memory' } }]);
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it('reports the name error before the warnings of one entry', () => {
     const graph = graphOf([{ name: 'bad name', scope: 'global', provider: { type: 'in-memory' }, itemKey: 'k' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('memory:bad name', 'The memory name can use letters, digits, dash or underscore', 'memory[0].name'),
       warning('memory:bad name', 'An item key needs an item schema', 'memory[0].itemKey'),
       warning('memory:bad name', 'In-memory items are lost when Studio restarts', 'memory[0].provider'),
@@ -178,7 +178,7 @@ describe('memoryRules.validate', () => {
         },
       }),
     );
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('sub:a/memory:new', 'The memory name can use letters, digits, dash or underscore', 'subagents.a.inline.memory[0].name'),
     ]);
   });

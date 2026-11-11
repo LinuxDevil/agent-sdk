@@ -29,7 +29,7 @@ export function formatIssuePath(path: (string | number)[]): string {
   let out = '';
   for (const segment of path) {
     if (typeof segment === 'number') out += `[${segment}]`;
-    else out += out === '' || out.endsWith(']') ? segment : `.${segment}`;
+    else out += out === '' ? segment : `.${segment}`;
   }
   return out;
 }

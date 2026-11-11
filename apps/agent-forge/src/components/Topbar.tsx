@@ -325,7 +325,8 @@ function RunOrStop({
 /** The number of error-severity `validateGraph` problems - warnings never block Run. */
 function useProblemErrorCount(): number {
   const { problems } = useAppState();
-  return problems.reduce((count, problem) => count + (problem.severity === 'error' ? 1 : 0), 0);
+  // `?? []`: AppState always provides `problems`; lightweight test doubles may not.
+  return (problems ?? []).reduce((count, problem) => count + (problem.severity === 'error' ? 1 : 0), 0);
 }
 
 /** The narrow "More" menu: Debug, Import, Export, Observe surface and (once known) Open trace. */

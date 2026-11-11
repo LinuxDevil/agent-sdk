@@ -45,7 +45,7 @@ function useDrawerCounts(): DrawerCounts {
   const { chat, logs, spans, problems } = useAppState();
   return {
     test: chat.messages.filter((m) => m.role !== 'system').length,
-    problems: problems.length,
+    problems: (problems ?? []).length,
     logs: logs.length,
     trace: spans.length,
   };
