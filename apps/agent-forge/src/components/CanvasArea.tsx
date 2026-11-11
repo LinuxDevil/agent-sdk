@@ -891,6 +891,31 @@ interface CanvasToolbarProps {
   onDuplicate: () => void;
 }
 
+interface HistoryButtonProps {
+  Icon: typeof Undo2;
+  verb: 'Undo' | 'Redo';
+  entryLabel: string;
+  enabled: boolean;
+  onClick: () => void;
+}
+
+function HistoryButton({ Icon, verb, entryLabel, enabled, onClick }: HistoryButtonProps) {
+  const name = entryLabel ? `${verb} ${entryLabel}` : verb;
+  return (
+    <ToolbarButton
+      Icon={Icon}
+      label={name}
+      tooltip={enabled ? name : `Nothing to ${verb.toLowerCase()}`}
+      onClick={onClick}
+      disabled={!enabled}
+    />
+  );
+}
+
+function editTooltip(readOnly: boolean, editable: string): string {
+  return readOnly ? 'Hide the proposal to edit' : editable;
+}
+
 export function CanvasToolbar({
   canUndo,
   canRedo,
@@ -907,29 +932,15 @@ export function CanvasToolbar({
   onFitView,
   onDuplicate,
 }: CanvasToolbarProps) {
-  const undoName = undoLabel ? `Undo ${undoLabel}` : 'Undo';
-  const redoName = redoLabel ? `Redo ${redoLabel}` : 'Redo';
   return (
     <div className="canvas-toolbar" role="group" aria-label="Canvas tools">
       {proposalId != null && onShowProposal !== undefined && <ProposalPill onShow={onShowProposal} />}
-      <ToolbarButton
-        Icon={Undo2}
-        label={undoName}
-        tooltip={canUndo ? undoName : 'Nothing to undo'}
-        onClick={onUndo}
-        disabled={!canUndo}
-      />
-      <ToolbarButton
-        Icon={Redo2}
-        label={redoName}
-        tooltip={canRedo ? redoName : 'Nothing to redo'}
-        onClick={onRedo}
-        disabled={!canRedo}
-      />
+      <HistoryButton Icon={Undo2} verb="Undo" entryLabel={undoLabel} enabled={canUndo} onClick={onUndo} />
+      <HistoryButton Icon={Redo2} verb="Redo" entryLabel={redoLabel} enabled={canRedo} onClick={onRedo} />
       <ToolbarButton
         Icon={LayoutGrid}
         label="Auto layout"
-        tooltip={readOnly ? 'Hide the proposal to edit' : 'Auto layout the current graph'}
+        tooltip={editTooltip(readOnly, 'Auto layout the current graph')}
         onClick={onAutoLayout}
         disabled={readOnly}
         busy={layoutBusy}
@@ -938,7 +949,7 @@ export function CanvasToolbar({
       <ToolbarButton
         Icon={Copy}
         label="Duplicate"
-        tooltip={readOnly ? 'Hide the proposal to edit' : 'Duplicate selected node (Ctrl/Cmd+D)'}
+        tooltip={editTooltip(readOnly, 'Duplicate selected node (Ctrl/Cmd+D)')}
         onClick={onDuplicate}
         disabled={readOnly || !canDuplicate}
       />
