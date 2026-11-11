@@ -52,6 +52,9 @@ export interface ApplyOpsResult {
 type ApprovalKind = 'tool' | 'question' | 'sign-in';
 
 // @public
+export type ArtifactData = string | Uint8Array | AsyncIterable<Uint8Array>;
+
+// @public
 export interface ArtifactRef {
     bytes: number;
     mediaType: string;
@@ -61,8 +64,29 @@ export interface ArtifactRef {
 }
 
 // @public
+export interface ArtifactScope {
+    refs?: readonly string[];
+    runId: string;
+    workspace: string;
+}
+
+// @public
 export interface ArtifactSink {
-    put(name: string, data: string | Uint8Array, mediaType: string): Promise<ArtifactRef>;
+    put(name: string, data: ArtifactData, mediaType: string): Promise<ArtifactRef>;
+}
+
+// @public
+export function artifactSink(store: ArtifactStore, scope: ArtifactScope): ArtifactSink;
+
+// @public
+export interface ArtifactStore {
+    get(uri: string, scope: ArtifactScope): Promise<StoredArtifact | undefined>;
+    put(scope: ArtifactScope, name: string, data: ArtifactData, mediaType: string): Promise<ArtifactRef>;
+}
+
+// @public
+export interface ArtifactStoreOptions {
+    maxArtifactBytes?: number;
 }
 
 // @public
@@ -143,6 +167,28 @@ export function baseHarnessLayer(tree: WorkspaceTree): HarnessLayer | undefined;
 
 // @public
 export const baseHarnessSchema: z.ZodType<Harness>;
+
+// @public
+export function blobArtifactStore(client: BlobClient, options?: ArtifactStoreOptions): ArtifactStore;
+
+// @public
+export interface BlobClient {
+    get(key: string): Promise<BlobObject | undefined>;
+    head(key: string): Promise<BlobHead | undefined>;
+    put(key: string, data: Uint8Array, metadata: Readonly<Record<string, string>>): Promise<void>;
+}
+
+// @public
+export interface BlobHead {
+    bytes: number;
+    metadata: Readonly<Record<string, string>>;
+}
+
+// @public
+export interface BlobObject {
+    data: Uint8Array;
+    metadata: Readonly<Record<string, string>>;
+}
 
 // @public
 export function composeHarness(layers: readonly HarnessLayer[]): EffectiveHarness;
@@ -230,6 +276,9 @@ export interface EffectivePolicy {
 
 // @public
 type ExecutionKey = 'single' | 'multiAgent' | 'workflow' | 'goal' | 'limits' | 'onFailure' | 'checkpoint';
+
+// @public
+export function fileArtifactStore(root: string, options?: ArtifactStoreOptions): ArtifactStore;
 
 // @public
 export function findNestedPages(relativePaths: readonly string[]): string[];
@@ -400,6 +449,12 @@ export interface MainHarnessRoute {
 
 // @public
 export const mainHarnessSchema: z.ZodType<MainHarness>;
+
+// @public
+export function memoryArtifactStore(options?: ArtifactStoreOptions): ArtifactStore;
+
+// @public
+export function memoryBlobClient(): BlobClient;
 
 // @public
 export function narrowPolicy(ceiling: PolicyCeiling, workspace: WorkspacePolicy): EffectivePolicy;
@@ -747,6 +802,12 @@ export const STEP_KINDS: readonly StepKind[];
 
 // @public
 export type StepKind = 'single' | 'workflow-step' | 'delegate' | 'goal-iteration';
+
+// @public
+export interface StoredArtifact {
+    data: Uint8Array;
+    ref: ArtifactRef;
+}
 
 // @public
 export const UI_COMPONENTS: {

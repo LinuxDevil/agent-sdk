@@ -193,8 +193,12 @@ async function putFile(root: string, max: number, target: { parts: ArtifactUriPa
 
 async function getFile(root: string, parts: ArtifactUriParts): Promise<StoredArtifact | undefined> {
   const dirs = await runDirs(root, parts, false);
-  const meta = dirs && (await readMeta(dirs, parts));
-  const data = dirs && meta && (await readPlainFile(join(dirs.artifacts, parts.name)));
+  return dirs && readStored(dirs, parts);
+}
+
+async function readStored(dirs: RunDirs, parts: ArtifactUriParts): Promise<StoredArtifact | undefined> {
+  const meta = await readMeta(dirs, parts);
+  const data = meta && (await readPlainFile(join(dirs.artifacts, parts.name)));
   return meta && data ? { ref: refOf(parts, meta), data } : undefined;
 }
 

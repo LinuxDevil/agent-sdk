@@ -87,8 +87,12 @@ export function artifactTarget(scope: ArtifactScope, name: string, mediaType: st
 export function scopedParts(uri: string, scope: ArtifactScope): ArtifactUriParts {
   const parts = parseArtifactUri(uri);
   if (!parts) throw new ValidationError(`invalid artifact uri ${JSON.stringify(uri)}`, { uri: ['must be artifact://<workspace>/<runId>/<name>'] });
-  if (parts.workspace === scope.workspace && (parts.runId === scope.runId || isGranted(parts, scope))) return parts;
+  if (inScope(parts, scope)) return parts;
   throw new SDKError(`artifact ${JSON.stringify(uri)} is outside run ${JSON.stringify(scope.runId)} of workspace ${JSON.stringify(scope.workspace)}`, 'LOUSHO_ARTIFACT_FORBIDDEN');
+}
+
+function inScope(parts: ArtifactUriParts, scope: ArtifactScope): boolean {
+  return parts.workspace === scope.workspace && (parts.runId === scope.runId || isGranted(parts, scope));
 }
 
 function isGranted(parts: ArtifactUriParts, scope: ArtifactScope): boolean {
