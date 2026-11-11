@@ -110,6 +110,17 @@ async function walkDir(root: string, prefix: string, out: string[], limits: Fold
 export async function readFolderTree(root: string, limits: FolderLimits): Promise<Map<string, string>> {
   const paths: string[] = [];
   await walkDir(root, '', paths, limits);
+  return readPaths(root, paths, limits);
+}
+
+export async function readFolderSubtree(root: string, prefix: string, limits: FolderLimits): Promise<Map<string, string>> {
+  const paths: string[] = [];
+  const dir = await resolveInside(root, checkPath(prefix));
+  if (dir !== undefined && (await stat(dir)).isDirectory()) await walkDir(root, prefix, paths, limits);
+  return readPaths(root, paths, limits);
+}
+
+async function readPaths(root: string, paths: string[], limits: FolderLimits): Promise<Map<string, string>> {
   const files = new Map<string, string>();
   let total = 0;
   for (const path of paths.sort()) {

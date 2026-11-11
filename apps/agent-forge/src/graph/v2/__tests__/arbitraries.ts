@@ -159,6 +159,98 @@ function fillSections(rng: Rng, acc: Record<string, unknown>, depth: number, isI
   if (chance(rng, 0.3)) acc['output'] = { jsonSchema: { type: 'object' } };
 }
 
+/** Leaf step types — the ones a depth-3 (or unlucky) node must pick. */
+const FLOW_LEAF_TYPES = [
+  'evaluator', 'llmCall', 'agent', 'approval', 'toolCall', 'setVariable', 'return', 'end', 'throw',
+] as const;
+/** Container step types — only offered while `depth < 3`. */
+const FLOW_CONTAINER_TYPES = ['sequence', 'parallel', 'oneOf', 'forEach'] as const;
+
+/** The default fields of one leaf step type (the same defaults the palette uses). */
+function flowLeafFields(rng: Rng, type: string): Record<string, unknown> {
+  switch (type) {
+    case 'evaluator':
+      return { expression: 'a + b', outputVariable: 'result' };
+    case 'llmCall':
+      return { prompt: 'Say hi', outputVariable: 'text' };
+    case 'agent':
+      return { agent: 'self', outputVariable: 'answer' };
+    case 'approval':
+      return { message: 'Approve this?' };
+    case 'toolCall':
+      return { tool: 'http_request', arguments: {}, outputVariable: 'toolResult' };
+    case 'setVariable':
+      return { variable: 'v' + int(rng, 0, 9), value: 'x' };
+    case 'return':
+      return { value: '$result' };
+    case 'end':
+      return { value: '$text' };
+    case 'throw':
+      return { message: 'failed' };
+    default:
+      return {};
+  }
+}
+
+/**
+ * One random executable step, depth ≤ 3, with a fresh `s<n>` id from
+ * `nextId`. Containers only appear while `depth < 3`; `oneOf` gets 2–3
+ * options with at most one condition-less default.
+ */
+function arbFlowStep(rng: Rng, depth: number, nextId: () => string): Record<string, unknown> {
+  const id = nextId();
+  const nest = (): Record<string, unknown> => arbFlowStep(rng, depth + 1, nextId);
+  if (depth < 3 && chance(rng, 0.4)) {
+    switch (pick(rng, FLOW_CONTAINER_TYPES)) {
+      case 'sequence':
+      case 'parallel':
+        return { type: pick(rng, ['sequence', 'parallel'] as const), id, steps: times(rng, int(rng, 1, 3), nest) };
+      case 'oneOf': {
+        const count = int(rng, 2, 3);
+        const options = times(rng, count, (r, i) => ({
+          ...(i === count - 1 && chance(r, 0.5) ? {} : { condition: `c${i} == 'x'` }),
+          step: nest(),
+        }));
+        return { type: 'oneOf', id, options };
+      }
+      case 'forEach':
+        return {
+          type: 'forEach',
+          id,
+          items: pick(rng, ['$items', ['$a', '$b']] as const),
+          itemVariable: 'item',
+          ...(chance(rng, 0.7) ? { step: nest() } : {}),
+        };
+    }
+  }
+  const type = pick(rng, FLOW_LEAF_TYPES);
+  return { type, id, ...flowLeafFields(rng, type) };
+}
+
+/**
+ * A random `AgentFlow`: a root `sequence` of 1–3 steps (depth ≤ 3, unique
+ * `s1…` ids, every executable type possible), flow metadata with optional
+ * `description`/`inputs`/`agents` — the shape `addFlowNodes` must turn
+ * into a lossless node tree.
+ */
+function arbFlow(rng: Rng): Record<string, unknown> {
+  let n = 0;
+  const nextId = () => `s${(n += 1)}`;
+  const flow: Record<string, unknown> = {
+    code: 'flow-' + int(rng, 0, 99),
+    name: 'Flow ' + int(rng, 0, 99),
+  };
+  if (chance(rng, 0.3)) flow['description'] = 'desc ' + int(rng, 0, 9);
+  if (chance(rng, 0.3)) flow['inputs'] = [{ name: 'topic', type: 'string' }];
+  flow['flow'] = {
+    type: 'sequence',
+    id: nextId(),
+    steps: times(rng, int(rng, 1, 3), () => arbFlowStep(rng, 1, nextId)),
+  };
+  if (chance(rng, 0.3)) flow['agents'] = [{ name: 'helper' }];
+  return flow;
+}
+
 /** The root-only keys: abort listeners (only when triggers came out non-empty), `evals`, `flow` and an unknown key. */
 function fillRootOnly(rng: Rng, acc: Record<string, unknown>): void {
   const triggers = (acc['triggers'] as Array<{ id: string }> | undefined) ?? [];
@@ -172,7 +264,11 @@ function fillRootOnly(rng: Rng, acc: Record<string, unknown>): void {
     }));
   }
   if (chance(rng, 0.2)) acc['evals'] = [{ dataset: 'd', gates: [{ maxSteps: 5 }], minPassRate: 0.8 }];
-  if (chance(rng, 0.2)) acc['flow'] = { code: 'f', name: 'f', flow: { type: 'end', id: 'e1' } };
+  // ~20% a full flow tree; ~10% a flow with no runnable root step (stays in
+  // `extra`, exercising the C15 fallback); the rest none.
+  const roll = int(rng, 0, 9);
+  if (roll < 2) acc['flow'] = arbFlow(rng);
+  else if (roll === 2) acc['flow'] = { code: 'f', name: 'f' };
   if (chance(rng, 0.2)) acc['x-extra'] = { n: int(rng, 0, 9) };
 }
 

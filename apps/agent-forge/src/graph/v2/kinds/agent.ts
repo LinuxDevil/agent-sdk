@@ -103,10 +103,32 @@ function depthWarning(node: NodeOfKind<'agent'>, graph: Graph): Problem[] {
   ];
 }
 
+/**
+ * A root `extra.flow` is a flow with no runnable root step (C15 keeps it
+ * verbatim because the canvas cannot draw it) — warn so the spec's `flow`
+ * key does not silently bypass the canvas.
+ */
+function unrootedFlowWarning(node: NodeOfKind<'agent'>): Problem[] {
+  if (node.owner !== null || node.id !== ROOT_AGENT_ID || !('flow' in node.data.extra)) return [];
+  return [
+    {
+      nodeId: node.id,
+      severity: 'warning',
+      message: "This agent's flow has no root step, so the canvas cannot show it",
+      fieldPath: 'flow',
+    },
+  ];
+}
+
 /** `KindRules` for `agent`: `connectFrom` re-owns the target to the source agent. */
 export const agentRules: KindRules<'agent'> = {
-  validate: (node, graph) => [...validateAgent(node, graph), ...depthWarning(node, graph)],
+  validate: (node, graph) => [...validateAgent(node, graph), ...depthWarning(node, graph), ...unrootedFlowWarning(node)],
   connectFrom: (source, target: GraphNode, graph: Graph): ConnectResult => {
+    // Every flow node is already attached to the root agent (`runs` is a
+    // derived edge); re-owning one would corrupt the step tree.
+    if (target.kind === 'flow') {
+      return { ok: false, reason: 'This agent already runs this flow' };
+    }
     // `agent → output` re-owns the schema; the one-output-per-agent rule
     // needs the graph, so it lives here rather than in `canConnect`.
     if (target.kind === 'output') {

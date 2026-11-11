@@ -114,8 +114,8 @@ export function dedupeId(base: string, taken: ReadonlySet<string>): string {
   }
 }
 
-/** Next free item id with a prefix: nextItemId('g', ['g1','g3']) → 'g2'. Used for guardrails g, permissions p, hooks h, triggers t, abort listeners a. */
-export function nextItemId(prefix: 'g' | 'p' | 'h' | 't' | 'a', taken: Iterable<string>): string {
+/** Next free item id with a prefix: nextItemId('g', ['g1','g3']) → 'g2'. Used for guardrails g, permissions p, hooks h, triggers t, abort listeners a, flow steps s. */
+export function nextItemId(prefix: 'g' | 'p' | 'h' | 't' | 'a' | 's', taken: Iterable<string>): string {
   const ids = new Set(taken);
   for (let n = 1; ; n += 1) {
     const candidate = `${prefix}${n}`;

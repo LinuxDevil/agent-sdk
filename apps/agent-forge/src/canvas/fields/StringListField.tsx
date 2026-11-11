@@ -31,6 +31,8 @@ export interface StringListFieldProps {
   suggestions?: string[];
   /** An external error that wins over the item checks — for "the list itself is invalid" rules like a required non-empty list. */
   error?: string;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 /**
@@ -47,6 +49,7 @@ export function StringListField({
   validateItem,
   suggestions,
   error,
+  fieldPath,
 }: StringListFieldProps): JSX.Element {
   const [draft, setDraft] = useState('');
   const [itemError, setItemError] = useState<string | undefined>();
@@ -111,7 +114,7 @@ export function StringListField({
   };
 
   return (
-    <Field id={id} label={label} error={error ?? itemError} hint={help}>
+    <Field id={id} label={label} error={error ?? itemError} hint={help} fieldPath={fieldPath}>
       <div className="stringlist">
         {items.map((item) => (
           <span key={item} className="chip">

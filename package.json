@@ -458,6 +458,7 @@
     "isolated-vm": "^6.2.0 || ^7.0.0",
     "ollama-ai-provider": "^1.2.0",
     "ollama-ai-provider-v2": "^2.0.0 || ^3.0.0 || ^4.0.0",
+    "pg": "^8.0.0",
     "prompts": "^2.4.2",
     "quickjs-emscripten": "^0.32.0",
     "react": "^18 || ^19",
@@ -499,6 +500,9 @@
     "ollama-ai-provider-v2": {
       "optional": true
     },
+    "pg": {
+      "optional": true
+    },
     "prompts": {
       "optional": true
     },
@@ -524,6 +528,7 @@
     "@ai-sdk/openai": "^0.0.42",
     "@earendil-works/pi-ai": "^1.0.3",
     "@earendil-works/pi-coding-agent": "^1.0.2",
+    "@electric-sql/pglite": "^0.5.16",
     "@microsoft/api-extractor": "^7.59.3",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@opentelemetry/api": "^1.9.1",
@@ -531,6 +536,7 @@
     "@opentelemetry/sdk-trace-node": "^2.11.0",
     "@types/dockerode": "^4.0.1",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/prompts": "^2.4.9",
     "@types/react": "^18.3.31",
     "@types/react-test-renderer": "^18.3.1",
@@ -543,6 +549,7 @@
     "eslint": "^10.11.0",
     "fallow": "^3.31.0",
     "husky": "^9.1.7",
+    "pg": "^8.23.1",
     "prompts": "^2.4.2",
     "quickjs-emscripten": "^0.32.0",
     "react": "^18.3.1",

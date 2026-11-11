@@ -142,13 +142,13 @@ describe('BottomDrawer tabs', () => {
   it('show icons and counts while each tab keeps its bare label as its name', () => {
     const container = render(<BottomDrawer />);
     const tabs = [...container.querySelectorAll('[role="tab"]')];
-    expect(tabs.map(nameOf)).toEqual(['Test', 'Logs', 'Trace', 'Output', 'History', 'Settings']);
+    expect(tabs.map(nameOf)).toEqual(['Test', 'Problems', 'Logs', 'Trace', 'Output', 'History', 'Settings']);
     // The label is its own span (icon-only tabs at phone widths) and the tooltip.
     expect(tabs.map((t) => [t.querySelector('.drawer-tab-label')?.textContent, t.getAttribute('title')])).toEqual(
-      ['Test', 'Logs', 'Trace', 'Output', 'History', 'Settings'].map((l) => [l, l]),
+      ['Test', 'Problems', 'Logs', 'Trace', 'Output', 'History', 'Settings'].map((l) => [l, l]),
     );
     // System messages are not counted; an empty count is not drawn.
-    expect(tabs.map((t) => t.querySelector('.count')?.textContent ?? '')).toEqual(['2', '3', '', '', '', '']);
+    expect(tabs.map((t) => t.querySelector('.count')?.textContent ?? '')).toEqual(['2', '', '3', '', '', '', '']);
     expect(tabs.every((t) => t.querySelector('svg[aria-hidden="true"]'))).toBe(true);
     expect(container.querySelector('[role="separator"] svg.drawer-grip')).not.toBeNull();
   });
@@ -237,10 +237,11 @@ describe('NodesTab palette', () => {
       );
       // The registered views contribute the Start (triggers), Agents (C04),
       // Safety (C11's permission rule, C13's hook), Output (C14's output
-      // schema) and Canvas (C13's note) groups; the fake view adds Capabilities.
+      // schema), Flow (C15's steps) and Canvas (C13's note) groups; the fake
+      // view adds Capabilities.
       expect(
         [...container.querySelectorAll('.palette-group-head .palette-group-name')].map((g) => g.textContent),
-      ).toEqual(['Start', 'Agents', 'Capabilities', 'Safety', 'Output', 'Canvas']);
+      ).toEqual(['Start', 'Agents', 'Capabilities', 'Safety', 'Output', 'Flow', 'Canvas']);
       const item = [...container.querySelectorAll<HTMLElement>('.node-palette-item')].find(
         (el) => el.getAttribute('aria-label') === 'Tool call',
       )!;

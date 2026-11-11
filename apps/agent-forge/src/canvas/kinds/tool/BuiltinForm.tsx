@@ -33,6 +33,7 @@ export function BuiltinForm({ item, patch }: ToolSubFormProps<'builtin'>): JSX.E
         id="node-tool-builtin"
         value={item.builtin}
         onChange={(builtin) => patch({ builtin })}
+        fieldPath=".builtin"
       />
       <JsonField
         id="node-tool-options"
@@ -42,6 +43,7 @@ export function BuiltinForm({ item, patch }: ToolSubFormProps<'builtin'>): JSX.E
         onChange={(options) => patch({ options })}
         check={checkJsonObject}
         help="Most built-ins need none."
+        fieldPath=".options"
       />
     </>
   );

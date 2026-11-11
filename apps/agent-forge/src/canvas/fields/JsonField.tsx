@@ -24,6 +24,8 @@ export interface JsonFieldProps {
   rows?: number;
   /** Extra validation after a successful parse; the returned message becomes the field error and the value is not emitted. */
   check?(value: unknown): string | undefined;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 /** `value` as the textarea shows it: pretty-printed JSON, empty for `undefined`. */
@@ -35,7 +37,7 @@ function textOf(value: unknown): string {
  * The free-form JSON control `options`, `inputJsonSchema` and "other
  * settings" maps use across the node inspectors.
  */
-export function JsonField({ id, label, value, onChange, help, rows = 6, check }: JsonFieldProps): JSX.Element {
+export function JsonField({ id, label, value, onChange, help, rows = 6, check, fieldPath }: JsonFieldProps): JSX.Element {
   const { draft, setDraft, error, setError, emit } = useSyncedDraft<unknown>(value, textOf, onChange);
 
   const onBlur = () => {
@@ -60,7 +62,7 @@ export function JsonField({ id, label, value, onChange, help, rows = 6, check }:
   };
 
   return (
-    <Field id={id} label={label} error={error} hint={help}>
+    <Field id={id} label={label} error={error} hint={help} fieldPath={fieldPath}>
       <Textarea
         value={draft}
         onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setDraft(event.target.value)}

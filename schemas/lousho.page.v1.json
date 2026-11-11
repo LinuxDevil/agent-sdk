@@ -208,6 +208,23 @@
       },
       "additionalProperties": false
     },
+    "models": {
+      "type": "object",
+      "properties": {
+        "provider": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
     "runtime": {
       "type": "object",
       "properties": {

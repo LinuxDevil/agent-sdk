@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react';
-import { Activity, MousePointerClick } from 'lucide-react';
+import { useRef } from 'react';
+import type { ReactNode, RefObject } from 'react';
+import { Activity, CircleAlert, MousePointerClick, TriangleAlert } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { patchNode, setNodeData } from '../graph/v2/mutations';
 import { toolNodeName } from '../graph/v2/nodeIds';
@@ -59,7 +60,7 @@ function InspectorHead({ node, graph, action }: { node: GraphNode; graph: Graph;
   const { Icon } = view;
   return (
     <div className="inspector-head">
-      <span className={`node-kind node-kind-lg kind-${view.tone}`} aria-hidden="true">
+      <span className={`node-kind node-kind-lg kind-${view.toneFor?.(node as never) ?? view.tone}`} aria-hidden="true">
         <Icon size={16} strokeWidth={1.75} />
       </span>
       <div className="inspector-head-text">
@@ -92,6 +93,92 @@ function EmptyInspector() {
   );
 }
 
+/**
+ * The spec-path suffix a problem's `fieldPath` has inside its node:
+ * `tools[0].builtin` on the `tools[0]` node is `.builtin`; on the root
+ * agent (`''` spec path) it is the whole path. `undefined` when the
+ * problem carries no field path.
+ */
+function fieldSuffix(fieldPath: string | undefined, specPath: string | undefined): string | undefined {
+  if (fieldPath === undefined || fieldPath === '') return fieldPath === '' ? '' : undefined;
+  if (specPath === undefined || specPath === '') return fieldPath;
+  if (fieldPath === specPath) return '';
+  if (fieldPath.startsWith(specPath)) return fieldPath.slice(specPath.length);
+  return fieldPath;
+}
+
+/**
+ * Best-effort focus of the control registered for a spec-path suffix:
+ * controls carry `data-field-path` (the `Field` component's `fieldPath`
+ * prop, the canvas field kit's `fieldPath`). Tries the suffix with and
+ * without its leading dot, then focuses the first control inside the
+ * matched `.field` row.
+ */
+function focusFieldPath(root: HTMLElement, suffix: string | undefined): void {
+  if (suffix === undefined || suffix === '') return;
+  const candidates = [suffix, suffix.replace(/^\./, '')];
+  for (const candidate of candidates) {
+    if (candidate === '') continue;
+    let el: HTMLElement | null = null;
+    try {
+      el = root.querySelector<HTMLElement>(`[data-field-path="${CSS.escape(candidate)}"]`);
+    } catch {
+      el = null;
+    }
+    const control =
+      el === null
+        ? null
+        : el.matches('input, select, textarea, button, [tabindex]')
+          ? el
+          : el.querySelector<HTMLElement>('input, select, textarea, button, [tabindex]');
+    if (control !== null) {
+      control.scrollIntoView?.({ block: 'nearest' });
+      control.focus();
+      return;
+    }
+  }
+}
+
+/** The Inspector's top section (C19): the selected node's problems, each focusing its field on click. */
+function ProblemsSection({
+  problems,
+  specPath,
+  rootRef,
+}: {
+  problems: Problem[];
+  specPath: string | undefined;
+  rootRef: RefObject<HTMLElement | null>;
+}) {
+  return (
+    <InspectorSection id="problems" title={`Problems (${problems.length})`}>
+      <ul className="inspector-problems">
+        {problems.map((problem, index) => {
+          const Icon = problem.severity === 'error' ? CircleAlert : TriangleAlert;
+          const suffix = fieldSuffix(problem.fieldPath, specPath);
+          return (
+            <li key={index}>
+              <button
+                type="button"
+                className={`inspector-problem inspector-problem-${problem.severity}`}
+                disabled={suffix === undefined}
+                onClick={() => {
+                  if (rootRef.current !== null) focusFieldPath(rootRef.current, suffix);
+                }}
+              >
+                <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
+                <span className="inspector-problem-message">{problem.message}</span>
+                {problem.fieldPath !== undefined && problem.fieldPath !== '' && (
+                  <code className="inspector-problem-field">{problem.fieldPath}</code>
+                )}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </InspectorSection>
+  );
+}
+
 function breakpointsOf(debugState: ReturnType<typeof useAppState>['debugState']): string[] {
   return debugState?.breakpoints ?? [];
 }
@@ -111,9 +198,13 @@ function BreakpointSection({ breakpointKey }: { breakpointKey: string }) {
 }
 
 function NodeInspector({ selected }: { selected: GraphNode }) {
-  const { displayGraph, setGraph, proposal, spans, openNodeSpans } = useAppState();
+  const { displayGraph, setGraph, proposal, spans, openNodeSpans, problems, specPaths } = useAppState();
   const selectedId = selected.id;
   const view = viewFor(selected.kind);
+  // `?? []`: AppState always provides `problems`, but lightweight test doubles
+  // of useAppState may not (same caveat as `spans` below).
+  const nodeProblems = (problems ?? []).filter((p) => p.nodeId === selectedId);
+  const bodyRef = useRef<HTMLDivElement>(null);
   // "View spans" opens the node spans sheet; disabled until the node has
   // spans in the live/last run's feed (components/test/nodeSpans.ts).
   // `?? []`: AppState always provides `spans`, but lightweight test doubles
@@ -129,8 +220,7 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
         history: { label: 'Edit', coalesceKey: `field:${selectedId}:${Object.keys(patch)[0] ?? ''}` },
       }),
     replace: (data) => setGraph((g) => setNodeData(g, selectedId, data)),
-    // validateGraph's per-node problems arrive with C19; nothing to show before.
-    problems: [] as Problem[],
+    problems: nodeProblems,
   };
   const breakpointKey = breakpointKeyFor(selected);
   const Fields = view.Fields as (p: typeof props) => JSX.Element;
@@ -153,8 +243,11 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
           </button>
         }
       />
-      <div className="inspector-body">
+      <div className="inspector-body" ref={bodyRef}>
         {/* Collapsible sections, each remembered per viewer (InspectorSection.tsx). */}
+        {nodeProblems.length > 0 && (
+          <ProblemsSection problems={nodeProblems} specPath={specPaths[selectedId]} rootRef={bodyRef} />
+        )}
         <InspectorSection id="node" title="Settings">
           {proposal === undefined ? (
             <Fields {...props} />

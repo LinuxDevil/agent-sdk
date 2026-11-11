@@ -55,12 +55,16 @@ export class SDKError extends Error {
     return instanceOfOwnBrand(this, value);
   }
 
+  /** Marks the instance as an SDK error across duplicate copies of the package. */
   get [SDK_ERROR_BRAND](): true {
     return true;
   }
 
+  /** The stable error code, such as `LOUSHO_WORKSPACE_INVALID`. */
   readonly code: string;
+  /** One sentence on how to fix it. */
   readonly hint?: string;
+  /** A link to the code's section of docs/errors.md. */
   readonly docs?: string;
   /** The message without the appended `[code] hint (docs)` line. */
   readonly detail: string;

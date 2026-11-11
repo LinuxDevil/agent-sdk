@@ -167,6 +167,9 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_REVISION_UNKNOWN: "Pick a revision from source.history(), or raise folderSource()'s keep to keep older snapshots readable.";
     readonly LOUSHO_WORKSPACE_SOURCE_CORRUPT: "Look at the file the message names under .lousho/revisions/; a set-aside journal can be inspected and deleted once the workspace looks right.";
     readonly LOUSHO_WORKSPACE_SOURCE_LIMIT: "Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().";
+    readonly LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: "Remove the NUL characters from the file the message names; a database workspace source stores text only.";
+    readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
+    readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
 };
 
 // @public
@@ -559,16 +562,12 @@ const SDK_ERROR_BRAND: unique symbol;
 
 // @public
 class SDKError extends Error {
-    // (undocumented)
     get [SDK_ERROR_BRAND](): true;
     static [Symbol.hasInstance](value: unknown): boolean;
     constructor(message: string, code?: ErrorCode | (string & {}), options?: SDKErrorOptions);
-    // (undocumented)
     readonly code: string;
     readonly detail: string;
-    // (undocumented)
     readonly docs?: string;
-    // (undocumented)
     readonly hint?: string;
     // (undocumented)
     toString(): string;

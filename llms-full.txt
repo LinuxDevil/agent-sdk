@@ -7320,7 +7320,7 @@ Each Lousho ✅ links to the Lousho page that documents it.
   frameworks.
 - **OpenTelemetry**: spans you can send to any OpenTelemetry backend.
 - **Local studio/debugger**: a UI on your machine to inspect and run agents.
-- **Provider-agnostic**: works with models from more than one vendor.
+- **Provider-agnostic**: works with models from more than one vendor. Lousho resolves `vendor/model` strings for its own providers and for every official `@ai-sdk/*` package ([any AI SDK vendor](https://github.com/LinuxDevil/lousho/blob/main/docs/providers.md#any-ai-sdk-vendor-by-name)).
 
 ## When not to use Lousho
 
@@ -9473,7 +9473,7 @@ Find a code by area:
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
 | [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
-| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`). |
+| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, and resolving page agents with `resolveAttachments()`. |
 
 ## Configuration
 
@@ -10778,6 +10778,46 @@ the set-aside journal. A damaged index is not set aside: fix or delete
 the limit the message names on `folderSource()`.
 
 **Example:** a 20 MB video left in `pages/launch/`.
+
+### LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED
+
+**Means:** a database workspace source (`sqliteWorkspaceSource()`,
+`postgresWorkspaceSource()`) refused a write or seed file whose content has a
+NUL character (`\u0000`). SQLite would cut the text at it and Postgres rejects
+it, so the stored tree would not match its revision id. Nothing is written.
+
+**Fix:** remove the NUL characters from the file the message names; a
+database workspace source stores text only.
+
+**Example:** `source.write({ 'notes.md': 'a\u0000b' }, …)`.
+
+### LOUSHO_WORKSPACE_INVALID
+
+**Means:** `loadWorkspace()` read a workspace from its source and
+`validateWorkspace` found at least one error. The error is a
+`WorkspaceValidationError`; `problems` lists every error with its `PRDnnn`
+code, file and field path. Nothing is returned, so a broken workspace never
+runs.
+
+**Fix:** fix the files the problems name, then load again. Warnings and notes
+do not throw; they come back in `problems` of the loaded workspace.
+
+**Example:** `workspace.json` lists a page whose `pages/<id>/` folder is
+missing.
+
+### LOUSHO_WORKSPACE_AGENT_UNRESOLVED
+
+**Means:** `resolveAttachments()` could not find an agent a page attaches. A
+`workspace:` or `local:` ref names a folder the loaded workspace does not
+have, a `global:` ref was given no `globalRegistry`, or the registry has no
+version in the ref's range. The page id may also be missing from
+`workspace.json`.
+
+**Fix:** check the ref in the page's `agents.json`. Add the agent folder, or
+pass a `globalRegistry` (`projectAgentRegistry(root)` or
+`sourceAgentRegistry(source)`) that holds a version in range.
+
+**Example:** `global:fact-checker@^2` when the registry only has `1.0.0`.
 
 ## Auth
 
@@ -17915,6 +17955,32 @@ The `google/` prefix needs the optional `@ai-sdk/google` package (`^1.2.0` with
 `ai` 4, `^3.0.0` with `ai` 6, `^4.0.0` with `ai` 7) and reads
 `GOOGLE_GENERATIVE_AI_API_KEY`, the variable `@ai-sdk/google` itself uses.
 
+### Any AI SDK vendor by name
+
+Every official `@ai-sdk/*` provider resolves from a model string too. Install
+the vendor's package (`^1.0.0` with `ai` 4, `^3.0.0` with `ai` 6, `^4.0.0` with
+`ai` 7); it is loaded on the first call and reads its own credentials
+(`MISTRAL_API_KEY`, `GROQ_API_KEY`, the AWS chain for Bedrock, and so on).
+
+```ts no-run
+import { createAgent } from 'lousho';
+
+createAgent({ model: 'mistral/mistral-large-latest' });   // @ai-sdk/mistral
+createAgent({ model: 'bedrock/anthropic.claude-sonnet' }); // @ai-sdk/amazon-bedrock
+createAgent({ model: 'vertex/gemini-2.5-pro' });           // @ai-sdk/google-vertex
+createAgent({ model: 'ai-sdk/cohere/command-r' });         // any @ai-sdk/<vendor>
+```
+
+The named prefixes are `azure`, `bedrock` (or `amazon-bedrock`), `vertex` (or
+`google-vertex`), `mistral`, `groq`, `xai`, `deepseek`, `cerebras`, `together`
+(or `togetherai`), `fireworks`, `deepinfra`, `cohere`, `perplexity`, `baseten`,
+`huggingface` and `vercel`. `ai-sdk/<vendor>/<model>` loads `@ai-sdk/<vendor>`
+for any other vendor, including ones newer than your Lousho version. A missing
+package fails on the first call with
+[`LOUSHO_PEER_MISSING`](https://github.com/LinuxDevil/lousho/blob/main/docs/errors.md#lousho_peer_missing) and the install
+command. A provider you add with `LLMProviderRegistry.register()` under the
+same name wins over the AI SDK package.
+
 ### Vendors without a prefix
 
 A prefix the SDK does not know fails with
@@ -24682,6 +24748,20 @@ Defaults when a manifest names no folder: `harness`, `agents`, `harness-profiles
 
 The Studio shows these as two label sets, exported as `AGENT_OWNED` (`instructions`, `skills`, `tools`, `memory`, `default model`) and `PAGE_OWNED` (`as`, `role`, `model`, `limits`, `tools.only`, `harness`). They are display labels, not key paths.
 
+### Where each setting lives
+
+Every setting is customisable; this table shows where.
+
+| Layer | What it sets | Where |
+| --- | --- | --- |
+| Harness | The task description only: audience, platform, schemas, constraints, evaluation. R13 forbids `model`, `provider`, `tools`, `permissions`, `secrets`, `sandbox`, `approvals`, `network`, `mcpServers` and `hooks` here | Base harness, harness profiles, page harness |
+| Agent | Instructions, skills, tools, default model | The agent folder |
+| Attachment | `model`, `limits`, `tools.only`, `role` | `pages/<p>/agents.json` |
+| Page | Execution type and runner settings (`limits`, `onFailure`, `checkpoint`), `defaults.model`, `models.provider` | `page.json` |
+| Workspace | `defaults` (model, limits), `budget`, `improve` (including `proposerModel`), `models.provider` | `workspace.json` |
+| Shared policies | Permissions, tool allowlist, secrets, network hosts, approvals, sandbox | `shared/policies/` |
+| Host | The policy ceiling, providers, secrets | Injected into the runtime |
+
 ## The files and their fields
 
 Every object is strict: an unknown key is an error. Every document starts with a `schema` id.
@@ -24702,6 +24782,7 @@ Every object is strict: an unknown key is an error. Every document starts with a
 | `defaults` | `{ model?, limits?: { maxConcurrentPages?, maxCostUsdPerRun? } }`. `maxConcurrentPages` defaults to 3 |
 | `budget` | `{ mode: "shared" or "per-page" }` |
 | `improve` | `{ enabled?, healer?: "shared" or "per-page", proposerModel? }`. `enabled` defaults to `true` |
+| `models` | `{ provider?: string or null }`. A built-in provider name (for example `pi`) that wraps every page model; see [model precedence](#model-precedence-and-modelsprovider) |
 
 Folder fields are safe relative paths that stay inside the workspace. Two workspace folders may not overlap, and none may point into `pages/` or `shared/policies/` (PRD027).
 
@@ -24718,6 +24799,7 @@ Folder fields are safe relative paths that stay inside the workspace. Two worksp
 | `improve` | `{ enabled? }`, overrides the workspace default |
 | `platform` | `{ profile?, adapter? }` |
 | `defaults` | `{ model? }` |
+| `models` | `{ provider?: string or null }`. Overrides the workspace's `models.provider`; `null` opts the page out of the wrapper |
 | `runtime` | reserved: only `{ kind: "local" }` is accepted |
 
 Page paths may not start with `pages/` (nested pages, PRD009).
@@ -24735,6 +24817,23 @@ Page paths may not start with `pages/` (nested pages, PRD009).
 | `checkpoint` | boolean |
 
 The block named by `type` is required. The other blocks are validated but not run, so a page keeps its other configurations when its type changes (see [type switching](#type-switching)). Aliases are names from `agents.json`, never refs.
+
+### Model precedence and `models.provider`
+
+`resolvePageModel` (exported from `lousho/workspaces`) picks the model a page's agent runs with. The first level that sets a model wins:
+
+1. the attachment's `model` in `agents.json`;
+2. the page's `defaults.model`;
+3. the agent's own default model;
+4. the workspace's `defaults.model`.
+
+It returns `{ model, source }`, where `source` is `attachment`, `page`, `agent`, `workspace` or `none` (no level sets a model), for provenance and the Studio.
+
+Then the provider wrapper applies. The effective provider is the page's `models.provider` when the page sets the key (`null` means no wrapper), otherwise the workspace's `models.provider`. A model `x/y` becomes `<provider>/x/y`, unless it already starts with `<provider>/`, so a model is never wrapped twice. For example, with `models: { "provider": "pi" }` in `workspace.json`, `anthropic/claude-sonnet-5-5` runs as `pi/anthropic/claude-sonnet-5-5`.
+
+The schema checks only the name's format (lowercase letters, digits and dashes, starting with a letter). Whether the provider is registered on this host is a runtime check, since the host injects providers (R17).
+
+The improver is separate (R8): `improve.proposerModel` and any Determinator model are never wrapped by `models.provider`, and never go through `resolvePageModel`.
 
 ### harness.json (`lousho.harness/1`)
 
@@ -24909,6 +25008,15 @@ Shared files sit under fixed patterns: `shared/instructions/<name>.md`, `shared/
 - `network.allowHosts`: lower-case host names or `*.example.com`. There is no "any host" form.
 - `approvals.require`: tool names that must wait for a human.
 - `sandbox.required`: whether code and shell execution must be sandboxed.
+
+### Resolving the shared layer
+
+`resolveSharedContext(workspace, options)` reads a `LoadedWorkspace` and returns `{ instructions, skills, memorySlots, resources }` for one `audience`: a page (`{ page: id }`) or `'main-agent'`. The main agent gets nothing unless `mainAgent.inheritsShared` is true; policy is applied separately.
+
+- Instructions are ordered by file name.
+- Skills are the union of `shared/skills/*/SKILL.md` and the `skills` option. Two skills with one name throw `LOUSHO_SKILL_INVALID` naming both files; `override: true` only lets a skill from the `skills` option replace a shared one.
+- Memory files are never run by the core, so the host passes `createMemory(file)` to build each slot, and a missing one throws `LOUSHO_MEMORY_INVALID`. Pass one `createSharedContextRun()` per workspace run: every page that passes it gets the same shared slot objects. Page-private memory is the attached agent's own `memory`, not part of the shared layer.
+- Files under `shared/knowledge`, `shared/brand` and `shared/resources` come back as frozen handles with a `shared:<path>` ref. A file over `maxResourceBytes` (default 262144) is listed with its size but its text is not inlined.
 
 ### How a workspace policy narrows the host's limit
 

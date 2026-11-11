@@ -40,7 +40,7 @@ import { orderedNodes } from '../graph/v2/order';
 import { deriveEdges } from '../graph/v2/edges';
 import { proposalCounts } from '../graph/v2/proposal';
 import { toolNodeName } from '../graph/v2/nodeIds';
-import type { Graph, GraphEdge, GraphNode, ToolNodeData } from '../graph/v2/types';
+import type { Graph, GraphEdge, GraphNode, Problem, ToolNodeData } from '../graph/v2/types';
 import { ROOT_AGENT_ID, ROOT_ONLY_KINDS } from '../graph/v2/types';
 import { KIND_VIEWS, type PaletteEntry } from '../canvas/kinds';
 import { applyLayoutResult, autoLayout } from '../canvas/layout';
@@ -85,12 +85,14 @@ function applyDimensionChanges(prev: MeasuredSizes, changes: NodeChange[]): Meas
   return next;
 }
 
-/** What each card shows beyond its own graph node: selection, highlight, breakpoints and run status. */
+/** What each card shows beyond its own graph node: selection, highlight, breakpoints, run status and validation problems. */
 interface NodeDecor {
   selectedNodeId: string | undefined;
   highlightedNodeId: string | undefined;
   breakpoints: string[];
   statuses: Record<string, NodeRunStatus>;
+  /** This node's validation problems by node id (`validateGraph`, C19). */
+  problems?: ReadonlyMap<string, Problem[]>;
   /** Opens the node spans sheet for a card's status pill (AppState.openNodeSpans). */
   openNodeSpans?: (nodeId: string) => void;
 }
@@ -184,7 +186,7 @@ function groupSizes(graph: Graph, measured: MeasuredSizes): Map<string, { width:
  * the parent React Flow would re-lay them at absolute coordinates).
  */
 export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<CanvasNodeData>[] {
-  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans } = decor;
+  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems, openNodeSpans } = decor;
   const sizes = groupSizes(graph, measured);
   return canvasNodeOrder(graph).map((n) => {
     const group = isGroupNode(n);
@@ -205,6 +207,7 @@ export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSize
         highlighted: n.id === highlightedNodeId,
         hasBreakpoint: hasBreakpointOn(n, breakpoints),
         status: statuses[n.id],
+        problems: problems?.get(n.id) ?? [],
         onViewSpans: openNodeSpans,
         insideCount: group ? descendantCount(graph, n.id) : undefined,
       },
@@ -482,7 +485,8 @@ function useDropHandlers(
         }
         const result = addNode(g, entry.create(g, owner), positionFor(g, position, owner), owner);
         addedId = result.nodeId;
-        return result.graph;
+        // Flow steps link into the step tree here; every other entry ignores it.
+        return entry.afterAdd?.(result.graph, result.nodeId, selectedNodeId) ?? result.graph;
       });
       if (refusal !== undefined) {
         flashError(refusal);
@@ -1068,6 +1072,7 @@ function useCanvasElements() {
     debugState,
     nodeStates,
     runStatus,
+    problems,
     openNodeSpans,
     undo,
     redo,
@@ -1084,14 +1089,23 @@ function useCanvasElements() {
     () => nodeRunStatuses(displayGraph.nodes.map((n) => n.id), nodeStates, runStatus),
     [displayGraph, nodeStates, runStatus]
   );
+  const problemsByNode = useMemo(() => {
+    const map = new Map<string, Problem[]>();
+    for (const problem of problems) {
+      const list = map.get(problem.nodeId) ?? [];
+      list.push(problem);
+      map.set(problem.nodeId, list);
+    }
+    return map;
+  }, [problems]);
   const nodes = useMemo(
     () =>
       toRfNodes(
         displayGraph,
-        { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans },
+        { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems: problemsByNode, openNodeSpans },
         measured
       ),
-    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, openNodeSpans, measured]
+    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, problemsByNode, openNodeSpans, measured]
   );
   const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
   // Edges derive from the DISPLAY graph so proposal nodes are wired in;

@@ -22,6 +22,8 @@ export interface ToolCatalogPickerProps {
   value: string;
   /** Emits the picked tool's catalog `name`. */
   onChange(name: string): void;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 /** The tools whose name or description contains `query` (case-insensitive). */
@@ -81,7 +83,7 @@ function ToolOption({
  * the required 'Pick a tool' error and the description/warning hint use
  * the standard field chrome.
  */
-export function ToolCatalogPicker({ id, value, onChange }: ToolCatalogPickerProps): JSX.Element {
+export function ToolCatalogPicker({ id, value, onChange, fieldPath }: ToolCatalogPickerProps): JSX.Element {
   const catalog = useCatalog('tools');
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
@@ -105,7 +107,7 @@ export function ToolCatalogPicker({ id, value, onChange }: ToolCatalogPickerProp
   };
 
   return (
-    <Field id={id} label="Tool" required error={value === '' ? 'Pick a tool' : undefined} hint={hintOf(value, picked)}>
+    <Field id={id} label="Tool" required error={value === '' ? 'Pick a tool' : undefined} hint={hintOf(value, picked)} fieldPath={fieldPath}>
       {catalog.loading ? (
         <SkeletonRows rows={4} />
       ) : catalog.error !== undefined ? (

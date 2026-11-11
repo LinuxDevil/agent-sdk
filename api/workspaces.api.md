@@ -25,6 +25,18 @@ interface AddExtendsOp {
 export const AGENT_OWNED: readonly ["instructions", "skills", "tools", "memory", "default model"];
 
 // @public
+export interface AgentCache {
+    readonly kind: 'agent-cache';
+}
+
+// @public
+export interface AgentFiles {
+    dir: string;
+    files: Readonly<Record<string, string>>;
+    format: 'dir' | 'studio';
+}
+
+// @public
 interface AgentFingerprint {
     hash: string;
     instructions: string;
@@ -33,6 +45,24 @@ interface AgentFingerprint {
     // (undocumented)
     version: number;
 }
+
+// @public
+export interface AgentOwned {
+    defaultModel?: string;
+    description?: string;
+    instructions?: string;
+    limits?: RunLimits;
+    memory: string[];
+    name: string;
+    permissions?: AgentPermission[];
+    skills: string[];
+    toolFiles: string[];
+    tools: string[];
+    version?: string;
+}
+
+// @public
+type AgentPermission = Omit<PermissionRuleSpec, 'id'>;
 
 // @public
 export type AgentRef = {
@@ -140,6 +170,13 @@ export interface Attachments {
 
 // @public
 export const attachmentsSchema: z.ZodType<Attachments>;
+
+// @public
+export interface AttachmentView {
+    alias: string;
+    kind: 'workspace' | 'local' | 'global';
+    ref: string;
+}
 
 // @public
 interface AuditEntry {
@@ -303,6 +340,9 @@ export function composeHarness(layers: readonly HarnessLayer[]): EffectiveHarnes
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
 // @public
+export function createAgentCache(): AgentCache;
+
+// @public
 interface CreateAgentOp {
     description: string;
     instructions: string;
@@ -324,6 +364,9 @@ interface CreatePageOp {
 }
 
 // @public
+export function createSharedContextRun(): SharedContextRun;
+
+// @public
 interface CreateWorkspaceOp {
     description: string;
     domain?: string;
@@ -340,6 +383,40 @@ export function createWorkspaceStores(backend: HostBackend, scope: WorkspaceScop
 
 // @public
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
+
+// @public
+export interface DbSourceOptions {
+    files?: Readonly<Record<string, string>>;
+    ref?: Partial<SourceRef>;
+}
+
+// @public
+export interface DbWorkspaceSource extends WorkspaceSource {
+    close(): Promise<void>;
+    write(changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta>;
+}
+
+// @public
+interface DefineMemoryOptions {
+    description?: string;
+    expose?: {
+        remember?: boolean;
+        recall?: boolean;
+        forget?: boolean;
+    };
+    itemKey?: string | readonly string[];
+    itemSchema?: StandardSchemaV1;
+    name: string;
+    // (undocumented)
+    provider: MemoryProvider;
+    recall?: {
+        onSessionStart?: boolean;
+        maxItems?: number;
+        query?: 'last-input' | 'none';
+    };
+    // (undocumented)
+    scope: MemoryScope;
+}
 
 // @public
 interface DelegatedUsage {
@@ -405,7 +482,135 @@ export interface EffectivePolicy {
 }
 
 // @public
+const ERROR_CODES: {
+    readonly LOUSHO_GENERIC_ERROR: "Read the message above; it names what failed.";
+    readonly LOUSHO_CONFIG_INVALID: "Fix the option named in the message.";
+    readonly LOUSHO_CONFIG_MISSING_PROVIDER: "Pass a model string such as createAgent({ model: 'openai/gpt-4.1-mini' }), a provider instance, or set LOUSHO_MODEL or a provider API key.";
+    readonly LOUSHO_CONFIG_MISSING_AGENT: "Pass the agent to run, e.g. AgentBuilder.create().setName(...).build().";
+    readonly LOUSHO_CONFIG_MISSING_INPUT: "Pass the user message (a string or a Message[]) as `input`.";
+    readonly LOUSHO_CONFIG_CONFLICTING_OPTIONS: "Keep one of the two options named in the message and remove the other.";
+    readonly LOUSHO_CONFIG_MISSING_CHECKPOINT_STORE: "Pass createAgent({ store }) with `checkpoints` (e.g. memoryStore() or a SqliteStore), or drop `sessionId`.";
+    readonly LOUSHO_CONFIG_RESOLVER_FAILED: "Fix the createAgent() option function named in the message; its own error is the `cause`.";
+    readonly LOUSHO_PROVIDER_SPEC_INVALID: "Write the model as '<provider>/<model>', e.g. 'openai/gpt-4.1-mini'.";
+    readonly LOUSHO_PROVIDER_UNKNOWN: "Use one of the supported provider prefixes listed in the message; reach any other vendor through openrouter/<vendor>/<model>, pi/<vendor>/<model> or fromAiSdk().";
+    readonly LOUSHO_PROVIDER_MISSING_API_KEY: "Set the environment variable named in the message, or pass a provider instance.";
+    readonly LOUSHO_PROVIDER_REQUEST_FAILED: "Check the provider status, your API key and the request; retryable failures are retried by withRetry().";
+    readonly LOUSHO_PROVIDER_RATE_LIMITED: "Wait and retry (withRetry() honours Retry-After), or lower the request rate.";
+    readonly LOUSHO_PEER_MISSING: "Run the npm install command shown in the message.";
+    readonly LOUSHO_HOSTED_TOOL_UNSUPPORTED: "Use a provider and package pairing that runs this hosted tool (see docs/hosted-tools.md), or leave the tool out of `tools`.";
+    readonly LOUSHO_UNSUPPORTED_CONTENT: "Send this content to a provider that takes it (see docs/providers.md#multimodal-input), put the file's text in the message, or set the provider's `unsupportedFiles: 'text-note'`.";
+    readonly LOUSHO_SPEC_NOT_FOUND: "Check the spec file path in the message; no file exists there.";
+    readonly LOUSHO_SPEC_INVALID: "Fix the spec fields named in the message (each is shown as its path and the problem).";
+    readonly LOUSHO_SPEC_UNKNOWN_FIELD: "Rename the field to the suggested spec field, or remove it.";
+    readonly LOUSHO_SPEC_UNSUPPORTED_FORMAT: "Save the spec as .yaml, .yml or .json.";
+    readonly LOUSHO_SPEC_UNSUPPORTED: "Remove the field the message names, or upgrade lousho to a version that can run it.";
+    readonly LOUSHO_SPEC_SECRET_MISSING: "Set the environment variable or add the named secret the message gives, then run the agent again.";
+    readonly LOUSHO_SCHEDULE_INVALID: "Fix the cron expression named in the message, and give the schedule exactly one of `prompt` or `run`.";
+    readonly LOUSHO_SCHEDULE_RUN_INCOMPLETE: "Resolve the pending approval named in the message, or change the prompt, tools or limits so an unattended turn can finish.";
+    readonly LOUSHO_CHANNEL_INVALID: "Default-export a channel from defineChannel(), httpChannel(), webhookChannel() or slackChannel() in each channels/ file.";
+    readonly LOUSHO_MEMORY_INVALID: "Default-export a memory slot from defineMemory() (or an object with a scope and a provider) in each memory/ file.";
+    readonly LOUSHO_REGISTRY_UNREACHABLE: "Check the --registry url or path (http(s) or a local file) and that you are online; the message names what failed.";
+    readonly LOUSHO_REGISTRY_ITEM_NOT_FOUND: "Run `lousho add --list` for the names in the registry, and use one of them.";
+    readonly LOUSHO_REGISTRY_INVALID: "Fix the registry document the message names; docs/registry.md shows the format.";
+    readonly LOUSHO_REGISTRY_UNSAFE_PATH: "Do not install this item; it asks to write outside its allowed folder or is too large, so tell the registry owner.";
+    readonly LOUSHO_REGISTRY_FILE_EXISTS: "Pass --overwrite to replace the existing file, or move your file away first.";
+    readonly LOUSHO_REGISTRY_MANIFEST_MISMATCH: "Do not install this item: its code reaches for something its permission manifest does not declare; tell the registry owner, who fixes the code or the manifest.";
+    readonly LOUSHO_PROMPT_UNRESOLVED: "Start the observe daemon (set LOUSHO_OBSERVE to its URL), or pass `instructions` as a fallback.";
+    readonly LOUSHO_TOOL_NOT_FOUND: "Use one of the tool names listed in the message, or register the tool yourself.";
+    readonly LOUSHO_TOOL_NEEDS_CREDENTIALS: "Build the agent with createAgent() and pass the configured tool.";
+    readonly LOUSHO_TOOL_EXECUTION_FAILED: "Look at the tool's own error (the `cause`) and fix the tool or its input.";
+    readonly LOUSHO_TOOL_ARGS_INVALID: "Fix the arguments listed in the message (each is shown as its path and the problem); inside a run the model gets them as a tool result and can retry.";
+    readonly LOUSHO_AGENT_DIR_INVALID: "Fix the file or folder the message names; docs/agent-directories.md shows the layout.";
+    readonly LOUSHO_SKILL_INVALID: "Fix the skill the message names (a name, a description and content), or the skills option it was passed to.";
+    readonly LOUSHO_FLOW_INVALID: "Fix the flow definition the message names (its name, code, inputs and node types).";
+    readonly LOUSHO_FLOW_TOOL_DENIED: "Pass an approve callback in the flow context to decide tool calls that need approval, or change the permission rule or needsApproval policy that denied the call.";
+    readonly LOUSHO_FLOW_CHANGED: "Resume the run with the flow version that started it (same steps in the same order), or start a new run with another runId.";
+    readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
+    readonly LOUSHO_STORAGE_BUSY: "Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).";
+    readonly LOUSHO_ARTIFACT_FORBIDDEN: "Read only the run's own artifacts, or pass the artifact's uri to this run as a ref (through the main agent).";
+    readonly LOUSHO_ARTIFACT_TOO_LARGE: "Write a smaller artifact, or raise maxArtifactBytes on the artifact store.";
+    readonly LOUSHO_ARTIFACT_EXISTS: "Store the new content under a new artifact name; a stored artifact never changes.";
+    readonly LOUSHO_ARTIFACT_UNSAFE_PATH: "Remove the symlink or other entry the message names from the artifact store folder; the store reads and writes only plain folders and files inside its root.";
+    readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
+    readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
+    readonly LOUSHO_SERVER_UNPROTECTED: "Set LOUSHO_API_TOKEN, add an auth.ts to the agent directory, bind to 127.0.0.1, or set LOUSHO_ALLOW_PUBLIC=1 to serve an open agent on purpose.";
+    readonly LOUSHO_DATASET_UNAVAILABLE: "Start the observe daemon and set LOUSHO_OBSERVE to its URL, and create the dataset the message names with examples in it.";
+    readonly LOUSHO_EVALS_INVALID: "Call the eval helper the way the message says (inside a vitest file, after t.send(), with a judge configured).";
+    readonly LOUSHO_TEST_FAILED: "Read the message: an eval or a mockModel() script did not hold; fix the agent, or the expectation.";
+    readonly LOUSHO_CASSETTE_INVALID: "Record the cassette again (lousho eval --record, or recordReplay mode: record), or fix the file the message names.";
+    readonly LOUSHO_CHANNEL_REQUEST_FAILED: "Check the platform's token and permissions and its status page; the message names the call and its status.";
+    readonly LOUSHO_APPROVAL_STORE_MISSING: "Pass an approvalStore (e.g. new InMemoryApprovalStore()), or use createAgent(), which has one.";
+    readonly LOUSHO_APPROVAL_NOT_FOUND: "Resolve an id that is still pending (agent.approvals.list() lists them); each approval resolves once.";
+    readonly LOUSHO_APPROVAL_ORPHANED: "The paused run (or session turn) was deleted or replaced by a newer one; the approval is withdrawn and cannot be continued - start a new turn instead.";
+    readonly LOUSHO_APPROVAL_CONFLICT: "Another request decided this approval at the same time; read the session to see the outcome instead of deciding again.";
+    readonly LOUSHO_APPROVAL_FORBIDDEN: "Decide the approval as a caller the route's authorizeApproval accepts (by default, the caller the run acts for).";
+    readonly LOUSHO_APPROVAL_DECISION_INVALID: "Send a JSON body with 'approved' (true or false, and an optional 'note') or, for a question, 'answer'.";
+    readonly LOUSHO_APPROVAL_KIND_MISMATCH: "'answer' decides a question pause only; a tool-call pause takes 'approved' (a question also answers with 'approved' and the answer as 'note').";
+    readonly LOUSHO_SESSION_FORBIDDEN: "Use a session the route's authorizeSession lets this caller read, continue or decide approvals in.";
+    readonly LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).";
+    readonly LOUSHO_REQUEST_INVALID: "Send valid JSON with the fields the route names, e.g. POST /chat { \"sessionId\": \"chat-1\", \"input\": \"Hello\" }.";
+    readonly LOUSHO_UNSUPPORTED_MEDIA_TYPE: "Send the request body as JSON with the header 'Content-Type: application/json'.";
+    readonly LOUSHO_SESSION_AWAITING_APPROVAL: "Resolve the pending approval first (agent.approvals.resolve() or resumeAfterApproval()), then send again.";
+    readonly LOUSHO_SESSION_ID_INVALID: "Session ids (agent.session({ id }), POST /chat): 1-128 characters from A-Z, a-z, 0-9, '_' and '-'. Run ids (send({ sessionId })): up to 200 and '.' too, not ending in '.turn-<n>', '.paused' or '.fire'.";
+    readonly LOUSHO_SESSION_BUSY: "Wait for the running turn to finish (await its send(), or abort it), then call again.";
+    readonly LOUSHO_SESSION_TURN_PENDING: "Finish the interrupted turn with session.resume(), or drop it with session.discardPending(), then call again.";
+    readonly LOUSHO_SESSION_TURN_FAILED: "Drop the failed turn with session.discardPending() and send again, or fix the cause and retry it with session.resume().";
+    readonly LOUSHO_SESSION_FILE_CORRUPT: "Restore or delete the session transcript named in the message (session.clear() removes it).";
+    readonly LOUSHO_SESSION_STREAM_UNSUPPORTED: "Create the session with agent.session(), which can stream, or call send() instead.";
+    readonly LOUSHO_SESSION_STEP_NOT_FOUND: "Pass a fromStep in the range the message lists (see session.history()); 0 keeps nothing.";
+    readonly LOUSHO_SESSION_EXISTS: "Pick a session id that has no transcript in the store yet, or leave `id` out for <id>-fork-<n>.";
+    readonly LOUSHO_SESSION_FORK_UNSUPPORTED: "Create the session with agent.session(), which can fork.";
+    readonly LOUSHO_REMOTE_UNAUTHORIZED: "Pass the deployment's bearer token (its LOUSHO_API_TOKEN): `auth` of remoteAgent()/remoteTarget(), or --token / LOUSHO_EVAL_TOKEN for `lousho eval`.";
+    readonly LOUSHO_REMOTE_REQUEST_FAILED: "Read the message: it names the remote agent's url and what failed. Check the url, that the deployment is up (GET /health), and its logs.";
+    readonly LOUSHO_SUBAGENT_TASK_NOT_FOUND: "Pass a taskId from an earlier task result of this lead session, with the same agent, or omit taskId to start a new task.";
+    readonly LOUSHO_SUBAGENT_TASK_BUSY: "Wait for the task with agent_await (or stop it with agent_cancel), then continue it.";
+    readonly LOUSHO_CHECKPOINT_NOT_FOUND: "Fork at a step the session's checkpoint history still keeps (checkpointStore.history() lists them), or raise the store's historyLimit.";
+    readonly LOUSHO_CHECKPOINT_CORRUPT: "Drop the unreadable checkpoint with session.discardPending() or session.clear() (or checkpointStore.delete(id)); the interrupted run cannot be resumed.";
+    readonly LOUSHO_AGENT_DRIFT: "Resume with the agent that paused the run (same model, tools and instructions), or set onAgentDrift: 'warn' or 'ignore' to continue anyway.";
+    readonly LOUSHO_RESUME_TOOL_MISSING: "Bring the tool named in the message back (same name), or drop the paused run: delete its checkpoint and reject its approval.";
+    readonly LOUSHO_RUN_ALREADY_ITERATED: "Iterate an AgentRun once; call stream() again for a new run.";
+    readonly LOUSHO_SANDBOX_PATH_DENIED: "Write under the sandbox's root (SubprocessSandbox({ root })), or pass the root that should contain the path.";
+    readonly LOUSHO_SANDBOX_EGRESS_UNSUPPORTED: "Run on Docker Engine 25.0.5+ for Linux on this host (not Docker Desktop, rootless or a remote daemon), or use network: 'none'.";
+    readonly LOUSHO_SANDBOX_FAILED: "The error's `kind` says which boundary failed ('timeout', 'oom' or 'driver'); raise the limit in sandbox()/defineTool({ sandbox }), or check the driver.";
+    readonly LOUSHO_AGENT_EXECUTION_FAILED: "Look at the `cause` for the underlying failure.";
+    readonly LOUSHO_FLOW_EXECUTION_FAILED: "Look at the failing `step` and the `cause`.";
+    readonly LOUSHO_VALIDATION_FAILED: "Fix the fields listed in `errors`.";
+    readonly LOUSHO_OPERATION_TIMEOUT: "Raise the timeout or make the operation faster.";
+    readonly LOUSHO_OUTPUT_INVALID: "Reserved: an invalid structured reply is reported as finishReason 'output-invalid', not thrown.";
+    readonly LOUSHO_BUDGET_EXCEEDED: "Raise the limit named in the message, or use onExceeded: 'stop' (the default) to get finishReason 'budget-exceeded' instead of an error.";
+    readonly LOUSHO_RUN_NO_PROGRESS: "Read the heal.action events to see which calls were denied, then fix the agent or its tool before resuming.";
+    readonly LOUSHO_AUTH_CONFIG_INVALID: "Fix the auth helper option named in the message (docs/auth.md lists what each helper needs).";
+    readonly LOUSHO_GUARDRAIL_TRIPPED: "Look at `error.guardrail` for which guardrail blocked and why, or use onTripped: 'stop' (the default) to get finishReason 'guardrail' instead of an error.";
+    readonly LOUSHO_TOKEN_KEY_MISSING: "Pass the store's tokenKey (32 random bytes as base64, from generateTokenKey()) or set LOUSHO_TOKEN_KEY before storing OAuth tokens.";
+    readonly LOUSHO_TOKEN_DECRYPT_FAILED: "Use the tokenKey the tokens were written with (list the old key after the new one while rotating), or delete the record and sign in again.";
+    readonly LOUSHO_OAUTH_PRINCIPAL_REQUIRED: "Run the agent behind route auth or a channel (so the run has a principal), or use credentialOwner: 'app' for a credential shared by everyone.";
+    readonly LOUSHO_OAUTH_APP_SIGNIN_REQUIRED: "Sign the app in once: open the URL from agent.oauth.signInUrl(provider) and let the callback store the token.";
+    readonly LOUSHO_OAUTH_STORE_MISSING: "Give the agent a store with `tokens`: createAgent({ store: memoryStore() }), fileStore(), SqliteStore or KVStore.";
+    readonly LOUSHO_OAUTH_STATE_INVALID: "Start the sign-in again from a fresh link: a state works once, for 10 minutes, and only for the user it was made for.";
+    readonly LOUSHO_SIGNIN_PENDING: "Open the sign-in link first and let the provider redirect to the callback, then approve again (or approve with false to cancel).";
+    readonly LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED: "Check the provider's tokenUrl, clientId, clientSecret and redirectUri (it must match the one registered with the provider), then sign in again.";
+    readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
+    readonly LOUSHO_MCP_CALL_FAILED: "Read the message: it names the server and tool; the `cause` is the MCP error (its `code`, e.g. -32000 'Connection closed' when the server exited). Check the server is running.";
+    readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
+    readonly LOUSHO_WORKSPACE_STALE_REVISION: "Read the workspace again at its current revision, reapply the change and write with that revision as expectedRevision.";
+    readonly LOUSHO_WORKSPACE_NO_CHANGE: "Drop the write, or change at least one file so the tree differs from the current revision.";
+    readonly LOUSHO_WORKSPACE_PATH_INVALID: "Use a forward-slash path relative to the workspace root, and replace symlinks that leave the workspace folder with the files themselves.";
+    readonly LOUSHO_WORKSPACE_REVISION_UNKNOWN: "Pick a revision from source.history(), or raise folderSource()'s keep to keep older snapshots readable.";
+    readonly LOUSHO_WORKSPACE_SOURCE_CORRUPT: "Look at the file the message names under .lousho/revisions/; a set-aside journal can be inspected and deleted once the workspace looks right.";
+    readonly LOUSHO_WORKSPACE_SOURCE_LIMIT: "Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().";
+    readonly LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: "Remove the NUL characters from the file the message names; a database workspace source stores text only.";
+    readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
+    readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
+};
+
+// @public
+type ErrorCode = keyof typeof ERROR_CODES;
+
+// @public
 type ExecutionKey = 'single' | 'multiAgent' | 'workflow' | 'goal' | 'limits' | 'onFailure' | 'checkpoint';
+
+// @public
+export function explainHarness(effective: EffectiveHarness): string;
 
 // @public
 export function fileArtifactStore(root: string, options?: ArtifactStoreOptions): ArtifactStore;
@@ -464,6 +669,20 @@ export interface FolderSourceOptions {
 
 // @public
 export function formatArtifactUri(parts: ArtifactUriParts): string;
+
+// @public
+export interface GlobalAgent extends AgentFiles {
+    name: string;
+    version: string;
+}
+
+// @public
+export interface GlobalAgentRegistry {
+    resolve(name: string, range: string): Promise<GlobalAgent | undefined>;
+}
+
+// @public
+export function globalProfiles(resolve: (ref: string) => WorkspaceTree | undefined): ProfileStore;
 
 // @public
 export interface Harness {
@@ -525,6 +744,9 @@ export interface Harness {
 }
 
 // @public
+export type HarnessCache = Map<string, EffectiveHarness>;
+
+// @public
 type HarnessField = 'audience' | 'platform' | 'inputs' | 'outputs' | 'capabilities' | 'constraints' | 'evaluation' | 'runtime' | 'context';
 
 // @public
@@ -584,6 +806,24 @@ export interface InheritanceRule {
 
 // @public
 export function isTerminalStatus(status: PageRunStatus): boolean;
+
+// @public
+export interface LoadedWorkspace {
+    manifest: WorkspaceManifestView;
+    problems: WorkspaceProblem[];
+    revision: RevisionId;
+    tree: WorkspaceTree;
+}
+
+// @public
+export function loadWorkspace(source: WorkspaceSource, options: LoadWorkspaceOptions): Promise<LoadedWorkspace>;
+
+// @public
+export interface LoadWorkspaceOptions {
+    mode: NonNullable<ValidateWorkspaceOptions['mode']>;
+    resolveGlobal?: ValidateWorkspaceOptions['resolveGlobal'];
+    revision?: RevisionId;
+}
 
 // @public
 export const MAIN_HARNESS_OPTIONALITY: readonly MainHarnessOptionalityRow[];
@@ -649,6 +889,62 @@ export function memoryArtifactStore(options?: ArtifactStoreOptions): ArtifactSto
 
 // @public
 export function memoryBlobClient(): BlobClient;
+
+// @public
+interface MemoryItem {
+    createdAt: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    metadata?: Record<string, unknown>;
+    // (undocumented)
+    text: string;
+}
+
+// @public
+interface MemoryProvider {
+    add(scopeKey: string, item: {
+        text: string;
+        metadata?: Record<string, unknown>;
+    }): Promise<MemoryItem>;
+    // (undocumented)
+    list(scopeKey: string, options?: {
+        limit?: number;
+        query?: string;
+    }): Promise<MemoryItem[]>;
+    readonly ranking?: 'newest' | 'relevance';
+    // (undocumented)
+    remove(scopeKey: string, id: string): Promise<void>;
+    upsert?(scopeKey: string, item: {
+        id?: string;
+        text: string;
+        metadata?: Record<string, unknown>;
+    }): Promise<MemoryItem>;
+}
+
+// @public
+type MemoryScope = 'global' | 'session' | ((ctx: MemoryScopeContext) => string | undefined);
+
+// @public
+interface MemoryScopeContext {
+    // (undocumented)
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+    // (undocumented)
+    sessionId?: string;
+}
+
+// @public
+interface MemorySlot extends Readonly<Pick<DefineMemoryOptions, 'name' | 'description' | 'scope' | 'provider' | 'itemSchema'>> {
+    readonly expose: Required<NonNullable<DefineMemoryOptions['expose']>>;
+    readonly itemKey?: readonly string[];
+    // (undocumented)
+    readonly recall: {
+        onSessionStart: boolean;
+        maxItems: number;
+        query: 'last-input' | 'none';
+    };
+}
 
 // @public
 export function memorySource(files: Readonly<Record<string, string>>, options?: MemorySourceOptions): WorkspaceSource;
@@ -762,6 +1058,13 @@ export interface PageFinishedEvent {
 }
 
 // @public
+export interface PageInheritsView {
+    base?: string;
+    profiles: string[];
+    shared: string[];
+}
+
+// @public
 export interface PageInput {
     inputs?: unknown;
     pageId: string;
@@ -790,6 +1093,9 @@ export interface PageManifest {
     improve?: {
         enabled?: boolean;
     };
+    models?: {
+        provider?: string | null;
+    };
     name: string;
     platform?: {
         profile?: string;
@@ -801,6 +1107,26 @@ export interface PageManifest {
     schema: 'lousho.page/1';
     ui?: string;
 }
+
+// @public
+export interface PageManifestView {
+    attachments: AttachmentView[];
+    files: string[];
+    inherits: PageInheritsView;
+}
+
+// @public
+export interface PageModelInputs {
+    agentDefault?: string;
+    attachmentModel?: string;
+    pageDefault?: string;
+    pageProvider?: string | null;
+    workspaceDefault?: string;
+    workspaceProvider?: string | null;
+}
+
+// @public
+export type PageModelSource = 'attachment' | 'page' | 'agent' | 'workspace' | 'none';
 
 // @public
 export interface PageProgressEvent {
@@ -915,6 +1241,16 @@ interface PermissionRuleSpec {
 }
 
 // @public
+export interface PgPool extends PgQueryable {
+    connect(): Promise<PgPoolClient>;
+}
+
+// @public
+export interface PgPoolClient extends PgQueryable {
+    release(error?: Error | boolean): void;
+}
+
+// @public
 export interface PgQueryable {
     end?(): Promise<void>;
     query(text: string, values?: unknown[]): Promise<{
@@ -935,6 +1271,9 @@ export interface PostgresOptions {
 }
 
 // @public
+export function postgresWorkspaceSource(pool: PgPool, options?: DbSourceOptions & PostgresOptions): Promise<DbWorkspaceSource>;
+
+// @public
 interface Principal {
     authenticator: string;
     claims?: Readonly<Record<string, unknown>>;
@@ -943,6 +1282,17 @@ interface Principal {
     // (undocumented)
     type: 'user' | 'service';
 }
+
+// @public
+export interface ProfileStore {
+    get(ref: string): HarnessLayer;
+}
+
+// @public
+export function profileStoreFor(workspace: LoadedWorkspace, global?: ProfileStore): ProfileStore;
+
+// @public
+export function projectAgentRegistry(root: string): GlobalAgentRegistry;
 
 // @public
 export type ProseTarget = HarnessTarget | {
@@ -1009,6 +1359,58 @@ interface ResetPageUiOp {
 }
 
 // @public
+export function resolveAttachments(workspace: LoadedWorkspace, pageId: string, options: ResolveAttachmentsOptions): Promise<ResolvedAttachment[]>;
+
+// @public
+export interface ResolveAttachmentsOptions {
+    cache?: AgentCache;
+    globalRegistry?: GlobalAgentRegistry;
+    mode: LoadWorkspaceOptions['mode'];
+}
+
+// @public
+export interface ResolvedAttachment {
+    agentOwned: AgentOwned;
+    alias: string;
+    dir: string;
+    model: ResolvedPageModel;
+    pageOwned: Attachment;
+    ref: string;
+    sha256: string;
+    version?: string;
+}
+
+// @public
+export interface ResolvedPageModel {
+    model: string | undefined;
+    source: PageModelSource;
+}
+
+// @public
+export interface ResolveHarnessOptions {
+    cache?: HarnessCache;
+}
+
+// @public
+export function resolvePageHarness(workspace: LoadedWorkspace, pageId: string, store: ProfileStore, options?: ResolveHarnessOptions): EffectiveHarness;
+
+// @public
+export function resolvePageModel(inputs: PageModelInputs): ResolvedPageModel;
+
+// @public
+export function resolveSharedContext(workspace: LoadedWorkspace, options?: ResolveSharedContextOptions): SharedContext;
+
+// @public
+export interface ResolveSharedContextOptions {
+    audience?: SharedAudience;
+    createMemory?: (file: SharedMemoryFile) => MemorySlot;
+    maxResourceBytes?: number;
+    override?: boolean;
+    run?: SharedContextRun;
+    skills?: readonly SharedSkill[];
+}
+
+// @public
 export type RevisionActor = AuditEntry['actor'];
 
 // @public
@@ -1027,6 +1429,20 @@ export interface RevisionMeta {
     parent?: RevisionId;
     revision: RevisionId;
     seq: number;
+}
+
+// @public
+interface RunLimits {
+    maxCostUsd?: number;
+    maxDurationMs?: number;
+    // (undocumented)
+    maxInputTokens?: number;
+    // (undocumented)
+    maxOutputTokens?: number;
+    maxSteps?: number;
+    maxTokens?: number;
+    maxToolErrors?: number;
+    onExceeded?: 'stop' | 'throw';
 }
 
 // @public
@@ -1064,6 +1480,42 @@ interface RunUsage {
     reasoningTokens?: number;
     // (undocumented)
     totalTokens: number;
+}
+
+// @public
+interface SchemaIssue {
+    // (undocumented)
+    readonly message: string;
+    // (undocumented)
+    readonly path?: ReadonlyArray<PropertyKey | {
+        readonly key: PropertyKey;
+    }>;
+}
+
+// @public
+const SDK_ERROR_BRAND: unique symbol;
+
+// @public
+class SDKError extends Error {
+    get [SDK_ERROR_BRAND](): true;
+    static [Symbol.hasInstance](value: unknown): boolean;
+    constructor(message: string, code?: ErrorCode | (string & {}), options?: SDKErrorOptions);
+    readonly code: string;
+    readonly detail: string;
+    readonly docs?: string;
+    readonly hint?: string;
+    // (undocumented)
+    toString(): string;
+    usage?: RunUsage;
+}
+
+// @public
+interface SDKErrorOptions {
+    appendHelp?: boolean;
+    // (undocumented)
+    cause?: unknown;
+    docs?: string;
+    hint?: string;
 }
 
 // @public
@@ -1138,7 +1590,72 @@ interface SetWorkspaceFieldOp {
 const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources", "skills", "memory", "policies"];
 
 // @public
+export type SharedAudience = {
+    page: string;
+} | 'main-agent';
+
+// @public
+export interface SharedContext {
+    instructions: SharedInstruction[];
+    memorySlots: SharedMemorySlot[];
+    resources: SharedResource[];
+    skills: SharedSkill[];
+}
+
+// @public
+export interface SharedContextRun {
+    readonly memory: Map<string, MemorySlot>;
+}
+
+// @public
 type SharedFolder = (typeof SHARED_FOLDERS)[number];
+
+// @public
+export interface SharedInstruction {
+    file: string;
+    text: string;
+}
+
+// @public
+export interface SharedMemoryFile {
+    file: string;
+    name: string;
+    source: string;
+}
+
+// @public
+export interface SharedMemorySlot extends SharedMemoryFile {
+    slot: MemorySlot;
+}
+
+// @public
+export interface SharedResource {
+    bytes: number;
+    inlined: boolean;
+    path: string;
+    ref: string;
+    text?: string;
+}
+
+// @public
+export interface SharedSkill {
+    file: string;
+    skill: Skill;
+}
+
+// @public
+interface Skill {
+    // (undocumented)
+    readonly content: string;
+    // (undocumented)
+    readonly description: string;
+    readonly directory?: string;
+    // (undocumented)
+    readonly name: string;
+}
+
+// @public
+export function sourceAgentRegistry(source: WorkspaceSource): GlobalAgentRegistry;
 
 // @public
 export interface SourceReadOptions {
@@ -1167,7 +1684,55 @@ export interface SourceWriteOptions {
 }
 
 // @public
+export interface SqlClient extends SqlStatements {
+    close(): Promise<void>;
+    transaction<T>(work: (tx: SqlStatements) => Promise<T>): Promise<T>;
+}
+
+// @public
 export function sqliteHostBackend(path: string): Promise<HostBackend>;
+
+// @public
+export function sqliteSqlClient(path: string): SqlClient;
+
+// @public
+export function sqliteWorkspaceSource(db: string | SqlClient, options?: DbSourceOptions): Promise<DbWorkspaceSource>;
+
+// @public (undocumented)
+type SqlParam = SqlValue;
+
+// @public
+type SqlRow = Record<string, unknown>;
+
+// @public
+export interface SqlStatements {
+    execute(sql: string, params?: readonly SqlParam[]): Promise<number>;
+    query(sql: string, params?: readonly SqlParam[]): Promise<SqlRow[]>;
+}
+
+// @public
+type SqlValue = string | number | Uint8Array | null;
+
+// @public (undocumented)
+type StandardResult<Output> = {
+    readonly value: Output;
+    readonly issues?: undefined;
+} | {
+    readonly issues: ReadonlyArray<SchemaIssue>;
+};
+
+// @public
+interface StandardSchemaV1<Input = unknown, Output = Input> {
+    readonly '~standard': {
+        readonly version: 1;
+        readonly vendor: string;
+        readonly validate: (value: unknown) => StandardResult<Output> | Promise<StandardResult<Output>>;
+        readonly types?: {
+            readonly input: Input;
+            readonly output: Output;
+        } | undefined;
+    };
+}
 
 // @public
 export interface StartRun {
@@ -1435,6 +2000,9 @@ export interface WorkspaceManifest {
         inheritsShared?: boolean;
         harness?: string;
     } | null;
+    models?: {
+        provider?: string | null;
+    };
     name: string;
     pages: string[];
     schema: 'lousho.workspace/1';
@@ -1444,6 +2012,14 @@ export interface WorkspaceManifest {
 
 // @public
 export const workspaceManifestSchema: z.ZodType<WorkspaceManifest>;
+
+// @public
+export interface WorkspaceManifestView {
+    id: string;
+    inheritsShared: boolean;
+    name: string;
+    pages: Record<string, PageManifestView>;
+}
 
 // @public
 export interface WorkspacePolicy {
@@ -1480,6 +2056,9 @@ export type WorkspaceProblemCode = 'PRD001' | 'PRD002' | 'PRD003' | 'PRD004' | '
 
 // @public
 export type WorkspaceProblemSeverity = 'error' | 'warning' | 'info';
+
+// @public
+export function workspaceProfiles(tree: WorkspaceTree, dir?: string): ProfileStore;
 
 // @public
 export interface WorkspaceRunEvents {
@@ -1529,6 +2108,12 @@ export interface WorkspaceThreadStore {
 
 // @public
 export type WorkspaceTree = Readonly<Record<string, unknown>>;
+
+// @public
+export class WorkspaceValidationError extends SDKError {
+    constructor(problems: readonly WorkspaceProblem[]);
+    readonly problems: readonly WorkspaceProblem[];
+}
 
 // @public
 export type WorkType = 'single' | 'multi-agent' | 'workflow' | 'goal-oriented';

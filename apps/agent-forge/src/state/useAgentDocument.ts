@@ -4,7 +4,8 @@ import type { AgentStore } from '../persistence/AgentStore';
 import { graphToSpec, type GraphToSpecResult } from '../graph/v2/graphToSpec';
 import { specToGraph } from '../graph/v2/specToGraph';
 import { deriveEdges } from '../graph/v2/edges';
-import type { Graph, GraphEdge } from '../graph/v2/types';
+import { validateGraph } from '../graph/v2/validateGraph';
+import type { Graph, GraphEdge, Problem } from '../graph/v2/types';
 import { graphFromTemplate, type TemplateId } from '../canvas/templates';
 import { agentIdProblem } from '../../shared/agentId';
 import type { CanvasLayout, StudioEvent } from '../../shared/wireTypes';
@@ -21,6 +22,8 @@ import {
 const AUTOSAVE_DEBOUNCE_MS = 800;
 /** How long `agent.changed` events collect before the agents list re-fetches - a burst (rename = save+delete) is one refresh. */
 const AGENTS_REFRESH_DEBOUNCE_MS = 300;
+/** Validation (`validateGraph`: `graphToSpec` + zod) trails edits by this long so typing never blocks on it. */
+const PROBLEMS_DEBOUNCE_MS = 300;
 
 const DEFAULT_SPEC: AgentSpecV2 = {
   version: 2,
@@ -563,6 +566,23 @@ function useDerivedDocument(
 }
 
 /**
+ * `validateGraph(graph)` debounced by {@link PROBLEMS_DEBOUNCE_MS}: the
+ * canvas badges, the Inspector's Problems section and the drawer's
+ * Problems tab all read the same list, and validation re-emits the spec
+ * and runs zod on every edit, so it must never run per keystroke. The
+ * first render validates immediately so a freshly opened agent's
+ * problems are there before the first paint settles.
+ */
+function useProblems(graph: Graph): Problem[] {
+  const [problems, setProblems] = useState<Problem[]>(() => validateGraph(graph));
+  useEffect(() => {
+    const timer = setTimeout(() => setProblems(validateGraph(graph)), PROBLEMS_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [graph]);
+  return problems;
+}
+
+/**
  * The editable document for the currently-loaded agent: its id, canvas
  * `Graph` (graph v2), the spec/layout/nodeIdMap `graphToSpec` derives from
  * it, dirty flag, selection, and the saved-agent list - plus
@@ -583,6 +603,7 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
 
   const { derived, edges } = useDerivedDocument(graph, doc.lastDerived, latestJson);
   const spec = derived.spec;
+  const problems = useProblems(graph);
 
   const saveDeps: SaveDeps = { store, agentId, derived, setDirty, refreshAgents, lastSavedJson, latestJson };
   const save = useExplicitSave(saveDeps);
@@ -630,6 +651,8 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     /** The `layout.json` `graphToSpec` derives alongside `spec` — the proposal overlay's position source (C21). */
     layout: derived.layout,
     nodeIdMap: derived.nodeIdMap,
+    specPaths: derived.specPaths,
+    problems,
     dirty,
     save,
     reload,

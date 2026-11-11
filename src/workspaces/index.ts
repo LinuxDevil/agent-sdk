@@ -6,6 +6,7 @@ export { attachmentsSchema, parseAgentRef, AGENT_OWNED, PAGE_OWNED, type Attachm
 export { workspacePolicySchema, narrowPolicy, type WorkspacePolicy, type PolicyCeiling, type EffectivePolicy } from './contracts/policy';
 export { INHERITANCE_RULES, type InheritanceRule } from './contracts/shared';
 export { authoringOpSchema, authoringOpJsonSchema, applyOps, opFiles, AUTHORING_OP_NAMES, type AuthoringOp, type AuthoringProblem, type AuthoringValidator, type AuthoringTreeProblem, type ApplyOpsResult, type HarnessTarget, type ProseTarget } from './contracts/authoringOps';
+export { resolvePageModel, type PageModelInputs, type ResolvedPageModel, type PageModelSource } from './contracts/models';
 export { pageSchema, findNestedPages, WORK_TYPES, type PageManifest, type PageExecution, type PageExecutionLimits, type WorkType } from './contracts/page';
 export { isTerminalStatus, formatArtifactUri, parseArtifactUri, PAGE_RUN_STATUSES, STEP_KINDS, WORK_TYPE_STEP_KINDS, type PageRunStatus, type PageErrorKind, type StepKind, type PageStepLabels, type PageRunLabels, type PageInput, type PageResult, type PageUsage, type ArtifactRef, type ArtifactUriParts, type ArtifactData, type ArtifactSink, type PageRunContext, type PageEngine, type PageRunEvent, type PageStartedEvent, type PageStepEvent, type PageArtifactEvent, type PageApprovalEvent, type PageProgressEvent, type PageFinishedEvent } from './contracts/execution';
 export { composeHarness, type EffectiveHarness } from './contracts/compose';
@@ -15,8 +16,19 @@ export { artifactSink, blobArtifactStore, memoryBlobClient, memoryArtifactStore,
 export { fileArtifactStore } from './runtime/fileArtifactStore';
 export { createWorkspaceStores, type WorkspaceScope, type RunState, type RunRecord, type StartRun, type WorkspaceThreadStore, type WorkspaceCheckpointStore, type WorkspaceRunStore, type WorkspaceRunEvents, type WorkspaceStores, type HostBackend } from './runtime/stores';
 export { fileHostBackend, sqliteHostBackend, postgresHostBackend } from './runtime/backends';
-export type { PgQueryable, PostgresOptions } from './runtime/sql';
+export { sqliteSqlClient, type SqlClient, type SqlStatements, type PgQueryable, type PgPool, type PgPoolClient, type PostgresOptions } from './runtime/sql';
 export { folderSource, type FolderSourceOptions } from './source/folderSource';
 export { memorySource, type MemorySourceOptions } from './source/memorySource';
 export { readSourceTree, type SourceTree } from './source/tree';
+export { sqliteWorkspaceSource, postgresWorkspaceSource, type DbSourceOptions, type DbWorkspaceSource } from './source/dbSource';
+export { loadWorkspace, type LoadWorkspaceOptions, type LoadedWorkspace } from './runtime/loadWorkspace';
+export { workspaceProfiles, globalProfiles, type ProfileStore } from './runtime/profileStore';
+export { resolvePageHarness, explainHarness, profileStoreFor, type HarnessCache, type ResolveHarnessOptions } from './runtime/resolveHarness';
+export { WorkspaceValidationError } from './runtime/validationError';
+export type { WorkspaceManifestView, PageManifestView, PageInheritsView, AttachmentView } from './runtime/manifestView';
 export type { WorkspaceSource, SourceRef, RevisionId, RevisionKind, RevisionActor, RevisionMeta, SourceReadOptions, SourceWriteOptions, WorkspaceChanges } from './source/types';
+export { resolveSharedContext, createSharedContextRun, type ResolveSharedContextOptions, type SharedContext, type SharedContextRun, type SharedAudience, type SharedInstruction, type SharedSkill, type SharedMemoryFile, type SharedMemorySlot, type SharedResource } from './runtime/sharedContext';
+export { resolveAttachments, createAgentCache, type ResolvedAttachment, type ResolveAttachmentsOptions, type AgentCache } from './runtime/resolveAgents';
+export { sourceAgentRegistry, type GlobalAgent, type GlobalAgentRegistry } from './runtime/agentRegistry';
+export { projectAgentRegistry } from './source/projectAgentRegistry';
+export type { AgentOwned, AgentFiles } from './runtime/agentDirView';

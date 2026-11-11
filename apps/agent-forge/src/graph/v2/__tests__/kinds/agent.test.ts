@@ -58,7 +58,7 @@ describe('agent node: worked example', () => {
   });
 
   it('reports no problems for the worked example', () => {
-    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2))).toStrictEqual([]);
+    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2), { schema: false })).toStrictEqual([]);
   });
 });
 
@@ -75,23 +75,23 @@ describe('agentRules.validate: root agent', () => {
     [{ instructions: '   ' }, 'The agent needs instructions', 'instructions'],
     [{ instructions: { file: '' } }, 'The agent needs instructions', 'instructions'],
   ])('spec %j → "%s" at "%s"', (over, message, fieldPath) => {
-    expect(validateGraph(graphOf(over))).toStrictEqual([error('agent', message, fieldPath)]);
+    expect(validateGraph(graphOf(over), { schema: false })).toStrictEqual([error('agent', message, fieldPath)]);
   });
 
   it('does not require a description on the root agent', () => {
-    expect(validateGraph(graphOf({ description: '' }))).toStrictEqual([]);
+    expect(validateGraph(graphOf({ description: '' }), { schema: false })).toStrictEqual([]);
   });
 });
 
 describe('agentRules.validate: inline subagent', () => {
   it('requires a description, at the inline spec path', () => {
-    expect(validateGraph(inlineGraph({ description: '' }))).toStrictEqual([
+    expect(validateGraph(inlineGraph({ description: '' }), { schema: false })).toStrictEqual([
       error('sub:r', 'A subagent needs a description', 'subagents.r.inline.description'),
     ]);
   });
 
   it('maps field problems to the inline spec path', () => {
-    expect(validateGraph(inlineGraph({ name: 'bad!', model: 'x' }))).toStrictEqual([
+    expect(validateGraph(inlineGraph({ name: 'bad!', model: 'x' }), { schema: false })).toStrictEqual([
       error('sub:r', 'The name can use letters, digits, space, dot, dash or underscore', 'subagents.r.inline.name'),
       error('sub:r', 'Pick a model', 'subagents.r.inline.model'),
     ]);
@@ -113,7 +113,7 @@ describe('agentRules.validate: inline subagent', () => {
         },
       },
     });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('sub:a/sub:b', 'A subagent needs a description', 'subagents.a.inline.subagents.b.inline.description'),
       {
         nodeId: 'sub:a/sub:b',

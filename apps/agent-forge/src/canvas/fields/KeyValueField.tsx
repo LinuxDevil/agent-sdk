@@ -39,6 +39,8 @@ export interface KeyValueFieldProps {
   error?: string;
   /** Muted help under the control. */
   help?: string;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 const DUPLICATE_KEYS_ERROR = 'Each name must be unique';
@@ -83,6 +85,7 @@ export function KeyValueField({
   emptyKeyError,
   error,
   help,
+  fieldPath,
 }: KeyValueFieldProps): JSX.Element {
   const [rows, setRows] = useState<KvRow[]>(() => rowsOf(value));
   // The last record this field emitted, so an external change can be told
@@ -119,7 +122,7 @@ export function KeyValueField({
   };
 
   return (
-    <Field id={id} label={label} error={problem} hint={help}>
+    <Field id={id} label={label} error={problem} hint={help} fieldPath={fieldPath}>
       <div className="kv-rows">
         {rows.map((row, index) => (
           <div key={index} className="kv-row">

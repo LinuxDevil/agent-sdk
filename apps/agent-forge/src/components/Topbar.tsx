@@ -304,13 +304,37 @@ function Breadcrumb({ showRoot = true }: { showRoot?: boolean }) {
   );
 }
 
-/** Run, or Stop while a run is in flight (the narrow bar shows one at a time). */
-function RunOrStop({ isRunning, onRun, onStop }: { isRunning: boolean; onRun: () => void; onStop: () => void }) {
+/** Run, or Stop while a run is in flight (the narrow bar shows one at a time). Schema errors block Run. */
+function RunOrStop({
+  isRunning,
+  problemErrors,
+  onRun,
+  onStop,
+}: {
+  isRunning: boolean;
+  problemErrors: number;
+  onRun: () => void;
+  onStop: () => void;
+}) {
   return isRunning ? (
     <ToolButton Icon={Square} label="Stop" className="btn btn-danger btn-collapse" onClick={onStop} />
   ) : (
-    <ToolButton Icon={Play} label="Run" className="btn btn-success btn-collapse" onClick={onRun} />
+    <ToolButton
+      Icon={Play}
+      label="Run"
+      className="btn btn-success btn-collapse"
+      onClick={onRun}
+      disabled={problemErrors > 0}
+      title={problemErrors > 0 ? `Fix ${problemErrors} problem${problemErrors === 1 ? '' : 's'} first` : 'Run'}
+    />
   );
+}
+
+/** The number of error-severity `validateGraph` problems - warnings never block Run. */
+function useProblemErrorCount(): number {
+  const { problems } = useAppState();
+  // `?? []`: AppState always provides `problems`; lightweight test doubles may not.
+  return (problems ?? []).reduce((count, problem) => count + (problem.severity === 'error' ? 1 : 0), 0);
 }
 
 /** The narrow "More" menu: Debug, Import, Export, Observe surface and (once known) Open trace. */
@@ -347,6 +371,7 @@ function useNarrowMenuItems(openImport: () => void, exportSpec: () => void): Too
 function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
   const { runStatus } = useAppState();
   const provider = useModelProvider();
+  const problemErrors = useProblemErrorCount();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
   const items = useNarrowMenuItems(openImport, exportSpec);
@@ -364,7 +389,12 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
         <RunStatus showTraceLink={false} />
       </div>
       <RunNotices runStatus={runStatus} actionError={actionError} />
-      <RunOrStop isRunning={runStatus?.status === 'running'} onRun={() => void handleRun()} onStop={() => void handleStop()} />
+      <RunOrStop
+        isRunning={runStatus?.status === 'running'}
+        problemErrors={problemErrors}
+        onRun={() => void handleRun()}
+        onStop={() => void handleStop()}
+      />
       <ToolButton Icon={Save} label="Save" className="btn btn-primary btn-collapse" onClick={() => void handleSave()} />
       <ToolbarMoreMenu items={items}>
         {provider && (
@@ -396,6 +426,7 @@ export function Topbar({ narrow = false, openPanel, onTogglePanel }: TopbarProps
  */
 function WideTopbar() {
   const { runStatus } = useAppState();
+  const problemErrors = useProblemErrorCount();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
 
@@ -423,7 +454,7 @@ function WideTopbar() {
         */}
         <DebugToggle />
         <ToolButton Icon={Square} label="Stop" className="btn btn-danger collapse-2" onClick={() => void handleStop()} disabled={!isRunning} />
-        <ToolButton Icon={Play} label="Run" className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning} />
+        <ToolButton Icon={Play} label="Run" className="btn btn-success" onClick={() => void handleRun()} disabled={isRunning || problemErrors > 0} title={problemErrors > 0 ? `Fix ${problemErrors} problem${problemErrors === 1 ? '' : 's'} first` : 'Run'} />
         <span className="toolbar-divider" aria-hidden="true" />
         <ToolButton Icon={Upload} label="Import" className="btn btn-ghost collapse-1" onClick={openImport} />
         {fileInput}

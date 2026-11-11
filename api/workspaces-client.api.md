@@ -506,6 +506,9 @@ interface PageManifest {
     improve?: {
         enabled?: boolean;
     };
+    models?: {
+        provider?: string | null;
+    };
     name: string;
     platform?: {
         profile?: string;
@@ -1033,6 +1036,9 @@ interface WorkspaceManifest {
         inheritsShared?: boolean;
         harness?: string;
     } | null;
+    models?: {
+        provider?: string | null;
+    };
     name: string;
     pages: string[];
     schema: 'lousho.workspace/1';
