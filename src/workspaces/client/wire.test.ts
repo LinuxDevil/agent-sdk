@@ -69,7 +69,7 @@ describe('workspace wire contract', () => {
 
   it('every write route requires expectedRevision', () => {
     const writes = ROUTE_NAMES.filter((name) => WORKSPACE_ROUTES[name].effect === 'write');
-    expect(writes.length).toBeGreaterThan(8);
+    expect(writes.length).toBeGreaterThan(6);
     for (const name of writes) {
       const body = WORKSPACE_ROUTES[name].body as BodyParser | undefined;
       expect(body, name).toBeDefined();
@@ -77,6 +77,12 @@ describe('workspace wire contract', () => {
       expect(result?.success, name).toBe(false);
       expect(result?.error?.issues.some((issue) => issue.path[0] === 'expectedRevision'), name).toBe(true);
     }
+  });
+
+  it('draft routes take no revision and no body', () => {
+    const drafts = ROUTE_NAMES.filter((name) => WORKSPACE_ROUTES[name].effect === 'draft');
+    expect(drafts.sort()).toEqual(['discardDraft', 'rebaseDraft']);
+    for (const name of drafts) expect(WORKSPACE_ROUTES[name].body, name).toBeUndefined();
   });
 
   it('only GET routes read, and every other route is a write or a run', () => {

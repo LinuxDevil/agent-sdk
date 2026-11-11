@@ -240,6 +240,8 @@ export interface FetchClientOptions {
     fetch?: typeof fetch;
     headers?: HeadersSource;
     maxReconnects?: number;
+    reconnectDelayMs?: number;
+    sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
 }
 
 // @public
@@ -663,7 +665,7 @@ type ProseTarget = HarnessTarget | {
 };
 
 // @public
-export function readRunEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<WireRunEvent>;
+export function readRunEvents(body: ReadableStream<Uint8Array>, onRetry?: (ms: number) => void): AsyncGenerator<WireRunEvent>;
 
 // @public
 export interface RejectProposalBody extends WriteBody {
@@ -709,7 +711,7 @@ export type Revision = string;
 export const ROUTE_NAMES: readonly WorkspaceRouteName[];
 
 // @public
-export type RouteEffect = 'read' | 'write' | 'run';
+export type RouteEffect = 'read' | 'write' | 'draft' | 'run';
 
 // @public
 export type RouteInput<Name extends WorkspaceRouteName> = (keyof WorkspaceRouteTypes[Name]['params'] extends never ? {
@@ -978,9 +980,12 @@ export class WorkspaceApiError extends Error {
     constructor(message: string, status: number, extra?: {
         currentRevision?: Revision;
         problems?: ProblemView[];
+        retryable?: boolean;
+        cause?: unknown;
     });
     readonly currentRevision?: Revision;
     readonly problems?: ProblemView[];
+    readonly retryable: boolean;
     readonly status: number;
 }
 
@@ -1098,7 +1103,7 @@ export interface WorkspaceRouteTypes {
     approveProposal: RouteShape<ProposalParams, ApproveProposalBody, ProposalView>;
     approveRun: RouteShape<RunParams, ApproveRunBody, PageRunView>;
     cancelRun: RouteShape<RunParams, undefined, PageRunView>;
-    discardDraft: RouteShape<DraftParams, WriteBody, WriteResult>;
+    discardDraft: RouteShape<DraftParams, undefined, WriteResult>;
     getArtifact: RouteShape<ArtifactParams, undefined, ArtifactView>;
     getAttachments: RouteShape<PageParams, undefined, AttachmentView[]>;
     getDraft: RouteShape<DraftParams, undefined, DraftView>;
@@ -1116,7 +1121,7 @@ export interface WorkspaceRouteTypes {
     listPages: RouteShape<WorkspaceParams, undefined, PageDetail[]>;
     listProposals: RouteShape<WorkspaceParams, undefined, ProposalView[]>;
     listWorkspaces: RouteShape<NoParams, undefined, WorkspaceSummary[]>;
-    rebaseDraft: RouteShape<DraftParams, WriteBody, DraftView>;
+    rebaseDraft: RouteShape<DraftParams, undefined, DraftView>;
     rejectProposal: RouteShape<ProposalParams, RejectProposalBody, ProposalView>;
     setPolicy: RouteShape<WorkspaceParams, SetPolicyBody, WriteResult>;
     startImproveRun: RouteShape<PageParams, WriteBody, StartRunResult>;

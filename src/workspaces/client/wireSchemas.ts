@@ -88,6 +88,10 @@ export const pageRunEventSchema: z.ZodType<PageRunEvent> = z.discriminatedUnion(
   z.object({ type: z.literal('finished'), status: statusSchema }),
 ]);
 
+export const RUN_EVENT_TYPES: readonly string[] = ['started', 'step', 'artifact', 'approval', 'progress', 'finished'];
+
+export const wireEnvelopeSchema = z.object({ id: count, runId: id, event: z.object({ type: text }) });
+
 export const wireRunEventSchema: z.ZodType<WireRunEvent> = z.object({ id: count, runId: id, event: pageRunEventSchema });
 
 export const pageInputSchema: z.ZodType<PageInput> = z.object({

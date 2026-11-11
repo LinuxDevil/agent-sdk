@@ -152,9 +152,9 @@ export interface WorkspaceRouteTypes {
   /** Applies a draft as one revision. */
   applyDraft: RouteShape<DraftParams, WriteBody, WriteResult>;
   /** Replays a draft's operations on the new head. */
-  rebaseDraft: RouteShape<DraftParams, WriteBody, DraftView>;
+  rebaseDraft: RouteShape<DraftParams, undefined, DraftView>;
   /** Discards a draft. */
-  discardDraft: RouteShape<DraftParams, WriteBody, WriteResult>;
+  discardDraft: RouteShape<DraftParams, undefined, WriteResult>;
   /** Starts a page run. */
   startPageRun: RouteShape<PageParams, StartPageRunBody, StartRunResult>;
   /** Starts a workspace chat run. */
@@ -189,8 +189,8 @@ export type WorkspaceRouteName = keyof WorkspaceRouteTypes;
 /** The routes that answer with one JSON document. */
 export type JsonRouteName = Exclude<WorkspaceRouteName, 'streamRunEvents'>;
 
-/** What a route does: `read` changes nothing, `write` changes a workspace and needs `expectedRevision`, `run` starts or steers a run. */
-export type RouteEffect = 'read' | 'write' | 'run';
+/** What a route does: `read` changes nothing, `write` changes a workspace and needs `expectedRevision`, `draft` changes only a draft, `run` starts or steers a run. */
+export type RouteEffect = 'read' | 'write' | 'draft' | 'run';
 
 /** One row of {@link WORKSPACE_ROUTES}. */
 export interface WorkspaceRoute<Name extends WorkspaceRouteName> {
@@ -239,8 +239,8 @@ export const WORKSPACE_ROUTES: WorkspaceRouteTable = {
   listDrafts: { method: 'GET', path: `${WS}/drafts`, effect: 'read', response: listOf(draftViewSchema) },
   getDraft: { method: 'GET', path: DRAFT, effect: 'read', response: draftViewSchema },
   applyDraft: { method: 'POST', path: `${DRAFT}/apply`, effect: 'write', body: writeBodySchema, response: writeResultSchema },
-  rebaseDraft: { method: 'POST', path: `${DRAFT}/rebase`, effect: 'write', body: writeBodySchema, response: draftViewSchema },
-  discardDraft: { method: 'DELETE', path: DRAFT, effect: 'write', body: writeBodySchema, response: writeResultSchema },
+  rebaseDraft: { method: 'POST', path: `${DRAFT}/rebase`, effect: 'draft', response: draftViewSchema },
+  discardDraft: { method: 'POST', path: `${DRAFT}/discard`, effect: 'draft', response: writeResultSchema },
   startPageRun: { method: 'POST', path: `${PAGE}/runs`, effect: 'run', body: startPageRunBodySchema, response: startRunResultSchema },
   startWorkspaceRun: { method: 'POST', path: `${WS}/runs`, effect: 'run', body: startWorkspaceRunBodySchema, response: startRunResultSchema },
   streamRunEvents: { method: 'GET', path: `${RUN}/events`, effect: 'read', stream: true, response: wireRunEventSchema },

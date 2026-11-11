@@ -282,7 +282,7 @@ export interface RunTraceView {
 
 /** One event on the wire; `id` rises by one per event within a run, so a reconnect can resume after the last one it saw. */
 export interface WireRunEvent {
-  /** Position in the run's event log, from 0; sent as the SSE `id:` and as `Last-Event-ID` on reconnect. */
+  /** Position in the run's event log, from 0: per run, rising by one per event, and kept across service restarts (P2.16 and P1.18 must guarantee this); sent as the SSE `id:` and as `Last-Event-ID` on reconnect. */
   id: number;
   /** The run. */
   runId: string;
