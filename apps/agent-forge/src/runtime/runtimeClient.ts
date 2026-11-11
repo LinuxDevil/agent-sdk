@@ -377,10 +377,6 @@ class RuntimeClient implements AgentApi {
     });
   }
 
-  async stop(agentId: string): Promise<AgentRunStatusPayload> {
-    return this.request(`/agents/${encodeURIComponent(agentId)}/stop`, { method: 'POST' });
-  }
-
   /**
    * `POST /agents/:id/abort` - cancels the agent's active run (running or
    * paused on an approval) with an optional reason recorded on the status
