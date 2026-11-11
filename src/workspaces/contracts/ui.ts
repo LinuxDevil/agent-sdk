@@ -225,7 +225,7 @@ function isArtifactName(name: string): boolean {
 const ARTIFACT_NAME_RULE = 'must be a plain artifact name: never a URL, path, markup, a name starting with a dot, or one with control characters or more than 255 bytes';
 
 /** Zod schema for an artifact name, shared by the harness `outputs.artifacts` and the page UI `artifact` component: a plain file name that is also a safe artifact URI segment. */
-export const artifactName: z.ZodType<string> = z.string().max(200).refine(isArtifactName, ARTIFACT_NAME_RULE);
+export const artifactName = z.string().max(200).refine(isArtifactName, ARTIFACT_NAME_RULE);
 
 function fieldPath(pattern: RegExp, root: string): z.ZodType<string> {
   return z

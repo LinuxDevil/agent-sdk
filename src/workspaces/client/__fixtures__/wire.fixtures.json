@@ -8,7 +8,7 @@
         "name": "Marketing",
         "description": "Short videos for social channels.",
         "domain": "marketing",
-        "revision": "rev-5f288956fb06",
+        "revision": "rev-2f50acb26448",
         "pageCount": 3,
         "hasMainAgent": true
       }
@@ -18,7 +18,7 @@
       "name": "Marketing",
       "description": "Short videos for social channels.",
       "domain": "marketing",
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "pageCount": 3,
       "hasMainAgent": true,
       "manifest": {
@@ -56,7 +56,7 @@
         {
           "workspaceId": "marketing",
           "id": "instagram-videos",
-          "revision": "rev-5f288956fb06",
+          "revision": "rev-2f50acb26448",
           "manifest": {
             "schema": "lousho.page/1",
             "id": "instagram-videos",
@@ -92,12 +92,12 @@
               "onFailure": "return-to-main"
             }
           },
-          "harnessHash": "d6c940863d03ff7bdd73375d2d62670843e3a8485319e3c022adf0d9c2a8da72"
+          "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
         },
         {
           "workspaceId": "marketing",
           "id": "facebook-videos",
-          "revision": "rev-5f288956fb06",
+          "revision": "rev-2f50acb26448",
           "manifest": {
             "schema": "lousho.page/1",
             "id": "facebook-videos",
@@ -121,12 +121,12 @@
               }
             }
           },
-          "harnessHash": "826dbe367e48feae368e4c2ae3a44bb006e96b8281341eba33994c4409aa0dc1"
+          "harnessHash": "35f78967456d5b6add9d1a30609b032f38daaeed6e039bc49a1c107825e1ddf5"
         },
         {
           "workspaceId": "marketing",
           "id": "content-research",
-          "revision": "rev-5f288956fb06",
+          "revision": "rev-2f50acb26448",
           "manifest": {
             "schema": "lousho.page/1",
             "id": "content-research",
@@ -153,7 +153,7 @@
               }
             }
           },
-          "harnessHash": "4cd7c9c745669f840ef952c5f64fd9815a216fbe68cdf269f55a3d1ab627bca0"
+          "harnessHash": "d29d34c2e7832eddf95e4459aae953d9c6238298816eb113f56eb53d8a7af1e6"
         }
       ]
     },
@@ -161,7 +161,7 @@
       {
         "workspaceId": "marketing",
         "id": "instagram-videos",
-        "revision": "rev-5f288956fb06",
+        "revision": "rev-2f50acb26448",
         "manifest": {
           "schema": "lousho.page/1",
           "id": "instagram-videos",
@@ -197,12 +197,12 @@
             "onFailure": "return-to-main"
           }
         },
-        "harnessHash": "d6c940863d03ff7bdd73375d2d62670843e3a8485319e3c022adf0d9c2a8da72"
+        "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
       },
       {
         "workspaceId": "marketing",
         "id": "facebook-videos",
-        "revision": "rev-5f288956fb06",
+        "revision": "rev-2f50acb26448",
         "manifest": {
           "schema": "lousho.page/1",
           "id": "facebook-videos",
@@ -226,12 +226,12 @@
             }
           }
         },
-        "harnessHash": "826dbe367e48feae368e4c2ae3a44bb006e96b8281341eba33994c4409aa0dc1"
+        "harnessHash": "35f78967456d5b6add9d1a30609b032f38daaeed6e039bc49a1c107825e1ddf5"
       },
       {
         "workspaceId": "marketing",
         "id": "content-research",
-        "revision": "rev-5f288956fb06",
+        "revision": "rev-2f50acb26448",
         "manifest": {
           "schema": "lousho.page/1",
           "id": "content-research",
@@ -258,13 +258,13 @@
             }
           }
         },
-        "harnessHash": "4cd7c9c745669f840ef952c5f64fd9815a216fbe68cdf269f55a3d1ab627bca0"
+        "harnessHash": "d29d34c2e7832eddf95e4459aae953d9c6238298816eb113f56eb53d8a7af1e6"
       }
     ],
     "getPage": {
       "workspaceId": "marketing",
       "id": "instagram-videos",
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "manifest": {
         "schema": "lousho.page/1",
         "id": "instagram-videos",
@@ -300,11 +300,11 @@
           "onFailure": "return-to-main"
         }
       },
-      "harnessHash": "d6c940863d03ff7bdd73375d2d62670843e3a8485319e3c022adf0d9c2a8da72"
+      "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
     },
     "getEffectiveHarness": {
       "pageId": "instagram-videos",
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "effective": {
         "sources": [
           "workspace base",
@@ -391,7 +391,7 @@
             {
               "id": "brand-voice-applied",
               "description": "The output follows the brand voice.",
-              "check": "harness/checks/brand-voice-applied.ts"
+              "check": "checks/brand-voice-applied.ts"
             },
             {
               "id": "teaches-one-idea",
@@ -477,7 +477,7 @@
             "workspace:platforms/instagram"
           ]
         },
-        "hash": "d6c940863d03ff7bdd73375d2d62670843e3a8485319e3c022adf0d9c2a8da72"
+        "hash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
       },
       "layers": [
         {
@@ -498,7 +498,7 @@
                 {
                   "id": "brand-voice-applied",
                   "description": "The output follows the brand voice.",
-                  "check": "harness/checks/brand-voice-applied.ts"
+                  "check": "checks/brand-voice-applied.ts"
                 }
               ]
             }
@@ -727,10 +727,10 @@
           "workspace:platforms/instagram"
         ]
       },
-      "hash": "d6c940863d03ff7bdd73375d2d62670843e3a8485319e3c022adf0d9c2a8da72"
+      "hash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
     },
     "getMainHarness": {
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "harness": {
         "schema": "lousho.main-harness/1",
         "instructions": [
@@ -822,7 +822,7 @@
     ],
     "getPageUi": {
       "pageId": "instagram-videos",
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "ui": {
         "schema": "lousho.ui/1",
         "layout": {
@@ -868,7 +868,7 @@
     "getProblems": [],
     "getHistory": [
       {
-        "revision": "rev-5f288956fb06",
+        "revision": "rev-2f50acb26448",
         "at": "2026-11-10T09:00:00.000Z",
         "by": "ali",
         "kind": "authoring",
@@ -876,15 +876,15 @@
       }
     ],
     "setPolicy": {
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "problems": []
     },
     "writeSharedFile": {
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "problems": []
     },
     "writeProfile": {
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "problems": []
     },
     "applyOps": {
@@ -959,7 +959,7 @@
       {
         "id": "draft-0001",
         "workspaceId": "marketing",
-        "baseRevision": "rev-5f288956fb06",
+        "baseRevision": "rev-2f50acb26448",
         "createdBy": "ali",
         "updatedAt": "2026-11-10T09:00:00.000Z",
         "operations": [
@@ -1040,7 +1040,7 @@
     "getDraft": {
       "id": "draft-0001",
       "workspaceId": "marketing",
-      "baseRevision": "rev-5f288956fb06",
+      "baseRevision": "rev-2f50acb26448",
       "createdBy": "ali",
       "updatedAt": "2026-11-10T09:00:00.000Z",
       "operations": [
@@ -1118,13 +1118,13 @@
       "problems": []
     },
     "applyDraft": {
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "problems": []
     },
     "rebaseDraft": {
       "id": "draft-0001",
       "workspaceId": "marketing",
-      "baseRevision": "rev-5f288956fb06",
+      "baseRevision": "rev-2f50acb26448",
       "createdBy": "ali",
       "updatedAt": "2026-11-10T09:00:00.000Z",
       "operations": [
@@ -1202,7 +1202,7 @@
       "problems": []
     },
     "discardDraft": {
-      "revision": "rev-5f288956fb06",
+      "revision": "rev-2f50acb26448",
       "problems": []
     },
     "startPageRun": {
@@ -1218,7 +1218,7 @@
         "event": {
           "type": "started",
           "page": "instagram-videos",
-          "harnessHash": "d6c940863d03ff7bdd73375d2d62670843e3a8485319e3c022adf0d9c2a8da72",
+          "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad",
           "executionType": "workflow"
         }
       },
@@ -1230,7 +1230,7 @@
           "phase": "start",
           "page": "instagram-videos",
           "attachment": "script",
-          "harnessHash": "d6c940863d03ff7bdd73375d2d62670843e3a8485319e3c022adf0d9c2a8da72",
+          "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad",
           "executionType": "workflow",
           "stepKind": "workflow-step",
           "stepIndex": 0
@@ -1267,7 +1267,7 @@
           "phase": "done",
           "page": "instagram-videos",
           "attachment": "script",
-          "harnessHash": "d6c940863d03ff7bdd73375d2d62670843e3a8485319e3c022adf0d9c2a8da72",
+          "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad",
           "executionType": "workflow",
           "stepKind": "workflow-step",
           "stepIndex": 0
@@ -1312,7 +1312,7 @@
           "costUsd": 0.002
         },
         "runId": "run-0001",
-        "traceId": "trace-d6c94086"
+        "traceId": "trace-87f15b2c"
       },
       "lastEventId": 5
     },
@@ -1346,7 +1346,7 @@
           "costUsd": 0.002
         },
         "runId": "run-0001",
-        "traceId": "trace-d6c94086"
+        "traceId": "trace-87f15b2c"
       },
       "lastEventId": 5
     },
@@ -1380,13 +1380,13 @@
           "costUsd": 0.002
         },
         "runId": "run-0001",
-        "traceId": "trace-d6c94086"
+        "traceId": "trace-87f15b2c"
       },
       "lastEventId": 5
     },
     "getRunTrace": {
       "runId": "run-0001",
-      "traceId": "trace-d6c94086",
+      "traceId": "trace-87f15b2c",
       "spans": [
         {
           "spanId": "span-1",
