@@ -20,6 +20,7 @@ import { IdleVersioner } from '../storage/idleVersioner';
 import { SuggestionStore } from '../storage/suggestionStore';
 import { VersionStore } from '../storage/versionStore';
 import { StudioEventBus } from '../events/eventBus';
+import { PassRunner } from '../passes/passRunner';
 import type { WorkspaceContext } from '../workspace/context';
 
 const SPEC: AgentSpec = {
@@ -125,6 +126,7 @@ describe('workspace seam', () => {
       runs: { status } as unknown as RunManager,
       chatTriggers: new TriggerRegistry(),
       events: new StudioEventBus(),
+      passes: new PassRunner({ baseDir }),
     };
     const app = createApp({ workspace, baseDir });
 
