@@ -1,0 +1,15 @@
+{
+  "schema": "lousho.agents/1",
+  "agents": [
+    {
+      "as": "lead",
+      "ref": "local:research-lead",
+      "role": "Leads the research."
+    },
+    {
+      "as": "script",
+      "ref": "workspace:script-maker",
+      "role": "Looks up facts."
+    }
+  ]
+}

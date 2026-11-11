@@ -1,0 +1,14 @@
+{
+  "schema": "lousho.harness/1",
+  "id": "general",
+  "version": "1.0.0",
+  "audience": {
+    "description": "A general audience with no prior knowledge."
+  },
+  "constraints": [
+    {
+      "id": "no-jargon",
+      "text": "Avoid jargon."
+    }
+  ]
+}

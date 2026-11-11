@@ -1,0 +1,29 @@
+{
+  "code": "video-production",
+  "name": "Video production",
+  "flow": {
+    "type": "sequence",
+    "id": "build",
+    "steps": [
+      {
+        "type": "agent",
+        "id": "write-script",
+        "agent": "script"
+      },
+      {
+        "type": "agent",
+        "id": "make-video",
+        "agent": "video"
+      },
+      {
+        "type": "agent",
+        "id": "make-voice",
+        "agent": "voice"
+      },
+      {
+        "type": "end",
+        "id": "done"
+      }
+    ]
+  }
+}

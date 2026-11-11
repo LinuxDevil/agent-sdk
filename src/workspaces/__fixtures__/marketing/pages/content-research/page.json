@@ -1,0 +1,26 @@
+{
+  "schema": "lousho.page/1",
+  "id": "content-research",
+  "name": "Content research",
+  "description": "Researches a topic and returns sourced findings for a video.",
+  "harness": {
+    "extends": [
+      "workspace:content-types/educational",
+      "workspace:audiences/general"
+    ]
+  },
+  "execution": {
+    "type": "goal-oriented",
+    "goal": {
+      "lead": "lead",
+      "delegates": [
+        "script"
+      ],
+      "goal": "./goal.json"
+    },
+    "limits": {
+      "maxDurationMs": 600000,
+      "maxCostUsd": 2
+    }
+  }
+}
