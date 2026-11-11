@@ -1386,6 +1386,11 @@ const ERROR_CODES: {
     readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
     readonly LOUSHO_MCP_CALL_FAILED: "Read the message: it names the server and tool; the `cause` is the MCP error (its `code`, e.g. -32000 'Connection closed' when the server exited). Check the server is running.";
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
+    readonly LOUSHO_WORKSPACE_STALE_REVISION: "Read the workspace again at its current revision, reapply the change and write with that revision as expectedRevision.";
+    readonly LOUSHO_WORKSPACE_NO_CHANGE: "Drop the write, or change at least one file so the tree differs from the current revision.";
+    readonly LOUSHO_WORKSPACE_PATH_INVALID: "Use a forward-slash path relative to the workspace root, and replace symlinks that leave the workspace folder with the files themselves.";
+    readonly LOUSHO_WORKSPACE_REVISION_UNKNOWN: "Pick a revision from source.history(), or raise folderSource()'s keep to keep older snapshots readable.";
+    readonly LOUSHO_WORKSPACE_SOURCE_LIMIT: "Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().";
 };
 
 // @public

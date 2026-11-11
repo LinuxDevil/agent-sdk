@@ -18,6 +18,19 @@ export class StaleRevisionError extends SDKError {
 }
 brandClass(StaleRevisionError, 'StaleRevisionError');
 
+/** A write whose changes leave the tree exactly as it is; no revision is recorded (`LOUSHO_WORKSPACE_NO_CHANGE`). */
+export class NoChangeError extends SDKError {
+  /** The current revision, which the write would have repeated. */
+  readonly revision: RevisionId;
+
+  constructor(revision: RevisionId) {
+    super(`The write changes nothing: the tree would stay at revision ${revision}.`, 'LOUSHO_WORKSPACE_NO_CHANGE');
+    this.name = 'NoChangeError';
+    this.revision = revision;
+  }
+}
+brandClass(NoChangeError, 'NoChangeError');
+
 export function invalidPath(path: string, why: string): SDKError {
   return new SDKError(`Workspace path '${path}' ${why}.`, 'LOUSHO_WORKSPACE_PATH_INVALID');
 }

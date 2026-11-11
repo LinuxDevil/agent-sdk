@@ -1,3 +1,8 @@
+import type { AuditEntry, AuditInput } from '../../improve/audit';
+
+/** Who writes a revision, in the audit log's actor format such as `person:<id>`. */
+export type RevisionActor = AuditEntry['actor'];
+
 /** A revision id: the sha256 hex of the tree's sorted `(path, contentHash)` list, so the same files give the same id on every source. */
 export type RevisionId = string;
 
@@ -12,20 +17,24 @@ export interface SourceRef {
   workspaceId: string;
 }
 
-/** One recorded revision. */
+/** One recorded write. History is keyed by `seq`: a rollback or an A to B to A edit records a new entry whose `revision` repeats an earlier one. */
 export interface RevisionMeta {
-  /** The revision id. */
+  /** The write's place in this workspace's history, from 1, one more than the write before. */
+  seq: number;
+  /** The revision id of the tree after the write. */
   revision: RevisionId;
   /** The revision the write was made against; absent on the first one. */
   parent?: RevisionId;
   /** ISO time it was written. */
   createdAt: string;
   /** Who wrote it. */
-  by: string;
+  by: RevisionActor;
   /** One line about the change. */
   message: string;
   /** Why it was written. */
   kind: RevisionKind;
+  /** The audit entry committed with the write, when the writer passed one. */
+  audit?: AuditInput;
 }
 
 /** Options of a read or a list. */
@@ -42,11 +51,13 @@ export interface SourceWriteOptions {
   /** The revision the changes were made against; a different current revision refuses the write. */
   expectedRevision: RevisionId;
   /** Who writes. */
-  by: string;
+  by: RevisionActor;
   /** One line about the change. */
   message: string;
   /** Why it is written; defaults to `authoring`. */
   kind?: RevisionKind;
+  /** The audit entry to commit together with the revision. */
+  audit?: AuditInput;
 }
 
 /** Where a workspace's files live: a folder, memory or database rows. Every revision is immutable. */
@@ -59,8 +70,8 @@ export interface WorkspaceSource {
   read(path: string, options?: SourceReadOptions): Promise<string | undefined>;
   /** The sorted file paths at a revision under `prefix` (a folder path, or `''` for every file). */
   list(prefix: string, options?: SourceReadOptions): Promise<string[]>;
-  /** Recorded revisions, newest first. */
+  /** Recorded writes, newest first (highest `seq` first). */
   history(): Promise<RevisionMeta[]>;
-  /** Writes a new revision; refuses a stale `expectedRevision` with `StaleRevisionError`. Only WorkspaceRepo calls it. */
+  /** Writes a new revision, all files or none; refuses a stale `expectedRevision` (`StaleRevisionError`) and changes that leave the tree as it is (`NoChangeError`). A rollback is a new write that restores old content, never a move of the head. Only WorkspaceRepo calls it. */
   write?(changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta>;
 }
