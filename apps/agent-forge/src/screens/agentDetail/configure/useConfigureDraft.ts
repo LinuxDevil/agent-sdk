@@ -3,8 +3,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { agentSpecV2JsonSchema, type AgentSpecV2 } from 'lousho/spec';
 
 import type { AgentRecord } from '../../../../shared/wireTypes';
+import { RuntimeApiError, runtimeClient } from '../../../runtime/runtimeClient';
+import { useAppState } from '../../../state/AppState';
 import type { JsonSchema, SchemaIssue } from '../../../ui/schemaForm/types';
 import { issuesByPath, validateSchemaValue } from '../../../ui/schemaForm/validate';
+import { useToast } from '../../../ui/Toast';
 import { changedSections, sectionOf } from './sections';
 
 /** What {@link useConfigureDraft} hands the Configure tab. */
@@ -81,4 +84,47 @@ export function useConfigureDraft(record: AgentRecord): ConfigureDraft {
     reset,
     applySection,
   };
+}
+
+/** What {@link useConfigureSave} hands the Configure tab's save bar. */
+export interface ConfigureSave {
+  saving: boolean;
+  save(): Promise<void>;
+}
+
+/**
+ * The Configure tab's save action (A07): PUTs the draft spec, toasts the
+ * outcome and refreshes the record. When the canvas holds this same agent
+ * open and clean, `switchAgent` reloads its document so it picks the save
+ * up; a dirty canvas keeps its own copy (the save-bar note warns).
+ */
+export function useConfigureSave(
+  record: AgentRecord,
+  draft: AgentSpecV2,
+  refresh: () => void,
+): ConfigureSave {
+  const app = useAppState();
+  const toast = useToast();
+  const [saving, setSaving] = useState(false);
+
+  const save = useCallback(async () => {
+    setSaving(true);
+    try {
+      await runtimeClient.saveAgent(record.id, draft);
+      refresh();
+      toast.show({ message: 'Changes saved', tone: 'success' });
+      if (app.agentId === record.id && !app.dirty) void app.switchAgent(record.id);
+    } catch (err) {
+      if (err instanceof RuntimeApiError && err.status === 400) {
+        toast.show({ message: err.message, tone: 'error' });
+      } else {
+        const message = err instanceof Error ? err.message : String(err);
+        toast.show({ message: `Could not save: ${message}`, tone: 'error' });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [app, draft, record.id, refresh, toast]);
+
+  return { saving, save };
 }

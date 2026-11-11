@@ -3,12 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { agentSpecV2JsonSchema } from 'lousho/spec';
 
 import { useQueryState } from '../../../router/useRoute';
-import { RuntimeApiError, runtimeClient } from '../../../runtime/runtimeClient';
 import { useAppState } from '../../../state/AppState';
 import { Card } from '../../../ui/Card';
 import { SchemaForm } from '../../../ui/schemaForm/SchemaForm';
 import type { JsonSchema } from '../../../ui/schemaForm/types';
-import { useToast } from '../../../ui/Toast';
 import { useAgentDetail } from '../AgentDetailContext';
 import {
   CONFIGURE_SECTIONS,
@@ -16,7 +14,8 @@ import {
   sectionSchema,
   type ConfigureSection,
 } from './sections';
-import { useConfigureDraft } from './useConfigureDraft';
+import { useConfigureDraft, useConfigureSave } from './useConfigureDraft';
+import { useActiveSection } from './useActiveSection';
 import './configure.css';
 
 /** Scrolls `el` into view, instantly under `prefers-reduced-motion: reduce`. */
@@ -120,9 +119,9 @@ function SaveBar({
 export function ConfigureTab(): JSX.Element {
   const { record, refresh } = useAgentDetail();
   const app = useAppState();
-  const toast = useToast();
   const { draft, issues, errors, changed, issueCounts, dirty, reset, applySection } =
     useConfigureDraft(record);
+  const { saving, save } = useConfigureSave(record, draft, refresh);
 
   const root = useMemo(() => agentSpecV2JsonSchema() as unknown as JsonSchema, []);
   const sectionSchemas = useMemo(
@@ -139,7 +138,6 @@ export function ConfigureTab(): JSX.Element {
     (v) => v,
   );
   const [activeId, setActiveId] = useState<string>(() => sectionParam ?? CONFIGURE_SECTIONS[0].id);
-  const [saving, setSaving] = useState(false);
   const scrolledRef = useRef(false);
 
   // Deep link: on mount, scroll to `?section=` when present.
@@ -153,34 +151,7 @@ export function ConfigureTab(): JSX.Element {
 
   // `aria-current` follows the section nearest the top of the viewport;
   // without IntersectionObserver (jsdom, old browsers) the last click wins.
-  useEffect(() => {
-    if (typeof IntersectionObserver === 'undefined') return;
-    const targets = CONFIGURE_SECTIONS.map((section) =>
-      document.getElementById(`configure-${section.id}`),
-    ).filter((el): el is HTMLElement => el !== null);
-    if (targets.length === 0) return;
-    const tops = new Map<Element, number>();
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) tops.set(entry.target, entry.boundingClientRect.top);
-          else tops.delete(entry.target);
-        }
-        let best: Element | undefined;
-        let bestTop = Number.POSITIVE_INFINITY;
-        for (const [el, top] of tops) {
-          if (top < bestTop) {
-            bestTop = top;
-            best = el;
-          }
-        }
-        if (best !== undefined) setActiveId(best.id.slice('configure-'.length));
-      },
-      { rootMargin: '-64px 0px -75% 0px', threshold: 0 },
-    );
-    for (const target of targets) observer.observe(target);
-    return () => observer.disconnect();
-  }, []);
+  useActiveSection(setActiveId);
 
   const selectSection = useCallback(
     (id: string) => {
@@ -201,27 +172,6 @@ export function ConfigureTab(): JSX.Element {
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [dirty]);
-
-  const save = useCallback(async () => {
-    setSaving(true);
-    try {
-      await runtimeClient.saveAgent(record.id, draft);
-      refresh();
-      toast.show({ message: 'Changes saved', tone: 'success' });
-      // The canvas holds its own copy of this agent's spec: when it is the
-      // open, clean one, reload it so it picks up this save.
-      if (app.agentId === record.id && !app.dirty) void app.switchAgent(record.id);
-    } catch (err) {
-      if (err instanceof RuntimeApiError && err.status === 400) {
-        toast.show({ message: err.message, tone: 'error' });
-      } else {
-        const message = err instanceof Error ? err.message : String(err);
-        toast.show({ message: `Could not save: ${message}`, tone: 'error' });
-      }
-    } finally {
-      setSaving(false);
-    }
-  }, [app, draft, record.id, refresh, toast]);
 
   const canvasDirty = app.agentId === record.id && app.dirty;
   const totalIssues = issues.length;
