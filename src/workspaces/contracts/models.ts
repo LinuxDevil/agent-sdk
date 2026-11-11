@@ -4,7 +4,7 @@ const PROVIDER_NAME = /^[a-z][a-z0-9-]*$/;
 
 const providerNameSchema = z
   .string()
-  .regex(PROVIDER_NAME, "must be a provider name from the built-in provider list, e.g. 'pi'");
+  .regex(PROVIDER_NAME, "must be a lowercase provider name such as 'pi' (letters, digits and dashes)");
 
 export const modelsObjectSchema = z.object({ provider: providerNameSchema.nullable().optional() }).strict();
 
