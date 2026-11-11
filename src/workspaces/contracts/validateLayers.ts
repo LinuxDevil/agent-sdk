@@ -2,7 +2,7 @@ import { readBaseHarness, type HarnessLayer } from './baseHarness';
 import { composeHarness, type EffectiveHarness } from './compose';
 import { harnessProfileSchema, hasExecutableCriterion, type Harness } from './harness';
 import { validateUiBindings, type UiBindingTarget } from './ui';
-import { folderOf, fromIssues, goalCriteria, harnessCode, isRecord, joinPath, missingFile, problem, resolveGlobal, schemaFiles, subtree, type Ctx, type PageView, type WorkspaceProblem } from './validateModel';
+import { folderOf, fromIssues, goalCriteria, harnessCode, isRecord, joinPath, missingFile, problem, resolveGlobal, schemaFileProblems, schemaFiles, subtree, type Ctx, type PageView, type WorkspaceProblem } from './validateModel';
 
 interface Origin {
   file: string;
@@ -107,15 +107,15 @@ function bindingTarget(ctx: Ctx, view: PageView, effective: EffectiveHarness): U
 function unresolvedSchemas(ctx: Ctx, view: PageView, effective: EffectiveHarness): WorkspaceProblem[] {
   return schemaFiles(effective).flatMap(([field, file]) => {
     const path = joinPath(view.dir, file);
-    ctx.read.add(path);
     return isRecord(ctx.tree[path]) ? [] : [missingFile(view, field, path)];
   });
 }
 
 const uiProblems: EffectiveCheck = (ctx, view, effective) => {
+  const scanned = schemaFiles(effective).flatMap(([, file]) => schemaFileProblems(ctx, joinPath(view.dir, file)));
   const unresolved = unresolvedSchemas(ctx, view, effective);
-  if (unresolved.length > 0 || !view.ui) return unresolved;
-  return validateUiBindings(view.ui, bindingTarget(ctx, view, effective)).map((item) => problem('PRD012', view.uiPath, item.path.join('.'), `${item.code}: ${item.message}`));
+  if (unresolved.length > 0 || !view.ui) return [...unresolved, ...scanned];
+  return [...scanned, ...validateUiBindings(view.ui, bindingTarget(ctx, view, effective)).map((item) => problem('PRD012', view.uiPath, item.path.join('.'), `${item.code}: ${item.message}`))];
 };
 
 const executableProblems: EffectiveCheck = (ctx, view, effective) => {

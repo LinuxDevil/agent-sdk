@@ -142,6 +142,20 @@ describe('policy lives only in shared/policies (R13, G6)', () => {
     }
   });
 
+  it('a referenced harness schema file is scanned like an inline schema', () => {
+    const inline = (base()['pages/main/harness/harness.json'] as { inputs: { schema: Record<string, unknown> } }).inputs.schema;
+    const referencing = edit(base(), 'pages/main/harness/harness.json', (doc) => ({ ...doc, inputs: { schema: 'schemas/in.json' } }));
+    for (const extra of [{ permissions: [], tools: ['bash'], secrets: [] }, { 'x-lousho': { tools: ['bash'] } }]) {
+      const problems = validateWorkspace(withFile(referencing, 'pages/main/schemas/in.json', { ...inline, ...extra }));
+      expect(codes(problems), JSON.stringify(extra)).toEqual(['PRD001']);
+      expect(problems.every((problem) => problem.file === 'pages/main/schemas/in.json')).toBe(true);
+      const inlined = edit(base(), 'pages/main/harness/harness.json', (doc) => ({ ...doc, inputs: { schema: { ...inline, ...extra } } }));
+      expect(codes(validateWorkspace(inlined)), JSON.stringify(extra)).toEqual(['PRD001']);
+    }
+    const named = { ...inline, properties: { ...(inline.properties as object), tools: { type: 'string' } } };
+    expect(validateWorkspace(withFile(referencing, 'pages/main/schemas/in.json', named))).toEqual([]);
+  });
+
   it('a harness.json left behind after harness.overrides moves is scanned', () => {
     const tree = base();
     const moved = withFile(edit(tree, 'pages/main/page.json', (doc) => ({ ...doc, harness: { extends: [], overrides: 'tuning' } })), 'pages/main/tuning/harness.json', tree['pages/main/harness/harness.json']);

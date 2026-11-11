@@ -4,7 +4,7 @@ import { harnessSchema, type Harness } from './harness';
 import { findNestedPages, pageSchema, type PageManifest } from './page';
 import { pageUiSchema } from './ui';
 import { layerProblems } from './validateLayers';
-import { agentFolder, dotted, missingFile, schemaFiles, folderOf, goalCriteria, harnessCode, isRecord, joinPath, problem, readDoc, subtree, type Ctx, type Issue, type PageView, type WorkspaceProblem, type WorkspaceProblemCode } from './validateModel';
+import { agentFolder, dotted, missingFile, schemaFileProblems, schemaFiles, folderOf, goalCriteria, harnessCode, isRecord, joinPath, problem, readDoc, subtree, type Ctx, type Issue, type PageView, type WorkspaceProblem, type WorkspaceProblemCode } from './validateModel';
 
 const EMPTY_HARNESS: Harness = { schema: 'lousho.harness/1' };
 const EMPTY_ATTACHMENTS: Attachments = { schema: 'lousho.agents/1', agents: [] };
@@ -110,11 +110,12 @@ function listedFiles(harness: Harness): [string, string][] {
 
 function listedFileProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
   if (!view.harness) return [];
-  for (const [, file] of schemaFiles(view.harness)) ctx.read.add(joinPath(view.dir, file));
-  return listedFiles(view.harness).flatMap(([field, file]) => {
+  const scanned = schemaFiles(view.harness).flatMap(([, file]) => schemaFileProblems(ctx, joinPath(view.dir, file)));
+  const missing = listedFiles(view.harness).flatMap(([field, file]) => {
     const path = joinPath(view.dir, file);
     return path in ctx.tree ? [] : [missingFile(view, field, path)];
   });
+  return [...missing, ...scanned];
 }
 
 const PAGE_CHECKS: readonly ((ctx: Ctx, view: PageView) => WorkspaceProblem[])[] = [aliasProblems, refProblems, workflowProblems, goalFileProblems, listedFileProblems, layerProblems];

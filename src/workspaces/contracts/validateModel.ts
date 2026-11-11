@@ -1,4 +1,5 @@
 import { issueMessage } from '../../utils/zodCompat';
+import { forbiddenKeyErrors, HARNESS_KEY_RULES } from './forbiddenKeys';
 import { parseAgentRef, type Attachments } from './agentRefs';
 import type { WorkspaceTree } from './baseHarness';
 import type { Harness } from './harness';
@@ -186,4 +187,10 @@ export function schemaFiles(harness: Pick<Harness, 'inputs' | 'outputs'>): [stri
 
 export function missingFile(view: PageView, field: string, path: string): WorkspaceProblem {
   return problem('PRD032', path, '', `is listed in ${view.harnessPath} ${field} but missing from the workspace`);
+}
+
+export function schemaFileProblems(ctx: Ctx, path: string): WorkspaceProblem[] {
+  ctx.read.add(path);
+  if (!(path in ctx.tree) || ctx.broken.has(path)) return [];
+  return forbiddenKeyErrors(ctx.tree[path], HARNESS_KEY_RULES, path, ['']).map((error) => problem(harnessCode(error.message, 'PRD001'), path, dotted(error.path), error.message));
 }
