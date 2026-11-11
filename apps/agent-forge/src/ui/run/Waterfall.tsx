@@ -65,7 +65,8 @@ interface BarRowProps {
   onSelect: (obsId: string) => void;
 }
 
-function BarRow({ node, minStart, totalMs, now, selected, virtual, rowAction, onSelect }: BarRowProps) {
+/** The bar itself: a full-width row button naming the observation on the time axis. */
+function BarButton({ node, minStart, totalMs, now, selected, virtual, onSelect }: Omit<BarRowProps, 'rowAction'>) {
   const { row } = node;
   const ms = elapsedMs(row, now, !isRunning(row) && row.end === null ? latestKnownEnd(node) : undefined);
   const left = ((row.start - minStart) / totalMs) * 100;
@@ -73,8 +74,7 @@ function BarRow({ node, minStart, totalMs, now, selected, virtual, rowAction, on
   const failed = row.status === 'error';
   const running = isRunning(row);
   const label = `${fmtDuration(ms)}${running ? ' running' : ''}`;
-  const action = rowAction?.(row);
-  const button = (
+  return (
     <button
       type="button"
       className={cx('run-row', 'run-wf-row', virtual && 'run-row-virtual', selected && 'selected', failed && 'run-row-error')}
@@ -96,6 +96,13 @@ function BarRow({ node, minStart, totalMs, now, selected, virtual, rowAction, on
       </span>
       <span className={cx('run-dur', running && 'run-dur-live')}>{label}</span>
     </button>
+  );
+}
+
+function BarRow({ node, minStart, totalMs, now, selected, virtual, rowAction, onSelect }: BarRowProps) {
+  const action = rowAction?.(node.row);
+  const button = (
+    <BarButton node={node} minStart={minStart} totalMs={totalMs} now={now} selected={selected} virtual={virtual} onSelect={onSelect} />
   );
   // The row is itself a <button>, so a per-row action (a button too) can't
   // nest inside it: an actionable row is wrapped in a flex line that keeps

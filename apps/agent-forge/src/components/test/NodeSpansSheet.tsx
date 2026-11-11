@@ -14,7 +14,7 @@ import { stepForToolSpan } from './forkFromSpan';
 import { spansForNode } from './nodeSpans';
 import { lastUserInput, pinFromSpan } from '../../state/pins';
 import './nodeSpans.css';
-import type { AgentRunStatusPayload, RunHistoryStep, SpanEvent } from '../../../shared/wireTypes';
+import type { AgentRunStatusPayload, RunHistoryStep, SpanEvent, ToolPin } from '../../../shared/wireTypes';
 
 const NO_SCORES: ObserveScoreRow[] = [];
 
@@ -146,6 +146,176 @@ function SheetBody({ error, forking, replay, onForked, onCancelFork, showingFork
   );
 }
 
+/** The sheet footer: on tool nodes the pins chip, Clear and "Run from here", plus the trace link when the run has one. */
+function SpansFooter({
+  toolNode,
+  pinCount,
+  runDisabledReason,
+  traceId,
+  onClearPins,
+  onRunFromHere,
+}: {
+  toolNode: boolean;
+  pinCount: number;
+  runDisabledReason: string | undefined;
+  traceId: string | undefined;
+  onClearPins(): void;
+  onRunFromHere(): void;
+}): ReactNode {
+  const trace = traceFooter(traceId);
+  if (!toolNode) return trace;
+  return (
+    <div className="node-spans-footer">
+      <span className="node-pins-chip" title="Tool results replayed by Run from here">
+        {pinCount} pinned
+      </span>
+      {pinCount > 0 && (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClearPins}>
+          Clear
+        </button>
+      )}
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        disabled={runDisabledReason !== undefined}
+        title={runDisabledReason}
+        onClick={onRunFromHere}
+      >
+        Run from here
+      </button>
+      {trace}
+    </div>
+  );
+}
+
+/** The pin/unpin toggle shown beside an inspected tool row (T04). */
+function PinToggle({
+  pin,
+  isPinned,
+  togglePin,
+}: {
+  pin: ToolPin | undefined;
+  isPinned(pin: ToolPin): boolean;
+  togglePin(pin: ToolPin): void;
+}): ReactNode {
+  const pinned = pin !== undefined && isPinned(pin);
+  return (
+    <button
+      type="button"
+      className="node-pin-toggle"
+      aria-pressed={pinned}
+      disabled={pin === undefined}
+      title={pin === undefined ? NO_RECORDED_RESULT : pinned ? 'Stop replaying this result' : 'Replay this result on the next run'}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (pin !== undefined) togglePin(pin);
+      }}
+    >
+      <Pin size={12} strokeWidth={1.75} aria-hidden="true" />
+      {pinned ? 'Unpin' : 'Pin this result'}
+    </button>
+  );
+}
+
+/** The span trace inside the sheet: the shared TraceViewer in tree/table mode. */
+function SpansViewer({
+  observations,
+  selectedObsId,
+  onSelect,
+  mode,
+  onModeChange,
+  now,
+  renderFeedback,
+  rowAction,
+}: {
+  observations: ReturnType<typeof spansToObservations>;
+  selectedObsId: string | null;
+  onSelect(obsId: string | null): void;
+  mode: TraceViewMode;
+  onModeChange(mode: TraceViewMode): void;
+  now: number;
+  renderFeedback(row: ObserveObservationRow): ReactNode;
+  rowAction?: (row: ObserveObservationRow) => ReactNode;
+}): ReactNode {
+  return (
+    <TraceViewer
+      observations={observations}
+      scores={NO_SCORES}
+      selectedObsId={selectedObsId}
+      onSelect={onSelect}
+      mode={mode}
+      onModeChange={onModeChange}
+      now={now}
+      playgroundLinks={false}
+      renderFeedback={renderFeedback}
+      rowAction={rowAction}
+    />
+  );
+}
+
+/** Why "Run from here" is disabled (`title`/`disabled` reason), or undefined when it can run. */
+function runFromHereDisabledReason(live: boolean, hasInput: boolean): string | undefined {
+  if (live) return 'Wait for the current run to finish';
+  return hasInput ? undefined : 'Send a message first';
+}
+
+/** The per-row actions of the spans sheet: T08's "Fork from here" under inspected tool rows and T04's pin toggle. */
+function useSpanRowActions({
+  toolNode,
+  spansNodeId,
+  nodeSpans,
+  steps,
+  spanById,
+  isPinned,
+  togglePin,
+  setForkingSpanId,
+}: {
+  toolNode: boolean;
+  spansNodeId: string;
+  nodeSpans: SpanEvent[];
+  steps: RunHistoryStep[];
+  spanById: Map<string, SpanEvent>;
+  isPinned(pin: ToolPin): boolean;
+  togglePin(pin: ToolPin): void;
+  setForkingSpanId(id: string | undefined): void;
+}) {
+  // A "Fork from here" action under an inspected tool step of a tool node,
+  // enabled when the checkpoint history has the step that produced that call.
+  const renderForkAction = useCallback(
+    (row: ObserveObservationRow) => {
+      if (!toolNode || row.kind !== 'tool') return null;
+      const span = nodeSpans.find((s) => s.id === row.obs_id);
+      if (span === undefined) return null;
+      const step = stepForToolSpan(steps, span);
+      return (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          disabled={step === undefined}
+          title={step === undefined ? NO_CHECKPOINT_TITLE : undefined}
+          onClick={() => setForkingSpanId(span.id)}
+        >
+          <GitBranch size={16} strokeWidth={1.75} aria-hidden="true" />
+          Fork from here
+        </button>
+      );
+    },
+    [toolNode, nodeSpans, steps, setForkingSpanId],
+  );
+
+  /** The row's pin toggle, or undefined for non-tool rows (the viewer keeps its default slot). */
+  const rowAction = useCallback(
+    (row: ObserveObservationRow): ReactNode => {
+      if (!toolNode || row.kind !== 'tool') return undefined;
+      const span = spanById.get(row.obs_id);
+      return <PinToggle pin={span === undefined ? undefined : pinFromSpan(spansNodeId, span)} isPinned={isPinned} togglePin={togglePin} />;
+    },
+    [toolNode, spanById, spansNodeId, isPinned, togglePin],
+  );
+
+  return { renderForkAction, rowAction };
+}
+
 /**
  * The open sheet for `spansNodeId`. The run-history fetch and the
  * fork/replay hooks live here (not in {@link NodeSpansSheet}) so nothing is
@@ -193,87 +363,21 @@ function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
   // Pin actions exist on tool nodes only (the `tool:<key>` canvas ids).
   const toolNode = spansNodeId.startsWith('tool:');
   const spanById = useMemo(() => new Map(nodeSpans.map((span) => [span.id, span])), [nodeSpans]);
-
-  // A "Fork from here" action under an inspected tool step of a tool node,
-  // enabled when the checkpoint history has the step that produced that call.
-  const renderForkAction = useCallback(
-    (row: ObserveObservationRow) => {
-      if (!toolNode || row.kind !== 'tool') return null;
-      const span = nodeSpans.find((s) => s.id === row.obs_id);
-      if (span === undefined) return null;
-      const step = stepForToolSpan(steps, span);
-      return (
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          disabled={step === undefined}
-          title={step === undefined ? NO_CHECKPOINT_TITLE : undefined}
-          onClick={() => setForkingSpanId(span.id)}
-        >
-          <GitBranch size={16} strokeWidth={1.75} aria-hidden="true" />
-          Fork from here
-        </button>
-      );
-    },
-    [toolNode, nodeSpans, steps],
-  );
-
-  /** The row's pin toggle, or undefined for non-tool rows (the viewer keeps its default slot). */
-  const rowAction = useCallback(
-    (row: ObserveObservationRow): ReactNode => {
-      if (!toolNode || row.kind !== 'tool') return undefined;
-      const span = spanById.get(row.obs_id);
-      const pin = span === undefined ? undefined : pinFromSpan(spansNodeId, span);
-      const pinned = pin !== undefined && isPinned(pin);
-      return (
-        <button
-          type="button"
-          className="node-pin-toggle"
-          aria-pressed={pinned}
-          disabled={pin === undefined}
-          title={pin === undefined ? NO_RECORDED_RESULT : pinned ? 'Stop replaying this result' : 'Replay this result on the next run'}
-          onClick={(event) => {
-            event.stopPropagation();
-            if (pin !== undefined) togglePin(pin);
-          }}
-        >
-          <Pin size={12} strokeWidth={1.75} aria-hidden="true" />
-          {pinned ? 'Unpin' : 'Pin this result'}
-        </button>
-      );
-    },
-    [toolNode, spanById, spansNodeId, isPinned, togglePin],
-  );
+  const { renderForkAction, rowAction } = useSpanRowActions({
+    toolNode,
+    spansNodeId,
+    nodeSpans,
+    steps,
+    spanById,
+    isPinned,
+    togglePin,
+    setForkingSpanId,
+  });
 
   const count = nodeSpans.length;
   const live = isLive(runStatus);
   const hasInput = lastUserInput(chat.messages) !== undefined;
-  const runDisabledReason = live ? 'Wait for the current run to finish' : !hasInput ? 'Send a message first' : undefined;
-
-  const pinsFooter = toolNode ? (
-    <div className="node-spans-footer">
-      <span className="node-pins-chip" title="Tool results replayed by Run from here">
-        {pins.length} pinned
-      </span>
-      {pins.length > 0 && (
-        <button type="button" className="btn btn-ghost btn-sm" onClick={clearPins}>
-          Clear
-        </button>
-      )}
-      <button
-        type="button"
-        className="btn btn-primary btn-sm"
-        disabled={runDisabledReason !== undefined}
-        title={runDisabledReason}
-        onClick={() => void runFromHere()}
-      >
-        Run from here
-      </button>
-      {traceFooter(traceId)}
-    </div>
-  ) : (
-    traceFooter(traceId)
-  );
+  const runDisabledReason = runFromHereDisabledReason(live, hasInput);
 
   return (
     <Sheet
@@ -282,7 +386,16 @@ function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
       size="xl"
       title={`Spans · ${nodeLabel(displayGraph, spansNodeId)}`}
       description={spansDescription(count, live)}
-      footer={pinsFooter}
+      footer={
+        <SpansFooter
+          toolNode={toolNode}
+          pinCount={pins.length}
+          runDisabledReason={runDisabledReason}
+          traceId={traceId}
+          onClearPins={clearPins}
+          onRunFromHere={() => void runFromHere()}
+        />
+      }
     >
       <SheetBody
         error={error}
@@ -299,15 +412,13 @@ function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
         onBackToSpans={() => setShowingFork(false)}
         hasSpans={count > 0}
         viewer={
-          <TraceViewer
+          <SpansViewer
             observations={observations}
-            scores={NO_SCORES}
             selectedObsId={selectedObsId}
             onSelect={setSelectedObsId}
             mode={mode}
             onModeChange={setMode}
             now={now}
-            playgroundLinks={false}
             renderFeedback={renderForkAction}
             rowAction={toolNode ? rowAction : undefined}
           />
