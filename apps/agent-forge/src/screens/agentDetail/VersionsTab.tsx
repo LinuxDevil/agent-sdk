@@ -9,6 +9,9 @@ import { EmptyState } from '../../ui/EmptyState';
 import { SkeletonRows } from '../../ui/Skeleton';
 import type { VersionKind, VersionListItem } from '../../../shared/wireTypes';
 import { useAgentDetail } from './AgentDetailContext';
+import { RestoreDialog } from './RestoreDialog';
+import { useAppState } from '../../state/AppState';
+import { VersionDiffSheet } from './VersionDiffSheet';
 import { fieldLabel, kindLabel, SOURCE_LABELS, summaryPending } from './versionLabels';
 import { useVersions } from './useVersions';
 import './versions.css';
@@ -30,9 +33,20 @@ const MAX_FIELD_CHIPS = 4;
  * newest item, relative time, the summary (skeleton while the summary
  * pass is still writing it, the baseline hint for external edits), the
  * quoted request text and the changed-field chips. `version-actions`
- * stays empty - L02/L03/L14b add Changes/Restore/Publish buttons there.
+ * holds the Changes button (L02; hidden on a baseline v1, which has no
+ * diff to show) and, on every item but the current one, Restore (L03).
  */
-function VersionItem({ item, isCurrent }: { item: VersionListItem; isCurrent: boolean }): JSX.Element {
+function VersionItem({
+  item,
+  isCurrent,
+  onShowChanges,
+  onRestore,
+}: {
+  item: VersionListItem;
+  isCurrent: boolean;
+  onShowChanges(version: number): void;
+  onRestore(version: number): void;
+}): JSX.Element {
   const Icon = KIND_ICONS[item.kind];
   const pending = summaryPending(item);
   const shown = item.changedFields.slice(0, MAX_FIELD_CHIPS);
@@ -78,9 +92,101 @@ function VersionItem({ item, isCurrent }: { item: VersionListItem; isCurrent: bo
             {hidden > 0 && <li className="chip">+{hidden}</li>}
           </ul>
         )}
-        <div className="version-actions" />
+        <div className="version-actions">
+          {!(item.kind === 'baseline' && item.version === 1) && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onShowChanges(item.version)}
+            >
+              Changes
+            </button>
+          )}
+          {!isCurrent && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => onRestore(item.version)}
+            >
+              <RotateCcw size={14} strokeWidth={1.75} aria-hidden="true" />
+              Restore
+            </button>
+          )}
+        </div>
       </div>
     </li>
+  );
+}
+
+/**
+ * The tab body once the header is drawn: the load error with Retry, the
+ * first-fetch skeleton, the "No versions yet" empty state with its Save
+ * action, or the timeline itself.
+ */
+function VersionList({
+  items,
+  error,
+  saving,
+  onSave,
+  onRetry,
+  onShowChanges,
+  onRestore,
+}: {
+  items: VersionListItem[] | undefined;
+  error: string | undefined;
+  saving: boolean;
+  onSave(): void;
+  onRetry(): void;
+  onShowChanges(version: number): void;
+  onRestore(version: number): void;
+}): JSX.Element {
+  if (error !== undefined) {
+    return (
+      <EmptyState
+        title="Couldn't load versions"
+        hint={error}
+        action={
+          <button type="button" className="btn" onClick={onRetry}>
+            Retry
+          </button>
+        }
+      />
+    );
+  }
+  if (items === undefined) {
+    return <SkeletonRows rows={5} />;
+  }
+  if (items.length === 0) {
+    return (
+      <EmptyState
+        title="No versions yet"
+        hint="Save a version to start the history."
+        action={
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={onSave}
+            disabled={saving}
+            aria-busy={saving || undefined}
+          >
+            Save version
+          </button>
+        }
+      />
+    );
+  }
+  return (
+    <ol className="version-timeline">
+      {items.map((item, index) => (
+        <VersionItem
+          key={item.version}
+          item={item}
+          isCurrent={index === 0}
+          onShowChanges={onShowChanges}
+          onRestore={onRestore}
+        />
+      ))}
+    </ol>
   );
 }
 
@@ -89,13 +195,19 @@ function VersionItem({ item, isCurrent }: { item: VersionListItem; isCurrent: bo
  * version newest-first on a timeline rail, refreshed live by `useVersions`
  * (`version.summary` events fill skeletons, `agent.changed` re-fetches),
  * plus the explicit "Save version" button. Reads the agent id from the
- * detail context like the other tab bodies.
+ * detail context like the other tab bodies. One shared `VersionDiffSheet`
+ * (L02) opens for whichever item's Changes button was clicked.
  */
 export function VersionsTab(): JSX.Element {
-  const { record } = useAgentDetail();
-  const { items, error, refresh } = useVersions(record.id);
+  const { record, refresh } = useAgentDetail();
+  const { items, error, refresh: refreshVersions } = useVersions(record.id);
+  const app = useAppState();
   const toast = useToast();
   const [saving, setSaving] = useState(false);
+  // The version whose diff sheet is open; null keeps the one shared sheet closed.
+  const [diffFor, setDiffFor] = useState<number | null>(null);
+  // The version the restore dialog is confirming; null keeps it closed.
+  const [restoreFor, setRestoreFor] = useState<number | null>(null);
 
   const saveVersion = useCallback(async () => {
     setSaving(true);
@@ -105,24 +217,27 @@ export function VersionsTab(): JSX.Element {
         message: created ? `Saved v${item.version}` : `Nothing changed since v${item.version}`,
         tone: created ? 'success' : 'info',
       });
-      await refresh();
+      await refreshVersions();
     } catch (err) {
       toast.show({ message: errorMessage(err), tone: 'error' });
     } finally {
       setSaving(false);
     }
-  }, [record.id, refresh, toast]);
+  }, [record.id, refreshVersions, toast]);
 
-  const saveButton = (
-    <button
-      type="button"
-      className="btn btn-secondary btn-sm"
-      onClick={() => void saveVersion()}
-      disabled={saving}
-      aria-busy={saving || undefined}
-    >
-      Save version
-    </button>
+  // L03: the restore wrote a new version server-side; the open editor
+  // drops its local edits for the restored spec (`discardLocal`), the
+  // record and the timeline refetch, and the dialog closes.
+  const restored = useCallback(
+    (item: VersionListItem) => {
+      const from = item.restoredFromVersion ?? restoreFor;
+      setRestoreFor(null);
+      toast.show({ message: `Restored v${from} as v${item.version}`, tone: 'success' });
+      void app.reload({ discardLocal: true });
+      refresh();
+      void refreshVersions();
+    },
+    [app, refresh, refreshVersions, restoreFor, toast],
   );
 
   return (
@@ -134,43 +249,41 @@ export function VersionsTab(): JSX.Element {
           </h2>
           <p className="versions-hint">Every save, restore and import is kept here. Restoring writes a new version.</p>
         </div>
-        {saveButton}
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          onClick={() => void saveVersion()}
+          disabled={saving}
+          aria-busy={saving || undefined}
+        >
+          Save version
+        </button>
       </header>
-      {error !== undefined ? (
-        <EmptyState
-          title="Couldn't load versions"
-          hint={error}
-          action={
-            <button type="button" className="btn" onClick={() => void refresh()}>
-              Retry
-            </button>
-          }
-        />
-      ) : items === undefined ? (
-        <SkeletonRows rows={5} />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="No versions yet"
-          hint="Save a version to start the history."
-          action={
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => void saveVersion()}
-              disabled={saving}
-              aria-busy={saving || undefined}
-            >
-              Save version
-            </button>
-          }
-        />
-      ) : (
-        <ol className="version-timeline">
-          {items.map((item, index) => (
-            <VersionItem key={item.version} item={item} isCurrent={index === 0} />
-          ))}
-        </ol>
-      )}
+      <VersionList
+        items={items}
+        error={error}
+        saving={saving}
+        onSave={() => void saveVersion()}
+        onRetry={() => void refreshVersions()}
+        onShowChanges={setDiffFor}
+        onRestore={setRestoreFor}
+      />
+      <VersionDiffSheet
+        agentId={record.id}
+        version={diffFor ?? 0}
+        versions={items ?? []}
+        open={diffFor !== null}
+        onClose={() => setDiffFor(null)}
+      />
+      <RestoreDialog
+        agentId={record.id}
+        version={restoreFor ?? 0}
+        nextVersion={(items?.[0]?.version ?? 0) + 1}
+        dirty={app.dirty}
+        open={restoreFor !== null}
+        onClose={() => setRestoreFor(null)}
+        onRestored={restored}
+      />
     </section>
   );
 }

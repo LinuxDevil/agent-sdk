@@ -134,6 +134,25 @@
   font-size: 13px;
   color: var(--danger);
 }
+.dialog-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.dialog-warning {
+  margin: 0;
+  font-size: 13px;
+  color: var(--warning);
+}
+/* inline spinner inside a busy button (RestoreDialog's pending state) */
+.btn-spinner {
+  animation: overlay-spin 1s linear infinite;
+}
+@keyframes overlay-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 @media (max-width: 860px) {
   .sheet,

@@ -67,7 +67,7 @@ Each Lousho ✅ links to the Lousho page that documents it.
   frameworks.
 - **OpenTelemetry**: spans you can send to any OpenTelemetry backend.
 - **Local studio/debugger**: a UI on your machine to inspect and run agents.
-- **Provider-agnostic**: works with models from more than one vendor.
+- **Provider-agnostic**: works with models from more than one vendor. Lousho resolves `vendor/model` strings for its own providers and for every official `@ai-sdk/*` package ([any AI SDK vendor](./providers.md#any-ai-sdk-vendor-by-name)).
 
 ## When not to use Lousho
 

@@ -21,7 +21,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, type LucideIcon } from 'lucide-react';
+import { Copy, LayoutGrid, Maximize, PanelRightClose, PanelRightOpen, Redo2, Sparkles, Undo2, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import { isEditableTarget } from '../canvas/isEditableTarget';
 import { GROUP_NODE_TYPE, NODE_TYPES, flowNodeType, miniMapNodeClassName, type CanvasNodeData } from '../canvas/AgentNode';
@@ -40,7 +40,7 @@ import { orderedNodes } from '../graph/v2/order';
 import { deriveEdges } from '../graph/v2/edges';
 import { proposalCounts } from '../graph/v2/proposal';
 import { toolNodeName } from '../graph/v2/nodeIds';
-import type { Graph, GraphEdge, GraphNode, ToolNodeData } from '../graph/v2/types';
+import type { Graph, GraphEdge, GraphNode, Problem, ToolNodeData } from '../graph/v2/types';
 import { ROOT_AGENT_ID, ROOT_ONLY_KINDS } from '../graph/v2/types';
 import { KIND_VIEWS, type PaletteEntry } from '../canvas/kinds';
 import { applyLayoutResult, autoLayout } from '../canvas/layout';
@@ -85,12 +85,14 @@ function applyDimensionChanges(prev: MeasuredSizes, changes: NodeChange[]): Meas
   return next;
 }
 
-/** What each card shows beyond its own graph node: selection, highlight, breakpoints and run status. */
+/** What each card shows beyond its own graph node: selection, highlight, breakpoints, run status and validation problems. */
 interface NodeDecor {
   selectedNodeId: string | undefined;
   highlightedNodeId: string | undefined;
   breakpoints: string[];
   statuses: Record<string, NodeRunStatus>;
+  /** This node's validation problems by node id (`validateGraph`, C19). */
+  problems?: ReadonlyMap<string, Problem[]>;
   /** Opens the node spans sheet for a card's status pill (AppState.openNodeSpans). */
   openNodeSpans?: (nodeId: string) => void;
 }
@@ -184,7 +186,7 @@ function groupSizes(graph: Graph, measured: MeasuredSizes): Map<string, { width:
  * the parent React Flow would re-lay them at absolute coordinates).
  */
 export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<CanvasNodeData>[] {
-  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans } = decor;
+  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems, openNodeSpans } = decor;
   const sizes = groupSizes(graph, measured);
   return canvasNodeOrder(graph).map((n) => {
     const group = isGroupNode(n);
@@ -205,6 +207,7 @@ export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSize
         highlighted: n.id === highlightedNodeId,
         hasBreakpoint: hasBreakpointOn(n, breakpoints),
         status: statuses[n.id],
+        problems: problems?.get(n.id) ?? [],
         onViewSpans: openNodeSpans,
         insideCount: group ? descendantCount(graph, n.id) : undefined,
       },
@@ -336,7 +339,15 @@ function useGraphEditHandlers(
       // While a proposal overlay is shown the canvas is read-only (C21):
       // position writes are refused even if a stray change slips through.
       if (!readOnly && changes.some((c) => c.type === 'position' && c.position)) {
-        setGraph((g) => applyPositionChanges(g, changes));
+        // A drag fires one change batch per frame: 'move:<ids>' coalesces
+        // the whole gesture into a single 'Move' undo step (C20).
+        const movedIds = changes
+          .flatMap((c) => (c.type === 'position' && c.position ? [c.id] : []))
+          .sort()
+          .join(',');
+        setGraph((g) => applyPositionChanges(g, changes), {
+          history: { label: 'Move', coalesceKey: `move:${movedIds}` },
+        });
       }
       if (changes.some((c) => c.type === 'dimensions')) {
         setMeasured((prev) => applyDimensionChanges(prev, changes));
@@ -474,7 +485,8 @@ function useDropHandlers(
         }
         const result = addNode(g, entry.create(g, owner), positionFor(g, position, owner), owner);
         addedId = result.nodeId;
-        return result.graph;
+        // Flow steps link into the step tree here; every other entry ignores it.
+        return entry.afterAdd?.(result.graph, result.nodeId, selectedNodeId) ?? result.graph;
       });
       if (refusal !== undefined) {
         flashError(refusal);
@@ -487,6 +499,28 @@ function useDropHandlers(
   );
 
   return { onDragOver, onDrop };
+}
+
+/**
+ * The readOnly-gated edit gestures as one unit: node/edge changes and
+ * deletes, connections and palette drops. While a proposal overlay is
+ * shown the canvas is read-only (C21) — no drags, connects, drops or
+ * deletes; selection stays on so the Inspector can show the proposed node.
+ */
+function useCanvasEditGestures(
+  displayGraph: Graph,
+  setGraph: SetGraph,
+  selectedNodeId: string | undefined,
+  setSelectedNodeId: SetSelectedNodeId,
+  setMeasured: (updater: (prev: MeasuredSizes) => MeasuredSizes) => void,
+  setSelectedEdgeId: (id: string | undefined) => void,
+  flashError: (reason: string) => void,
+  readOnly: boolean
+) {
+  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
+  const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
+  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
+  return { editHandlers, onConnect, isValidConnection, onDragOver, onDrop };
 }
 
 /**
@@ -656,8 +690,11 @@ function useToolbarActions(
       // A no-op layout (positions already match) must not dirty the document.
       if (applyLayoutResult(before, laidOut, before) === before) return;
       // Merge the moved positions onto the LATEST graph inside the updater:
-      // edits made while elkjs ran are kept, only positions change.
-      setGraph((current) => applyLayoutResult(before, laidOut, current));
+      // edits made while elkjs ran are kept, only positions change. The
+      // 'Auto layout' history label makes the reposition one undo step (C20).
+      setGraph((current) => applyLayoutResult(before, laidOut, current), {
+        history: { label: 'Auto layout' },
+      });
       window.requestAnimationFrame(() => fitLegibly(200));
     } catch {
       toast.show({ message: "Couldn't lay out the canvas.", tone: 'error' });
@@ -672,7 +709,7 @@ function useToolbarActions(
 
   const handleDuplicate = useCallback(() => {
     if (readOnly || !selectedNodeId) return;
-    setGraph((g) => duplicateNode(g, selectedNodeId).graph);
+    setGraph((g) => duplicateNode(g, selectedNodeId).graph, { history: { label: 'Duplicate' } });
   }, [selectedNodeId, setGraph, readOnly]);
 
   // Ctrl/Cmd+D duplicates the selected node - a discoverable shortcut
@@ -739,7 +776,7 @@ export function useLayoutUnplaced(agentId: string, graph: Graph | undefined, mea
         run.done = true;
         // Merge the moved positions onto the LATEST graph: edits made
         // while elkjs ran are kept, only positions change.
-        setGraph((current) => applyLayoutResult(graph, laidOut, current), { dirty: false });
+        setGraph((current) => applyLayoutResult(graph, laidOut, current), { dirty: false, history: false });
       },
       () => {
         if (runRef.current === run) runRef.current = null;
@@ -763,6 +800,31 @@ export function useLayoutUnplaced(agentId: string, graph: Graph | undefined, mea
       }
     };
   }, [agentId]);
+}
+
+/**
+ * Ctrl/Cmd+Z undoes, Ctrl/Cmd+Shift+Z and Ctrl/Cmd+Y redo (C20). Bound on
+ * `window` like the Ctrl+D duplicate shortcut; ignored while typing in an
+ * input, textarea, select or contenteditable, where the keystroke belongs
+ * to the field's own native undo.
+ */
+export function useUndoRedoShortcuts(undo: () => void, redo: () => void) {
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || isEditableTarget(e.target)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      } else if (key === 'y' && !e.shiftKey) {
+        e.preventDefault();
+        redo();
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [undo, redo]);
 }
 
 /** One icon button of the canvas toolbar: `label` is its accessible name, `tooltip` its title. */
@@ -797,29 +859,92 @@ function ToolbarButton({
   );
 }
 
-function CanvasToolbar({
-  canDuplicate,
-  readOnly,
-  layoutBusy,
-  onAutoLayout,
-  onFitView,
-  onDuplicate,
-}: {
+/**
+ * The proposal pill (AA18) at the head of the canvas toolbar while an
+ * Author overlay is shown: a dashed-accent button that opens the Author
+ * dock on the proposal card (`onShowProposal`, wired by AgentsScreen).
+ */
+function ProposalPill({ onShow }: { onShow: () => void }) {
+  return (
+    <button type="button" className="canvas-proposal-pill" onClick={onShow}>
+      <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />
+      Proposed change · review in the Author
+    </button>
+  );
+}
+
+/** What the canvas toolbar renders; kept an object so {@link CanvasView} can forward it as one prop. */
+interface CanvasToolbarProps {
+  canUndo: boolean;
+  canRedo: boolean;
+  /** The last undo/redo entry's label ('Move', 'Edit', …) for the tooltips. */
+  undoLabel: string;
+  redoLabel: string;
+  onUndo: () => void;
+  onRedo: () => void;
   canDuplicate: boolean;
   /** A proposal overlay is showing: edits (auto layout, duplicate) are disabled; fit view stays. */
   readOnly: boolean;
+  /** AA18: the open proposal's id - with `onShowProposal`, renders the toolbar pill. */
+  proposalId?: string | null;
+  onShowProposal?: () => void;
   /** The elkjs auto-layout request is in flight. */
   layoutBusy: boolean;
   onAutoLayout: () => void;
   onFitView: () => void;
   onDuplicate: () => void;
-}) {
+}
+
+interface HistoryButtonProps {
+  Icon: typeof Undo2;
+  verb: 'Undo' | 'Redo';
+  entryLabel: string;
+  enabled: boolean;
+  onClick: () => void;
+}
+
+function HistoryButton({ Icon, verb, entryLabel, enabled, onClick }: HistoryButtonProps) {
+  const name = entryLabel ? `${verb} ${entryLabel}` : verb;
+  return (
+    <ToolbarButton
+      Icon={Icon}
+      label={name}
+      tooltip={enabled ? name : `Nothing to ${verb.toLowerCase()}`}
+      onClick={onClick}
+      disabled={!enabled}
+    />
+  );
+}
+
+function editTooltip(readOnly: boolean, editable: string): string {
+  return readOnly ? 'Hide the proposal to edit' : editable;
+}
+
+export function CanvasToolbar({
+  canUndo,
+  canRedo,
+  undoLabel,
+  redoLabel,
+  onUndo,
+  onRedo,
+  canDuplicate,
+  readOnly,
+  proposalId,
+  onShowProposal,
+  layoutBusy,
+  onAutoLayout,
+  onFitView,
+  onDuplicate,
+}: CanvasToolbarProps) {
   return (
     <div className="canvas-toolbar" role="group" aria-label="Canvas tools">
+      {proposalId != null && onShowProposal !== undefined && <ProposalPill onShow={onShowProposal} />}
+      <HistoryButton Icon={Undo2} verb="Undo" entryLabel={undoLabel} enabled={canUndo} onClick={onUndo} />
+      <HistoryButton Icon={Redo2} verb="Redo" entryLabel={redoLabel} enabled={canRedo} onClick={onRedo} />
       <ToolbarButton
         Icon={LayoutGrid}
         label="Auto layout"
-        tooltip={readOnly ? 'Hide the proposal to edit' : 'Auto layout the current graph'}
+        tooltip={editTooltip(readOnly, 'Auto layout the current graph')}
         onClick={onAutoLayout}
         disabled={readOnly}
         busy={layoutBusy}
@@ -828,7 +953,7 @@ function CanvasToolbar({
       <ToolbarButton
         Icon={Copy}
         label="Duplicate"
-        tooltip={readOnly ? 'Hide the proposal to edit' : 'Duplicate selected node (Ctrl/Cmd+D)'}
+        tooltip={editTooltip(readOnly, 'Duplicate selected node (Ctrl/Cmd+D)')}
         onClick={onDuplicate}
         disabled={readOnly || !canDuplicate}
       />
@@ -841,6 +966,16 @@ export interface InspectorToggleProps {
   inspectorCollapsed?: boolean;
   onToggleInspector?: () => void;
 }
+
+/** AA18's wiring from the builder screen: the open proposal's id and the "show its card" action. */
+export interface CanvasProposalSyncProps {
+  /** The open Author proposal's id (drives the toolbar pill); null/absent = no overlay. */
+  proposalId?: string | null;
+  /** Opens the Author dock and scrolls to `[data-proposal-id]` - the pill's and dashed nodes' click. */
+  onShowProposal?: () => void;
+}
+
+export type CanvasAreaProps = InspectorToggleProps & CanvasProposalSyncProps;
 
 /**
  * The docked Inspector's Show/Hide toggle, on the canvas's top-right edge
@@ -891,6 +1026,16 @@ export function ProposalBanner() {
   );
 }
 
+/** The auto-clearing "connection rejected" banner (useConnectError), top-centre under the toolbar. */
+function ConnectError({ message }: { message?: string }) {
+  if (message === undefined) return null;
+  return (
+    <div className="canvas-connect-error" role="alert">
+      {message}
+    </div>
+  );
+}
+
 /** The MiniMap (bottom-right) and zoom/fit Controls (bottom-left), both themed in agents.css. */
 function CanvasNavigator() {
   return (
@@ -927,7 +1072,14 @@ function useCanvasElements() {
     debugState,
     nodeStates,
     runStatus,
+    problems,
     openNodeSpans,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    undoLabel,
+    redoLabel,
   } = useAppState();
 
   const breakpoints = debugState?.breakpoints ?? [];
@@ -937,14 +1089,23 @@ function useCanvasElements() {
     () => nodeRunStatuses(displayGraph.nodes.map((n) => n.id), nodeStates, runStatus),
     [displayGraph, nodeStates, runStatus]
   );
+  const problemsByNode = useMemo(() => {
+    const map = new Map<string, Problem[]>();
+    for (const problem of problems) {
+      const list = map.get(problem.nodeId) ?? [];
+      list.push(problem);
+      map.set(problem.nodeId, list);
+    }
+    return map;
+  }, [problems]);
   const nodes = useMemo(
     () =>
       toRfNodes(
         displayGraph,
-        { selectedNodeId, highlightedNodeId, breakpoints, statuses, openNodeSpans },
+        { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems: problemsByNode, openNodeSpans },
         measured
       ),
-    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, openNodeSpans, measured]
+    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, problemsByNode, openNodeSpans, measured]
   );
   const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
   // Edges derive from the DISPLAY graph so proposal nodes are wired in;
@@ -971,7 +1132,31 @@ function useCanvasElements() {
     measured,
     setMeasured,
     setSelectedEdgeId,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    undoLabel,
+    redoLabel,
+    /** The graph the unplaced-node layout may touch: withheld while a proposal is shown (C21). */
+    layoutGraph: proposal === undefined ? graph : undefined,
   };
+}
+
+/**
+ * AA18: a click on a dashed (proposed) node opens the Author card it
+ * belongs to - the same action as the toolbar pill. `proposed` flags only
+ * exist on the display graph while an overlay is shown, so the flag check
+ * alone gates the click; node selection still happens through
+ * `onNodesChange`, keeping the Inspector on the proposed node.
+ */
+function useProposalNodeClick(onShowProposal?: () => void) {
+  return useCallback(
+    (_event: unknown, node: Node<CanvasNodeData>) => {
+      if (node.data.graphNode.proposed !== undefined) onShowProposal?.();
+    },
+    [onShowProposal]
+  );
 }
 
 /**
@@ -981,7 +1166,80 @@ function useCanvasElements() {
  * `graph` on every render rather than kept in separate ReactFlow-owned
  * state, so there is nowhere for the two to drift apart.
  */
-function CanvasInner(inspectorToggle: InspectorToggleProps) {
+/**
+ * The canvas's rendered tree — toolbar, toggles, banner and the ReactFlow
+ * surface — kept a separate component so `CanvasInner` (the hooks wiring
+ * above it) stays under the cognitive-complexity floor.
+ */
+function CanvasView({
+  fitting,
+  onDrop,
+  onDragOver,
+  toolbar,
+  inspectorToggle,
+  connectError,
+  nodes,
+  edges,
+  hasNodes,
+  onNodesChange,
+  onEdgesChange,
+  onNodesDelete,
+  onNodeClick,
+  onConnect,
+  isValidConnection,
+  readOnly,
+}: {
+  fitting: boolean;
+  onDrop: (e: DragEvent<HTMLDivElement>) => void;
+  onDragOver: (e: DragEvent<HTMLDivElement>) => void;
+  toolbar: CanvasToolbarProps;
+  inspectorToggle: InspectorToggleProps;
+  connectError: string | undefined;
+  nodes: Node<CanvasNodeData>[];
+  edges: Edge[];
+  hasNodes: boolean;
+  onNodesChange: (changes: NodeChange[]) => void;
+  onEdgesChange: (changes: EdgeChange[]) => void;
+  onNodesDelete: (deleted: Node[]) => void;
+  /** AA18: clicking a proposed (dashed) node opens the Author dock on its card. */
+  onNodeClick?: (event: unknown, node: Node<CanvasNodeData>) => void;
+  onConnect: (connection: Connection) => void;
+  isValidConnection: (connection: Connection | Edge) => boolean;
+  readOnly: boolean;
+}) {
+  return (
+    <main className="canvas-wrap" aria-label="Agent graph" data-fitting={fitting || undefined} onDrop={onDrop} onDragOver={onDragOver}>
+      <CanvasToolbar {...toolbar} />
+      <InspectorToggle {...inspectorToggle} />
+      <EmptyCanvas />
+      <ProposalBanner />
+      <ConnectError message={connectError} />
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={NODE_TYPES}
+        edgeTypes={EDGE_TYPES}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onNodesDelete={onNodesDelete}
+        onNodeClick={onNodeClick}
+        onConnect={onConnect}
+        isValidConnection={isValidConnection}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
+        minZoom={MIN_ZOOM}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Background variant={BackgroundVariant.Dots} gap={20} size={2} color="var(--canvas-dot)" />
+        {/* Nothing to overview or zoom on an empty canvas; the template card has the room. */}
+        {hasNodes && <CanvasNavigator />}
+      </ReactFlow>
+    </main>
+  );
+}
+
+function CanvasInner({ inspectorCollapsed, onToggleInspector, proposalId, onShowProposal }: CanvasAreaProps) {
   const {
     agentId,
     graph,
@@ -995,6 +1253,13 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
     measured,
     setMeasured,
     setSelectedEdgeId,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+    undoLabel,
+    redoLabel,
+    layoutGraph,
   } = useCanvasElements();
   const { connectError, flashError } = useConnectError();
   // While a proposal overlay is shown the canvas is read-only (C21): no
@@ -1002,9 +1267,16 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
   // the Inspector can show the proposed node.
   const readOnly = proposal !== undefined;
 
-  const editHandlers = useGraphEditHandlers(setGraph, selectedNodeId, setSelectedNodeId, setMeasured, setSelectedEdgeId, readOnly);
-  const { onConnect, isValidConnection } = useConnectionHandlers(displayGraph, setGraph, flashError, readOnly);
-  const { onDragOver, onDrop } = useDropHandlers(setGraph, selectedNodeId, setSelectedNodeId, flashError, readOnly);
+  const { editHandlers, onConnect, isValidConnection, onDragOver, onDrop } = useCanvasEditGestures(
+    displayGraph,
+    setGraph,
+    selectedNodeId,
+    setSelectedNodeId,
+    setMeasured,
+    setSelectedEdgeId,
+    flashError,
+    readOnly
+  );
   const { handleAutoLayout, handleFitView, handleDuplicate, layoutBusy } = useToolbarActions(
     setGraph,
     selectedNodeId,
@@ -1016,47 +1288,45 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
   useFitViewOnResize();
   useKeepSelectionInView(selectedNodeId);
   const fitting = useFitViewOnLoad(agentId, displayGraph, measured);
-  useLayoutUnplaced(agentId, proposal === undefined ? graph : undefined, measured, setGraph);
+  useLayoutUnplaced(agentId, layoutGraph, measured, setGraph);
+  useUndoRedoShortcuts(undo, redo);
+
+  const onNodeClick = useProposalNodeClick(onShowProposal);
 
   return (
-    <main className="canvas-wrap" aria-label="Agent graph" data-fitting={fitting || undefined} onDrop={onDrop} onDragOver={onDragOver}>
-      <CanvasToolbar
-        canDuplicate={!!selectedNodeId}
-        readOnly={readOnly}
-        layoutBusy={layoutBusy}
-        onAutoLayout={handleAutoLayout}
-        onFitView={handleFitView}
-        onDuplicate={handleDuplicate}
-      />
-      <InspectorToggle {...inspectorToggle} />
-      <EmptyCanvas />
-      <ProposalBanner />
-      {connectError && (
-        <div className="canvas-connect-error" role="alert">
-          {connectError}
-        </div>
-      )}
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={NODE_TYPES}
-        edgeTypes={EDGE_TYPES}
-        onNodesChange={editHandlers.onNodesChange}
-        onEdgesChange={editHandlers.onEdgesChange}
-        onNodesDelete={editHandlers.onNodesDelete}
-        onConnect={onConnect}
-        isValidConnection={isValidConnection}
-        nodesDraggable={!readOnly}
-        nodesConnectable={!readOnly}
-        deleteKeyCode={readOnly ? null : ['Backspace', 'Delete']}
-        minZoom={MIN_ZOOM}
-        proOptions={{ hideAttribution: true }}
-      >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={2} color="var(--canvas-dot)" />
-        {/* Nothing to overview or zoom on an empty canvas; the template card has the room. */}
-        {displayGraph.nodes.length > 0 && <CanvasNavigator />}
-      </ReactFlow>
-    </main>
+    <CanvasView
+      fitting={fitting}
+      onDrop={onDrop}
+      onDragOver={onDragOver}
+      toolbar={{
+        canUndo,
+        canRedo,
+        undoLabel,
+        redoLabel,
+        onUndo: undo,
+        onRedo: redo,
+        canDuplicate: !!selectedNodeId,
+        readOnly,
+        proposalId,
+        onShowProposal,
+        layoutBusy,
+        onAutoLayout: handleAutoLayout,
+        onFitView: handleFitView,
+        onDuplicate: handleDuplicate,
+      }}
+      inspectorToggle={{ inspectorCollapsed, onToggleInspector }}
+      connectError={connectError}
+      nodes={nodes}
+      edges={edges}
+      hasNodes={displayGraph.nodes.length > 0}
+      onNodesChange={editHandlers.onNodesChange}
+      onEdgesChange={editHandlers.onEdgesChange}
+      onNodesDelete={editHandlers.onNodesDelete}
+      onNodeClick={onNodeClick}
+      onConnect={onConnect}
+      isValidConnection={isValidConnection}
+      readOnly={readOnly}
+    />
   );
 }
 
@@ -1068,6 +1338,6 @@ function CanvasInner(inspectorToggle: InspectorToggleProps) {
  * adopters at `@xyflow/react` (same team, actively released); see the
  * epic's PR description for the full rationale.
  */
-export function CanvasArea(props: InspectorToggleProps) {
+export function CanvasArea(props: CanvasAreaProps) {
   return <CanvasInner {...props} />;
 }

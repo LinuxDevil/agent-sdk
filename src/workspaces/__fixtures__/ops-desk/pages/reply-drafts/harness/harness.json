@@ -1,0 +1,49 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "audience": {
+    "description": "People who wrote to the operations team."
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "reply": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reply"
+      ]
+    }
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "reply-present",
+        "description": "The reply is not empty.",
+        "check": "harness/checks/reply-present.ts"
+      }
+    ]
+  },
+  "context": {
+    "resources": [
+      "resources/reply-tone.md"
+    ]
+  }
+}

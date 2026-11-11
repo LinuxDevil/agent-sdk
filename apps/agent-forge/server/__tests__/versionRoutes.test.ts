@@ -6,6 +6,7 @@ import request from 'supertest';
 import { stringify as stringifyYaml } from 'yaml';
 import type { AgentSpec } from 'lousho';
 import { createApp } from '../app';
+import { StudioEventBus } from '../events/eventBus';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
 import { FileCheckpointStore } from '../checkpointStore';
@@ -265,6 +266,54 @@ describe('version routes', () => {
     expect(spec?.instructions).toBe('Check the queues.');
     expect((await repo.readMeta('ops')).labels).toEqual([]);
     expect(indexLines('ops')).toHaveLength(1);
+  });
+
+  it('restore of the version the working copy already matches is a 409 no-op', async () => {
+    await saveAgent();
+    await saveVersion();
+    // The working copy still holds v1's spec and labels - nothing to write.
+
+    const res = await request(app()).post('/agents/ops/versions/1/restore');
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('LOUSHO_RESTORE_NOOP');
+    expect(res.body.error).toBe('v1 is already the current version.');
+    expect(indexLines('ops')).toHaveLength(1);
+  });
+
+  it('two concurrent restores serialize on the agent lock into consecutive versions', async () => {
+    await saveAgent();
+    await saveVersion();
+    await saveAgent('ops', V1_SPEC_EDITED);
+    await saveVersion();
+
+    const [a, b] = await Promise.all([
+      request(app()).post('/agents/ops/versions/1/restore'),
+      request(app()).post('/agents/ops/versions/1/restore'),
+    ]);
+    // The second restore sees the first's output as the working copy, so
+    // exactly one is a 201 and the other a 409 no-op - never a torn write.
+    const statuses = [a.status, b.status].sort();
+    expect(statuses).toEqual([201, 409]);
+    const created = a.status === 201 ? a.body : b.body;
+    expect(created).toMatchObject({ kind: 'restore', restoredFromVersion: 1 });
+    expect(indexLines('ops')).toHaveLength(3);
+    const spec = await repo.readSpec('ops');
+    expect(spec?.instructions).toBe('Check the queues.');
+  });
+
+  it('restore publishes agent.changed with reason restore', async () => {
+    const bus = new StudioEventBus();
+    const events: unknown[] = [];
+    bus.subscribe((event) => events.push(event));
+    const appWithBus = () => createApp({ agentStore, runManager, baseDir, eventBus: bus });
+
+    await saveAgent();
+    await saveVersion();
+    await saveAgent('ops', V1_SPEC_EDITED);
+
+    const res = await request(appWithBus()).post('/agents/ops/versions/1/restore');
+    expect(res.status).toBe(201);
+    expect(events).toContainEqual({ type: 'agent.changed', agentId: 'ops', reason: 'restore' });
   });
 
   it('save after a hand edit baselines the on-disk change first; the save itself is a 200 no-op', async () => {

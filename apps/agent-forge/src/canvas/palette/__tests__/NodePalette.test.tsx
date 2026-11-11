@@ -84,7 +84,7 @@ describe('NodePalette', () => {
 
     typeInto(searchInput(container), 'appr');
     const items = paletteItems(container);
-    expect(items.map((el) => el.getAttribute('aria-label'))).toEqual(['Permission rule']);
+    expect(items.map((el) => el.getAttribute('aria-label'))).toEqual(['Permission rule', 'Ask for approval']);
     expect(safetyHead.getAttribute('aria-expanded')).toBe('true');
 
     typeInto(searchInput(container), 'zzz-no-match');

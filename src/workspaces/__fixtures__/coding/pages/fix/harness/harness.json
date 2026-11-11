@@ -1,0 +1,49 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "audience": {
+    "description": "Engineers who maintain the codebase."
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "task"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "report": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "report"
+      ]
+    }
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "report-present",
+        "description": "The report is not empty.",
+        "check": "harness/checks/report-present.ts"
+      }
+    ]
+  },
+  "context": {
+    "resources": [
+      "resources/conventions.md"
+    ]
+  }
+}

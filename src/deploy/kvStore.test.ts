@@ -10,7 +10,7 @@ import { compareTrajectories } from '../evals/drift';
 import { mockModel, type MockTurn } from '../testing';
 import type { Message } from '../providers/llm';
 import type { ExecutionSnapshot, PendingApproval } from '../execution/ApprovalGate';
-import { decodeBytes, encodeBytes } from '../session/sessionStore';
+import { decodeBytes, encodeBytes } from '../storage/jsonBytes';
 import type { KVBinding, KVPutOptions } from './kvCheckpointStore';
 import { KVStore } from './kvStore';
 import {

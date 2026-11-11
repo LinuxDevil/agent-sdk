@@ -7,8 +7,9 @@
  * mutated and `proposed: 'remove'` nodes are skipped as if absent.
  */
 import type { CanvasLayout } from '../../../shared/wireTypes';
+import { flowSpecPaths, graphToFlow } from './flow';
 import { HANDLED_SECTIONS, orderedNodes, orderKeys, sectionChildren } from './order';
-import type { AgentSpecV2 } from './specTypes';
+import type { AgentFlow, AgentSpecV2 } from './specTypes';
 import { specToGraph } from './specToGraph';
 import type {
   AgentNodeData,
@@ -42,7 +43,7 @@ interface EmitContext {
 
 /** The empty value a section key re-emits when it was present but empty. */
 function emptyValue(key: SectionKey): unknown {
-  return key === 'mcpServers' || key === 'subagents' || key === 'output' ? {} : [];
+  return key === 'mcpServers' || key === 'subagents' || key === 'output' || key === 'flow' ? {} : [];
 }
 
 /** `previous.subagents[key].inline` when it exists and is an object — the key-order hint for a rebuilt inline subagent. */
@@ -127,6 +128,18 @@ function emitSection(
   }
   if (key === 'mcpServers' || key === 'subagents') {
     obj[key] = emitRecordSection(ctx, key, children, prefix, previous);
+    return;
+  }
+  // `flow` is a step tree, not an item list: `graphToFlow` rebuilds the
+  // AgentFlow and `flowSpecPaths` gives every flow node its spec path.
+  if (key === 'flow') {
+    const flow = graphToFlow(ctx.graph, previous?.['flow'] as AgentFlow | undefined);
+    if (flow !== undefined) {
+      obj[key] = flow;
+      for (const [id, path] of Object.entries(flowSpecPaths(ctx.graph))) {
+        ctx.specPaths[id] = path;
+      }
+    }
     return;
   }
   obj[key] = children.map((child, i) => {

@@ -184,7 +184,7 @@ describe('connectNodes: mcp → permission', () => {
 describe('permissionRules.validate', () => {
   it.each(['', []])('requires a tool name or pattern (tool %j)', (tool) => {
     const g = graphOf([{ id: 'p1', tool, action: 'allow' }]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('perm:p1', 'Add at least one tool name or pattern', 'permissions[0].tool'),
       warning('perm:p1', 'No tool on this agent matches this rule', 'permissions[0].tool'),
     ]);
@@ -194,7 +194,7 @@ describe('permissionRules.validate', () => {
     const g = graphOf([
       { id: 'p1', tool: 'http', when: { '': 'x', url: 'y' }, action: 'deny' },
     ]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('perm:p1', 'A condition needs an argument name', 'permissions[0].when'),
       warning('perm:p1', 'No tool on this agent matches this rule', 'permissions[0].tool'),
     ]);
@@ -204,7 +204,7 @@ describe('permissionRules.validate', () => {
     const g = graphOf([
       { id: 'p1', tool: 'http', when: { retries: { [op]: 'many' } }, action: 'deny' },
     ]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('perm:p1', `Use a number for ${op}`, 'permissions[0].when.retries'),
       warning('perm:p1', 'No tool on this agent matches this rule', 'permissions[0].tool'),
     ]);
@@ -214,7 +214,7 @@ describe('permissionRules.validate', () => {
     const g = graphOf([
       { id: 'p1', tool: 'http', when: { url: { matches: '[' } }, action: 'deny' },
     ]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error(
         'perm:p1',
         'The pattern for url is not a valid regular expression',
@@ -229,7 +229,7 @@ describe('permissionRules.validate', () => {
       tools: [{ builtin: 'http' }],
       mcpServers: { github: { command: 'npx' } },
     });
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       warning('perm:p1', 'No tool on this agent matches this rule', 'permissions[0].tool'),
     ]);
   });
@@ -241,14 +241,14 @@ describe('permissionRules.validate', () => {
     ['*', { tools: [{ builtin: 'http' }] }],
   ] as const)('does not warn when %j matches a sibling node', (tool, over) => {
     const g = graphOf([{ id: 'p1', tool, action: 'allow' }], over);
-    expect(validateGraph(g)).toStrictEqual([]);
+    expect(validateGraph(g, { schema: false })).toStrictEqual([]);
   });
 
   it.each(['allow', 'deny'] as const)('warns on ttlMs with action %s', (action) => {
     const g = graphOf([{ id: 'p1', tool: '*', action, ttlMs: 60000 }], {
       tools: [{ builtin: 'http' }],
     });
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       warning(
         'perm:p1',
         'Remembering only applies to ask and model-decided rules',
@@ -265,7 +265,7 @@ describe('permissionRules.validate', () => {
       ],
       { tools: [{ builtin: 'http' }] },
     );
-    expect(validateGraph(g)).toStrictEqual([]);
+    expect(validateGraph(g, { schema: false })).toStrictEqual([]);
   });
 
   it('maps problems to the nested spec path inside an inline agent', () => {
@@ -284,7 +284,7 @@ describe('permissionRules.validate', () => {
         },
       }),
     );
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error(
         'sub:r/perm:p1',
         'Add at least one tool name or pattern',

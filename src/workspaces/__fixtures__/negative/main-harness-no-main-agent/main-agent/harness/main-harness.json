@@ -1,0 +1,4 @@
+{
+  "schema": "lousho.main-harness/1",
+  "onPageFailure": "report"
+}

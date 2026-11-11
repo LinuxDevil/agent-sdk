@@ -65,7 +65,7 @@ const inheritanceRows: InheritanceRule[] = [
   { item: 'main agent', rule: 'Gets shared *context* only if `inheritsShared` (A2), but always gets shared *policy*', folders: [] },
 ];
 
-/** How each shared folder reaches pages and the main agent; read by the composer (P1.4) and the docs. */
+/** How each shared folder reaches pages and the main agent; read by the shared context resolver (P1.4) and the docs. */
 export const INHERITANCE_RULES: readonly InheritanceRule[] = Object.freeze(
   inheritanceRows.map((row) => Object.freeze({ ...row, folders: Object.freeze([...row.folders]) }))
 );

@@ -61,6 +61,19 @@ describe('ChatPanel', () => {
     expect(slot.nextElementSibling?.classList.contains('chat-composer')).toBe(true);
   });
 
+  it('labels a delivered steer bubble "Steered" like Run input, not as a typed message', () => {
+    Element.prototype.scrollTo = () => {};
+    state.messages = [
+      { id: 'u', role: 'user', content: 'use Paris', timestamp: at, source: 'steer' },
+      { id: 'a', role: 'assistant', content: 'ok', timestamp: at },
+    ];
+    const container = render(<ChatPanel />);
+    const steerBubble = container.querySelector('.chat-msg.run-input')!;
+    expect(steerBubble.querySelector('.chat-run-label')?.textContent).toBe('Steered');
+    expect(steerBubble.querySelector('.visually-hidden')).toBeNull();
+    expect(steerBubble.querySelector('.chat-avatar svg')).not.toBeNull();
+  });
+
   it('draws a paired tool result under its call, an unpaired one as a tool block, and names every sender', () => {
     // jsdom has no scrolling; the thread scrolls itself to the newest message.
     Element.prototype.scrollTo = () => {};

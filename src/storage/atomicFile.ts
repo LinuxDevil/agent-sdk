@@ -61,7 +61,7 @@ export async function readTextFile(file: string): Promise<string | undefined> {
 }
 
 /** Flushes `dir` (the rename into it) to disk; a platform that cannot fsync a directory (Windows) is skipped. */
-async function syncDirectory(dir: string): Promise<void> {
+export async function syncDirectory(dir: string): Promise<void> {
   let handle;
   try {
     handle = await open(dir, 'r');

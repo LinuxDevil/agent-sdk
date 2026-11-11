@@ -33,17 +33,39 @@ import type { AuthorSettings } from './authorWire';
 export type RunStatus = 'idle' | 'running' | 'done' | 'stopped' | 'error' | 'paused';
 
 /**
- * A tool call an in-progress run is paused on, awaiting a human decision
- * via `POST /agents/:id/approve`. Mirrors the subset of
+ * A pause an in-progress run is waiting on a human for - a tool-call
+ * decision or an `ask_question` answer - resolved via
+ * `POST /agents/:id/approve`. Mirrors the subset of
  * `PendingApproval` (src/execution/ApprovalGate.ts) the UI needs to render
- * an inline approve/reject card, without leaking the full ExecutionSnapshot.
+ * its inline card, without leaking the full ExecutionSnapshot.
  */
 export interface PendingApprovalInfo {
   approvalId: string;
   toolName: string;
   args: Record<string, unknown>;
   createdAt: string;
+  /**
+   * What the pause asks for, always set so the client never guesses:
+   * 'tool' for an approve/reject decision (a 'sign-in' pause stays 'tool'),
+   * 'question' for an `ask_question` call awaiting an answer.
+   */
+  kind: 'tool' | 'question';
+  /** The question an `ask_question` pause asks (the SDK's `ApprovalQuestion`); set only when `kind` is 'question'. */
+  question?: { text: string; options?: string[]; allowFreeText?: boolean };
+  /** ISO instant Studio resolves the pause itself (nobody answered/decided) - the countdown's target. */
+  deadline: string;
+  /** The sub-agent chain the paused call belongs to, outermost first; absent for the top-level agent's own calls. */
+  subagentPath?: string[];
 }
+
+/**
+ * `POST /agents/:id/approve`'s body: a decision for a `kind: 'tool'`
+ * pause, or the answer to a `kind: 'question'` pause (1..4000 chars).
+ * Sending one shape to the other kind is a 400 `LOUSHO_APPROVAL_KIND`.
+ */
+export type ApproveRequest =
+  | { approvalId: string; approved: boolean; note?: string }
+  | { approvalId: string; answer: string };
 
 /**
  * The full status record the server keeps per agent ID and reports back to
@@ -79,6 +101,14 @@ export interface AgentRunStatusPayload {
    * caller-supplied reason). Cleared when the next run launches.
    */
   abortReason?: string;
+  /**
+   * This run's steer messages (`POST /agents/:id/steer`), oldest first -
+   * each one's delivery flips queued -> delivered/undelivered as the run
+   * consumes it or ends. Reset to `[]` when the next run launches; the
+   * last run's list stays on the status after it settles so the Test
+   * pane can keep showing it.
+   */
+  steering?: SteerInfo[];
   updatedAt: string;
 }
 
@@ -89,6 +119,30 @@ export interface AbortRunRequest {
    * Abort listeners pass `'abort_listener:<id>'` (PLAN §10).
    */
   reason?: string;
+}
+
+/** How far a steered message got: still waiting, joined the transcript, or the run ended first. */
+export type SteerDelivery = 'queued' | 'delivered' | 'undelivered';
+
+/** One `POST /agents/:id/steer` message and its delivery state, as `AgentRunStatusPayload.steering` carries it. */
+export interface SteerInfo {
+  id: string;
+  message: string;
+  at: string;
+  delivery: SteerDelivery;
+  /** How `AgentRun.steer()` took it: aborted the in-flight model call, or waits for the next safe point. */
+  mode: 'immediate' | 'queued';
+}
+
+/** `POST /agents/:id/steer` request body - `message` is 1..3000 chars after trim. */
+export interface SteerRequest {
+  message: string;
+}
+
+/** `POST /agents/:id/steer` 202 response. */
+export interface SteerResponse {
+  id: string;
+  applied: 'immediate' | 'queued';
 }
 
 /**
@@ -191,8 +245,8 @@ export interface ChatMessage {
   toolName?: string;
   toolCalls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
   timestamp: string;
-  /** `'run'` marks the user turn a top-bar Run added (shown as "Run input", not as a typed message). */
-  source?: 'run';
+  /** `'run'` marks the user turn a top-bar Run added (shown as "Run input"); `'steer'` a delivered steer message (shown as "Steered"). */
+  source?: 'run' | 'steer';
 }
 
 /** The live chat transcript for one agent's current session, pushed over WS and returned by `GET /agents/:id/chat`. */

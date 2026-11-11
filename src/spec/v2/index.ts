@@ -8,9 +8,10 @@
  *
  * Node-only helpers stay on the package root: `specV2ToAgent`/`compileSpec`,
  * `specToAgent`, `loadSpec`/`loadSpecV2`, the `src/spec/v2/resolve/*`
- * compilers, `files.ts`, `specToAgentDir`/`agentDirToSpec` — and
- * `listBuiltinTools`, whose catalog builds the real tool factories
- * (`node:net` for `web_fetch`).
+ * compilers, `files.ts`, `agentDirToSpec` (the directory read side touches
+ * the filesystem; the write side, `specToAgentDir`, is pure and exported
+ * here) — and `listBuiltinTools`, whose catalog builds the real tool
+ * factories (`node:net` for `web_fetch`).
  */
 
 // S01a/S01b: the v2 schema, parser, spec type and every section's spec type.
@@ -53,6 +54,10 @@ export { agentSpecV2JsonSchema, SPEC_FIELD_DESCRIPTIONS } from './jsonSchema';
 
 // S18: the TypeScript generator.
 export { specToCode, type SpecToCodeOptions } from '../generators/typescript';
+
+// S19: the pure write side of the agent-directory round trip (the read
+// side, `agentDirToSpec`, reads the filesystem and stays on the root).
+export { specToAgentDir, type DroppedField, type SpecToAgentDirResult } from './specToAgentDir';
 
 // S20a–S20c: stable node ids and the span exporter that stamps them.
 export { specNodeIds, type SpecNodeIds } from './nodeIds';

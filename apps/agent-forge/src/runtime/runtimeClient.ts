@@ -41,6 +41,8 @@ import type {
   RunHistoryPayload,
   SecretStatus,
   SettingsFile,
+  SteerRequest,
+  SteerResponse,
   SettingsProfile,
   SettleDraftRequest,
   SpecChange,
@@ -405,6 +407,33 @@ class RuntimeClient implements AgentApi {
     return this.request(`/agents/${encodeURIComponent(agentId)}/approve`, {
       method: 'POST',
       body: JSON.stringify({ approvalId, approved, note }),
+    });
+  }
+
+  /**
+   * Pushes `message` into the agent's live run input queue
+   * (`POST /agents/:id/steer`, the SDK's `steer()` via the AgentHost).
+   * Rejects with a `RuntimeApiError` - `code` 'LOUSHO_NO_ACTIVE_RUN' (409,
+   * nothing running) or 'LOUSHO_STEER_UNSUPPORTED' (409, a flow run),
+   * 'LOUSHO_BODY_INVALID' (400) - when the server refuses.
+   */
+  async steer(agentId: string, message: string): Promise<SteerResponse> {
+    const body: SteerRequest = { message };
+    return this.request(`/agents/${encodeURIComponent(agentId)}/steer`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Answers a `kind: 'question'` pause (an `ask_question` call) - the same
+   * `/approve` route as approve(), with `{ answer }` instead of
+   * `{ approved }`; the server 400s the mismatched shape.
+   */
+  async answer(agentId: string, approvalId: string, answer: string): Promise<AgentRunStatusPayload> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ approvalId, answer }),
     });
   }
 

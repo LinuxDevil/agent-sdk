@@ -96,6 +96,10 @@ const ERROR_CODES: {
     readonly LOUSHO_FLOW_CHANGED: "Resume the run with the flow version that started it (same steps in the same order), or start a new run with another runId.";
     readonly LOUSHO_STORAGE_FAILED: "Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.";
     readonly LOUSHO_STORAGE_BUSY: "Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).";
+    readonly LOUSHO_ARTIFACT_FORBIDDEN: "Read only the run's own artifacts, or pass the artifact's uri to this run as a ref (through the main agent).";
+    readonly LOUSHO_ARTIFACT_TOO_LARGE: "Write a smaller artifact, or raise maxArtifactBytes on the artifact store.";
+    readonly LOUSHO_ARTIFACT_EXISTS: "Store the new content under a new artifact name; a stored artifact never changes.";
+    readonly LOUSHO_ARTIFACT_UNSAFE_PATH: "Remove the symlink or other entry the message names from the artifact store folder; the store reads and writes only plain folders and files inside its root.";
     readonly LOUSHO_TRIGGER_INVALID: "Fix the trigger option the message names; the message shows a working example.";
     readonly LOUSHO_DEPLOY_FAILED: "Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.";
     readonly LOUSHO_SERVER_UNPROTECTED: "Set LOUSHO_API_TOKEN, add an auth.ts to the agent directory, bind to 127.0.0.1, or set LOUSHO_ALLOW_PUBLIC=1 to serve an open agent on purpose.";
@@ -157,6 +161,15 @@ const ERROR_CODES: {
     readonly LOUSHO_MCP_START_FAILED: "Run the server's command yourself to see why it fails; the message has its exit code and last stderr lines, and `connectTimeoutMs` bounds a server that never answers.";
     readonly LOUSHO_MCP_CALL_FAILED: "Read the message: it names the server and tool; the `cause` is the MCP error (its `code`, e.g. -32000 'Connection closed' when the server exited). Check the server is running.";
     readonly LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.";
+    readonly LOUSHO_WORKSPACE_STALE_REVISION: "Read the workspace again at its current revision, reapply the change and write with that revision as expectedRevision.";
+    readonly LOUSHO_WORKSPACE_NO_CHANGE: "Drop the write, or change at least one file so the tree differs from the current revision.";
+    readonly LOUSHO_WORKSPACE_PATH_INVALID: "Use a forward-slash path relative to the workspace root, and replace symlinks that leave the workspace folder with the files themselves.";
+    readonly LOUSHO_WORKSPACE_REVISION_UNKNOWN: "Pick a revision from source.history(), or raise folderSource()'s keep to keep older snapshots readable.";
+    readonly LOUSHO_WORKSPACE_SOURCE_CORRUPT: "Look at the file the message names under .lousho/revisions/; a set-aside journal can be inspected and deleted once the workspace looks right.";
+    readonly LOUSHO_WORKSPACE_SOURCE_LIMIT: "Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().";
+    readonly LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: "Remove the NUL characters from the file the message names; a database workspace source stores text only.";
+    readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
+    readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
 };
 
 // @public
@@ -549,16 +562,12 @@ const SDK_ERROR_BRAND: unique symbol;
 
 // @public
 class SDKError extends Error {
-    // (undocumented)
     get [SDK_ERROR_BRAND](): true;
     static [Symbol.hasInstance](value: unknown): boolean;
     constructor(message: string, code?: ErrorCode | (string & {}), options?: SDKErrorOptions);
-    // (undocumented)
     readonly code: string;
     readonly detail: string;
-    // (undocumented)
     readonly docs?: string;
-    // (undocumented)
     readonly hint?: string;
     // (undocumented)
     toString(): string;

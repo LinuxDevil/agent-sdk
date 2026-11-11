@@ -116,7 +116,7 @@ describe('hookRules.validate', () => {
     'flags file %j',
     (file) => {
       const g = graphOf([{ id: 'h1', file }]);
-      expect(validateGraph(g)).toStrictEqual([
+      expect(validateGraph(g, { schema: false })).toStrictEqual([
         error('hook:h1', 'Use a .ts or .js file inside the agent folder', 'hooks[0].file'),
       ]);
     },
@@ -127,14 +127,14 @@ describe('hookRules.validate', () => {
       { id: 'h1', file: 'hooks/loop-guard.ts' },
       { id: 'h2', file: 'hooks/audit.js' },
     ]);
-    expect(validateGraph(g)).toStrictEqual([]);
+    expect(validateGraph(g, { schema: false })).toStrictEqual([]);
   });
 
   it('flags an inline hook with an empty name', () => {
     const g = graphOf([
       { id: 'h1', inline: { name: '  ', point: 'preToolCall', code: 'return ctx;' } },
     ]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('hook:h1', 'The hook needs a name', 'hooks[0].inline.name'),
     ]);
   });
@@ -143,7 +143,7 @@ describe('hookRules.validate', () => {
     const g = graphOf([
       { id: 'h1', inline: { name: 'audit', point: 'postToolCall', code: '  ' } },
     ]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('hook:h1', 'This hook is on but has no code', 'hooks[0].inline.code'),
     ]);
   });
@@ -152,13 +152,13 @@ describe('hookRules.validate', () => {
     const g = graphOf([
       { id: 'h1', inline: { name: 'audit', point: 'postToolCall', code: '', enabled: false } },
     ]);
-    expect(validateGraph(g)).toStrictEqual([]);
+    expect(validateGraph(g, { schema: false })).toStrictEqual([]);
   });
 
   it('flags an id outside the spec pattern', () => {
     const g = specToGraph(specOf({ hooks: [{ id: 'has space', file: 'hooks/a.ts' }] }));
     const node = g.nodes.find((n) => n.kind === 'hook')!;
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error(node.id, 'The id can use letters, digits, dash or underscore', 'hooks[0].id'),
     ]);
   });
@@ -179,7 +179,7 @@ describe('hookRules.validate', () => {
         },
       }),
     );
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error(
         'sub:r/hook:h1',
         'Use a .ts or .js file inside the agent folder',

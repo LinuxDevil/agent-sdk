@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
 import { render } from '../../ui/__tests__/render';
 import { NODE_TYPES, flowNodeType, type CanvasNodeData } from '../AgentNode';
+import { NodeCard } from '../NodeCard';
 import { specToGraph } from '../../graph/v2/specToGraph';
 import type { GraphNode } from '../../graph/v2/types';
 
@@ -17,14 +18,18 @@ const graph = specToGraph({
 } as unknown as Parameters<typeof specToGraph>[0]);
 const nodeOf = (kind: GraphNode['kind']) => graph.nodes.find((n) => n.kind === kind)!;
 
-/** A `flow` node built by hand — specToGraph does not emit flow nodes yet (C15), and `flow` is the one kind still on the generic view. */
-const flowNode: GraphNode = {
-  id: 'flow:e1',
-  kind: 'flow',
+/**
+ * A node of a kind `KIND_VIEWS` does not know — every real `NodeKind` has a
+ * `KindView` since C15, so the generic card is exercised through `NodeCard`
+ * (which reads `viewFor`) with a cast kind.
+ */
+const genericNode: GraphNode = {
+  id: 'mystery:e1',
+  kind: 'mystery',
   owner: 'agent',
   position: { x: 0, y: 0 },
   data: { step: { type: 'end', id: 'e1' }, children: { shape: 'none' } },
-};
+} as unknown as GraphNode;
 
 /** The `agent` node of a spec built just for this test (fields as given). */
 function agentOf(over: Record<string, unknown>): GraphNode {
@@ -44,6 +49,17 @@ function renderCard(graphNode: GraphNode, extra: Partial<CanvasNodeData> = {}): 
   const container = render(
     <ReactFlowProvider>
       <Card {...props} />
+    </ReactFlowProvider>
+  );
+  return container.querySelector('.rf-node') as HTMLElement;
+}
+
+/** Renders the generic card chrome for a kind with no registered `KindView`. */
+function renderGenericCard(extra: Partial<CanvasNodeData> = {}): HTMLElement {
+  const data: CanvasNodeData = { graphNode: genericNode, ...extra };
+  const container = render(
+    <ReactFlowProvider>
+      <NodeCard data={data} selected={false} />
     </ReactFlowProvider>
   );
   return container.querySelector('.rf-node') as HTMLElement;
@@ -120,7 +136,7 @@ describe('AgentNode card', () => {
   });
 
   it('draws both ports and the neutral kind tile of the generic view', () => {
-    const card = renderCard(flowNode, { status: 'done' });
+    const card = renderGenericCard({ status: 'done' });
     expect(card.querySelector('.rf-port-in')).not.toBeNull();
     expect(card.querySelector('.rf-port-out')).not.toBeNull();
     expect(card.querySelector('.node-kind')?.classList.contains('kind-neutral')).toBe(true);
@@ -148,8 +164,54 @@ describe('AgentNode card', () => {
   });
 
   it('renders the generic card markup', () => {
-    const card = renderCard(flowNode, { status: 'paused' });
+    const card = renderGenericCard({ status: 'paused' });
     expect(card.outerHTML).toMatchSnapshot();
+  });
+});
+
+describe('flow card (KindView)', () => {
+  const flowNodeOf = (flow: unknown) =>
+    specToGraph({
+      version: 2,
+      name: 'a',
+      model: 'mock/mock-1',
+      instructions: 'x',
+      flow,
+    } as Parameters<typeof specToGraph>[0]).nodes.find((n) => n.kind === 'flow')!;
+
+  it('titles the card by step type, chips the step id and tones it violet', () => {
+    const card = renderCard(
+      flowNodeOf({ code: 'f', name: 'F', flow: { type: 'llmCall', id: 's7', prompt: 'Hi', outputVariable: 'text' } })
+    );
+    expect(card.querySelector('.rf-node-title')?.textContent).toBe('Model call');
+    expect(card.querySelector('.node-chip')?.textContent).toBe('s7');
+    expect(card.querySelector('.node-kind')?.classList.contains('kind-violet')).toBe(true);
+    expect(card.getAttribute('data-node-kind')).toBe('flow');
+  });
+
+  it('titles a router card Router and chips its step id', () => {
+    const card = renderCard(
+      flowNodeOf({
+        code: 'f',
+        name: 'F',
+        flow: { type: 'oneOf', id: 's3', options: [{ step: { type: 'end', id: 's4' } }] },
+      })
+    );
+    expect(card.querySelector('.rf-node-title')?.textContent).toBe('Router');
+    expect(card.querySelector('.node-chip')?.textContent).toBe('s3');
+    expect(card.querySelector('.node-kind')?.classList.contains('kind-neutral')).toBe(true);
+  });
+
+  it('summarises a sequence by its child count', () => {
+    const card = renderCard(
+      flowNodeOf({
+        code: 'f',
+        name: 'F',
+        flow: { type: 'sequence', id: 's1', steps: [{ type: 'end', id: 's2' }, { type: 'end', id: 's3' }] },
+      })
+    );
+    const row = [...card.querySelectorAll('.node-row')].find((r) => r.firstElementChild?.textContent === 'steps');
+    expect(row?.querySelector('code')?.textContent).toBe('2');
   });
 });
 
@@ -223,5 +285,42 @@ describe('agent card (KindView)', () => {
     const sub = graph.nodes.find((n) => n.id === 'sub:research')!;
     const card = renderCard(sub);
     expect(card.querySelector('.rf-node-title')?.textContent).toBe('research');
+  });
+});
+
+describe('problem badge (C19)', () => {
+  const problems = (over: Partial<import('../../graph/v2/types').Problem>[]) =>
+    over as import('../../graph/v2/types').Problem[];
+
+  it('draws no badge without problems', () => {
+    const card = renderCard(nodeOf('agent'));
+    expect(card.querySelector('.node-problem')).toBeNull();
+    expect(card.className).not.toContain('has-error');
+  });
+
+  it('shows the error icon, count, first-message tooltip and aria-label', () => {
+    const card = renderCard(nodeOf('agent'), {
+      problems: problems([
+        { nodeId: 'agent', severity: 'error', message: 'first problem', fieldPath: '' },
+        { nodeId: 'agent', severity: 'warning', message: 'second', fieldPath: 'x' },
+      ]),
+    });
+    const badge = card.querySelector<HTMLElement>('.node-problem')!;
+    expect(badge.className).toContain('node-problem-error');
+    expect(badge.querySelector('.node-problem-count')?.textContent).toBe('2');
+    expect(badge.getAttribute('title')).toBe('first problem');
+    expect(badge.getAttribute('aria-label')).toBe('2 problems');
+    expect(badge.querySelector('svg')).not.toBeNull();
+    expect(card.className).toContain('has-error');
+  });
+
+  it('shows the warning icon when every problem is a warning', () => {
+    const card = renderCard(nodeOf('agent'), {
+      problems: problems([{ nodeId: 'agent', severity: 'warning', message: 'careful', fieldPath: '' }]),
+    });
+    const badge = card.querySelector<HTMLElement>('.node-problem')!;
+    expect(badge.className).toContain('node-problem-warning');
+    expect(badge.getAttribute('aria-label')).toBe('1 problem');
+    expect(card.className).not.toContain('has-error');
   });
 });

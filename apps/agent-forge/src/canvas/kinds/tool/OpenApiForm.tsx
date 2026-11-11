@@ -34,6 +34,7 @@ export function OpenApiForm({ item, patch }: ToolSubFormProps<'openapi'>): JSX.E
         label="Spec URL"
         required
         error={fullUrlOk(openapi.url) ? undefined : 'Enter the OpenAPI document URL'}
+        fieldPath=".openapi.url"
       >
         <Input
           type="url"
@@ -47,12 +48,14 @@ export function OpenApiForm({ item, patch }: ToolSubFormProps<'openapi'>): JSX.E
         value={openapi.include}
         onChange={(include) => set({ include })}
         help="Operation ids. Empty means all."
+        fieldPath=".openapi.include"
       />
       <StringListField
         id="node-tool-exclude"
         label="Skip these operations"
         value={openapi.exclude}
         onChange={(exclude) => set({ exclude })}
+        fieldPath=".openapi.exclude"
       />
       <ChoiceField
         id="node-tool-openapi-approval"
@@ -65,12 +68,14 @@ export function OpenApiForm({ item, patch }: ToolSubFormProps<'openapi'>): JSX.E
           { value: 'never' as Approval, label: 'Never' },
         ]}
         onChange={(approval) => set({ approval })}
+        fieldPath=".openapi.approval"
       />
       <SecretRefField
         id="node-tool-bearer"
         label="Bearer token"
         value={openapi.bearerToken}
         onChange={(bearerToken) => set({ bearerToken: typeof bearerToken === 'string' ? undefined : bearerToken })}
+        fieldPath=".openapi.bearerToken"
       />
     </>
   );

@@ -116,7 +116,7 @@ const ATTACHMENT_KEY_RULES: readonly ForbiddenKeyRule[] = [{ keys: ['permissions
 
 const nonEmpty = z.string().min(1, 'must not be empty');
 
-const attachmentObjectSchema = z
+export const attachmentObjectSchema = z
   .object({
     as: z.string().regex(KEBAB_CASE, 'must be a kebab-case alias'),
     ref: z.string().superRefine((value, ctx) => {

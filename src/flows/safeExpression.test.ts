@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evaluateSafeExpression, ExpressionError } from './safeExpression';
+import { evaluateSafeExpression, ExpressionError, safeExpressionVariables } from './safeExpression';
 
 const scope = {
   score: 85,
@@ -241,5 +241,40 @@ describe('evaluateSafeExpression: bound placeholders', () => {
 
   it('leaves placeholders unsupported unless binding is enabled', () => {
     expect(() => evaluateSafeExpression('{{score}} >= 90', { score: 95 })).toThrow(ExpressionError);
+  });
+});
+
+describe('safeExpressionVariables', () => {
+  it('returns the variables read, in order of first use, without evaluating', () => {
+    expect(safeExpressionVariables("status == 'ok' && inputs.tone != outputs.tone && inputs[key] > 0")).toEqual(['status', 'inputs', 'outputs', 'key']);
+    expect(safeExpressionVariables("a.b[0]['c'].length")).toEqual(['a']);
+    expect(safeExpressionVariables("tags.includes('x') && name.startsWith(prefix)")).toEqual(['tags', 'name', 'prefix']);
+  });
+
+  it('returns nothing for blank input', () => {
+    expect(safeExpressionVariables('')).toEqual([]);
+    expect(safeExpressionVariables('   ')).toEqual([]);
+  });
+
+  it('rejects prototype keys', () => {
+    for (const expression of ['a.constructor', "a['__proto__']", 'a.b.prototype']) {
+      expect(() => safeExpressionVariables(expression), expression).toThrow(/access to '(constructor|__proto__|prototype)' is not allowed/);
+    }
+  });
+
+  it('rejects computed keys that are not a literal or a variable', () => {
+    for (const expression of ["inputs['con' + 'structor']", 'a[b.c]', 'a[(b)]["x"][!c]']) {
+      expect(() => safeExpressionVariables(expression), expression).toThrow(/computed property keys must be a literal or a variable/);
+    }
+  });
+
+  it('rejects calls outside the allow-list', () => {
+    for (const expression of ['eval("1")', 'a.toString()', 'a.b.call(c)', "a['includes']('x')()", '(a)(1)']) {
+      expect(() => safeExpressionVariables(expression), expression).toThrow(ExpressionError);
+    }
+  });
+
+  it('rejects malformed syntax', () => {
+    expect(() => safeExpressionVariables('a ==')).toThrow(ExpressionError);
   });
 });

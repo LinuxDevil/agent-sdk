@@ -9,12 +9,27 @@ import { ToastProvider } from '../../../ui/Toast';
 const mocks = vi.hoisted(() => ({
   listVersions: vi.fn(),
   saveVersion: vi.fn(),
+  diffVersion: vi.fn(),
+  getVersion: vi.fn(),
+  restoreVersion: vi.fn(),
   eventHandler: undefined as ((event: StudioEvent) => void) | undefined,
 }));
 
 vi.mock('../../../runtime/runtimeClient', () => ({
-  runtimeClient: { listVersions: mocks.listVersions, saveVersion: mocks.saveVersion },
+  runtimeClient: {
+    listVersions: mocks.listVersions,
+    saveVersion: mocks.saveVersion,
+    diffVersion: mocks.diffVersion,
+    getVersion: mocks.getVersion,
+    restoreVersion: mocks.restoreVersion,
+  },
 }));
+
+const appState = vi.hoisted(() => ({
+  dirty: false,
+  reload: vi.fn<[options?: { discardLocal?: boolean }], Promise<boolean>>(() => Promise.resolve(true)),
+}));
+vi.mock('../../../state/AppState', () => ({ useAppState: () => appState }));
 
 vi.mock('../../../state/useStudioEvents', () => ({
   useStudioEvents: (handler: (event: StudioEvent) => void) => {
@@ -108,6 +123,16 @@ beforeEach(() => {
   mocks.saveVersion.mockReset();
   mocks.listVersions.mockResolvedValue([]);
   mocks.saveVersion.mockResolvedValue({ item: item({ version: 9 }), created: true });
+  mocks.diffVersion.mockReset();
+  mocks.getVersion.mockReset();
+  mocks.diffVersion.mockResolvedValue([]);
+  mocks.getVersion.mockResolvedValue(item({ version: 1 }));
+  mocks.restoreVersion.mockReset();
+  mocks.restoreVersion.mockResolvedValue(
+    item({ version: 4, kind: 'restore', source: 'restore', restoredFromVersion: 2 }),
+  );
+  appState.dirty = false;
+  appState.reload.mockClear();
   mocks.eventHandler = undefined;
 });
 
@@ -243,6 +268,44 @@ describe('VersionsTab', () => {
     expect(host.querySelector('.empty-state-action button')?.textContent).toContain('Retry');
   });
 
+  it('gives every item a Changes button except a baseline v1, opening one shared diff sheet', async () => {
+    mocks.listVersions.mockResolvedValue([
+      item({ version: 3 }),
+      item({ version: 2, kind: 'baseline', source: 'external_file_edit', summary: null }),
+      item({ version: 1, kind: 'baseline', source: 'external_file_edit', summary: null }),
+    ]);
+    const host = renderTab();
+    await flush();
+
+    const rows = [...host.querySelectorAll<HTMLElement>('.version-item')];
+    const changesButton = (row: HTMLElement) =>
+      [...row.querySelectorAll<HTMLButtonElement>('.version-actions button')].find((b) =>
+        b.textContent?.includes('Changes'),
+      );
+    expect(changesButton(rows[0])).not.toBeNull();
+    expect(changesButton(rows[1])).not.toBeNull();
+    expect(changesButton(rows[2])).toBeUndefined();
+
+    // Opening v3's sheet fetches its diff against v2; Escape closes it and
+    // returns focus to the Changes button (U04 useModal behaviour).
+    const button = changesButton(rows[0])!;
+    button.focus();
+    act(() => button.click());
+    await flush();
+    expect(document.querySelector('.sheet-title')?.textContent).toBe('v3 changes');
+    expect(mocks.diffVersion).toHaveBeenCalledWith('support-bot', 3, 2);
+    expect(document.querySelectorAll('.sheet').length).toBe(1);
+
+    act(() => {
+      document
+        .querySelector('.sheet')!
+        .dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(document.querySelector('.sheet')).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
   it('Save version toasts "Saved v<n>" and refreshes', async () => {
     mocks.listVersions.mockResolvedValue([item({ version: 3 })]);
     mocks.saveVersion.mockResolvedValue({ item: item({ version: 4 }), created: true });
@@ -265,6 +328,58 @@ describe('VersionsTab', () => {
     await clickAndFlush(host, 'Save version');
 
     expect(host.querySelector('.toast-message')?.textContent).toBe('Nothing changed since v3');
+  });
+
+  it('shows Restore on every item but the current one and restores through the dialog', async () => {
+    mocks.listVersions.mockResolvedValue([
+      item({ version: 3 }),
+      item({ version: 2 }),
+      item({ version: 1, kind: 'create', source: 'template' }),
+    ]);
+    const refresh = vi.fn();
+    render(
+      <ToastProvider>
+        <AgentDetailContext.Provider value={{ record: record(), refresh, setRecord: () => {} }}>
+          <VersionsTab />
+        </AgentDetailContext.Provider>
+      </ToastProvider>,
+    );
+    await flush();
+
+    const rows = [...document.querySelectorAll<HTMLElement>('.version-item')];
+    const restoreButton = (row: HTMLElement) =>
+      [...row.querySelectorAll<HTMLButtonElement>('.version-actions button')].find((b) =>
+        b.textContent?.includes('Restore'),
+      );
+    expect(restoreButton(rows[0])).toBeUndefined();
+    expect(restoreButton(rows[1])).not.toBeUndefined();
+    expect(restoreButton(rows[2])).not.toBeUndefined();
+
+    // v2's dialog names v4 as the version about to be written.
+    act(() => restoreButton(rows[1])!.click());
+    await flush();
+    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    expect(dialog.querySelector('.dialog-title')?.textContent).toBe('Restore v2?');
+    expect(dialog.textContent).toContain(
+      'This writes v4 with the configuration from v2. Everything up to v3 stays in the history.',
+    );
+
+    const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes('Restore v2'),
+    )!;
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(mocks.restoreVersion).toHaveBeenCalledWith('support-bot', 2);
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.querySelector('.toast-message')?.textContent).toBe('Restored v2 as v4');
+    expect(appState.reload).toHaveBeenCalledWith({ discardLocal: true });
+    expect(refresh).toHaveBeenCalled();
+    // The timeline refetched for the new restore item.
+    expect(mocks.listVersions).toHaveBeenCalledTimes(2);
   });
 
   it('Save version toasts the error message on failure', async () => {

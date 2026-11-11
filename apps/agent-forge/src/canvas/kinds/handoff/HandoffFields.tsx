@@ -66,6 +66,7 @@ function TargetField({
       <Field
         id="node-handoff-agent"
         label="Hand off to"
+        fieldPath=".agent"
         required
         error={agent === '' ? 'Pick who takes over' : undefined}
         hint="The target continues the conversation."
@@ -87,6 +88,7 @@ function TargetField({
         <Field
           id="node-handoff-agent-other"
           label="Target name"
+          fieldPath=".agent"
           hint="An agent id or a subagent name."
         >
           <Input
@@ -111,6 +113,7 @@ export function HandoffFields({ node, graph, patch }: KindFieldsProps<'handoff'>
       <Field
         id="node-handoff-tool"
         label="Tool name"
+        fieldPath=".toolName"
         error={toolNameError}
         hint="What the model calls to hand off."
       >
@@ -125,6 +128,7 @@ export function HandoffFields({ node, graph, patch }: KindFieldsProps<'handoff'>
       <Field
         id="node-handoff-description"
         label="Description"
+        fieldPath=".description"
         hint="Tells the model when to hand off."
       >
         <Textarea
@@ -138,6 +142,7 @@ export function HandoffFields({ node, graph, patch }: KindFieldsProps<'handoff'>
       <ChoiceField
         id="node-handoff-filter"
         label="What the target sees"
+        fieldPath=".inputFilter"
         value={item.inputFilter}
         allowUnset
         unsetLabel="Default (full history)"
@@ -147,6 +152,7 @@ export function HandoffFields({ node, graph, patch }: KindFieldsProps<'handoff'>
       <JsonField
         id="node-handoff-schema"
         label="Input schema"
+        fieldPath=".inputJsonSchema"
         rows={6}
         value={item.inputJsonSchema}
         onChange={(inputJsonSchema) => patch({ inputJsonSchema })}

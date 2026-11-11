@@ -58,6 +58,12 @@ const INSTANCE_RULES: readonly ConnectRule[] = [
     reason: () => 'Only the main agent runs a flow',
   },
   {
+    // The `runs` edge is derived: every flow node is already attached to the
+    // root agent, so an agent → flow drag can only duplicate or corrupt it.
+    test: (source, target) => source.kind === 'agent' && target.kind === 'flow',
+    reason: () => 'This agent already runs this flow',
+  },
+  {
     test: (source, target) => source.kind === 'agent' && target.owner === source.id,
     reason: () => 'Already attached to this agent',
   },

@@ -98,11 +98,12 @@ Find a code by area:
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied), [`LOUSHO_SANDBOX_FAILED`](#lousho_sandbox_failed) | Asking a sandbox for something it cannot do on the current platform, writing outside its root, or a code-sandbox boundary (timeout / OOM / driver) failing a run. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
-| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a trigger, a channel request, `lousho build` or the built server's start-up. |
+| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_ARTIFACT_FORBIDDEN`](#lousho_artifact_forbidden), [`LOUSHO_ARTIFACT_TOO_LARGE`](#lousho_artifact_too_large), [`LOUSHO_ARTIFACT_EXISTS`](#lousho_artifact_exists), [`LOUSHO_ARTIFACT_UNSAFE_PATH`](#lousho_artifact_unsafe_path), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a workspace artifact store, a trigger, a channel request, `lousho build` or the built server's start-up. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_DATASET_UNAVAILABLE`](#lousho_dataset_unavailable), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
 | [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
+| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, and resolving page agents with `resolveAttachments()`. |
 
 ## Configuration
 
@@ -1115,6 +1116,47 @@ file-based store), and create a new store after closing one.
 
 **Example:** two processes saving to the same `agent.db` while one runs a multi-second transaction.
 
+### LOUSHO_ARTIFACT_FORBIDDEN
+
+**Means:** a workspace artifact store's `get(uri, scope)` was asked for an artifact
+outside the caller's scope: another workspace, or another run whose uri did not come
+back to this run as a ref. A page cannot read another page's artifacts.
+
+**Fix:** read only the run's own artifacts, or pass the artifact's uri to this run in
+`scope.refs` (through the main agent).
+
+**Example:** the run `run-b` asking for `artifact://marketing/run-a/post.md`.
+
+### LOUSHO_ARTIFACT_TOO_LARGE
+
+**Means:** an artifact was larger than the store's `maxArtifactBytes` (200 MiB by
+default). Nothing was stored.
+
+**Fix:** write a smaller artifact, or raise `maxArtifactBytes` on the store.
+
+**Example:** `fileArtifactStore(root, { maxArtifactBytes: 1024 })` given a 2 KB file.
+
+### LOUSHO_ARTIFACT_EXISTS
+
+**Means:** an artifact name was stored again in the same run with other content or
+another media type. A stored artifact never changes; the same content again is
+accepted and returns the stored ref.
+
+**Fix:** store the new content under a new name.
+
+**Example:** `put(scope, 'post.md', 'v2', 'text/markdown')` after `'v1'` was stored as `post.md`.
+
+### LOUSHO_ARTIFACT_UNSAFE_PATH
+
+**Means:** `fileArtifactStore` found a symlink, or something other than a plain folder
+or file, where it reads or writes under its root (a workspace, `runs`, run,
+`artifacts` or `artifact-meta` folder, or an artifact file). Nothing was read or written
+through it.
+
+**Fix:** remove the entry the message names from the store's folder.
+
+**Example:** `<root>/marketing/runs` replaced by a symlink to another folder.
+
 ### LOUSHO_TRIGGER_INVALID
 
 **Means:** a trigger adapter got invalid options: a cron adapter without exactly
@@ -1288,6 +1330,124 @@ See [Budgets](./configuration.md#budgets).
 `onTripped: 'throw'`. See [Input and output guardrails](./guardrails.md#input-and-output-guardrails).
 
 **Example:** `createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } })` sent a longer message.
+
+## Workspaces
+
+### LOUSHO_WORKSPACE_STALE_REVISION
+
+**Means:** a write to a workspace source named an `expectedRevision` that is no
+longer the current revision: someone else wrote first, or the folder was edited
+by hand. Nothing was written. The error is a `StaleRevisionError` with
+`expectedRevision` and `currentRevision`.
+
+**Fix:** read the workspace again at the current revision, apply your change to
+it, and write with that revision as `expectedRevision`.
+
+**Example:** two editors open revision `a1…` and both save; the second save is
+refused.
+
+### LOUSHO_WORKSPACE_NO_CHANGE
+
+**Means:** a write to a workspace source would leave every file as it is, so
+the tree would keep its current revision id. No revision is recorded. The error
+is a `NoChangeError` with the current `revision`.
+
+**Fix:** drop the write, or change at least one file. A rollback that restores
+older content is a real change and is written as a new revision.
+
+**Example:** saving a page's harness prose without editing it.
+
+### LOUSHO_WORKSPACE_PATH_INVALID
+
+**Means:** a workspace source was given a path that is not a plain relative
+path inside the workspace (an absolute path, a backslash, an empty, `.` or `..`
+segment, or a path under `.lousho/`, `.git/` or `node_modules/`), or the folder
+source found a symlink that resolves outside the folder or to a folder, or the
+folder itself does not exist.
+
+**Fix:** use forward-slash paths relative to the workspace root, and replace
+symlinks that leave the workspace with the files themselves.
+
+**Example:** `source.read('../secrets.env')`, or `pages/x` symlinked to
+`/etc`.
+
+### LOUSHO_WORKSPACE_REVISION_UNKNOWN
+
+**Means:** a read or list named a revision the source has never recorded, or an
+old revision whose snapshot the folder source has pruned (it keeps the last
+`keep` revisions, 50 by default).
+
+**Fix:** pick a revision from `source.history()`, or raise `keep` on
+`folderSource()` to keep older snapshots readable.
+
+**Example:** `source.read('workspace.json', { revision: 'f…f' })`.
+
+### LOUSHO_WORKSPACE_SOURCE_CORRUPT
+
+**Means:** the folder source found `.lousho/revisions/index.json` or the
+write journal `pending.json` in a shape it did not write, or it could not
+finish an interrupted write. A journal it could not finish is renamed to
+`pending.failed-<time>.json`, the files it named are put back as they were
+before that write where the snapshot allows, and only the call that found it
+fails; later calls work.
+
+**Fix:** look at the file the message names. Check the workspace, then delete
+the set-aside journal. A damaged index is not set aside: fix or delete
+`<workspace folder>/.lousho/revisions/index.json` by hand (deleting it empties
+`history()`; the files and snapshots stay as they are).
+
+**Example:** a journal cut short by a full disk.
+
+### LOUSHO_WORKSPACE_SOURCE_LIMIT
+
+**Means:** the folder source refused to read a file larger than
+`maxFileBytes` (1 MiB by default), a folder with more than `maxFiles` files
+(5000), or a tree or snapshot larger than `maxTreeBytes` (32 MiB).
+
+**Fix:** move large or generated files out of the workspace folder, or raise
+the limit the message names on `folderSource()`.
+
+**Example:** a 20 MB video left in `pages/launch/`.
+
+### LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED
+
+**Means:** a database workspace source (`sqliteWorkspaceSource()`,
+`postgresWorkspaceSource()`) refused a write or seed file whose content has a
+NUL character (`\u0000`). SQLite would cut the text at it and Postgres rejects
+it, so the stored tree would not match its revision id. Nothing is written.
+
+**Fix:** remove the NUL characters from the file the message names; a
+database workspace source stores text only.
+
+**Example:** `source.write({ 'notes.md': 'a\u0000b' }, …)`.
+
+### LOUSHO_WORKSPACE_INVALID
+
+**Means:** `loadWorkspace()` read a workspace from its source and
+`validateWorkspace` found at least one error. The error is a
+`WorkspaceValidationError`; `problems` lists every error with its `PRDnnn`
+code, file and field path. Nothing is returned, so a broken workspace never
+runs.
+
+**Fix:** fix the files the problems name, then load again. Warnings and notes
+do not throw; they come back in `problems` of the loaded workspace.
+
+**Example:** `workspace.json` lists a page whose `pages/<id>/` folder is
+missing.
+
+### LOUSHO_WORKSPACE_AGENT_UNRESOLVED
+
+**Means:** `resolveAttachments()` could not find an agent a page attaches. A
+`workspace:` or `local:` ref names a folder the loaded workspace does not
+have, a `global:` ref was given no `globalRegistry`, or the registry has no
+version in the ref's range. The page id may also be missing from
+`workspace.json`.
+
+**Fix:** check the ref in the page's `agents.json`. Add the agent folder, or
+pass a `globalRegistry` (`projectAgentRegistry(root)` or
+`sourceAgentRegistry(source)`) that holds a version in range.
+
+**Example:** `global:fact-checker@^2` when the registry only has `1.0.0`.
 
 ## Auth
 

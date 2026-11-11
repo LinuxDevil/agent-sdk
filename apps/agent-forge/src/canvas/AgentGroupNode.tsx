@@ -66,6 +66,7 @@ function AgentGroupNodeImpl({ data, selected }: NodeProps) {
       <NodeCardHead
         node={graphNode}
         status={nodeData.status}
+        problems={nodeData.problems}
         className="rf-group-head"
         graph={nodeData.graph}
         onViewSpans={nodeData.onViewSpans}
