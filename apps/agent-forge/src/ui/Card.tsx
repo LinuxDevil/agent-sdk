@@ -12,6 +12,8 @@ interface CardProps {
   /** `'md'` (default) pads the body; `'none'` lets a DataTable run edge to edge. */
   padding?: 'md' | 'none';
   className?: string;
+  /** DOM id for the card element (anchor targets, e.g. the Configure tab's `configure-<section>`). */
+  id?: string;
   /** `'section'` (default) is a region labelled by its title; `'div'` a plain box. */
   as?: 'section' | 'div';
   children?: ReactNode;
@@ -21,12 +23,12 @@ interface CardProps {
  * The Studio's panel: surface, hairline border, large radius, a soft lift,
  * and an optional header row (title + description left, actions right).
  */
-export function Card({ title, description, actions, padding = 'md', className, as: Tag = 'section', children }: CardProps) {
+export function Card({ title, description, actions, padding = 'md', className, id, as: Tag = 'section', children }: CardProps) {
   const titleId = useId();
   const labelled = Tag === 'section' && title != null;
   const classes = ['card', `card-pad-${padding}`, className].filter(Boolean).join(' ');
   return (
-    <Tag className={classes} aria-labelledby={labelled ? titleId : undefined}>
+    <Tag id={id} className={classes} aria-labelledby={labelled ? titleId : undefined}>
       {title != null && (
         <div className="card-header">
           <div className="card-heading">
