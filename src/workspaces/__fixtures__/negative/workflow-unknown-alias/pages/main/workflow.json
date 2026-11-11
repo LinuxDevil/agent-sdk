@@ -1,0 +1,19 @@
+{
+  "code": "main",
+  "name": "Main",
+  "flow": {
+    "type": "sequence",
+    "id": "run",
+    "steps": [
+      {
+        "type": "agent",
+        "id": "work",
+        "agent": "ghost"
+      },
+      {
+        "type": "end",
+        "id": "done"
+      }
+    ]
+  }
+}

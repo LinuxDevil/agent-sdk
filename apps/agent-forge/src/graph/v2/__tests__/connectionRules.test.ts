@@ -54,8 +54,9 @@ describe('canConnect kind table', () => {
    * asserted separately with its refusal reason. `agent > output` stays in
    * the table — `canConnect` has no graph, so the one-output-per-agent rule
    * is enforced by `agentRules.connectFrom` (see kinds/output.test.ts).
+   * `agent > flow` is refused outright: the `runs` edge is derived.
    */
-  const ALWAYS_REFUSED = new Set(['trigger>agent']);
+  const ALWAYS_REFUSED = new Set(['trigger>agent', 'agent>flow']);
 
   it.each(
     (Object.entries(CONNECTION_RULES) as Array<[NodeKind, readonly NodeKind[]]>).flatMap(
@@ -206,6 +207,27 @@ describe('canConnect instance rules', () => {
     const source = node('agent', { id: 'sub:research' });
     const target = node('flow', { owner: 'other' });
     expect(canConnect(source, target)).toEqual({ ok: false, reason: 'Only the main agent runs a flow' });
+  });
+
+  it('refuses root agent -> flow (the runs edge is derived)', () => {
+    const source = node('agent', { id: 'agent' });
+    const target = node('flow', { id: 'flow:s1', owner: 'agent' });
+    expect(canConnect(source, target)).toEqual({
+      ok: false,
+      reason: 'This agent already runs this flow',
+    });
+  });
+
+  it('refuses flow -> tool', () => {
+    const source = node('flow', { id: 'flow:s1' });
+    const target = node('tool', { id: 'tool:http', owner: 'agent' });
+    expect(canConnect(source, target)).toEqual({ ok: false, reason: "Can't connect flow → tool" });
+  });
+
+  it('allows flow -> flow (the step-tree connect)', () => {
+    const source = node('flow', { id: 'flow:s1' });
+    const target = node('flow', { id: 'flow:s2' });
+    expect(canConnect(source, target)).toEqual({ ok: true });
   });
 
   it('refuses agent -> node already owned by that agent', () => {

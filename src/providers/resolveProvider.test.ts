@@ -168,16 +168,16 @@ describe('resolveProvider errors', () => {
     expect(() => resolveProvider('zzzzzzzzzz/m')).toThrow(
       "Supported prefixes: openai, anthropic, openrouter, google, ollama, pi, mock. To use 'zzzzzzzzzz' anyway: " +
         "'openrouter/zzzzzzzzzz/m' (OpenRouter serves most vendors; needs OPENROUTER_API_KEY), " +
+        "'ai-sdk/zzzzzzzzzz/m' (when @ai-sdk/zzzzzzzzzz exists), " +
         "or createAgent({ provider: fromAiSdk(zzzzzzzzzz('m')) }) with the vendor's own AI SDK provider package."
     );
     expect(() => resolveProvider('zzzzzzzzzz/m')).not.toThrow(/'pi\//);
   });
 
   it('also suggests pi for a vendor pi serves, and never mistakes it for a typo of a built-in prefix', () => {
-    // 'xai' is two edits from 'pi', but it is a vendor of its own.
     const error = (() => {
       try {
-        resolveProvider('xai/grok-4');
+        resolveProvider('zai/glm-4');
         return undefined;
       } catch (e) {
         return e as Error & { code: string };
@@ -186,15 +186,16 @@ describe('resolveProvider errors', () => {
     expect(error?.code).toBe('LOUSHO_PROVIDER_UNKNOWN');
     expect(error?.message).not.toContain('Did you mean');
     expect(error?.message).toContain(
-      "To use 'xai' anyway: 'openrouter/xai/grok-4' (OpenRouter serves most vendors; needs OPENROUTER_API_KEY), " +
-        "'pi/xai/grok-4' (through @earendil-works/pi-ai), or createAgent({ provider: fromAiSdk(xai('grok-4')) })"
+      "To use 'zai' anyway: 'openrouter/zai/glm-4' (OpenRouter serves most vendors; needs OPENROUTER_API_KEY), " +
+        "'pi/zai/glm-4' (through @earendil-works/pi-ai), 'ai-sdk/zai/glm-4' (when @ai-sdk/zai exists), " +
+        "or createAgent({ provider: fromAiSdk(zai('glm-4')) })"
     );
     // The appended help line links the error code's docs section.
     expect(error?.message).toMatch(/\[LOUSHO_PROVIDER_UNKNOWN\].*lousho\.com\/errors#lousho_provider_unknown/);
   });
 
   it('turns a dashed vendor into a valid AI SDK factory name', () => {
-    expect(() => resolveProvider('amazon-bedrock/claude')).toThrow("fromAiSdk(amazonBedrock('claude'))");
+    expect(() => resolveProvider('cloudflare-workers-ai/llama')).toThrow("fromAiSdk(cloudflareWorkersAi('llama'))");
   });
 
   it('every vendor it suggests through pi is one pi-ai serves', async () => {
@@ -260,6 +261,50 @@ describe('resolveProvider errors', () => {
 
   it('still rejects a provider that is neither built in nor registered', () => {
     expect(() => resolveProvider('f13-nobody/some-model')).toThrow(withCode('LOUSHO_PROVIDER_UNKNOWN'));
+  });
+
+  it.each([
+    ['mistral/mistral-large-latest', 'mistral', '@ai-sdk/mistral', 'mistral-large-latest'],
+    ['bedrock/anthropic.claude-sonnet', 'bedrock', '@ai-sdk/amazon-bedrock', 'anthropic.claude-sonnet'],
+    ['vertex/gemini-2.5-pro', 'vertex', '@ai-sdk/google-vertex', 'gemini-2.5-pro'],
+    ['xai/grok-4', 'xai', '@ai-sdk/xai', 'grok-4'],
+    ['ai-sdk/cohere/command-r', 'cohere', '@ai-sdk/cohere', 'command-r'],
+    ['ai-sdk/some-new-vendor/x/y', 'some-new-vendor', '@ai-sdk/some-new-vendor', 'x/y'],
+  ])('resolves %s to its AI SDK package without reading a key up front', (spec, name, packageName, model) => {
+    const createSpy = vi.spyOn(LLMProviderRegistry, 'create').mockReturnValue(fakeProvider(name));
+
+    resolveProvider(spec);
+
+    expect(createSpy).toHaveBeenCalledWith('ai-sdk', { name, packageName, defaultModel: model });
+  });
+
+  it('lets a registered provider win over the AI SDK vendor route', () => {
+    vi.spyOn(LLMProviderRegistry, 'has').mockImplementation((name) => name === 'mistral');
+    const createSpy = vi.spyOn(LLMProviderRegistry, 'create').mockReturnValue(fakeProvider('mistral'));
+
+    resolveProvider('mistral/m');
+
+    expect(createSpy).toHaveBeenCalledWith('mistral', { defaultModel: 'm' });
+  });
+
+  it.each(['ai-sdk/mistral', 'ai-sdk/../x/m', 'ai-sdk/@scope/m'])('rejects the malformed ai-sdk spec %s', (spec) => {
+    expect(() => resolveProvider(spec)).toThrow(withCode('LOUSHO_PROVIDER_SPEC_INVALID'));
+  });
+
+  it('builds a real model from an installed AI SDK package', async () => {
+    const provider = resolveProvider('ai-sdk/openai/gpt-4o-mini');
+    expect(provider.name).toBe('openai');
+    const model = await (provider as unknown as { createModel(id: string): Promise<{ modelId: string }> }).createModel('gpt-4o-mini');
+    expect(model.modelId).toBe('gpt-4o-mini');
+  });
+
+  it.each([
+    [4, '^1.0.0'],
+    [6, '^3.0.0'],
+    [7, '^4.0.0'],
+  ] as const)('names the range of any @ai-sdk package for ai %i', async (major, range) => {
+    const { peerInstallCommand } = await import('./providerSpec');
+    expect(peerInstallCommand('@ai-sdk/mistral', major)).toBe(`npm install @ai-sdk/mistral@${range}`);
   });
 
   it('rethrows unrelated registry errors unchanged', () => {

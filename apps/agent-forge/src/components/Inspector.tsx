@@ -60,7 +60,7 @@ function InspectorHead({ node, graph, action }: { node: GraphNode; graph: Graph;
   const { Icon } = view;
   return (
     <div className="inspector-head">
-      <span className={`node-kind node-kind-lg kind-${view.tone}`} aria-hidden="true">
+      <span className={`node-kind node-kind-lg kind-${view.toneFor?.(node as never) ?? view.tone}`} aria-hidden="true">
         <Icon size={16} strokeWidth={1.75} />
       </span>
       <div className="inspector-head-text">
@@ -213,7 +213,12 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
   const props: KindFieldsProps<typeof selected.kind> = {
     node: selected as never,
     graph: displayGraph,
-    patch: (patch) => setGraph((g) => patchNode(g, selectedId, patch)),
+    // Field edits coalesce per node+key into one undo step while typing
+    // (C20): 'field:<nodeId>:<firstPatchKey>' within COALESCE_MS.
+    patch: (patch) =>
+      setGraph((g) => patchNode(g, selectedId, patch), {
+        history: { label: 'Edit', coalesceKey: `field:${selectedId}:${Object.keys(patch)[0] ?? ''}` },
+      }),
     replace: (data) => setGraph((g) => setNodeData(g, selectedId, data)),
     problems: nodeProblems,
   };

@@ -1,0 +1,18 @@
+{
+  "schema": "lousho.page/1",
+  "id": "reply-drafts",
+  "name": "Reply drafts",
+  "description": "Drafts a reply and checks its claims.",
+  "harness": {
+    "extends": []
+  },
+  "execution": {
+    "type": "multi-agent",
+    "multiAgent": {
+      "lead": "drafter",
+      "delegates": [
+        "checker"
+      ]
+    }
+  }
+}

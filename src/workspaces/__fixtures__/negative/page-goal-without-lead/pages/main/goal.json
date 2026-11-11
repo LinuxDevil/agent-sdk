@@ -1,0 +1,13 @@
+{
+  "schema": "lousho.goal/1",
+  "goal": "Finish the report.",
+  "checks": [
+    {
+      "criterion": "report-present"
+    }
+  ],
+  "stop": {
+    "maxIterations": 3,
+    "maxCostUsd": 1
+  }
+}

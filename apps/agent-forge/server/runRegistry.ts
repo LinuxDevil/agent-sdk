@@ -30,6 +30,7 @@ import {
   type Message,
   emptyRunUsage,
   compareTrajectories,
+  describeApproval,
   getCheckpointHistory,
   type CheckpointHistoryEntry,
   type ForkPatch,
@@ -41,9 +42,10 @@ import { toLegacySpec } from './storage/legacySpec';
 import { HostRunNotActiveError, type AgentHost, type HostEvent, type HostRunResult } from './host/agentHost';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
+import { approvalDeadline, EXPIRED_APPROVAL_NOTE, NO_ANSWER_TEXT } from './approvalDeadline';
 import { DebugSession, type BreakpointKey } from './debugController';
 import { FileChatStore, previewFor } from './chatStore';
-import { markRunInput, reconcileChatMessages } from './chatReconcile';
+import { markRunInput, markSteerInputs, reconcileChatMessages } from './chatReconcile';
 import { toLogEntries, toFlowLogEntries } from './logEntries';
 import { nodeStateFor } from './nodeStates';
 import type { SecretsStore } from './secretsStore';
@@ -56,6 +58,8 @@ import type {
   LogPhase,
   ChatMessage,
   ChatStatePayload,
+  SteerInfo,
+  SteerResponse,
   ChatSessionMeta,
   ChatSessionRecord,
   RunHistoryStep,
@@ -73,6 +77,15 @@ interface RunEntry {
   error?: string;
   reason?: 'awaiting_approval';
   pendingApproval?: AgentRunStatusPayload['pendingApproval'];
+  /** When the in-flight run launched (the approval deadline's "remaining run time" bound takes runStartedAt from it). */
+  startedAt?: string;
+  /**
+   * The pending pause's self-resolution timer (unref'd): fires
+   * expireDeadline() at `pendingApproval.deadline`. Armed when a pause is
+   * recorded, cleared on every resolution path - approve(), answer(),
+   * stop() and the next launch.
+   */
+  deadlineTimer?: NodeJS.Timeout;
   resultText?: string;
   /** The settled run's result (messages/toolCalls/usage/steps/finishReason) for the Output tab's JSON tree. */
   result?: HostRunResult;
@@ -120,6 +133,14 @@ interface RunEntry {
   chatSessionId: string;
   /** When the current chat session started, for its ChatSessionMeta. */
   chatStartedAt: string;
+  /**
+   * This run's steer messages (`steer()`), oldest first - each starts
+   * `delivery: 'queued'` and flips to 'delivered'/'undelivered' on the
+   * launch's `steer.joined` HostEvent. Kept (not cleared) after the run
+   * settles so the Test pane's list survives until the next launch, which
+   * resets it via the `steering: []` patch in startAgentRun/startFlowRun.
+   */
+  steering?: SteerInfo[];
 }
 
 export interface RunManagerOptions {
@@ -155,11 +176,19 @@ export interface RunManagerOptions {
    * its own (the SDK's `LOUSHO_OBSERVE` one still applies).
    */
   observe?: true | Partial<ObserveExporterOptions>;
+  /**
+   * Overrides approvalDeadline.ts's 30 s minimum pause deadline - tests
+   * inject a tiny value (e.g. 50 ms) so an unanswered pause resolves
+   * itself inside the test. Production callers leave it unset.
+   */
+  minDeadlineMs?: number;
 }
 
 export class AgentNotFoundError extends Error {}
 export class AlreadyRunningError extends Error {}
 export class NoActiveRunError extends Error {}
+/** A steer was aimed at a flow run - FlowExecutor has no input queue to push into. */
+export class SteerUnsupportedError extends Error {}
 /** A chat message was sent while the run was paused awaiting a tool approval decision - resolve that first via approve(). */
 export class ApprovalPendingError extends Error {}
 
@@ -250,6 +279,7 @@ export class RunManager extends EventEmitter {
       result: entry.result,
       provider: entry.provider,
       traceId: entry.traceId,
+      steering: entry.steering,
       updatedAt: entry.updatedAt,
     };
   }
@@ -540,6 +570,65 @@ export class RunManager extends EventEmitter {
     }
   }
 
+  /**
+   * `POST /agents/:id/steer` - pushes `message` into the live run's input
+   * queue through the AgentHost (`host.steer(entry.hostRunId, ...)`, the
+   * D12b seam - never `entry.run`, which no longer exists). The message
+   * reaches the model after its next tool call or step boundary; whether
+   * it actually joined the transcript arrives later as the launch's
+   * `steer.joined` HostEvent (see onHostEvent), which flips the SteerInfo's
+   * `delivery` queued -> delivered/undelivered.
+   *
+   * Errors: NoActiveRunError when nothing is running for this agent (or
+   * the run ended between the status check and the host call -
+   * `HostRunNotActiveError`/`applied === false` both map to it), and
+   * SteerUnsupportedError for flow runs, which have no input queue.
+   */
+  async steer(agentId: string, message: string): Promise<SteerResponse> {
+    const entry = this.entries.get(agentId);
+    if (!entry || entry.status !== 'running') {
+      throw new NoActiveRunError('Nothing is running, so there is nothing to steer.');
+    }
+    if (entry.kind === 'flow') {
+      throw new SteerUnsupportedError('Flow runs cannot be steered yet.');
+    }
+    if (entry.hostRunId === undefined) {
+      throw new NoActiveRunError('Nothing is running, so there is nothing to steer.');
+    }
+
+    const hostRunId = entry.hostRunId;
+    let result;
+    try {
+      result = await this.opts.host.steer(hostRunId, message);
+    } catch (error) {
+      if (error instanceof HostRunNotActiveError) {
+        throw new NoActiveRunError('Nothing is running, so there is nothing to steer.');
+      }
+      throw error;
+    }
+    if (result.applied === false) {
+      // The run ended between the status check and the host call.
+      throw new NoActiveRunError('Nothing is running, so there is nothing to steer.');
+    }
+
+    const info: SteerInfo = {
+      id: result.id,
+      message,
+      at: new Date().toISOString(),
+      delivery: 'queued',
+      mode: result.applied,
+    };
+    const current = this.entries.get(agentId);
+    // The run may have settled AND a new one launched during the await -
+    // the entry existing is not enough: without the hostRunId check run1's
+    // SteerInfo would land in run2's `steering` list (and run2's launch
+    // reset would never clear it again).
+    if (current !== undefined && current.hostRunId === hostRunId) {
+      this.setEntry(agentId, { steering: [...(current.steering ?? []), info] });
+    }
+    return { id: result.id, applied: result.applied };
+  }
+
   /** Picks the spec to run: the supplied one (persisted if a saveSpec hook exists), else the last-run one, else the saved one. */
   private async resolveLaunchSpec(
     agentId: string,
@@ -619,6 +708,8 @@ export class RunManager extends EventEmitter {
         error: undefined,
         reason: undefined,
         pendingApproval: undefined,
+        deadlineTimer: this.clearDeadlineTimer(existing),
+        startedAt: new Date().toISOString(),
         resultText: undefined,
         traceId: undefined,
         runInput: options.runInput,
@@ -627,6 +718,7 @@ export class RunManager extends EventEmitter {
         debugSession,
         hostRunId: runId,
         kind: 'agent',
+        steering: [],
       },
       existing
     );
@@ -634,9 +726,18 @@ export class RunManager extends EventEmitter {
 
   /** One HostEvent of a launch: forwarded to the same status/chat/log/span broadcasts the SDK used to drive directly. */
   private onHostEvent(agentId: string, event: HostEvent, live: { runId: string | undefined; exporter: TraceExporter }): void {
-    // A run id that is no longer on the entry (a late steer.joined, or a
-    // settled that landed after a newer launch) is dropped - except while
-    // the launch is still inside host.start() (runId not yet assigned).
+    // A steer.joined is matched by steer id against the entry's `steering`
+    // list - NOT by run id - because `joined` resolves only once the input
+    // lands (or the run ends), which can be after 'settled' already cleared
+    // `hostRunId`. A stale run's steer id simply isn't in the list (launch
+    // resets it), so this stays safe without the guard below.
+    if (event.type === 'steer.joined') {
+      this.onSteerJoined(agentId, event.steerId, event.joined);
+      return;
+    }
+    // A run id that is no longer on the entry (a settled that landed after
+    // a newer launch) is dropped - except while the launch is still inside
+    // host.start() (runId not yet assigned).
     const entry = this.entries.get(agentId);
     if (live.runId !== undefined && entry?.hostRunId !== live.runId) return;
     switch (event.type) {
@@ -653,9 +754,26 @@ export class RunManager extends EventEmitter {
       case 'failed':
         this.handleRunFailed(agentId, Object.assign(new Error(event.error.message), event.error));
         return;
-      case 'steer.joined':
-        return; // no-op until the steer route (T05)
     }
+  }
+
+  /**
+   * A `steer.joined` HostEvent: flips the matching SteerInfo's `delivery`
+   * queued -> delivered/undelivered. Idempotent (only a still-'queued' item
+   * moves) and a no-op when the id isn't on the entry - e.g. a steer of a
+   * run a newer launch already replaced.
+   */
+  private onSteerJoined(agentId: string, steerId: string, joined: boolean): void {
+    const entry = this.entries.get(agentId);
+    const steering = entry?.steering;
+    if (entry === undefined || steering === undefined || !steering.some((s) => s.id === steerId)) return;
+    this.setEntry(agentId, {
+      steering: steering.map((s) =>
+        s.id === steerId && s.delivery === 'queued'
+          ? { ...s, delivery: joined ? ('delivered' as const) : ('undelivered' as const) }
+          : s
+      ),
+    });
   }
 
   /**
@@ -704,6 +822,8 @@ export class RunManager extends EventEmitter {
         error: undefined,
         reason: undefined,
         pendingApproval: undefined,
+        deadlineTimer: this.clearDeadlineTimer(existing),
+        startedAt: new Date().toISOString(),
         resultText: undefined,
         traceId: undefined,
         runInput: options.runInput,
@@ -712,6 +832,7 @@ export class RunManager extends EventEmitter {
         debugSession,
         hostRunId: undefined,
         kind: 'flow',
+        steering: [],
       },
       existing
     );
@@ -768,11 +889,31 @@ export class RunManager extends EventEmitter {
     // the assistant's tool-call message was added).
     const settledAt = new Date().toISOString();
     const entryBefore = this.entries.get(agentId);
-    const reconciledMessages = markRunInput(
-      reconcileChatMessages(entryBefore?.messages ?? [], authoritativeMessages(result), settledAt),
-      entryBefore?.messages ?? [],
-      entryBefore?.runInput
+    const prevMessages = entryBefore?.messages ?? [];
+    const reconciled = reconcileChatMessages(prevMessages, authoritativeMessages(result), settledAt);
+    // Steer deliveries are final by now: the input queue resolves every
+    // pending `joined` (false for whatever never landed) before the run's
+    // result does, so each `steer.joined` HostEvent already flipped the
+    // SteerInfo - 'delivered' ones tag their transcript bubble 'steer',
+    // 'undelivered' ones get a warn log line.
+    const steering = entryBefore?.steering ?? [];
+    const reconciledMessages = markSteerInputs(
+      markRunInput(reconciled, prevMessages, entryBefore?.runInput),
+      prevMessages,
+      steering
     );
+    for (const item of steering) {
+      if (item.delivery !== 'undelivered') continue;
+      this.emit('log', agentId, {
+        id: randomUUID(),
+        agentId,
+        timestamp: settledAt,
+        level: 'warn' as LogLevel,
+        phase: 'trigger' as LogPhase,
+        message: 'Steering message not delivered: the run ended first.',
+        detail: { id: item.id, message: item.message },
+      } satisfies LogEntry);
+    }
 
     // The full ExecutionResult (messages/toolCalls/usage/steps, not
     // just the final text) is kept on the entry either way, so the
@@ -780,21 +921,7 @@ export class RunManager extends EventEmitter {
     // finished or is paused for approval - "the final OR paused
     // ExecutionResult" per the epic brief.
     if (result.finishReason === 'awaiting-approval' && result.approvalId) {
-      // The host already read the pause it filed through the scoped store
-      // and passed it on the settled result - no second store read here.
-      const next = this.setEntry(agentId, {
-        status: 'paused',
-        reason: 'awaiting_approval',
-        pendingApproval: {
-          approvalId: result.approvalId,
-          toolName: result.pendingApproval?.toolName ?? 'unknown',
-          args: result.pendingApproval?.args ?? {},
-          createdAt: result.pendingApproval?.createdAt ?? new Date().toISOString(),
-        },
-        result,
-        messages: reconciledMessages,
-      });
-      this.emitChat(agentId, next);
+      this.recordPause(agentId, result, result.approvalId, entryBefore, reconciledMessages);
       return;
     }
     const next = this.setEntry(agentId, {
@@ -803,6 +930,58 @@ export class RunManager extends EventEmitter {
       result,
       controller: undefined,
       hostRunId: undefined,
+      deadlineTimer: this.clearDeadlineTimer(entryBefore),
+      messages: reconciledMessages,
+    });
+    this.emitChat(agentId, next);
+  }
+
+  /**
+   * The `awaiting-approval` settle: records the pause (kind, question,
+   * subagent path) with the deadline Studio resolves it at itself, and
+   * arms the self-resolution timer. The host already read the pause it
+   * filed through the scoped store and passed it on the settled result -
+   * no second store read here. `describeApproval` normalizes it: an
+   * `ask_question` call's raw record has no `kind`/`question` yet (both
+   * are derived from its tool name and args); a 'sign-in' pause keeps
+   * 'tool' on the wire.
+   */
+  private recordPause(
+    agentId: string,
+    result: HostRunResult,
+    approvalId: string,
+    entryBefore: RunEntry | undefined,
+    reconciledMessages: ChatMessage[]
+  ): void {
+    const pending = result.pendingApproval ? describeApproval(result.pendingApproval) : undefined;
+    const kind = pending?.kind === 'question' ? ('question' as const) : ('tool' as const);
+    const now = Date.now();
+    // The deadline Studio resolves the pause at itself: min(the SDK's
+    // expiresAt, the run's own end) - the ask_question tool takes no
+    // timeout argument, so there is no "requested" input (PLAN gap).
+    const deadline = approvalDeadline({
+      now,
+      expiresAt: pending?.expiresAt,
+      runStartedAt: Date.parse(entryBefore?.startedAt ?? '') || now,
+      maxDurationMs: entryBefore?.lastSpec?.limits?.maxDurationMs,
+      minDeadlineMs: this.opts.minDeadlineMs,
+    });
+    this.clearDeadlineTimer(entryBefore);
+    const next = this.setEntry(agentId, {
+      status: 'paused',
+      reason: 'awaiting_approval',
+      pendingApproval: {
+        approvalId,
+        toolName: pending?.toolName ?? 'unknown',
+        args: pending?.args ?? {},
+        createdAt: pending?.createdAt ?? new Date(now).toISOString(),
+        kind,
+        ...(kind === 'question' && pending?.question !== undefined && { question: pending.question }),
+        deadline,
+        ...(pending?.subagentPath !== undefined && { subagentPath: pending.subagentPath }),
+      },
+      deadlineTimer: this.armDeadline(agentId, approvalId, kind, deadline),
+      result,
       messages: reconciledMessages,
     });
     this.emitChat(agentId, next);
@@ -810,9 +989,10 @@ export class RunManager extends EventEmitter {
 
   /** Shared failure-path handling: a host run's 'failed' event, or a flow/execute() rejection. */
   private handleRunFailed(agentId: string, error: unknown): void {
+    const entry = this.entries.get(agentId);
     if (error instanceof RunAbortedError) {
       // User-initiated stop() - a deliberate terminal state, not an error.
-      this.setEntry(agentId, { status: 'stopped', controller: undefined, hostRunId: undefined });
+      this.setEntry(agentId, { status: 'stopped', controller: undefined, hostRunId: undefined, deadlineTimer: this.clearDeadlineTimer(entry) });
       return;
     }
     this.setEntry(agentId, {
@@ -820,7 +1000,70 @@ export class RunManager extends EventEmitter {
       error: (error as Error)?.message ?? String(error),
       controller: undefined,
       hostRunId: undefined,
+      deadlineTimer: this.clearDeadlineTimer(entry),
     });
+  }
+
+  /** Clears `entry`'s pause timer if one is armed; returns `undefined` so callers can write `deadlineTimer:` patches inline. */
+  private clearDeadlineTimer(entry: RunEntry | undefined): undefined {
+    if (entry?.deadlineTimer !== undefined) clearTimeout(entry.deadlineTimer);
+    return undefined;
+  }
+
+  /**
+   * Arms the pause's self-resolution timer at `deadline` (unref'd, so it
+   * never holds the process or a test open). First answer wins: a timer
+   * that fires after approve()/answer() resolved the pause is a no-op via
+   * expireDeadline()'s still-pending check.
+   */
+  private armDeadline(
+    agentId: string,
+    approvalId: string,
+    kind: 'tool' | 'question',
+    deadline: string
+  ): NodeJS.Timeout {
+    const timer = setTimeout(
+      () => this.expireDeadline(agentId, approvalId, kind),
+      Math.max(0, Date.parse(deadline) - Date.now())
+    );
+    timer.unref();
+    return timer;
+  }
+
+  /**
+   * The deadline firing: if this pause is still pending, the run resolves
+   * without a human - a question is answered for the model with
+   * NO_ANSWER_TEXT, a tool approval is denied with EXPIRED_APPROVAL_NOTE -
+   * and the run continues, warned about in the log feed.
+   */
+  private expireDeadline(agentId: string, approvalId: string, kind: 'tool' | 'question'): void {
+    const entry = this.entries.get(agentId);
+    if (entry?.status !== 'paused' || entry.pendingApproval?.approvalId !== approvalId) return;
+    this.emit('log', agentId, {
+      id: randomUUID(),
+      agentId,
+      timestamp: new Date().toISOString(),
+      level: 'warn' as LogLevel,
+      phase: 'approval' as LogPhase,
+      message: 'Nobody answered before the deadline; the run continued without an answer.',
+    } satisfies LogEntry);
+    const resolved =
+      kind === 'question'
+        ? this.answer(agentId, approvalId, NO_ANSWER_TEXT)
+        : this.approve(agentId, approvalId, false, EXPIRED_APPROVAL_NOTE);
+    resolved.catch((error: unknown) =>
+      // A human deciding in the same instant already won (the still-pending
+      // check above passed, then their call landed first) - that 409 is
+      // noise; anything else is worth a log line.
+      this.emit('log', agentId, {
+        id: randomUUID(),
+        agentId,
+        timestamp: new Date().toISOString(),
+        level: 'error' as LogLevel,
+        phase: 'approval' as LogPhase,
+        message: `The deadline fired but the pause could not be resolved: ${(error as Error)?.message ?? String(error)}`,
+      } satisfies LogEntry)
+    );
   }
 
   /**
@@ -848,6 +1091,7 @@ export class RunManager extends EventEmitter {
         status: 'stopped',
         reason: undefined,
         pendingApproval: undefined,
+        deadlineTimer: this.clearDeadlineTimer(entry),
         controller: undefined,
         hostRunId: undefined,
       });
@@ -871,22 +1115,49 @@ export class RunManager extends EventEmitter {
    * `onEvent`, dispatched by `onHostEvent`.
    */
   async approve(agentId: string, approvalId: string, approved: boolean, note?: string): Promise<void> {
+    await this.resolvePaused(agentId, approvalId, (hostRunId) =>
+      this.opts.host.resolveApproval(hostRunId, approvalId, { approved, note })
+    );
+  }
+
+  /**
+   * Answers a pending `ask_question` pause through the AgentHost
+   * (`answerQuestion` → `approvals.streamAnswer`), then keeps broadcasting
+   * status/events for the resumed run exactly like approve() does - the
+   * resumed run's events and settle arrive on the launch's `onEvent`.
+   */
+  async answer(agentId: string, approvalId: string, answer: string): Promise<void> {
+    await this.resolvePaused(agentId, approvalId, (hostRunId) =>
+      this.opts.host.answerQuestion(hostRunId, approvalId, answer)
+    );
+  }
+
+  /**
+   * The shared body of approve()/answer(): the named pause must be pending
+   * on a live agent-path run (stale or unknown ids - including a second
+   * decision for an already-resolved pause - are 409s), then `resolve`
+   * resumes it through the host and the entry flips back to 'running' with
+   * its deadline disarmed.
+   */
+  private async resolvePaused(
+    agentId: string,
+    approvalId: string,
+    resolve: (hostRunId: string) => Promise<void>
+  ): Promise<void> {
     const entry = this.entries.get(agentId);
     if (!entry || entry.status !== 'paused' || entry.pendingApproval?.approvalId !== approvalId) {
-      throw new NoActiveRunError(
-        `Agent '${agentId}' has no pending approval '${approvalId}' to resolve`
-      );
+      throw new NoActiveRunError(`Agent '${agentId}' has no pending pause '${approvalId}' to resolve`);
     }
     const hostRunId = entry.hostRunId;
     if (entry.kind !== 'agent' || hostRunId === undefined) {
-      throw new NoActiveRunError(`Agent '${agentId}' has no live run to resolve approval '${approvalId}' on`);
+      throw new NoActiveRunError(`Agent '${agentId}' has no live run to resolve pause '${approvalId}' on`);
     }
 
     try {
-      await this.opts.host.resolveApproval(hostRunId, approvalId, { approved, note });
+      await resolve(hostRunId);
     } catch (error) {
       if (error instanceof HostRunNotActiveError) {
-        throw new NoActiveRunError(`Agent '${agentId}' has no pending approval '${approvalId}' to resolve`);
+        throw new NoActiveRunError(`Agent '${agentId}' has no pending pause '${approvalId}' to resolve`);
       }
       throw error;
     }
@@ -897,6 +1168,7 @@ export class RunManager extends EventEmitter {
       status: 'running',
       reason: undefined,
       pendingApproval: undefined,
+      deadlineTimer: this.clearDeadlineTimer(entry),
     });
   }
 

@@ -203,6 +203,12 @@ interface ConditionNode {
 type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
 // @public
+export interface DroppedField {
+    field: string;
+    reason: string;
+}
+
+// @public
 type EditorShapeStep = StepNode | SequenceNode | ParallelNode | OneOfNode | ForEachNode | EvaluatorNode | BestOfAllNode | ToolNode | UIComponentNode | ConditionNode | LoopNode;
 
 // @public
@@ -327,6 +333,14 @@ interface ForEachNode {
     item: string;
     // (undocumented)
     type: 'forEach';
+}
+
+// @public
+interface GeneratedFile {
+    // (undocumented)
+    content: string;
+    // (undocumented)
+    path: string;
 }
 
 // @public
@@ -955,6 +969,15 @@ interface SpecObjectSchema<T> extends SpecSchema<T> {
 interface SpecSchema<T> extends SafeParser<T> {
     // (undocumented)
     parse(value: unknown): T;
+}
+
+// @public
+export function specToAgentDir(spec: AgentSpecV2): SpecToAgentDirResult;
+
+// @public
+export interface SpecToAgentDirResult {
+    dropped: DroppedField[];
+    files: GeneratedFile[];
 }
 
 // @public

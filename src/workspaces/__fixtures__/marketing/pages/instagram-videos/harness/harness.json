@@ -1,0 +1,67 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "audience": {
+    "description": "People who follow the brand and want a quick lesson."
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "topic": {
+          "type": "string"
+        },
+        "durationSeconds": {
+          "type": "number"
+        },
+        "tone": {
+          "type": "string",
+          "enum": [
+            "friendly",
+            "formal",
+            "playful"
+          ]
+        }
+      },
+      "required": [
+        "topic"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "script": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "script"
+      ]
+    },
+    "artifacts": [
+      {
+        "name": "video",
+        "mediaType": "video/mp4",
+        "required": true
+      }
+    ]
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "script-present",
+        "description": "The output has a non-empty script.",
+        "check": "harness/checks/script-present.ts"
+      }
+    ]
+  },
+  "context": {
+    "resources": [
+      "resources/channel-notes.md"
+    ]
+  }
+}

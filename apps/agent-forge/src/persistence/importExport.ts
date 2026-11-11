@@ -37,10 +37,10 @@ function formatFromFilename(filename: string): ExportFormat {
 /**
  * Triggers a browser download of `text` as `filename` with MIME `type`, via
  * a Blob object URL (no server round-trip). `document`-dependent, so only
- * usable in a browser/jsdom environment. Shared by {@link downloadSpec} and
- * {@link downloadYaml}.
+ * usable in a browser/jsdom environment. Shared by {@link downloadSpec},
+ * {@link downloadYaml} and the Code tab's Download buttons (A08).
  */
-function downloadText(text: string, filename: string, type: string): void {
+export function downloadText(text: string, filename: string, type: string): void {
   const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   try {

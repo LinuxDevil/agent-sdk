@@ -48,3 +48,104 @@
   gap: var(--space-2);
   flex: none;
 }
+
+/* Steer box (T05): the "Message the running agent" form plus this run's
+   steer list, sitting between the thread and the composer. */
+.steer-box {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: var(--space-2) var(--space-4);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.steer-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.steer-label {
+  font-size: var(--fs-overline);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.steer-input-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+.steer-input {
+  flex: 1;
+  min-height: 0;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 6px var(--space-2);
+}
+.steer-input:focus {
+  outline: 2px solid transparent;
+  border-color: var(--accent);
+}
+.steer-send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.steer-count {
+  align-self: flex-end;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.steer-error {
+  color: var(--danger);
+  font-size: 12px;
+}
+.steer-list {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.steer-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+}
+.steer-item-undelivered {
+  border-color: var(--danger-border);
+}
+.steer-item-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.steer-item-time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.steer-item-message {
+  margin-top: 4px;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.steer-item-note {
+  margin-top: 4px;
+  color: var(--danger);
+  font-size: 11.5px;
+}

@@ -1,0 +1,5 @@
+{
+  "name": "fact-checker",
+  "version": "1.0.0",
+  "description": "Checks the claims in a draft against sources."
+}

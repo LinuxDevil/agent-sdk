@@ -108,6 +108,8 @@ export interface AgentDirConfig {
   name?: string;
   /** What this agent does. Required for agents in `subagents/` (the parent's model reads it). */
   description?: string;
+  /** The agent's version (`x.y.z`), which `global:<name>@<range>` workspace refs match against; the loader does not use it. */
+  version?: string;
   /** `provider/model` string, or a bare model id when `provider` is also given. */
   model?: string;
   /** An LLM provider instance (code config files only). */
@@ -170,6 +172,7 @@ export interface AgentDirConfig {
 const CONFIG_KEYS = [
   'name',
   'description',
+  'version',
   'model',
   'provider',
   'instructions',
@@ -578,7 +581,7 @@ function assertEngine(file: string, value: unknown): void {
 }
 
 function assertValues(file: string, c: Record<string, unknown>): void {
-  for (const key of ['name', 'description', 'model', 'instructions']) assertString(file, key, c[key]);
+  for (const key of ['name', 'description', 'version', 'model', 'instructions']) assertString(file, key, c[key]);
   assertMaxSteps(file, c.maxSteps);
   assertProvider(file, c.provider);
   assertProjectInstructions(file, c.projectInstructions);

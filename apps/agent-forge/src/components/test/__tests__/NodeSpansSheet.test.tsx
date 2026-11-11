@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
 
 vi.mock('../../../state/AppState', () => ({
   useAppState: () => ({
+    agentId: 'a',
     spansNodeId: state.spansNodeId,
     closeNodeSpans: state.closeNodeSpans,
     displayGraph: specToGraph({
@@ -27,6 +28,18 @@ vi.mock('../../../state/AppState', () => ({
     spans: state.spans,
     runStatus: state.runStatus,
   }),
+}));
+
+// The open sheet fetches the run's checkpoint history for "Fork from here"
+// (T08) - none of these tests exercise the fork flow, so the fetch simply
+// never settles (a settled one would set state outside act()).
+vi.mock('../../../runtime/runtimeClient', () => ({
+  runtimeClient: {
+    runHistory: vi.fn().mockReturnValue(new Promise(() => {})),
+    forkRun: vi.fn(),
+    compareRuns: vi.fn(),
+    subscribe: vi.fn().mockReturnValue(vi.fn()),
+  },
 }));
 
 const viewer = vi.hoisted(() => ({ props: undefined as TraceViewerProps | undefined }));

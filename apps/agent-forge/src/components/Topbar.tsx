@@ -51,7 +51,10 @@ type RunStatusPayload = ReturnType<typeof useAppState>['runStatus'];
 type ActiveProfile = ReturnType<typeof useAppState>['activeProfile'];
 
 function pendingApprovalOf(runStatus: RunStatusPayload) {
-  return runStatus?.status === 'paused' ? runStatus.pendingApproval : undefined;
+  const pending = runStatus?.status === 'paused' ? runStatus.pendingApproval : undefined;
+  // A question pause has its own card in the Test pane (QuestionCard);
+  // the topbar's one-line Approve/Reject card only fits a tool decision.
+  return pending?.kind === 'tool' ? pending : undefined;
 }
 
 function runErrorOf(runStatus: RunStatusPayload) {
@@ -61,7 +64,12 @@ function runErrorOf(runStatus: RunStatusPayload) {
 function ApprovalNotice({ runStatus }: { runStatus: RunStatusPayload }) {
   const pendingApproval = pendingApprovalOf(runStatus);
   return pendingApproval ? (
-    <ApprovalCard variant="inline" toolName={pendingApproval.toolName} args={pendingApproval.args} />
+    <ApprovalCard
+      variant="inline"
+      toolName={pendingApproval.toolName}
+      args={pendingApproval.args}
+      deadline={pendingApproval.deadline}
+    />
   ) : null;
 }
 

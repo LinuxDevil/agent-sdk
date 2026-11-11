@@ -632,6 +632,26 @@ button.breakpoint-toggle {
   color: var(--text-muted);
   font-weight: 500;
 }
+/* The AA18 proposal pill at the head of the canvas toolbar: a dashed
+   accent chip that opens the Author dock on the proposal card. */
+.canvas-proposal-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 6px 0 2px;
+  padding: 4px 10px;
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+  border-radius: var(--radius-full);
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.canvas-proposal-pill:hover {
+  border-style: solid;
+}
 /* Controls: a vertical card bottom-left. MiniMap: bottom-right, a card in the same family. */
 .canvas-wrap .react-flow__controls {
   border: 1px solid var(--border);

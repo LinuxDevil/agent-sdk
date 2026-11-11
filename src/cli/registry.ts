@@ -30,7 +30,7 @@ const itemType = z.enum(['tool', 'skill', 'channel', 'schedule', 'memory', 'kit'
  */
 export const DEFAULT_REGISTRY = 'https://registry.lousho.com/index.json';
 
-const RAW_BASE = 'https://raw.githubusercontent.com/LinuxDevil/agent-sdk';
+const RAW_BASE = 'https://raw.githubusercontent.com/LinuxDevil/lousho';
 
 /**
  * Where the default registry is read from when `DEFAULT_REGISTRY` cannot be

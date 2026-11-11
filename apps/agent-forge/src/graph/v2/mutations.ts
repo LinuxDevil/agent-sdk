@@ -8,6 +8,7 @@
  * ids at save time instead.
  */
 import { canConnect } from './connectionRules';
+import { flowChildRefs, removeFlowChild } from './flow';
 import type { ConnectResult, KindRules } from './kindRules';
 import { KIND_RULES } from './kindRules';
 import { baseNodeId, dedupeId } from './nodeIds';
@@ -105,13 +106,42 @@ export function descendantsOf(graph: Graph, rootId: string): ReadonlySet<string>
  * owner chain reaches it, along with `emptySections`/`unplaced` entries
  * that referenced the removed subtree.
  */
+/** `removed` plus every flow step reachable through the removed nodes' `FlowNodeData.children` (fixpoint). */
+function withFlowDescendants(graph: Graph, removed: Set<string>): Set<string> {
+  let grew = true;
+  while (grew) {
+    grew = false;
+    const fresh = graph.nodes
+      .filter((n) => n.kind === 'flow' && removed.has(n.id))
+      .flatMap((n) => flowChildRefs(n).map((ref) => ref.id))
+      .filter((id) => !removed.has(id));
+    for (const id of fresh) {
+      removed.add(id);
+      grew = true;
+    }
+  }
+  return removed;
+}
+
+/** The surviving nodes, each flow parent's references to removed steps dropped. */
+function withoutRemovedRefs(graph: Graph, removed: ReadonlySet<string>): GraphNode[] {
+  return graph.nodes
+    .filter((n) => !removed.has(n.id))
+    .map((n) => {
+      if (n.kind !== 'flow') return n;
+      let out: GraphNode = n;
+      for (const id of removed) out = removeFlowChild(out, id);
+      return out;
+    });
+}
+
 export function removeNode(graph: Graph, nodeId: string): Graph {
   const node = graph.nodes.find((n) => n.id === nodeId);
   if (node === undefined || (node.id === ROOT_AGENT_ID && node.kind === 'agent')) return graph;
-  const removed = descendantsOf(graph, nodeId);
+  const removed = withFlowDescendants(graph, new Set(descendantsOf(graph, nodeId)));
   return {
     ...graph,
-    nodes: graph.nodes.filter((n) => !removed.has(n.id)),
+    nodes: withoutRemovedRefs(graph, removed),
     emptySections: graph.emptySections.filter((section) => !removed.has(section.owner)),
     unplaced: graph.unplaced.filter((id) => !removed.has(id)),
   };

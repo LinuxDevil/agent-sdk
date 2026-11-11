@@ -17,3 +17,11 @@
   margin: 0;
   font-size: 13px;
 }
+
+/* The fork view (T08): "Back to spans" over the fork/original comparison. */
+.node-spans-fork {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+}

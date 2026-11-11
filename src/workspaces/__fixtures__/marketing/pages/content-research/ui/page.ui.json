@@ -1,0 +1,24 @@
+{
+  "schema": "lousho.ui/1",
+  "layout": {
+    "type": "stack",
+    "children": [
+      {
+        "type": "textarea",
+        "bind": "inputs.question",
+        "label": "Question"
+      },
+      {
+        "type": "runButton"
+      },
+      {
+        "type": "progress"
+      },
+      {
+        "type": "markdown",
+        "source": "outputs.findings",
+        "label": "Findings"
+      }
+    ]
+  }
+}

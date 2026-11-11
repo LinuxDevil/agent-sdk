@@ -21,6 +21,8 @@ export const SHORTCUTS: Shortcut[] = [
   { id: 'author', keys: 'Ctrl/Cmd+J', description: 'Open or close the Agent Author' },
   { id: 'help', keys: '?', description: 'Show keyboard shortcuts' },
   { id: 'save-version', keys: 'Ctrl/Cmd+S', description: 'Save a version of the agent' },
+  { id: 'undo', keys: 'Ctrl/Cmd+Z', description: 'Undo the last canvas edit' },
+  { id: 'redo', keys: 'Ctrl/Cmd+Shift+Z', description: 'Redo the last undone edit' },
   { id: 'row-next', keys: 'j', description: 'Next row in a table' },
   { id: 'row-prev', keys: 'k', description: 'Previous row in a table' },
   { id: 'row-open', keys: 'Enter', description: 'Open the selected row' },
