@@ -1,0 +1,10 @@
+{
+  "schema": "lousho.agents/1",
+  "agents": [
+    {
+      "as": "helper",
+      "ref": "workspace:ghost-agent",
+      "role": "Does the work."
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schema": "lousho.ui/1",
+  "layout": {
+    "type": "stack",
+    "children": [
+      {
+        "type": "textarea",
+        "bind": "inputs.report",
+        "label": "report"
+      },
+      {
+        "type": "runButton"
+      },
+      {
+        "type": "markdown",
+        "source": "outputs.ranking",
+        "label": "ranking"
+      }
+    ]
+  }
+}

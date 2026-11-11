@@ -1,0 +1,21 @@
+{
+  "schema": "lousho.harness/1",
+  "id": "instagram",
+  "version": "1.0.0",
+  "instructions": [
+    "platform.md"
+  ],
+  "platform": {
+    "id": "instagram",
+    "requirements": {
+      "aspectRatio": "4:5",
+      "captionMaxChars": 2200
+    }
+  },
+  "constraints": [
+    {
+      "id": "instagram-caption-length",
+      "text": "Keep captions under 2200 characters."
+    }
+  ]
+}

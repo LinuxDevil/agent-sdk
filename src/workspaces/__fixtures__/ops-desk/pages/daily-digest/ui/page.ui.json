@@ -1,0 +1,21 @@
+{
+  "schema": "lousho.ui/1",
+  "layout": {
+    "type": "stack",
+    "children": [
+      {
+        "type": "textarea",
+        "bind": "inputs.notes",
+        "label": "notes"
+      },
+      {
+        "type": "runButton"
+      },
+      {
+        "type": "markdown",
+        "source": "outputs.digest",
+        "label": "digest"
+      }
+    ]
+  }
+}

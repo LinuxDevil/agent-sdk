@@ -1,0 +1,18 @@
+{
+  "schema": "lousho.page/1",
+  "id": "review",
+  "name": "Review",
+  "description": "Reviews a change before merge.",
+  "domain": "coding",
+  "harness": {
+    "extends": [
+      "workspace:audiences/engineers"
+    ]
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "agent"
+    }
+  }
+}

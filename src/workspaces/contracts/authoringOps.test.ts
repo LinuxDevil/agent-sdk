@@ -24,7 +24,7 @@ function changedPaths(before: WorkspaceTree, after: WorkspaceTree): string[] {
 const EXTRA_OPS: AuthoringOp[] = [
   { op: 'set_workspace_field', field: 'description', value: 'Social video work.' },
   { op: 'set_page_field', page: 'instagram-videos', field: 'domain', value: 'marketing' },
-  { op: 'remove_extends', page: 'instagram-videos', ref: 'platforms/instagram' },
+  { op: 'remove_extends', page: 'instagram-videos', ref: 'workspace:platforms/instagram' },
   { op: 'remove_criterion', target: { kind: 'page', page: 'facebook-videos' }, id: 'script-present' },
   { op: 'add_criterion', target: { kind: 'base' }, criterion: { id: 'on-brand', description: 'Matches the brand voice.', rubric: 'Reads like the brand.' } },
   { op: 'write_agent_prose', agent: 'script-maker', text: 'Write short scripts.' },
@@ -69,31 +69,39 @@ describe('authoring operations', () => {
       'agents/video-maker/instructions.md',
       'agents/voice-maker/agent.json',
       'agents/voice-maker/instructions.md',
+      'harness/brand-voice.md',
       'harness/harness.json',
-      'harness/voice.md',
       'main-agent/agent.json',
       'main-agent/harness/main-harness.json',
       'main-agent/harness/routing.md',
       'main-agent/instructions.md',
+      'pages/content-research/agents.json',
+      'pages/content-research/agents/research-lead/agent.json',
+      'pages/content-research/agents/research-lead/instructions.md',
+      'pages/content-research/goal.json',
+      'pages/content-research/harness/harness.json',
+      'pages/content-research/harness/task.md',
+      'pages/content-research/page.json',
+      'pages/content-research/ui/page.ui.json',
       'pages/facebook-videos/agents.json',
       'pages/facebook-videos/harness/harness.json',
       'pages/facebook-videos/harness/task.md',
       'pages/facebook-videos/page.json',
       'pages/facebook-videos/ui/page.ui.json',
       'pages/instagram-videos/agents.json',
+      'pages/instagram-videos/goal.json',
       'pages/instagram-videos/harness/harness.json',
       'pages/instagram-videos/harness/task.md',
       'pages/instagram-videos/page.json',
       'pages/instagram-videos/ui/page.ui.json',
-      'pages/instagram-videos/workflow.json',
       'shared/instructions/00-brand-voice.md',
       'workspace.json',
     ]);
     expect(workspaceManifestSchema.safeParse(tree['workspace.json']).success).toBe(true);
-    expect((tree['workspace.json'] as { pages: string[] }).pages).toEqual(['facebook-videos', 'instagram-videos']);
+    expect((tree['workspace.json'] as { pages: string[] }).pages).toEqual(['instagram-videos', 'facebook-videos', 'content-research']);
     expect(mainHarnessSchema.safeParse(tree['main-agent/harness/main-harness.json']).success).toBe(true);
     expect(harnessSchema.safeParse(tree['harness/harness.json']).success).toBe(true);
-    for (const page of ['facebook-videos', 'instagram-videos']) {
+    for (const page of ['instagram-videos', 'facebook-videos', 'content-research']) {
       expect(pageSchema.safeParse(tree[`pages/${page}/page.json`]).success).toBe(true);
       expect(harnessSchema.safeParse(tree[`pages/${page}/harness/harness.json`]).success).toBe(true);
       expect(attachmentsSchema.safeParse(tree[`pages/${page}/agents.json`]).success).toBe(true);
@@ -120,7 +128,7 @@ describe('authoring operations', () => {
     expect(apply(tree, [{ op: 'remove_page', page: 'ghost' }]).problems[0]).toMatchObject({ opIndex: 0, op: 'remove_page' });
     const unlisted = apply(tree, [{ op: 'set_workspace_field', field: 'name', value: 'Marketing 2' }, { op: 'write_harness_prose', target: { kind: 'base' }, file: 'x.md', text: 'x' }]);
     expect(unlisted.problems).toEqual([]);
-    const dropped = apply({ ...tree, 'harness/voice.md': undefined }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }]);
+    const dropped = apply({ ...tree, 'harness/brand-voice.md': undefined }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }]);
     expect(dropped.problems[0].message).toContain('missing');
   });
 

@@ -1,0 +1,11 @@
+{
+  "schema": "lousho.harness/1",
+  "id": "young-adults",
+  "version": "1.0.0",
+  "audience": {
+    "description": "Adults aged 18 to 30 who watch on mobile.",
+    "traits": {
+      "tone": "casual"
+    }
+  }
+}

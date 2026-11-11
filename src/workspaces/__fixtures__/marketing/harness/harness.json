@@ -1,0 +1,21 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "brand-voice.md"
+  ],
+  "constraints": [
+    {
+      "id": "brand-voice",
+      "text": "Follow the brand voice."
+    }
+  ],
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "brand-voice-applied",
+        "description": "The output follows the brand voice.",
+        "check": "harness/checks/brand-voice-applied.ts"
+      }
+    ]
+  }
+}

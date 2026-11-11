@@ -1,0 +1,15 @@
+{
+  "schema": "lousho.agents/1",
+  "agents": [
+    {
+      "as": "drafter",
+      "ref": "workspace:reply-agent",
+      "role": "Drafts the reply."
+    },
+    {
+      "as": "checker",
+      "ref": "global:fact-checker@^1.0.0",
+      "role": "Checks the claims in the draft."
+    }
+  ]
+}
