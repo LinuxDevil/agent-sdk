@@ -65,6 +65,14 @@ export const ERROR_CODES = {
   LOUSHO_FLOW_CHANGED: 'Resume the run with the flow version that started it (same steps in the same order), or start a new run with another runId.',
   LOUSHO_STORAGE_FAILED: 'Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.',
   LOUSHO_STORAGE_BUSY: 'Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).',
+  /** A run asked an artifact store for an artifact of another run or workspace. */
+  LOUSHO_ARTIFACT_FORBIDDEN: "Read only the run's own artifacts, or pass the artifact's uri to this run as a ref (through the main agent).",
+  /** An artifact was larger than the store's `maxArtifactBytes`. */
+  LOUSHO_ARTIFACT_TOO_LARGE: 'Write a smaller artifact, or raise maxArtifactBytes on the artifact store.',
+  /** An artifact name was stored again with other content or another media type. */
+  LOUSHO_ARTIFACT_EXISTS: 'Store the new content under a new artifact name; a stored artifact never changes.',
+  /** The file artifact store found a symlink or a non-plain entry where it reads or writes. */
+  LOUSHO_ARTIFACT_UNSAFE_PATH: 'Remove the symlink or other entry the message names from the artifact store folder; the store reads and writes only plain folders and files inside its root.',
   LOUSHO_TRIGGER_INVALID: 'Fix the trigger option the message names; the message shows a working example.',
   LOUSHO_DEPLOY_FAILED: 'Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.',
   /** The built server was asked to listen on a non-loopback host with no route auth. */

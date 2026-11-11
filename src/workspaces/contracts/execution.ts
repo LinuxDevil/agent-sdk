@@ -138,10 +138,13 @@ export interface PageResult {
   };
 }
 
+/** An artifact's content: text (written as UTF-8), bytes, or a stream of byte chunks. */
+export type ArtifactData = string | Uint8Array | AsyncIterable<Uint8Array>;
+
 /** Where an engine writes the run's artifacts. */
 export interface ArtifactSink {
   /** Stores one artifact for this run and returns its reference. */
-  put(name: string, data: string | Uint8Array, mediaType: string): Promise<ArtifactRef>;
+  put(name: string, data: ArtifactData, mediaType: string): Promise<ArtifactRef>;
 }
 
 /** A page run began. */
