@@ -109,13 +109,13 @@ describe('specToGraph: trigger worked example', () => {
 
 describe('triggerRules.validate', () => {
   it('accepts the worked example', () => {
-    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2))).toStrictEqual([]);
+    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2), { schema: false })).toStrictEqual([]);
   });
 
   it.each(['', 'has space', 'dot.name', 'no_äng', 'x'.repeat(65)])('rejects the id %j', (id) => {
     const graph = graphOf([{ id, type: 'chat' }]);
     const nodeId = `trigger:${id}`;
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(nodeId, 'The id can use letters, digits, dash or underscore', 'triggers[0].id'),
     ]);
   });
@@ -124,7 +124,7 @@ describe('triggerRules.validate', () => {
     'rejects the cron expression %j',
     (cron) => {
       const graph = graphOf([{ id: 't1', type: 'cron', cron, prompt: 'go' }]);
-      expect(validateGraph(graph)).toStrictEqual([
+      expect(validateGraph(graph, { schema: false })).toStrictEqual([
         error('trigger:t1', 'Use five cron fields: minute hour day month weekday', 'triggers[0].cron'),
       ]);
     },
@@ -132,7 +132,7 @@ describe('triggerRules.validate', () => {
 
   it('rejects a cron trigger without a prompt', () => {
     const graph = graphOf([{ id: 't1', type: 'cron', cron: '0 9 * * *', prompt: ' ' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('trigger:t1', 'A schedule needs a prompt', 'triggers[0].prompt'),
     ]);
   });
@@ -141,14 +141,14 @@ describe('triggerRules.validate', () => {
     const graph = graphOf([
       { id: 't1', type: 'cron', cron: '0 9 * * *', timezone: 'Mars/Olympus', prompt: 'go' },
     ]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('trigger:t1', "Unknown time zone 'Mars/Olympus'", 'triggers[0].timezone'),
     ]);
   });
 
   it.each(['', 'hooks/x', '/has space', '/q?a=1'])('rejects the webhook path %j', (path) => {
     const graph = graphOf([{ id: 't1', type: 'webhook', path, promptTemplate: 'hi' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(
         'trigger:t1',
         'Webhook paths start with / and use letters, digits, dash or underscore',
@@ -162,7 +162,7 @@ describe('triggerRules.validate', () => {
       { id: 't1', type: 'webhook', path: '/hooks/x', promptTemplate: 'a' },
       { id: 't2', type: 'webhook', path: '/hooks/x', promptTemplate: 'b' },
     ]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('trigger:t1', "Two webhooks use the path '/hooks/x'", 'triggers[0].path'),
       error('trigger:t2', "Two webhooks use the path '/hooks/x'", 'triggers[1].path'),
     ]);
@@ -170,14 +170,14 @@ describe('triggerRules.validate', () => {
 
   it('rejects a webhook without a prompt template', () => {
     const graph = graphOf([{ id: 't1', type: 'webhook', path: '/hooks/x', promptTemplate: '' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('trigger:t1', 'Enter a prompt template', 'triggers[0].promptTemplate'),
     ]);
   });
 
   it('rejects every required secret key a channel is missing, in key order', () => {
     const graph = graphOf([{ id: 't1', type: 'channel', channel: 'slack', secrets: {} }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('trigger:t1', "Slack needs the 'signingSecret' secret", 'triggers[0].secrets.signingSecret'),
       error('trigger:t1', "Slack needs the 'botToken' secret", 'triggers[0].secrets.botToken'),
     ]);
@@ -192,21 +192,21 @@ describe('triggerRules.validate', () => {
         secrets: { botToken: { env: 'TELEGRAM_BOT_TOKEN' } },
       },
     ]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('trigger:t1', "Telegram needs the 'secretToken' secret", 'triggers[0].secrets.secretToken'),
     ]);
   });
 
   it('rejects an agent trigger that follows nobody', () => {
     const graph = graphOf([{ id: 't1', type: 'agent', after: '', on: 'done', promptTemplate: 'x' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('trigger:t1', 'Pick the agent this follows', 'triggers[0].after'),
     ]);
   });
 
   it('rejects an agent trigger without a prompt template', () => {
     const graph = graphOf([{ id: 't1', type: 'agent', after: 'triage', on: 'any', promptTemplate: ' ' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('trigger:t1', 'Enter a prompt template', 'triggers[0].promptTemplate'),
     ]);
   });
@@ -217,7 +217,7 @@ describe('triggerRules.validate', () => {
       { id: 't2', type: 'chat' },
       { id: 't3', type: 'chat' },
     ]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       warning('trigger:t2', 'One chat trigger is enough', 'triggers[1]'),
       warning('trigger:t3', 'One chat trigger is enough', 'triggers[2]'),
     ]);
@@ -228,7 +228,7 @@ describe('triggerRules.validate', () => {
       { id: 't1', type: 'chat' },
       { id: 't1', type: 'chat' } as TriggerSpec,
     ]);
-    const messages = validateGraph(graph).map((p) => `${p.nodeId}: ${p.message}`);
+    const messages = validateGraph(graph, { schema: false }).map((p) => `${p.nodeId}: ${p.message}`);
     expect(messages).toContain("trigger:t1: Two triggers use the id 't1'");
     expect(messages).toContain("trigger:t1#2: Two triggers use the id 't1'");
   });

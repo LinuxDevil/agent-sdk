@@ -33,6 +33,7 @@ export function IntegrationForm({ item, patch }: ToolSubFormProps<'integration'>
         onChange={(next) => {
           if (next !== undefined) patch({ integration: next, credentials: {} });
         }}
+        fieldPath=".integration"
       />
       <KeyValueField
         id="node-tool-credentials"
@@ -42,6 +43,7 @@ export function IntegrationForm({ item, patch }: ToolSubFormProps<'integration'>
         onChange={(next) => patch({ credentials: rows.onChange(next) })}
         error={Object.keys(item.credentials ?? {}).length === 0 ? 'Add the credentials this integration needs' : undefined}
         help={`Suggested: ${[...spec.required, ...spec.optional].join(', ')}`}
+        fieldPath=".credentials"
       />
     </>
   );

@@ -139,33 +139,33 @@ describe('abortRules.validate', () => {
   const valid = { id: 'a1', triggerId: 't3', when: 'w', match: 'm', scope: 'both' };
 
   it('accepts a listener watching a webhook trigger', () => {
-    expect(validateGraph(graphOf([valid]))).toStrictEqual([]);
+    expect(validateGraph(graphOf([valid]), { schema: false })).toStrictEqual([]);
   });
 
   it('flags an empty triggerId', () => {
     const g = graphOf([{ ...valid, triggerId: ' ' }]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('abort:a1', 'Pick the trigger this listener watches', 'abortListeners[0].triggerId'),
     ]);
   });
 
   it('flags a triggerId with no trigger node', () => {
     const g = graphOf([{ ...valid, triggerId: 'nope' }]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('abort:a1', "There is no trigger 'nope'", 'abortListeners[0].triggerId'),
     ]);
   });
 
   it('flags a triggerId naming a cron trigger', () => {
     const g = graphOf([{ ...valid, triggerId: 't2' }], [WEBHOOK, CRON]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('abort:a1', 'Abort listeners work with webhook and channel triggers', 'abortListeners[0].triggerId'),
     ]);
   });
 
   it('flags empty when and match expressions', () => {
     const g = graphOf([{ ...valid, when: '', match: ' ' }]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('abort:a1', 'Write when an event should cancel runs', 'abortListeners[0].when'),
       error('abort:a1', 'Write how to match the run to cancel', 'abortListeners[0].match'),
     ]);
@@ -173,7 +173,7 @@ describe('abortRules.validate', () => {
 
   it.each(['', 'has space', 'a'.repeat(65)])('rejects the id %j', (id) => {
     const g = graphOf([{ ...valid, id }]);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error(`abort:${id}`, 'The id can use letters, digits, dash or underscore', 'abortListeners[0].id'),
     ]);
   });
@@ -182,7 +182,7 @@ describe('abortRules.validate', () => {
     const g = removeNode(graphOf([valid], [WEBHOOK, CHANNEL]), 'trigger:t3');
     // No cascade delete: the listener stays and reports the missing trigger.
     expect(g.nodes.some((n) => n.id === 'abort:a1')).toBe(true);
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('abort:a1', "There is no trigger 't3'", 'abortListeners[0].triggerId'),
     ]);
   });

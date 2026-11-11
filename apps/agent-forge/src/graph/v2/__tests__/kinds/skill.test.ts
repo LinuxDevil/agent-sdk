@@ -88,19 +88,19 @@ describe('skillRules.validate', () => {
     ['a\\b', 'skill:b'],
   ])('rejects the folder path %j', (dir, nodeId) => {
     const graph = graphOf([{ dir }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(nodeId, 'Use a folder inside the agent folder', 'skills[0].dir'),
     ]);
   });
 
   it.each(['skills/review', 'review', 'a/b/c', 'skills/review/'])('accepts the folder path %j', (dir) => {
     const graph = graphOf([{ dir }]);
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it('requires a registry name', () => {
     const graph = graphOf([{ registry: '' }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('skill:new', 'Pick a registry skill', 'skills[0].registry'),
     ]);
   });
@@ -110,7 +110,7 @@ describe('skillRules.validate', () => {
     (name) => {
       const graph = graphOf([{ inline: { name, description: 'd', content: 'c' } }]);
       const nodeId = name === '' ? 'skill:new' : `skill:${name}`;
-      expect(validateGraph(graph)).toStrictEqual([
+      expect(validateGraph(graph, { schema: false })).toStrictEqual([
         error(
           nodeId,
           'The skill name can use lower-case letters, digits, dash or underscore',
@@ -122,21 +122,21 @@ describe('skillRules.validate', () => {
 
   it('requires an inline description', () => {
     const graph = graphOf([{ inline: { name: 'tone', description: '', content: 'c' } }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('skill:tone', 'The skill needs a description', 'skills[0].inline.description'),
     ]);
   });
 
   it('requires inline content', () => {
     const graph = graphOf([{ inline: { name: 'tone', description: 'd', content: '' } }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('skill:tone', 'The skill needs content', 'skills[0].inline.content'),
     ]);
   });
 
   it('reports every missing inline field together', () => {
     const graph = graphOf([{ inline: { name: '', description: '', content: '' } }]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('skill:new', 'The skill name can use lower-case letters, digits, dash or underscore', 'skills[0].inline.name'),
       error('skill:new', 'The skill needs a description', 'skills[0].inline.description'),
       error('skill:new', 'The skill needs content', 'skills[0].inline.content'),
@@ -148,7 +148,7 @@ describe('skillRules.validate', () => {
       { inline: { name: 'tone', description: 'd', content: 'c' } },
       { dir: 'skills/tone' },
     ]);
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('skill:tone', "Two skills are named 'tone'", 'skills[0]'),
       error('skill:tone#2', "Two skills are named 'tone'", 'skills[1]'),
     ]);
@@ -171,7 +171,7 @@ describe('skillRules.validate', () => {
         },
       }),
     );
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it('maps problems to the nested spec path inside an inline agent', () => {
@@ -190,7 +190,7 @@ describe('skillRules.validate', () => {
         },
       }),
     );
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('sub:a/skill:new', 'Use a folder inside the agent folder', 'subagents.a.inline.skills[0].dir'),
     ]);
   });
@@ -213,7 +213,7 @@ describe('skillRules.duplicateData', () => {
     const r = duplicateNode(g, 'skill:tone');
     expect(r.nodeId).toBe('skill:tone#2');
     expect(nodeById(r.graph, 'skill:tone#2').item).toStrictEqual({ dir: 'skills/tone' });
-    expect(validateGraph(r.graph)).toStrictEqual([
+    expect(validateGraph(r.graph, { schema: false })).toStrictEqual([
       error('skill:tone', "Two skills are named 'tone'", 'skills[0]'),
       error('skill:tone#2', "Two skills are named 'tone'", 'skills[1]'),
     ]);

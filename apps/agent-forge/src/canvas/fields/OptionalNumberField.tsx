@@ -36,6 +36,8 @@ export interface OptionalNumberFieldProps {
   help?: string;
   /** Unit suffix drawn after the input ('ms', 'tokens'). */
   unit?: string;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 /** `n`'s range error message for the bounds that are actually set. */
@@ -75,6 +77,7 @@ export function OptionalNumberField({
   integer,
   help,
   unit,
+  fieldPath,
 }: OptionalNumberFieldProps): JSX.Element {
   const { draft, setDraft, error, setError, emit } = useSyncedDraft(value, numberText, onChange);
 
@@ -94,7 +97,7 @@ export function OptionalNumberField({
   };
 
   return (
-    <Field id={id} label={label} error={error} hint={help}>
+    <Field id={id} label={label} error={error} hint={help} fieldPath={fieldPath}>
       <div className="numfield-row">
         <Input type="number" value={draft} onChange={onText} min={min} max={max} step={step} />
         {unit !== undefined ? <span className="field-unit">{unit}</span> : null}

@@ -9,7 +9,9 @@
 import { flowChildRefs, flowRoot, flowSpecPaths, flowTree } from './flow';
 import { graphToSpec } from './graphToSpec';
 import { KIND_RULES } from './kindRules';
+import { schemaProblems } from './schemaIssues';
 import { orderedNodes, sectionChildren, subagentEntryKey, HANDLED_SECTIONS } from './order';
+import type { AgentSpecV2 } from './specTypes';
 import type {
   AgentNodeData,
   FlowChildren,
@@ -81,14 +83,36 @@ function tolerantSpecPaths(graph: Graph): Record<string, string> {
   return paths;
 }
 
-/** `graphToSpec(graph).specPaths` — once per call; the tolerant mirror when the spec cannot be re-emitted. */
-function specPaths(graph: Graph): Record<string, string> {
-  try {
-    return graphToSpec(graph).specPaths;
-  } catch {
-    return tolerantSpecPaths(graph);
-  }
+/** What validation needs of one `graphToSpec` emission: the spec and its `specPaths`. */
+interface EmittedSpec {
+  spec: AgentSpecV2;
+  specPaths: Record<string, string>;
 }
+
+/**
+ * `graphToSpec(graph)` memoised per graph object (WeakMap): the canvas
+ * nodes, the Inspector and the Problems drawer all validate the same
+ * graph, and the emission (spec + `nodeIdMap` + layout) is the expensive
+ * half of `validateGraph`. `null` marks a graph `graphToSpec` refuses
+ * (no root agent) so it is not retried every call. The key-order hint of
+ * a `previousSpec` does not change the spec's content or paths, so the
+ * cache is safe to share.
+ */
+const EMITTED_CACHE = new WeakMap<Graph, EmittedSpec | null>();
+
+function emittedSpec(graph: Graph): EmittedSpec | null {
+  if (EMITTED_CACHE.has(graph)) return EMITTED_CACHE.get(graph) ?? null;
+  let emitted: EmittedSpec | null = null;
+  try {
+    const result = graphToSpec(graph);
+    emitted = { spec: result.spec, specPaths: result.specPaths };
+  } catch {
+    emitted = null;
+  }
+  EMITTED_CACHE.set(graph, emitted);
+  return emitted;
+}
+
 
 type CoreCheck = (graph: Graph, paths: Readonly<Record<string, string>>) => Problem[];
 
@@ -399,14 +423,34 @@ const GRAPH_LEVEL: ReadonlySet<CoreCheck> = new Set([noMainAgent]);
 
 const SEVERITY_RANK: Record<Problem['severity'], number> = { error: 0, warning: 1 };
 
+/** Options of {@link validateGraph}. */
+export interface ValidateGraphOptions {
+  /**
+   * Also run `agentSpecV2Schema` over the emitted spec and map each zod
+   * issue to its node (`schemaIssues.ts`). Default `true`; `false` keeps
+   * only the structural + per-kind checks (the kind-rule unit tests use
+   * it so their fixtures stay schema-agnostic).
+   */
+  schema?: boolean;
+}
+
+/** A schema problem is dropped when a structural/kind problem already reports the same node and field path. */
+function isDuplicate(problem: Problem, existing: readonly Problem[]): boolean {
+  const fieldPath = problem.fieldPath ?? '';
+  return existing.some((p) => p.nodeId === problem.nodeId && (p.fieldPath ?? '') === fieldPath);
+}
+
 /**
  * Structural + per-kind validation: the core check rows, then
- * `KIND_RULES[kind].validate` per node in `orderedNodes` order. Result
- * order: graph-level problems first, then by node walk order, errors
- * before warnings within a node.
+ * `KIND_RULES[kind].validate` per node in `orderedNodes` order, then —
+ * unless `options.schema === false` — the AgentSpec v2 schema issues
+ * mapped onto nodes (`schemaProblems`), minus the ones duplicating a
+ * structural/kind problem. Result order: graph-level problems first,
+ * then by node walk order, errors before warnings within a node.
  */
-export function validateGraph(graph: Graph): Problem[] {
-  const paths = specPaths(graph);
+export function validateGraph(graph: Graph, options?: ValidateGraphOptions): Problem[] {
+  const emitted = emittedSpec(graph);
+  const paths = emitted?.specPaths ?? tolerantSpecPaths(graph);
   const walk = orderedNodes(graph);
   const graphLevel: Problem[] = [];
   const nodeLevel: Problem[] = [];
@@ -418,6 +462,11 @@ export function validateGraph(graph: Graph): Problem[] {
       | ((n: GraphNode, g: Graph) => Problem[])
       | undefined;
     if (validate !== undefined) nodeLevel.push(...validate(node, graph));
+  }
+  if (options?.schema !== false && emitted !== null) {
+    for (const problem of schemaProblems(emitted.spec, emitted.specPaths)) {
+      if (!isDuplicate(problem, nodeLevel)) nodeLevel.push(problem);
+    }
   }
   const rank = new Map(walk.map((n, i) => [n.id, i]));
   const rankOf = (p: Problem): number => rank.get(p.nodeId) ?? Number.MAX_SAFE_INTEGER;

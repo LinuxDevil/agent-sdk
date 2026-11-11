@@ -54,6 +54,7 @@ export function HostedForm({ item, patch, graph }: HostedFormProps): JSX.Element
         onChange={(next) => {
           if (next !== undefined) patch({ hosted: next });
         }}
+        fieldPath=".hosted"
         help={
           missing ? (
             <span className="field-warning">The selected model does not offer this tool</span>
@@ -67,6 +68,7 @@ export function HostedForm({ item, patch, graph }: HostedFormProps): JSX.Element
         value={item.options}
         onChange={(options) => patch({ options })}
         check={checkJsonObject}
+        fieldPath=".options"
       />
     </>
   );

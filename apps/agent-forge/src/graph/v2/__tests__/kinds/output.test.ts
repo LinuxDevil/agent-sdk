@@ -101,7 +101,7 @@ describe('outputRules.validate', () => {
   it('flags a schema that is not an object schema', () => {
     for (const jsonSchema of ['x', 42, ['object'], { type: 'string' }, {}]) {
       const g = graphOf({ jsonSchema });
-      expect(validateGraph(g)).toStrictEqual([
+      expect(validateGraph(g, { schema: false })).toStrictEqual([
         error('output', 'The output schema must be an object schema', 'output.jsonSchema'),
       ]);
     }
@@ -115,7 +115,7 @@ describe('outputRules.validate', () => {
         required: ['a', 'b'],
       },
     });
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('output', "'b' is required but not defined", 'output.jsonSchema.required'),
     ]);
   });
@@ -130,7 +130,7 @@ describe('outputRules.validate', () => {
       promptSchema: false,
       responseFormat: 'always',
     });
-    expect(validateGraph(g)).toStrictEqual([]);
+    expect(validateGraph(g, { schema: false })).toStrictEqual([]);
   });
 
   it('maps the problem to the nested spec path inside an inline agent', () => {
@@ -149,7 +149,7 @@ describe('outputRules.validate', () => {
         },
       }),
     );
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error(
         'sub:r/output',
         'The output schema must be an object schema',

@@ -61,14 +61,14 @@ function error(nodeId: string, message: string, fieldPath?: string): Problem {
 
 describe('validateGraph: clean graph', () => {
   it('returns no problems for the worked example', () => {
-    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2))).toStrictEqual([]);
+    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2), { schema: false })).toStrictEqual([]);
   });
 });
 
 describe('validateGraph: core checks', () => {
   it('reports a graph with no main agent', () => {
     const g: Graph = { version: 2, nodes: [], emptySections: [], unplaced: [] };
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('agent', 'The graph has no main agent'),
     ]);
   });
@@ -80,14 +80,14 @@ describe('validateGraph: core checks', () => {
       notes: [{ id: 'n1', x: 0, y: 0, text: 't' }],
     });
     const dup: Graph = { ...g, nodes: [...g.nodes, { ...g.nodes[1] }] };
-    expect(validateGraph(dup)).toStrictEqual([
+    expect(validateGraph(dup, { schema: false })).toStrictEqual([
       error('note:n1', "Two nodes share the id 'note:n1'"),
     ]);
   });
 
   it('reports a node whose owner is gone', () => {
     const g = specToGraph(minimalSpec({ tools: [{ builtin: 'http' }] }));
-    expect(validateGraph(editNode(g, 'tool:http', { owner: 'sub:ghost' }))).toStrictEqual([
+    expect(validateGraph(editNode(g, 'tool:http', { owner: 'sub:ghost' }), { schema: false })).toStrictEqual([
       error('tool:http', 'This node belongs to an agent that no longer exists'),
     ]);
   });
@@ -99,7 +99,7 @@ describe('validateGraph: core checks', () => {
         subagents: { r: inlineAgent({ name: 'r' }) },
       })
     );
-    expect(validateGraph(editNode(g, 'trigger:t1', { owner: 'sub:r' }))).toStrictEqual([
+    expect(validateGraph(editNode(g, 'trigger:t1', { owner: 'sub:r' }), { schema: false })).toStrictEqual([
       error('trigger:t1', 'Only the main agent can have this'),
     ]);
   });
@@ -109,7 +109,7 @@ describe('validateGraph: core checks', () => {
     const data: GraphNode['data'] = { key: 'github', item: { command: 'x' } };
     g = addNode(g, { kind: 'mcp', data }, AT, 'agent').graph;
     g = addNode(g, { kind: 'mcp', data }, AT, 'agent').graph;
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('mcp:github', "Two MCP servers are named 'github'", 'mcpServers.github'),
       error('mcp:github#2', "Two MCP servers are named 'github'", 'mcpServers.github'),
     ]);
@@ -120,7 +120,7 @@ describe('validateGraph: core checks', () => {
     const data: GraphNode['data'] = { key: 'r', item: { ref: 'agents/r.yaml' } };
     g = addNode(g, { kind: 'subagent', data }, AT, 'agent').graph;
     g = addNode(g, { kind: 'subagent', data }, AT, 'agent').graph;
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('sub:r', "Two subagents are named 'r'", 'subagents.r'),
       error('sub:r#2', "Two subagents are named 'r'", 'subagents.r'),
     ]);
@@ -133,7 +133,7 @@ describe('validateGraph: core checks', () => {
     };
     g = addNode(g, { kind: 'memory', data }, AT, 'agent').graph;
     g = addNode(g, { kind: 'memory', data }, AT, 'agent').graph;
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('memory:m', "Two memory slots are named 'm'", 'memory[0].name'),
       error('memory:m#2', "Two memory slots are named 'm'", 'memory[1].name'),
     ]);
@@ -165,7 +165,7 @@ describe('validateGraph: core checks', () => {
       const owner = kind === 'trigger' || kind === 'abort' ? 'agent' : 'sub:r';
       g = addNode(g, { kind, data: { item } as GraphNode['data'] }, AT, 'agent').graph;
       g = addNode(g, { kind, data: { item } as GraphNode['data'] }, AT, owner).graph;
-      const problems = validateGraph(g);
+      const problems = validateGraph(g, { schema: false });
       expect(problems).toHaveLength(2);
       for (const p of problems) {
         expect(p.severity).toBe('error');
@@ -180,7 +180,7 @@ describe('validateGraph: core checks', () => {
     const data: GraphNode['data'] = { item: { jsonSchema: { type: 'object' } } };
     g = addNode(g, { kind: 'output', data }, AT, 'agent').graph;
     g = addNode(g, { kind: 'output', data }, AT, 'agent').graph;
-    expect(validateGraph(g)).toStrictEqual([
+    expect(validateGraph(g, { schema: false })).toStrictEqual([
       error('output', 'An agent can have only one output schema', 'output'),
       error('output#2', 'An agent can have only one output schema', 'output'),
     ]);
@@ -197,7 +197,7 @@ describe('validateGraph: ordering', () => {
       emptySections: [],
       unplaced: [],
     };
-    const problems = validateGraph(g);
+    const problems = validateGraph(g, { schema: false });
     expect(problems[0]).toStrictEqual(error('agent', 'The graph has no main agent'));
     expect(problems).toContainEqual(error('tool:x', 'This node belongs to an agent that no longer exists'));
   });
@@ -209,7 +209,7 @@ describe('validateGraph: ordering', () => {
       validate: (node) => [{ nodeId: node.id, severity: 'warning', message: 'tool warning' }],
     };
     try {
-      const problems = validateGraph(dup);
+      const problems = validateGraph(dup, { schema: false });
       const onTool = problems.filter((p) => p.nodeId === 'tool:x');
       expect(onTool.at(0)?.severity).toBe('error');
       expect(onTool.at(-1)?.severity).toBe('warning');
