@@ -219,7 +219,7 @@ function isPlainText(text: string): boolean {
   return !hasUrl(text) && !hasMarkup(text);
 }
 
-function isArtifactName(name: string): boolean {
+export function isArtifactName(name: string): boolean {
   return ARTIFACT_NAME.test(name) && name.trim() !== '' && !RESERVED_NAMES.has(name) && isPlainText(name);
 }
 

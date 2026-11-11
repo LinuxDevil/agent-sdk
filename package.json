@@ -403,6 +403,7 @@
     "api:check": "tsx scripts/api-report.ts --check",
     "gen:workspace-wire-fixtures": "tsx scripts/gen-workspace-wire-fixtures.ts",
     "docs:llms": "tsx scripts/generate-llms-txt.ts",
+    "workspaces:schema": "tsx scripts/workspaces-schema.ts",
     "docs:llms:check": "tsx scripts/generate-llms-txt.ts --check",
     "fallow": "fallow",
     "fallow:score": "fallow health --score",

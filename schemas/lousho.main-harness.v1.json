@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "lousho.main-harness/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "lousho.main-harness/1"
+    },
+    "instructions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "string",
+            "minLength": 1
+          },
+          "when": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "page",
+          "when"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "clarify": {
+      "type": "object",
+      "properties": {
+        "askWhen": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "runImmediatelyWhen": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "askWhen",
+        "runImmediatelyWhen"
+      ],
+      "additionalProperties": false
+    },
+    "presentation": {
+      "type": "object",
+      "properties": {
+        "style": {
+          "type": "string",
+          "minLength": 1
+        },
+        "followUps": {
+          "type": "string",
+          "minLength": 1
+        },
+        "revisions": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "style",
+        "followUps",
+        "revisions"
+      ],
+      "additionalProperties": false
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "maxConcurrentPages": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "onPageFailure": {
+      "type": "string",
+      "enum": [
+        "report",
+        "retry-once",
+        "ask"
+      ]
+    }
+  },
+  "required": [
+    "schema"
+  ],
+  "additionalProperties": false
+}

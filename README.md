@@ -180,6 +180,7 @@ Loading a folder runs its code, so only load ones you trust. See [Agent director
 - **Tracing**: OpenTelemetry GenAI spans and a local trace viewer. [Observability](https://lousho.com/observability)
 - **Agent Forge**: `lousho studio` opens a local visual canvas, run debugger and chat. [Agent Forge](https://lousho.com/agent-forge)
 - **Self-healing (experimental)**: `lousho improve` turns an agent's failed runs into tested edits to its instructions and skills, applies one that passes (or queues it for a person), and rolls it back on a regression. [Self-healing](docs/self-healing.md)
+- **Workspaces (experimental)**: `lousho/workspaces` holds the contracts for a workspace of pages, harnesses and shared policy: schemas, validation, harness composition and typed authoring operations. [Workspaces](docs/workspaces.md)
 - **Coding agents**: workspace tools, permission rules and starter kits from `lousho add`. [Build a coding agent](https://lousho.com/build-a-coding-agent)
 
 ## Documentation

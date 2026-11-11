@@ -1,0 +1,417 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "lousho.ui/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "lousho.ui/1"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "layout": {
+      "$ref": "#/definitions/component"
+    }
+  },
+  "required": [
+    "schema",
+    "layout"
+  ],
+  "additionalProperties": false,
+  "definitions": {
+    "component": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "stack",
+                "row",
+                "section",
+                "card"
+              ]
+            },
+            "children": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/component"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "children"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "const": "tabs"
+            },
+            "tabs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  "children": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/component"
+                    }
+                  }
+                },
+                "required": [
+                  "label",
+                  "children"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "type",
+            "tabs"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "bind": {
+              "type": "string",
+              "pattern": "^inputs(?:\\.[A-Za-z_][\\w-]*)*$"
+            },
+            "source": {
+              "type": "string",
+              "pattern": "^outputs(?:\\.[A-Za-z_][\\w-]*)*$"
+            },
+            "placeholder": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "textarea",
+                "toggle",
+                "schemaForm"
+              ]
+            },
+            "bind": {
+              "type": "string",
+              "pattern": "^inputs(?:\\.[A-Za-z_][\\w-]*)*$"
+            },
+            "placeholder": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          "required": [
+            "type",
+            "bind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "number",
+                "slider"
+              ]
+            },
+            "bind": {
+              "type": "string",
+              "pattern": "^inputs(?:\\.[A-Za-z_][\\w-]*)*$"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "step": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "type",
+            "bind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "select",
+                "radio"
+              ]
+            },
+            "bind": {
+              "type": "string",
+              "pattern": "^inputs(?:\\.[A-Za-z_][\\w-]*)*$"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 500
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      }
+                    ]
+                  },
+                  "label": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "value"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "type",
+            "bind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "const": "file"
+            },
+            "bind": {
+              "type": "string",
+              "pattern": "^inputs(?:\\.[A-Za-z_][\\w-]*)*$"
+            },
+            "accept": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z]+\\/(?:\\*|[a-z0-9][\\w.+-]*)$"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "bind"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "markdown",
+                "json",
+                "table"
+              ]
+            },
+            "source": {
+              "type": "string",
+              "pattern": "^outputs(?:\\.[A-Za-z_][\\w-]*)*$"
+            }
+          },
+          "required": [
+            "type",
+            "source"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "const": "artifact"
+            },
+            "artifact": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          "required": [
+            "type",
+            "artifact"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibleWhen": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "runButton",
+                "cancelButton",
+                "reviseBox",
+                "artifactGallery",
+                "runStatus",
+                "progress",
+                "traceLink",
+                "versionList",
+                "compare"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  }
+}

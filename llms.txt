@@ -72,6 +72,7 @@
 - [Utilities](https://github.com/LinuxDevil/lousho/blob/main/docs/utilities.md): Supporting helpers exported from the `lousho/utils` subpath: encryption and hashing, and file storage for attachments. None of them is needed to build an agent; they are here for the apps around one.
 - [Vue](https://github.com/LinuxDevil/lousho/blob/main/docs/vue.md): `useLoushoAgent()` for Vue 3 is the React hook as a composable: the same sources, the same state and the same actions, over the same typed event stream. Read React for what each field means, the two kinds of source, how approvals work and the server side; this page covers what differs.
 - [Workspace tools](https://github.com/LinuxDevil/lousho/blob/main/docs/workspace-tools.md): Workspace tools give an agent a file system and a shell, so you can build coding agents in the style of Claude Code. The tools never use `node:fs` or `node:child_process` themselves.
+- [Workspaces: architecture and contracts (v0)](https://github.com/LinuxDevil/lousho/blob/main/docs/workspaces.md): Architecture and contracts v0 for Lousho workspaces. A workspace is a folder of pages, harnesses, agent references, a shared policy and a declarative UI, with the files, fields, defaults, path rules, composition rules, error codes and JSON Schemas that exist today in lousho/workspaces.
 
 ## Examples
 
