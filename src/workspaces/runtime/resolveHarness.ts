@@ -6,9 +6,9 @@ import { pageSchema } from '../contracts/page';
 import { inlineSchemas, joinPath, normalizeDir, subtree } from '../contracts/validateModel';
 import { workspaceManifestSchema } from '../contracts/workspace';
 import type { LoadedWorkspace } from './loadWorkspace';
-import { invalid, jsonOf, layerOf, workspaceProfiles, type ProfileStore } from './profileStore';
+import { invalid, jsonOf, layerOf, parsedFiles, workspaceProfiles, type ProfileStore } from './profileStore';
 
-/** Composed harnesses keyed by the hashes of their layers; create one with {@link harnessCache} and pass it to {@link resolvePageHarness}. */
+/** Composed harnesses keyed by the hashes of their layers; pass a `new Map()` to {@link resolvePageHarness}. It gains an entry per edit, so a long-running host should bound it. */
 export type HarnessCache = Map<string, EffectiveHarness>;
 
 /** Options of {@link resolvePageHarness}. */
@@ -18,11 +18,6 @@ export interface ResolveHarnessOptions {
 }
 
 const EMPTY_HARNESS: Harness = { schema: 'lousho.harness/1' };
-
-/** A new empty cache for {@link resolvePageHarness}; the caller owns it, so nothing is shared between hosts. */
-export function harnessCache(): HarnessCache {
-  return new Map();
-}
 
 function failNoGlobal(ref: string): never {
   throw invalid(`'${ref}' needs a global profile store, but no global profile store was given`);
@@ -42,7 +37,7 @@ function baseLayer(workspace: LoadedWorkspace): HarnessLayer | undefined {
   if (!layer) return undefined;
   const manifest = workspaceManifestSchema.parse(jsonOf(workspace.tree['workspace.json'], 'workspace.json'));
   const files = subtree(workspace.tree, normalizeDir(manifest.harness ?? 'harness'));
-  return { ...layer, harness: inlineSchemas(layer.harness, files) };
+  return { ...layer, harness: inlineSchemas(layer.harness, parsedFiles(files)) };
 }
 
 function pageLayer(workspace: LoadedWorkspace, pageId: string): HarnessLayer {

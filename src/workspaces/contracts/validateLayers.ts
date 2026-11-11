@@ -2,6 +2,7 @@ import { readBaseHarness, type HarnessLayer } from './baseHarness';
 import { composeHarness, type EffectiveHarness } from './compose';
 import { harnessProfileSchema, hasExecutableCriterion, type Harness } from './harness';
 import type { PageManifest } from './page';
+import { isVersionRange } from './versionRange';
 import { validateUiBindings, type UiBindingTarget } from './ui';
 import { folderOf, fromIssues, goalCriteria, harnessCode, inlineSchemas, joinPath, layerFileProblems, normalizeDir, problem, resolveGlobal, subtree, type Ctx, type PageView, type WorkspaceProblem } from './validateModel';
 
@@ -24,16 +25,28 @@ interface Profiles {
 
 type EffectiveCheck = (ctx: Ctx, view: PageView, effective: EffectiveHarness) => WorkspaceProblem[];
 
-const PROFILE_PATH = /^workspace:((?:[a-z0-9][a-z0-9-]*)(?:\/[a-z0-9][a-z0-9-]*)*)$/;
-const GLOBAL_REF = /^global:[^@]+@.+$/;
+const SEGMENT = '[a-z0-9][a-z0-9-]*';
+const PROFILE_PATH = new RegExp(`^workspace:(${SEGMENT}(?:/${SEGMENT})*)$`);
+const GLOBAL_REF = new RegExp(`^global:(${SEGMENT}(?:/${SEGMENT})*)@(.+)$`);
+
+/** The path of a `workspace:<path>` profile ref, or `undefined` when the ref is not one. */
+export function workspaceProfilePath(ref: string): string | undefined {
+  return PROFILE_PATH.exec(ref)?.[1];
+}
+
+/** The path and range of a `global:<path>@<range>` profile ref, or `undefined` when the ref or its range is not valid. */
+export function globalProfileParts(ref: string): { path: string; range: string } | undefined {
+  const match = GLOBAL_REF.exec(ref);
+  return match && isVersionRange(match[2]) ? { path: match[1], range: match[2] } : undefined;
+}
 
 function profileSource(ctx: Ctx, ref: string): ProfileSource | undefined {
-  const workspace = PROFILE_PATH.exec(ref);
-  if (workspace) {
-    const dir = joinPath(folderOf(ctx, 'harnessProfiles'), workspace[1]);
+  const workspace = workspaceProfilePath(ref);
+  if (workspace !== undefined) {
+    const dir = joinPath(folderOf(ctx, 'harnessProfiles'), workspace);
     return { files: subtree(ctx.tree, dir), file: `${dir}/harness.json`, missing: `has no profile at ${dir}/harness.json` };
   }
-  if (!GLOBAL_REF.test(ref)) return undefined;
+  if (!globalProfileParts(ref)) return undefined;
   const resolved = resolveGlobal(ctx, ref);
   const missing = resolved.error === undefined ? 'is a global ref that resolveGlobal does not answer' : `could not be resolved: resolveGlobal failed: ${resolved.error}`;
   return { files: resolved.files, file: ref, missing };

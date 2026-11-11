@@ -677,9 +677,6 @@ export interface Harness {
 export type HarnessCache = Map<string, EffectiveHarness>;
 
 // @public
-export function harnessCache(): HarnessCache;
-
-// @public
 type HarnessField = 'audience' | 'platform' | 'inputs' | 'outputs' | 'capabilities' | 'constraints' | 'evaluation' | 'runtime' | 'context';
 
 // @public
