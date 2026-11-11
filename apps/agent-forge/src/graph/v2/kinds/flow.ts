@@ -94,6 +94,22 @@ function withNodeData(graph: Graph, nodeId: string, data: FlowNodeData): Graph {
   };
 }
 
+/** `graph` with `nodeId`'s flow data replaced by `updater`'s result (`undefined` keeps the node). */
+function mapFlowData(
+  graph: Graph,
+  nodeId: string,
+  updater: (data: FlowNodeData) => FlowNodeData | undefined
+): Graph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => {
+      if (n.id !== nodeId || n.kind !== 'flow') return n;
+      const next = updater(n.data as FlowNodeData);
+      return next === undefined ? n : { ...n, data: next };
+    }),
+  };
+}
+
 /** `targetId` detached from its current parent's children (no-op when it has none). */
 function detachTarget(graph: Graph, targetId: string): Graph {
   const parentId = flowParent(graph, targetId);
@@ -106,64 +122,41 @@ function detachTarget(graph: Graph, targetId: string): Graph {
 
 /** Append `childId` to a `steps`-shaped (or empty sequence/parallel) node's children. */
 function appendStep(graph: Graph, parentId: string, childId: string): Graph {
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) => {
-      if (n.id !== parentId || n.kind !== 'flow') return n;
-      const data = n.data as FlowNodeData;
-      const children = effectiveChildren(data);
-      if (children.shape !== 'steps') return n;
-      return { ...n, data: { ...data, children: { shape: 'steps', ids: [...children.ids, childId] } } };
-    }),
-  };
+  return mapFlowData(graph, parentId, (data) => {
+    const children = effectiveChildren(data);
+    if (children.shape !== 'steps') return undefined;
+    return { ...data, children: { shape: 'steps', ids: [...children.ids, childId] } };
+  });
 }
 
 /** Append `{ id: childId }` (a condition-less default option) to a `oneOf` node's children. */
 function appendOption(graph: Graph, routerId: string, childId: string): Graph {
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) => {
-      if (n.id !== routerId || n.kind !== 'flow') return n;
-      const data = n.data as FlowNodeData;
-      const children = effectiveChildren(data);
-      if (children.shape !== 'options') return n;
-      return {
-        ...n,
-        data: { ...data, children: { shape: 'options', options: [...children.options, { id: childId }] } },
-      };
-    }),
-  };
+  return mapFlowData(graph, routerId, (data) => {
+    const children = effectiveChildren(data);
+    if (children.shape !== 'options') return undefined;
+    return { ...data, children: { shape: 'options', options: [...children.options, { id: childId }] } };
+  });
 }
 
 /** Set a `forEach` node's empty `step` child to `childId`. */
 function setLoopStep(graph: Graph, loopId: string, childId: string): Graph {
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) => {
-      if (n.id !== loopId || n.kind !== 'flow') return n;
-      const data = n.data as FlowNodeData;
-      const children = effectiveChildren(data);
-      if (children.shape !== 'step' || children.id !== null) return n;
-      return { ...n, data: { ...data, children: { shape: 'step', id: childId } } };
-    }),
-  };
+  return mapFlowData(graph, loopId, (data) => {
+    const children = effectiveChildren(data);
+    if (children.shape !== 'step' || children.id !== null) return undefined;
+    return { ...data, children: { shape: 'step', id: childId } };
+  });
 }
 
 /** Insert `childId` right after `afterId` in a `steps`-shaped parent's children. */
 function insertAfter(graph: Graph, parentId: string, afterId: string, childId: string): Graph {
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) => {
-      if (n.id !== parentId || n.kind !== 'flow') return n;
-      const data = n.data as FlowNodeData;
-      if (data.children.shape !== 'steps') return n;
-      const index = data.children.ids.indexOf(afterId);
-      if (index === -1) return n;
-      const ids = [...data.children.ids];
-      ids.splice(index + 1, 0, childId);
-      return { ...n, data: { ...data, children: { shape: 'steps', ids } } };
-    }),
-  };
+  return mapFlowData(graph, parentId, (data) => {
+    if (data.children.shape !== 'steps') return undefined;
+    const index = data.children.ids.indexOf(afterId);
+    if (index === -1) return undefined;
+    const ids = [...data.children.ids];
+    ids.splice(index + 1, 0, childId);
+    return { ...data, children: { shape: 'steps', ids } };
+  });
 }
 
 /** Whether `ancestorId` is `nodeId` itself or one of its flow ancestors. */
@@ -327,6 +320,15 @@ function rootToolNames(graph: Graph): Set<string> {
   return names;
 }
 
+/**
+ * The sorted list of tool names a `toolCall` step's picker offers — the
+ * root agent's `tool` nodes only (probed MCP `<key>__<tool>` names are not
+ * listed, per the ticket). C25's ToolCallForm reads this.
+ */
+export function rootToolNameList(graph: Graph): string[] {
+  return [...rootToolNames(graph)].sort();
+}
+
 /** One problem, or none — the shape every per-type check returns. */
 function maybeProblem(
   node: NodeOfKind<'flow'>,
@@ -448,25 +450,52 @@ function validateFlowNode(node: NodeOfKind<'flow'>, graph: Graph): Problem[] {
 }
 
 /**
+ * Moves `childId` `delta` places inside `parentId`'s ordered children
+ * (`steps` ids or router `options`; `delta` is -1 up / +1 down). A no-op at
+ * either end, for `step`-shaped (single-child) parents, and for children
+ * the parent does not reference. C25's container Inspector uses it for the
+ * Up/Down buttons.
+ */
+export function reorderChild(graph: Graph, parentId: string, childId: string, delta: number): Graph {
+  return mapFlowData(graph, parentId, (data) => {
+    const children = effectiveChildren(data);
+    if (children.shape === 'steps') {
+      const from = children.ids.indexOf(childId);
+      const to = from + delta;
+      if (from === -1 || to < 0 || to >= children.ids.length) return undefined;
+      const ids = [...children.ids];
+      ids.splice(from, 1);
+      ids.splice(to, 0, childId);
+      return { ...data, children: { shape: 'steps', ids } };
+    }
+    if (children.shape === 'options') {
+      const from = children.options.findIndex((o) => o.id === childId);
+      const to = from + delta;
+      if (from === -1 || to < 0 || to >= children.options.length) return undefined;
+      const options = [...children.options];
+      const [moved] = options.splice(from, 1);
+      options.splice(to, 0, moved);
+      return { ...data, children: { shape: 'options', options } };
+    }
+    return undefined;
+  });
+}
+
+/**
  * Sets a router option's `condition` (`trimmed`; empty removes it — the
  * option becomes the default branch). C25's condition editor calls this.
  */
 export function setOptionCondition(graph: Graph, routerId: string, childId: string, condition: string): Graph {
   const trimmed = condition.trim();
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) => {
-      if (n.id !== routerId || n.kind !== 'flow') return n;
-      const data = n.data as FlowNodeData;
-      if (data.children.shape !== 'options') return n;
-      const options = data.children.options.map((option) => {
-        if (option.id !== childId) return option;
-        if (trimmed === '') {
-          return { id: option.id };
-        }
-        return { ...option, condition: trimmed };
-      });
-      return { ...n, data: { ...data, children: { shape: 'options', options } } };
-    }),
-  };
+  return mapFlowData(graph, routerId, (data) => {
+    if (data.children.shape !== 'options') return undefined;
+    const options = data.children.options.map((option) => {
+      if (option.id !== childId) return option;
+      if (trimmed === '') {
+        return { id: option.id };
+      }
+      return { ...option, condition: trimmed };
+    });
+    return { ...data, children: { shape: 'options', options } };
+  });
 }
