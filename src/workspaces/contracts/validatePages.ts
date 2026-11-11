@@ -103,7 +103,7 @@ function goalFileProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
 
 function listedFileProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
   if (!view.harness) return [];
-  return layerFileProblems(ctx, { dir: view.dir, file: view.harnessPath, files: subtree(ctx.tree, view.dir), scanned: true }, view.harness, true);
+  return layerFileProblems(ctx, { dir: view.dir, file: view.harnessPath, files: subtree(ctx.tree, view.dir) }, view.harness, true);
 }
 
 const PAGE_CHECKS: readonly ((ctx: Ctx, view: PageView) => WorkspaceProblem[])[] = [aliasProblems, refProblems, workflowProblems, goalFileProblems, listedFileProblems, layerProblems];

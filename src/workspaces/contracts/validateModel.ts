@@ -183,7 +183,6 @@ export interface LayerOwner {
   dir: string;
   file: string;
   files: Readonly<Record<string, unknown>>;
-  scanned: boolean;
 }
 
 const SCRIPT_PATH = /\.[cm]?[jt]s$/;
@@ -201,10 +200,12 @@ function listedFiles(harness: Harness, withInstructions: boolean): [string, stri
   return [...instructions, ...checks, ...resources, ...schemas];
 }
 
-function schemaScan(ctx: Ctx, path: string): WorkspaceProblem[] {
+function schemaScan(ctx: Ctx, owner: LayerOwner, rel: string): WorkspaceProblem[] {
+  const path = joinPath(owner.dir, rel);
+  const key = joinPath('', rel);
   ctx.read.add(path);
-  if (!(path in ctx.tree) || ctx.broken.has(path)) return [];
-  return forbiddenKeyErrors(ctx.tree[path], HARNESS_KEY_RULES, path, ['']).map((error) => problem(harnessCode(error.message, 'PRD001'), path, dotted(error.path), error.message));
+  if (!(key in owner.files) || ctx.broken.has(path)) return [];
+  return forbiddenKeyErrors(owner.files[key], HARNESS_KEY_RULES, path, ['']).map((error) => problem(harnessCode(error.message, 'PRD001'), path, dotted(error.path), error.message));
 }
 
 function isPresent(ctx: Ctx, owner: LayerOwner, rel: string, isSchema: boolean): boolean {
@@ -215,7 +216,7 @@ function isPresent(ctx: Ctx, owner: LayerOwner, rel: string, isSchema: boolean):
 
 export function layerFileProblems(ctx: Ctx, owner: LayerOwner, harness: Harness, withInstructions: boolean): WorkspaceProblem[] {
   const listed = listedFiles(harness, withInstructions);
-  const scans = owner.scanned ? listed.filter(([, , isSchema]) => isSchema).flatMap(([, rel]) => schemaScan(ctx, joinPath(owner.dir, rel))) : [];
+  const scans = listed.filter(([, , isSchema]) => isSchema).flatMap(([, rel]) => schemaScan(ctx, owner, rel));
   const missing = listed
     .filter(([, rel, isSchema]) => !isPresent(ctx, owner, rel, isSchema))
     .map(([field, rel]) => problem('PRD032', joinPath(owner.dir, rel), '', `is listed in ${owner.file} ${field} but missing from the workspace`));

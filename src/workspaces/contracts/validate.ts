@@ -141,7 +141,7 @@ function baseHarnessProblems(ctx: Ctx): WorkspaceProblem[] {
   ctx.read.add(file);
   const read = readBaseHarness(ctx.tree);
   const problems = read.problems.filter((item) => !ctx.broken.has(item.path)).map((item) => problem(harnessCode(item.message, 'PRD004'), item.path, '', item.message));
-  const listed = read.layer ? layerFileProblems(ctx, { dir, file, files: subtree(ctx.tree, dir), scanned: true }, read.layer.harness, false) : [];
+  const listed = read.layer ? layerFileProblems(ctx, { dir, file, files: subtree(ctx.tree, dir) }, read.layer.harness, false) : [];
   return [...problems, ...listed];
 }
 

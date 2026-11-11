@@ -263,6 +263,18 @@ describe('cross-file checks', () => {
     expect(validateWorkspace(present)).toEqual([]);
   });
 
+  it('a global profile schema file is scanned for policy keys like an inline schema', () => {
+    const tree = edit(base(), 'pages/main/page.json', (doc) => ({ ...doc, harness: { extends: ['global:tones/calm@^1.0.0'] } }));
+    const resolveWith = (schema: unknown) => (): WorkspaceTree => ({
+      'harness.json': { schema: 'lousho.harness/1', id: 'calm', version: '1.0.0', outputs: { schema: 's.json' } },
+      's.json': schema,
+    });
+    const bad = validateWorkspace(tree, { resolveGlobal: resolveWith({ type: 'object', permissions: ['all'] }) });
+    expect(bad).toEqual([expect.objectContaining({ code: 'PRD001', file: 'global:tones/calm@^1.0.0/s.json' })]);
+    const clean = validateWorkspace(tree, { resolveGlobal: resolveWith({ type: 'object', properties: { tools: { type: 'string' } } }) });
+    expect(clean.filter((problem) => problem.code === 'PRD001')).toEqual([]);
+  });
+
   it('a base schema written in a layer binds the page UI from that layer folder', () => {
     const tree = edit(readNegativeTree('ui-bind-missing-input'), 'pages/main/harness/harness.json', ({ inputs: _inputs, ...doc }) => doc);
     const withBase = { ...tree, 'harness/harness.json': { schema: 'lousho.harness/1', inputs: { schema: 'schemas/in.json' } }, 'harness/schemas/in.json': { type: 'object', properties: { brief: { type: 'string' } } } };

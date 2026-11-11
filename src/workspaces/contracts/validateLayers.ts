@@ -1,6 +1,7 @@
 import { readBaseHarness, type HarnessLayer } from './baseHarness';
 import { composeHarness, type EffectiveHarness } from './compose';
 import { harnessProfileSchema, hasExecutableCriterion, type Harness } from './harness';
+import type { PageManifest } from './page';
 import { validateUiBindings, type UiBindingTarget } from './ui';
 import { folderOf, fromIssues, goalCriteria, harnessCode, inlineSchemas, joinPath, layerFileProblems, normalizeDir, problem, resolveGlobal, subtree, type Ctx, type PageView, type WorkspaceProblem } from './validateModel';
 
@@ -59,7 +60,7 @@ function readProfile(ctx: Ctx, ref: string, origin: Origin): { layer?: HarnessLa
   const { texts, missing } = textsOf(source.files ?? {}, parsed.data);
   const dir = source.file.replace(/\/?harness\.json$/, '');
   const files = source.files ?? {};
-  const owner = { dir, file: source.file, files, scanned: !ref.startsWith('global:') };
+  const owner = { dir, file: source.file, files };
   const problems = [
     ...missing.map((file) => problem('PRD032', joinPath(dir, file), '', `is listed in ${source.file} instructions but missing`)),
     ...layerFileProblems(ctx, owner, parsed.data, false),
@@ -138,15 +139,24 @@ const capabilityProblems: EffectiveCheck = (_ctx, view, effective) =>
 
 const EFFECTIVE_CHECKS: readonly EffectiveCheck[] = [uiProblems, executableProblems, goalCheckProblems, capabilityProblems];
 
+function baseLayerOf(ctx: Ctx, base: ReturnType<typeof readBaseHarness>): HarnessLayer | undefined {
+  return base.layer && { ...base.layer, harness: inlineSchemas(base.layer.harness, subtree(ctx.tree, baseDir(ctx))) };
+}
+
+function composedLayers(ctx: Ctx, view: PageView, own: HarnessLayer, page: PageManifest): { effective?: EffectiveHarness; problems: WorkspaceProblem[] } {
+  const profiles: Profiles = { layers: [], problems: [], seen: new Set() };
+  collectProfiles(ctx, page.harness.extends, (index) => ({ file: view.pagePath, path: `harness.extends.${index}` }), profiles);
+  if (profiles.problems.length > 0) return { problems: profiles.problems };
+  const base = baseLayerOf(ctx, readBaseHarness(ctx.tree));
+  const effective = tryCompose([...(base ? [base] : []), ...profiles.layers, own]);
+  if (typeof effective === 'string') return { problems: [problem('PRD013', view.pagePath, 'harness.extends', effective)] };
+  return { effective, problems: [] };
+}
+
 export function layerProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
   const base = readBaseHarness(ctx.tree);
   const own = view.page && view.harness && base.problems.length === 0 ? pageLayer(ctx, view, view.harness, view.page.harness.extends) : undefined;
-  const baseLayer = base.layer && { ...base.layer, harness: inlineSchemas(base.layer.harness, subtree(ctx.tree, baseDir(ctx))) };
   if (!own || !view.page) return [];
-  const profiles: Profiles = { layers: [], problems: [], seen: new Set() };
-  collectProfiles(ctx, view.page.harness.extends, (index) => ({ file: view.pagePath, path: `harness.extends.${index}` }), profiles);
-  if (profiles.problems.length > 0) return profiles.problems;
-  const effective = tryCompose([...(baseLayer ? [baseLayer] : []), ...profiles.layers, own]);
-  if (typeof effective === 'string') return [problem('PRD013', view.pagePath, 'harness.extends', effective)];
-  return EFFECTIVE_CHECKS.flatMap((check) => check(ctx, view, effective));
+  const { effective, problems } = composedLayers(ctx, view, own, view.page);
+  return effective ? EFFECTIVE_CHECKS.flatMap((check) => check(ctx, view, effective)) : problems;
 }
