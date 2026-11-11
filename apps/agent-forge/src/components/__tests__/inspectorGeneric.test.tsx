@@ -20,9 +20,10 @@ vi.mock('../../state/AppState', () => ({
 import { Inspector } from '../Inspector';
 
 /**
- * A `flow` node built by hand. Its `KindView.Fields` is the generic JSON
- * editor over `data.step` (per-step forms are C25), so it exercises the
- * generic Inspector even though the kind itself is registered (C15).
+ * A `flow` node with an editor-only step `type`: `FlowStepFields` keeps
+ * the generic JSON editor of `data.step` for types it has no form for
+ * (C25), so this exercises the generic Inspector even though the kind
+ * itself is registered (C15).
  */
 const baseGraph = (): Graph =>
   ({
@@ -33,7 +34,7 @@ const baseGraph = (): Graph =>
         kind: 'flow',
         owner: 'agent',
         position: { x: 0, y: 0 },
-        data: { step: { type: 'end', id: 'e1' }, children: { shape: 'none' } },
+        data: { step: { type: 'mystery', id: 'e1' }, children: { shape: 'none' } },
       } satisfies GraphNode,
     ],
     emptySections: [],
@@ -63,10 +64,10 @@ describe('generic Inspector', () => {
   it('shows the selected node header and the JSON editor seeded with its item', () => {
     const container = render(<Inspector />);
     expect(container.querySelector('.inspector-head .k')?.textContent).toBe('Selected node (Flow step)');
-    // The flow view titles a card by its step type label; the id rides in the chip.
-    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('End');
+    // The flow view titles a card by its step type label; unknown types show the raw type.
+    expect(container.querySelector('.inspector-head .v')?.textContent).toBe('mystery');
     const textarea = container.querySelector('#node-json') as HTMLTextAreaElement;
-    expect(JSON.parse(textarea.value)).toEqual({ type: 'end', id: 'e1' });
+    expect(JSON.parse(textarea.value)).toEqual({ type: 'mystery', id: 'e1' });
     expect(container.textContent).toContain('This node has no form yet.');
   });
 

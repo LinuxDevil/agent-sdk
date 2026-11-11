@@ -247,6 +247,30 @@ export function patchNode(graph: Graph, nodeId: string, patch: Record<string, un
   };
 }
 
+/**
+ * Shallow-merges `patch` into a `flow` node's `data.flowMeta` — the root
+ * step's `AgentFlow` wrapper fields (code, name, description, inputs,
+ * agents). A `undefined` patch value deletes the key; a `flowMeta` left
+ * with no keys is removed entirely so it stays out of the emitted YAML.
+ * Non-flow nodes and flow nodes without `flowMeta` are returned unchanged.
+ */
+export function patchFlowMeta(graph: Graph, nodeId: string, patch: Record<string, unknown>): Graph {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((n) => {
+      if (n.id !== nodeId || n.kind !== 'flow') return n;
+      const data = n.data;
+      if (data.flowMeta === undefined) return n;
+      const base = data.flowMeta as unknown as Record<string, unknown>;
+      const merged = mergePatch(base, patch);
+      const next: typeof data = { ...data };
+      if (Object.keys(merged).length === 0) delete next.flowMeta;
+      else next.flowMeta = merged as typeof data.flowMeta;
+      return { ...n, data: next };
+    }),
+  };
+}
+
 /** Sets a group node's `collapsed` flag (persisted into `layout.json` by `graphToSpec`). */
 export function setCollapsed(graph: Graph, nodeId: string, collapsed: boolean): Graph {
   return {
