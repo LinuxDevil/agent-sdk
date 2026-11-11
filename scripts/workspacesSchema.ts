@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { zodSchema } from 'ai';
 import { z } from 'zod';
 import { schemaToJsonSchema } from '../src/utils/zodCompat';
@@ -135,8 +137,14 @@ function unrolled(schema: Record<string, unknown>): Record<string, unknown> {
   return unroll(rest, (definitions ?? {}) as Record<string, unknown>, 6) as Record<string, unknown>;
 }
 
+const SCHEMAS_DIR = path.resolve(__dirname, '..', 'schemas');
+
+export function committedWorkspaceSchemas(): Record<string, string> {
+  return Object.fromEntries(fs.readdirSync(SCHEMAS_DIR).sort().map((file) => [file, fs.readFileSync(path.join(SCHEMAS_DIR, file), 'utf8')]));
+}
+
 export function validatorFor(file: string): (value: unknown) => boolean {
-  const schema = unrolled(workspaceJsonSchemas()[file]);
+  const schema = unrolled(JSON.parse(committedWorkspaceSchemas()[file]) as Record<string, unknown>);
   const standard = jsonSchemaToStandardSchema(schema)['~standard'];
   return (value) => {
     const result = standard.validate(value) as { issues?: unknown };

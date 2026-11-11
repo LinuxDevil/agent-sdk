@@ -1,20 +1,26 @@
-import { isDeepStrictEqual } from 'node:util';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { NOT_EXPRESSIBLE, schemaFileOf, validatorFor } from '../../../scripts/workspacesSchema';
+import { isZod4Schema } from '../../utils/zodCompat';
+import { workspaceManifestObjectSchema } from '../contracts/workspace';
+import { NOT_EXPRESSIBLE, committedWorkspaceSchemas, renderWorkspaceSchemas, schemaFileOf, validatorFor } from '../../../scripts/workspacesSchema';
 import { readFixtureTree, readNegativeIndex, readNegativeTree } from '../__fixtures__/readTree';
 import { applyOps } from '../contracts/authoringOps';
 import { composeHarness } from '../contracts/compose';
 import { base, instagram, page, profiles, layer } from '../contracts/__fixtures__/composeLayers';
-import { MARKETING_BUILD_OPS } from '../contracts/__fixtures__/authoringOps';
+import { MARKETING_BUILD_OPS, NOT_WRITABLE } from '../contracts/__fixtures__/authoringOps';
 import { validateWorkspace } from '../contracts/validate';
 
 const POSITIVE = ['marketing', 'ops-desk', 'coding'];
 
-const NOT_WRITABLE = [/^shared\/(brand|policies)\//, /^harness-profiles\//, /^workflows\//, /\/tools\/[^/]+\.ts$/, /\/checks\/[^/]+\.ts$/, /\/resources\/[^/]+\.md$/];
+const MARKETING_DIR = fileURLToPath(new URL('../__fixtures__/marketing/', import.meta.url));
 
 const golden = (name: string): string => `../contracts/__fixtures__/compose/${name}.json`;
 const asJson = (value: unknown): string => `${JSON.stringify(value, null, 2)}\n`;
-const normal = (value: unknown): unknown => (typeof value === 'string' ? value.trimEnd() : value);
+const rawOf = (path: string): string => readFileSync(join(MARKETING_DIR, path), 'utf8');
+const serialized = (value: unknown): string => (typeof value === 'string' ? value : `${JSON.stringify(value, null, 2)}\n`);
+const sameText = (built: string, raw: string): boolean => built === raw || `${built}\n` === raw;
 
 describe('G0 contract gate', () => {
   it.each(POSITIVE)('positive fixture %s validates with zero problems', (name) => {
@@ -30,7 +36,14 @@ describe('G0 contract gate', () => {
     }
   });
 
-  it('the exported JSON Schemas agree with zod on every fixture file', () => {
+  it.skipIf(isZod4Schema(workspaceManifestObjectSchema))('the committed schemas/*.v1.json equal the zod-generated schemas', () => {
+    const rendered = renderWorkspaceSchemas();
+    const committed = committedWorkspaceSchemas();
+    expect(Object.keys(committed)).toEqual(Object.keys(rendered).sort());
+    for (const [file, content] of Object.entries(rendered)) expect(committed[file], file).toBe(content);
+  });
+
+  it('the committed JSON Schemas agree with zod on every fixture file', () => {
     for (const name of POSITIVE) {
       for (const [filePath, value] of Object.entries(readFixtureTree(name))) {
         const file = schemaFileOf(filePath);
@@ -60,7 +73,7 @@ describe('G0 contract gate', () => {
     const seed = Object.fromEntries(Object.entries(fixture).filter(([path]) => NOT_WRITABLE.some((pattern) => pattern.test(path))));
     const result = applyOps(seed, MARKETING_BUILD_OPS, { validate: validateWorkspace });
     expect(result.problems).toEqual([]);
-    const differing = Object.keys(result.tree).filter((path) => !(path in fixture) || !isDeepStrictEqual(normal(result.tree[path]), normal(fixture[path])));
+    const differing = Object.keys(result.tree).filter((path) => !(path in fixture) || !sameText(serialized(result.tree[path]), rawOf(path)));
     expect(differing).toEqual([]);
     const written = Object.keys(result.tree).filter((path) => !(path in seed));
     expect(written.length).toBeGreaterThan(30);

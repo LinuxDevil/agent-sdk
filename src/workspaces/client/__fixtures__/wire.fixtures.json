@@ -8,7 +8,7 @@
         "name": "Marketing",
         "description": "Short videos for social channels.",
         "domain": "marketing",
-        "revision": "rev-2f50acb26448",
+        "revision": "rev-7d6e6f2ce202",
         "pageCount": 3,
         "hasMainAgent": true
       }
@@ -18,7 +18,7 @@
       "name": "Marketing",
       "description": "Short videos for social channels.",
       "domain": "marketing",
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "pageCount": 3,
       "hasMainAgent": true,
       "manifest": {
@@ -56,7 +56,7 @@
         {
           "workspaceId": "marketing",
           "id": "instagram-videos",
-          "revision": "rev-2f50acb26448",
+          "revision": "rev-7d6e6f2ce202",
           "manifest": {
             "schema": "lousho.page/1",
             "id": "instagram-videos",
@@ -97,7 +97,7 @@
         {
           "workspaceId": "marketing",
           "id": "facebook-videos",
-          "revision": "rev-2f50acb26448",
+          "revision": "rev-7d6e6f2ce202",
           "manifest": {
             "schema": "lousho.page/1",
             "id": "facebook-videos",
@@ -126,7 +126,7 @@
         {
           "workspaceId": "marketing",
           "id": "content-research",
-          "revision": "rev-2f50acb26448",
+          "revision": "rev-7d6e6f2ce202",
           "manifest": {
             "schema": "lousho.page/1",
             "id": "content-research",
@@ -161,7 +161,7 @@
       {
         "workspaceId": "marketing",
         "id": "instagram-videos",
-        "revision": "rev-2f50acb26448",
+        "revision": "rev-7d6e6f2ce202",
         "manifest": {
           "schema": "lousho.page/1",
           "id": "instagram-videos",
@@ -202,7 +202,7 @@
       {
         "workspaceId": "marketing",
         "id": "facebook-videos",
-        "revision": "rev-2f50acb26448",
+        "revision": "rev-7d6e6f2ce202",
         "manifest": {
           "schema": "lousho.page/1",
           "id": "facebook-videos",
@@ -231,7 +231,7 @@
       {
         "workspaceId": "marketing",
         "id": "content-research",
-        "revision": "rev-2f50acb26448",
+        "revision": "rev-7d6e6f2ce202",
         "manifest": {
           "schema": "lousho.page/1",
           "id": "content-research",
@@ -264,7 +264,7 @@
     "getPage": {
       "workspaceId": "marketing",
       "id": "instagram-videos",
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "manifest": {
         "schema": "lousho.page/1",
         "id": "instagram-videos",
@@ -304,7 +304,7 @@
     },
     "getEffectiveHarness": {
       "pageId": "instagram-videos",
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "effective": {
         "sources": [
           "workspace base",
@@ -730,7 +730,7 @@
       "hash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
     },
     "getMainHarness": {
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "harness": {
         "schema": "lousho.main-harness/1",
         "instructions": [
@@ -822,7 +822,7 @@
     ],
     "getPageUi": {
       "pageId": "instagram-videos",
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "ui": {
         "schema": "lousho.ui/1",
         "layout": {
@@ -868,7 +868,7 @@
     "getProblems": [],
     "getHistory": [
       {
-        "revision": "rev-2f50acb26448",
+        "revision": "rev-7d6e6f2ce202",
         "at": "2026-11-10T09:00:00.000Z",
         "by": "ali",
         "kind": "authoring",
@@ -876,15 +876,15 @@
       }
     ],
     "setPolicy": {
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "problems": []
     },
     "writeSharedFile": {
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "problems": []
     },
     "writeProfile": {
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "problems": []
     },
     "applyOps": {
@@ -901,53 +901,6 @@
                 "path": "description",
                 "before": "Makes an Instagram video from a topic.",
                 "after": "Makes a vertical Instagram video from a topic and a tone."
-              },
-              {
-                "path": "execution",
-                "before": {
-                  "type": "workflow",
-                  "workflow": {
-                    "workflow": "workspace:video-production"
-                  },
-                  "multiAgent": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ]
-                  },
-                  "goal": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ],
-                    "goal": "./goal.json"
-                  },
-                  "onFailure": "return-to-main"
-                },
-                "after": {
-                  "type": "workflow",
-                  "multiAgent": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ]
-                  },
-                  "workflow": {
-                    "workflow": "workspace:video-production"
-                  },
-                  "goal": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ],
-                    "goal": "./goal.json"
-                  },
-                  "onFailure": "return-to-main"
-                }
               }
             ]
           }
@@ -959,7 +912,7 @@
       {
         "id": "draft-0001",
         "workspaceId": "marketing",
-        "baseRevision": "rev-2f50acb26448",
+        "baseRevision": "rev-7d6e6f2ce202",
         "createdBy": "ali",
         "updatedAt": "2026-11-10T09:00:00.000Z",
         "operations": [
@@ -981,53 +934,6 @@
                   "path": "description",
                   "before": "Makes an Instagram video from a topic.",
                   "after": "Makes a vertical Instagram video from a topic and a tone."
-                },
-                {
-                  "path": "execution",
-                  "before": {
-                    "type": "workflow",
-                    "workflow": {
-                      "workflow": "workspace:video-production"
-                    },
-                    "multiAgent": {
-                      "lead": "script",
-                      "delegates": [
-                        "video",
-                        "voice"
-                      ]
-                    },
-                    "goal": {
-                      "lead": "script",
-                      "delegates": [
-                        "video",
-                        "voice"
-                      ],
-                      "goal": "./goal.json"
-                    },
-                    "onFailure": "return-to-main"
-                  },
-                  "after": {
-                    "type": "workflow",
-                    "multiAgent": {
-                      "lead": "script",
-                      "delegates": [
-                        "video",
-                        "voice"
-                      ]
-                    },
-                    "workflow": {
-                      "workflow": "workspace:video-production"
-                    },
-                    "goal": {
-                      "lead": "script",
-                      "delegates": [
-                        "video",
-                        "voice"
-                      ],
-                      "goal": "./goal.json"
-                    },
-                    "onFailure": "return-to-main"
-                  }
                 }
               ]
             }
@@ -1040,7 +946,7 @@
     "getDraft": {
       "id": "draft-0001",
       "workspaceId": "marketing",
-      "baseRevision": "rev-2f50acb26448",
+      "baseRevision": "rev-7d6e6f2ce202",
       "createdBy": "ali",
       "updatedAt": "2026-11-10T09:00:00.000Z",
       "operations": [
@@ -1062,53 +968,6 @@
                 "path": "description",
                 "before": "Makes an Instagram video from a topic.",
                 "after": "Makes a vertical Instagram video from a topic and a tone."
-              },
-              {
-                "path": "execution",
-                "before": {
-                  "type": "workflow",
-                  "workflow": {
-                    "workflow": "workspace:video-production"
-                  },
-                  "multiAgent": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ]
-                  },
-                  "goal": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ],
-                    "goal": "./goal.json"
-                  },
-                  "onFailure": "return-to-main"
-                },
-                "after": {
-                  "type": "workflow",
-                  "multiAgent": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ]
-                  },
-                  "workflow": {
-                    "workflow": "workspace:video-production"
-                  },
-                  "goal": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ],
-                    "goal": "./goal.json"
-                  },
-                  "onFailure": "return-to-main"
-                }
               }
             ]
           }
@@ -1118,13 +977,13 @@
       "problems": []
     },
     "applyDraft": {
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "problems": []
     },
     "rebaseDraft": {
       "id": "draft-0001",
       "workspaceId": "marketing",
-      "baseRevision": "rev-2f50acb26448",
+      "baseRevision": "rev-7d6e6f2ce202",
       "createdBy": "ali",
       "updatedAt": "2026-11-10T09:00:00.000Z",
       "operations": [
@@ -1146,53 +1005,6 @@
                 "path": "description",
                 "before": "Makes an Instagram video from a topic.",
                 "after": "Makes a vertical Instagram video from a topic and a tone."
-              },
-              {
-                "path": "execution",
-                "before": {
-                  "type": "workflow",
-                  "workflow": {
-                    "workflow": "workspace:video-production"
-                  },
-                  "multiAgent": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ]
-                  },
-                  "goal": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ],
-                    "goal": "./goal.json"
-                  },
-                  "onFailure": "return-to-main"
-                },
-                "after": {
-                  "type": "workflow",
-                  "multiAgent": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ]
-                  },
-                  "workflow": {
-                    "workflow": "workspace:video-production"
-                  },
-                  "goal": {
-                    "lead": "script",
-                    "delegates": [
-                      "video",
-                      "voice"
-                    ],
-                    "goal": "./goal.json"
-                  },
-                  "onFailure": "return-to-main"
-                }
               }
             ]
           }
@@ -1202,7 +1014,7 @@
       "problems": []
     },
     "discardDraft": {
-      "revision": "rev-2f50acb26448",
+      "revision": "rev-7d6e6f2ce202",
       "problems": []
     },
     "startPageRun": {

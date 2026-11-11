@@ -12,15 +12,15 @@
   },
   "execution": {
     "type": "workflow",
-    "workflow": {
-      "workflow": "workspace:video-production"
-    },
     "multiAgent": {
       "lead": "script",
       "delegates": [
         "video",
         "voice"
       ]
+    },
+    "workflow": {
+      "workflow": "workspace:video-production"
     },
     "goal": {
       "lead": "script",
