@@ -804,7 +804,7 @@ automatically as long as `apps/agent-forge/dist-server` hasn't been built
 yet:
 
 ```bash
-git clone https://github.com/LinuxDevil/agent-sdk.git
+git clone https://github.com/LinuxDevil/lousho.git
 cd agent-sdk
 npm install
 npx lousho studio --dev   # or just `npx lousho studio` before building

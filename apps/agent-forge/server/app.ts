@@ -27,7 +27,8 @@
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
  *   POST /agents/:id/stop            -> abort the in-flight run, if any
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
- *   POST /agents/:id/approve         -> body: { approvalId, approved, note? }
+ *   POST /agents/:id/approve         -> body: { approvalId, approved, note? } or { approvalId, answer } for a question pause
+ *   POST /agents/:id/steer           -> body: { message } - 202 SteerResponse; 409 when nothing is running / a flow run
  *   GET  /agents/:id/traces?limit=N  -> { traces: TraceSummaryPayload[] } (newest first)
  *   GET  /agents/:id/traces/:traceId -> TraceDetailPayload | 404
  *   GET  /runs/:id/history           -> RunHistoryPayload
@@ -81,12 +82,13 @@ import {
   AlreadyRunningError,
   NoActiveRunError,
   ApprovalPendingError,
+  SteerUnsupportedError,
 } from './runRegistry';
 import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { ForkRunRequest, ForkRunResponse, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import type { ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
 import { configureStudioHome } from './workspace/studioPaths';
@@ -380,20 +382,19 @@ function registerRunRoutes(app: Express): void {
   app.post(
     '/agents/:id/approve',
     asyncRoute(async (req, res) => {
-      const { approvalId, approved, note } = req.body as {
-        approvalId?: string;
-        approved?: boolean;
-        note?: string;
-      };
-      if (typeof approvalId !== 'string' || typeof approved !== 'boolean') {
-        res
-          .status(400)
-          .json({ error: "Request body must include 'approvalId' (string) and 'approved' (boolean)" });
+      const runs = workspaceOf(req).runs;
+      const pending = runs.status(paramId(req)).pendingApproval;
+      const parsed = parseApproveBody(req.body, pending);
+      if ('error' in parsed) {
+        res.status(400).json({ error: parsed.error, ...(parsed.code !== undefined && { code: parsed.code }) });
         return;
       }
       try {
-        const runs = workspaceOf(req).runs;
-        await runs.approve(paramId(req), approvalId, approved, note);
+        if ('answer' in parsed) {
+          await runs.answer(paramId(req), parsed.approvalId, parsed.answer);
+        } else {
+          await runs.approve(paramId(req), parsed.approvalId, parsed.approved, parsed.note);
+        }
         res.status(202).json(runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [
@@ -403,6 +404,76 @@ function registerRunRoutes(app: Express): void {
       }
     })
   );
+
+  // Steer: push a correction into the live run's input queue (the SDK's
+  // `steer()` via the AgentHost - see RunManager.steer()). Unlike approve,
+  // the 409s carry a `code` the Test pane's SteerBox can branch on.
+  app.post(
+    '/agents/:id/steer',
+    asyncRoute(async (req, res) => {
+      const { message } = req.body as { message?: unknown };
+      const trimmed = typeof message === 'string' ? message.trim() : '';
+      if (trimmed.length === 0 || trimmed.length > 3000) {
+        sendError(res, 400, "Request body must include a 'message' of 1 to 3000 characters", 'LOUSHO_BODY_INVALID');
+        return;
+      }
+      try {
+        const response = await workspaceOf(req).runs.steer(paramId(req), trimmed);
+        res.status(202).json(response);
+      } catch (error) {
+        if (error instanceof NoActiveRunError) {
+          sendError(res, 409, error.message, 'LOUSHO_NO_ACTIVE_RUN');
+          return;
+        }
+        if (error instanceof SteerUnsupportedError) {
+          sendError(res, 409, error.message, 'LOUSHO_STEER_UNSUPPORTED');
+          return;
+        }
+        throw error;
+      }
+    })
+  );
+}
+
+const APPROVE_BODY_ERROR = "Request body must include 'approvalId' (string) plus 'approved' (boolean) or 'answer' (string)";
+
+/**
+ * A validated `POST /agents/:id/approve` body: `{ approvalId, approved,
+ * note? }` for a `kind: 'tool'` pause, `{ approvalId, answer }` for a
+ * `kind: 'question'` pause. One shape sent to the other kind is a 400
+ * `LOUSHO_APPROVAL_KIND`; `pending` is the pause the body names (a stale
+ * or unknown id skips the kind check - RunManager's pending-id guard
+ * turns it into the usual 409).
+ */
+function parseApproveBody(
+  body: unknown,
+  pending: PendingApprovalInfo | undefined
+): ApproveRequest | { error: string; code?: string } {
+  const raw = (body ?? {}) as { approvalId?: unknown; approved?: unknown; note?: unknown; answer?: unknown };
+  if (typeof raw.approvalId !== 'string') {
+    return { error: APPROVE_BODY_ERROR };
+  }
+  const pause = pending?.approvalId === raw.approvalId ? pending : undefined;
+  if (raw.answer !== undefined) {
+    if (typeof raw.answer !== 'string' || raw.answer.length < 1 || raw.answer.length > 4000) {
+      return { error: "'answer' must be a string of 1..4000 characters" };
+    }
+    if (pause !== undefined && pause.kind !== 'question') {
+      return { error: 'This pause is a tool approval; send approved true or false.', code: 'LOUSHO_APPROVAL_KIND' };
+    }
+    return { approvalId: raw.approvalId, answer: raw.answer };
+  }
+  if (typeof raw.approved !== 'boolean') {
+    return { error: APPROVE_BODY_ERROR };
+  }
+  if (pause !== undefined && pause.kind === 'question') {
+    return { error: 'This pause is a question; send an answer.', code: 'LOUSHO_APPROVAL_KIND' };
+  }
+  return {
+    approvalId: raw.approvalId,
+    approved: raw.approved,
+    ...(typeof raw.note === 'string' && { note: raw.note }),
+  };
 }
 
 /** The `ForkPatch` fields a fork request may carry, each with its check. */

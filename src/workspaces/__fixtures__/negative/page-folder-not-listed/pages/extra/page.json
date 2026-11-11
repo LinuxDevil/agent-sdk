@@ -1,0 +1,15 @@
+{
+  "schema": "lousho.page/1",
+  "id": "extra",
+  "name": "Extra",
+  "description": "A page folder that workspace.json does not list.",
+  "harness": {
+    "extends": []
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "helper"
+    }
+  }
+}

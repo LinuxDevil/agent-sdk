@@ -1,0 +1,55 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "audience": {
+    "description": "Video makers who need facts they can cite."
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "question": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "question"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "findings": {
+          "type": "string"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "findings"
+      ]
+    }
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "findings-present",
+        "description": "The findings are not empty.",
+        "check": "harness/checks/findings-present.ts"
+      }
+    ]
+  },
+  "context": {
+    "resources": [
+      "resources/research-notes.md"
+    ]
+  }
+}

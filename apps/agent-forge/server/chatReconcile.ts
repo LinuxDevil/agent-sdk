@@ -25,7 +25,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { textOf, type Message } from 'lousho';
-import type { ChatMessage } from '../shared/wireTypes';
+import type { ChatMessage, SteerInfo } from '../shared/wireTypes';
 
 /** The transcript keeps text only (content parts are flattened with `textOf()`). */
 function toChatMessage(m: Message, id: string, timestamp: string): ChatMessage {
@@ -92,5 +92,28 @@ export function markRunInput(messages: ChatMessage[], prev: ChatMessage[], runIn
   const known = new Set(prev.map((m) => m.id));
   return messages.map((m) =>
     m.role === 'user' && m.content === runInput && !known.has(m.id) ? { ...m, source: 'run' as const } : m
+  );
+}
+
+/**
+ * Tags user messages whose content equals a DELIVERED steer message (and
+ * are new since `prev`) as `source: 'steer'`, so the Chat tab labels them
+ * "Steered" instead of showing them as something the user typed. Only
+ * `delivery === 'delivered'` items tag anything: a queued-then-
+ * undelivered steer never joined the transcript, so there is no bubble to
+ * mark. Matching is by content (the SDK's transcript carries the steer
+ * text verbatim as a user turn), and `prev`'s ids keep an earlier,
+ * identical user message from being re-tagged.
+ */
+export function markSteerInputs(
+  messages: ChatMessage[],
+  prev: ChatMessage[],
+  steering: readonly SteerInfo[]
+): ChatMessage[] {
+  const delivered = new Set(steering.filter((s) => s.delivery === 'delivered').map((s) => s.message));
+  if (delivered.size === 0) return messages;
+  const known = new Set(prev.map((m) => m.id));
+  return messages.map((m) =>
+    m.role === 'user' && delivered.has(m.content) && !known.has(m.id) ? { ...m, source: 'steer' as const } : m
   );
 }

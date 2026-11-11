@@ -8,12 +8,11 @@
  */
 import { useState } from 'react';
 import { CircleAlert, GitCompareArrows, History } from 'lucide-react';
-import type { ProposalOutput, Requirement, SpecChange } from '../../shared/authorWire';
-import type { LineDiff } from '../../shared/wireTypes';
+import type { ProposalOutput, Requirement } from '../../shared/authorWire';
 import { navigate } from '../router/router';
 import { runtimeClient } from '../runtime/runtimeClient';
 import { ChangeList } from '../ui/ChangeList';
-import type { ChangeItem, ChangeLine } from '../ui/changeValue';
+import { toChangeItem } from '../ui/changeValue';
 import { StatusBadge } from '../ui/StatusBadge';
 import { formatSpecValue } from './formatSpecValue';
 import type { ProposalCardState } from './proposalActionState';
@@ -68,26 +67,6 @@ export const SPEC_FIELD_LABELS: Readonly<Record<string, string>> = {
 
 /** The order {@link SPEC_FIELD_LABELS} lists rows - `Object.keys` keeps insertion order. */
 const FIELD_ORDER = Object.keys(SPEC_FIELD_LABELS);
-
-/**
- * The server's `LineDiff` kinds (`add`/`del`/`context`/`gap`) onto
- * ChangeList's `ChangeLine` kinds (`added`/`removed`/`same`): a collapsed
- * `gap` run draws as one quiet context row naming the hidden count.
- */
-function toChangeLine(line: LineDiff): ChangeLine {
-  if (line.kind === 'gap') {
-    return { kind: 'same', text: `··· ${line.count} unchanged ${line.count === 1 ? 'line' : 'lines'}` };
-  }
-  if (line.kind === 'add') return { kind: 'added', text: line.text };
-  if (line.kind === 'del') return { kind: 'removed', text: line.text };
-  return { kind: 'same', text: line.text };
-}
-
-/** `SpecChange[]` onto ChangeList's `ChangeItem[]` (only `lines` needs the kind mapping). */
-function toChangeItem(change: SpecChange): ChangeItem {
-  const { lines, ...rest } = change;
-  return lines === undefined ? rest : { ...rest, lines: lines.map(toChangeLine) };
-}
 
 /** The status line each non-actionable card shows instead of the footer. */
 const STATE_COPY: Record<Exclude<ProposalCardState, 'actionable'>, string> = {

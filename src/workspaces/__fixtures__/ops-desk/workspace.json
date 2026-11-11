@@ -1,0 +1,17 @@
+{
+  "schema": "lousho.workspace/1",
+  "id": "ops-desk",
+  "name": "Ops desk",
+  "version": "1.0.0",
+  "description": "Daily operations work with no main agent.",
+  "domain": "operations",
+  "mainAgent": null,
+  "pages": [
+    "ticket-intake",
+    "daily-digest",
+    "reply-drafts"
+  ],
+  "defaults": {
+    "model": "mock/mock-model"
+  }
+}

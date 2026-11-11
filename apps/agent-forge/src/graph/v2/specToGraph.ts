@@ -5,19 +5,19 @@
  * layout positions where they exist and deterministic fallback positions
  * otherwise (`unplaced` records which). Spec data is referenced, not cloned:
  * `node.data.item` is the spec's own object — nothing here mutates inputs.
+ * The `flow` section becomes a tree of `flow` nodes via `addFlowNodes`
+ * (C15); a flow without a runnable root step stays in the agent's `extra`.
  */
 import type { CanvasLayout } from '../../../shared/wireTypes';
-import { fallbackColumn, fallbackPosition } from './fallbackLayout';
-import { baseNodeId, dedupeId } from './nodeIds';
+import { addFlowNodes } from './flow';
 import { HANDLED_SECTIONS } from './order';
-import type { AgentSpecV2, McpServerSpec, SubagentSpec } from './specTypes';
+import { addSpecNode, createSpecBuilder, type SpecToGraphBuilder } from './specBuilder';
+import type { AgentFlow, AgentSpecV2, McpServerSpec, SubagentSpec } from './specTypes';
 import type {
   AgentFields,
   AgentNodeData,
-  EmptySection,
   Graph,
   GraphNode,
-  NodeKind,
   OutputNodeData,
   SectionKey,
 } from './types';
@@ -35,17 +35,6 @@ function isEmptySection(value: unknown): boolean {
   if (Array.isArray(value)) return value.length === 0;
   if (typeof value === 'object' && value !== null) return Object.keys(value).length === 0;
   return false;
-}
-
-/** Node ids issued so far — `dedupeId`'s taken set. */
-interface Builder {
-  nodes: GraphNode[];
-  emptySections: EmptySection[];
-  unplaced: string[];
-  taken: Set<string>;
-  /** `'owner/column'` → how many fallback positions that column already gave out. */
-  columnCounts: Map<string, number>;
-  layout?: CanvasLayout;
 }
 
 /**
@@ -70,49 +59,17 @@ function agentData(source: Record<string, unknown>, isRoot: boolean, subagentKey
   return data;
 }
 
-/** Position from `layout.nodes[id]`, else a fallback position plus an `unplaced` entry. */
-function place(builder: Builder, node: GraphNode, inGroup: boolean): void {
-  const entry = builder.layout?.nodes[node.id];
-  if (entry !== undefined) {
-    node.position = { x: entry.x, y: entry.y };
-    if (entry.collapsed !== undefined) node.collapsed = entry.collapsed;
-    return;
-  }
-  const columnKind = node.kind === 'agent' && node.owner !== null ? 'subagent' : node.kind;
-  const countKey = `${node.owner ?? ''}/${fallbackColumn(columnKind)}`;
-  const indexInColumn = builder.columnCounts.get(countKey) ?? 0;
-  builder.columnCounts.set(countKey, indexInColumn + 1);
-  node.position = fallbackPosition(columnKind, indexInColumn, inGroup);
-  builder.unplaced.push(node.id);
-}
-
-/** Deduped id + placement, then push. Nodes are pushed in exactly `orderedNodes` order. */
-function addNode(
-  builder: Builder,
-  owner: string | null,
-  kind: NodeKind,
-  data: GraphNode['data'],
-  inGroup: boolean
-): GraphNode {
-  const id = dedupeId(baseNodeId(kind, data, owner), builder.taken);
-  const node = { id, kind, owner, data, position: { x: 0, y: 0 } } as GraphNode;
-  place(builder, node, inGroup);
-  builder.nodes.push(node);
-  builder.taken.add(id);
-  return node;
-}
-
 /** One node per item of an array section (`tools`, `skills`, …), `data: { item }`. */
-function addArraySection(builder: Builder, ownerId: string, key: SectionKey, items: unknown[], inGroup: boolean): void {
+function addArraySection(builder: SpecToGraphBuilder, ownerId: string, key: SectionKey, items: unknown[], inGroup: boolean): void {
   for (const item of items) {
-    addNode(builder, ownerId, SECTION_KIND[key], { item } as GraphNode['data'], inGroup);
+    addSpecNode(builder, ownerId, SECTION_KIND[key], { item } as GraphNode['data'], inGroup);
   }
 }
 
 /** One `mcp` node per `mcpServers` entry, `data: { key, item }`. */
-function addRecordSection(builder: Builder, ownerId: string, value: Record<string, unknown>, inGroup: boolean): void {
+function addRecordSection(builder: SpecToGraphBuilder, ownerId: string, value: Record<string, unknown>, inGroup: boolean): void {
   for (const [key, item] of Object.entries(value)) {
-    addNode(builder, ownerId, 'mcp', { key, item: item as McpServerSpec }, inGroup);
+    addSpecNode(builder, ownerId, 'mcp', { key, item: item as McpServerSpec }, inGroup);
   }
 }
 
@@ -121,26 +78,46 @@ function addRecordSection(builder: Builder, ownerId: string, value: Record<strin
  * own sections follow immediately, depth-first), a `subagent` node for
  * `{ ref }` / `{ remote }`.
  */
-function addSubagents(builder: Builder, ownerId: string, value: Record<string, SubagentSpec>, inGroup: boolean): void {
+function addSubagents(builder: SpecToGraphBuilder, ownerId: string, value: Record<string, SubagentSpec>, inGroup: boolean): void {
   for (const [key, item] of Object.entries(value)) {
     if ('inline' in item) {
       const inline = item.inline as unknown as Record<string, unknown>;
-      const agent = addNode(builder, ownerId, 'agent', agentData(inline, false, key), inGroup);
+      const agent = addSpecNode(builder, ownerId, 'agent', agentData(inline, false, key), inGroup);
       addSections(builder, agent.id, inline, false);
     } else {
-      addNode(builder, ownerId, 'subagent', { key, item }, inGroup);
+      addSpecNode(builder, ownerId, 'subagent', { key, item }, inGroup);
     }
   }
 }
 
+/**
+ * The `flow` section: a tree of `flow` nodes under the root agent. When the
+ * spec's `flow.flow` is missing or not a step object, `addFlowNodes` returns
+ * false and the whole `flow` value lands back in the root agent's `extra`,
+ * re-emitted verbatim exactly as before C15.
+ */
+function addFlowSection(builder: SpecToGraphBuilder, ownerId: string, value: unknown): void {
+  if (addFlowNodes(builder, value as AgentFlow)) return;
+  const owner = builder.nodes.find((n) => n.id === ownerId);
+  if (owner !== undefined && owner.kind === 'agent') {
+    (owner.data as AgentNodeData).extra['flow'] = value;
+  }
+}
+
 /** `addSections` walks `SECTION_ORDER` ∩ the sections this owner level handles, recursing through inline subagents. */
-function addSections(builder: Builder, ownerId: string, source: Record<string, unknown>, isRoot: boolean): void {
+function addSections(builder: SpecToGraphBuilder, ownerId: string, source: Record<string, unknown>, isRoot: boolean): void {
   const allowed = isRoot ? HANDLED_SECTIONS : INLINE_SECTIONS;
   const inGroup = !isRoot;
   for (const key of SECTION_ORDER) {
     if (!allowed.has(key)) continue;
     const value = source[key];
     if (value === undefined) continue;
+    // `flow` is an object, not an array/record section — and `flow: {}` must
+    // stay in `extra` rather than become an `emptySections` entry.
+    if (key === 'flow') {
+      addFlowSection(builder, ownerId, value);
+      continue;
+    }
     if (isEmptySection(value)) {
       builder.emptySections.push({ owner: ownerId, key });
     } else if (Array.isArray(value)) {
@@ -150,7 +127,7 @@ function addSections(builder: Builder, ownerId: string, source: Record<string, u
     } else if (key === 'subagents') {
       addSubagents(builder, ownerId, value as Record<string, SubagentSpec>, inGroup);
     } else if (key === 'output') {
-      addNode(builder, ownerId, 'output', { item: value } as OutputNodeData, inGroup);
+      addSpecNode(builder, ownerId, 'output', { item: value } as OutputNodeData, inGroup);
     }
   }
 }
@@ -158,15 +135,8 @@ function addSections(builder: Builder, ownerId: string, source: Record<string, u
 /** Converts an `AgentSpecV2` plus its `layout.json` into the canvas `Graph`. */
 export function specToGraph(spec: AgentSpecV2, layout?: CanvasLayout): Graph {
   const source = spec as unknown as Record<string, unknown>;
-  const builder: Builder = {
-    nodes: [],
-    emptySections: [],
-    unplaced: [],
-    taken: new Set(),
-    columnCounts: new Map(),
-    layout,
-  };
-  const root = addNode(builder, null, 'agent', agentData(source, true), false);
+  const builder = createSpecBuilder(layout);
+  const root = addSpecNode(builder, null, 'agent', agentData(source, true), false);
   addSections(builder, root.id, source, true);
   for (const note of layout?.notes ?? []) {
     const id = `note:${note.id}`;

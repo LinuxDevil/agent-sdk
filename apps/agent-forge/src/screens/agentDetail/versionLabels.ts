@@ -1,4 +1,5 @@
-import type { VersionKind, VersionListItem, VersionSource } from '../../../shared/wireTypes';
+import { SPEC_FIELD_META } from '../../../shared/specFields';
+import type { SpecChange, SpecSection, VersionKind, VersionListItem, VersionSource } from '../../../shared/wireTypes';
 
 /**
  * Display labels for the Versions tab (L01), shared by L02/L03/L14b.
@@ -50,6 +51,59 @@ export const FIELD_LABELS: Record<string, string> = {
 /** The chip text for a changed-field key: its label, or the key itself when unmapped. */
 export function fieldLabel(field: string): string {
   return FIELD_LABELS[field] ?? field;
+}
+
+/**
+ * The diff sheet's grouping for one `SpecChange` (L02): the server's
+ * `SpecSection` plus 'Other', where fields the spec field table does not
+ * know land - a forward-compat catch for newer spec fields.
+ */
+export type DiffSection = SpecSection | 'Other';
+
+/** The fixed order the diff sheet renders sections in, whatever the change order was; 'Other' always last. */
+export const SECTION_ORDER: readonly DiffSection[] = [
+  'Identity',
+  'Model',
+  'Instructions',
+  'Tools',
+  'Knowledge',
+  'Safety',
+  'Triggers',
+  'Flow',
+  'Other',
+];
+
+/** The section lookup, built once from `SPEC_FIELD_META` - the same table the server's diff labels use. */
+const SECTION_OF: Record<string, SpecSection> = Object.fromEntries(
+  Object.entries(SPEC_FIELD_META).map(([field, meta]) => [field, meta.section]),
+);
+
+/**
+ * The section a changed field groups under in the version diff sheet: the
+ * top-level key's `SPEC_FIELD_META` section (`tools[web_fetch]` and
+ * `mcpServers.github` both land under Tools), 'Other' for keys the table
+ * does not know.
+ */
+export function sectionOf(field: string): DiffSection {
+  return SECTION_OF[field.split(/[.[]/)[0]] ?? 'Other';
+}
+
+/**
+ * `changes` bucketed by {@link sectionOf} in {@link SECTION_ORDER} order,
+ * empty sections dropped: the diff sheet's sections and their rows.
+ */
+export function groupChanges(changes: SpecChange[]): Array<{ section: DiffSection; changes: SpecChange[] }> {
+  const buckets = new Map<DiffSection, SpecChange[]>();
+  for (const change of changes) {
+    const section = sectionOf(change.field);
+    const bucket = buckets.get(section);
+    if (bucket) bucket.push(change);
+    else buckets.set(section, [change]);
+  }
+  return SECTION_ORDER.filter((section) => buckets.has(section)).map((section) => ({
+    section,
+    changes: buckets.get(section)!,
+  }));
 }
 
 // fallow-ignore-next-line unused-export -- contract surface: kindLabel reads it internally; L02/L03/L14b import the table directly.

@@ -1,0 +1,15 @@
+{
+  "schema": "lousho.page/1",
+  "id": "daily-digest",
+  "name": "Daily digest",
+  "description": "Summarises the day for the team.",
+  "harness": {
+    "extends": []
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "agent"
+    }
+  }
+}

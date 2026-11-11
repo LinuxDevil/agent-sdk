@@ -1,0 +1,15 @@
+{
+  "schema": "lousho.goal/1",
+  "goal": "Produce a video the reviewer accepts.",
+  "checks": [
+    {
+      "criterion": "script-present"
+    }
+  ],
+  "stop": {
+    "maxIterations": 3,
+    "maxDurationMs": 600000,
+    "maxCostUsd": 2,
+    "onStall": "stop"
+  }
+}

@@ -48,4 +48,4 @@ curl -N http://<ip>:3000/chat \
 
 Port 3000 is plain HTTP — put Traefik (installed on the VPS template) or
 another TLS terminator in front for anything real, per
-[the deployment docs](https://github.com/LinuxDevil/agent-sdk/blob/main/docs/deployment.md).
+[the deployment docs](https://github.com/LinuxDevil/lousho/blob/main/docs/deployment.md).

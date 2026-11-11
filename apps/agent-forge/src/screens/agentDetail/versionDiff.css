@@ -1,0 +1,48 @@
+/* Version diff sheet (L02): the compare select row, the fixed-order
+   sections and the first version's YAML snapshot. Tokens only. */
+.version-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.version-diff-compare {
+  display: flex;
+  justify-content: flex-end;
+}
+.version-diff-compare .field {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+.version-diff-section-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+}
+.version-diff-count {
+  font-size: var(--fs-meta);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.version-diff-first {
+  margin: 0;
+  font-size: var(--fs-body);
+  color: var(--text-muted);
+}
+.version-diff-yaml {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font: 12px/1.5 var(--font-mono);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow: auto;
+}

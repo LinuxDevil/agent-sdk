@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import request from 'supertest';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
@@ -11,11 +11,20 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
+import { deferred, resetSteerGate, setSteerGateScript, steerGateProviders } from './steerGate';
 
 const SPEC: AgentSpec = {
   name: 'test-agent',
   prompt: 'You are a helpful agent.',
   provider: { type: 'mock', model: 'mock-1' },
+};
+
+/** A v2 spec on the gated 'steergate' provider (steerGate.ts) - its model calls park until the test releases the gate. */
+const STEER_SPEC: AgentSpecV2 = {
+  version: 2,
+  name: 'steer-agent',
+  model: 'steergate/steer-1',
+  instructions: 'You are a test agent.',
 };
 
 function waitForStatus(
@@ -49,12 +58,21 @@ function waitForStatus(
   });
 }
 
+async function waitFor(predicate: () => boolean, what: string, timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error(`Timed out waiting for ${what}`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 describe('HTTP API', () => {
   let baseDir: string;
   let app: ReturnType<typeof createApp>;
   let runManager: RunManager;
 
   beforeEach(() => {
+    resetSteerGate();
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-n-app-test-'));
     const repo = new AgentRepo(baseDir);
     const agentStore = createFsAgentStore(baseDir, repo);
@@ -179,6 +197,58 @@ describe('HTTP API', () => {
   it('POST /agents/:id/approve with a bad body returns 400', async () => {
     const res = await request(app).post('/agents/foo/approve').send({ approvalId: 'x' });
     expect(res.status).toBe(400);
+  });
+
+  it('POST /agents/:id/steer with an empty or oversized message returns 400 LOUSHO_BODY_INVALID', async () => {
+    // The wire contract: a missing/blank message AND one past the 3000-char
+    // cap both fail validation BEFORE the run lookup, with the code the
+    // Test pane's SteerBox branches on.
+    const empty = await request(app).post('/agents/foo/steer').send({});
+    expect(empty.status).toBe(400);
+    expect(empty.body.code).toBe('LOUSHO_BODY_INVALID');
+
+    const blank = await request(app).post('/agents/foo/steer').send({ message: '   ' });
+    expect(blank.status).toBe(400);
+    expect(blank.body.code).toBe('LOUSHO_BODY_INVALID');
+
+    const tooLong = await request(app)
+      .post('/agents/foo/steer')
+      .send({ message: 'x'.repeat(3001) });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.code).toBe('LOUSHO_BODY_INVALID');
+  });
+
+  it('POST /agents/:id/steer on an idle agent returns 409 LOUSHO_NO_ACTIVE_RUN', async () => {
+    const res = await request(app).post('/agents/never-ran/steer').send({ message: 'hello' });
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('LOUSHO_NO_ACTIVE_RUN');
+  });
+
+  it('POST /agents/:id/steer into a live run returns 202 and puts the SteerInfo on the status payload', async () => {
+    // The steergate provider parks its first model call so the run is
+    // reliably still 'running' when the steer request lands.
+    const gate = deferred();
+    setSteerGateScript({ blockCalls: 1, mode: 'before-output', gate: gate.promise });
+    const run = await request(app).post('/agents/steer-http/run').send({ input: 'hello', spec: STEER_SPEC });
+    expect(run.status).toBe(202);
+    await waitFor(() => steerGateProviders[0]?.calls.length === 1, 'the first model call to start');
+
+    const res = await request(app).post('/agents/steer-http/steer').send({ message: 'actually use Paris' });
+    expect(res.status).toBe(202);
+    expect(res.body.applied).toBe('immediate');
+    expect(typeof res.body.id).toBe('string');
+
+    // `delivery` is not asserted: an 'immediate' steer aborts the parked
+    // call, so steer.joined can flip queued -> delivered before this GET
+    // lands - either value proves the SteerInfo was recorded.
+    const status = await request(app).get('/agents/steer-http/status');
+    expect(status.body.steering?.[0]).toMatchObject({
+      id: res.body.id,
+      message: 'actually use Paris',
+    });
+
+    gate.resolve();
+    await waitForStatus(runManager, 'steer-http', (s) => s.status === 'done', 10000);
   });
 
   it('GET /agents/:id/debug reports no breakpoints/not paused for an agent that never ran', async () => {

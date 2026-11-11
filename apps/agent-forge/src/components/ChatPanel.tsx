@@ -16,10 +16,11 @@
  */
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { Play, Plus, Sparkles, User, Wrench, type LucideIcon } from 'lucide-react';
+import { CornerDownRight, Play, Plus, Sparkles, User, Wrench, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import type { ChatMessage } from '../../shared/wireTypes';
 import { ApprovalCard } from './ApprovalCard';
+import { QuestionCard } from './test/QuestionCard';
 import { ChatComposer } from './ChatComposer';
 import { formatTime } from './formatTime';
 
@@ -111,12 +112,20 @@ function MessageContent({ kind, message }: { kind: BubbleKind; message: ChatMess
 function Bubble({ message, toolResults }: { message: ChatMessage; toolResults: Map<string, ChatMessage> }) {
   const kind = bubbleKindOf(message);
   const fromRun = message.source === 'run';
+  const fromSteer = message.source === 'steer';
+  const sourced = fromRun || fromSteer;
   const { Icon, speaker } = BUBBLE_KINDS[kind];
+  const AvatarIcon = fromRun ? Play : fromSteer ? CornerDownRight : Icon;
+  const sourceLabel = fromRun ? 'Run input' : fromSteer ? 'Steered' : undefined;
   return (
-    <div className={`chat-msg ${kind}${fromRun ? ' run-input' : ''}`}>
-      <Avatar Icon={fromRun ? Play : Icon} />
+    <div className={`chat-msg ${kind}${sourced ? ' run-input' : ''}`}>
+      <Avatar Icon={AvatarIcon} />
       <div className="chat-msg-body">
-        {fromRun ? <div className="chat-run-label">Run input</div> : <Speaker name={speaker} />}
+        {sourceLabel !== undefined ? (
+          <div className="chat-run-label">{sourceLabel}</div>
+        ) : (
+          <Speaker name={speaker} />
+        )}
         {message.content && <MessageContent kind={kind} message={message} />}
         {message.toolCalls?.map((tc) => (
           <div className="chat-bubble chat-bubble-tool" key={tc.id}>
@@ -215,11 +224,20 @@ function ApprovalBubble({ pendingApproval }: { pendingApproval: PendingApproval 
       <Avatar Icon={Sparkles} />
       <div className="chat-msg-body">
         <Speaker name="Agent" />
-        <ApprovalCard
-          className="chat-approval-card"
-          toolName={pendingApproval.toolName}
-          args={pendingApproval.args}
-        />
+        {pendingApproval.kind === 'question' && pendingApproval.question !== undefined ? (
+          <QuestionCard
+            className="chat-question-card"
+            question={pendingApproval.question}
+            deadline={pendingApproval.deadline}
+          />
+        ) : (
+          <ApprovalCard
+            className="chat-approval-card"
+            toolName={pendingApproval.toolName}
+            args={pendingApproval.args}
+            deadline={pendingApproval.deadline}
+          />
+        )}
       </div>
     </div>
   );
@@ -287,6 +305,7 @@ export function ChatPanel({ aboveComposer }: { aboveComposer?: ReactNode }) {
       <ChatComposer
         viewing={viewing}
         isPausedForApproval={!!pendingApproval}
+        pausedForQuestion={pendingApproval?.kind === 'question'}
         inputDisabled={isInputDisabled(viewing, liveRunState)}
       />
     </div>

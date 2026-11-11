@@ -16,7 +16,8 @@ import { acquireRunLease, HELD_RUN_LEASE, REPLACES_CHECKPOINT, type RunLease, ty
 import type { ApprovalKind } from '../execution/ApprovalGate';
 import { ConfigurationError, LLMProviderError, SDKError, SessionAwaitingApprovalError } from '../execution/errors';
 import { streamSessionTurn } from './sessionStream';
-import { MemorySessionStore, assertSessionId, encodeBytes, transcriptRevision, type SessionStore } from './sessionStore';
+import { MemorySessionStore, assertSessionId, transcriptRevision, type SessionStore } from './sessionStore';
+import { encodeBytes } from '../storage/jsonBytes';
 import { addSpent, runSpent, sessionSpent, type BudgetSpent, type RunLimits, type SessionBudget } from '../execution/budget';
 import { restoreRunUsage } from '../execution/runUsage';
 import { checkpointError } from '../execution/runFailure';

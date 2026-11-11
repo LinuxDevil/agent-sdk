@@ -2,7 +2,7 @@
 
 The `docker` [deployment](./deployment.md) target is a plain Dockerfile +
 bundled server, so it runs on any Docker host — including a Hostinger VPS.
-The [hostinger-deploy](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/hostinger-deploy)
+The [hostinger-deploy](https://github.com/LinuxDevil/lousho/tree/main/examples/hostinger-deploy)
 example ships a complete, tested recipe: `deploy.mjs` verifies the VM through
 the Hostinger API, builds locally, ships the context over SSH, and runs the
 container — then proves the deploy with `/health` and one real `/chat` turn.

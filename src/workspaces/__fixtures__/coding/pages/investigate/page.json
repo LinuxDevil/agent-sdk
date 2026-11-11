@@ -1,0 +1,18 @@
+{
+  "schema": "lousho.page/1",
+  "id": "investigate",
+  "name": "Investigate",
+  "description": "Finds the cause of a reported problem.",
+  "domain": "coding",
+  "harness": {
+    "extends": [
+      "workspace:audiences/engineers"
+    ]
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "agent"
+    }
+  }
+}

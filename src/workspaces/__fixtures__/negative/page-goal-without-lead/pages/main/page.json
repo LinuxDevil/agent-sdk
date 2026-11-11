@@ -1,0 +1,15 @@
+{
+  "schema": "lousho.page/1",
+  "id": "main",
+  "name": "Main",
+  "description": "The only page of the negative base.",
+  "harness": {
+    "extends": []
+  },
+  "execution": {
+    "type": "goal-oriented",
+    "goal": {
+      "goal": "./goal.json"
+    }
+  }
+}

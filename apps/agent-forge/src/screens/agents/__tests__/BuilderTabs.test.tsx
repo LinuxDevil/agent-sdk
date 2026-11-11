@@ -22,9 +22,12 @@ describe('BuilderTabs', () => {
     expect(canvas.getAttribute('aria-current')).toBe('page');
     expect(canvas.getAttribute('href')).toBe('#/agents/support-bot/canvas');
     // Unbuilt tabs stay disabled placeholders, as on the detail header.
-    const configure = nav.querySelector('[data-tab-id="configure"]')!;
-    expect(configure.tagName).toBe('SPAN');
-    expect(configure.getAttribute('aria-disabled')).toBe('true');
+    const suggestions = nav.querySelector('[data-tab-id="suggestions"]')!;
+    expect(suggestions.tagName).toBe('SPAN');
+    expect(suggestions.getAttribute('aria-disabled')).toBe('true');
+    const configure = nav.querySelector<HTMLAnchorElement>('[data-tab-id="configure"]')!;
+    expect(configure.tagName).toBe('A');
+    expect(configure.getAttribute('href')).toBe('#/agents/support-bot/configure');
   });
 
   it('renders nothing for the unsaved default agent', () => {

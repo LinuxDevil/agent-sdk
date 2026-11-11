@@ -1,0 +1,74 @@
+name: Bug report
+description: Something in Lousho does not work the way the docs say it should.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug.
+        Please do not report security problems here. See [SECURITY.md](https://github.com/LinuxDevil/lousho/blob/main/SECURITY.md) instead.
+  - type: input
+    id: lousho-version
+    attributes:
+      label: Lousho version
+      description: The output of `npm ls lousho`.
+      placeholder: 1.0.0-alpha.117
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: The output of `node --version`. Lousho needs Node.js 22.19.0 or later.
+      placeholder: v22.19.0
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Provider
+      description: The model provider the agent was using when the bug happened.
+      options:
+        - OpenAI
+        - Anthropic
+        - Google
+        - OpenRouter
+        - Ollama
+        - Pi
+        - Another AI SDK model (fromAiSdk)
+        - An OpenAI-compatible server
+        - Mock provider (mockModel or createMockProvider)
+        - Not related to a provider
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected to happen, and what happened instead. Include the full error message.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest code, agent spec or command that shows the bug. A link to a small repository also works. Remove API keys and other secrets.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `npx lousho doctor`
+      description: Run it in your project. If the bug involves an agent, pass its spec, directory or module, for example `npx lousho doctor agent.yaml`. Check that the output has no secrets before you paste it.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Operating system, deployment target, logs or anything else that helps.
+    validations:
+      required: false

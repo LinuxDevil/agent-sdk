@@ -119,10 +119,13 @@ describe('AgentDetailRoute', () => {
 
     const tabs = host.querySelector('nav[aria-label="Agent"]')!;
     expect(tabs.querySelector('[data-tab-id="overview"]')?.getAttribute('aria-current')).toBe('page');
-    const configure = tabs.querySelector('[data-tab-id="configure"]')!;
-    expect(configure.tagName).toBe('SPAN');
-    expect(configure.getAttribute('aria-disabled')).toBe('true');
-    expect(configure.getAttribute('title')).toBe('Coming in a later release');
+    const configure = tabs.querySelector<HTMLAnchorElement>('[data-tab-id="configure"]')!;
+    expect(configure.tagName).toBe('A');
+    expect(configure.getAttribute('href')).toBe('#/agents/support-bot/configure');
+    const suggestions = tabs.querySelector('[data-tab-id="suggestions"]')!;
+    expect(suggestions.tagName).toBe('SPAN');
+    expect(suggestions.getAttribute('aria-disabled')).toBe('true');
+    expect(suggestions.getAttribute('title')).toBe('Coming in a later release');
   });
 
   it('shows the published badge with the version number', async () => {

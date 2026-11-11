@@ -1,0 +1,49 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "audience": {
+    "description": "The operations team."
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "notes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "notes"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "digest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "digest"
+      ]
+    }
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "digest-present",
+        "description": "The digest is not empty.",
+        "check": "harness/checks/digest-present.ts"
+      }
+    ]
+  },
+  "context": {
+    "resources": [
+      "resources/digest-format.md"
+    ]
+  }
+}

@@ -1,8 +1,8 @@
 name: Release
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
 concurrency:
   group: release
   cancel-in-progress: false
@@ -10,8 +10,39 @@ permissions:
   contents: write
   packages: write
 jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - name: Check for changes since the last tag
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          RELEASE=$(node scripts/release-notes.mjs check "$TAG")
+          echo "Last tag: ${TAG:-none}. Release: $RELEASE"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
   release:
-    if: github.event.pull_request.merged == true && !contains(github.event.pull_request.labels.*.name, 'norelease')
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: --max-old-space-size=12288
@@ -77,7 +108,8 @@ jobs:
           NPM_TAG: latest
       - name: GitHub release
         run: |
-          awk -v h="## [$VERSION]" 'index($0,h)==1{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --latest --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
+          TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          node scripts/release-notes.mjs notes "$TAG" "$VERSION" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --latest --notes-file "$RUNNER_TEMP/notes.md"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
