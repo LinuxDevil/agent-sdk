@@ -163,6 +163,8 @@ export const ERROR_CODES = {
   LOUSHO_WORKSPACE_PATH_INVALID: 'Use a forward-slash path relative to the workspace root, and replace symlinks that leave the workspace folder with the files themselves.',
   /** A workspace revision the source never recorded, or whose snapshot was pruned. */
   LOUSHO_WORKSPACE_REVISION_UNKNOWN: "Pick a revision from source.history(), or raise folderSource()'s keep to keep older snapshots readable.",
+  /** A workspace folder's revision index or write journal is damaged. */
+  LOUSHO_WORKSPACE_SOURCE_CORRUPT: 'Look at the file the message names under .lousho/revisions/; a set-aside journal can be inspected and deleted once the workspace looks right.',
   /** A workspace folder read went over a size or file-count limit. */
   LOUSHO_WORKSPACE_SOURCE_LIMIT: 'Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().',
 } as const;

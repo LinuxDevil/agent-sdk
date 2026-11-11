@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
-import { unknownRevision } from './errors';
-import { checkWritable, readFolderTree, readText, realRoot, removeFile, writeAtomic, type FolderLimits } from './folderFs';
+import { corruptSource, unknownRevision } from './errors';
+import { checkWritable, moveAside, readFolderTree, readText, realRoot, removeFile, withFolderLock, writeAtomic, type FolderLimits } from './folderFs';
 import { checkPath, listFiles, nextTree, revisionId, revisionMeta, SOURCE_DIR, type FileMap } from './revision';
 import type { RevisionId, RevisionMeta, SourceReadOptions, SourceRef, SourceWriteOptions, WorkspaceChanges, WorkspaceSource } from './types';
 
@@ -21,6 +21,7 @@ export interface FolderSourceOptions {
 const REVISIONS_DIR = `${SOURCE_DIR}/revisions`;
 const INDEX_PATH = `${REVISIONS_DIR}/index.json`;
 const JOURNAL_PATH = `${REVISIONS_DIR}/pending.json`;
+const LOCK_PATH = `${REVISIONS_DIR}/lock`;
 const REVISION_ID = /^[0-9a-f]{64}$/;
 
 interface Journal {
@@ -32,12 +33,47 @@ function snapshotPath(revision: RevisionId): string {
   return `${REVISIONS_DIR}/${revision}.json`;
 }
 
+const KINDS = new Set(['authoring', 'improvement', 'rollback', 'import']);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isMeta(value: unknown): value is RevisionMeta {
+  if (!isRecord(value)) return false;
+  const { seq, revision, parent, createdAt, by, message, kind } = value;
+  const ids = typeof revision === 'string' && REVISION_ID.test(revision) && (parent === undefined || (typeof parent === 'string' && REVISION_ID.test(parent)));
+  return ids && Number.isInteger(seq) && typeof createdAt === 'string' && typeof by === 'string' && typeof message === 'string' && KINDS.has(String(kind));
+}
+
+function parseJson(text: string): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseIndex(text: string | undefined): RevisionMeta[] {
-  return text === undefined ? [] : (JSON.parse(text) as RevisionMeta[]);
+  if (text === undefined) return [];
+  const value = parseJson(text);
+  if (!Array.isArray(value) || !value.every(isMeta)) throw corruptSource(`${INDEX_PATH} is not a list of revision records`);
+  return value;
+}
+
+function isChanges(value: unknown): value is Record<string, string | null> {
+  return isRecord(value) && Object.values(value).every((content) => content === null || typeof content === 'string');
+}
+
+function parseJournal(text: string): Journal | undefined {
+  const value = parseJson(text);
+  return isRecord(value) && isMeta(value.meta) && isChanges(value.changes) ? { meta: value.meta, changes: value.changes } : undefined;
 }
 
 function keptRevisions(log: readonly RevisionMeta[], keep: number): Set<RevisionId> {
-  return new Set(log.slice(-keep).map((meta) => meta.revision));
+  const kept = new Set(log.slice(-keep).map((meta) => meta.revision));
+  if (log[0]?.parent !== undefined) kept.add(log[0].parent);
+  return kept;
 }
 
 /** A workspace source over a folder. Its writer commits all files or none through a journal it finishes on next access after a crash, and keeps revision metadata and recent snapshots in `<dir>/.lousho/revisions/`. */
@@ -103,13 +139,38 @@ export function folderSource(dir: string, options: FolderSourceOptions = {}): Wo
     await prune(dirRoot, log);
   }
 
-  async function recover(): Promise<void> {
-    const pending = await readMeta(JOURNAL_PATH);
-    if (pending !== undefined) await finish(await root(), JSON.parse(pending) as Journal);
+  async function restoreParent(dirRoot: string, journal: Journal): Promise<void> {
+    const parent = journal.meta.parent === undefined ? undefined : await stored(journal.meta.parent);
+    if (parent === undefined) return;
+    const undo = Object.fromEntries(Object.keys(journal.changes).map((path) => [path, parent.get(path) ?? null]));
+    await applyToDisk(dirRoot, undo);
   }
 
-  async function write(changes: WorkspaceChanges, writeOptions: SourceWriteOptions): Promise<RevisionMeta> {
+  async function quarantine(dirRoot: string, journal: Journal | undefined, cause: unknown): Promise<never> {
+    await moveAside(dirRoot, JOURNAL_PATH, `${REVISIONS_DIR}/pending.failed-${Date.now()}.json`);
+    if (journal !== undefined) await restoreParent(dirRoot, journal).catch(() => undefined);
+    throw corruptSource(`an interrupted write could not be finished and was set aside in ${REVISIONS_DIR}/`, cause);
+  }
+
+  async function recover(dirRoot: string): Promise<void> {
+    const pending = await readMeta(JOURNAL_PATH);
+    if (pending === undefined) return;
+    const journal = parseJournal(pending);
+    try {
+      if (journal === undefined) throw corruptSource(`${JOURNAL_PATH} is not a write journal`);
+      await finish(dirRoot, journal);
+    } catch (error) {
+      await quarantine(dirRoot, journal, error);
+    }
+  }
+
+  async function recoverIfPending(): Promise<void> {
     const dirRoot = await root();
+    if ((await readMeta(JOURNAL_PATH)) !== undefined) await withFolderLock(dirRoot, LOCK_PATH, () => recover(dirRoot));
+  }
+
+  async function write(dirRoot: string, changes: WorkspaceChanges, writeOptions: SourceWriteOptions): Promise<RevisionMeta> {
+    await recover(dirRoot);
     const files = await current();
     const head = revisionId(files);
     const next = nextTree(files, head, changes, writeOptions);
@@ -125,7 +186,7 @@ export function folderSource(dir: string, options: FolderSourceOptions = {}): Wo
 
   function serial<T>(work: () => Promise<T>): Promise<T> {
     const result = queue.then(async () => {
-      await recover();
+      await recoverIfPending();
       return work();
     });
     queue = result.catch(() => undefined);
@@ -144,6 +205,10 @@ export function folderSource(dir: string, options: FolderSourceOptions = {}): Wo
     list: (prefix: string, readOptions: SourceReadOptions = {}) =>
       serial(async () => listFiles(readOptions.revision === undefined ? await current() : await snapshot(readOptions.revision), prefix)),
     history: () => serial(async () => (await readIndex()).reverse()),
-    write: (changes: WorkspaceChanges, writeOptions: SourceWriteOptions) => serial(() => write(changes, writeOptions)),
+    write: (changes: WorkspaceChanges, writeOptions: SourceWriteOptions) =>
+      serial(async () => {
+        const dirRoot = await root();
+        return withFolderLock(dirRoot, LOCK_PATH, () => write(dirRoot, changes, writeOptions));
+      }),
   };
 }

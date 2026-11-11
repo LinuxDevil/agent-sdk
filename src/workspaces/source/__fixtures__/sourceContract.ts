@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { NoChangeError, StaleRevisionError } from '../errors';
 import { revisionId } from '../revision';
-import type { WorkspaceSource } from '../types';
+import type { WorkspaceChanges, WorkspaceSource } from '../types';
 
 export type MakeSource = (files: Record<string, string>) => Promise<WorkspaceSource>;
 
@@ -30,6 +30,12 @@ async function codeOf(work: Promise<unknown>): Promise<string | undefined> {
 async function opened(make: MakeSource): Promise<{ source: WorkspaceSource; write: NonNullable<WorkspaceSource['write']>; base: string }> {
   const source = await make(CONTRACT_FILES);
   return { source, write: writer(source), base: await source.revision() };
+}
+
+async function expectClashes(write: NonNullable<WorkspaceSource['write']>, base: string, cases: WorkspaceChanges[]): Promise<void> {
+  for (const changes of cases) {
+    expect(await codeOf(write(changes, { expectedRevision: base, by: 'person:ann', message: 'clash' })), Object.keys(changes).join()).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
+  }
 }
 
 export function sourceContract(name: string, make: MakeSource): void {
@@ -133,6 +139,36 @@ export function sourceContract(name: string, make: MakeSource): void {
       }
       expect(await codeOf(source.list('../'))).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
       expect(await source.revision()).toBe(expectedRevision);
+    });
+
+    it('refuses reserved folders whatever their case or Unicode form', async () => {
+      const { source, write, base } = await opened(make);
+      for (const path of ['.Git/x', '.GIT/hooks/pre-commit', '.LOUSHO/revisions/index.json', 'Node_Modules/x.js', 'pages/.git/config', '.Lousho/pending.json']) {
+        expect(await codeOf(source.read(path)), path).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
+        expect(await codeOf(write({ [path]: 'x' }, { expectedRevision: base, by: 'person:eve', message: 'escape' })), path).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
+      }
+    });
+
+    it('refuses a tree with two paths equal after Unicode normalisation and case folding', async () => {
+      const { write, base } = await opened(make);
+      const nfc = 'pages/caf\u00e9.md';
+      const nfd = 'pages/cafe\u0301.md';
+      await expectClashes(write, base, [{ 'Pages/a/page.json': 'x' }, { [nfc]: '1', [nfd]: '2' }, { 'WORKSPACE.JSON': '{}' }]);
+    });
+
+    it('refuses a tree where a file is also a folder', async () => {
+      const { write, base } = await opened(make);
+      await expectClashes(write, base, [{ 'workspace.json/x': '1' }, { pages: '1' }, { b: '1', 'b/c': '2' }]);
+    });
+
+    it('history starts at the first write and its parent, the starting tree, stays readable', async () => {
+      const { source, write, base } = await opened(make);
+      expect(await source.history()).toEqual([]);
+      let expectedRevision = base;
+      for (const n of [1, 2, 3, 4]) expectedRevision = (await write({ 'a.md': String(n) }, { expectedRevision, by: 'person:ann', message: `${n}` })).revision;
+      const history = await source.history();
+      expect(history.at(-1)).toMatchObject({ seq: 1, parent: base });
+      expect(await source.read('workspace.json', { revision: base })).toBe(CONTRACT_FILES['workspace.json']);
     });
 
     it('an unknown revision is refused', async () => {

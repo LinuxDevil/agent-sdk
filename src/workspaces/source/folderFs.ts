@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { lstat, mkdir, open, readdir, realpath, rename, rm, stat, type FileHandle } from 'node:fs/promises';
 import type { Dirent, Stats } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { withFileLock } from '../../storage/fileLock';
 import { invalidPath, sourceLimit } from './errors';
-import { checkPath, isIgnored } from './revision';
+import { checkPath } from './revision';
 
 const TEMP_SUFFIX = '.lousho-tmp';
 
@@ -69,10 +70,23 @@ export async function readText(root: string, rel: string, maxBytes: number): Pro
 }
 
 async function linkKind(root: string, rel: string): Promise<'file' | 'skip'> {
-  const real = await resolveInside(root, rel);
-  const info: Stats | undefined = real === undefined ? undefined : await stat(real);
-  if (info?.isDirectory()) throw invalidPath(rel, 'is a symlink to a folder; only symlinks to files inside the workspace are followed');
-  return info?.isFile() ? 'file' : 'skip';
+  try {
+    const real = await resolveInside(root, rel);
+    const info: Stats | undefined = real === undefined ? undefined : await stat(real);
+    return info?.isFile() ? 'file' : 'skip';
+  } catch {
+    return 'skip';
+  }
+}
+
+function listable(rel: string, name: string): boolean {
+  if (name.endsWith(TEMP_SUFFIX)) return false;
+  try {
+    checkPath(rel);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function entryKind(root: string, rel: string, entry: Dirent): Promise<'dir' | 'file' | 'skip'> {
@@ -85,8 +99,8 @@ async function walkDir(root: string, prefix: string, out: string[], limits: Fold
   const entries = await readdir(prefix === '' ? root : join(root, prefix), { withFileTypes: true });
   for (const entry of entries) {
     const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
-    if (isIgnored(rel) || entry.name.endsWith(TEMP_SUFFIX)) continue;
-    const kind = await entryKind(root, checkPath(rel), entry);
+    if (!listable(rel, entry.name)) continue;
+    const kind = await entryKind(root, rel, entry);
     if (kind === 'dir') await walkDir(root, rel, out, limits);
     if (kind === 'file') out.push(rel);
     if (out.length > limits.maxFiles) throw sourceLimit(`the folder has more than ${limits.maxFiles} files`);
@@ -149,6 +163,15 @@ export async function checkWritable(root: string, rel: string): Promise<void> {
   await ensureFolders(root, rel, false);
   const info = await missingAsUndefined(lstat(join(root, rel)));
   if (info?.isDirectory()) throw invalidPath(rel, 'is a folder, not a file');
+}
+
+export async function withFolderLock<T>(root: string, rel: string, task: () => Promise<T>): Promise<T> {
+  await ensureFolders(root, rel, true);
+  return withFileLock(join(root, rel), task, { busyCode: 'LOUSHO_STORAGE_BUSY' });
+}
+
+export async function moveAside(root: string, rel: string, to: string): Promise<void> {
+  if (await ensureFolders(root, to, false)) await rename(join(root, rel), join(root, to));
 }
 
 export async function writeAtomic(root: string, rel: string, content: string): Promise<void> {

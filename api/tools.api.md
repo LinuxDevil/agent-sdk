@@ -739,6 +739,7 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_NO_CHANGE: "Drop the write, or change at least one file so the tree differs from the current revision.";
     readonly LOUSHO_WORKSPACE_PATH_INVALID: "Use a forward-slash path relative to the workspace root, and replace symlinks that leave the workspace folder with the files themselves.";
     readonly LOUSHO_WORKSPACE_REVISION_UNKNOWN: "Pick a revision from source.history(), or raise folderSource()'s keep to keep older snapshots readable.";
+    readonly LOUSHO_WORKSPACE_SOURCE_CORRUPT: "Look at the file the message names under .lousho/revisions/; a set-aside journal can be inspected and deleted once the workspace looks right.";
     readonly LOUSHO_WORKSPACE_SOURCE_LIMIT: "Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().";
 };
 

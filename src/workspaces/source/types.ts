@@ -23,7 +23,7 @@ export interface RevisionMeta {
   seq: number;
   /** The revision id of the tree after the write. */
   revision: RevisionId;
-  /** The revision the write was made against; absent on the first one. */
+  /** The revision the write was made against; on seq 1 it is the starting tree, which stays readable. */
   parent?: RevisionId;
   /** ISO time it was written. */
   createdAt: string;
@@ -72,6 +72,6 @@ export interface WorkspaceSource {
   list(prefix: string, options?: SourceReadOptions): Promise<string[]>;
   /** Recorded writes, newest first (highest `seq` first). */
   history(): Promise<RevisionMeta[]>;
-  /** Writes a new revision, all files or none; refuses a stale `expectedRevision` (`StaleRevisionError`) and changes that leave the tree as it is (`NoChangeError`). A rollback is a new write that restores old content, never a move of the head. Only WorkspaceRepo calls it. */
+  /** Writes a new revision, all files or none; refuses a stale `expectedRevision` (`StaleRevisionError`) and changes that leave the tree as it is (`NoChangeError`). A rollback is a new write that restores old content, never a move of the head. Only WorkspaceRepo calls it. Callers match failures on `error.code`, such as `LOUSHO_WORKSPACE_STALE_REVISION` or `LOUSHO_WORKSPACE_NO_CHANGE`. */
   write?(changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta>;
 }

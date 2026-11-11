@@ -103,7 +103,7 @@ Find a code by area:
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
 | [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
-| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`). |
+| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`). |
 
 ## Configuration
 
@@ -1381,6 +1381,21 @@ old revision whose snapshot the folder source has pruned (it keeps the last
 `folderSource()` to keep older snapshots readable.
 
 **Example:** `source.read('workspace.json', { revision: 'f…f' })`.
+
+### LOUSHO_WORKSPACE_SOURCE_CORRUPT
+
+**Means:** the folder source found `.lousho/revisions/index.json` or the
+write journal `pending.json` in a shape it did not write, or it could not
+finish an interrupted write. A journal it could not finish is renamed to
+`pending.failed-<time>.json`, the files it named are put back as they were
+before that write where the snapshot allows, and only the call that found it
+fails; later calls work.
+
+**Fix:** look at the file the message names. Check the workspace, then delete
+the set-aside journal. A damaged `index.json` must be repaired or removed by
+hand (removing it empties `history()`).
+
+**Example:** a journal cut short by a full disk.
 
 ### LOUSHO_WORKSPACE_SOURCE_LIMIT
 

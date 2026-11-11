@@ -1,5 +1,5 @@
 import { unknownRevision } from './errors';
-import { applyChanges, checkPath, listFiles, nextTree, revisionId, revisionMeta, type FileMap } from './revision';
+import { applyChanges, checkPath, checkTree, listFiles, nextTree, revisionId, revisionMeta, type FileMap } from './revision';
 import type { RevisionId, RevisionMeta, SourceReadOptions, SourceRef, SourceWriteOptions, WorkspaceChanges, WorkspaceSource } from './types';
 
 /** Options of {@link memorySource}. */
@@ -12,6 +12,7 @@ export interface MemorySourceOptions {
 export function memorySource(files: Readonly<Record<string, string>>, options: MemorySourceOptions = {}): WorkspaceSource {
   const ref: SourceRef = { projectId: options.ref?.projectId ?? 'default', workspaceId: options.ref?.workspaceId ?? 'workspace' };
   const initial = applyChanges(new Map(), files);
+  checkTree(initial);
   const snapshots = new Map<RevisionId, FileMap>();
   const log: RevisionMeta[] = [];
   let head = revisionId(initial);

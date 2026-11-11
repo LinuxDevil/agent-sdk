@@ -11,8 +11,10 @@ describe('memorySource', () => {
     expect(memorySource({}, { ref: { projectId: 'acme', workspaceId: 'marketing' } }).ref).toEqual({ projectId: 'acme', workspaceId: 'marketing' });
   });
 
-  it('refuses initial files outside the workspace', () => {
+  it('refuses initial files outside the workspace, or that clash', () => {
     expect(() => memorySource({ '../x': 'y' })).toThrow(/LOUSHO_WORKSPACE_PATH_INVALID/);
+    expect(() => memorySource({ b: '1', 'b/c': '2' })).toThrow(/LOUSHO_WORKSPACE_PATH_INVALID/);
+    expect(() => memorySource({ 'A.md': '1', 'a.md': '2' })).toThrow(/LOUSHO_WORKSPACE_PATH_INVALID/);
   });
 
   it('reads a whole tree pinned to the revision it started on', async () => {

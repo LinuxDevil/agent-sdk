@@ -25,16 +25,43 @@ function badSegment(segment: string): boolean {
   return segment === '' || segment === '.' || segment === '..' || segment.includes('\0');
 }
 
+function foldPath(path: string): string {
+  return path.normalize('NFC').toLowerCase();
+}
+
+function reservedSegment(path: string): string | undefined {
+  return foldPath(path).split('/').find((segment) => IGNORED_ROOTS.has(segment));
+}
+
 export function checkPath(path: string): string {
   if (path === '' || path.startsWith('/') || path.includes('\\') || /^[A-Za-z]:/.test(path)) throw invalidPath(path, 'must be a relative path with forward slashes');
-  const segments = path.split('/');
-  if (segments.some(badSegment)) throw invalidPath(path, "must not have empty, '.' or '..' segments");
-  if (IGNORED_ROOTS.has(segments[0])) throw invalidPath(path, `is inside ${segments[0]}/, which a workspace source never reads or writes`);
+  if (path.split('/').some(badSegment)) throw invalidPath(path, "must not have empty, '.' or '..' segments");
+  const reserved = reservedSegment(path);
+  if (reserved !== undefined) throw invalidPath(path, `is inside ${reserved}/, which a workspace source never reads or writes`);
   return path;
 }
 
-export function isIgnored(path: string): boolean {
-  return IGNORED_ROOTS.has(path.split('/')[0]);
+function folderPrefixes(key: string): string[] {
+  const segments = key.split('/');
+  return segments.slice(1).map((_, index) => segments.slice(0, index + 1).join('/'));
+}
+
+function foldedKeys(files: FileMap): Map<string, string> {
+  const byKey = new Map<string, string>();
+  for (const path of files.keys()) {
+    const other = byKey.get(foldPath(path));
+    if (other !== undefined) throw invalidPath(path, `clashes with '${other}' (the same path after Unicode normalisation and case folding)`);
+    byKey.set(foldPath(path), path);
+  }
+  return byKey;
+}
+
+export function checkTree(files: FileMap): void {
+  const byKey = foldedKeys(files);
+  for (const [key, path] of byKey) {
+    const folder = folderPrefixes(key).find((prefix) => byKey.has(prefix));
+    if (folder !== undefined) throw invalidPath(path, `needs '${byKey.get(folder)}' to be a folder, but it is a file`);
+  }
 }
 
 function normalizePrefix(prefix: string): string {
@@ -69,6 +96,7 @@ export function revisionMeta(seq: number, revision: RevisionId, parent: Revision
 export function nextTree(files: FileMap, head: RevisionId, changes: WorkspaceChanges, options: SourceWriteOptions): { files: Map<string, string>; revision: RevisionId } {
   if (options.expectedRevision !== head) throw new StaleRevisionError(options.expectedRevision, head);
   const next = applyChanges(files, changes);
+  checkTree(next);
   const revision = revisionId(next);
   if (revision === head) throw new NoChangeError(head);
   return { files: next, revision };

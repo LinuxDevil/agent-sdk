@@ -42,3 +42,7 @@ export function unknownRevision(revision: RevisionId): SDKError {
 export function sourceLimit(what: string): SDKError {
   return new SDKError(`The workspace source refused to read: ${what}.`, 'LOUSHO_WORKSPACE_SOURCE_LIMIT');
 }
+
+export function corruptSource(what: string, cause?: unknown): SDKError {
+  return new SDKError(`The workspace folder's revision records are damaged: ${what}.`, 'LOUSHO_WORKSPACE_SOURCE_CORRUPT', cause === undefined ? {} : { cause });
+}

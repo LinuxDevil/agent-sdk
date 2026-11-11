@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,13 +40,38 @@ describe('folderSource after a crash', () => {
     expect(await source.history()).toEqual([]);
   });
 
-  it('refuses a journal that names a path outside the folder', async () => {
+  it('sets aside a journal that names a path outside the folder, fails that call once, then works', async () => {
     const outside = tempDir();
     const dir = folderWith(CONTRACT_FILES);
-    mkdirSync(join(dir, '.lousho', 'revisions'), { recursive: true });
-    writeFileSync(join(dir, '.lousho', 'revisions', 'pending.json'), JSON.stringify({ meta: { seq: 1 }, changes: { [`../${outside.split('/').pop()}/planted.md`]: 'x' } }));
-    expect(await codeOf(folderSource(dir).revision())).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
+    const meta = plantJournal(dir, { 'a.md': 'x' });
+    writeFileSync(join(dir, '.lousho', 'revisions', 'pending.json'), JSON.stringify({ meta, changes: { [`../${outside.split('/').pop()}/planted.md`]: 'x' } }));
+    const source = folderSource(dir);
+    expect(await codeOf(source.revision())).toBe('LOUSHO_WORKSPACE_SOURCE_CORRUPT');
     expect(readdirSync(outside)).toEqual([]);
+    expect(await source.revision()).toBe(await memorySource(CONTRACT_FILES).revision());
+    expect(readdirSync(join(dir, '.lousho', 'revisions')).some((name) => name.startsWith('pending.failed-'))).toBe(true);
+  });
+
+  it('sets aside a malformed journal and puts back the files it named from the parent snapshot', async () => {
+    const dir = folderWith(CONTRACT_FILES);
+    const source = folderSource(dir);
+    const base = await source.revision();
+    await source.write!({ 'a.md': '1' }, { expectedRevision: base, by: 'person:ann', message: 'one' });
+    const meta = { seq: 2, revision: 'a'.repeat(64), parent: base, createdAt: 'x', by: 'person:ann', message: 'bad', kind: 'authoring' };
+    writeFileSync(join(dir, '.lousho', 'revisions', 'pending.json'), JSON.stringify({ meta, changes: { 'a.md': 'half', 'b/c.md': 7 } }));
+    expect(await codeOf(source.read('a.md'))).toBe('LOUSHO_WORKSPACE_SOURCE_CORRUPT');
+    writeFileSync(join(dir, '.lousho', 'revisions', 'pending.json'), JSON.stringify({ meta, changes: { 'workspace.json': 'half', 'a.md/x': 'y' } }));
+    writeFileSync(join(dir, 'workspace.json'), 'half');
+    expect(await codeOf(source.read('a.md'))).toBe('LOUSHO_WORKSPACE_SOURCE_CORRUPT');
+    expect(await source.read('workspace.json')).toBe(CONTRACT_FILES['workspace.json']);
+    expect((await source.history()).map((entry) => entry.seq)).toEqual([1]);
+  });
+
+  it('refuses a damaged revision index', async () => {
+    const dir = folderWith(CONTRACT_FILES);
+    mkdirSync(join(dir, '.lousho', 'revisions'), { recursive: true });
+    writeFileSync(join(dir, '.lousho', 'revisions', 'index.json'), JSON.stringify([{ seq: 'one' }]));
+    expect(await codeOf(folderSource(dir).history())).toBe('LOUSHO_WORKSPACE_SOURCE_CORRUPT');
   });
 });
 
@@ -131,7 +156,7 @@ describe('folderSource', () => {
       metas.push(meta);
       expectedRevision = meta.revision;
     }
-    expect(await codeOf(source.read('a.md', { revision: base }))).toBe('LOUSHO_WORKSPACE_REVISION_UNKNOWN');
+    expect(await source.read('a.md', { revision: base })).toBeUndefined();
     expect(await codeOf(source.read('a.md', { revision: metas[0].revision }))).toBe('LOUSHO_WORKSPACE_REVISION_UNKNOWN');
     expect(await source.read('a.md', { revision: metas[1].revision })).toBe('2');
     expect(await source.history()).toHaveLength(3);
@@ -146,6 +171,20 @@ describe('folderSource', () => {
     ]);
     expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
     expect(await source.history()).toHaveLength(1);
+  });
+
+  it('two instances writing at once both land, with distinct seq', async () => {
+    const dir = folderWith(CONTRACT_FILES);
+    const [one, two] = [folderSource(dir), folderSource(dir)];
+    const base = await one.revision();
+    const results = await Promise.allSettled([
+      one.write!({ 'a.md': 'one' }, { expectedRevision: base, by: 'person:ann', message: 'one' }),
+      two.write!({ 'b.md': 'two' }, { expectedRevision: base, by: 'person:bob', message: 'two' }),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const head = await two.revision();
+    await two.write!({ 'b.md': 'two' }, { expectedRevision: head, by: 'person:bob', message: 'two again' });
+    expect((await one.history()).map((meta) => meta.seq)).toEqual([2, 1]);
   });
 
   it('a hand edit to the folder changes the current revision', async () => {
@@ -174,8 +213,8 @@ describe('folderSource refuses to escape its folder', () => {
     symlinkSync(join(outside, 'secret.txt'), join(dir, 'leak.md'));
     const source = folderSource(dir);
     expect(await codeOf(source.read('leak.md'))).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
-    expect(await codeOf(source.list(''))).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
-    expect(await codeOf(source.revision())).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
+    expect(await source.list('')).not.toContain('leak.md');
+    expect(await source.revision()).toBe(await memorySource(CONTRACT_FILES).revision());
   });
 
   it('a symlinked folder pointing outside, for reads and writes', async () => {
@@ -184,10 +223,8 @@ describe('folderSource refuses to escape its folder', () => {
     symlinkSync(outside, join(dir, 'ext'));
     const source = folderSource(dir);
     expect(await codeOf(source.read('ext/secret.txt'))).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
-    expect(await codeOf(source.list(''))).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
-    unlinkSync(join(dir, 'ext'));
+    expect(await source.list('')).toEqual(Object.keys(CONTRACT_FILES).sort());
     const expectedRevision = await source.revision();
-    symlinkSync(outside, join(dir, 'ext'));
     const write = source.write!({ 'ext/planted.md': 'x' }, { expectedRevision, by: 'person:eve', message: 'plant' });
     expect(await codeOf(write)).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
     expect(existsSync(join(outside, 'planted.md'))).toBe(false);
@@ -206,7 +243,21 @@ describe('folderSource refuses to escape its folder', () => {
   it('a symlinked folder inside the workspace', async () => {
     const dir = folderWith(CONTRACT_FILES);
     symlinkSync(join(dir, 'pages'), join(dir, 'loop'));
-    expect(await codeOf(folderSource(dir).list(''))).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
+    expect(await folderSource(dir).list('')).toEqual(Object.keys(CONTRACT_FILES).sort());
+  });
+
+  it('leaves names that break the path rules out of the tree instead of failing', async () => {
+    const dir = folderWith({ ...CONTRACT_FILES, 'pages/.GIT/config': 'x', 'odd\\name.md': 'y' });
+    expect(await folderSource(dir).list('')).toEqual(Object.keys(CONTRACT_FILES).sort());
+  });
+
+  it('refuses case-folded reserved folders on disk-backed writes', async () => {
+    const dir = folderWith(CONTRACT_FILES);
+    mkdirSync(join(dir, '.git', 'hooks'), { recursive: true });
+    const source = folderSource(dir);
+    const write = source.write!({ '.Git/hooks/pre-commit': 'rm -rf /' }, { expectedRevision: await source.revision(), by: 'person:eve', message: 'hook' });
+    expect(await codeOf(write)).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
+    expect(readdirSync(join(dir, '.git', 'hooks'))).toEqual([]);
   });
 
   it('follows a symlinked file inside the workspace and skips a dangling one', async () => {
