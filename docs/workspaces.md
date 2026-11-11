@@ -112,6 +112,20 @@ Defaults when a manifest names no folder: `harness`, `agents`, `harness-profiles
 
 The Studio shows these as two label sets, exported as `AGENT_OWNED` (`instructions`, `skills`, `tools`, `memory`, `default model`) and `PAGE_OWNED` (`as`, `role`, `model`, `limits`, `tools.only`, `harness`). They are display labels, not key paths.
 
+### Where each setting lives
+
+Every setting is customisable; this table shows where.
+
+| Layer | What it sets | Where |
+| --- | --- | --- |
+| Harness | The task description only: audience, platform, schemas, constraints, evaluation. R13 forbids `model`, `provider`, `tools`, `permissions`, `secrets`, `sandbox`, `approvals`, `network`, `mcpServers` and `hooks` here | Base harness, harness profiles, page harness |
+| Agent | Instructions, skills, tools, default model | The agent folder |
+| Attachment | `model`, `limits`, `tools.only`, `role` | `pages/<p>/agents.json` |
+| Page | Execution type and runner settings (`limits`, `onFailure`, `checkpoint`), `defaults.model`, `models.provider` | `page.json` |
+| Workspace | `defaults` (model, limits), `budget`, `improve` (including `proposerModel`), `models.provider` | `workspace.json` |
+| Shared policies | Permissions, tool allowlist, secrets, network hosts, approvals, sandbox | `shared/policies/` |
+| Host | The policy ceiling, providers, secrets | Injected into the runtime |
+
 ## The files and their fields
 
 Every object is strict: an unknown key is an error. Every document starts with a `schema` id.
@@ -132,6 +146,7 @@ Every object is strict: an unknown key is an error. Every document starts with a
 | `defaults` | `{ model?, limits?: { maxConcurrentPages?, maxCostUsdPerRun? } }`. `maxConcurrentPages` defaults to 3 |
 | `budget` | `{ mode: "shared" or "per-page" }` |
 | `improve` | `{ enabled?, healer?: "shared" or "per-page", proposerModel? }`. `enabled` defaults to `true` |
+| `models` | `{ provider?: string or null }`. A built-in provider name (for example `pi`) that wraps every page model; see [model precedence](#model-precedence-and-modelsprovider) |
 
 Folder fields are safe relative paths that stay inside the workspace. Two workspace folders may not overlap, and none may point into `pages/` or `shared/policies/` (PRD027).
 
@@ -148,6 +163,7 @@ Folder fields are safe relative paths that stay inside the workspace. Two worksp
 | `improve` | `{ enabled? }`, overrides the workspace default |
 | `platform` | `{ profile?, adapter? }` |
 | `defaults` | `{ model? }` |
+| `models` | `{ provider?: string or null }`. Overrides the workspace's `models.provider`; `null` opts the page out of the wrapper |
 | `runtime` | reserved: only `{ kind: "local" }` is accepted |
 
 Page paths may not start with `pages/` (nested pages, PRD009).
@@ -165,6 +181,23 @@ Page paths may not start with `pages/` (nested pages, PRD009).
 | `checkpoint` | boolean |
 
 The block named by `type` is required. The other blocks are validated but not run, so a page keeps its other configurations when its type changes (see [type switching](#type-switching)). Aliases are names from `agents.json`, never refs.
+
+### Model precedence and `models.provider`
+
+`resolvePageModel` (exported from `lousho/workspaces`) picks the model a page's agent runs with. The first level that sets a model wins:
+
+1. the attachment's `model` in `agents.json`;
+2. the page's `defaults.model`;
+3. the agent's own default model;
+4. the workspace's `defaults.model`.
+
+It returns `{ model, source }`, where `source` is `attachment`, `page`, `agent`, `workspace` or `none` (no level sets a model), for provenance and the Studio.
+
+Then the provider wrapper applies. The effective provider is the page's `models.provider` when the page sets the key (`null` means no wrapper), otherwise the workspace's `models.provider`. A model `x/y` becomes `<provider>/x/y`, unless it already starts with `<provider>/`, so a model is never wrapped twice. For example, with `models: { "provider": "pi" }` in `workspace.json`, `anthropic/claude-sonnet-5-5` runs as `pi/anthropic/claude-sonnet-5-5`.
+
+The schema checks only the name's format (lowercase letters, digits and dashes, starting with a letter). Whether the provider is registered on this host is a runtime check, since the host injects providers (R17).
+
+The improver is separate (R8): `improve.proposerModel` and any Determinator model are never wrapped by `models.provider`, and never go through `resolvePageModel`.
 
 ### harness.json (`lousho.harness/1`)
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { modelIdSchema } from '../../spec/v2/common';
 import { KEBAB_CASE, workspacePathSchema } from './common';
+import { modelsObjectSchema } from './models';
 
 /** The four execution types a page can run under. */
 export type WorkType = 'single' | 'multi-agent' | 'workflow' | 'goal-oriented';
@@ -109,6 +110,11 @@ export interface PageManifest {
     /** Default model, as `provider/model`. */
     model?: string;
   };
+  /** Provider wrapper override for this page. */
+  models?: {
+    /** Built-in provider name that wraps this page's model, overriding the workspace's; `null` opts the page out. */
+    provider?: string | null;
+  };
   /** Reserved: only `{ kind: 'local' }` is accepted. */
   runtime?: {
     /** Always `local` in v1. */
@@ -174,6 +180,7 @@ export const pageObjectSchema = z
     platform: z.object({ profile: nonEmpty.optional(), adapter: nonEmpty.optional() }).strict().optional(),
     ui: pagePathSchema.optional(),
     defaults: z.object({ model: modelIdSchema.optional() }).strict().optional(),
+    models: modelsObjectSchema.optional(),
     runtime: z
       .object({ kind: z.enum(['local'], { message: "only 'local' is accepted; other runtime kinds are reserved" }) })
       .strict()
