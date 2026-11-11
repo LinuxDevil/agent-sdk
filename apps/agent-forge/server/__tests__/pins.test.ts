@@ -60,27 +60,28 @@ describe('pinnedResultsHook', () => {
 
   it('returns { result } for a matching tool name', async () => {
     const hook = pinnedResultsHook([pin()]);
-    await expect(hook.preToolCall!(ctx('current_date', { a: 1 }))).resolves.toEqual({ result: 'PINNED' });
+    // preToolCall may answer synchronously - await covers both shapes.
+    await expect(await hook.preToolCall!(ctx('current_date', { a: 1 }))).toEqual({ result: 'PINNED' });
   });
 
   it('ignores calls of other tools', async () => {
     const hook = pinnedResultsHook([pin()]);
-    await expect(hook.preToolCall!(ctx('day_name'))).resolves.toBeUndefined();
+    await expect(await hook.preToolCall!(ctx('day_name'))).toBeUndefined();
   });
 
   it('applies an args-scoped pin only to canonical-equal args (key order ignored)', async () => {
     const scoped = pin({ args: { url: 'https://x', method: 'GET' } });
     const hook = pinnedResultsHook([scoped]);
-    await expect(hook.preToolCall!(ctx('current_date', { method: 'GET', url: 'https://x' }))).resolves.toEqual({
+    await expect(await hook.preToolCall!(ctx('current_date', { method: 'GET', url: 'https://x' }))).toEqual({
       result: 'PINNED',
     });
-    await expect(hook.preToolCall!(ctx('current_date', { url: 'https://y', method: 'GET' }))).resolves.toBeUndefined();
-    await expect(hook.preToolCall!(ctx('current_date', {}))).resolves.toBeUndefined();
+    await expect(await hook.preToolCall!(ctx('current_date', { url: 'https://y', method: 'GET' }))).toBeUndefined();
+    await expect(await hook.preToolCall!(ctx('current_date', {}))).toBeUndefined();
   });
 
   it('first match wins', async () => {
     const hook = pinnedResultsHook([pin({ result: 'FIRST' }), pin({ result: 'SECOND' })]);
-    await expect(hook.preToolCall!(ctx('current_date'))).resolves.toEqual({ result: 'FIRST' });
+    await expect(await hook.preToolCall!(ctx('current_date'))).toEqual({ result: 'FIRST' });
   });
 });
 
@@ -115,7 +116,10 @@ describe('RunManager run with pins', () => {
         'export default defineTool({',
         "  name: 'spy-tool',",
         "  description: 'Writes a marker file when it actually executes.',",
-        '  input: z.object({}),',
+        // The schema must keep `input`: args are validated (and stripped to
+        // the schema shape) BEFORE preToolCall hooks see ctx.args, so a bare
+        // z.object({}) would reduce every call's args to {}.
+        '  input: z.object({ input: z.string().optional() }),',
         '  execute: async () => {',
         '    appendFileSync(MARKER, \'x\');',
         "    return { executed: true };",
