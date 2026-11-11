@@ -5,6 +5,7 @@ import { runtimeClient } from '../runtime/runtimeClient';
 import type { DeployResult, ProviderKeyStatus, SettingsFile, SettingsProfile } from '../../shared/wireTypes';
 import { errorMessage } from './errorMessage';
 import { AgentAuthorSection, AppearanceSection, CollectorSection, ShortcutsSection } from './SettingsAppSections';
+import { PassesSection } from './PassesSection';
 import { SettingsCard, TonePill } from './SettingsCard';
 
 type KeyedProviderId = 'openai' | 'anthropic';
@@ -415,6 +416,7 @@ export function SettingsPanel({ variant = 'drawer' }: { variant?: 'drawer' | 'sc
       {screen && <AgentAuthorSection />}
       <ProfileSection profiles={profiles} />
       <DeploySection deployAdapter={deployAdapter} onAdapterChange={setDeployAdapter} />
+      {screen && <PassesSection />}
       {screen && <CollectorSection />}
       {screen && <ShortcutsSection />}
     </div>

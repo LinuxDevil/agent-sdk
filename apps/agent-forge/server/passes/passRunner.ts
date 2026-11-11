@@ -20,27 +20,10 @@
  */
 import { recordSpanError, withSpan } from 'lousho';
 import type { TraceExporter } from 'lousho/traces';
+import type { PassKind } from '../../shared/wireTypes';
 import { observeReporting } from '../observeReporting';
 import { studioPaths } from '../workspace/studioPaths';
 import { SpendLog } from './spendLog';
-
-export type PassKind =
-  | 'version_summary'
-  | 'draft_review'
-  | 'portability_check'
-  | 'prompt_suggestion'
-  | 'auto_approval'
-  | 'eval_judge';
-
-// fallow-ignore-next-line unused-export -- the PassKind catalog is part of the L06 contract; L06b's settings and pass callers enumerate it
-export const PASS_KINDS: readonly PassKind[] = [
-  'version_summary',
-  'draft_review',
-  'portability_check',
-  'prompt_suggestion',
-  'auto_approval',
-  'eval_judge',
-];
 
 export type PassOutcome = 'completed' | 'failed' | 'refused' | 'unavailable' | 'skipped';
 

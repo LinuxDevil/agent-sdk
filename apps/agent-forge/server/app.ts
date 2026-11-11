@@ -934,7 +934,9 @@ export function createApp(options: CreateAppOptions): Express {
   // they live next to the other studioPaths() stores rather than per
   // workspace. `passRunner` defaults to one over this `spendLog`.
   const spendLog = options.spendLog ?? new SpendLog(paths.spend);
-  const passRunner = options.passRunner ?? new PassRunner({ baseDir, spendLog });
+  const passRunner =
+    options.passRunner ??
+    new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
   const workspace = defaultWorkspaceContext(options, passRunner);
   // One resolver for the middleware below and the Author tools' per-call
   // workspace lookup (PLAN 19.3 - until W02a it resolves the launch
@@ -1070,7 +1072,7 @@ export function createApp(options: CreateAppOptions): Express {
   registerJudgeTestRoute(app, { secretsStore: secrets, ...(judge ? { judge } : {}) });
   // The pass spend summary (passes/passRoutes.ts) - before the observe
   // proxy so `/settings/passes/spend` is never proxied.
-  registerPassRoutes(app, { spendLog });
+  registerPassRoutes(app, { spendLog, settings });
   registerObserveProxy(app);
   registerStaticClient(app, staticDir);
 

@@ -93,4 +93,40 @@ describe('SettingsStore', () => {
     expect(() => store.list()).not.toThrow();
     expect(store.list().profiles.length).toBeGreaterThan(0);
   });
+
+  describe('passes (L06b)', () => {
+    it('answers the defaults on a fresh settings file', () => {
+      expect(store.passes()).toEqual({
+        model: 'anthropic/claude-haiku-5-5',
+        autoApprovalModel: 'anthropic/claude-haiku-5-5',
+        enabled: {
+          version_summary: true,
+          draft_review: true,
+          portability_check: true,
+          prompt_suggestion: true,
+          auto_approval: true,
+          eval_judge: true,
+        },
+      });
+    });
+
+    it('merges a patch over the stored values and keeps the profiles untouched', () => {
+      store.setActive('staging');
+      const merged = store.setPasses({ model: 'openai/gpt-4o-mini', enabled: { prompt_suggestion: false } });
+      expect(merged.model).toBe('openai/gpt-4o-mini');
+      expect(merged.autoApprovalModel).toBe('anthropic/claude-haiku-5-5');
+      expect(merged.enabled.prompt_suggestion).toBe(false);
+      expect(merged.enabled.eval_judge).toBe(true);
+      expect(store.list().activeProfileId).toBe('staging');
+      // A fresh instance reads the same merged settings back.
+      expect(new SettingsStore(baseDir).passes()).toEqual(merged);
+    });
+
+    it('rejects a model without provider/ and an unknown or non-boolean enabled kind', () => {
+      expect(() => store.setPasses({ model: 'haiku' })).toThrow(/provider\/model/);
+      expect(() => store.setPasses({ autoApprovalModel: 'x' })).toThrow(/provider\/model/);
+      expect(() => store.setPasses({ enabled: { foo: true } as never })).toThrow(/unknown pass kind/);
+      expect(() => store.setPasses({ enabled: { eval_judge: 'yes' } as never })).toThrow(/unknown pass kind|non-boolean/);
+    });
+  });
 });
