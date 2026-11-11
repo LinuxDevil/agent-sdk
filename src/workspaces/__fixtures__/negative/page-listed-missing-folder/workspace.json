@@ -1,0 +1,12 @@
+{
+  "schema": "lousho.workspace/1",
+  "id": "negative-base",
+  "name": "Negative base",
+  "version": "1.0.0",
+  "description": "A small valid workspace that each negative case changes in one place.",
+  "mainAgent": null,
+  "pages": [
+    "main",
+    "ghost"
+  ]
+}

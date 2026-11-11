@@ -19,7 +19,7 @@ import type { ToolPin } from '../shared/wireTypes';
 export const MAX_PINS = 50;
 
 /** The hook's registered name (visible in `lousho.tool.replaced_by_hook` on the span). */
-export const PINS_HOOK_NAME = 'studio-pins';
+const PINS_HOOK_NAME = 'studio-pins';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);

@@ -5,7 +5,7 @@ import { mergeProposal, type ProposalOverlay } from '../graph/v2/proposal';
 import { HttpAgentStore } from '../persistence/HttpAgentStore';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { AgentStore } from '../persistence/AgentStore';
-import type { Graph, GraphEdge } from '../graph/v2/types';
+import type { Graph, GraphEdge, Problem } from '../graph/v2/types';
 import type { TemplateId } from '../canvas/templates';
 import type { AgentListItem } from '../../shared/wireTypes';
 import type {
@@ -21,7 +21,7 @@ import type {
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
 import type { NodeStates } from './nodeStateReducer';
-import { useAgentDocument } from './useAgentDocument';
+import { useAgentDocument, type SetGraphOptions } from './useAgentDocument';
 import { useNodeSpans } from './useNodeSpans';
 import { agentRouteId } from '../screens/agents/agentRoute';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
@@ -29,7 +29,7 @@ import { useActiveProfile, useChatControls, useRunControls } from './useAgentCon
 import { usePins } from './usePins';
 
 type RailTab = 'agents' | 'nodes';
-export type DrawerTab = 'test' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
+export type DrawerTab = 'test' | 'problems' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
 
 interface AppState {
   store: AgentStore;
@@ -42,11 +42,16 @@ interface AppState {
    */
   graph: Graph;
   /**
-   * `{ dirty: false }` applies the update without marking the document
-   * dirty — used by the automatic unplaced-node layout (C17), whose
-   * recomputed positions need no save of their own.
+   * Every canvas mutation goes through here. `options.history` controls the
+   * undo record (default `{ label: 'Edit' }`; `false` records nothing, e.g.
+   * C17's unplaced-node layout) and `options.dirty` (default true) the
+   * unsaved-changes flag — `{ dirty: false }` applies the update without
+   * marking the document dirty, used by the automatic unplaced-node layout
+   * (C17), whose recomputed positions need no save of their own.
+   * `coalesceKey` merges same-key edits within COALESCE_MS into one undo
+   * step (drags pass 'move:<ids>', Inspector fields 'field:<node>:<key>').
    */
-  setGraph: (updater: (graph: Graph) => Graph, options?: { dirty?: boolean }) => void;
+  setGraph: (updater: (graph: Graph) => Graph, options?: SetGraphOptions) => void;
   /**
    * Derived, read-mostly view of `graph` as the SDK's `AgentSpecV2` (via
    * `graphToSpec()`), kept for components that read the spec shape
@@ -61,6 +66,15 @@ interface AppState {
   edges: GraphEdge[];
   /** Graph node id → the id `specToGraph(spec)` gives it today, from the same `graphToSpec` call as `spec`. */
   nodeIdMap: Record<string, string>;
+  /** Graph node id → its spec path (`''` root, `'tools[2]'`, `'subagents.r.inline'`), from the same `graphToSpec` call. */
+  specPaths: Record<string, string>;
+  /**
+   * `validateGraph(graph)` — structural, per-kind and AgentSpec v2 schema
+   * problems — debounced 300 ms behind edits (useAgentDocument). The node
+   * badges, the Inspector's Problems section and the drawer's Problems tab
+   * all read this one list.
+   */
+  problems: Problem[];
   /**
    * The proposal overlay (C21): an Agent Author proposal spec shown on top
    * of the canvas — added nodes dashed, removed faded, changed marked —
@@ -80,6 +94,26 @@ interface AppState {
   /** True when there are unsaved changes since the last successful `save()`. */
   dirty: boolean;
   save: () => Promise<void>;
+  /**
+   * Re-reads the open agent's spec and layout from disk (`GET /agents/:id`)
+   * and shows them in place - the Author canvas sync's post-save refresh
+   * (AA18). `discardLocal` replaces unsaved edits too and clears `dirty`.
+   * Resolves `false` when the agent is gone or the screen switched
+   * agents while the fetch ran.
+   */
+  reload: (options?: { discardLocal?: boolean }) => Promise<boolean>;
+  /**
+   * Undo/redo over the spec-patch history (C20): `undo`/`redo` rebuild the
+   * graph from the patched `{ spec, layout }` and mark the document dirty;
+   * `canUndo`/`canRedo` drive the toolbar buttons and `undoLabel`/`redoLabel`
+   * the "Undo <label>" tooltips. History resets on agent switch.
+   */
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  undoLabel: string;
+  redoLabel: string;
   /**
    * The explicit "Save version" (the Topbar's Save button and Ctrl/Cmd+S):
    * `save()` (the working-copy PUT, same as autosave) then
@@ -155,6 +189,10 @@ interface AppState {
   runFromHere: () => Promise<void>;
   /** Resolves the run's current pending approval, if any, via `/agents/:id/approve`. */
   approveAgent: (approved: boolean, note?: string) => Promise<void>;
+  /** Pushes `message` into the live run's input queue via `/agents/:id/steer`; rejects when nothing is running (or a flow run). */
+  steerRun: (message: string) => Promise<void>;
+  /** Answers the run's current pending `ask_question` pause, if any, via `/agents/:id/approve` (`{ answer }`). */
+  answerQuestion: (answer: string) => Promise<void>;
   /**
    * Live run status for every saved agent, keyed by agent id -
    * what the LeftRail's agent-list status pills render, replacing the

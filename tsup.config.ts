@@ -50,6 +50,8 @@ const entry = {
     'auth/index': 'src/auth/index.ts',
     'deploy/kv': 'src/deploy/kv.ts',
     'improve/index': 'src/improve/index.ts',
+    'workspaces/index': 'src/workspaces/index.ts',
+    'workspaces/client/index': 'src/workspaces/client/index.ts',
     'traces/index': 'src/traces/index.ts',
     'triggers/index': 'src/triggers/index.ts',
     'react/index': 'src/react/index.ts',

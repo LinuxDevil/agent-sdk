@@ -1,0 +1,10 @@
+{
+  "schema": "lousho.agents/1",
+  "agents": [
+    {
+      "as": "agent",
+      "ref": "workspace:triager",
+      "role": "Ranks the report."
+    }
+  ]
+}

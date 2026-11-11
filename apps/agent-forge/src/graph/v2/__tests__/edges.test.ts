@@ -246,12 +246,12 @@ describe('deriveEdges', () => {
     ]);
   });
 
-  it('draws no edges for flow and note nodes', () => {
+  it('draws only the derived runs edge for a lone flow root, and none for a note', () => {
     const graph = graphOf([
       ROOT,
       node('flow', 'flow:e1', 'agent', { step: { type: 'end', id: 'e1' }, children: { shape: 'none' } }),
       node('note', 'note:n1', null, { text: 'hi' }),
     ]);
-    expect(deriveEdges(graph)).toEqual([]);
+    expect(deriveEdges(graph).map((e) => e.id)).toEqual(['runs:agent->flow:e1']);
   });
 });

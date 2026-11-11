@@ -11,8 +11,15 @@
  * the emitter while a reattach pass runs; see AuthorChatContext).
  */
 
+/**
+ * What an Author-driven save changed: `'spec'` rewrote the agent's spec
+ * (saveAgent/saveAgentUpdate - the canvas reloads), `'meta'` only flipped
+ * a meta flag like `enabled` (setAgentEnabled - the canvas is untouched).
+ */
+export type AgentSavedChange = 'spec' | 'meta';
+
 /** A listener that drops cached state for `agentId`. */
-export type AgentSavedListener = (agentId: string) => void;
+export type AgentSavedListener = (agentId: string, change?: AgentSavedChange) => void;
 
 const listeners = new Set<AgentSavedListener>();
 
@@ -32,10 +39,10 @@ export function onAgentSaved(listener: AgentSavedListener): () => void {
  * `AuthorChatContext` only - a listener that throws is reported and
  * skipped so one bad subscriber can't break the chat.
  */
-export function fireAgentSaved(agentId: string): void {
+export function fireAgentSaved(agentId: string, change: AgentSavedChange = 'spec'): void {
   for (const listener of listeners) {
     try {
-      listener(agentId);
+      listener(agentId, change);
     } catch {
       // Listener faults stay with the listener (see the JSDoc above).
     }

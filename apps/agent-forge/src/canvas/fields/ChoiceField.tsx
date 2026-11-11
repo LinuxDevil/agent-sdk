@@ -29,6 +29,8 @@ export interface ChoiceFieldProps<T extends string> {
   error?: string;
   /** Draws the required marker on the label. */
   required?: boolean;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 /** The select's internal value for `undefined` (option values are their 1-based index). */
@@ -49,6 +51,7 @@ export function ChoiceField<T extends string>({
   help,
   error,
   required = false,
+  fieldPath,
 }: ChoiceFieldProps<T>): JSX.Element {
   const selected = value === undefined ? UNSET : String(options.findIndex((option) => option.value === value) + 1);
   const selectOptions = [
@@ -67,7 +70,7 @@ export function ChoiceField<T extends string>({
   };
 
   return (
-    <Field id={id} label={label} hint={help} error={error} required={required}>
+    <Field id={id} label={label} hint={help} error={error} required={required} fieldPath={fieldPath}>
       <Select options={selectOptions} value={selected} onChange={onSelect} />
     </Field>
   );

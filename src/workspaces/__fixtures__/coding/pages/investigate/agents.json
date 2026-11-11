@@ -1,0 +1,10 @@
+{
+  "schema": "lousho.agents/1",
+  "agents": [
+    {
+      "as": "agent",
+      "ref": "workspace:investigator",
+      "role": "Does the investigate work."
+    }
+  ]
+}

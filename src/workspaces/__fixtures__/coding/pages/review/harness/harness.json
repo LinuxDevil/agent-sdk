@@ -1,0 +1,49 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "audience": {
+    "description": "Engineers who maintain the codebase."
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "diff": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "diff"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "review": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "review"
+      ]
+    }
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "review-present",
+        "description": "The review is not empty.",
+        "check": "harness/checks/review-present.ts"
+      }
+    ]
+  },
+  "context": {
+    "resources": [
+      "resources/conventions.md"
+    ]
+  }
+}

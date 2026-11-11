@@ -497,3 +497,36 @@ export function evaluateSafeExpression(
   const ast = new Parser(expression, tokens).parse();
   return new Evaluator(expression, scope).eval(ast);
 }
+
+function childNodes(node: Node): readonly Node[] {
+  if (node.t === 'member') return [node.obj, node.key];
+  if (node.t === 'call') return [node.callee, ...node.args];
+  if (node.t === 'unary') return [node.arg];
+  if (node.t === 'binary') return [node.left, node.right];
+  return [];
+}
+
+function checkMember(expression: string, node: Extract<Node, { t: 'member' }>): void {
+  if (node.key.t !== 'lit' && node.key.t !== 'id') throw new ExpressionError(expression, node.pos, 'computed property keys must be a literal or a variable');
+  if (node.key.t === 'lit' && FORBIDDEN_KEYS.has(String(node.key.value))) throw new ExpressionError(expression, node.pos, `access to '${String(node.key.value)}' is not allowed`);
+}
+
+function isAllowedCall(node: Extract<Node, { t: 'call' }>): boolean {
+  return node.callee.t === 'member' && node.callee.key.t === 'lit' && STRING_METHODS.has(String(node.callee.key.value));
+}
+
+function collectVariables(expression: string, node: Node, names: Set<string>): void {
+  if (node.t === 'id') names.add(node.name);
+  if (node.t === 'member') checkMember(expression, node);
+  if (node.t === 'call' && !isAllowedCall(node)) throw new ExpressionError(expression, node.pos, 'only .includes(), .startsWith() and .endsWith() may be called');
+  for (const child of childNodes(node)) collectVariables(expression, child, names);
+}
+
+/** Parses an expression without evaluating it and returns the variables it reads, in order of first use; throws {@link ExpressionError} on unsupported syntax. */
+export function safeExpressionVariables(expression: string): string[] {
+  const tokens = tokenize(expression);
+  if (tokens.length === 1) return [];
+  const names = new Set<string>();
+  collectVariables(expression, new Parser(expression, tokens).parse(), names);
+  return [...names];
+}

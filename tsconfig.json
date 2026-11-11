@@ -29,6 +29,8 @@
       "lousho/integrations": ["./src/integrations/index.ts"],
       "lousho/utils": ["./src/utils/index.ts"],
       "lousho/improve": ["./src/improve/index.ts"],
+      "lousho/workspaces": ["./src/workspaces/index.ts"],
+      "lousho/workspaces/client": ["./src/workspaces/client/index.ts"],
       "lousho/mcp": ["./src/tools/mcp/index.ts"],
       "lousho/types": ["./src/types/index.ts"],
       "lousho/spec": ["./src/spec/v2/index.ts"],

@@ -1,0 +1,5 @@
+{
+  "name": "intake-agent",
+  "version": "1.0.0",
+  "description": "Turns a request into a ticket."
+}

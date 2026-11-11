@@ -6,11 +6,15 @@
  * kind ticket). Spec paths for `fieldPath` come from one `graphToSpec`
  * call, never one per node.
  */
+import { flowChildRefs, flowRoot, flowSpecPaths, flowTree } from './flow';
 import { graphToSpec } from './graphToSpec';
 import { KIND_RULES } from './kindRules';
+import { schemaProblems } from './schemaIssues';
 import { orderedNodes, sectionChildren, subagentEntryKey, HANDLED_SECTIONS } from './order';
+import type { AgentSpecV2 } from './specTypes';
 import type {
   AgentNodeData,
+  FlowChildren,
   Graph,
   GraphNode,
   McpNodeData,
@@ -79,14 +83,36 @@ function tolerantSpecPaths(graph: Graph): Record<string, string> {
   return paths;
 }
 
-/** `graphToSpec(graph).specPaths` — once per call; the tolerant mirror when the spec cannot be re-emitted. */
-function specPaths(graph: Graph): Record<string, string> {
-  try {
-    return graphToSpec(graph).specPaths;
-  } catch {
-    return tolerantSpecPaths(graph);
-  }
+/** What validation needs of one `graphToSpec` emission: the spec and its `specPaths`. */
+interface EmittedSpec {
+  spec: AgentSpecV2;
+  specPaths: Record<string, string>;
 }
+
+/**
+ * `graphToSpec(graph)` memoised per graph object (WeakMap): the canvas
+ * nodes, the Inspector and the Problems drawer all validate the same
+ * graph, and the emission (spec + `nodeIdMap` + layout) is the expensive
+ * half of `validateGraph`. `null` marks a graph `graphToSpec` refuses
+ * (no root agent) so it is not retried every call. The key-order hint of
+ * a `previousSpec` does not change the spec's content or paths, so the
+ * cache is safe to share.
+ */
+const EMITTED_CACHE = new WeakMap<Graph, EmittedSpec | null>();
+
+function emittedSpec(graph: Graph): EmittedSpec | null {
+  if (EMITTED_CACHE.has(graph)) return EMITTED_CACHE.get(graph) ?? null;
+  let emitted: EmittedSpec | null = null;
+  try {
+    const result = graphToSpec(graph);
+    emitted = { spec: result.spec, specPaths: result.specPaths };
+  } catch {
+    emitted = null;
+  }
+  EMITTED_CACHE.set(graph, emitted);
+  return emitted;
+}
+
 
 type CoreCheck = (graph: Graph, paths: Readonly<Record<string, string>>) => Problem[];
 
@@ -218,6 +244,158 @@ function duplicateItemIds(graph: Graph, paths: Readonly<Record<string, string>>)
   return problems;
 }
 
+/** The `FlowChildren.shape` each step type is allowed to have (`none` = leaf or empty container). */
+const FLOW_CHILD_SHAPE: Record<string, FlowChildren['shape'] | undefined> = {
+  sequence: 'steps',
+  parallel: 'steps',
+  oneOf: 'options',
+  forEach: 'step',
+};
+
+/** `problem` for a flow node, with its `flowSpecPaths` path (`flow.flow.steps[1]`). */
+function flowProblem(
+  nodeId: string,
+  paths: Readonly<Record<string, string>>,
+  severity: Problem['severity'],
+  message: string,
+  suffix?: string
+): Problem {
+  const base = paths[nodeId];
+  const fieldPath = base === undefined ? undefined : suffix === undefined ? base : `${base}.${suffix}`;
+  return fieldPath === undefined
+    ? { nodeId, severity, message }
+    : { nodeId, severity, message, fieldPath };
+}
+
+/**
+ * Flow-tree structure (C15): exactly one root, every node reachable from it,
+ * every child reference pointing at a live flow node, no step referenced
+ * twice, `children.shape` matching the step type, and `flowMeta` only on
+ * the root. Per-step field rules live in `kinds/flow.ts`; this check covers
+ * what needs the whole tree — including orphans `orderedNodes` never walks.
+ */
+/** Everything `flowNodeProblems` needs besides the node itself. */
+interface FlowCheck {
+  byId: ReadonlyMap<string, GraphNode>;
+  tree: ReadonlySet<string>;
+  rootId: string | undefined;
+  refCount: ReadonlyMap<string, number>;
+  paths: Readonly<Record<string, string>>;
+}
+
+function flowRefCounts(flows: GraphNode[]): Map<string, number> {
+  const refCount = new Map<string, number>();
+  for (const n of flows) {
+    for (const ref of flowChildRefs(n)) refCount.set(ref.id, (refCount.get(ref.id) ?? 0) + 1);
+  }
+  return refCount;
+}
+
+/** A step referenced twice, an unreferenced non-root (a second "first step"), or a step the root cannot reach. */
+function flowPlacementProblems(node: GraphNode, check: FlowCheck): Problem[] {
+  const problems: Problem[] = [];
+  const refs = check.refCount.get(node.id) ?? 0;
+  if (refs > 1) {
+    problems.push(flowProblem(node.id, check.paths, 'error', 'This step is in the flow more than once'));
+  }
+  const isRoot = node.id === check.rootId;
+  if (!isRoot && refs === 0) {
+    problems.push(flowProblem(node.id, check.paths, 'error', 'The flow has more than one first step'));
+  } else if (!check.tree.has(node.id)) {
+    problems.push(flowProblem(node.id, check.paths, 'error', 'This step is not connected to the flow'));
+  }
+  return problems;
+}
+
+/** Each child reference: not listed twice by the same step, pointing at a live flow node. */
+function flowChildRefProblems(
+  node: GraphNode,
+  check: FlowCheck
+): Problem[] {
+  const problems: Problem[] = [];
+  const seen = new Set<string>();
+  for (const ref of flowChildRefs(node)) {
+    if (seen.has(ref.id)) {
+      problems.push(
+        flowProblem(node.id, check.paths, 'error', 'This step lists the same step twice', ref.segment)
+      );
+    }
+    seen.add(ref.id);
+    const target = check.byId.get(ref.id);
+    if (target === undefined || target.kind !== 'flow') {
+      problems.push(
+        flowProblem(node.id, check.paths, 'error', 'This step points at a step that does not exist', ref.segment)
+      );
+    }
+  }
+  return problems;
+}
+
+/** `children.shape` matches the step type; `flowMeta` lives only on the root. */
+function flowShapeProblems(
+  node: GraphNode,
+  data: { children: FlowChildren; flowMeta?: unknown; step: { type?: unknown } },
+  check: FlowCheck
+): Problem[] {
+  const problems: Problem[] = [];
+  const expected = FLOW_CHILD_SHAPE[String(data.step.type)] ?? 'none';
+  if (data.children.shape !== expected && !(expected !== 'none' && data.children.shape === 'none')) {
+    problems.push(
+      flowProblem(node.id, check.paths, 'error', "This step's children do not match its type", 'type')
+    );
+  }
+  if (data.flowMeta !== undefined && node.id !== check.rootId) {
+    problems.push(flowProblem(node.id, check.paths, 'error', 'Only the first step carries the flow details'));
+  }
+  return problems;
+}
+
+function flowNodeProblems(node: GraphNode, check: FlowCheck): Problem[] {
+  const data = node.data as { children: FlowChildren; flowMeta?: unknown; step: { type?: unknown } };
+  return [
+    ...flowPlacementProblems(node, check),
+    ...flowChildRefProblems(node, check),
+    ...flowShapeProblems(node, data, check),
+  ];
+}
+
+/** The root's `flowMeta` warning: absent entirely, or missing `code`/`name`. */
+function flowRootProblems(root: GraphNode | undefined, paths: Readonly<Record<string, string>>): Problem[] {
+  if (root === undefined) return [];
+  const meta = (root.data as { flowMeta?: unknown }).flowMeta;
+  if (meta === undefined) {
+    return [flowProblem(root.id, paths, 'warning', 'The flow has no code or name')];
+  }
+  if (typeof meta !== 'object' || meta === null) return [];
+  const record = meta as Record<string, unknown>;
+  const needsBoth =
+    typeof record.code !== 'string' ||
+    record.code.trim() === '' ||
+    typeof record.name !== 'string' ||
+    record.name.trim() === '';
+  return needsBoth
+    ? [flowProblem(root.id, paths, 'warning', 'The flow needs a code and a name')]
+    : [];
+}
+
+function flowStructure(graph: Graph, paths: Readonly<Record<string, string>>): Problem[] {
+  const flows = liveNodes(graph).filter((n) => n.kind === 'flow');
+  if (flows.length === 0) return [];
+  const flowPaths = { ...paths, ...flowSpecPaths(graph) };
+  const root = flowRoot(graph);
+  const check: FlowCheck = {
+    byId: new Map(flows.map((n) => [n.id, n])),
+    tree: new Set(flowTree(graph).map((n) => n.id)),
+    rootId: root?.id,
+    refCount: flowRefCounts(flows),
+    paths: flowPaths,
+  };
+  return [
+    ...flows.flatMap((n) => flowNodeProblems(n, check)),
+    ...flowRootProblems(root, flowPaths),
+  ];
+}
+
 /** A spec carries at most one `output` per agent. */
 function duplicateOutputs(graph: Graph, paths: Readonly<Record<string, string>>): Problem[] {
   const nodes = liveNodes(graph).filter((n) => n.kind === 'output');
@@ -237,6 +415,7 @@ const CORE_CHECKS: readonly CoreCheck[] = [
   duplicateMemoryNames,
   duplicateItemIds,
   duplicateOutputs,
+  flowStructure,
 ];
 
 /** Checks whose problems are graph-level (emitted before any node problem). */
@@ -244,14 +423,34 @@ const GRAPH_LEVEL: ReadonlySet<CoreCheck> = new Set([noMainAgent]);
 
 const SEVERITY_RANK: Record<Problem['severity'], number> = { error: 0, warning: 1 };
 
+/** Options of {@link validateGraph}. */
+export interface ValidateGraphOptions {
+  /**
+   * Also run `agentSpecV2Schema` over the emitted spec and map each zod
+   * issue to its node (`schemaIssues.ts`). Default `true`; `false` keeps
+   * only the structural + per-kind checks (the kind-rule unit tests use
+   * it so their fixtures stay schema-agnostic).
+   */
+  schema?: boolean;
+}
+
+/** A schema problem is dropped when a structural/kind problem already reports the same node and field path. */
+function isDuplicate(problem: Problem, existing: readonly Problem[]): boolean {
+  const fieldPath = problem.fieldPath ?? '';
+  return existing.some((p) => p.nodeId === problem.nodeId && (p.fieldPath ?? '') === fieldPath);
+}
+
 /**
  * Structural + per-kind validation: the core check rows, then
- * `KIND_RULES[kind].validate` per node in `orderedNodes` order. Result
- * order: graph-level problems first, then by node walk order, errors
- * before warnings within a node.
+ * `KIND_RULES[kind].validate` per node in `orderedNodes` order, then —
+ * unless `options.schema === false` — the AgentSpec v2 schema issues
+ * mapped onto nodes (`schemaProblems`), minus the ones duplicating a
+ * structural/kind problem. Result order: graph-level problems first,
+ * then by node walk order, errors before warnings within a node.
  */
-export function validateGraph(graph: Graph): Problem[] {
-  const paths = specPaths(graph);
+export function validateGraph(graph: Graph, options?: ValidateGraphOptions): Problem[] {
+  const emitted = emittedSpec(graph);
+  const paths = emitted?.specPaths ?? tolerantSpecPaths(graph);
   const walk = orderedNodes(graph);
   const graphLevel: Problem[] = [];
   const nodeLevel: Problem[] = [];
@@ -263,6 +462,11 @@ export function validateGraph(graph: Graph): Problem[] {
       | ((n: GraphNode, g: Graph) => Problem[])
       | undefined;
     if (validate !== undefined) nodeLevel.push(...validate(node, graph));
+  }
+  if (options?.schema !== false && emitted !== null) {
+    for (const problem of schemaProblems(emitted.spec, emitted.specPaths)) {
+      if (!isDuplicate(problem, nodeLevel)) nodeLevel.push(problem);
+    }
   }
   const rank = new Map(walk.map((n, i) => [n.id, i]));
   const rankOf = (p: Problem): number => rank.get(p.nodeId) ?? Number.MAX_SAFE_INTEGER;

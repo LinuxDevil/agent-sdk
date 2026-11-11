@@ -17,6 +17,7 @@ export function FileForm({ item, patch }: ToolSubFormProps<'file'>): JSX.Element
       label="Path"
       required
       error={toolFilePathOk(item.file) ? undefined : 'Use a .ts or .js file inside the agent folder'}
+      fieldPath=".file"
     >
       <Input
         value={item.file}

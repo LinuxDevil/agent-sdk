@@ -1,0 +1,20 @@
+{
+  "schema": "lousho.workspace/1",
+  "id": "coding",
+  "name": "Coding",
+  "version": "1.0.0",
+  "description": "Investigate, fix and review code changes.",
+  "domain": "coding",
+  "mainAgent": {
+    "dir": "./main-agent"
+  },
+  "pages": [
+    "investigate",
+    "fix",
+    "review",
+    "support-triage"
+  ],
+  "defaults": {
+    "model": "mock/mock-model"
+  }
+}

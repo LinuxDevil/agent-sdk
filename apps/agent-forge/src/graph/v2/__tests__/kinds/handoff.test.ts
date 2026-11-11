@@ -86,7 +86,7 @@ describe('specToGraph: handoff worked example', () => {
 describe('handoffRules.validate', () => {
   it('requires a target', () => {
     const graph = graphOf({ handoffs: [{ agent: '' }] });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('handoff:new', 'Pick who this hands off to', 'handoffs[0].agent'),
     ]);
   });
@@ -95,7 +95,7 @@ describe('handoffRules.validate', () => {
     const graph = graphOf({
       handoffs: [{ agent: 'billing' }, { agent: 'refunds', toolName: 'transfer_to_billing' }],
     });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(
         'handoff:billing',
         "Two handoffs use the tool name 'transfer_to_billing'",
@@ -116,7 +116,7 @@ describe('handoffRules.validate', () => {
         { agent: 'refunds', toolName: 'go' },
       ],
     });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('handoff:billing', "Two handoffs use the tool name 'go'", 'handoffs[0].toolName'),
       error('handoff:refunds', "Two handoffs use the tool name 'go'", 'handoffs[1].toolName'),
     ]);
@@ -137,14 +137,14 @@ describe('handoffRules.validate', () => {
       },
       handoffs: [{ agent: 'x' }],
     });
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it('refuses a handoff to the root agent itself', () => {
     const graph = specToGraph(
       specOf({ name: 'triage', handoffs: [{ agent: 'triage' }] })
     );
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('handoff:triage', 'An agent cannot hand off to itself', 'handoffs[0].agent'),
     ]);
   });
@@ -163,7 +163,7 @@ describe('handoffRules.validate', () => {
         },
       },
     });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(
         'sub:a/handoff:a',
         'An agent cannot hand off to itself',
@@ -173,6 +173,6 @@ describe('handoffRules.validate', () => {
   });
 
   it('accepts the worked example', () => {
-    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2))).toStrictEqual([]);
+    expect(validateGraph(specToGraph(parse(WORKED) as AgentSpecV2), { schema: false })).toStrictEqual([]);
   });
 });

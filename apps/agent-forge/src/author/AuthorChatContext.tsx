@@ -194,7 +194,9 @@ export function AuthorChatProvider({ children }: { children: ReactNode }): JSX.E
     dispatch({ type: 'server.event', event });
     if (event.type === 'tool.result' && reattachRef.current === null) {
       const agentId = savedAgentIdOf(event);
-      if (agentId !== undefined) fireAgentSaved(agentId);
+      // setAgentEnabled flips meta.enabled only - no spec write, so the
+      // canvas has nothing to reload (AA18 listens for 'spec' saves).
+      if (agentId !== undefined) fireAgentSaved(agentId, event.name === 'setAgentEnabled' ? 'meta' : 'spec');
       const path = openPagePathOf(event);
       if (path !== undefined) fireOpenPage(path);
     }

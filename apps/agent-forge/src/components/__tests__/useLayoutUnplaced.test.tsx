@@ -140,7 +140,7 @@ describe('useLayoutUnplaced', () => {
       d.resolve(laidOutVersion(g));
     });
     expect(applied).toBeDefined();
-    expect(appliedOptions).toEqual({ dirty: false });
+    expect(appliedOptions).toEqual({ dirty: false, history: false });
     expect(positionOf(applied!, 'trigger:t1')).toStrictEqual({ x: 640, y: 480 });
     expect(applied!.unplaced).toEqual([]);
     // Still exactly one layout run for this agent.
@@ -214,7 +214,7 @@ describe('useLayoutUnplaced', () => {
       second.resolve(laidOutVersion(g));
     });
     expect(applied).toBeDefined();
-    expect(appliedOptions).toEqual({ dirty: false });
+    expect(appliedOptions).toEqual({ dirty: false, history: false });
   });
 
   it('completes under React StrictMode\'s dev double-mount', async () => {
@@ -235,7 +235,7 @@ describe('useLayoutUnplaced', () => {
       await Promise.resolve();
     });
     expect(applied).toBeDefined();
-    expect(appliedOptions).toEqual({ dirty: false });
+    expect(appliedOptions).toEqual({ dirty: false, history: false });
     expect(positionOf(applied!, 'trigger:t1')).toStrictEqual({ x: 640, y: 480 });
     expect(applied!.unplaced).toEqual([]);
   });

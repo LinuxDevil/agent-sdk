@@ -23,7 +23,7 @@ import { lastUserInput } from './pins';
  */
 
 /** A pin's identity for toggling: same node, tool and (canonical) args - the recorded result may differ per call. */
-export function pinKey(pin: ToolPin): string {
+function pinKey(pin: ToolPin): string {
   return stableStringify([pin.nodeId, pin.toolName, pin.args ?? null]);
 }
 

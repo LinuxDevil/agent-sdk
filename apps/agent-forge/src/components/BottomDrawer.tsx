@@ -1,19 +1,22 @@
 import type { CSSProperties, ReactElement } from 'react';
-import { Activity, Braces, FlaskConical, History, ScrollText, Settings, type LucideIcon } from 'lucide-react';
+import { Activity, Braces, FlaskConical, History, ScrollText, Settings, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import type { DrawerTab } from '../state/AppState';
 import { LogsPanel } from './debug/LogsPanel';
 import { TracePanel } from './debug/TracePanel';
 import { OutputPanel } from './debug/OutputPanel';
 import { HistoryPanel } from './debug/HistoryPanel';
+import { ProblemsPanel } from './debug/ProblemsPanel';
 import { DebugBar } from './debug/DebugBar';
 import { TestPane } from './test/TestPane';
+import { SteerBox } from './test/SteerBox';
 import { SettingsPanel } from './SettingsPanel';
 import { tabIds, tabListKeyDown } from './tabs';
 import { DrawerResizeHandle, useDrawerHeight } from './drawerHeight';
 
 const TABS: { id: DrawerTab; label: string; Icon: LucideIcon }[] = [
   { id: 'test', label: 'Test', Icon: FlaskConical },
+  { id: 'problems', label: 'Problems', Icon: TriangleAlert },
   { id: 'logs', label: 'Logs', Icon: ScrollText },
   { id: 'trace', label: 'Trace', Icon: Activity },
   { id: 'output', label: 'Output', Icon: Braces },
@@ -23,7 +26,8 @@ const TABS: { id: DrawerTab; label: string; Icon: LucideIcon }[] = [
 const TAB_IDS = TABS.map((t) => t.id);
 
 const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
-  test: () => <TestPane />,
+  test: () => <TestPane aboveComposer={<SteerBox />} />,
+  problems: () => <ProblemsPanel />,
   logs: () => <LogsPanel />,
   trace: () => <TracePanel />,
   output: () => <OutputPanel />,
@@ -37,11 +41,12 @@ const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
 
 type DrawerCounts = Partial<Record<DrawerTab, number>>;
 
-/** The live counts shown on the Test (messages), Logs (lines) and Trace (spans) tabs. */
+/** The live counts shown on the Test (messages), Problems (errors + warnings), Logs (lines) and Trace (spans) tabs. */
 function useDrawerCounts(): DrawerCounts {
-  const { chat, logs, spans } = useAppState();
+  const { chat, logs, spans, problems } = useAppState();
   return {
     test: chat.messages.filter((m) => m.role !== 'system').length,
+    problems: (problems ?? []).length,
     logs: logs.length,
     trace: spans.length,
   };

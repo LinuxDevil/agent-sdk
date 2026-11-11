@@ -1,0 +1,11 @@
+{
+  "schema": "lousho.harness/1",
+  "id": "engineers",
+  "version": "1.0.0",
+  "instructions": [
+    "engineers.md"
+  ],
+  "audience": {
+    "description": "Engineers who maintain the codebase."
+  }
+}

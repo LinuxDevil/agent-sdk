@@ -1,0 +1,11 @@
+import { createAgent, defineEval } from 'lousho';
+import config from './agent.js';
+
+defineEval({
+  name: 'word count',
+  agent: () => createAgent(config),
+  async test(t) {
+    await t.send('How many words are in "the quick brown fox"?');
+    t.calledTool('word_count', { args: { text: 'the quick brown fox' } });
+  },
+});

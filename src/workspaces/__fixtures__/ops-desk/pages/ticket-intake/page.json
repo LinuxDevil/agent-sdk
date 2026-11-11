@@ -1,0 +1,15 @@
+{
+  "schema": "lousho.page/1",
+  "id": "ticket-intake",
+  "name": "Ticket intake",
+  "description": "Turns a request into a ticket.",
+  "harness": {
+    "extends": []
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "agent"
+    }
+  }
+}

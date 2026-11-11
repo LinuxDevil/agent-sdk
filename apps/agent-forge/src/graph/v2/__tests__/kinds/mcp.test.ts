@@ -82,26 +82,26 @@ describe('specToGraph: mcp worked example', () => {
 describe('mcpRules.validate', () => {
   it('requires a command on a stdio entry', () => {
     const graph = graphOf({ fs: { command: '' } });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('mcp:fs', 'Enter the command that starts the server', 'mcpServers.fs.command'),
     ]);
   });
 
   it.each(['', 'not a url', 'mcp.example.com/sse'])('rejects the http url %j', (url) => {
     const graph = graphOf({ linear: { url } });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('mcp:linear', 'Enter the server URL', 'mcpServers.linear.url'),
     ]);
   });
 
   it.each(['https://mcp.linear.app/sse', 'http://localhost:3000/mcp'])('accepts the url %j', (url) => {
     const graph = graphOf({ linear: { url } });
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it.each(['bad key!', 'key?', 'x'.repeat(65)])('rejects the server name %j', (key) => {
     const graph = graphOf({ [key]: { command: 'x' } });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(`mcp:${key}`, 'The server name can use letters, digits, dash or underscore', `mcpServers.${key}`),
     ]);
   });
@@ -113,7 +113,7 @@ describe('mcpRules.validate', () => {
         oauth: { redirectUri: 'https://app.example.com/cb', clientSecret: { secret: 'lin-secret' } },
       },
     });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(
         'mcp:linear',
         'Set the client id before the client secret',
@@ -125,14 +125,14 @@ describe('mcpRules.validate', () => {
   it.each([undefined, ''])('rejects oauth without a redirect URI (redirectUri %j)', (redirectUri) => {
     const oauth = redirectUri === undefined ? { clientId: 'c1' } : { redirectUri, clientId: 'c1' };
     const graph = graphOf({ linear: { url: 'https://mcp.linear.app/sse', oauth } });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error('mcp:linear', 'OAuth needs a redirect URI', 'mcpServers.linear.oauth.redirectUri'),
     ]);
   });
 
   it('warns when an env value under a secret-sounding key is a plain string', () => {
     const graph = graphOf({ fs: { command: 'x', env: { GITHUB_TOKEN: 'literal', PLAIN: 'ok' } } });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       warning('mcp:fs', 'Store this value as a secret', 'mcpServers.fs.env.GITHUB_TOKEN'),
     ]);
   });
@@ -141,7 +141,7 @@ describe('mcpRules.validate', () => {
     const graph = graphOf({
       linear: { url: 'https://mcp.linear.app/sse', headers: { Authorization: 'literal' } },
     });
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       warning('mcp:linear', 'Store this value as a secret', 'mcpServers.linear.headers.Authorization'),
     ]);
   });
@@ -151,7 +151,7 @@ describe('mcpRules.validate', () => {
       fs: { command: 'x', env: { GITHUB_TOKEN: { secret: 'gh' } } },
       linear: { url: 'https://mcp.linear.app/sse', headers: { Authorization: { env: 'LIN' } } },
     });
-    expect(validateGraph(graph)).toStrictEqual([]);
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([]);
   });
 
   it('maps problems to the nested spec path inside an inline agent', () => {
@@ -170,7 +170,7 @@ describe('mcpRules.validate', () => {
         },
       }),
     );
-    expect(validateGraph(graph)).toStrictEqual([
+    expect(validateGraph(graph, { schema: false })).toStrictEqual([
       error(
         'sub:a/mcp:fs',
         'Enter the command that starts the server',
