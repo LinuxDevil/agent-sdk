@@ -54,9 +54,10 @@ function fakePool(): FakePool {
         return { rows: [], rowCount: null };
       }
       if (text.includes('pg_advisory_xact_lock')) return { rows: [{ pg_advisory_xact_lock: '' }], rowCount: 1 };
-      const statement = db.prepare(text.replace(/\$(\d+)/g, '?$1'));
-      if (/^\s*SELECT/i.test(text)) return { rows: statement.all(...(values as SqlValue[])), rowCount: null };
-      return { rows: [], rowCount: Number(statement.run(...(values as SqlValue[])).changes) };
+      const statement = db.prepare(text.replace(/\$\d+/g, '?'));
+      const bound = [...text.matchAll(/\$(\d+)/g)].map((match) => values[Number(match[1]) - 1]) as SqlValue[];
+      if (/^\s*SELECT/i.test(text)) return { rows: statement.all(...bound), rowCount: null };
+      return { rows: [], rowCount: Number(statement.run(...bound).changes) };
     };
   const pool: PgPool = {
     query: run('pool'),
