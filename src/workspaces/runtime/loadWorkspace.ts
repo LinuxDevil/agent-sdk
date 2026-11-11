@@ -11,6 +11,8 @@ export interface LoadWorkspaceOptions {
   /** The revision to load; defaults to the source's current revision. */
   revision?: RevisionId;
   /** `strict` adds the publish-time checks of `validateWorkspace`. */
+  /** Answers a `global:` harness profile or agent ref with that folder's files; see `validateWorkspace`. */
+  resolveGlobal?: ValidateWorkspaceOptions['resolveGlobal'];
   mode: NonNullable<ValidateWorkspaceOptions['mode']>;
 }
 
@@ -29,7 +31,7 @@ export interface LoadedWorkspace {
 /** Reads a whole workspace through `source` at one revision, validates it, and returns it with its manifest; throws `WorkspaceValidationError` when any problem is an error. */
 export async function loadWorkspace(source: WorkspaceSource, options: LoadWorkspaceOptions): Promise<LoadedWorkspace> {
   const { revision, tree } = await readSourceTree(source, options.revision === undefined ? {} : { revision: options.revision });
-  const problems = validateWorkspace(tree, { mode: options.mode });
+  const problems = validateWorkspace(tree, { mode: options.mode, ...(options.resolveGlobal && { resolveGlobal: options.resolveGlobal }) });
   const errors = problems.filter((item) => item.severity === 'error');
   if (errors.length > 0) throw new WorkspaceValidationError(errors);
   return { revision, manifest: buildManifestView(tree), tree, problems };

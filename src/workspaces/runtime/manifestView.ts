@@ -1,6 +1,9 @@
-import { parseAgentRef } from '../contracts/agentRefs';
+import { attachmentsSchema } from '../contracts/agentRefs';
 import type { WorkspaceTree } from '../contracts/baseHarness';
-import { normalizeDir } from '../contracts/validateModel';
+import { pageSchema, type PageManifest } from '../contracts/page';
+import { SHARED_FOLDERS } from '../contracts/shared';
+import { joinPath, normalizeDir } from '../contracts/validateModel';
+import { workspaceManifestSchema } from '../contracts/workspace';
 
 /** One agent a page attaches. */
 export interface AttachmentView {
@@ -14,7 +17,9 @@ export interface AttachmentView {
 
 /** What a page takes from the rest of the workspace. */
 export interface PageInheritsView {
-  /** The workspace folders every page inherits that exist in the tree, such as the base harness folder and `shared`. */
+  /** The base harness folder, when the workspace has one. */
+  base?: string;
+  /** The `shared/` subfolders that exist in the workspace. */
   shared: string[];
   /** The harness profiles the page extends, by ref as written. */
   profiles: string[];
@@ -40,51 +45,43 @@ export interface WorkspaceManifestView {
   pages: Record<string, PageManifestView>;
 }
 
-type Doc = Record<string, unknown>;
-
-function doc(tree: WorkspaceTree, path: string): Doc {
+function parse<T>(tree: WorkspaceTree, path: string, schema: { parse(value: unknown): T }): T {
   const raw = tree[path];
-  if (raw === undefined) return {};
-  const value: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
-  return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Doc) : {};
+  return schema.parse(typeof raw === 'string' ? JSON.parse(raw) : raw);
 }
 
-function strings(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+function hasFolder(paths: readonly string[], dir: string): boolean {
+  return paths.some((path) => path.startsWith(`${dir}/`));
 }
 
-function sharedFolders(tree: WorkspaceTree, paths: readonly string[]): string[] {
-  const harness = doc(tree, 'workspace.json').harness;
-  const base = typeof harness === 'string' ? normalizeDir(harness) : 'harness';
-  return [base, 'shared'].filter((dir) => paths.some((path) => path.startsWith(`${dir}/`)));
+function baseFolder(tree: WorkspaceTree, paths: readonly string[]): string | undefined {
+  const dir = normalizeDir(parse(tree, 'workspace.json', workspaceManifestSchema).harness ?? 'harness');
+  return hasFolder(paths, dir) ? dir : undefined;
 }
 
-function attachmentsOf(tree: WorkspaceTree, id: string): AttachmentView[] {
-  const entries = doc(tree, `pages/${id}/agents.json`).agents;
-  if (!Array.isArray(entries)) return [];
-  return entries.flatMap((entry: Doc) => {
-    const parsed = typeof entry.ref === 'string' ? parseAgentRef(entry.ref) : undefined;
-    return parsed?.ok === true ? [{ alias: String(entry.as), ref: String(entry.ref), kind: parsed.ref.kind }] : [];
-  });
+function sharedFolders(paths: readonly string[]): string[] {
+  return SHARED_FOLDERS.map((name) => `shared/${name}`).filter((dir) => hasFolder(paths, dir));
 }
 
-function profilesOf(tree: WorkspaceTree, id: string): string[] {
-  const harness = doc(tree, `pages/${id}/page.json`).harness;
-  return typeof harness === 'object' && harness !== null ? strings((harness as Doc).extends) : [];
+function attachmentsOf(tree: WorkspaceTree, page: PageManifest, id: string): AttachmentView[] {
+  const path = joinPath(`pages/${id}`, page.agents ?? 'agents.json');
+  if (!(path in tree)) return [];
+  return parse(tree, path, attachmentsSchema).agents.map(({ as, ref }) => ({ alias: as, ref, kind: ref.slice(0, ref.indexOf(':')) as AttachmentView['kind'] }));
 }
 
-function pageView(tree: WorkspaceTree, paths: readonly string[], shared: string[], id: string): PageManifestView {
+function pageView(tree: WorkspaceTree, paths: readonly string[], id: string): PageManifestView {
+  const page = parse(tree, `pages/${id}/page.json`, pageSchema);
+  const base = baseFolder(tree, paths);
   return {
     files: paths.filter((path) => path.startsWith(`pages/${id}/`)),
-    inherits: { shared, profiles: profilesOf(tree, id) },
-    attachments: attachmentsOf(tree, id),
+    inherits: { ...(base !== undefined && { base }), shared: sharedFolders(paths), profiles: [...page.harness.extends] },
+    attachments: attachmentsOf(tree, page, id),
   };
 }
 
 export function buildManifestView(tree: WorkspaceTree): WorkspaceManifestView {
-  const manifest = doc(tree, 'workspace.json');
+  const manifest = parse(tree, 'workspace.json', workspaceManifestSchema);
   const paths = Object.keys(tree).sort();
-  const shared = sharedFolders(tree, paths);
-  const pages = Object.fromEntries(strings(manifest.pages).map((id) => [id, pageView(tree, paths, shared, id)]));
-  return { id: String(manifest.id), name: String(manifest.name), pages };
+  const pages = Object.fromEntries(manifest.pages.map((id) => [id, pageView(tree, paths, id)]));
+  return { id: manifest.id, name: manifest.name, pages };
 }

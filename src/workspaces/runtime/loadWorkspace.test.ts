@@ -6,6 +6,7 @@ import { folderSource } from '../source/folderSource';
 import { memorySource } from '../source/memorySource';
 import { readNegativeIndex, readNegativeTree, readFixtureTree } from '../__fixtures__/readTree';
 import { loadWorkspace } from './loadWorkspace';
+import { buildManifestView } from './manifestView';
 import { WorkspaceValidationError } from './validationError';
 
 const dirs: string[] = [];
@@ -63,7 +64,8 @@ describe('loadWorkspace', () => {
   it('manifest lists instagram inherits the base harness and platforms/instagram', async () => {
     const loaded = await loadWorkspace(memorySource(marketing()), { mode: 'default' });
     const page = loaded.manifest.pages['instagram-videos'];
-    expect(page.inherits.shared).toEqual(expect.arrayContaining(['harness', 'shared']));
+    expect(page.inherits.base).toBe('harness');
+    expect(page.inherits.shared).toEqual(['shared/instructions', 'shared/brand', 'shared/policies']);
     expect(page.inherits.profiles).toEqual(['workspace:platforms/instagram', 'workspace:content-types/educational', 'workspace:audiences/general']);
     expect(page.files).toContain('pages/instagram-videos/page.json');
     expect(page.files.every((path) => path.startsWith('pages/instagram-videos/'))).toBe(true);
@@ -85,5 +87,47 @@ describe('loadWorkspace', () => {
     expect(pinned.tree).toEqual(loaded.tree);
     const latest = await loadWorkspace(source, { mode: 'default' });
     expect(latest.tree['pages/instagram-videos/harness/task.md']).toBe('changed after loading\n');
+  });
+
+  it('an ops-desk workspace with no harness folder has no base and its own arrays per page', async () => {
+    const loaded = await loadWorkspace(memorySource(textFiles(readFixtureTree('ops-desk'))), { mode: 'default' });
+    const pages = Object.values(loaded.manifest.pages);
+    expect(pages.length).toBeGreaterThan(1);
+    for (const page of pages) expect(page.inherits.base).toBeUndefined();
+    expect(pages[0].inherits.shared).toEqual(['shared/instructions', 'shared/policies']);
+    expect(pages[0].inherits.shared).not.toBe(pages[1].inherits.shared);
+  });
+
+  it('reads attachments from the file page.json names, and none when there is no file', async () => {
+    const files = marketing();
+    const agents = files['pages/instagram-videos/agents.json'];
+    const moved: Record<string, string> = { ...files, 'pages/instagram-videos/team/crew.json': agents };
+    delete moved['pages/instagram-videos/agents.json'];
+    moved['pages/instagram-videos/page.json'] = JSON.stringify({ ...JSON.parse(files['pages/instagram-videos/page.json']), agents: './team/crew.json' });
+    const custom = await loadWorkspace(memorySource(moved), { mode: 'default' });
+    expect(custom.manifest.pages['instagram-videos'].attachments.map((item) => item.alias)).toEqual(['script', 'video', 'voice']);
+    const none: Record<string, string> = { ...files };
+    delete none['pages/content-research/agents.json'];
+    expect(buildManifestView(none).pages['content-research'].attachments).toEqual([]);
+  });
+
+  it('honours a custom base harness path from workspace.json', async () => {
+    const files = marketing();
+    const moved: Record<string, string> = {};
+    for (const [path, text] of Object.entries(files)) moved[path.startsWith('harness/') ? `base-harness/${path.slice('harness/'.length)}` : path] = text;
+    moved['workspace.json'] = JSON.stringify({ ...JSON.parse(files['workspace.json']), harness: './base-harness' });
+    const loaded = await loadWorkspace(memorySource(moved), { mode: 'default' });
+    expect(loaded.manifest.pages['instagram-videos'].inherits.base).toBe('base-harness');
+  });
+
+  it('passes resolveGlobal to validation so pages can extend a global profile', async () => {
+    const files = marketing();
+    const page = JSON.parse(files['pages/facebook-videos/page.json']);
+    files['pages/facebook-videos/page.json'] = JSON.stringify({ ...page, harness: { ...page.harness, extends: [...page.harness.extends, 'global:tones/calm@^1.0.0'] } });
+    await expect(loadWorkspace(memorySource(files), { mode: 'default' })).rejects.toBeInstanceOf(WorkspaceValidationError);
+    const profile = { 'harness.json': { schema: 'lousho.harness/1', id: 'calm', version: '1.0.0', instructions: ['calm.md'] }, 'calm.md': 'Stay calm.' };
+    const resolveGlobal = (ref: string): Record<string, unknown> | undefined => (ref === 'global:tones/calm@^1.0.0' ? profile : undefined);
+    const loaded = await loadWorkspace(memorySource(files), { mode: 'default', resolveGlobal });
+    expect(loaded.manifest.pages['facebook-videos'].inherits.profiles).toContain('global:tones/calm@^1.0.0');
   });
 });

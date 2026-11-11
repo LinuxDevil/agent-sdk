@@ -2194,16 +2194,12 @@ const SDK_ERROR_BRAND: unique symbol;
 
 // @public
 class SDKError extends Error {
-    // (undocumented)
     get [SDK_ERROR_BRAND](): true;
     static [Symbol.hasInstance](value: unknown): boolean;
     constructor(message: string, code?: ErrorCode | (string & {}), options?: SDKErrorOptions);
-    // (undocumented)
     readonly code: string;
     readonly detail: string;
-    // (undocumented)
     readonly docs?: string;
-    // (undocumented)
     readonly hint?: string;
     // (undocumented)
     toString(): string;
