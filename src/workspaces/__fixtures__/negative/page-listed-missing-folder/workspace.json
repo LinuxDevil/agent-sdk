@@ -6,7 +6,7 @@
   "description": "A small valid workspace that each negative case changes in one place.",
   "mainAgent": null,
   "pages": [
-    "main"
-  ],
-  "products": []
+    "main",
+    "ghost"
+  ]
 }

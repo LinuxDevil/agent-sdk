@@ -1,3 +1,3 @@
-import { matches } from '../../../../../../../evals/checks';
+import { outputFieldCheck } from '../../../../../outputFieldCheck';
 
-export default matches(/\S/);
+export default outputFieldCheck('ticket');

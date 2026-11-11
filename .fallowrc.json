@@ -33,7 +33,7 @@
     "src/agentDir/__fixtures__/**/*.{ts,js}",
     "src/observe/__fixtures__/*.mts",
     "src/spec/v2/__fixtures__/**/*.{ts,js}",
-    "src/workspaces/__fixtures__/**/*.ts",
+    "src/workspaces/__fixtures__/*/**/*.ts",
     "examples/agent-dir/tools/*.ts",
     "registry/**/*.ts"
   ],

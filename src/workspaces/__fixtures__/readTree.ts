@@ -27,6 +27,7 @@ export function readFixtureTree(name: string): WorkspaceTree {
 
 export interface NegativeCase {
   name: string;
+  code: string;
   checkedBy: 'schema' | 'helper' | 'validateWorkspace';
   file: string;
   expect: string;
@@ -36,7 +37,6 @@ export function readNegativeIndex(): { base: string; cases: NegativeCase[] } {
   return JSON.parse(readFileSync(join(ROOT, 'negative', 'index.json'), 'utf8'));
 }
 
-export function readNegativeTree(name: string, remove: readonly string[] = []): WorkspaceTree {
-  const merged = { ...readDir(join(ROOT, 'negative', '_base')), ...readDir(join(ROOT, 'negative', name)) };
-  return Object.fromEntries(Object.entries(merged).filter(([path]) => !remove.includes(path)));
+export function readNegativeTree(name: string): WorkspaceTree {
+  return { ...readDir(join(ROOT, 'negative', '_base')), ...readDir(join(ROOT, 'negative', name)) };
 }

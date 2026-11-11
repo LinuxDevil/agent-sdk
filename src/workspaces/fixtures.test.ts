@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { describe, expect, it } from 'vitest';
+import type { Check } from '../evals/checks';
 import { flowSpecSchema } from '../spec/v2/flow';
 import { attachmentsSchema } from './contracts/agentRefs';
 import { applyOps } from './contracts/authoringOps';
@@ -253,6 +254,25 @@ describe('positive fixtures', () => {
   });
 });
 
+describe('R19 check modules', () => {
+  const fixtures = [...POSITIVE.map((name) => name), 'negative/_base'];
+
+  it.each(fixtures)('every check in %s fails on {} and passes on a valid output', async (name) => {
+    const tree = readFixtureTree(name);
+    const checks = Object.keys(tree).filter((path) => /\/checks\/[^/]+\.ts$/.test(path));
+    expect(checks.length).toBeGreaterThan(0);
+    for (const path of checks) {
+      const module = (await import(`./__fixtures__/${name}/${path}`)) as { default: Check<Record<string, unknown>> };
+      const page = /^pages\/([^/]+)\//.exec(path)?.[1];
+      const outputs = page ? harnessSchema.parse(tree[`pages/${page}/harness/harness.json`]).outputs?.schema : undefined;
+      const field = (outputs as { required?: string[] } | undefined)?.required?.[0] ?? 'text';
+      expect(module.default.evaluate({}).passed, path).toBe(false);
+      expect(module.default.evaluate({ [field]: '   ' }).passed, path).toBe(false);
+      expect(module.default.evaluate({ [field]: 'a valid output' }).passed, path).toBe(true);
+    }
+  });
+});
+
 describe('negative fixtures', () => {
   const index = readNegativeIndex();
   const treeOf = (item: NegativeCase): WorkspaceTree => readNegativeTree(item.name);
@@ -276,9 +296,12 @@ describe('negative fixtures', () => {
     },
   };
 
-  it('there are 22 negatives with distinct names and one folder each', () => {
+  it('there are 22 negatives with distinct names and 22 distinct codes', () => {
     expect(index.cases).toHaveLength(22);
     expect(new Set(index.cases.map((item) => item.name)).size).toBe(22);
+    expect(new Set(index.cases.map((item) => item.code)).size).toBe(22);
+    expect(index.cases.every((item) => /^PRD\d{3}$/.test(item.code))).toBe(true);
+    expect(index.cases.find((item) => item.name === 'rubric-only-improvable')?.code).toBe('PRD017');
     for (const item of index.cases) expect(item.file in treeOf(item), `${item.name} names ${item.file}`).toBe(true);
   });
 
@@ -321,6 +344,7 @@ describe('negative fixtures', () => {
       'workflow-unknown-alias',
       'workspace-ref-missing-folder',
       'page-folder-not-listed',
+      'page-listed-missing-folder',
     ]);
   });
 });
