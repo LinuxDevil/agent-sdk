@@ -20,7 +20,8 @@ import {
   makePending,
   makeSnapshot,
 } from './__fixtures__/storeContracts';
-import { MemorySessionStore, FileSessionStore, decodeBytes, encodeBytes } from '../../session/sessionStore';
+import { MemorySessionStore, FileSessionStore } from '../../session/sessionStore';
+import { decodeBytes, encodeBytes } from '../jsonBytes';
 import type { Checkpoint, CheckpointStore } from '../../execution/checkpoint';
 import type { ApprovalStore, ResolvedApproval } from '../../execution/ApprovalGate';
 import { AgentExecutor } from '../../execution/AgentExecutor';

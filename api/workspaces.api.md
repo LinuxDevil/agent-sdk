@@ -25,6 +25,16 @@ interface AddExtendsOp {
 export const AGENT_OWNED: readonly ["instructions", "skills", "tools", "memory", "default model"];
 
 // @public
+interface AgentFingerprint {
+    hash: string;
+    instructions: string;
+    model?: string;
+    tools: Record<string, string>;
+    // (undocumented)
+    version: number;
+}
+
+// @public
 export type AgentRef = {
     kind: 'workspace';
     name: string;
@@ -196,7 +206,71 @@ export interface BlobPutOptions {
 }
 
 // @public
+interface Checkpoint {
+    agentFingerprint?: AgentFingerprint;
+    // (undocumented)
+    agentId: string;
+    approvalId?: string;
+    approvalIds?: string[];
+    approvalKind?: ApprovalKind;
+    attempts?: number;
+    businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
+    // (undocumented)
+    finishReason?: string;
+    flow?: FlowCheckpointState;
+    lastError?: CheckpointError;
+    // (undocumented)
+    messages: Message[];
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+    runConfig?: unknown;
+    // (undocumented)
+    sessionId: string;
+    startedToolCallIds?: string[];
+    status?: CheckpointStatus;
+    // (undocumented)
+    stepIndex: number;
+    stepUsage?: StepUsage[];
+    // (undocumented)
+    toolCalls: unknown[];
+    unstarted?: boolean;
+    usage: CheckpointUsage;
+}
+
+// @public
+interface CheckpointError {
+    at: string;
+    category?: string;
+    code?: string;
+    // (undocumented)
+    message: string;
+    retryable: boolean;
+}
+
+// @public
+interface CheckpointListEntry {
+    checkpoint: Checkpoint;
+    sessionId: string;
+    status: CheckpointStatus;
+}
+
+// @public
+interface CheckpointListOptions {
+    status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+// @public
+type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
+
+// @public
+type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
+
+// @public
 export function composeHarness(layers: readonly HarnessLayer[]): EffectiveHarness;
+
+// @public
+type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
 
 // @public
 interface CreateAgentOp {
@@ -232,7 +306,28 @@ interface CreateWorkspaceOp {
 }
 
 // @public
+export function createWorkspaceStores(backend: HostBackend, scope: WorkspaceScope): WorkspaceStores;
+
+// @public
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck;
+
+// @public
+interface DelegatedUsage {
+    costPartial?: boolean;
+    costUsd: number | undefined;
+    // (undocumented)
+    estimated: boolean;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    runs: number;
+    toolErrors?: number;
+    // (undocumented)
+    totalTokens: number;
+}
 
 // @public
 interface DetachAgentOp {
@@ -286,7 +381,44 @@ type ExecutionKey = 'single' | 'multiAgent' | 'workflow' | 'goal' | 'limits' | '
 export function fileArtifactStore(root: string, options?: ArtifactStoreOptions): ArtifactStore;
 
 // @public
+interface FileContentPart {
+    // (undocumented)
+    data: string | Uint8Array;
+    // (undocumented)
+    filename?: string;
+    // (undocumented)
+    mimeType: string;
+    // (undocumented)
+    type: 'file';
+}
+
+// @public
+export function fileHostBackend(dir: string): HostBackend;
+
+// @public
 export function findNestedPages(relativePaths: readonly string[]): string[];
+
+// @public
+interface FlowCheckpointState {
+    choices: Record<string, number>;
+    code: string;
+    completedNodeIds: string[];
+    nodeResults: Record<string, unknown>;
+    output?: unknown;
+    pendingApproval?: FlowPendingApproval;
+    steps: number;
+    structure?: string;
+    usage: ProviderUsage;
+    variables: Record<string, unknown>;
+}
+
+// @public
+interface FlowPendingApproval {
+    approvalId: string;
+    args: Record<string, unknown>;
+    nodeId: string;
+    toolName: string;
+}
 
 // @public
 export function formatArtifactUri(parts: ArtifactUriParts): string;
@@ -384,6 +516,21 @@ export type HarnessTarget = {
 export function hasExecutableCriterion(harness: Harness): boolean;
 
 // @public
+export interface HostBackend {
+    close(): Promise<void>;
+}
+
+// @public
+interface ImageContentPart {
+    // (undocumented)
+    image: string | Uint8Array;
+    // (undocumented)
+    mimeType?: string;
+    // (undocumented)
+    type: 'image';
+}
+
+// @public
 export const INHERITANCE_RULES: readonly InheritanceRule[];
 
 // @public
@@ -460,6 +607,35 @@ export function memoryArtifactStore(options?: ArtifactStoreOptions): ArtifactSto
 
 // @public
 export function memoryBlobClient(): BlobClient;
+
+// @public
+interface Message {
+    content: string | ContentPart[];
+    isError?: boolean;
+    metadata?: Record<string, unknown>;
+    // (undocumented)
+    name?: string;
+    reasoning?: ReasoningBlock[];
+    // (undocumented)
+    role: MessageRole;
+    toolCallId?: string;
+    toolCalls?: ToolCall[];
+    toolName?: string;
+}
+
+// @public
+type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
+
+// @public
+interface ModelUsage {
+    calls: number;
+    costPartial?: boolean;
+    costUsd?: number;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    outputTokens: number;
+}
 
 // @public
 export function narrowPolicy(ceiling: PolicyCeiling, workspace: WorkspacePolicy): EffectivePolicy;
@@ -689,12 +865,63 @@ interface PermissionRuleSpec {
 }
 
 // @public
+export interface PgQueryable {
+    end?(): Promise<void>;
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Array<Record<string, unknown>>;
+        rowCount: number | null;
+    }>;
+}
+
+// @public
 export type PolicyCeiling = WorkspacePolicy;
+
+// @public
+export function postgresHostBackend(pool: PgQueryable, options?: PostgresOptions): Promise<HostBackend>;
+
+// @public
+export interface PostgresOptions {
+    ownsPool?: boolean;
+}
+
+// @public
+interface Principal {
+    authenticator: string;
+    claims?: Readonly<Record<string, unknown>>;
+    id: string;
+    issuer?: string;
+    // (undocumented)
+    type: 'user' | 'service';
+}
 
 // @public
 export type ProseTarget = HarnessTarget | {
     kind: 'main';
 };
+
+// @public
+interface ProviderUsage {
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    // (undocumented)
+    completionTokens: number;
+    costUsd?: number;
+    // (undocumented)
+    promptTokens: number;
+    reasoningTokens?: number;
+    // (undocumented)
+    totalTokens: number;
+}
+
+// @public
+interface ReasoningBlock {
+    // (undocumented)
+    redactedData?: string;
+    // (undocumented)
+    signature?: string;
+    // (undocumented)
+    text: string;
+}
 
 // @public
 interface RemoveCriterionOp {
@@ -726,6 +953,43 @@ interface ReorderPagesOp {
 interface ResetPageUiOp {
     op: 'reset_page_ui';
     page: string;
+}
+
+// @public
+export interface RunRecord extends WorkspaceScope {
+    endedAt?: number;
+    pageId: string;
+    revision: string;
+    runId: string;
+    startedAt: number;
+    status: RunState;
+}
+
+// @public
+export type RunState = PageRunStatus | 'running' | 'interrupted';
+
+// @public
+interface RunUsage {
+    byModel: Record<string, ModelUsage>;
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    // @deprecated (undocumented)
+    completionTokens: number;
+    costPartial?: boolean;
+    costUsd: number | undefined;
+    delegated?: DelegatedUsage;
+    estimated: boolean;
+    hostedToolCalls?: Partial<Record<string, number>>;
+    // (undocumented)
+    inputTokens: number;
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    // @deprecated (undocumented)
+    promptTokens: number;
+    reasoningTokens?: number;
+    // (undocumented)
+    totalTokens: number;
 }
 
 // @public
@@ -803,15 +1067,56 @@ const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources
 type SharedFolder = (typeof SHARED_FOLDERS)[number];
 
 // @public
+export function sqliteHostBackend(path: string): Promise<HostBackend>;
+
+// @public
+export interface StartRun {
+    pageId: string;
+    revision: string;
+    runId: string;
+}
+
+// @public
 export const STEP_KINDS: readonly StepKind[];
 
 // @public
 export type StepKind = 'single' | 'workflow-step' | 'delegate' | 'goal-iteration';
 
 // @public
+interface StepUsage {
+    costUsd?: number;
+    estimated: boolean;
+    model: string;
+    step: number;
+    // (undocumented)
+    usage: Usage;
+}
+
+// @public
 export interface StoredArtifact {
     data: Uint8Array;
     ref: ArtifactRef;
+}
+
+// @public
+interface TextContentPart {
+    // (undocumented)
+    text: string;
+    // (undocumented)
+    type: 'text';
+}
+
+// @public
+interface ToolCall {
+    // (undocumented)
+    function: {
+        name: string;
+        arguments: string;
+    };
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    type: 'function';
 }
 
 // @public
@@ -929,6 +1234,16 @@ export interface UiText extends UiComponentBase {
 }
 
 // @public
+interface Usage {
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens?: number;
+    totalTokens: number;
+}
+
+// @public
 export function validateUiBindings(ui: PageUi, harness: UiBindingTarget): UiProblem[];
 
 // @public
@@ -959,10 +1274,25 @@ interface WhenArgMatcher {
 }
 
 // @public
+interface WireRunEvent {
+    event: PageRunEvent;
+    id: number;
+    runId: string;
+}
+
+// @public
 export const WORK_TYPE_STEP_KINDS: Readonly<Record<WorkType, readonly StepKind[]>>;
 
 // @public
 export const WORK_TYPES: readonly WorkType[];
+
+// @public
+export interface WorkspaceCheckpointStore {
+    delete(runId: string): Promise<void>;
+    list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
+    load(runId: string): Promise<Checkpoint | null>;
+    save(runId: string, checkpoint: Checkpoint): Promise<void>;
+}
 
 // @public
 type WorkspaceField = 'name' | 'version' | 'description' | 'domain' | 'mainAgent' | 'dependencies' | 'defaults' | 'budget' | 'improve';
@@ -1047,6 +1377,42 @@ export type WorkspaceProblemCode = 'PRD001' | 'PRD002' | 'PRD003' | 'PRD004' | '
 
 // @public
 export type WorkspaceProblemSeverity = 'error' | 'warning' | 'info';
+
+// @public
+export interface WorkspaceRunEvents {
+    append(runId: string, event: PageRunEvent): Promise<WireRunEvent>;
+    read(runId: string, lastEventId?: number): Promise<WireRunEvent[]>;
+}
+
+// @public
+export interface WorkspaceRunStore {
+    finish(runId: string, status: PageRunStatus): Promise<RunRecord>;
+    get(runId: string): Promise<RunRecord | undefined>;
+    list(states?: readonly RunState[]): Promise<RunRecord[]>;
+    markInterrupted(): Promise<RunRecord[]>;
+    start(run: StartRun): Promise<RunRecord>;
+}
+
+// @public
+export interface WorkspaceScope {
+    projectId: string;
+    workspaceId: string;
+}
+
+// @public
+export interface WorkspaceStores {
+    checkpoints: WorkspaceCheckpointStore;
+    events: WorkspaceRunEvents;
+    runs: WorkspaceRunStore;
+    threads: WorkspaceThreadStore;
+}
+
+// @public
+export interface WorkspaceThreadStore {
+    delete(threadId: string): Promise<void>;
+    load(threadId: string): Promise<Message[] | undefined>;
+    save(threadId: string, messages: readonly Message[]): Promise<void>;
+}
 
 // @public
 export type WorkspaceTree = Readonly<Record<string, unknown>>;
