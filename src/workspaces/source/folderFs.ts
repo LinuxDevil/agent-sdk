@@ -128,8 +128,9 @@ async function ensureFolders(root: string, rel: string, create: boolean): Promis
     current = join(current, segment);
     const info = await missingAsUndefined(lstat(current));
     if (info === undefined && !create) return false;
-    if (info === undefined) await mkdir(current);
-    else if (!info.isDirectory()) throw invalidPath(rel, `goes through '${segment}', which is not a real folder`);
+    if (info === undefined) await mkdir(current, { recursive: true });
+    const settled = info ?? (await lstat(current));
+    if (!settled.isDirectory()) throw invalidPath(rel, `goes through '${segment}', which is not a real folder`);
   }
   return true;
 }

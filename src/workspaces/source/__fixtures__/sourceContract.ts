@@ -156,6 +156,16 @@ export function sourceContract(name: string, make: MakeSource): void {
       await expectClashes(write, base, [{ 'Pages/a/page.json': 'x' }, { [nfc]: '1', [nfd]: '2' }, { 'WORKSPACE.JSON': '{}' }]);
     });
 
+    it('refuses a write that deletes one path and writes its case or Unicode alias, in either order', async () => {
+      const { source, write } = await opened(make);
+      const expectedRevision = (await write({ 'A.md': 'old' }, { expectedRevision: await source.revision(), by: 'person:ann', message: 'add' })).revision;
+      for (const changes of [{ 'a.md': 'new', 'A.md': null }, { 'A.md': null, 'a.md': 'new' }] as WorkspaceChanges[]) {
+        expect(await codeOf(write(changes, { expectedRevision, by: 'person:ann', message: 'alias' })), Object.keys(changes).join()).toBe('LOUSHO_WORKSPACE_PATH_INVALID');
+        expect(await source.read('A.md')).toBe('old');
+        expect(await source.revision()).toBe(expectedRevision);
+      }
+    });
+
     it('refuses a tree where a file is also a folder', async () => {
       const { write, base } = await opened(make);
       await expectClashes(write, base, [{ 'workspace.json/x': '1' }, { pages: '1' }, { b: '1', 'b/c': '2' }]);

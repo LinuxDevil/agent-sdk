@@ -187,6 +187,20 @@ describe('folderSource', () => {
     expect((await one.history()).map((meta) => meta.seq)).toEqual([2, 1]);
   });
 
+  it('two instances making their first write at once create the metadata folders without a race', async () => {
+    const dirs = [folderWith(CONTRACT_FILES), folderWith(CONTRACT_FILES)];
+    for (const dir of dirs) {
+      const [one, two] = [folderSource(dir), folderSource(dir)];
+      const base = await one.revision();
+      const results = await Promise.allSettled([
+        one.write!({ 'deep/x/a.md': 'one' }, { expectedRevision: base, by: 'person:ann', message: 'one' }),
+        two.write!({ 'deep/x/b.md': 'two' }, { expectedRevision: base, by: 'person:bob', message: 'two' }),
+      ]);
+      const codes = results.map((result) => (result.status === 'rejected' ? (result.reason as { code?: string }).code : 'ok')).sort();
+      expect(codes).toEqual(['LOUSHO_WORKSPACE_STALE_REVISION', 'ok']);
+    }
+  });
+
   it('a hand edit to the folder changes the current revision', async () => {
     const dir = folderWith(CONTRACT_FILES);
     const source = folderSource(dir);

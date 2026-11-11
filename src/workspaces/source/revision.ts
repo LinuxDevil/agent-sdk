@@ -95,6 +95,7 @@ export function revisionMeta(seq: number, revision: RevisionId, parent: Revision
 
 export function nextTree(files: FileMap, head: RevisionId, changes: WorkspaceChanges, options: SourceWriteOptions): { files: Map<string, string>; revision: RevisionId } {
   if (options.expectedRevision !== head) throw new StaleRevisionError(options.expectedRevision, head);
+  foldedKeys(new Map(Object.keys(changes).map((path) => [path, ''])));
   const next = applyChanges(files, changes);
   checkTree(next);
   const revision = revisionId(next);
