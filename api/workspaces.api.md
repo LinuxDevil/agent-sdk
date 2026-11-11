@@ -175,7 +175,7 @@ export function blobArtifactStore(client: BlobClient, options?: ArtifactStoreOpt
 export interface BlobClient {
     get(key: string): Promise<BlobObject | undefined>;
     head(key: string): Promise<BlobHead | undefined>;
-    put(key: string, data: Uint8Array, metadata: Readonly<Record<string, string>>): Promise<void>;
+    put(key: string, data: Uint8Array, metadata: Readonly<Record<string, string>>, options?: BlobPutOptions): Promise<boolean | void>;
 }
 
 // @public
@@ -188,6 +188,11 @@ export interface BlobHead {
 export interface BlobObject {
     data: Uint8Array;
     metadata: Readonly<Record<string, string>>;
+}
+
+// @public
+export interface BlobPutOptions {
+    ifAbsent?: boolean;
 }
 
 // @public

@@ -50,10 +50,16 @@ export interface BlobObject {
   metadata: Readonly<Record<string, string>>;
 }
 
+/** Options of `BlobClient.put`. */
+export interface BlobPutOptions {
+  /** Store only when no blob exists under the key (a conditional put). */
+  ifAbsent?: boolean;
+}
+
 /** The blob storage a host backs `blobArtifactStore` with (D27). */
 export interface BlobClient {
-  /** Stores `data` with `metadata` under `key`. */
-  put(key: string, data: Uint8Array, metadata: Readonly<Record<string, string>>): Promise<void>;
+  /** Stores `data` with `metadata` under `key`; with `ifAbsent` it stores only when the key is absent and resolves `false` otherwise, and a host that cannot honour `ifAbsent` must throw rather than overwrite an existing key. */
+  put(key: string, data: Uint8Array, metadata: Readonly<Record<string, string>>, options?: BlobPutOptions): Promise<boolean | void>;
   /** Reads the blob under `key`, or `undefined` when there is none. */
   get(key: string): Promise<BlobObject | undefined>;
   /** Reads the size and metadata of the blob under `key`, or `undefined` when there is none. */
@@ -115,11 +121,8 @@ async function* chunksOf(data: ArtifactData): AsyncIterable<Uint8Array> {
   for await (const chunk of data) yield toBytes(chunk);
 }
 
-/** What `consumeArtifact` measured: the content's hash and size. */
 interface MeasuredContent {
-  /** Hex SHA-256. */
   sha256: string;
-  /** Size in bytes. */
   bytes: number;
 }
 
@@ -177,6 +180,12 @@ function blobRef(parts: ArtifactUriParts, head: BlobHead, data?: Uint8Array): Ar
   };
 }
 
+async function existingBlobRef(client: BlobClient, key: string, parts: ArtifactUriParts, next: ArtifactRef): Promise<ArtifactRef> {
+  const head = await client.head(key);
+  if (!head) throw new SDKError(`artifact ${JSON.stringify(next.uri)} was refused by the blob store but is not there`, 'LOUSHO_STORAGE_FAILED');
+  return sameOrExisting(blobRef(parts, head), next);
+}
+
 /** An artifact store over a host's blob storage: keys are `<workspace>/runs/<runId>/artifacts/<name>`, with `sha256` and `mediaType` stored as metadata. */
 export function blobArtifactStore(client: BlobClient, options: ArtifactStoreOptions = {}): ArtifactStore {
   const max = maxArtifactBytes(options);
@@ -191,8 +200,8 @@ export function blobArtifactStore(client: BlobClient, options: ArtifactStoreOpti
       const key = blobKey(parts);
       const existing = await client.head(key);
       if (existing) return sameOrExisting(blobRef(parts, existing), ref);
-      await client.put(key, concat(chunks, measured.bytes), { sha256: measured.sha256, mediaType });
-      return ref;
+      const stored = await client.put(key, concat(chunks, measured.bytes), { sha256: measured.sha256, mediaType }, { ifAbsent: true });
+      return stored === false ? existingBlobRef(client, key, parts, ref) : ref;
     },
     async get(uri, scope) {
       const parts = scopedParts(uri, scope);
@@ -207,9 +216,10 @@ export function blobArtifactStore(client: BlobClient, options: ArtifactStoreOpti
 export function memoryBlobClient(): BlobClient {
   const blobs = new Map<string, BlobObject>();
   return {
-    put(key, data, metadata) {
+    put(key, data, metadata, options) {
+      if (options?.ifAbsent && blobs.has(key)) return Promise.resolve(false);
       blobs.set(key, { data: data.slice(), metadata: { ...metadata } });
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
     get(key) {
       const blob = blobs.get(key);

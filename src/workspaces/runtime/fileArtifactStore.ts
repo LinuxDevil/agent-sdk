@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { link, lstat, mkdir, open, realpath, rename, rm } from 'node:fs/promises';
-import { join } from 'node:path';
+import { link, lstat, mkdir, open, readdir, realpath, rename, rm } from 'node:fs/promises';
+import { basename, dirname, join } from 'node:path';
 import { z } from 'zod';
 import { SDKError } from '../../execution/errors';
 import { syncDirectory } from '../../storage/atomicFile';
@@ -11,6 +11,8 @@ import { artifactTarget, consumeArtifact, maxArtifactBytes, sameOrExisting, scop
 const ARTIFACTS_DIR = 'artifacts';
 
 const META_DIR = 'artifact-meta';
+
+const LINK_UNSUPPORTED = new Set(['EPERM', 'ENOTSUP', 'EXDEV', 'EOPNOTSUPP']);
 
 const READ_FLAGS = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0);
 
@@ -54,6 +56,7 @@ async function plainDir(dir: string, create: boolean): Promise<boolean> {
   const stat = await lstatOrUndefined(dir);
   if (!stat) return false;
   if (!stat.isDirectory()) throw unsafePath(dir);
+  if (!(await readdir(dirname(dir))).includes(basename(dir))) throw unsafePath(dir);
   return true;
 }
 
@@ -105,19 +108,26 @@ async function readPlainFile(file: string): Promise<Uint8Array | undefined> {
   }
 }
 
-async function readMeta(dirs: RunDirs, parts: ArtifactUriParts): Promise<ArtifactMeta | undefined> {
-  const raw = await readPlainFile(join(dirs.meta, parts.name));
-  if (!raw) return undefined;
-  let parsed: unknown;
+type MetaRecord = { state: 'absent' } | { state: 'other' } | { state: 'same'; meta: ArtifactMeta };
+
+function parseMeta(raw: Uint8Array): ArtifactMeta | undefined {
   try {
-    parsed = JSON.parse(new TextDecoder().decode(raw));
+    const meta = metaSchema.safeParse(JSON.parse(new TextDecoder().decode(raw)));
+    return meta.success ? meta.data : undefined;
   } catch {
     return undefined;
   }
-  const meta = metaSchema.safeParse(parsed);
-  if (!meta.success) return undefined;
-  const sameArtifact = meta.data.workspace === parts.workspace && meta.data.runId === parts.runId && meta.data.name === parts.name;
-  return sameArtifact ? meta.data : undefined;
+}
+
+function isRecordOf(meta: ArtifactMeta | undefined, parts: ArtifactUriParts): meta is ArtifactMeta {
+  return meta !== undefined && meta.workspace === parts.workspace && meta.runId === parts.runId && meta.name === parts.name;
+}
+
+async function readMeta(dirs: RunDirs, parts: ArtifactUriParts): Promise<MetaRecord> {
+  const raw = await readPlainFile(join(dirs.meta, parts.name));
+  if (!raw) return { state: 'absent' };
+  const meta = parseMeta(raw);
+  return isRecordOf(meta, parts) ? { state: 'same', meta } : { state: 'other' };
 }
 
 function refOf(parts: ArtifactUriParts, meta: Pick<ArtifactMeta, 'mediaType' | 'bytes' | 'sha256'>): ArtifactRef {
@@ -145,6 +155,9 @@ async function linkNew(temp: string, file: string): Promise<boolean> {
     return true;
   } catch (error) {
     if (errnoCode(error) === 'EEXIST') return false;
+    if (LINK_UNSUPPORTED.has(errnoCode(error) ?? '')) {
+      throw new SDKError(`artifact store folder ${JSON.stringify(dirname(file))} does not support hard links, which atomic artifact writes need`, 'LOUSHO_STORAGE_FAILED', { cause: error });
+    }
     throw error;
   }
 }
@@ -161,11 +174,16 @@ async function writeMeta(dirs: RunDirs, parts: ArtifactUriParts, ref: ArtifactRe
   await syncDirectory(dirs.meta);
 }
 
+function takenByOther(next: ArtifactRef): SDKError {
+  return new SDKError(`artifact ${JSON.stringify(next.uri)} shares its file with another artifact on this disk (names that differ only in case or Unicode normalisation)`, 'LOUSHO_ARTIFACT_EXISTS');
+}
+
 async function existingRef(dirs: RunDirs, parts: ArtifactUriParts, next: ArtifactRef): Promise<ArtifactRef> {
   const data = await readPlainFile(join(dirs.artifacts, parts.name));
   if (!data) throw unsafePath(join(dirs.artifacts, parts.name));
-  const meta = await readMeta(dirs, parts);
-  if (meta) return sameOrExisting(refOf(parts, meta), next);
+  const record = await readMeta(dirs, parts);
+  if (record.state === 'same') return sameOrExisting(refOf(parts, record.meta), next);
+  if (record.state === 'other') throw takenByOther(next);
   const found = sameOrExisting({ ...next, bytes: data.byteLength, sha256: sha256Of(data) }, next);
   await writeMeta(dirs, parts, found);
   return found;
@@ -197,9 +215,9 @@ async function getFile(root: string, parts: ArtifactUriParts): Promise<StoredArt
 }
 
 async function readStored(dirs: RunDirs, parts: ArtifactUriParts): Promise<StoredArtifact | undefined> {
-  const meta = await readMeta(dirs, parts);
-  const data = meta && (await readPlainFile(join(dirs.artifacts, parts.name)));
-  return meta && data ? { ref: refOf(parts, meta), data } : undefined;
+  const record = await readMeta(dirs, parts);
+  const data = record.state === 'same' ? await readPlainFile(join(dirs.artifacts, parts.name)) : undefined;
+  return record.state === 'same' && data ? { ref: refOf(parts, record.meta), data } : undefined;
 }
 
 /** An artifact store on local disk (D27): `<root>/<workspace>/runs/<runId>/artifacts/<name>`, written atomically and never through a symlink. */

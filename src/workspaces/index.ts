@@ -11,5 +11,5 @@ export { isTerminalStatus, formatArtifactUri, parseArtifactUri, PAGE_RUN_STATUSE
 export { composeHarness, type EffectiveHarness } from './contracts/compose';
 export { validateWorkspace, type WorkspaceProblem, type WorkspaceProblemCode, type WorkspaceProblemSeverity, type ValidateWorkspaceOptions } from './contracts/validate';
 export { pageUiSchema, validateUiBindings, UI_COMPONENTS, type PageUi, type UiComponent, type UiComponentType, type UiComponentBase, type UiContainer, type UiTab, type UiTabs, type UiText, type UiInputField, type UiNumberField, type UiOption, type UiChoiceField, type UiFileField, type UiOutputField, type UiArtifactView, type UiRunWidget, type UiProblem, type UiProblemCode, type UiBindingTarget } from './contracts/ui';
-export { artifactSink, blobArtifactStore, memoryBlobClient, memoryArtifactStore, type ArtifactScope, type StoredArtifact, type ArtifactStore, type ArtifactStoreOptions, type BlobClient, type BlobHead, type BlobObject } from './runtime/artifacts';
+export { artifactSink, blobArtifactStore, memoryBlobClient, memoryArtifactStore, type ArtifactScope, type StoredArtifact, type ArtifactStore, type ArtifactStoreOptions, type BlobClient, type BlobHead, type BlobObject, type BlobPutOptions } from './runtime/artifacts';
 export { fileArtifactStore } from './runtime/fileArtifactStore';

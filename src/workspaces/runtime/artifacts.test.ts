@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { SDKError, ValidationError } from '../../execution/errors';
-import { artifactSink, blobArtifactStore, memoryArtifactStore, memoryBlobClient, type ArtifactScope, type ArtifactStore, type ArtifactStoreOptions } from './artifacts';
+import { artifactSink, blobArtifactStore, type BlobClient, memoryArtifactStore, memoryBlobClient, type ArtifactScope, type ArtifactStore, type ArtifactStoreOptions } from './artifacts';
 import { fileArtifactStore } from './fileArtifactStore';
 
 const roots: string[] = [];
@@ -139,6 +139,25 @@ describe('artifact store', () => {
       expect((await store.get('artifact://marketing/run-a/a%252Fb.md', pageA))?.ref.name).toBe('a%2Fb.md');
       await expect(store.get('artifact://marketing/run-a/a%2Fb.md', pageA)).rejects.toBeInstanceOf(ValidationError);
     }
+  });
+
+  it('refuses an existing blob key with a conditional put, even when head missed it', async () => {
+    const client = memoryBlobClient();
+    expect(await client.put('k', new Uint8Array([1]), {}, { ifAbsent: true })).toBe(true);
+    expect(await client.put('k', new Uint8Array([2]), {}, { ifAbsent: true })).toBe(false);
+    expect((await client.get('k'))?.data).toEqual(new Uint8Array([1]));
+    const inner = memoryBlobClient();
+    let headCalls = 1;
+    const racing: BlobClient = { put: inner.put, get: inner.get, head: (key) => (headCalls++ === 0 ? Promise.resolve(undefined) : inner.head(key)) };
+    const store = blobArtifactStore(racing);
+    const ref = await store.put(pageA, 'a.md', 'one', 'text/markdown');
+    headCalls = 0;
+    expect(await store.put(pageA, 'a.md', 'one', 'text/markdown')).toEqual(ref);
+    headCalls = 0;
+    await expect(store.put(pageA, 'a.md', 'two', 'text/markdown')).rejects.toMatchObject({ code: 'LOUSHO_ARTIFACT_EXISTS' });
+    expect(new TextDecoder().decode((await store.get(ref.uri, pageA))?.data)).toBe('one');
+    const vanished = blobArtifactStore({ put: () => Promise.resolve(false), get: inner.get, head: () => Promise.resolve(undefined) });
+    await expect(vanished.put(pageA, 'b.md', 'x', 'text/markdown')).rejects.toMatchObject({ code: 'LOUSHO_STORAGE_FAILED' });
   });
 
   it('copies bytes in and out of the memory store', async () => {

@@ -1,7 +1,12 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, link: vi.fn(actual.link) };
+});
 import { ValidationError } from '../../execution/errors';
 import type { ArtifactScope } from './artifacts';
 import { fileArtifactStore } from './fileArtifactStore';
@@ -17,6 +22,18 @@ async function tempDir(prefix: string): Promise<string> {
 afterEach(async () => {
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
+
+async function ignoresCase(dir: string): Promise<boolean> {
+  await writeFile(join(dir, 'Probe'), '');
+  try {
+    await lstat(join(dir, 'probe'));
+    return true;
+  } catch {
+    return false;
+  } finally {
+    await rm(join(dir, 'Probe'), { force: true });
+  }
+}
 
 const page: ArtifactScope = { workspace: 'marketing', runId: 'run-a' };
 
@@ -135,5 +152,42 @@ describe('fileArtifactStore', () => {
   it('returns undefined when the root does not exist yet', async () => {
     const parent = await tempDir('lousho-artifacts-');
     expect(await fileArtifactStore(join(parent, 'missing')).get('artifact://marketing/run-a/a.md', page)).toBeUndefined();
+  });
+  it('refuses a name that shares its file with another name on a case-insensitive disk', async () => {
+    const root = await tempDir('lousho-artifacts-');
+    const store = fileArtifactStore(root);
+    const first = await store.put(page, 'Plan.md', 'v1', 'text/markdown');
+    if (await ignoresCase(root)) {
+      await expect(store.put(page, 'plan.md', 'v1', 'text/markdown')).rejects.toMatchObject({ code: 'LOUSHO_ARTIFACT_EXISTS' });
+      await expect(store.put(page, 'plan.md', 'other', 'text/markdown')).rejects.toMatchObject({ code: 'LOUSHO_ARTIFACT_EXISTS' });
+      expect(await store.get('artifact://marketing/run-a/plan.md', page)).toBeUndefined();
+    } else {
+      const second = await store.put(page, 'plan.md', 'v2', 'text/markdown');
+      expect(new TextDecoder().decode((await store.get(second.uri, page))?.data)).toBe('v2');
+    }
+    expect(new TextDecoder().decode((await store.get(first.uri, page))?.data)).toBe('v1');
+  });
+
+  it('refuses a run folder whose name differs from the run id only in case', async () => {
+    const root = await tempDir('lousho-artifacts-');
+    const store = fileArtifactStore(root);
+    const upper = { workspace: 'marketing', runId: 'A' };
+    const lower = { workspace: 'marketing', runId: 'a' };
+    const ref = await store.put(upper, 'x.md', 'upper', 'text/markdown');
+    if (await ignoresCase(root)) {
+      await expect(store.put(lower, 'x.md', 'upper', 'text/markdown')).rejects.toMatchObject({ code: 'LOUSHO_ARTIFACT_UNSAFE_PATH' });
+      await expect(store.get('artifact://marketing/a/x.md', lower)).rejects.toMatchObject({ code: 'LOUSHO_ARTIFACT_UNSAFE_PATH' });
+    } else {
+      expect((await store.put(lower, 'x.md', 'lower', 'text/markdown')).sha256).not.toBe(ref.sha256);
+    }
+    expect(new TextDecoder().decode((await store.get(ref.uri, upper))?.data)).toBe('upper');
+  });
+
+  it.each(['EPERM', 'ENOTSUP', 'EXDEV'])('fails closed with LOUSHO_STORAGE_FAILED when hard links fail with %s', async (code) => {
+    const root = await tempDir('lousho-artifacts-');
+    vi.mocked(link).mockRejectedValueOnce(Object.assign(new Error(code), { code }));
+    await expect(fileArtifactStore(root).put(page, 'a.md', 'x', 'text/plain')).rejects.toMatchObject({ code: 'LOUSHO_STORAGE_FAILED' });
+    expect(await readdir(join(root, 'marketing', 'runs', 'run-a', 'artifacts'))).toEqual([]);
+    expect(await fileArtifactStore(root).get('artifact://marketing/run-a/a.md', page)).toBeUndefined();
   });
 });
