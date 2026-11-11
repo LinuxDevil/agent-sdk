@@ -4,7 +4,7 @@ import { harnessSchema, type Harness } from './harness';
 import { findNestedPages, pageSchema, type PageManifest } from './page';
 import { pageUiSchema } from './ui';
 import { layerProblems } from './validateLayers';
-import { agentFolder, dotted, folderOf, goalCriteria, harnessCode, isRecord, joinPath, problem, readDoc, subtree, type Ctx, type Issue, type PageView, type WorkspaceProblem, type WorkspaceProblemCode } from './validateModel';
+import { agentFolder, dotted, missingFile, schemaFiles, folderOf, goalCriteria, harnessCode, isRecord, joinPath, problem, readDoc, subtree, type Ctx, type Issue, type PageView, type WorkspaceProblem, type WorkspaceProblemCode } from './validateModel';
 
 const EMPTY_HARNESS: Harness = { schema: 'lousho.harness/1' };
 const EMPTY_ATTACHMENTS: Attachments = { schema: 'lousho.agents/1', agents: [] };
@@ -86,7 +86,7 @@ function workflowProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
   if (ref === undefined) return [];
   const file = workflowFile(ctx, view, ref);
   if (!(file in ctx.tree)) return [problem('PRD030', file, '', `is missing; ${view.pagePath} runs the workflow ${ref}`)];
-  const read = readDoc(ctx, file, flowSpecSchema, () => 'PRD030');
+  const read = readDoc(ctx, file, flowSpecSchema, () => 'PRD030', false);
   if (!read.data || !view.attachments) return read.problems;
   const aliases = view.attachments.agents.map((agent) => agent.as);
   return flowProblems(ctx.tree[file], { agentNames: aliases }).map((item) => flowProblem(file, ctx.tree[file], item));
@@ -105,14 +105,15 @@ function listedFiles(harness: Harness): [string, string][] {
   const checks = (harness.evaluation?.criteria ?? []).flatMap((criterion, index): [string, string][] => (criterion.check && /\.[cm]?[jt]s$/.test(criterion.check) ? [[`evaluation.criteria.${index}.check`, criterion.check]] : []));
   const instructions = (harness.instructions ?? []).map((file, index): [string, string] => [`instructions.${index}`, file]);
   const resources = (harness.context?.resources ?? []).map((file, index): [string, string] => [`context.resources.${index}`, file]);
-  return [...instructions, ...checks, ...resources];
+  return [...instructions, ...checks, ...resources, ...schemaFiles(harness)];
 }
 
 function listedFileProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
   if (!view.harness) return [];
+  for (const [, file] of schemaFiles(view.harness)) ctx.read.add(joinPath(view.dir, file));
   return listedFiles(view.harness).flatMap(([field, file]) => {
     const path = joinPath(view.dir, file);
-    return path in ctx.tree ? [] : [problem('PRD032', path, '', `is listed in ${view.harnessPath} ${field} but missing from the workspace`)];
+    return path in ctx.tree ? [] : [missingFile(view, field, path)];
   });
 }
 

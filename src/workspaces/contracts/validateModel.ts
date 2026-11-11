@@ -69,6 +69,7 @@ export interface ValidateWorkspaceOptions {
 export interface Files {
   tree: Readonly<Record<string, unknown>>;
   broken: ReadonlySet<string>;
+  read: Set<string>;
 }
 
 export interface Ctx extends Files {
@@ -90,8 +91,9 @@ export interface Read<T> {
   problems: WorkspaceProblem[];
 }
 
-export function readDoc<T>(files: Files, file: string, schema: SafeParser<T>, codeOf: (issue: Issue) => WorkspaceProblemCode): Read<T> {
+export function readDoc<T>(files: Files, file: string, schema: SafeParser<T>, codeOf: (issue: Issue) => WorkspaceProblemCode, scansPolicyKeys = true): Read<T> {
   if (!(file in files.tree) || files.broken.has(file)) return { problems: [] };
+  if (scansPolicyKeys) files.read.add(file);
   const result = schema.safeParse(files.tree[file]);
   return result.success ? { data: result.data, problems: [] } : { problems: fromIssues(file, result.error.issues, codeOf) };
 }
@@ -112,8 +114,14 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function addSegment(segments: string[], segment: string): string[] {
+  if (segment === '' || segment === '.') return segments;
+  if (segment === '..' && segments.length > 0 && segments[segments.length - 1] !== '..') return segments.slice(0, -1);
+  return [...segments, segment];
+}
+
 export function normalizeDir(dir: string): string {
-  return dir.replace(/^(\.\/)+/, '').replace(/\/+$/, '');
+  return dir.split('/').reduce(addSegment, []).join('/');
 }
 
 export function joinPath(dir: string, path: string): string {
@@ -160,4 +168,22 @@ export function agentFolder(ctx: Ctx, view: PageView, ref: string): string | und
   const parsed = parseAgentRef(ref);
   if (!parsed.ok || parsed.ref.kind === 'global') return undefined;
   return parsed.ref.kind === 'workspace' ? `${folderOf(ctx, 'agents')}/${parsed.ref.name}` : `${view.dir}/agents/${parsed.ref.name}`;
+}
+
+export function resolveGlobal(ctx: Ctx, ref: string): { files?: WorkspaceTree; error?: string } {
+  try {
+    return { files: ctx.options.resolveGlobal?.(ref) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export function schemaFiles(harness: Pick<Harness, 'inputs' | 'outputs'>): [string, string][] {
+  const inputs = harness.inputs?.schema;
+  const outputs = harness.outputs?.schema;
+  return [...(typeof inputs === 'string' ? [['inputs.schema', inputs] as [string, string]] : []), ...(typeof outputs === 'string' ? [['outputs.schema', outputs] as [string, string]] : [])];
+}
+
+export function missingFile(view: PageView, field: string, path: string): WorkspaceProblem {
+  return problem('PRD032', path, '', `is listed in ${view.harnessPath} ${field} but missing from the workspace`);
 }

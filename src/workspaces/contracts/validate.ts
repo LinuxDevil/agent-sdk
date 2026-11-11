@@ -13,7 +13,6 @@ export type { ValidateWorkspaceOptions, WorkspaceProblem, WorkspaceProblemCode, 
 const POLICY_DIR = 'shared/policies';
 const POLICY_KEYS = ['permissions', 'tools', 'secrets', 'network', 'approvals', 'sandbox'];
 const POLICY_RULE: ForbiddenKeyRule = { keys: POLICY_KEYS, message: (at, key) => `${at}: declares policy key '${key}'; policy lives only in ${SHARED_POLICY_FILE} (R13, G6)` };
-const OWN_SCHEMA_FILE = /(?:^|\/)(?:workspace|page|agents|agent|harness|main-harness)\.json$|\.ui\.json$/;
 
 function parseFile(path: string, value: unknown): { value?: unknown; broken: boolean } {
   if (!path.endsWith('.json') || typeof value !== 'string') return { value, broken: false };
@@ -32,7 +31,7 @@ function parseJsonFiles(tree: WorkspaceTree): Files & { problems: WorkspaceProbl
     if (file.broken) broken.add(path);
     parsed[path] = file.broken ? raw : file.value;
   }
-  return { tree: parsed, broken, problems: [...broken].map((path) => problem('PRD028', path, '', 'is not valid JSON')) };
+  return { tree: parsed, broken, read: new Set(), problems: [...broken].map((path) => problem('PRD028', path, '', 'is not valid JSON')) };
 }
 
 function readManifest(files: Files): { manifest?: WorkspaceManifest; problems: WorkspaceProblem[] } {
@@ -42,17 +41,32 @@ function readManifest(files: Files): { manifest?: WorkspaceManifest; problems: W
   return { manifest: read.data, problems: read.problems };
 }
 
-function policyOutside(files: Files, path: string): WorkspaceProblem[] {
-  if (path.startsWith(`${POLICY_DIR}/`)) return [problem('PRD014', path, '', `only ${SHARED_POLICY_FILE} may sit in ${POLICY_DIR}/; policy lives there and nowhere else (R13, G6)`)];
-  const value = files.tree[path];
-  if (OWN_SCHEMA_FILE.test(path) || files.broken.has(path) || typeof value !== 'object' || value === null) return [];
-  return forbiddenKeyErrors(value, [POLICY_RULE], path).map((error) => problem('PRD014', path, dotted(error.path), error.message));
+const AGENT_FILE = /^[^/]+\/agent\.json$/;
+const PAGE_AGENT_FILE = /^pages\/([^/]+)\/agents\/[^/]+\/agent\.json$/;
+
+function isAgentFile(manifest: WorkspaceManifest | undefined, path: string): boolean {
+  if (path === 'main-agent/agent.json') return manifest?.mainAgent !== null;
+  const page = PAGE_AGENT_FILE.exec(path)?.[1];
+  if (page !== undefined) return manifest === undefined || manifest.pages.includes(page);
+  const agents = `${normalizeDir(manifest?.agents ?? 'agents')}/`;
+  return path.startsWith(agents) && AGENT_FILE.test(path.slice(agents.length));
 }
 
-function policyLocationProblems(files: Files): WorkspaceProblem[] {
+function isScanned(files: Files, path: string, manifest: WorkspaceManifest | undefined): boolean {
+  const value = files.tree[path];
+  return !files.read.has(path) && !isAgentFile(manifest, path) && !files.broken.has(path) && typeof value === 'object' && value !== null;
+}
+
+function policyOutside(files: Files, path: string, manifest: WorkspaceManifest | undefined): WorkspaceProblem[] {
+  if (path.startsWith(`${POLICY_DIR}/`)) return [problem('PRD014', path, '', `only ${SHARED_POLICY_FILE} may sit in ${POLICY_DIR}/; policy lives there and nowhere else (R13, G6)`)];
+  if (!isScanned(files, path, manifest)) return [];
+  return forbiddenKeyErrors(files.tree[path], [POLICY_RULE], path).map((error) => problem('PRD014', path, dotted(error.path), error.message));
+}
+
+function policyLocationProblems(files: Files, manifest: WorkspaceManifest | undefined): WorkspaceProblem[] {
   return Object.keys(files.tree)
     .filter((path) => path !== SHARED_POLICY_FILE)
-    .flatMap((path) => policyOutside(files, path));
+    .flatMap((path) => policyOutside(files, path, manifest));
 }
 
 function policyFileProblems(files: Files): WorkspaceProblem[] {
@@ -122,6 +136,7 @@ function pageListingProblems(ctx: Ctx): WorkspaceProblem[] {
 }
 
 function baseHarnessProblems(ctx: Ctx): WorkspaceProblem[] {
+  ctx.read.add(`${normalizeDir(ctx.manifest.harness ?? 'harness')}/harness.json`);
   return readBaseHarness(ctx.tree)
     .problems.filter((item) => !ctx.broken.has(item.path))
     .map((item) => problem(harnessCode(item.message, 'PRD004'), item.path, '', item.message));
@@ -138,10 +153,10 @@ function mainHarnessDir(ctx: Ctx): string {
   return normalizeDir(ctx.manifest.mainAgent?.harness ?? 'main-agent/harness');
 }
 
-function strayMainProblems(ctx: Ctx, dir: string): WorkspaceProblem[] {
+function strayMainProblems(ctx: Ctx): WorkspaceProblem[] {
   if (ctx.manifest.mainAgent !== null) return [];
   return Object.keys(ctx.tree)
-    .filter((path) => path.startsWith('main-agent/') && !path.startsWith(`${dir}/`))
+    .filter((path) => path.startsWith('main-agent/'))
     .map((path) => problem('PRD011', path, '', 'exists but workspace.json sets mainAgent to null; remove it or set a main agent'));
 }
 
@@ -168,7 +183,7 @@ function mainAgentProblems(ctx: Ctx): WorkspaceProblem[] {
   const file = `${dir}/main-harness.json`;
   const read = readDoc(ctx, file, mainHarnessSchema, (issue) => harnessCode(issue.message, 'PRD011'));
   const checks = read.data ? [...crossProblems(ctx, file, read.data), ...routeProblems(ctx, file, read.data), ...mainProseProblems(ctx, dir, read.data)] : [];
-  return [...strayMainProblems(ctx, dir), ...read.problems, ...checks];
+  return [...strayMainProblems(ctx), ...read.problems, ...checks];
 }
 
 const WORKSPACE_CHECKS: readonly ((ctx: Ctx) => WorkspaceProblem[])[] = [pageListingProblems, baseHarnessProblems, profileFileProblems, mainAgentProblems, pageProblems];
@@ -188,18 +203,20 @@ function unique(problems: readonly WorkspaceProblem[]): WorkspaceProblem[] {
   });
 }
 
-function treeProblems(files: Files, options: ValidateWorkspaceOptions): WorkspaceProblem[] {
+function treeProblems(files: Files, options: ValidateWorkspaceOptions): { manifest?: WorkspaceManifest; problems: WorkspaceProblem[] } {
   const { manifest, problems } = readManifest(files);
-  if (!manifest) return problems;
+  if (!manifest) return { problems };
   const folders = folderProblems(manifest);
-  if (folders.length > 0) return folders;
+  if (folders.length > 0) return { manifest, problems: folders };
   const ctx: Ctx = { ...files, options, manifest };
-  return WORKSPACE_CHECKS.flatMap((check) => check(ctx));
+  return { manifest, problems: WORKSPACE_CHECKS.flatMap((check) => check(ctx)) };
 }
 
 /** Validates a whole workspace tree across files without touching the file system; never throws for invalid input, and returns every problem in a stable order with a stable code, file and field path. */
 export function validateWorkspace(tree: WorkspaceTree, options: ValidateWorkspaceOptions = {}): WorkspaceProblem[] {
   const files = parseJsonFiles(tree);
-  const problems = [...files.problems, ...policyLocationProblems(files), ...policyFileProblems(files), ...treeProblems(files, options), ...modeProblems(options)];
+  const policy = policyFileProblems(files);
+  const checked = treeProblems(files, options);
+  const problems = [...files.problems, ...policyLocationProblems(files, checked.manifest), ...policy, ...checked.problems, ...modeProblems(options)];
   return unique(problems);
 }

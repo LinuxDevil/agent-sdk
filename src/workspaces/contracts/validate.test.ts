@@ -124,6 +124,39 @@ describe('policy lives only in shared/policies (R13, G6)', () => {
     const twin = edit(base(), 'workspace.json', (doc) => ({ ...doc, agents: 'stuff', workflows: './stuff/' }));
     expect(validateWorkspace(twin)).toEqual([expect.objectContaining({ code: 'PRD027', path: 'workflows' })]);
   });
+
+  it('folder fields are normalised before the overlap checks and lookups', () => {
+    for (const value of ['a/../shared/policies', 'shared/./policies', 'shared//policies', 'x/../pages']) {
+      const tree = edit(base(), 'workspace.json', (doc) => ({ ...doc, workflows: value }));
+      expect(codes(validateWorkspace(tree)), value).toEqual(['PRD027']);
+    }
+    const agents = edit(base(), 'workspace.json', (doc) => ({ ...doc, agents: 'x/../agents' }));
+    expect(validateWorkspace(agents)).toEqual([]);
+  });
+
+  it('policy keys in any file no check read are refused, whatever its name', () => {
+    for (const path of ['notes/harness.json', 'docs/page.json', 'x/agent.json', 'pages/main/ui/other.ui.json', 'pages/main/agents/agent.json']) {
+      const problems = validateWorkspace(withFile(base(), path, { permissions: [], tools: { allow: ['bash'] }, secrets: [] }));
+      expect(codes(problems), path).toEqual(['PRD014']);
+      expect(problems.map((problem) => problem.path), path).toEqual(['permissions', 'tools', 'secrets']);
+    }
+  });
+
+  it('a harness.json left behind after harness.overrides moves is scanned', () => {
+    const tree = base();
+    const moved = withFile(edit(tree, 'pages/main/page.json', (doc) => ({ ...doc, harness: { extends: [], overrides: 'tuning' } })), 'pages/main/tuning/harness.json', tree['pages/main/harness/harness.json']);
+    expect(validateWorkspace(moved)).toEqual([]);
+    const stale = edit(moved, 'pages/main/harness/harness.json', (doc) => ({ ...doc, tools: ['bash'] }));
+    expect(validateWorkspace(stale)).toEqual([expect.objectContaining({ code: 'PRD014', file: 'pages/main/harness/harness.json', path: 'tools' })]);
+  });
+
+  it('page-local agents may declare tools, and schema files may name a property tools', () => {
+    const local = withFile(base(), 'pages/main/agents/helper/agent.json', { name: 'helper', version: '1.0.0', description: 'd', tools: ['read_file'] });
+    expect(validateWorkspace(local)).toEqual([]);
+    const schema = { type: 'object', properties: { task: { type: 'string' }, tools: { type: 'string' } }, required: ['task'] };
+    const tree = withFile(edit(base(), 'pages/main/harness/harness.json', (doc) => ({ ...doc, inputs: { schema: 'schemas/input.json' } })), 'pages/main/schemas/input.json', schema);
+    expect(validateWorkspace(tree)).toEqual([]);
+  });
 });
 
 describe('cross-file checks', () => {
@@ -134,6 +167,8 @@ describe('cross-file checks', () => {
   it('leftover main-agent files are refused when mainAgent is null', () => {
     const problems = validateWorkspace(withFile(base(), 'main-agent/instructions.md', 'Route.'));
     expect(problems).toEqual([expect.objectContaining({ code: 'PRD011', file: 'main-agent/instructions.md' })]);
+    const prose = validateWorkspace(withFile(base(), 'main-agent/harness/routing.md', 'Route.'));
+    expect(prose).toEqual([expect.objectContaining({ code: 'PRD011', file: 'main-agent/harness/routing.md' })]);
   });
 
   it('a main harness above the workspace concurrency limit is a warning', () => {
@@ -170,13 +205,28 @@ describe('cross-file checks', () => {
     expect(validateWorkspace(withHarness).map((problem) => problem.file)).toEqual(['pages/main/harness/task.md', 'pages/main/harness/checks/report-present.ts']);
   });
 
-  it('capabilities.require is covered by the attached agents', () => {
+  it('capabilities.require is a warning until P1 defines the effective toolset', () => {
     const requiring = edit(base(), 'pages/main/harness/harness.json', (doc) => ({ ...doc, capabilities: { require: ['image.generate'] } }));
-    expect(validateWorkspace(requiring)).toEqual([expect.objectContaining({ code: 'PRD025', path: 'capabilities.require.0' })]);
-    const covered = edit(requiring, 'agents/helper/agent.json', (doc) => ({ ...doc, capabilities: ['image'] }));
-    expect(validateWorkspace(covered)).toEqual([]);
-    const globalAgent = edit(requiring, 'pages/main/agents.json', (doc) => ({ ...doc, agents: [...(doc.agents as unknown[]), { as: 'checker', ref: 'global:fact-checker@^1.0.0' }] }));
-    expect(validateWorkspace(globalAgent)).toEqual([]);
+    const problems = validateWorkspace(requiring);
+    expect(problems).toEqual([expect.objectContaining({ severity: 'warning', code: 'PRD025', path: 'capabilities.require.0' })]);
+    expect(problems[0].message).toContain('P1');
+    const declared = edit(requiring, 'agents/helper/agent.json', (doc) => ({ ...doc, capabilities: ['image.generate'] }));
+    expect(validateWorkspace(declared)).toEqual(problems);
+  });
+
+  it('a resolveGlobal that throws becomes PRD024', () => {
+    const tree = edit(base(), 'pages/main/page.json', (doc) => ({ ...doc, harness: { extends: ['global:tones/calm@^1.0.0'] } }));
+    const resolveGlobal = (): WorkspaceTree => {
+      throw new TypeError('host offline');
+    };
+    const problems = validateWorkspace(tree, { resolveGlobal });
+    expect(problems).toEqual([expect.objectContaining({ code: 'PRD024', file: 'pages/main/page.json', path: 'harness.extends.0' })]);
+    expect(problems[0].message).toContain('resolveGlobal failed: host offline');
+  });
+
+  it('a missing harness schema file is PRD032, not a skipped UI check', () => {
+    const tree = edit(readNegativeTree('ui-bind-missing-input'), 'pages/main/harness/harness.json', (doc) => ({ ...doc, inputs: { schema: 'schemas/input.json' } }));
+    expect(validateWorkspace(tree)).toEqual([expect.objectContaining({ code: 'PRD032', file: 'pages/main/schemas/input.json' })]);
   });
 
   it('goal and workflow files a page names must exist and be well formed', () => {

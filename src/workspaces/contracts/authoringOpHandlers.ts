@@ -1,8 +1,8 @@
 import { issuePath, type SafeParser } from '../../utils/zodCompat';
 import { attachmentsSchema } from './agentRefs';
-import { baseHarnessSchema, readBaseHarness, type WorkspaceTree } from './baseHarness';
+import { baseHarnessSchema, type WorkspaceTree } from './baseHarness';
 import { harnessSchema } from './harness';
-import { crossCheckMainHarness, mainHarnessSchema } from './mainHarness';
+import { mainHarnessSchema } from './mainHarness';
 import { pageSchema } from './page';
 import { SHARED_PATH_PATTERNS } from './shared';
 import { workspaceManifestSchema } from './workspace';
@@ -503,52 +503,6 @@ export function applyOp(state: State, op: AuthoringOp, opIndex: number): State {
   return { tree, problems: [], touched };
 }
 
-function pageListProblems(tree: WorkspaceTree, manifest: Doc): Problem[] {
-  const listed = pagesOf(manifest);
-  const folders = Object.keys(tree).flatMap((path) => /^pages\/([^/]+)\/page\.json$/.exec(path)?.[1] ?? []);
-  return [
-    ...listed.filter((page) => !folders.includes(page)).map((page) => ({ path: 'workspace.json', message: `pages lists '${page}' but pages/${page}/page.json is missing` })),
-    ...folders.filter((page) => !listed.includes(page)).map((page) => ({ path: `pages/${page}/page.json`, message: `page '${page}' is not listed in workspace.json pages` })),
-  ];
-}
-
-function missingProse(tree: WorkspaceTree, file: HarnessFile, doc: Doc): Problem[] {
-  const listed = Array.isArray(doc.instructions) ? doc.instructions.filter((item): item is string => typeof item === 'string') : [];
-  return listed.flatMap((entry) => {
-    const path = join(file.owner, entry);
-    return typeof tree[path] === 'string' ? [] : [{ path, message: 'is listed in instructions but missing from the workspace' }];
-  });
-}
-
-function pageProblems(tree: WorkspaceTree, page: string): Problem[] {
-  const file = harnessFile(tree, { kind: 'page', page });
-  const doc = isPlan(file) ? undefined : readDoc(tree, file.path);
-  const prose = !isPlan(file) && doc !== undefined ? missingProse(tree, file, doc) : [];
-  return prose;
-}
-
-function strayMainProblems(tree: WorkspaceTree): Problem[] {
-  return Object.keys(tree).filter((path) => path.startsWith('main-agent/')).map((path) => ({ path, message: 'exists but workspace.json sets mainAgent to null; remove it or set a main agent' }));
-}
-
-function mainProblems(tree: WorkspaceTree, manifest: Doc): Problem[] {
-  if (mainDirOf(tree) === undefined) return strayMainProblems(tree);
-  const dir = mainDirOf(tree);
-  const path = `${dir}/main-harness.json`;
-  const doc = dir === undefined ? undefined : readDoc(tree, path);
-  const parsedManifest = workspaceManifestSchema.safeParse(manifest);
-  const parsed = mainHarnessSchema.safeParse(doc);
-  if (doc === undefined || !parsed.success || !parsedManifest.success) return [];
-  return crossCheckMainHarness(parsed.data, parsedManifest.data).errors.map((message) => ({ path, message }));
-}
-
-function builtInProblems(tree: WorkspaceTree): Problem[] {
-  const manifest = manifestOf(tree);
-  if (manifest === undefined) return [];
-  const base = readBaseHarness(tree).problems;
-  return [...pageListProblems(tree, manifest), ...pagesOf(manifest).flatMap((page) => pageProblems(tree, page)), ...base, ...mainProblems(tree, manifest)];
-}
-
 function treeProblem(problem: AuthoringTreeProblem): AuthoringProblem {
   if (problem.file === undefined) return problem;
   return { ...problem, path: problem.file, message: problem.path === '' ? problem.message : `${problem.path}: ${problem.message}` };
@@ -557,7 +511,7 @@ function treeProblem(problem: AuthoringTreeProblem): AuthoringProblem {
 const isError = (problem: AuthoringTreeProblem): boolean => (problem.severity ?? 'error') === 'error';
 
 export function finalProblems(tree: WorkspaceTree, touched: Map<string, number>, ops: readonly AuthoringOp[], validate: AuthoringValidator): AuthoringProblem[] {
-  return [...builtInProblems(tree), ...validate(tree).filter(isError).map(treeProblem)].map((problem) => {
+  return validate(tree).filter(isError).map(treeProblem).map((problem) => {
     const opIndex = touched.get(problem.path);
     return opIndex === undefined ? problem : { opIndex, op: ops[opIndex]?.op, ...problem };
   });

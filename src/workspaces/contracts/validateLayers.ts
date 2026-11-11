@@ -1,9 +1,8 @@
-import { parseAgentRef } from './agentRefs';
 import { readBaseHarness, type HarnessLayer } from './baseHarness';
 import { composeHarness, type EffectiveHarness } from './compose';
 import { harnessProfileSchema, hasExecutableCriterion, type Harness } from './harness';
 import { validateUiBindings, type UiBindingTarget } from './ui';
-import { agentFolder, folderOf, fromIssues, goalCriteria, harnessCode, isRecord, joinPath, problem, subtree, type Ctx, type PageView, type WorkspaceProblem } from './validateModel';
+import { folderOf, fromIssues, goalCriteria, harnessCode, isRecord, joinPath, missingFile, problem, resolveGlobal, schemaFiles, subtree, type Ctx, type PageView, type WorkspaceProblem } from './validateModel';
 
 interface Origin {
   file: string;
@@ -34,7 +33,9 @@ function profileSource(ctx: Ctx, ref: string): ProfileSource | undefined {
     return { files: subtree(ctx.tree, dir), file: `${dir}/harness.json`, missing: `has no profile at ${dir}/harness.json` };
   }
   if (!GLOBAL_REF.test(ref)) return undefined;
-  return { files: ctx.options.resolveGlobal?.(ref), file: ref, missing: 'is a global ref that resolveGlobal does not answer' };
+  const resolved = resolveGlobal(ctx, ref);
+  const missing = resolved.error === undefined ? 'is a global ref that resolveGlobal does not answer' : `could not be resolved: resolveGlobal failed: ${resolved.error}`;
+  return { files: resolved.files, file: ref, missing };
 }
 
 function textsOf(files: Readonly<Record<string, unknown>>, harness: Harness): { texts: Record<string, string>; missing: string[] } {
@@ -97,17 +98,24 @@ function resolveSchema(ctx: Ctx, view: PageView, schema: Record<string, unknown>
   return isRecord(doc) ? doc : undefined;
 }
 
-function bindingTarget(ctx: Ctx, view: PageView, effective: EffectiveHarness): UiBindingTarget | undefined {
+function bindingTarget(ctx: Ctx, view: PageView, effective: EffectiveHarness): UiBindingTarget {
   const inputs = resolveSchema(ctx, view, effective.inputs?.schema);
   const outputs = resolveSchema(ctx, view, effective.outputs?.schema);
-  if ((effective.inputs && !inputs) || (effective.outputs?.schema !== undefined && !outputs)) return undefined;
   return { ...(inputs && { inputs: { schema: inputs } }), ...(effective.outputs && { outputs: { ...effective.outputs, ...(outputs && { schema: outputs }) } }) };
 }
 
+function unresolvedSchemas(ctx: Ctx, view: PageView, effective: EffectiveHarness): WorkspaceProblem[] {
+  return schemaFiles(effective).flatMap(([field, file]) => {
+    const path = joinPath(view.dir, file);
+    ctx.read.add(path);
+    return isRecord(ctx.tree[path]) ? [] : [missingFile(view, field, path)];
+  });
+}
+
 const uiProblems: EffectiveCheck = (ctx, view, effective) => {
-  const target = bindingTarget(ctx, view, effective);
-  if (!view.ui || !target) return [];
-  return validateUiBindings(view.ui, target).map((item) => problem('PRD012', view.uiPath, item.path.join('.'), `${item.code}: ${item.message}`));
+  const unresolved = unresolvedSchemas(ctx, view, effective);
+  if (unresolved.length > 0 || !view.ui) return unresolved;
+  return validateUiBindings(view.ui, bindingTarget(ctx, view, effective)).map((item) => problem('PRD012', view.uiPath, item.path.join('.'), `${item.code}: ${item.message}`));
 };
 
 const executableProblems: EffectiveCheck = (ctx, view, effective) => {
@@ -126,28 +134,10 @@ const goalCheckProblems: EffectiveCheck = (ctx, view, effective) => {
   return (criteria ?? []).flatMap((id, index) => (known.has(id) ? [] : [problem('PRD016', file, `checks.${index}.criterion`, `check names criterion '${id}', which no layer defines`)]));
 };
 
-function declaredCapabilities(ctx: Ctx, view: PageView, ref: string): string[] | undefined {
-  const parsed = parseAgentRef(ref);
-  const folder = agentFolder(ctx, view, ref);
-  const doc = parsed.ok && parsed.ref.kind === 'global' ? ctx.options.resolveGlobal?.(ref)?.['agent.json'] : folder && ctx.tree[`${folder}/agent.json`];
-  if (parsed.ok && parsed.ref.kind === 'global' && doc === undefined) return undefined;
-  const capabilities = isRecord(doc) && Array.isArray(doc.capabilities) ? doc.capabilities : [];
-  return capabilities.filter((item): item is string => typeof item === 'string');
-}
-
-function covers(declared: readonly string[], required: string): boolean {
-  return declared.some((capability) => capability === required || required.startsWith(`${capability}.`));
-}
-
-const capabilityProblems: EffectiveCheck = (ctx, view, effective) => {
-  const required = effective.capabilities?.require ?? [];
-  const perAgent = (view.attachments?.agents ?? []).map((agent) => declaredCapabilities(ctx, view, agent.ref));
-  if (required.length === 0 || perAgent.some((list) => list === undefined)) return [];
-  const declared = perAgent.flatMap((list) => list ?? []);
-  return required.flatMap((capability, index) =>
-    covers(declared, capability) ? [] : [problem('PRD025', view.harnessPath, `capabilities.require.${index}`, `requires '${capability}', which no attached agent declares in its capabilities`)]
+const capabilityProblems: EffectiveCheck = (_ctx, view, effective) =>
+  (effective.capabilities?.require ?? []).map((capability, index) =>
+    problem('PRD025', view.harnessPath, `capabilities.require.${index}`, `requires '${capability}'; capabilities can't be checked until P1 defines the effective toolset`, 'warning')
   );
-};
 
 const EFFECTIVE_CHECKS: readonly EffectiveCheck[] = [uiProblems, executableProblems, goalCheckProblems, capabilityProblems];
 
