@@ -43,28 +43,18 @@ export interface StartRun {
   revision: string;
 }
 
-/** One stored event. */
 export interface LedgerEvent {
-  /** Its per-run sequence number, from 0. */
   id: number;
-  /** The engine event. */
   event: PageRunEvent;
 }
 
-/** The unscoped run and event tables a backend implements; the stores bind them to one workspace. */
 export interface RunLedger {
-  /** Inserts a new run row; rejects when the run id exists. */
   insertRun(record: RunRecord): Promise<void>;
-  /** Sets a run's status and end time. */
-  updateRun(runId: string, status: RunState, endedAt: number | undefined): Promise<void>;
-  /** One run row. */
-  getRun(runId: string): Promise<RunRecord | undefined>;
-  /** The runs of one workspace, oldest first, optionally only those in the given states. */
+  updateRun(scope: WorkspaceScope, runId: string, status: RunState, endedAt: number | undefined): Promise<void>;
+  getRun(scope: WorkspaceScope, runId: string): Promise<RunRecord | undefined>;
   listRuns(scope: WorkspaceScope, states?: readonly RunState[]): Promise<RunRecord[]>;
-  /** Appends an event and returns its per-run sequence number, from 0. */
-  appendEvent(runId: string, event: PageRunEvent): Promise<number>;
-  /** The events of a run with a sequence number above `afterId` (all of them when absent), in order. */
-  readEvents(runId: string, afterId?: number): Promise<LedgerEvent[]>;
+  appendEvent(scope: WorkspaceScope, runId: string, event: PageRunEvent): Promise<number>;
+  readEvents(scope: WorkspaceScope, runId: string, afterId?: number): Promise<LedgerEvent[]>;
 }
 
 /** Transcripts of a workspace's threads. */
@@ -123,12 +113,19 @@ export interface WorkspaceStores {
   events: WorkspaceRunEvents;
 }
 
-/** What a backend gives {@link createWorkspaceStores}. */
+/** A place a host keeps its workspace data: build one with a backend factory and give it to `createWorkspaceStores`. */
 export interface HostBackend {
-  /** Sessions and checkpoints. */
+  /** Releases what the backend opened. */
+  close(): Promise<void>;
+}
+
+export interface BackendParts extends HostBackend {
   agent: Pick<AgentStore, 'sessions' | 'checkpoints'>;
-  /** Run rows and event logs. */
   ledger: RunLedger;
+}
+
+export interface PrefixListable {
+  listWithPrefix(prefix: string, options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
 }
 
 const PART = /^[A-Za-z0-9-]{1,40}$/;
@@ -159,6 +156,12 @@ function threadView(sessions: SessionStore, scope: WorkspaceScope): WorkspaceThr
   };
 }
 
+async function listUnder(store: CheckpointStore, prefix: string, options: CheckpointListOptions | undefined): Promise<CheckpointListEntry[]> {
+  if ('listWithPrefix' in store) return (store as CheckpointStore & PrefixListable).listWithPrefix(prefix, options);
+  const entries = await required(store.list, 'checkpoint listing').call(store, options);
+  return entries.filter((entry) => entry.sessionId.startsWith(prefix));
+}
+
 function checkpointView(store: CheckpointStore, scope: WorkspaceScope): WorkspaceCheckpointStore {
   const prefix = prefixOf(scope);
   const key = (id: string): string => prefix + part(id, 'run id');
@@ -167,21 +170,18 @@ function checkpointView(store: CheckpointStore, scope: WorkspaceScope): Workspac
     load: async (id) => store.load(key(id)),
     delete: async (id) => store.delete(key(id)),
     async list(options) {
-      const entries = await required(store.list, 'checkpoint listing').call(store, options);
-      return entries.filter((entry) => entry.sessionId.startsWith(prefix)).map((entry) => ({ ...entry, sessionId: entry.sessionId.slice(prefix.length) }));
+      const entries = await listUnder(store, prefix, options);
+      return entries.map((entry) => ({ ...entry, sessionId: entry.sessionId.slice(prefix.length) }));
     },
   };
 }
 
 function runView(ledger: RunLedger, scope: WorkspaceScope): WorkspaceRunStore {
   prefixOf(scope);
-  const get = async (runId: string): Promise<RunRecord | undefined> => {
-    const row = await ledger.getRun(part(runId, 'run id'));
-    return row?.projectId === scope.projectId && row.workspaceId === scope.workspaceId ? row : undefined;
-  };
+  const get = (runId: string): Promise<RunRecord | undefined> => ledger.getRun(scope, part(runId, 'run id'));
   const settle = async (runId: string, status: RunState, endedAt: number | undefined): Promise<RunRecord> => {
     const row = required(await get(runId), `run ${runId}`);
-    await ledger.updateRun(runId, status, endedAt);
+    await ledger.updateRun(scope, runId, status, endedAt);
     return { ...row, status, endedAt };
   };
   return {
@@ -196,36 +196,37 @@ function runView(ledger: RunLedger, scope: WorkspaceScope): WorkspaceRunStore {
     async markInterrupted() {
       const running = await ledger.listRuns(scope, ['running']);
       const endedAt = Date.now();
-      for (const run of running) await ledger.updateRun(run.runId, 'interrupted', endedAt);
+      for (const run of running) await ledger.updateRun(scope, run.runId, 'interrupted', endedAt);
       return running.map((run) => ({ ...run, status: 'interrupted' as const, endedAt }));
     },
   };
 }
 
-function eventView(ledger: RunLedger, runs: WorkspaceRunStore): WorkspaceRunEvents {
+function eventView(ledger: RunLedger, scope: WorkspaceScope, runs: WorkspaceRunStore): WorkspaceRunEvents {
   const owned = async (runId: string): Promise<void> => {
     required(await runs.get(runId), `run ${runId}`);
   };
   return {
     async append(runId, event) {
       await owned(runId);
-      return { id: await ledger.appendEvent(runId, event), runId, event };
+      return { id: await ledger.appendEvent(scope, runId, event), runId, event };
     },
     async read(runId, lastEventId) {
       await owned(runId);
-      const rows = await ledger.readEvents(runId, lastEventId);
+      const rows = await ledger.readEvents(scope, runId, lastEventId);
       return rows.map((row) => ({ id: row.id, runId, event: row.event }));
     },
   };
 }
 
-/** Binds a backend's sessions, checkpoints and run ledger to one project and workspace, with both ids in every key. */
+/** Binds a backend to one project and workspace; both ids are in every key it reads or writes. */
 export function createWorkspaceStores(backend: HostBackend, scope: WorkspaceScope): WorkspaceStores {
-  const runs = runView(backend.ledger, scope);
+  const parts = backend as BackendParts;
+  const runs = runView(parts.ledger, scope);
   return {
-    threads: threadView(required(backend.agent.sessions, 'session store'), scope),
-    checkpoints: checkpointView(required(backend.agent.checkpoints, 'checkpoint store'), scope),
+    threads: threadView(required(parts.agent.sessions, 'session store'), scope),
+    checkpoints: checkpointView(required(parts.agent.checkpoints, 'checkpoint store'), scope),
     runs,
-    events: eventView(backend.ledger, runs),
+    events: eventView(parts.ledger, scope, runs),
   };
 }

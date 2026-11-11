@@ -4,12 +4,13 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Checkpoint } from '../../execution/checkpoint';
 import type { PageRunEvent } from '../contracts/execution';
-import { fileHostBackend, sqlHostBackend, sqliteHostBackend, type ClosableHostBackend } from './backends';
+import { appendFileSync, writeFileSync } from 'node:fs';
+import { fileHostBackend, postgresHostBackend, sqlHostBackend, sqliteHostBackend } from './backends';
 import { postgresSqlClient, sqliteSqlClient, type PgQueryable } from './sql';
-import { createWorkspaceStores, type WorkspaceScope } from './stores';
+import { createWorkspaceStores, type HostBackend, type WorkspaceScope } from './stores';
 
 const dirs: string[] = [];
-const open: ClosableHostBackend[] = [];
+const open: HostBackend[] = [];
 
 afterEach(async () => {
   for (const backend of open.splice(0)) await backend.close();
@@ -22,7 +23,7 @@ function scratch(): string {
   return dir;
 }
 
-const BACKENDS: Array<[string, (dir: string) => Promise<ClosableHostBackend>]> = [
+const BACKENDS: Array<[string, (dir: string) => Promise<HostBackend>]> = [
   ['file', async (dir) => fileHostBackend(join(dir, 'files'))],
   ['sqlite', (dir) => sqliteHostBackend(join(dir, 'host.db'))],
   ['sql tables on sqlite', (dir) => sqlHostBackend(sqliteSqlClient(join(dir, 'sql.db')))],
@@ -35,7 +36,7 @@ const checkpoint = (status?: Checkpoint['status']): Checkpoint =>
   ({ agentId: 'a', sessionId: 's', stepIndex: 1, messages: [{ role: 'user', content: 'hi' }], toolCalls: [], usage: {}, status }) as unknown as Checkpoint;
 
 describe.each(BACKENDS)('the store contract on %s', (_name, make) => {
-  async function backend(dir = scratch()): Promise<ClosableHostBackend> {
+  async function backend(dir = scratch()): Promise<HostBackend> {
     const made = await make(dir);
     open.push(made);
     return made;
@@ -135,7 +136,64 @@ describe.each(BACKENDS)('the store contract on %s', (_name, make) => {
     const stores = createWorkspaceStores(await backend(), A);
     await expect(stores.threads.load('a_b')).rejects.toThrow();
     await expect(stores.runs.start({ runId: '../x', pageId: 'p', revision: 'r' })).rejects.toThrow();
-    expect(() => createWorkspaceStores({ agent: {}, ledger: {} as never }, { projectId: 'a_b', workspaceId: 'w' })).toThrow();
+    const host = await backend();
+    expect(() => createWorkspaceStores(host, { projectId: 'a_b', workspaceId: 'w' })).toThrow();
+  });
+
+  it('lets two workspaces use the same run id without collision or leak', async () => {
+    const host = await backend();
+    const marketing = createWorkspaceStores(host, A);
+    const coding = createWorkspaceStores(host, B);
+    await marketing.runs.start({ runId: 'run-1', pageId: 'post', revision: 'r1' });
+    await coding.runs.start({ runId: 'run-1', pageId: 'fix', revision: 'r9' });
+    await marketing.events.append('run-1', progress('m'));
+    await coding.events.append('run-1', progress('c1'));
+    await coding.events.append('run-1', progress('c2'));
+    await coding.runs.finish('run-1', 'ok');
+    expect(await marketing.runs.get('run-1')).toMatchObject({ pageId: 'post', status: 'running' });
+    expect(await coding.runs.get('run-1')).toMatchObject({ pageId: 'fix', status: 'ok' });
+    expect((await marketing.events.read('run-1')).map((e) => e.event)).toEqual([progress('m')]);
+    expect((await coding.events.read('run-1')).map((e) => e.id)).toEqual([0, 1]);
+    const other = createWorkspaceStores(host, { projectId: 'proj-2', workspaceId: 'marketing' });
+    expect(await other.runs.get('run-1')).toBeUndefined();
+    await expect(other.runs.finish('run-1', 'ok')).rejects.toThrow();
+  });
+
+  it('lists checkpoints of one workspace only, even when ids look alike', async () => {
+    const host = await backend();
+    const near = createWorkspaceStores(host, { projectId: 'proj-1', workspaceId: 'marketing2' });
+    const marketing = createWorkspaceStores(host, A);
+    await near.checkpoints.save('run-1', checkpoint());
+    await marketing.checkpoints.save('run-2', checkpoint());
+    expect((await marketing.checkpoints.list()).map((entry) => entry.sessionId)).toEqual(['run-2']);
+  });
+});
+
+describe('the file ledger after a torn write', () => {
+  it('drops a torn last event line before appending and skips unreadable lines', async () => {
+    const dir = scratch();
+    const host = fileHostBackend(dir);
+    const stores = createWorkspaceStores(host, A);
+    await stores.runs.start({ runId: 'run-1', pageId: 'post', revision: 'r1' });
+    await stores.events.append('run-1', progress('a'));
+    const file = join(dir, 'workspaces', 'events', A.projectId, A.workspaceId, 'run-1.ndjson');
+    appendFileSync(file, '{"type":"progress","mess');
+    expect((await stores.events.read('run-1')).map((e) => e.id)).toEqual([0]);
+    expect((await stores.events.append('run-1', progress('b'))).id).toBe(1);
+    expect((await stores.events.read('run-1')).map((e) => e.event)).toEqual([progress('a'), progress('b')]);
+    writeFileSync(file, `${JSON.stringify(progress('a'))}\nnot json\n${JSON.stringify(progress('c'))}\n`);
+    expect((await stores.events.read('run-1')).map((e) => e.id)).toEqual([0, 2]);
+  });
+});
+
+describe('the Postgres backend', () => {
+  it('leaves a host-owned pool open unless it owns the pool', async () => {
+    let ended = 0;
+    const pool: PgQueryable = { query: async () => ({ rows: [], rowCount: 0 }), end: async () => void ended++ };
+    await (await postgresHostBackend(pool)).close();
+    expect(ended).toBe(0);
+    await (await postgresHostBackend(pool, { ownsPool: true })).close();
+    expect(ended).toBe(1);
   });
 });
 
