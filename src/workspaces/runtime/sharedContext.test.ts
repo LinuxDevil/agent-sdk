@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { SDKError, ValidationError } from '../../execution/errors';
+import { defineMemory, type MemorySlot } from '../../memory/defineMemory';
+import { inMemoryMemory } from '../../memory/providers';
 import { readFixtureTree } from '../__fixtures__/readTree';
 import { memorySource } from '../source/memorySource';
 import { loadWorkspace, type LoadedWorkspace } from './loadWorkspace';
 import { createSharedContextRun, resolveSharedContext } from './sharedContext';
 
+const makeSlot = (file: { name: string }): MemorySlot => defineMemory({ name: file.name, scope: 'global', provider: inMemoryMemory() });
 const skill = (name: string) => `---\nname: ${name}\ndescription: Use ${name}\n---\nBody of ${name}\n`;
 
 function workspaceOf(files: Record<string, string>, mainAgent: unknown = null): LoadedWorkspace {
   const tree = { 'workspace.json': JSON.stringify({ id: 'demo', mainAgent }), ...files };
   const pages = { one: { files: [], inherits: { shared: [], profiles: [] }, attachments: [] }, two: { files: [], inherits: { shared: [], profiles: [] }, attachments: [] } };
-  return { revision: 'r1', manifest: { id: 'demo', name: 'Demo', pages }, tree, problems: [] };
+  return { revision: 'r1', manifest: { id: 'demo', name: 'Demo', inheritsShared: (mainAgent as { inheritsShared?: boolean } | null)?.inheritsShared === true, pages }, tree, problems: [] };
 }
 
 describe('resolveSharedContext', () => {
@@ -41,8 +44,7 @@ describe('resolveSharedContext', () => {
     expect((caught as SDKError).code).toBe('LOUSHO_SKILL_INVALID');
     expect((caught as Error).message).toContain('shared/skills/alpha/SKILL.md');
     expect((caught as Error).message).toContain('shared/skills/beta/SKILL.md');
-    const overridden = resolveSharedContext(workspace, { override: true });
-    expect(overridden.skills.map((item) => item.file)).toEqual(['shared/skills/beta/SKILL.md']);
+    expect(() => resolveSharedContext(workspace, { override: true })).toThrow(/alpha[\s\S]*beta/);
   });
 
   it('a skill clashes with a skill passed in, and the passed skill wins with override', () => {
@@ -54,30 +56,39 @@ describe('resolveSharedContext', () => {
   });
 
   it('two pages see the same shared memory instance', () => {
-    const workspace = workspaceOf({ 'shared/memory/notes.ts': 'export default {}', 'pages/one/memory/draft.ts': 'export default {}', 'pages/two/memory/draft.ts': 'export default {}' });
+    const workspace = workspaceOf({ 'shared/memory/notes.ts': 'export default {}' });
     const run = createSharedContextRun();
-    const one = resolveSharedContext(workspace, { run, audience: { page: 'one' } });
-    const two = resolveSharedContext(workspace, { run, audience: { page: 'two' } });
-    const sharedOne = one.memorySlots.find((item) => item.name === 'notes');
-    const sharedTwo = two.memorySlots.find((item) => item.name === 'notes');
-    expect(sharedOne?.scope).toBe('shared');
-    expect(sharedOne?.slot).toBeDefined();
-    expect(sharedOne?.slot).toBe(sharedTwo?.slot);
-    const privateOne = one.memorySlots.find((item) => item.name === 'draft');
-    const privateTwo = two.memorySlots.find((item) => item.name === 'draft');
-    expect(privateOne?.scope).toBe('page');
-    expect(privateOne?.slot).not.toBe(privateTwo?.slot);
-    const otherRun = resolveSharedContext(workspace, { run: createSharedContextRun(), audience: { page: 'one' } });
-    expect(otherRun.memorySlots.find((item) => item.name === 'notes')?.slot).not.toBe(sharedOne?.slot);
+    const one = resolveSharedContext(workspace, { run, createMemory: makeSlot, audience: { page: 'one' } });
+    const two = resolveSharedContext(workspace, { run, createMemory: makeSlot, audience: { page: 'two' } });
+    expect(one.memorySlots[0]?.name).toBe('notes');
+    expect(one.memorySlots[0]?.slot).toBeDefined();
+    expect(one.memorySlots[0]?.slot).toBe(two.memorySlots[0]?.slot);
+    const otherRun = resolveSharedContext(workspace, { run: createSharedContextRun(), createMemory: makeSlot });
+    expect(otherRun.memorySlots[0]?.slot).not.toBe(one.memorySlots[0]?.slot);
   });
 
-  it('memory slots are named by file stem and a host factory supplies the instance', () => {
+  it('shared memory files need createMemory and a run', () => {
+    const workspace = workspaceOf({ 'shared/memory/notes.ts': 'export default {}' });
+    let caught: unknown;
+    try {
+      resolveSharedContext(workspace, { run: createSharedContextRun() });
+    } catch (error) {
+      caught = error;
+    }
+    expect((caught as SDKError).code).toBe('LOUSHO_MEMORY_INVALID');
+    expect((caught as Error).message).toContain('shared/memory/notes.ts');
+    expect(() => resolveSharedContext(workspace, { createMemory: makeSlot })).toThrow(ValidationError);
+    expect(resolveSharedContext(workspaceOf({}), {}).memorySlots).toEqual([]);
+  });
+
+  it('memory slots are named by file stem in file order', () => {
     const workspace = workspaceOf({ 'shared/memory/zeta.ts': 'x', 'shared/memory/alpha.ts': 'x', 'shared/memory/readme.md': 'x' });
     const made: string[] = [];
     const context = resolveSharedContext(workspace, {
+      run: createSharedContextRun(),
       createMemory: (file) => {
         made.push(file.file);
-        return undefined as never;
+        return makeSlot(file);
       },
     });
     expect(context.memorySlots.map((item) => item.name)).toEqual(['alpha', 'zeta']);

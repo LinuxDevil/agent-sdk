@@ -1,9 +1,8 @@
 import { SDKError, ValidationError } from '../../execution/errors';
-import { defineMemory, type MemorySlot } from '../../memory/defineMemory';
-import { inMemoryMemory } from '../../memory/providers';
+import type { MemorySlot } from '../../memory/defineMemory';
 import { skillFromText } from '../../skills/loadSkills';
 import type { Skill } from '../../skills/defineSkill';
-import { SHARED_PATH_PATTERNS, orderInstructionFiles } from '../contracts/shared';
+import { INHERITANCE_RULES, SHARED_PATH_PATTERNS, orderInstructionFiles, type SharedFolder } from '../contracts/shared';
 import type { LoadedWorkspace } from './loadWorkspace';
 
 const DEFAULT_MAX_RESOURCE_BYTES = 256 * 1024;
@@ -26,21 +25,15 @@ export interface SharedSkill {
   skill: Skill;
 }
 
-/** A memory file as the host sees it when it builds the slot. */
-export interface SharedMemoryFile {
-  /** The slot name, the file name without `.ts`. */
+interface SharedMemoryFile {
   name: string;
-  /** The workspace-relative path of the memory file. */
   file: string;
-  /** The file's text; the core never runs it. */
   source: string;
-  /** `shared` for `shared/memory`, `page` for `pages/<id>/memory`. */
-  scope: 'shared' | 'page';
 }
 
-/** One memory slot a run can use. */
+/** One shared memory slot. */
 export interface SharedMemorySlot extends SharedMemoryFile {
-  /** The slot; shared slots are the same object for every caller that passes the same run. */
+  /** The slot; the same object for every caller that passes the same run. */
   slot: MemorySlot;
 }
 
@@ -64,7 +57,7 @@ export interface SharedContext {
   instructions: SharedInstruction[];
   /** The union of shared skills and the skills passed in. */
   skills: SharedSkill[];
-  /** Shared slots, then the page's private slots. */
+  /** The shared slots; a page's private memory is its agents' own. */
   memorySlots: SharedMemorySlot[];
   /** Every file under `shared/knowledge`, `shared/brand` and `shared/resources`, by path. */
   resources: SharedResource[];
@@ -77,21 +70,21 @@ export interface SharedContextRun {
 }
 
 /** Who the context is for: a page by id, or the main agent. */
-export type SharedAudience = { page: string } | 'main-agent';
+type SharedAudience = { page: string } | 'main-agent';
 
 /** Options of {@link resolveSharedContext}. */
 export interface ResolveSharedContextOptions {
   /** Who the context is for; without it only the workspace-wide shared layer is returned. */
   audience?: SharedAudience;
-  /** The run whose shared memory instances are reused; without it every call builds new ones. */
+  /** The run whose shared memory instances are reused; required when the workspace has shared memory files. */
   run?: SharedContextRun;
   /** Largest file text, in UTF-8 bytes, that is inlined; defaults to 256 KiB. */
   maxResourceBytes?: number;
-  /** Lets a later skill replace an earlier one of the same name instead of failing. */
+  /** Lets a skill from `skills` replace a shared skill of the same name instead of failing. */
   override?: boolean;
-  /** More skills (an agent's own) to union with the shared ones; they come after, so they win with `override`. */
+  /** More skills (an agent's own) to union with the shared ones; they come after, so they can win with `override`. */
   skills?: readonly SharedSkill[];
-  /** Builds the slot for a memory file; the default is an in-process slot with the file's name. */
+  /** Builds the slot for a memory file; required when the workspace has shared memory files, because the core never runs them. */
   createMemory?: (file: SharedMemoryFile) => MemorySlot;
 }
 
@@ -106,12 +99,6 @@ function textOf(value: unknown): string {
 
 function pathsMatching(workspace: LoadedWorkspace, pattern: RegExp): string[] {
   return Object.keys(workspace.tree).filter((path) => pattern.test(path)).sort();
-}
-
-function inheritsShared(workspace: LoadedWorkspace): boolean {
-  const raw = workspace.tree['workspace.json'];
-  const manifest = (typeof raw === 'string' ? JSON.parse(raw) : raw) as { mainAgent?: { inheritsShared?: boolean } | null } | undefined;
-  return manifest?.mainAgent?.inheritsShared === true;
 }
 
 function checkOptions(workspace: LoadedWorkspace, options: ResolveSharedContextOptions): number {
@@ -135,45 +122,48 @@ function clash(name: string, earlier: SharedSkill, later: SharedSkill): SDKError
   );
 }
 
-function skillsOf(workspace: LoadedWorkspace, options: ResolveSharedContextOptions): SharedSkill[] {
-  const shared = pathsMatching(workspace, SHARED_PATH_PATTERNS.skills).map((file) => {
-    const defaultName = file.split('/')[2] ?? file;
-    return { file, skill: skillFromText({ defaultName, file }, textOf(workspace.tree[file])) };
-  });
+function sharedSkills(workspace: LoadedWorkspace): Map<string, SharedSkill> {
   const byName = new Map<string, SharedSkill>();
-  for (const item of [...shared, ...(options.skills ?? [])]) {
+  for (const file of pathsMatching(workspace, SHARED_PATH_PATTERNS.skills)) {
+    const defaultName = file.split('/')[2] ?? file;
+    const item = { file, skill: skillFromText({ defaultName, file }, textOf(workspace.tree[file])) };
     const earlier = byName.get(item.skill.name);
-    if (earlier && options.override !== true) throw clash(item.skill.name, earlier, item);
+    if (earlier) throw clash(item.skill.name, earlier, item);
     byName.set(item.skill.name, item);
+  }
+  return byName;
+}
+
+function skillsOf(workspace: LoadedWorkspace, options: ResolveSharedContextOptions): SharedSkill[] {
+  const byName = sharedSkills(workspace);
+  const shared = new Set(byName.keys());
+  for (const item of options.skills ?? []) {
+    const earlier = byName.get(item.skill.name);
+    const mayReplace = options.override === true && shared.has(item.skill.name);
+    if (earlier && !mayReplace) throw clash(item.skill.name, earlier, item);
+    byName.set(item.skill.name, item);
+    shared.delete(item.skill.name);
   }
   return [...byName.values()];
 }
 
-function defaultMemory(file: SharedMemoryFile): MemorySlot {
-  return defineMemory({ name: file.name, scope: 'global', provider: inMemoryMemory() });
-}
-
-function memoryFile(workspace: LoadedWorkspace, file: string, scope: SharedMemoryFile['scope']): SharedMemoryFile {
+function memoryFile(workspace: LoadedWorkspace, file: string): SharedMemoryFile {
   const base = file.slice(file.lastIndexOf('/') + 1);
-  return { name: base.slice(0, -'.ts'.length), file, source: textOf(workspace.tree[file]), scope };
-}
-
-function slotFor(file: SharedMemoryFile, options: ResolveSharedContextOptions): MemorySlot {
-  const create = options.createMemory ?? defaultMemory;
-  const cache = file.scope === 'shared' ? options.run?.memory : undefined;
-  if (!cache) return create(file);
-  if (!cache.has(file.file)) cache.set(file.file, create(file));
-  return cache.get(file.file) as MemorySlot;
+  return { name: base.slice(0, -'.ts'.length), file, source: textOf(workspace.tree[file]) };
 }
 
 function memoryOf(workspace: LoadedWorkspace, options: ResolveSharedContextOptions): SharedMemorySlot[] {
-  const audience = options.audience;
-  const files = pathsMatching(workspace, SHARED_PATH_PATTERNS.memory).map((file) => memoryFile(workspace, file, 'shared'));
-  if (audience !== undefined && audience !== 'main-agent') {
-    const own = new RegExp(`^pages/${audience.page.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/memory/[^/]+\\.ts$`);
-    files.push(...pathsMatching(workspace, own).map((file) => memoryFile(workspace, file, 'page')));
+  const files = pathsMatching(workspace, SHARED_PATH_PATTERNS.memory).map((file) => memoryFile(workspace, file));
+  if (files.length === 0) return [];
+  const { createMemory, run } = options;
+  if (!createMemory) {
+    throw new SDKError(`${files[0]?.file} is a memory file the core cannot run. Pass createMemory(file) to build its slot.`, 'LOUSHO_MEMORY_INVALID');
   }
-  return files.map((file) => ({ ...file, slot: slotFor(file, options) }));
+  if (!run) throw new ValidationError('shared memory needs a run', { run: ['pass the createSharedContextRun() object of this workspace run'] });
+  return files.map((file) => {
+    if (!run.memory.has(file.file)) run.memory.set(file.file, createMemory(file));
+    return { ...file, slot: run.memory.get(file.file) as MemorySlot };
+  });
 }
 
 function resourceOf(workspace: LoadedWorkspace, path: string, max: number): SharedResource {
@@ -187,9 +177,21 @@ function resourcesOf(workspace: LoadedWorkspace, max: number): SharedResource[] 
   return pathsMatching(workspace, RESOURCE_PATH).map((path) => resourceOf(workspace, path, max));
 }
 
-/** Resolves the shared layer for one page or the main agent from a loaded workspace; the main agent gets nothing unless `mainAgent.inheritsShared` is true (policy is applied elsewhere). */
+function inheritedFolders(workspace: LoadedWorkspace, audience: SharedAudience | undefined): ReadonlySet<SharedFolder> {
+  if (audience === 'main-agent' && !workspace.manifest.inheritsShared) return new Set();
+  const context = INHERITANCE_RULES.filter((row) => row.item !== 'policies' && row.item !== 'main agent');
+  return new Set(context.flatMap((row) => row.folders));
+}
+
+/** Resolves the shared layer for one page or the main agent from a loaded workspace; the main agent gets none of it unless `mainAgent.inheritsShared` is true (policy is applied elsewhere). */
 export function resolveSharedContext(workspace: LoadedWorkspace, options: ResolveSharedContextOptions = {}): SharedContext {
   const max = checkOptions(workspace, options);
-  if (options.audience === 'main-agent' && !inheritsShared(workspace)) return { instructions: [], skills: [...(options.skills ?? [])], memorySlots: [], resources: [] };
-  return { instructions: instructionsOf(workspace), skills: skillsOf(workspace, options), memorySlots: memoryOf(workspace, options), resources: resourcesOf(workspace, max) };
+  const folders = inheritedFolders(workspace, options.audience);
+  const resourceFolders = ['knowledge', 'brand', 'resources'] as const;
+  return {
+    instructions: folders.has('instructions') ? instructionsOf(workspace) : [],
+    skills: folders.has('skills') ? skillsOf(workspace, options) : [...(options.skills ?? [])],
+    memorySlots: folders.has('memory') ? memoryOf(workspace, options) : [],
+    resources: resourceFolders.some((folder) => folders.has(folder)) ? resourcesOf(workspace, max) : [],
+  };
 }

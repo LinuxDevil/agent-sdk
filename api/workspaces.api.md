@@ -1481,7 +1481,7 @@ interface SetWorkspaceFieldOp {
 const SHARED_FOLDERS: readonly ["instructions", "knowledge", "brand", "resources", "skills", "memory", "policies"];
 
 // @public
-export type SharedAudience = {
+type SharedAudience = {
     page: string;
 } | 'main-agent';
 
@@ -1507,11 +1507,13 @@ export interface SharedInstruction {
     text: string;
 }
 
-// @public
-export interface SharedMemoryFile {
+// @public (undocumented)
+interface SharedMemoryFile {
+    // (undocumented)
     file: string;
+    // (undocumented)
     name: string;
-    scope: 'shared' | 'page';
+    // (undocumented)
     source: string;
 }
 
@@ -1905,6 +1907,7 @@ export const workspaceManifestSchema: z.ZodType<WorkspaceManifest>;
 // @public
 export interface WorkspaceManifestView {
     id: string;
+    inheritsShared: boolean;
     name: string;
     pages: Record<string, PageManifestView>;
 }

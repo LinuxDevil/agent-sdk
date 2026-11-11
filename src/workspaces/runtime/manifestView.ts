@@ -41,6 +41,8 @@ export interface WorkspaceManifestView {
   id: string;
   /** The workspace name. */
   name: string;
+  /** Whether the main agent also gets the shared context. */
+  inheritsShared: boolean;
   /** Every page by id, in `workspace.json` order. */
   pages: Record<string, PageManifestView>;
 }
@@ -88,5 +90,5 @@ export function buildManifestView(tree: WorkspaceTree): WorkspaceManifestView {
   const paths = Object.keys(tree).sort();
   const layers: Layers = { base: baseFolder(tree, paths), shared: sharedFolders(paths) };
   const pages = Object.fromEntries(manifest.pages.map((id) => [id, pageView(tree, paths, layers, id)]));
-  return { id: manifest.id, name: manifest.name, pages };
+  return { id: manifest.id, name: manifest.name, inheritsShared: manifest.mainAgent?.inheritsShared === true, pages };
 }
