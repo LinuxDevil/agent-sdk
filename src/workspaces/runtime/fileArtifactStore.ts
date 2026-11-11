@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { z } from 'zod';
 import { SDKError } from '../../execution/errors';
 import { syncDirectory } from '../../storage/atomicFile';
-import { formatArtifactUri, type ArtifactRef, type ArtifactUriParts } from '../contracts/execution';
-import { checkMediaType, consumeArtifact, maxArtifactBytes, sameOrExisting, scopedParts, sha256Of, type ArtifactStore, type ArtifactStoreOptions } from './artifacts';
+import { formatArtifactUri, type ArtifactData, type ArtifactRef, type ArtifactUriParts } from '../contracts/execution';
+import { artifactTarget, consumeArtifact, maxArtifactBytes, sameOrExisting, scopedParts, sha256Of, type ArtifactStore, type ArtifactStoreOptions, type StoredArtifact } from './artifacts';
 
 const ARTIFACTS_DIR = 'artifacts';
 
@@ -171,37 +171,38 @@ async function existingRef(dirs: RunDirs, parts: ArtifactUriParts, next: Artifac
   return found;
 }
 
+async function putFile(root: string, max: number, target: { parts: ArtifactUriParts; uri: string }, data: ArtifactData, mediaType: string): Promise<ArtifactRef> {
+  const { parts, uri } = target;
+  const dirs = await runDirs(root, parts, true);
+  if (!dirs) throw unsafePath(root);
+  const temp = join(dirs.artifacts, `.tmp-${randomUUID()}`);
+  try {
+    let measured = { sha256: '', bytes: 0 };
+    await writeTemp(temp, async (handle) => {
+      measured = await consumeArtifact(data, max, (chunk) => writeAll(handle, chunk));
+    });
+    const ref: ArtifactRef = { name: parts.name, mediaType, uri, ...measured };
+    if (!(await linkNew(temp, join(dirs.artifacts, parts.name)))) return await existingRef(dirs, parts, ref);
+    await writeMeta(dirs, parts, ref);
+    await syncDirectory(dirs.artifacts);
+    return ref;
+  } finally {
+    await rm(temp, { force: true });
+  }
+}
+
+async function getFile(root: string, parts: ArtifactUriParts): Promise<StoredArtifact | undefined> {
+  const dirs = await runDirs(root, parts, false);
+  const meta = dirs && (await readMeta(dirs, parts));
+  const data = dirs && meta && (await readPlainFile(join(dirs.artifacts, parts.name)));
+  return meta && data ? { ref: refOf(parts, meta), data } : undefined;
+}
+
 /** An artifact store on local disk (D27): `<root>/<workspace>/runs/<runId>/artifacts/<name>`, written atomically and never through a symlink. */
 export function fileArtifactStore(root: string, options: ArtifactStoreOptions = {}): ArtifactStore {
   const max = maxArtifactBytes(options);
   return {
-    async put(scope, name, data, mediaType) {
-      const parts = { workspace: scope.workspace, runId: scope.runId, name };
-      const uri = formatArtifactUri(parts);
-      checkMediaType(mediaType);
-      const dirs = await runDirs(root, parts, true);
-      if (!dirs) throw unsafePath(root);
-      const temp = join(dirs.artifacts, `.tmp-${randomUUID()}`);
-      try {
-        let measured = { sha256: '', bytes: 0 };
-        await writeTemp(temp, async (handle) => {
-          measured = await consumeArtifact(data, max, (chunk) => writeAll(handle, chunk));
-        });
-        const ref: ArtifactRef = { name, mediaType, uri, ...measured };
-        if (!(await linkNew(temp, join(dirs.artifacts, name)))) return await existingRef(dirs, parts, ref);
-        await writeMeta(dirs, parts, ref);
-        await syncDirectory(dirs.artifacts);
-        return ref;
-      } finally {
-        await rm(temp, { force: true });
-      }
-    },
-    async get(uri, scope) {
-      const parts = scopedParts(uri, scope);
-      const dirs = await runDirs(root, parts, false);
-      const meta = dirs && (await readMeta(dirs, parts));
-      const data = dirs && meta && (await readPlainFile(join(dirs.artifacts, parts.name)));
-      return meta && data ? { ref: refOf(parts, meta), data } : undefined;
-    },
+    put: async (scope, name, data, mediaType) => putFile(root, max, artifactTarget(scope, name, mediaType), data, mediaType),
+    get: async (uri, scope) => getFile(root, scopedParts(uri, scope)),
   };
 }

@@ -72,9 +72,16 @@ export function maxArtifactBytes(options: ArtifactStoreOptions): number {
   return options.maxArtifactBytes ?? DEFAULT_MAX_ARTIFACT_BYTES;
 }
 
-export function checkMediaType(mediaType: string): void {
+function checkMediaType(mediaType: string): void {
   if (mediaType.length <= MAX_MEDIA_TYPE_LENGTH && MEDIA_TYPE.test(mediaType)) return;
   throw new ValidationError(`invalid artifact media type ${JSON.stringify(mediaType)}`, { mediaType: ['must be a media type such as text/markdown'] });
+}
+
+export function artifactTarget(scope: ArtifactScope, name: string, mediaType: string): { parts: ArtifactUriParts; uri: string } {
+  const parts = { workspace: scope.workspace, runId: scope.runId, name };
+  const uri = formatArtifactUri(parts);
+  checkMediaType(mediaType);
+  return { parts, uri };
 }
 
 export function scopedParts(uri: string, scope: ArtifactScope): ArtifactUriParts {
@@ -171,9 +178,7 @@ export function blobArtifactStore(client: BlobClient, options: ArtifactStoreOpti
   const max = maxArtifactBytes(options);
   return {
     async put(scope, name, data, mediaType) {
-      const parts = { workspace: scope.workspace, runId: scope.runId, name };
-      const uri = formatArtifactUri(parts);
-      checkMediaType(mediaType);
+      const { parts, uri } = artifactTarget(scope, name, mediaType);
       const chunks: Uint8Array[] = [];
       const measured = await consumeArtifact(data, max, (chunk) => {
         chunks.push(chunk);
