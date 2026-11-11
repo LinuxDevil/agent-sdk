@@ -6,6 +6,7 @@ import type { WorkspaceTree } from './baseHarness';
 import { harnessSchema } from './harness';
 import { mainHarnessSchema } from './mainHarness';
 import { pageSchema } from './page';
+import { validateWorkspace } from './validate';
 import { workspaceManifestSchema } from './workspace';
 
 const apply = (tree: WorkspaceTree, ops: readonly unknown[]) => applyOps(tree, ops, { validate: () => [] });
@@ -128,7 +129,7 @@ describe('authoring operations', () => {
     expect(apply(tree, [{ op: 'remove_page', page: 'ghost' }]).problems[0]).toMatchObject({ opIndex: 0, op: 'remove_page' });
     const unlisted = apply(tree, [{ op: 'set_workspace_field', field: 'name', value: 'Marketing 2' }, { op: 'write_harness_prose', target: { kind: 'base' }, file: 'x.md', text: 'x' }]);
     expect(unlisted.problems).toEqual([]);
-    const dropped = apply({ ...tree, 'harness/brand-voice.md': undefined }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }]);
+    const dropped = applyOps({ ...tree, 'harness/brand-voice.md': undefined }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }], { validate: validateWorkspace });
     expect(dropped.problems[0].message).toContain('missing');
   });
 
@@ -217,7 +218,7 @@ describe('authoring operations', () => {
     const result = apply(tree, [{ op: 'set_workspace_field', field: 'mainAgent', value: null }]);
     expect(result.problems).toEqual([]);
     expect(Object.keys(result.tree).filter((path) => path.startsWith('main-agent/'))).toEqual([]);
-    const stray = apply({ ...tree, 'workspace.json': { ...(tree['workspace.json'] as object), mainAgent: null } }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }]);
+    const stray = applyOps({ ...tree, 'workspace.json': { ...(tree['workspace.json'] as object), mainAgent: null } }, [{ op: 'set_workspace_field', field: 'name', value: 'M' }], { validate: validateWorkspace });
     expect(stray.problems[0].message).toContain('mainAgent to null');
   });
 

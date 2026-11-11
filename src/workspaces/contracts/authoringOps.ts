@@ -388,10 +388,14 @@ export interface AuthoringProblem {
 
 /** One problem a whole-tree validator found. */
 export interface AuthoringTreeProblem {
-  /** The file the problem is in, relative to the workspace root. */
+  /** The file the problem is in, relative to the workspace root; a field path inside `file` when `file` is set. */
   path: string;
   /** What is wrong. */
   message: string;
+  /** The file the problem is in, when `path` is a field path, as on `WorkspaceProblem`. */
+  file?: string;
+  /** Only `error` (the default) refuses the batch; warnings and notes are dropped. */
+  severity?: 'error' | 'warning' | 'info';
 }
 
 /** Extra whole-tree validation for {@link applyOps}, such as `validateWorkspace`. */

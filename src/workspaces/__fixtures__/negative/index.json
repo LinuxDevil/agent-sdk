@@ -89,7 +89,7 @@
       "name": "profile-cycle",
       "code": "PRD013",
       "checkedBy": "helper",
-      "file": "harness-profiles/tone-a/harness.json",
+      "file": "pages/main/page.json",
       "expect": "harness extends cycle"
     },
     {
