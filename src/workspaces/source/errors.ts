@@ -43,6 +43,10 @@ export function sourceLimit(what: string): SDKError {
   return new SDKError(`The workspace source refused to read: ${what}.`, 'LOUSHO_WORKSPACE_SOURCE_LIMIT');
 }
 
+export function unsupportedContent(path: string): SDKError {
+  return new SDKError(`Workspace file '${path}' contains a NUL character, which a database workspace source cannot store.`, 'LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED');
+}
+
 export function corruptSource(what: string, cause?: unknown): SDKError {
   return new SDKError(`The workspace folder's revision records are damaged: ${what}.`, 'LOUSHO_WORKSPACE_SOURCE_CORRUPT', cause === undefined ? {} : { cause });
 }

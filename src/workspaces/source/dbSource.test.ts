@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadDatabaseSync, type SqlValue } from '../../storage/sqlite/driver';
 import { postgresSqlClient, sqliteSqlClient, type PgPool, type PgQueryable, type SqlClient } from '../runtime/sql';
-import { dbSource, postgresWorkspaceSource, sqliteWorkspaceSource } from './dbSource';
+import { postgresWorkspaceSource, sqliteWorkspaceSource } from './dbSource';
 import { StaleRevisionError } from './errors';
 import { revisionId } from './revision';
 import type { SourceWriteOptions } from './types';
@@ -30,21 +30,31 @@ interface PgCall {
 
 type PgQuery = PgQueryable['query'];
 
-function fakePool(): { pool: PgPool; calls: PgCall[]; released: () => number; onConnect: (hook: () => Promise<void>) => void } {
+interface FakePool {
+  pool: PgPool;
+  calls: PgCall[];
+  releases: unknown[];
+  onConnect: (hook: () => Promise<void>) => void;
+  failRollback: () => void;
+}
+
+function fakePool(): FakePool {
   const db = new (loadDatabaseSync())(':memory:');
   const calls: PgCall[] = [];
   const hooks: Array<() => Promise<void>> = [];
-  let released = 0;
+  const releases: unknown[] = [];
+  let rollbackFails = false;
   const run =
     (on: PgCall['on']): PgQuery =>
     async (text, values = []) => {
       calls.push({ on, text, values });
-      const sql = text.replace(/\$(\d+)/g, '?$1');
+      if (text === 'ROLLBACK' && rollbackFails) throw new TypeError('connection terminated');
       if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(text)) {
         db.exec(text);
         return { rows: [], rowCount: null };
       }
-      const statement = db.prepare(sql);
+      if (text.includes('pg_advisory_xact_lock')) return { rows: [{ pg_advisory_xact_lock: '' }], rowCount: 1 };
+      const statement = db.prepare(text.replace(/\$(\d+)/g, '?$1'));
       if (/^\s*SELECT/i.test(text)) return { rows: statement.all(...(values as SqlValue[])), rowCount: null };
       return { rows: [], rowCount: Number(statement.run(...(values as SqlValue[])).changes) };
     };
@@ -52,11 +62,20 @@ function fakePool(): { pool: PgPool; calls: PgCall[]; released: () => number; on
     query: run('pool'),
     async connect() {
       for (const hook of hooks.splice(0)) await hook();
-      return { query: run('connection'), release: () => void released++ };
+      return { query: run('connection'), release: (error) => void releases.push(error) };
     },
     end: async () => db.close(),
   };
-  return { pool, calls, released: () => released, onConnect: (hook) => void hooks.push(hook) };
+  return { pool, calls, releases, onConnect: (hook) => void hooks.push(hook), failRollback: () => void (rollbackFails = true) };
+}
+
+function transactions(calls: PgCall[]): string[][] {
+  const groups: string[][] = [];
+  for (const call of calls.filter((each) => each.on === 'connection')) {
+    if (call.text === 'BEGIN') groups.push([]);
+    groups.at(-1)?.push(call.text);
+  }
+  return groups;
 }
 
 function edit(expectedRevision: string, by: SourceWriteOptions['by'], extra: Partial<SourceWriteOptions> = {}): SourceWriteOptions {
@@ -78,8 +97,8 @@ sourceContract('db (postgres client over a fake pool)', async (files) => tracked
 describe('dbSource', () => {
   it('two concurrent writes with the same expectedRevision: one wins, one gets StaleRevisionError', async () => {
     const client = tracked(sqliteSqlClient(':memory:'));
-    const ann = await dbSource(client, { files: CONTRACT_FILES });
-    const bob = await dbSource(client);
+    const ann = await sqliteWorkspaceSource(client, { files: CONTRACT_FILES });
+    const bob = await sqliteWorkspaceSource(client);
     const base = await ann.revision();
     const results = await Promise.allSettled([ann.write({ 'a.md': 'ann' }, edit(base, 'person:ann')), bob.write({ 'a.md': 'bob' }, edit(base, 'person:bob'))]);
     const won = results.flatMap((result) => (result.status === 'fulfilled' ? [result.value] : []));
@@ -94,7 +113,7 @@ describe('dbSource', () => {
 
   it('moves the head by compare-and-set inside the transaction, and rolls the whole write back when it lost', async () => {
     const client = tracked(sqliteSqlClient(':memory:'));
-    const bob = await dbSource(client, { files: CONTRACT_FILES });
+    const bob = await sqliteWorkspaceSource(client, { files: CONTRACT_FILES });
     const base = await bob.revision();
     let raced = false;
     const racing: SqlClient = {
@@ -107,7 +126,7 @@ describe('dbSource', () => {
         return client.transaction(work);
       },
     };
-    const ann = await dbSource(racing);
+    const ann = await sqliteWorkspaceSource(racing);
     await expect(ann.write({ 'b.md': 'ann' }, edit(base, 'person:ann'))).rejects.toBeInstanceOf(StaleRevisionError);
     const history = await bob.history();
     expect(history.map((meta) => meta.by)).toEqual(['person:bob']);
@@ -118,7 +137,7 @@ describe('dbSource', () => {
 
   it('a one-file edit inserts one blob', async () => {
     const client = tracked(sqliteSqlClient(':memory:'));
-    const source = await dbSource(client, { files: CONTRACT_FILES });
+    const source = await sqliteWorkspaceSource(client, { files: CONTRACT_FILES });
     expect(await countRows(client, 'file_blobs')).toBe(Object.keys(CONTRACT_FILES).length);
     const one = await source.write({ 'shared/instructions/voice.md': 'Be very brief.\n' }, edit(await source.revision(), 'person:ann'));
     expect(await countRows(client, 'file_blobs')).toBe(Object.keys(CONTRACT_FILES).length + 1);
@@ -144,7 +163,7 @@ describe('dbSource', () => {
 
   it('stores the exact serialized audit line with the revision', async () => {
     const client = tracked(sqliteSqlClient(':memory:'));
-    const source = await dbSource(client, { files: CONTRACT_FILES });
+    const source = await sqliteWorkspaceSource(client, { files: CONTRACT_FILES });
     const audit = { actor: 'person:ann' as const, action: 'apply' as const, reason: 'tighten the voice' };
     await source.write({ 'a.md': '1' }, edit(await source.revision(), 'person:ann', { audit }));
     await source.write({ 'a.md': '2' }, edit(await source.revision(), 'person:ann'));
@@ -173,8 +192,8 @@ describe('dbSource', () => {
 
   it('keeps workspaces apart by project and workspace id', async () => {
     const client = tracked(sqliteSqlClient(':memory:'));
-    const marketing = await dbSource(client, { ref: { projectId: 'acme', workspaceId: 'marketing' }, files: CONTRACT_FILES });
-    const sales = await dbSource(client, { ref: { projectId: 'acme', workspaceId: 'sales' }, files: CONTRACT_FILES });
+    const marketing = await sqliteWorkspaceSource(client, { ref: { projectId: 'acme', workspaceId: 'marketing' }, files: CONTRACT_FILES });
+    const sales = await sqliteWorkspaceSource(client, { ref: { projectId: 'acme', workspaceId: 'sales' }, files: CONTRACT_FILES });
     expect(sales.ref).toEqual({ projectId: 'acme', workspaceId: 'sales' });
     await marketing.write({ 'a.md': '1' }, edit(await marketing.revision(), 'person:ann'));
     expect(await sales.revision()).toBe(revisionId(new Map(Object.entries(CONTRACT_FILES))));
@@ -182,16 +201,44 @@ describe('dbSource', () => {
     expect(await sales.history()).toEqual([]);
   });
 
+  it('refuses NUL content, which SQLite would cut short and Postgres rejects, and records nothing', async () => {
+    const client = tracked(sqliteSqlClient(':memory:'));
+    const source = await sqliteWorkspaceSource(client, { files: CONTRACT_FILES });
+    const base = await source.revision();
+    await expect(source.write({ 'n.md': 'a\u0000b' }, edit(base, 'person:ann'))).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED' });
+    expect(await source.revision()).toBe(base);
+    expect(await source.history()).toEqual([]);
+    expect(await countRows(client, 'file_blobs')).toBe(Object.keys(CONTRACT_FILES).length);
+    await expect(sqliteWorkspaceSource(':memory:', { files: { 'n.md': '\u0000' } })).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED' });
+  });
+
+  it('shares one connection between workspaces on one file, and leaves a shared connection open on close', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lousho-db-source-'));
+    try {
+      const client = sqliteSqlClient(join(dir, 'ws.db'));
+      const ann = await sqliteWorkspaceSource(client, { files: CONTRACT_FILES });
+      const bob = await sqliteWorkspaceSource(client);
+      const base = await ann.revision();
+      const results = await Promise.allSettled([ann.write({ 'a.md': 'ann' }, edit(base, 'person:ann')), bob.write({ 'a.md': 'bob' }, edit(base, 'person:bob'))]);
+      expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+      await ann.close();
+      expect(await bob.history()).toHaveLength(1);
+      await client.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('refuses seed files outside the workspace, or that clash', async () => {
     const client = tracked(sqliteSqlClient(':memory:'));
-    await expect(dbSource(client, { files: { '../x': 'y' } })).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PATH_INVALID' });
-    await expect(dbSource(client, { files: { 'A.md': '1', 'a.md': '2' } })).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PATH_INVALID' });
+    await expect(sqliteWorkspaceSource(client, { files: { '../x': 'y' } })).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PATH_INVALID' });
+    await expect(sqliteWorkspaceSource(client, { files: { 'A.md': '1', 'a.md': '2' } })).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PATH_INVALID' });
     await expect(sqliteWorkspaceSource(':memory:', { files: { '.Git/config': 'x' } })).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PATH_INVALID' });
   });
 
   it('retries a write that lost the seq to a concurrent writer, and refuses it once the head moved', async () => {
     const client = tracked(sqliteSqlClient(':memory:'));
-    const bob = await dbSource(client, { files: CONTRACT_FILES });
+    const bob = await sqliteWorkspaceSource(client, { files: CONTRACT_FILES });
     const base = await bob.revision();
     const failures: Array<() => Promise<void>> = [async () => undefined, async () => void (await bob.write({ 'a.md': 'bob' }, edit(base, 'person:bob')))];
     const flaky: SqlClient = {
@@ -203,7 +250,7 @@ describe('dbSource', () => {
         throw uniqueViolation();
       },
     };
-    const ann = await dbSource(flaky);
+    const ann = await sqliteWorkspaceSource(flaky);
     await expect(ann.write({ 'b.md': 'ann' }, edit(base, 'person:ann'))).rejects.toBeInstanceOf(StaleRevisionError);
     expect((await bob.history()).map((meta) => meta.by)).toEqual(['person:bob']);
     failures.push(async () => undefined);
@@ -214,28 +261,67 @@ describe('dbSource', () => {
 
 describe('the Postgres adapter', () => {
   it('runs a write in one transaction on one pooled connection, with numbered placeholders', async () => {
-    const { pool, calls, released } = fakePool();
+    const { pool, calls, releases } = fakePool();
     const source = tracked(await postgresWorkspaceSource(pool, { files: CONTRACT_FILES, ownsPool: true }));
     calls.splice(0);
     await source.write({ 'a.md': '1' }, edit(await source.revision(), 'person:ann'));
-    const inTransaction = calls.filter((call) => call.on === 'connection').map((call) => call.text);
-    expect(inTransaction[0]).toBe('BEGIN');
-    expect(inTransaction.at(-1)).toBe('COMMIT');
-    expect(inTransaction.some((text) => text.startsWith('UPDATE workspace_heads SET revision = $1'))).toBe(true);
+    const [write] = transactions(calls);
+    expect(write?.[0]).toBe('BEGIN');
+    expect(write?.at(-1)).toBe('COMMIT');
+    expect(write?.some((text) => text.startsWith('UPDATE workspace_heads SET revision = $1'))).toBe(true);
     expect(calls.every((call) => !call.text.includes('?'))).toBe(true);
-    expect(released()).toBe(2);
+    expect(releases).toEqual([undefined, undefined, undefined]);
+  });
+
+  it('creates its tables in one transaction under an advisory lock', async () => {
+    const { pool, calls } = fakePool();
+    tracked(await postgresWorkspaceSource(pool, { ownsPool: true }));
+    const [migration] = transactions(calls);
+    expect(migration?.slice(0, 2)).toEqual(['BEGIN', 'SELECT pg_advisory_xact_lock(7311701)']);
+    expect(migration?.filter((text) => text.startsWith('CREATE TABLE'))).toHaveLength(4);
+    expect(migration?.at(-1)).toBe('COMMIT');
+  });
+
+  it('inserts blobs sorted by hash and file rows sorted by path, so two writers lock rows in the same order', async () => {
+    const { pool, calls } = fakePool();
+    const source = tracked(await postgresWorkspaceSource(pool, { ownsPool: true }));
+    calls.splice(0);
+    await source.write({ 'z.md': 'one', 'a.md': 'two', 'm.md': 'three' }, edit(await source.revision(), 'person:ann'));
+    const blobHashes = calls.filter((call) => call.text.startsWith('INSERT INTO file_blobs')).map((call) => String(call.values[0]));
+    const filePaths = calls.filter((call) => call.text.startsWith('INSERT INTO workspace_files')).map((call) => String(call.values[3]));
+    expect(blobHashes).toEqual([...blobHashes].sort());
+    expect(blobHashes).toHaveLength(3);
+    expect(filePaths).toEqual(['a.md', 'm.md', 'z.md']);
   });
 
   it('rolls back and releases the connection when the head moved', async () => {
-    const { pool, calls, released, onConnect } = fakePool();
+    const { pool, calls, releases, onConnect } = fakePool();
     const bob = tracked(await postgresWorkspaceSource(pool, { files: CONTRACT_FILES, ownsPool: true }));
     const ann = await postgresWorkspaceSource(pool);
     const base = await bob.revision();
+    const before = releases.length;
     onConnect(async () => void (await bob.write({ 'a.md': 'bob' }, edit(base, 'person:bob'))));
     await expect(ann.write({ 'b.md': 'ann' }, edit(base, 'person:ann'))).rejects.toBeInstanceOf(StaleRevisionError);
     expect(calls.at(-1)).toMatchObject({ on: 'connection', text: 'ROLLBACK' });
-    expect(released()).toBe(3);
+    expect(releases.slice(before)).toEqual([undefined, undefined]);
     await ann.close();
+  });
+
+  it('tells the pool to discard a connection whose ROLLBACK failed', async () => {
+    const { pool, releases, failRollback } = fakePool();
+    const client = tracked(postgresSqlClient(pool, { ownsPool: true }, () => pool.connect()));
+    failRollback();
+    await expect(client.transaction(async () => Promise.reject(new TypeError('boom')))).rejects.toThrow('boom');
+    expect(releases.at(-1)).toBeInstanceOf(TypeError);
+    expect(String(releases.at(-1))).toContain('connection terminated');
+  });
+
+  it('refuses NUL content before it reaches the database', async () => {
+    const { pool, calls } = fakePool();
+    const source = tracked(await postgresWorkspaceSource(pool, { files: CONTRACT_FILES, ownsPool: true }));
+    calls.splice(0);
+    await expect(source.write({ 'n.md': 'a\u0000b' }, edit(await source.revision(), 'person:ann'))).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED' });
+    expect(calls.filter((call) => call.text.startsWith('INSERT'))).toEqual([]);
   });
 
   it('refuses a transaction without a pool to check a connection out of', async () => {

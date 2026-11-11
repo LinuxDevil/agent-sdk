@@ -1,7 +1,7 @@
 import type { AuditInput } from '../../improve/audit';
 import type { SqlRow, SqlValue } from '../../storage/sqlite/driver';
 import { isUniqueViolation, postgresSqlClient, sqliteSqlClient, type PgPool, type PostgresOptions, type SqlClient, type SqlStatements } from '../runtime/sql';
-import { StaleRevisionError, unknownRevision } from './errors';
+import { StaleRevisionError, unknownRevision, unsupportedContent } from './errors';
 import { migrateWorkspaceSource } from './migrations/workspaceSource';
 import { applyChanges, checkPath, checkTree, contentHash, listFiles, nextTree, revisionId, revisionMeta, type FileMap } from './revision';
 import type { RevisionActor, RevisionId, RevisionKind, RevisionMeta, SourceRef, SourceWriteOptions, WorkspaceChanges, WorkspaceSource } from './types';
@@ -18,7 +18,7 @@ export interface DbSourceOptions {
 export interface DbWorkspaceSource extends WorkspaceSource {
   /** Writes a new revision in one transaction and moves the head only if it still equals `expectedRevision`. */
   write(changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta>;
-  /** Closes the connection, or leaves a host-owned pool open. */
+  /** Closes the connection it opened; a shared connection or a host-owned pool stays open. */
   close(): Promise<void>;
 }
 
@@ -68,13 +68,23 @@ async function readAt(db: SqlStatements, ref: SourceRef, revision: RevisionId, p
   return rows[0] === undefined ? undefined : String(rows[0].content);
 }
 
+function checkStorable(files: Iterable<[string, string | null]>): void {
+  for (const [path, content] of files) if (content?.includes('\0')) throw unsupportedContent(path);
+}
+
+function byKey(a: [string, string], b: [string, string]): number {
+  return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0;
+}
+
 async function insertTree(tx: SqlStatements, ref: SourceRef, revision: RevisionId, files: FileMap): Promise<void> {
-  for (const [path, content] of files) {
-    const hash = contentHash(content);
+  const blobs = new Map([...files.values()].map((content) => [contentHash(content), content]));
+  for (const [hash, content] of [...blobs].sort(byKey)) {
     await tx.execute('INSERT INTO file_blobs (hash, content) VALUES (?, ?) ON CONFLICT (hash) DO NOTHING', [hash, content]);
+  }
+  for (const [path, content] of [...files].sort(byKey)) {
     await tx.execute(
       'INSERT INTO workspace_files (project_id, workspace_id, revision, path, hash) VALUES (?, ?, ?, ?, ?) ON CONFLICT (project_id, workspace_id, revision, path) DO NOTHING',
-      scoped(ref, revision, path, hash)
+      scoped(ref, revision, path, contentHash(content))
     );
   }
 }
@@ -106,6 +116,7 @@ async function commit(tx: SqlStatements, ref: SourceRef, revision: RevisionId, f
 }
 
 async function writeOnce(client: SqlClient, ref: SourceRef, changes: WorkspaceChanges, options: SourceWriteOptions): Promise<RevisionMeta> {
+  checkStorable(Object.entries(changes));
   const head = await requireHead(client, ref);
   const next = nextTree(await filesAt(client, ref, head), head, changes, options);
   return client.transaction((tx) => commit(tx, ref, next.revision, next.files, options));
@@ -138,6 +149,7 @@ function toMeta(row: SqlRow): RevisionMeta {
 async function seed(client: SqlClient, ref: SourceRef, files: Readonly<Record<string, string>>): Promise<void> {
   const initial = applyChanges(new Map(), files);
   checkTree(initial);
+  checkStorable(initial);
   if ((await headOf(client, ref)) !== undefined) return;
   const revision = revisionId(initial);
   await client.transaction(async (tx) => {
@@ -146,9 +158,9 @@ async function seed(client: SqlClient, ref: SourceRef, files: Readonly<Record<st
   });
 }
 
-export async function dbSource(client: SqlClient, options: DbSourceOptions = {}): Promise<DbWorkspaceSource> {
+async function dbSource(client: SqlClient, options: DbSourceOptions, dialect: 'sqlite' | 'postgres', close: () => Promise<void>): Promise<DbWorkspaceSource> {
   const ref: SourceRef = { projectId: options.ref?.projectId ?? 'default', workspaceId: options.ref?.workspaceId ?? 'workspace' };
-  await migrateWorkspaceSource(client);
+  await migrateWorkspaceSource(client, dialect);
   await seed(client, ref, options.files ?? {});
   return {
     ref,
@@ -157,15 +169,18 @@ export async function dbSource(client: SqlClient, options: DbSourceOptions = {})
     list: async (prefix, readOptions = {}) => listFiles(await pathsAt(client, ref, await pinned(client, ref, readOptions.revision)), prefix),
     history: async () => (await client.query(`SELECT * FROM workspace_revisions WHERE ${SCOPE} ORDER BY seq DESC`, scoped(ref))).map(toMeta),
     write: (changes, writeOptions) => write(client, ref, changes, writeOptions),
-    close: () => client.close(),
+    close,
   };
 }
 
-/** A database workspace source in one SQLite file (or `:memory:`), for tests and Forge-only; it creates its tables on open. */
-export async function sqliteWorkspaceSource(path: string, options: DbSourceOptions = {}): Promise<DbWorkspaceSource> {
-  const client = sqliteSqlClient(path);
+const leaveOpen = async (): Promise<void> => undefined;
+
+/** A database workspace source in SQLite, for tests and Forge-only; it creates its tables on open. Given a path (or `:memory:`) it opens and owns one connection; given a `sqliteSqlClient`, it shares that connection and leaves it open. Open one connection per file per process and pass it to every workspace on that file. */
+export async function sqliteWorkspaceSource(db: string | SqlClient, options: DbSourceOptions = {}): Promise<DbWorkspaceSource> {
+  if (typeof db !== 'string') return dbSource(db, options, 'sqlite', leaveOpen);
+  const client = sqliteSqlClient(db);
   try {
-    return await dbSource(client, options);
+    return await dbSource(client, options, 'sqlite', () => client.close());
   } catch (error) {
     await client.close();
     throw error;
@@ -174,5 +189,6 @@ export async function sqliteWorkspaceSource(path: string, options: DbSourceOptio
 
 /** A database workspace source in Postgres through a `pg` Pool the host owns; it creates its tables on open, and `close()` leaves the pool open unless `ownsPool` is set. */
 export function postgresWorkspaceSource(pool: PgPool, options: DbSourceOptions & PostgresOptions = {}): Promise<DbWorkspaceSource> {
-  return dbSource(postgresSqlClient(pool, options, () => pool.connect()), options);
+  const client = postgresSqlClient(pool, options, () => pool.connect());
+  return dbSource(client, options, 'postgres', () => client.close());
 }

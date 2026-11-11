@@ -16,7 +16,7 @@ export { artifactSink, blobArtifactStore, memoryBlobClient, memoryArtifactStore,
 export { fileArtifactStore } from './runtime/fileArtifactStore';
 export { createWorkspaceStores, type WorkspaceScope, type RunState, type RunRecord, type StartRun, type WorkspaceThreadStore, type WorkspaceCheckpointStore, type WorkspaceRunStore, type WorkspaceRunEvents, type WorkspaceStores, type HostBackend } from './runtime/stores';
 export { fileHostBackend, sqliteHostBackend, postgresHostBackend } from './runtime/backends';
-export type { PgQueryable, PgPool, PgPoolClient, PostgresOptions } from './runtime/sql';
+export { sqliteSqlClient, type SqlClient, type SqlStatements, type PgQueryable, type PgPool, type PgPoolClient, type PostgresOptions } from './runtime/sql';
 export { folderSource, type FolderSourceOptions } from './source/folderSource';
 export { memorySource, type MemorySourceOptions } from './source/memorySource';
 export { readSourceTree, type SourceTree } from './source/tree';

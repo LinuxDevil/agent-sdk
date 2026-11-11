@@ -167,6 +167,8 @@ export const ERROR_CODES = {
   LOUSHO_WORKSPACE_SOURCE_CORRUPT: 'Look at the file the message names under .lousho/revisions/; a set-aside journal can be inspected and deleted once the workspace looks right.',
   /** A workspace folder read went over a size or file-count limit. */
   LOUSHO_WORKSPACE_SOURCE_LIMIT: 'Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().',
+  /** A database workspace source refused file content it cannot store, such as a NUL character. */
+  LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: 'Remove the NUL characters from the file the message names; a database workspace source stores text only.',
 } as const;
 
 /** A stable error code, e.g. `'LOUSHO_CONFIG_MISSING_PROVIDER'`. */

@@ -3,13 +3,19 @@ import { SDKError } from '../../execution/errors';
 
 type SqlParam = SqlValue;
 
+/** Statements with `?` placeholders on one SQL connection or transaction. */
 export interface SqlStatements {
+  /** Runs a statement and resolves to the number of rows it changed. */
   execute(sql: string, params?: readonly SqlParam[]): Promise<number>;
+  /** Runs a query and resolves to its rows. */
   query(sql: string, params?: readonly SqlParam[]): Promise<SqlRow[]>;
 }
 
+/** A SQL connection or pool that Lousho's database stores run on, picking no ORM. */
 export interface SqlClient extends SqlStatements {
+  /** Runs `work` in one transaction: commits when it resolves, rolls back when it throws. */
   transaction<T>(work: (tx: SqlStatements) => Promise<T>): Promise<T>;
+  /** Closes the connection, or leaves a host-owned pool open. */
   close(): Promise<void>;
 }
 
@@ -31,8 +37,8 @@ export interface PgQueryable {
 
 /** One connection checked out of a `pg` Pool. */
 export interface PgPoolClient extends PgQueryable {
-  /** Returns the connection to the pool. */
-  release(): void;
+  /** Returns the connection to the pool; given an error, the pool discards the connection instead. */
+  release(error?: Error | boolean): void;
 }
 
 /** The part of a `pg` Pool that a database workspace source calls: queries, and one connection per transaction. */
@@ -72,6 +78,7 @@ async function sqliteTransaction<T>(db: SqliteDb, direct: SqlStatements, work: (
   }
 }
 
+/** One SQLite connection (node:sqlite) whose calls and transactions run one at a time; open one per file per process and share it. */
 export function sqliteSqlClient(path: string): SqlClient {
   const db = new (loadDatabaseSync())(path, { timeout: 5000 });
   if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL');
@@ -114,16 +121,26 @@ function pgStatements(queryable: PgQueryable): SqlStatements {
 async function pgTransaction<T>(connect: PgPool['connect'] | undefined, work: (tx: SqlStatements) => Promise<T>): Promise<T> {
   if (!connect) throw new SDKError('A Postgres transaction needs a pg Pool to check one connection out of.', 'LOUSHO_CONFIG_INVALID');
   const connection = await connect();
+  let broken: Error | boolean | undefined;
   try {
     await connection.query('BEGIN');
     const result = await work(pgStatements(connection));
     await connection.query('COMMIT');
     return result;
   } catch (error) {
-    await connection.query('ROLLBACK').catch(() => undefined);
+    broken = await rollback(connection);
     throw error;
   } finally {
-    connection.release();
+    connection.release(broken);
+  }
+}
+
+async function rollback(connection: PgPoolClient): Promise<Error | boolean | undefined> {
+  try {
+    await connection.query('ROLLBACK');
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error : true;
   }
 }
 
