@@ -1,10 +1,15 @@
 import { loadDatabaseSync, type SqlRow, type SqlValue } from '../../storage/sqlite/driver';
+import { SDKError } from '../../execution/errors';
 
 type SqlParam = SqlValue;
 
-export interface SqlClient {
+export interface SqlStatements {
   execute(sql: string, params?: readonly SqlParam[]): Promise<number>;
   query(sql: string, params?: readonly SqlParam[]): Promise<SqlRow[]>;
+}
+
+export interface SqlClient extends SqlStatements {
+  transaction<T>(work: (tx: SqlStatements) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }
 
@@ -24,22 +29,65 @@ export interface PgQueryable {
   end?(): Promise<void>;
 }
 
+/** One connection checked out of a `pg` Pool. */
+export interface PgPoolClient extends PgQueryable {
+  /** Returns the connection to the pool. */
+  release(): void;
+}
+
+/** The part of a `pg` Pool that a database workspace source calls: queries, and one connection per transaction. */
+export interface PgPool extends PgQueryable {
+  /** Checks out one connection, so a transaction's statements run on it. */
+  connect(): Promise<PgPoolClient>;
+}
+
 /** Options of `postgresHostBackend`. */
 export interface PostgresOptions {
   /** Close the pool when the backend closes; default false, since the host owns its pool. */
   ownsPool?: boolean;
 }
 
+type Serial = <T>(work: () => Promise<T>) => Promise<T>;
+
+function serialQueue(): Serial {
+  let tail: Promise<unknown> = Promise.resolve();
+  return (work) => {
+    const run = tail.then(work, work);
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}
+
+type SqliteDb = InstanceType<ReturnType<typeof loadDatabaseSync>>;
+
+async function sqliteTransaction<T>(db: SqliteDb, direct: SqlStatements, work: (tx: SqlStatements) => Promise<T>): Promise<T> {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = await work(direct);
+    db.exec('COMMIT');
+    return result;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export function sqliteSqlClient(path: string): SqlClient {
   const db = new (loadDatabaseSync())(path, { timeout: 5000 });
   if (path !== ':memory:') db.exec('PRAGMA journal_mode = WAL');
-  return {
+  const direct: SqlStatements = {
     async execute(sql, params = []) {
       return Number(db.prepare(sql).run(...params).changes);
     },
     async query(sql, params = []) {
       return db.prepare(sql).all(...params);
     },
+  };
+  const serial = serialQueue();
+  return {
+    execute: (sql, params) => serial(() => direct.execute(sql, params)),
+    query: (sql, params) => serial(() => direct.query(sql, params)),
+    transaction: (work) => serial(() => sqliteTransaction(db, direct, work)),
     async close() {
       db.close();
     },
@@ -51,15 +99,38 @@ function numberPlaceholders(sql: string): string {
   return sql.replace(/\?/g, () => `$${++n}`);
 }
 
-export function postgresSqlClient(pool: PgQueryable, options: PostgresOptions = {}): SqlClient {
+function pgStatements(queryable: PgQueryable): SqlStatements {
   return {
     async execute(sql, params = []) {
-      const result = await pool.query(numberPlaceholders(sql), [...params]);
+      const result = await queryable.query(numberPlaceholders(sql), [...params]);
       return result.rowCount ?? 0;
     },
     async query(sql, params = []) {
-      return (await pool.query(numberPlaceholders(sql), [...params])).rows;
+      return (await queryable.query(numberPlaceholders(sql), [...params])).rows;
     },
+  };
+}
+
+async function pgTransaction<T>(connect: PgPool['connect'] | undefined, work: (tx: SqlStatements) => Promise<T>): Promise<T> {
+  if (!connect) throw new SDKError('A Postgres transaction needs a pg Pool to check one connection out of.', 'LOUSHO_CONFIG_INVALID');
+  const connection = await connect();
+  try {
+    await connection.query('BEGIN');
+    const result = await work(pgStatements(connection));
+    await connection.query('COMMIT');
+    return result;
+  } catch (error) {
+    await connection.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export function postgresSqlClient(pool: PgQueryable, options: PostgresOptions = {}, connect?: PgPool['connect']): SqlClient {
+  return {
+    ...pgStatements(pool),
+    transaction: (work) => pgTransaction(connect, work),
     async close() {
       if (options.ownsPool) await pool.end?.();
     },
