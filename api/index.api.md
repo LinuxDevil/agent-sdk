@@ -91,6 +91,7 @@ export interface AgentDirConfig {
     retry?: WithRetryOptions | false;
     store?: AgentDirFileStore | AgentStore;
     toolConcurrency?: ToolConcurrency;
+    version?: string;
 }
 
 // @public
