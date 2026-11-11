@@ -57,7 +57,10 @@ interface PaletteItemProps {
  */
 function PaletteItem({ entry, tabbable, onFocusItem, onActivate }: PaletteItemProps) {
   const { graph, selectedNodeId, proposal } = useAppState();
-  const { tone, Icon } = viewFor(entry.kind);
+  const view = viewFor(entry.kind);
+  // Per-entry overrides let flow steps show their own icon/tone per step type.
+  const tone = entry.tone ?? view.tone;
+  const Icon = entry.Icon ?? view.Icon;
   // While a proposal overlay is shown the canvas is read-only (C21): every
   // entry is disabled with the reason in its tooltip.
   const reason =
