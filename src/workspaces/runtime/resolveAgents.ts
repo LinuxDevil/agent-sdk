@@ -29,14 +29,16 @@ export interface ResolvedAttachment {
   model: ResolvedPageModel;
 }
 
-/** Remembers resolved agent dirs for one workspace run; pass the same cache for every page of the run. */
+/** Remembers resolved agent dirs for one workspace run; make one with {@link createAgentCache} and pass it for every page of the run. */
 export interface AgentCache {
-  /** Resolved agents by dir and sha256. */
-  readonly agents: Map<string, AgentOwned>;
-  /** File sets of workspace and local agents by revision and dir. */
-  readonly dirs: Map<string, Promise<{ files: Record<string, string>; sha256: string }>>;
-  /** Global agents by ref. */
-  readonly globals: Map<string, Promise<GlobalAgent | undefined>>;
+  /** Marks a cache made by `createAgentCache`. */
+  readonly kind: 'agent-cache';
+}
+
+interface CacheState extends AgentCache {
+  agents: Map<string, AgentOwned>;
+  dirs: Map<string, { files: Record<string, string>; sha256: string }>;
+  globals: Map<string, Promise<GlobalAgent | undefined>>;
 }
 
 /** Options of {@link resolveAttachments}. */
@@ -51,7 +53,14 @@ export interface ResolveAttachmentsOptions {
 
 /** A fresh {@link AgentCache} for one workspace run. */
 export function createAgentCache(): AgentCache {
-  return { agents: new Map(), dirs: new Map(), globals: new Map() };
+  const state: CacheState = { kind: 'agent-cache', agents: new Map(), dirs: new Map(), globals: new Map() };
+  return state;
+}
+
+function stateOf(cache: AgentCache | undefined): CacheState {
+  if (cache === undefined) return createAgentCache() as CacheState;
+  if (!('globals' in cache)) throw new SDKError('resolveAttachments: pass a cache made by createAgentCache().', 'LOUSHO_VALIDATION_FAILED');
+  return cache as CacheState;
 }
 
 function unresolved(message: string): SDKError {
@@ -77,19 +86,18 @@ function readTreeDir(workspace: LoadedWorkspace, dir: string): Record<string, st
   return Object.fromEntries(paths.map((path) => [path.slice(prefix.length), textOf(workspace.tree[path])]));
 }
 
-async function treeFiles(workspace: LoadedWorkspace, dir: string, cache: AgentCache): Promise<{ files: Record<string, string>; sha256: string }> {
+function treeFiles(workspace: LoadedWorkspace, dir: string, cache: CacheState): { files: Record<string, string>; sha256: string } {
   const key = `${workspace.revision}\0${dir}`;
-  let entry = cache.dirs.get(key);
-  if (entry === undefined) {
-    const files = readTreeDir(workspace, dir);
-    if (Object.keys(files).length === 0) throw unresolved(`agent folder '${dir}' does not exist in the workspace`);
-    entry = Promise.resolve({ files, sha256: sha256Of(files) });
-    cache.dirs.set(key, entry);
-  }
+  const hit = cache.dirs.get(key);
+  if (hit !== undefined) return hit;
+  const files = readTreeDir(workspace, dir);
+  if (Object.keys(files).length === 0) throw unresolved(`agent folder '${dir}' does not exist in the workspace`);
+  const entry = { files, sha256: sha256Of(files) };
+  cache.dirs.set(key, entry);
   return entry;
 }
 
-function owned(cache: AgentCache, agent: AgentFiles, sha256: string): AgentOwned {
+function owned(cache: CacheState, agent: AgentFiles, sha256: string): AgentOwned {
   const key = `${agent.dir}\0${sha256}`;
   const hit = cache.agents.get(key);
   if (hit !== undefined) return hit;
@@ -104,18 +112,19 @@ interface Located {
   version?: string;
 }
 
-function globalAgent(ref: Extract<AgentRef, { kind: 'global' }>, options: ResolveAttachmentsOptions, cache: AgentCache): Promise<GlobalAgent | undefined> {
+function globalAgent(ref: Extract<AgentRef, { kind: 'global' }>, options: ResolveAttachmentsOptions, cache: CacheState): Promise<GlobalAgent | undefined> {
   const key = `${ref.name}@${ref.range}`;
   let entry = cache.globals.get(key);
   if (entry === undefined) {
     if (options.globalRegistry === undefined) throw unresolved(`global:${key} needs a globalRegistry; the host injects one`);
     entry = options.globalRegistry.resolve(ref.name, ref.range);
     cache.globals.set(key, entry);
+    entry.catch(() => cache.globals.delete(key));
   }
   return entry;
 }
 
-async function locateGlobal(ref: Extract<AgentRef, { kind: 'global' }>, options: ResolveAttachmentsOptions, cache: AgentCache): Promise<Located> {
+async function locateGlobal(ref: Extract<AgentRef, { kind: 'global' }>, options: ResolveAttachmentsOptions, cache: CacheState): Promise<Located> {
   const found = await globalAgent(ref, options, cache);
   if (found === undefined) throw unresolved(`global:${ref.name}@${ref.range} matches no version in the global agent registry`);
   return { agent: { format: found.format, dir: found.dir, files: found.files }, sha256: sha256Of(found.files), version: found.version };
@@ -128,15 +137,15 @@ interface PageContext {
   pageDir: string;
 }
 
-async function locate(context: PageContext, ref: AgentRef, options: ResolveAttachmentsOptions, cache: AgentCache): Promise<Located> {
+async function locate(context: PageContext, ref: AgentRef, options: ResolveAttachmentsOptions, cache: CacheState): Promise<Located> {
   if (ref.kind === 'global') return locateGlobal(ref, options, cache);
   const base = ref.kind === 'workspace' ? normalizeDir(context.manifest.agents ?? 'agents') : `${context.pageDir}/agents`;
   const dir = `${base}/${ref.name}`;
-  const { files, sha256 } = await treeFiles(context.workspace, dir, cache);
+  const { files, sha256 } = treeFiles(context.workspace, dir, cache);
   return { agent: { format: 'dir', dir, files }, sha256 };
 }
 
-async function resolveOne(context: PageContext, attachment: Attachment, options: ResolveAttachmentsOptions, cache: AgentCache): Promise<ResolvedAttachment> {
+async function resolveOne(context: PageContext, attachment: Attachment, options: ResolveAttachmentsOptions, cache: CacheState): Promise<ResolvedAttachment> {
   const parsed = parseAgentRef(attachment.ref);
   if (!parsed.ok) throw unresolved(parsed.error);
   const { agent, sha256, version } = await locate(context, parsed.ref, options, cache);
@@ -161,7 +170,7 @@ export async function resolveAttachments(workspace: LoadedWorkspace, pageId: str
   const agentsPath = joinPath(pageDir, page.agents ?? 'agents.json');
   if (!(agentsPath in workspace.tree)) return [];
   const context: PageContext = { workspace, manifest, page, pageDir };
-  const cache = options.cache ?? createAgentCache();
+  const cache = stateOf(options.cache);
   const resolved: ResolvedAttachment[] = [];
   for (const attachment of doc(workspace, agentsPath, attachmentsSchema).agents) resolved.push(await resolveOne(context, attachment, options, cache));
   return resolved;

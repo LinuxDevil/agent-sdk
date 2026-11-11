@@ -8,8 +8,13 @@ import { projectAgentRegistry } from '../source/projectAgentRegistry';
 import { sourceAgentRegistry, type GlobalAgentRegistry } from './agentRegistry';
 import { loadWorkspace, type LoadedWorkspace } from './loadWorkspace';
 import { createAgentCache, resolveAttachments } from './resolveAgents';
+import { readAgentOwned } from './agentDirView';
+import { resolveAgentDir } from '../../agentDir/loadAgentDir';
+import { fileURLToPath } from 'node:url';
 
 const dirs: string[] = [];
+
+const fixtureDir = (name: string): string => fileURLToPath(new URL(`../__fixtures__/${name}`, import.meta.url));
 
 afterAll(() => {
   for (const dir of dirs) rmSync(dir, { recursive: true, force: true });
@@ -80,7 +85,7 @@ describe('resolveAttachments', () => {
     expect(a?.dir).toBe(b?.dir);
     expect(a?.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(a?.sha256).toBe(b?.sha256);
-    expect(a?.agentOwned).toMatchObject({ name: 'script-maker', version: '1.0.0', tools: ['tools/search_facts.ts'] });
+    expect(a?.agentOwned).toMatchObject({ name: 'script-maker', version: '1.0.0', tools: ['search_facts'], toolFiles: ['tools/search_facts.ts'] });
     expect(a?.agentOwned.instructions).toBeTruthy();
     expect(a?.pageOwned).toEqual({ as: 'script', ref: 'workspace:script-maker', role: 'Writes the script.' });
     expect(a?.model).toEqual({ model: 'mock/mock-model', source: 'workspace' });
@@ -181,38 +186,123 @@ describe('resolveAttachments', () => {
     }
   });
 
-  it('refuses a code config, which a workspace source cannot run', async () => {
+  it('refuses code files and keys that need code or disk, which a workspace source cannot give', async () => {
     const files = marketing();
-    const workspace = await load({ ...files, 'agents/script-maker/agent.ts': 'export default {};' });
-    await expect(resolveAttachments(workspace, 'instagram-videos', { mode: 'default' })).rejects.toMatchObject({ code: 'LOUSHO_AGENT_DIR_INVALID' });
+    const agent = JSON.parse(files['agents/script-maker/agent.json']) as Record<string, unknown>;
+    const changes: Record<string, string>[] = [
+      { 'agents/script-maker/agent.ts': 'export default {};' },
+      { 'agents/script-maker/auth.ts': 'export default () => true;' },
+      { 'agents/script-maker/hooks.ts': 'export default [];' },
+      { 'agents/script-maker/agent.json': JSON.stringify({ ...agent, hooks: './hooks.ts' }) },
+      { 'agents/script-maker/agent.json': JSON.stringify({ ...agent, approve: './approve.ts' }) },
+      { 'agents/script-maker/agent.json': JSON.stringify({ ...agent, store: { dir: './.lousho' } }) },
+    ];
+    for (const change of changes) {
+      const workspace = await load({ ...files, ...change });
+      await expect(resolveAttachments(workspace, 'instagram-videos', { mode: 'default' })).rejects.toThrow(/agent\.json|agent\.ts|auth\.ts|hooks\.ts/);
+      await expect(resolveAttachments(workspace, 'instagram-videos', { mode: 'default' })).rejects.toMatchObject({ code: 'LOUSHO_AGENT_DIR_INVALID' });
+    }
+  });
+
+  it('names the config file an error is in', () => {
+    const files = { 'agent.yaml': 'name: script-maker\nversion: 1.0.0\nmodel: gpt-4o\n', 'instructions.md': 'Write.' };
+    expect(() => readAgentOwned({ format: 'dir', dir: 'agents/script-maker', files })).toThrow('agents/script-maker/agent.yaml');
+  });
+
+  it('carries permissions, limits, skill names and memory names', async () => {
+    const files = marketing();
+    const agent = JSON.parse(files['agents/script-maker/agent.json']) as Record<string, unknown>;
+    const permissions = [{ tool: 'shell', action: 'deny', reason: 'No shell' }];
+    const workspace = await load({
+      ...files,
+      'agents/script-maker/agent.json': JSON.stringify({ ...agent, permissions, limits: { maxSteps: 4 } }),
+      'agents/script-maker/skills/outline/SKILL.md': '---\nname: outline-script\ndescription: Outline first\n---\nBody',
+      'agents/script-maker/skills/hooks.md': '---\ndescription: Hook ideas\n---\nBody',
+      'agents/script-maker/skills/notes.md': 'No frontmatter, not a skill.',
+      'agents/script-maker/skills/loose/README.md': 'Not a skill folder.',
+      'agents/script-maker/memory/facts.ts': 'export default {};',
+    });
+    const [script] = await resolveAttachments(workspace, 'instagram-videos', { mode: 'default' });
+    expect(script.agentOwned).toMatchObject({ permissions, limits: { maxSteps: 4 }, skills: ['hooks', 'outline-script'], memory: ['facts'] });
+  });
+
+  it('matches resolveAgentDir on the fixture agent folders', async () => {
+    const workspace = await load(marketing());
+    const root = fixtureDir('marketing');
+    for (const dir of ['agents/script-maker', 'agents/video-maker', 'agents/voice-maker', 'pages/content-research/agents/research-lead']) {
+      const fromDisk = await resolveAgentDir(join(root, dir));
+      const files = Object.fromEntries(Object.entries(workspace.tree).filter(([path]) => path.startsWith(`${dir}/`)).map(([path, text]) => [path.slice(dir.length + 1), String(text)]));
+      const owned = readAgentOwned({ format: 'dir', dir, files });
+      expect({ name: owned.name, description: owned.description, tools: owned.tools, skills: owned.skills, memory: owned.memory, instructions: owned.instructions }).toEqual({
+        name: fromDisk.manifest.name,
+        description: fromDisk.manifest.description,
+        tools: fromDisk.manifest.tools,
+        skills: fromDisk.manifest.skills,
+        memory: fromDisk.manifest.memory,
+        instructions: fromDisk.config.instructions,
+      });
+    }
+  });
+
+  it('does not cache a failed global lookup, and refuses a cache it did not make', async () => {
+    const workspace = await load(withGlobal(marketing()));
+    let fail = true;
+    const registry = sourceAgentRegistry(memorySource(globalAgents()));
+    const globalRegistry: GlobalAgentRegistry = {
+      resolve: async (name, range) => {
+        if (fail) throw new Error('registry down');
+        return registry.resolve(name, range);
+      },
+    };
+    const cache = createAgentCache();
+    await expect(resolveAttachments(workspace, 'content-research', { mode: 'default', globalRegistry, cache })).rejects.toThrow('registry down');
+    fail = false;
+    const resolved = await resolveAttachments(workspace, 'content-research', { mode: 'default', globalRegistry, cache });
+    expect(resolved.find((item) => item.alias === 'checker')?.version).toBe('1.0.0');
+    await expect(resolveAttachments(workspace, 'content-research', { mode: 'default', cache: { kind: 'agent-cache' } })).rejects.toMatchObject({ code: 'LOUSHO_VALIDATION_FAILED' });
   });
 });
 
-describe('projectAgentRegistry', () => {
-  it('picks the highest version in range from agent folders and Studio YAML, and writes nothing', async () => {
+describe('global agent registries', () => {
+  it('refuse a name or range outside the ref grammar before reading', async () => {
+    let reads = 0;
+    const source = memorySource(globalAgents());
+    const counted = { ...source, list: async (prefix: string) => (reads++, source.list(prefix)) };
+    for (const registry of [sourceAgentRegistry(counted), projectAgentRegistry('/nonexistent-lousho-root')]) {
+      for (const [name, range] of [['../etc', '^1'], ['Fact', '^1'], ['fact-checker', '>=1.0.0'], ['fact-checker', '*']]) {
+        await expect(registry.resolve(name, range)).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_AGENT_UNRESOLVED' });
+      }
+    }
+    expect(reads).toBe(0);
+  });
+
+  it('projectAgentRegistry serves the highest Studio version in range from its snapshot, and writes nothing', async () => {
+    const spec = (instructions: string) => ({ version: 2, name: 'fact-checker', model: 'anthropic/claude-y', instructions, tools: [{ builtin: 'web_fetch' }], permissions: [{ id: 'no-shell', tool: 'shell', action: 'deny' }] });
+    const record = (version: number, instructions: string) => JSON.stringify({ version, snapshot: { spec: spec(instructions), labels: [] } });
     const root = folderOf({
       ...globalAgents(),
       'agents/old-checker/agent.json': JSON.stringify({ name: 'old-checker', version: '0.9.0' }),
       'agents/old-checker/instructions.md': 'Old.',
-      '.lousho/agents/fact-checker.yaml': 'version: 2\nname: fact-checker\nmodel: anthropic/claude-y\ninstructions: Checks newer claims.\ntools:\n  - builtin: web_fetch\n',
-      '.lousho/agents/fact-checker/versions/index.jsonl': '{"version":1}\n{"version":2}\n',
+      '.lousho/agents/fact-checker.yaml': 'version: 2\nname: fact-checker\nmodel: anthropic/claude-y\ninstructions: Unsaved working copy.\n',
+      '.lousho/agents/fact-checker/versions/index.jsonl': '{"version":2}\n{"version":3}\nnot json\n',
+      '.lousho/agents/fact-checker/versions/000002.json': record(2, 'Version two.'),
+      '.lousho/agents/fact-checker/versions/000003.json': record(3, 'Version three.'),
     });
     const before = snapshot(root);
     const registry = projectAgentRegistry(root);
-    const studio = await registry.resolve('fact-checker', '^2');
-    expect(studio).toMatchObject({ name: 'fact-checker', version: '2.0.0', dir: '.lousho/agents/fact-checker.yaml', format: 'studio' });
-    const folder = await registry.resolve('fact-checker', '^1');
-    expect(folder).toMatchObject({ version: '1.0.0', dir: 'agents/fact-checker', format: 'dir' });
+    expect(await registry.resolve('fact-checker', '^2')).toMatchObject({ version: '2.0.0', dir: '.lousho/agents/fact-checker/versions/000002.json', format: 'studio' });
+    expect(await registry.resolve('fact-checker', '^1')).toMatchObject({ version: '1.0.0', dir: 'agents/fact-checker', format: 'dir' });
     expect(await registry.resolve('old-checker', '^1')).toBeUndefined();
     expect(await registry.resolve('nobody', '^1')).toBeUndefined();
 
     const files = withGlobal(marketing());
     const doc = JSON.parse(files['pages/content-research/agents.json']) as { agents: { as: string; ref: string }[] };
-    doc.agents[2].ref = 'global:fact-checker@^2';
+    doc.agents[2].ref = 'global:fact-checker@^3';
     const workspace = await load({ ...files, 'pages/content-research/agents.json': JSON.stringify(doc) });
     const checker = (await resolveAttachments(workspace, 'content-research', { mode: 'default', globalRegistry: registry })).find((item) => item.alias === 'checker');
-    expect(checker?.version).toBe('2.0.0');
-    expect(checker?.agentOwned).toMatchObject({ name: 'fact-checker', defaultModel: 'anthropic/claude-y', instructions: 'Checks newer claims.', tools: ['web_fetch'] });
+    expect(checker?.version).toBe('3.0.0');
+    expect(checker?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(checker?.agentOwned).toMatchObject({ name: 'fact-checker', defaultModel: 'anthropic/claude-y', instructions: 'Version three.', tools: ['web_fetch'], permissions: [{ tool: 'shell', action: 'deny' }] });
     expect(snapshot(root)).toEqual(before);
   });
 });
