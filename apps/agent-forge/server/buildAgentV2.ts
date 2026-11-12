@@ -180,6 +180,16 @@ function mergeLocalTools(configTools: unknown, localTools: Record<string, ToolDe
   return { ...base, ...localTools };
 }
 
+/** Seeds the stored provider key into its env var for the compile; `restore` puts it back. */
+function seedProviderKeyEnv(providerType: string, secretsStore: StudioRunDeps['secretsStore']): { envVar?: string; restore: () => void } {
+  if (!isSecretProvider(providerType)) return { restore: () => {} };
+  const envVar = PROVIDER_KEY_ENV[providerType];
+  const stored = process.env[envVar] === undefined ? secretsStore?.getKey(providerType) : undefined;
+  if (stored === undefined) return { envVar, restore: () => {} };
+  process.env[envVar] = stored;
+  return { envVar, restore: () => delete process.env[envVar] };
+}
+
 /**
  * Compiles `spec` into a ready `SimpleAgent` (see the file doc comment).
  * The spec is taken as already validated; a build problem (unknown tool
@@ -218,16 +228,7 @@ export async function buildRunnableAgent(
   // whose model is 'anthropic/claude-x' gets the 'claude' tail; a
   // stand-in model would drop or mis-pick it).
   const providerType = spec.model.slice(0, spec.model.indexOf('/')).toLowerCase();
-  let envVar: string | undefined;
-  let seeded = false;
-  if (isSecretProvider(providerType)) {
-    envVar = PROVIDER_KEY_ENV[providerType];
-    const stored = process.env[envVar] === undefined ? deps.secretsStore?.getKey(providerType) : undefined;
-    if (stored !== undefined) {
-      process.env[envVar] = stored;
-      seeded = true;
-    }
-  }
+  const seeded = seedProviderKeyEnv(providerType, deps.secretsStore);
   let compiled;
   try {
     // compileSpecWithNodeIds applies specV2ToAgent's S20 wiring: the run's
@@ -242,7 +243,7 @@ export async function buildRunnableAgent(
       toolNamesByRef: (c) => toolNamesByRefForIndex(spec, compilable, c.toolNamesByRef),
     });
   } finally {
-    if (seeded && envVar !== undefined) delete process.env[envVar];
+    seeded.restore();
   }
   const { config } = compiled;
   // The compiled provider is Studio's (stored keys over env); `model` keeps
