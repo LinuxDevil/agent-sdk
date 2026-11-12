@@ -31,21 +31,45 @@ export function profileStoreFor(workspace: LoadedWorkspace, global?: ProfileStor
   return { get: (ref) => (ref.startsWith('global:') ? remote.get(ref) : local.get(ref)) };
 }
 
+function manifestOf(workspace: LoadedWorkspace): ReturnType<typeof workspaceManifestSchema.parse> {
+  return workspaceManifestSchema.parse(jsonOf(workspace.tree['workspace.json'], 'workspace.json'));
+}
+
+function pageHarnessPath(workspace: LoadedWorkspace, pageId: string): string {
+  const dir = `pages/${pageId}`;
+  const pagePath = `${dir}/page.json`;
+  if (!(pagePath in workspace.tree)) throw invalid(`the workspace has no page '${pageId}'`);
+  const page = pageSchema.parse(jsonOf(workspace.tree[pagePath], pagePath));
+  return joinPath(joinPath(dir, page.harness.overrides ?? 'harness'), 'harness.json');
+}
+
+/** The real `harness.json` paths of a page's workspace-base and page layers, for assemble's provenance labels. */
+export interface HarnessFiles {
+  /** The workspace base harness file, when the workspace has one. */
+  base?: string;
+  /** The page's own harness file. */
+  page: string;
+}
+
+/** Finds the `harness.json` files a page's layers come from, honouring `workspace.json` `harness` and the page's `harness.overrides`. */
+export function harnessFilesFor(workspace: LoadedWorkspace, pageId: string): HarnessFiles {
+  const base = readBaseHarness(workspace.tree).layer ? joinPath(normalizeDir(manifestOf(workspace).harness ?? 'harness'), 'harness.json') : undefined;
+  return { ...(base !== undefined && { base }), page: pageHarnessPath(workspace, pageId) };
+}
+
 function baseLayer(workspace: LoadedWorkspace): HarnessLayer | undefined {
   const { layer, problems } = readBaseHarness(workspace.tree);
   if (problems.length > 0) throw invalid(problems.map((item) => `${item.path}: ${item.message}`).join('\n'));
   if (!layer) return undefined;
-  const manifest = workspaceManifestSchema.parse(jsonOf(workspace.tree['workspace.json'], 'workspace.json'));
-  const files = subtree(workspace.tree, normalizeDir(manifest.harness ?? 'harness'));
+  const files = subtree(workspace.tree, normalizeDir(manifestOf(workspace).harness ?? 'harness'));
   return { ...layer, harness: inlineSchemas(layer.harness, parsedFiles(files)) };
 }
 
 function pageLayer(workspace: LoadedWorkspace, pageId: string): HarnessLayer {
   const dir = `pages/${pageId}`;
   const pagePath = `${dir}/page.json`;
-  if (!(pagePath in workspace.tree)) throw invalid(`the workspace has no page '${pageId}'`);
+  const harnessPath = pageHarnessPath(workspace, pageId);
   const page = pageSchema.parse(jsonOf(workspace.tree[pagePath], pagePath));
-  const harnessPath = joinPath(joinPath(dir, page.harness.overrides ?? 'harness'), 'harness.json');
   const document = harnessPath in workspace.tree ? harnessSchema.parse(jsonOf(workspace.tree[harnessPath], harnessPath)) : EMPTY_HARNESS;
   return layerOf('page', subtree(workspace.tree, dir), { ...document, extends: page.harness.extends }, harnessPath);
 }

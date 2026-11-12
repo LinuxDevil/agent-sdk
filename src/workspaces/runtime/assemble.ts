@@ -70,6 +70,8 @@ export interface AssembleInstructionsInput {
   attachment: Attachment;
   /** The page the agent runs on. */
   page: { id: string; name: string };
+  /** The real harness.json paths for the provenance labels; defaults to `harness/harness.json` and `pages/<id>/harness/harness.json`. */
+  harnessFiles?: { base?: string; page?: string };
   /** The engine's own prompt text, section 5; empty for `single`. */
   engineFraming?: string;
 }
@@ -194,7 +196,7 @@ function resourcesBlock(context: EffectiveHarness['context']): string {
   return resources.length === 0 ? '' : join(['### Resources', resources.map((item) => `- ${item}`).join('\n')]);
 }
 
-function harnessPart(harness: EffectiveHarness, page: { id: string; name: string }): Part {
+function harnessPart(harness: EffectiveHarness, page: { id: string; name: string }, files: AssembleInstructionsInput['harnessFiles']): Part {
   const text = join([
     `## Task environment: ${page.name}`,
     harness.instructions.trim(),
@@ -204,16 +206,16 @@ function harnessPart(harness: EffectiveHarness, page: { id: string; name: string
     outputsBlock(harness.outputs),
     resourcesBlock(harness.context),
   ]);
-  return { id: 'harness', text, provenance: harness.sources.map((label) => layerFile(label, page.id)) };
+  return { id: 'harness', text, provenance: harness.sources.map((label) => layerFile(label, page.id, files)) };
 }
 
 function instructionsFile(dir: string, source: InstructionsSource | undefined): string {
   return source === undefined || source === 'instructions.md' ? `${dir}/instructions.md` : `${dir}/${source}#instructions`;
 }
 
-function layerFile(label: string, pageId: string): string {
-  if (label === 'workspace base') return 'harness/harness.json';
-  return label === 'page' ? `pages/${pageId}/harness/harness.json` : label;
+function layerFile(label: string, pageId: string, files: AssembleInstructionsInput['harnessFiles']): string {
+  if (label === 'workspace base') return files?.base ?? 'harness/harness.json';
+  return label === 'page' ? (files?.page ?? `pages/${pageId}/harness/harness.json`) : label;
 }
 
 function agentPart(input: AssembleInstructionsInput): Part {
@@ -239,7 +241,7 @@ function strip(part: Part): AssembledSection {
 
 /** Assembles an attachment's instructions in a fixed order: the agent's own, `## Workspace rules`, `## Task environment: <page name>`, `## Your role on this page`, then the engine's `## How this page runs`. Sections 1 to 4 are the `harnessPart`, which the engine never changes. Pure: it reads its inputs and writes nothing. */
 export function assembleInstructions(input: AssembleInstructionsInput): AssembledInstructions {
-  const harnessSide = [agentPart(input), sharedPart(input.shared), harnessPart(input.harness, input.page), rolePart(input.attachment, input.page.id)];
+  const harnessSide = [agentPart(input), sharedPart(input.shared), harnessPart(input.harness, input.page, input.harnessFiles), rolePart(input.attachment, input.page.id)];
   const parts = [...harnessSide, enginePart(input.engineFraming)];
   const harnessText = join(harnessSide.map((part) => part.text));
   const text = join(parts.map((part) => part.text));

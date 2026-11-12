@@ -1,0 +1,166 @@
+{
+  "investigate/agent": [
+    {
+      "id": "agent",
+      "text": "Reads the code and reports the likely cause with evidence.",
+      "provenance": [
+        "agents/investigator/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nPrefer the smallest change that works, and say what you did not check.",
+      "provenance": [
+        "shared/instructions/00-house-rules.md"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Investigate\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n\n### From page\n\nInvestigate the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: report (required).\n\n### Resources\n\n- resources/conventions.md",
+      "provenance": [
+        "workspace:audiences/engineers",
+        "pages/investigate/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nDoes the investigate work.",
+      "provenance": [
+        "pages/investigate/agents.json#agent.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "fix/agent": [
+    {
+      "id": "agent",
+      "text": "Makes the smallest change that fixes the bug and adds a test.",
+      "provenance": [
+        "agents/fixer/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nPrefer the smallest change that works, and say what you did not check.",
+      "provenance": [
+        "shared/instructions/00-house-rules.md"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Fix\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n\n### From page\n\nFix the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: report (required).\n\n### Resources\n\n- resources/conventions.md",
+      "provenance": [
+        "workspace:audiences/engineers",
+        "pages/fix/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nDoes the fix work.",
+      "provenance": [
+        "pages/fix/agents.json#agent.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "review/agent": [
+    {
+      "id": "agent",
+      "text": "Reads the diff and reports problems by severity.",
+      "provenance": [
+        "agents/reviewer/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nPrefer the smallest change that works, and say what you did not check.",
+      "provenance": [
+        "shared/instructions/00-house-rules.md"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Review\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n\n### From page\n\nReview the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: review (required).\n\n### Resources\n\n- resources/conventions.md",
+      "provenance": [
+        "workspace:audiences/engineers",
+        "pages/review/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nDoes the review work.",
+      "provenance": [
+        "pages/review/agents.json#agent.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "support-triage/agent": [
+    {
+      "id": "agent",
+      "text": "Read the report and rank it from low to urgent with one reason.",
+      "provenance": [
+        "agents/triager/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nPrefer the smallest change that works, and say what you did not check.",
+      "provenance": [
+        "shared/instructions/00-house-rules.md"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Support triage\n\n### From page\n\nRank the report from low to urgent and give one reason.\n\n### Audience\n\nThe support team.\n\n### Output contract\n\nThe result has these fields: ranking (required).\n\n### Resources\n\n- resources/urgency-guide.md",
+      "provenance": [
+        "pages/support-triage/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nRanks the report.",
+      "provenance": [
+        "pages/support-triage/agents.json#agent.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "main-agent": [
+    {
+      "id": "agent",
+      "text": "Route each request to investigate, fix or review, or to support-triage for customer reports.",
+      "provenance": [
+        "main-agent/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "",
+      "provenance": []
+    },
+    {
+      "id": "routing",
+      "text": "## How to route and respond\n\n### Pages\n\n- investigate: Finds the cause of a reported problem.\n- fix: Fixes a bug and proves it with a test.\n- review: Reviews a change before merge.\n- support-triage: Ranks customer reports by urgency.",
+      "provenance": [
+        "default routing prompt"
+      ]
+    }
+  ]
+}
