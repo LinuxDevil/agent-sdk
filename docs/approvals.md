@@ -454,9 +454,10 @@ score, a timeout, a model error, arguments too long to judge — defers to a
 human exactly like `'defer'`. It never denies a call on its own.
 
 ```ts
-import { ask } from 'lousho/execution';
-import { createAgent } from 'lousho';
-import { createAutoApprove, modelAutoApprover } from 'lousho/execution';
+import { ask, createAgent, createAutoApprove, modelAutoApprover } from 'lousho';
+
+declare const issueTool: any;
+declare const cheapProvider: import('lousho').LLMProvider;
 
 const agent = createAgent({
   provider,
