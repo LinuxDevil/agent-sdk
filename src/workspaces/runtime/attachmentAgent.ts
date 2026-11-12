@@ -9,6 +9,7 @@ import { agentRunOptions, assembleInstructions, type AgentRunOptions, type Assem
 import type { PageAttachment, PageEngineSetup } from './engines/types';
 import { labelAttributes, labelsFor } from './labels';
 import type { ResolvedAttachment } from './resolveAgents';
+import { harnessFilesFor } from './resolveHarness';
 
 /** Options of {@link attachmentAgent}. */
 interface AttachmentAgentOptions {
@@ -85,6 +86,7 @@ function instructionsFor(setup: PageEngineSetup, resolved: ResolvedAttachment, e
     harness: setup.harness,
     attachment: resolved.pageOwned,
     page: { id: setup.page.id, name: setup.page.name },
+    harnessFiles: harnessFilesFor(setup.workspace, setup.page.id),
     ...(engineFraming !== undefined && { engineFraming }),
   });
 }

@@ -42,7 +42,7 @@ function parsedText(text: string): unknown {
   }
 }
 
-function usageOf(result: ExecutionResult): PageUsage {
+export function usageOf(result: ExecutionResult): PageUsage {
   const { usage } = result;
   return {
     inputTokens: usage.inputTokens,
@@ -54,11 +54,15 @@ function usageOf(result: ExecutionResult): PageUsage {
   };
 }
 
+export function finishStatus(reason: string): PageRunStatus {
+  return FAILED[reason as ExecutionResult['finishReason']]?.status ?? 'ok';
+}
+
 function pageResult(result: ExecutionResult, ctx: PageRunContext, structured: boolean): PageResult {
   const failed = FAILED[result.finishReason];
   const output = structured ? (result.object ?? parsedText(result.text)) : result.text;
   return {
-    status: failed?.status ?? 'ok',
+    status: finishStatus(result.finishReason),
     ...(output !== undefined && { output }),
     artifacts: [],
     summary: result.text,

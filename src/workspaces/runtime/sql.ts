@@ -78,6 +78,15 @@ async function sqliteTransaction<T>(db: SqliteDb, direct: SqlStatements, work: (
   }
 }
 
+const SQLITE_CLIENT = Symbol.for('lousho.workspaces.sqliteSqlClient');
+
+export function sqliteClientOnly(client: SqlClient, caller: string): SqlClient {
+  if ((client as SqlClient & { [SQLITE_CLIENT]?: true })[SQLITE_CLIENT] !== true) {
+    throw new SDKError(`${caller} takes a path or a client from sqliteSqlClient(); for Postgres use the postgres variant.`, 'LOUSHO_CONFIG_INVALID');
+  }
+  return client;
+}
+
 /** One SQLite connection (node:sqlite) whose calls and transactions run one at a time; open one per file per process and share it. */
 export function sqliteSqlClient(path: string): SqlClient {
   const db = new (loadDatabaseSync())(path, { timeout: 5000 });
@@ -91,7 +100,7 @@ export function sqliteSqlClient(path: string): SqlClient {
     },
   };
   const serial = serialQueue();
-  return {
+  const client: SqlClient = {
     execute: (sql, params) => serial(() => direct.execute(sql, params)),
     query: (sql, params) => serial(() => direct.query(sql, params)),
     transaction: (work) => serial(() => sqliteTransaction(db, direct, work)),
@@ -99,6 +108,7 @@ export function sqliteSqlClient(path: string): SqlClient {
       db.close();
     },
   };
+  return Object.defineProperty(client, SQLITE_CLIENT, { value: true, enumerable: true });
 }
 
 function numberPlaceholders(sql: string): string {

@@ -37,7 +37,7 @@ export function readMainHarness(workspace: LoadedWorkspace, manifest: WorkspaceM
     const text = workspace.tree[joinPath(dir, name)];
     return text === undefined ? [] : [[name, textOf(text)]];
   }));
-  return { harness, texts };
+  return { harness, dir, texts };
 }
 
 export function maxConcurrentPages(manifest: WorkspaceManifest, harness: MainHarness | undefined): number {

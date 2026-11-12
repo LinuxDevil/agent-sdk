@@ -181,6 +181,10 @@ export const ERROR_CODES = {
   LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.",
   /** `workspace.run` without a `pageId` on a workspace whose `mainAgent` is `null` (`no-main-agent`). */
   LOUSHO_WORKSPACE_NO_MAIN_AGENT: 'Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.',
+  /** `createWorkspaceRuntime` got a host that misses a dependency, or a tool must run sandboxed and the host gave no `bindTool`. */
+  LOUSHO_WORKSPACE_HOST_INVALID: 'Give the host the field the message names; pass bindTool when a policy requires a sandbox.',
+  /** A call on a workspace runtime after `close()`. */
+  LOUSHO_WORKSPACE_RUNTIME_CLOSED: 'Create a new runtime with createWorkspaceRuntime; a closed one takes no runs.',
 } as const;
 
 /** A stable error code, e.g. `'LOUSHO_CONFIG_MISSING_PROVIDER'`. */
