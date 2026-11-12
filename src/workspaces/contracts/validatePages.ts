@@ -1,10 +1,11 @@
 import { flowProblems, flowSpecSchema, type FlowProblem } from '../../spec/v2/flow';
+import { goalSchema } from '../../goals/contract';
 import { attachmentsSchema, type Attachments } from './agentRefs';
 import { harnessSchema, type Harness } from './harness';
 import { findNestedPages, pageSchema, type PageManifest } from './page';
 import { pageUiSchema } from './ui';
 import { layerProblems } from './validateLayers';
-import { agentFolder, dotted, layerFileProblems, folderOf, goalCriteria, harnessCode, isRecord, joinPath, problem, readDoc, subtree, type Ctx, type Issue, type PageView, type WorkspaceProblem, type WorkspaceProblemCode } from './validateModel';
+import { agentFolder, dotted, layerFileProblems, folderOf, harnessCode, isRecord, joinPath, problem, readDoc, subtree, type Ctx, type Issue, type PageView, type WorkspaceProblem, type WorkspaceProblemCode } from './validateModel';
 
 const EMPTY_HARNESS: Harness = { schema: 'lousho.harness/1' };
 const EMPTY_ATTACHMENTS: Attachments = { schema: 'lousho.agents/1', agents: [] };
@@ -97,8 +98,7 @@ function goalFileProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {
   if (!view.page?.execution.goal) return [];
   const file = `${view.dir}/goal.json`;
   if (!(file in ctx.tree)) return [problem('PRD030', file, '', `is missing; ${view.pagePath} has a goal block`)];
-  if (ctx.broken.has(file) || goalCriteria(ctx.tree[file]) !== undefined) return [];
-  return [problem('PRD030', file, 'checks', 'checks must be a list of { criterion } entries')];
+  return readDoc(ctx, file, goalSchema, () => 'PRD030', false).problems;
 }
 
 function listedFileProblems(ctx: Ctx, view: PageView): WorkspaceProblem[] {

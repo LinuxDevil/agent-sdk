@@ -1,0 +1,1 @@
+export { goalSchema, goalCheck, type GoalSpec, type GoalStop, type GoalCheckRef, type GoalCheck, type GoalCheckResult, type GoalCriterionResult, type GoalCriterionInfo, type GoalProblem } from './contract';

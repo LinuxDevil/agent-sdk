@@ -4,6 +4,7 @@ import { zodSchema } from 'ai';
 import { z } from 'zod';
 import { schemaToJsonSchema } from '../src/utils/zodCompat';
 import { jsonSchemaToStandardSchema } from '../src/spec/v2/jsonSchemaAdapter';
+import { goalObjectSchema } from '../src/goals/contract';
 import { attachmentObjectSchema } from '../src/workspaces/contracts/agentRefs';
 import { authoringOpJsonSchema } from '../src/workspaces/contracts/authoringOps';
 import { harnessObjectSchema } from '../src/workspaces/contracts/harness';
@@ -78,6 +79,7 @@ function quietly<T>(run: () => T): T {
 const ENTRIES: readonly WorkspaceSchemaEntry[] = [
   { file: 'lousho.workspace.v1.json', title: 'lousho.workspace/1', schema: () => fromZod(workspaceManifestObjectSchema) },
   { file: 'lousho.page.v1.json', title: 'lousho.page/1', schema: () => fromZod(pageObjectSchema) },
+  { file: 'lousho.goal.v1.json', title: 'lousho.goal/1', schema: () => fromZod(goalObjectSchema) },
   { file: 'lousho.harness.v1.json', title: 'lousho.harness/1', schema: () => fromZod(harnessObjectSchema) },
   { file: 'lousho.main-harness.v1.json', title: 'lousho.main-harness/1', schema: () => fromZod(mainHarnessObjectSchema) },
   { file: 'lousho.agents.v1.json', title: 'lousho.agents/1', schema: () => fromZod(agentsObjectSchema) },

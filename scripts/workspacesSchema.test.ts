@@ -18,9 +18,9 @@ describe('exported workspace JSON Schemas', () => {
     }
   });
 
-  it('cover workspace, page, harness, main-harness, agents, ui, policy and authoring-ops, and not lock', () => {
+  it('cover workspace, page, goal, harness, main-harness, agents, ui, policy and authoring-ops, and not lock', () => {
     expect(Object.keys(workspaceJsonSchemas()).sort()).toEqual(
-      ['workspace', 'page', 'harness', 'main-harness', 'agents', 'ui', 'policy', 'authoring-ops'].map((kind) => `lousho.${kind}.v1.json`).sort()
+      ['workspace', 'page', 'goal', 'harness', 'main-harness', 'agents', 'ui', 'policy', 'authoring-ops'].map((kind) => `lousho.${kind}.v1.json`).sort()
     );
   });
 

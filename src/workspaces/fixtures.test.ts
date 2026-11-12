@@ -294,10 +294,10 @@ describe('negative fixtures', () => {
     },
   };
 
-  it('there are 22 negatives with distinct names and 22 distinct codes', () => {
-    expect(index.cases).toHaveLength(22);
-    expect(new Set(index.cases.map((item) => item.name)).size).toBe(22);
-    expect(new Set(index.cases.map((item) => item.code)).size).toBe(22);
+  it('there are 23 negatives with distinct names and 23 distinct codes', () => {
+    expect(index.cases).toHaveLength(23);
+    expect(new Set(index.cases.map((item) => item.name)).size).toBe(23);
+    expect(new Set(index.cases.map((item) => item.code)).size).toBe(23);
     expect(index.cases.every((item) => /^PRD\d{3}$/.test(item.code))).toBe(true);
     expect(index.cases.find((item) => item.name === 'rubric-only-improvable')?.code).toBe('PRD017');
     for (const item of index.cases) expect(item.file in treeOf(item), `${item.name} names ${item.file}`).toBe(true);
@@ -338,6 +338,7 @@ describe('negative fixtures', () => {
       'policy-outside-shared',
       'main-harness-route-missing-page',
       'goal-check-missing-criterion',
+      'goal-rubric-only',
       'inactive-block-unknown-alias',
       'workflow-unknown-alias',
       'workspace-ref-missing-folder',

@@ -7,6 +7,7 @@ import { pageSchema } from './page';
 import { SHARED_PATH_PATTERNS } from './shared';
 import { workspaceManifestSchema } from './workspace';
 import { flowProblems, flowSpecSchema } from '../../spec/v2/flow';
+import { goalSchema } from '../../goals/contract';
 import { checkForbiddenKeys, FORBIDDEN_HARNESS_KEYS, type ForbiddenKeyRule } from './forbiddenKeys';
 import type { AuthoringOp, AuthoringProblem, AuthoringTreeProblem, AuthoringValidator, ProseTarget } from './authoringOps';
 
@@ -372,7 +373,9 @@ function writeWorkflow(op: Op<'write_workflow'>, tree: WorkspaceTree): Plan {
 function writeGoal(op: Op<'write_goal'>, tree: WorkspaceTree): Plan {
   const goal = isRecord(op.goal) ? op.goal : {};
   if (goal.schema !== 'lousho.goal/1') return fail(`pages/${op.page}/goal.json`, "schema: must be 'lousho.goal/1'");
-  return writePageDoc(tree, op.page, 'goal.json', op.goal);
+  const written = writePageDoc(tree, op.page, 'goal.json', op.goal);
+  if ('problems' in written) return written;
+  return build([{ path: `pages/${op.page}/goal.json`, doc: written.writes[`pages/${op.page}/goal.json`], schema: goalSchema }]);
 }
 
 const UI_REL = 'ui/page.ui.json';

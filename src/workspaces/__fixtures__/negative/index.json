@@ -121,6 +121,13 @@
       "expect": "check names criterion 'no-such-criterion', which no layer defines"
     },
     {
+      "name": "goal-rubric-only",
+      "code": "PRD033",
+      "checkedBy": "validateWorkspace",
+      "file": "pages/main/goal.json",
+      "expect": "every criterion this goal names is rubric-only"
+    },
+    {
       "name": "inactive-block-unknown-alias",
       "code": "PRD018",
       "checkedBy": "validateWorkspace",

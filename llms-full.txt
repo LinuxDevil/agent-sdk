@@ -24830,6 +24830,22 @@ Page paths may not start with `pages/` (nested pages, PRD009).
 
 The block named by `type` is required. The other blocks are validated but not run, so a page keeps its other configurations when its type changes (see [type switching](#type-switching)). Aliases are names from `agents.json`, never refs.
 
+### goal.json (`lousho.goal/1`)
+
+The goal file of a goal-oriented page, named by `page.json` `execution.goal.goal` (`./goal.json`).
+
+| Field | Type and default |
+| --- | --- |
+| `goal` | The goal, in words; required, non-empty |
+| `checks` | Required, at least one `{ criterion }`; `criterion` names an id in the page's effective `evaluation.criteria`, and at least one named criterion must have an executable `check` (R19, PRD033) |
+| `stop.maxIterations` | Required integer, 1 to 50 (A12) |
+| `stop.maxCostUsd` | Required, US dollars (F5.3) |
+| `stop.maxDurationMs` | Optional integer |
+| `stop.onStall` | `stop` (default) or `continue` |
+| `stop.stallAfter` | Integer, default 2 |
+
+`goal.json` is structure: improvement never edits it (R10); people change it with the `write_goal` operation. The goal page's `lead` and `delegates` are in `page.json` `execution.goal`, so every attachment stays usable under every type.
+
 ### Model precedence and `models.provider`
 
 `resolvePageModel` (exported from `lousho/workspaces`) picks the model a page's agent runs with. The first level that sets a model wins:
@@ -25245,6 +25261,7 @@ This prints PRD022, because `summarize` is listed but has no folder.
 | PRD030 | error | A workflow or goal file is missing or invalid |
 | PRD031 | warning | A main-harness limit was clamped to the workspace's |
 | PRD032 | error | A file a page harness or profile lists as prose, or any harness layer lists as a check script, resource or schema, is missing |
+| PRD033 | error | A goal names only rubric-only criteria; at least one needs an executable check (R19) |
 
 A refused tree is reported once: when a manifest is unreadable or its folders overlap, the cross-file checks do not run.
 
@@ -25275,6 +25292,7 @@ The structure of each file is exported as JSON Schema (draft 7) in the repositor
 | --- | --- |
 | `lousho.workspace.v1.json` | `workspace.json` |
 | `lousho.page.v1.json` | `page.json` |
+| `lousho.goal.v1.json` | `goal.json` |
 | `lousho.harness.v1.json` | `harness.json` (page, base harness or profile) |
 | `lousho.main-harness.v1.json` | `main-harness.json` |
 | `lousho.agents.v1.json` | `agents.json` |

@@ -27,9 +27,9 @@ describe('G0 contract gate', () => {
     expect(validateWorkspace(readFixtureTree(name), { mode: 'default' })).toEqual([]);
   });
 
-  it('every negative fixture yields exactly its code, 22 distinct', () => {
+  it('every negative fixture yields exactly its code, 23 distinct', () => {
     const { cases } = readNegativeIndex();
-    expect(new Set(cases.map((item) => item.code)).size).toBe(22);
+    expect(new Set(cases.map((item) => item.code)).size).toBe(23);
     for (const item of cases) {
       const codes = [...new Set(validateWorkspace(readNegativeTree(item.name), { mode: 'default' }).map((problem) => problem.code))];
       expect(codes, item.name).toEqual([item.code]);
