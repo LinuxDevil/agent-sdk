@@ -54,6 +54,7 @@ export function WorkspaceRoute() {
   if (state.error !== undefined) {
     return (
       <div className="app app-screen">
+        <PageHeader title="Workspaces" />
         <main className="screen-main">
           <EmptyState
             icon={CircleAlert}
@@ -73,6 +74,7 @@ export function WorkspaceRoute() {
   if (state.notFound || state.data === undefined) {
     return (
       <div className="app app-screen">
+        <PageHeader title="Workspaces" />
         <main className="screen-main">
           <EmptyState
             icon={SearchX}
