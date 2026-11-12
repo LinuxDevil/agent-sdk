@@ -2,6 +2,7 @@
 export type ScreenId =
   | 'agents'
   | 'agentList'
+  | 'inbox'
   | 'agentDetail'
   | 'templates'
   | 'playground'
@@ -37,6 +38,7 @@ export const ROUTES: readonly RouteEntry[] = [
   // Keep '/agents/:id/canvas' above '/agents/:id/:tab': 'canvas' is a tab name too.
   { pattern: '/agents/:id/canvas', screen: 'agents', example: '/agents/e2e-agent/canvas' },
   { pattern: '/agents/:id/:tab', screen: 'agentDetail', example: '/agents/e2e-agent/overview' },
+  { pattern: '/inbox', screen: 'inbox', example: '/inbox' },
   { pattern: '/templates', screen: 'templates', example: '/templates' },
   { pattern: '/playground', screen: 'playground', example: '/playground' },
   { pattern: '/traces', screen: 'traces', example: '/traces' },

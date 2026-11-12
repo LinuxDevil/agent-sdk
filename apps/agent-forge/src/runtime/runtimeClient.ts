@@ -33,6 +33,8 @@ import type {
   ForkRunResponse,
   ImportPreview,
   ImportRequest,
+  InboxCount,
+  InboxItem,
   McpProbeRequest,
   McpProbeResponse,
   PassSettings,
@@ -337,7 +339,6 @@ class RuntimeClient implements AgentApi {
    * agent's published spec and answers the pinned version number. Idempotent:
    * pinning the already-published version is a no-op.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L14a); L14b's publish UI consumes it
   async publish(agentId: string, version?: number): Promise<{ publishedVersion: number }> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/publish`, {
       method: 'POST',
@@ -474,6 +475,21 @@ class RuntimeClient implements AgentApi {
       method: 'POST',
       body: JSON.stringify({ approvalId, answer }),
     });
+  }
+
+  /** Everything waiting on the user across this workspace's agents (R02a's `GET /inbox`). */
+  async listInbox(): Promise<InboxItem[]> {
+    return this.request('/inbox', { method: 'GET' });
+  }
+
+  /** The inbox badge count (`GET /inbox/count`); also the `inbox.count` WS event's payload. */
+  async inboxCount(): Promise<InboxCount> {
+    return this.request('/inbox/count', { method: 'GET' });
+  }
+
+  /** Dismisses an undismissed inbox alert (`POST /inbox/alerts/:id/dismiss`). */
+  async dismissAlert(alertId: string): Promise<void> {
+    await this.request(`/inbox/alerts/${encodeURIComponent(alertId)}/dismiss`, { method: 'POST' });
   }
 
   /** Current breakpoints + pause state for `agentId` (see debugController.ts). */
