@@ -91,7 +91,7 @@ describe('NewAgentMenu', () => {
 
     const importItem = menuItem('Import from file…')!;
     expect(importItem.getAttribute('aria-disabled')).toBe('true');
-    expect(importItem.getAttribute('title')).toBe('Import arrives with the import sheet.');
+    expect(importItem.getAttribute('title')).toBe('Import is not available here.');
 
     const describe = menuItem('Describe with AI')!;
     expect(describe.getAttribute('aria-disabled')).toBeNull();
@@ -169,16 +169,16 @@ describe('NewAgentMenu', () => {
 });
 
 describe('StartOptions', () => {
-  it('renders the three start buttons; disabled ones explain why; Blank creates', async () => {
+  it('renders the four start buttons; disabled ones explain why; Blank creates', async () => {
     const host = mount(<OptionsHarness />);
     const group = host.querySelector('.start-options')!;
     expect(group.getAttribute('role')).toBe('group');
     expect(group.getAttribute('aria-label')).toBe('Ways to start');
 
     const buttons = [...host.querySelectorAll<HTMLButtonElement>('button.start-option')];
-    expect(buttons).toHaveLength(3);
+    expect(buttons).toHaveLength(4);
     const titles = buttons.map((b) => b.querySelector('.start-option-title')?.textContent);
-    expect(titles).toEqual(['Blank agent', 'Describe with AI', 'From template']);
+    expect(titles).toEqual(['Blank agent', 'Describe with AI', 'From template', 'Import from file…']);
 
     const describe = buttons[1];
     expect(describe.disabled).toBe(false);
