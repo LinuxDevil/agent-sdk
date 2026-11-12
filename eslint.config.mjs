@@ -24,6 +24,14 @@ export default tseslint.config(
     },
   },
   {
+    files: ['packages/workspaces-react/src/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      '@typescript-eslint/ban-ts-comment': 'error',
+    },
+  },
+  {
     // Type-aware rules, for the library source only (tests are not in tsconfig.json's program).
     files: ['src/**/*.ts'],
     ignores: ['src/**/*.test.ts', 'src/**/*.spec.ts', 'src/**/*.test-d.ts'],
