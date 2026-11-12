@@ -1,0 +1,41 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden .lousho files > applyProposal and rollbackHarness write the same .lousho files as before the refactor 1`] = `
+{
+  ".lousho/audit.jsonl": "{"seq":1,"at":"2026-01-01T00:00:00.000Z","actor":"person:ali","action":"apply","from":"e63f5e183ccc937ca6b7e4fcd6b126a870f7f04ca110aebf8fde73235fa013d8","to":"84587730d89e38a1b026f10f9f14521844b1d35bd20559efb174172bb297620c","reason":"Applied instructions.md.","evidence":{"gate":"gate ok"},"prev":"genesis","hash":"026caeeca19c36ae06288f2386ddb9a641ae3410c4eabfd23ac8baeb04c06fa7"}
+{"seq":2,"at":"2026-01-01T00:00:00.000Z","actor":"person:ali","action":"rollback","from":"84587730d89e38a1b026f10f9f14521844b1d35bd20559efb174172bb297620c","to":"e63f5e183ccc937ca6b7e4fcd6b126a870f7f04ca110aebf8fde73235fa013d8","reason":"undo","prev":"ea150f8bdb85bc863d42e0d09f22f7572ece4fd469939a2df425c5cce5747632","hash":"14f912abcb1c6b63d4b92a22da43c28fb47a1cf9c9a5c2bbd1ac37dd5fe43ac3"}
+",
+  ".lousho/revisions/84587730d89e38a1b026f10f9f14521844b1d35bd20559efb174172bb297620c.json": "{
+  "id": "84587730d89e38a1b026f10f9f14521844b1d35bd20559efb174172bb297620c",
+  "harness": {
+    "instructions": "Be very brief.",
+    "skills": {
+      "tone": {
+        "description": "Tone rules.",
+        "content": "Use plain words."
+      }
+    }
+  }
+}
+",
+  ".lousho/revisions/e63f5e183ccc937ca6b7e4fcd6b126a870f7f04ca110aebf8fde73235fa013d8.json": "{
+  "id": "e63f5e183ccc937ca6b7e4fcd6b126a870f7f04ca110aebf8fde73235fa013d8",
+  "harness": {
+    "instructions": "Be brief.",
+    "skills": {
+      "tone": {
+        "description": "Tone rules.",
+        "content": "Use plain words."
+      }
+    }
+  }
+}
+",
+  ".lousho/revisions/log.jsonl": "{"id":"e63f5e183ccc937ca6b7e4fcd6b126a870f7f04ca110aebf8fde73235fa013d8","at":"2026-01-01T00:00:00.000Z","source":"baseline"}
+{"id":"84587730d89e38a1b026f10f9f14521844b1d35bd20559efb174172bb297620c","parent":"e63f5e183ccc937ca6b7e4fcd6b126a870f7f04ca110aebf8fde73235fa013d8","at":"2026-01-01T00:00:00.000Z","source":"apply"}
+{"id":"e63f5e183ccc937ca6b7e4fcd6b126a870f7f04ca110aebf8fde73235fa013d8","parent":"84587730d89e38a1b026f10f9f14521844b1d35bd20559efb174172bb297620c","at":"2026-01-01T00:00:00.000Z","source":"rollback"}
+",
+  "instructions.md": "Be brief.
+",
+}
+`;

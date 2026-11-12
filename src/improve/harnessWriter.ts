@@ -124,7 +124,7 @@ function frontmatterWith(meta: string, description: string): string {
   return `${meta.slice(0, range[0])}${yamlScalar(description)}${meta.slice(range[1])}`;
 }
 
-function skillText(name: string, skill: Skill, prev: Buffer | undefined): string {
+export function skillText(name: string, skill: Skill, prev: Buffer | undefined): string {
   const match = prev === undefined ? null : FRONTMATTER.exec(prev.toString('utf8'));
   const meta = match ? frontmatterWith(match[1], skill.description.trim()) : `name: ${yamlScalar(name)}\ndescription: ${yamlScalar(skill.description.trim())}`;
   return `---\n${meta}\n---\n\n${skill.content.trim()}\n`;
