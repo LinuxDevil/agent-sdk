@@ -1,4 +1,5 @@
 import { useAppState } from '../../state/AppState';
+import { usePendingDraftCount } from '../../state/usePendingDraftCount';
 import { Tabs } from '../../ui/Tabs';
 import { agentTabItems } from './agentTabs';
 import './builderTabs.css';
@@ -11,10 +12,13 @@ import './builderTabs.css';
  */
 export function BuilderTabs(): JSX.Element | null {
   const { agentId, agents } = useAppState();
-  if (!agents.some((a) => a.id === agentId)) return null;
+  const saved = agents.some((a) => a.id === agentId);
+  // The Suggestions tab's pending-draft badge (L11b); an unsaved agent has none.
+  const draftCount = usePendingDraftCount(saved ? agentId : undefined);
+  if (!saved) return null;
   return (
     <div className="builder-tabs">
-      <Tabs label="Agent" currentId="canvas" items={agentTabItems(agentId)} />
+      <Tabs label="Agent" currentId="canvas" items={agentTabItems(agentId, { suggestions: draftCount })} />
     </div>
   );
 }

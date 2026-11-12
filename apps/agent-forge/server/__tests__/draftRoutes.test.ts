@@ -13,7 +13,7 @@ import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
 import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import { DraftStore } from '../storage/draftStore';
-import type { ChangeDraft } from '../../shared/wireTypes';
+import type { ChangeDraft, DraftView } from '../../shared/wireTypes';
 
 const V1_SPEC: AgentSpec = {
   name: 'ops',
@@ -100,7 +100,11 @@ describe('draft routes', () => {
     expect(draft.baseSpecHash).toMatch(/^sha256:/);
     expect(draft.baseVersion).toBeNull();
 
-    expect((await request(app()).get('/agents/ops/draft')).body).toEqual(draft);
+    // GET answers the DraftView (L11b): the draft plus its live diff and
+    // the latest version number.
+    const view = (await request(app()).get('/agents/ops/draft')).body as DraftView;
+    expect(view).toMatchObject({ ...draft, currentVersion: 0 });
+    expect(view.changes.length).toBeGreaterThan(0);
     // The working copy was not edited and no version was written.
     const spec = await repo.readSpec('ops');
     expect(spec?.description).toBeUndefined();

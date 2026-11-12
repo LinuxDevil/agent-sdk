@@ -4,6 +4,7 @@ import { CircleAlert, CircleCheck, CircleDashed, Clock, Cpu, Play, Wrench, Zap, 
 import type { AgentRecord, Requirement } from '../../../shared/wireTypes';
 import { fmtAge } from '../../observe/format';
 import { agentTabItems, agentTabPath, type AgentTab } from '../agents/agentTabs';
+import { usePendingDraftCount } from '../../state/usePendingDraftCount';
 import { AgentTile } from '../../ui/AgentTile';
 import { StatusBadge } from '../../ui/StatusBadge';
 import { Tabs } from '../../ui/Tabs';
@@ -117,6 +118,8 @@ export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsIte
   const canExpand = description.length > 140 || description.includes('\n');
   const name = spec.name;
   const facts = headerFacts(record, Date.now());
+  // The Suggestions tab's pending-draft badge (L11b).
+  const draftCount = usePendingDraftCount(id);
 
   return (
     <header className="agent-detail-header">
@@ -178,7 +181,7 @@ export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsIte
       </ul>
       {notices}
       <div className="agent-detail-tabs">
-        <Tabs label="Agent" currentId={tab} items={agentTabItems(id)} trailing={<ReadinessChips requirements={record.requirements} agentId={id} />} />
+        <Tabs label="Agent" currentId={tab} items={agentTabItems(id, { suggestions: draftCount })} trailing={<ReadinessChips requirements={record.requirements} agentId={id} />} />
       </div>
     </header>
   );
