@@ -20,7 +20,7 @@ import { ToolArgumentsValidationError, decodeToolArguments, invalidJsonMessage, 
 import { toolNotFoundMessage } from './toolNames';
 import {
   checkPermission,
-  hasEnforcedApproval,
+  enforcedApprovalReason,
   permissionModeOf,
   permissionModeVerdict,
   reportHookDenial,
@@ -198,9 +198,6 @@ export async function prepareToolCall(toolCall: ToolCall, ctx: ToolCallContext):
   return gateToolCall(toolCall, ctx, hooked.args);
 }
 
-/** Why an `allow` rule did not run a call whose approval is enforced (see `enforceApproval()`). */
-const ENFORCED_APPROVAL_REASON = 'its install receipt requires approval';
-
 /**
  * Permission rules, tool guardrails and `needsApproval`, on the hook-processed args.
  *
@@ -225,12 +222,13 @@ export async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hoo
       : hookedArgs;
     // Follow-up: an `allow` / `ask` rule replaces the tool's own ask, not its deny.
     const own = await checkNeedsApproval(toolCall, ctx, args);
-    // An enforced ask (an install receipt's exec / needsApproval item) is not replaced by an `allow` rule.
-    const enforced = !own.rejection && own.requiresApproval && hasEnforcedApproval(ctx.toolRegistry && findExecutableTool(ctx.toolRegistry, toolCall.function.name));
+    // An enforced ask (an install receipt item or a workspace policy) is not replaced by an `allow` rule.
+    const enforcedReason = enforcedAsk(own, ctx, toolCall.function.name);
+    const enforced = enforcedReason !== undefined;
     const { denied, ...gate } = own.rejection || (enforced && !ruled?.requiresApproval) ? own : (ruled ?? own);
     // The tool's own deny is audited like a rule's.
     if (denied && audit) audit = { ...audit, decision: 'deny', ...(denied.reason !== undefined && { reason: denied.reason }) };
-    if (enforced && audit?.decision === 'allow') audit = { ...audit, decision: 'ask', reason: ENFORCED_APPROVAL_REASON };
+    if (enforced && audit?.decision === 'allow') audit = { ...audit, decision: 'ask', reason: enforcedReason };
     // The permission mode applies last, to a call nothing above denied: it never turns a deny into a run,
     // nor an enforced ask.
     const verdict = gate.rejection ? undefined : applyPermissionMode(mode, toolCall, ctx, gate.requiresApproval);
@@ -366,6 +364,11 @@ function deniedGate(toolCall: ToolCall, by: string, reason: string | undefined):
  * Resolves the called tool's `needsApproval`. A throwing `needsApproval`
  * becomes the call's error outcome (a `PropagatingToolError` is rethrown).
  */
+function enforcedAsk(own: ToolGate, ctx: ToolCallContext, toolName: string): string | undefined {
+  if (own.rejection || !own.requiresApproval) return undefined;
+  return enforcedApprovalReason(ctx.toolRegistry && findExecutableTool(ctx.toolRegistry, toolName));
+}
+
 async function checkNeedsApproval(
   toolCall: ToolCall,
   ctx: ToolCallContext,

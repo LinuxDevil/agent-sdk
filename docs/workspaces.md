@@ -423,7 +423,7 @@ The result keeps `search_facts`, `API_KEY` and `api.example.com`, and turns the 
 
 The runtime enforces the narrowed policy. No harness, `page.json` or `agents.json` key can widen it. The host injects its tools as a `HostToolRegistry`: each entry has a `descriptor`, the `secrets` it reads and the `capabilities` it provides. The runtime never imports a workspace `.ts` file, so **a tool file's name is its tool name**: `tools/search_facts.ts` maps to the host tool named `search_facts`. An agent tool with no host tool of that name is left out and reported as a load warning. A Studio `{ file }` tool ref is named by its file stem too, and other tool refs by the name the model sees (`builtin`, `registry`, ...), not their canvas `id`.
 
-Agent settings a workspace agent would silently drop are refused at load: on a Studio spec `mcpServers`, `guardrails`, `subagents`, `handoffs`, `triggers`, `flow`, `permissionMode`, `approvalTtlMs`, `codeMode`, `toolSearch`, `output` and `promptRef`; on a folder agent `permissionMode`, `projectInstructions` and the `subagents/`, `schedules/` and `channels/` folders.
+A workspace agent is read from its files and nothing in it is run, so settings it would silently drop are refused at load with `LOUSHO_AGENT_DIR_INVALID`, as hooks are: on a Studio spec `mcpServers`, `guardrails`, `subagents`, `handoffs`, `triggers`, `flow`, `permissionMode`, `approvalTtlMs`, `codeMode`, `toolSearch`, `output` and `promptRef`; on a folder agent `permissionMode`, `projectInstructions`, `approvalTtlMs`, `output` and the `subagents/`, `schedules/` and `channels/` folders. A memory slot's name is its file name.
 
 | What | Rule |
 | --- | --- |
@@ -463,8 +463,6 @@ const page = pagePolicy(
 );
 console.log(Object.keys(page.attachments.video.tools), page.warnings);
 ```
-
-A workspace agent is read from its files and nothing in it is run. So a Studio agent that sets `mcpServers`, `guardrails`, `subagents`, `handoffs`, `triggers` or `flow`, and a folder agent with a `subagents/`, `schedules/` or `channels/` folder, are refused with `LOUSHO_AGENT_DIR_INVALID`, as hooks are. A memory slot's name is its file name.
 
 ## The execution contract
 

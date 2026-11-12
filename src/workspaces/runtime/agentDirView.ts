@@ -64,7 +64,7 @@ const HOST_FOLDERS = ['subagents', 'schedules', 'channels'] as const;
 
 const STUDIO_POLICY_KEYS = ['permissionMode', 'approvalTtlMs', 'codeMode', 'toolSearch', 'output', 'promptRef'] as const;
 
-const DIR_POLICY_KEYS = ['permissionMode', 'projectInstructions'] as const;
+const DIR_POLICY_KEYS = ['permissionMode', 'projectInstructions', 'approvalTtlMs', 'output'] as const;
 
 function parseData(file: string, text: string): unknown {
   try {
@@ -109,9 +109,10 @@ function readDirConfig(agent: AgentFiles): { file: string; config: AgentDirConfi
   const name = configFile(agent);
   if (name === undefined) return { file: agent.dir, config: {} };
   const file = `${agent.dir}/${name}`;
-  const config = validateConfig(file, parseData(file, agent.files[name]));
+  const data = parseData(file, agent.files[name]);
+  if (typeof data === 'object' && data !== null) refusePolicyKeys(file, data, DIR_POLICY_KEYS);
+  const config = validateConfig(file, data);
   refuseKeys(file, config, CODE_KEYS);
-  refusePolicyKeys(file, config, DIR_POLICY_KEYS);
   return { file, config };
 }
 
