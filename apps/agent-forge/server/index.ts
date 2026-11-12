@@ -255,6 +255,7 @@ export async function startStudioServer(
       // and its trigger host's run-status subscriptions (R08a).
       workspace.inbox.stop();
       workspace.triggers.stop();
+      workspace.cron.stop();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     },
   };

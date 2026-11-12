@@ -74,7 +74,6 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import {
   agentSpecV2Schema,
@@ -98,7 +97,7 @@ import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, LogEntry, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
 import { pinsProblem } from './pins';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
@@ -152,7 +151,7 @@ import { AlertStore } from './inbox/alertStore';
 import { InboxService } from './inbox/inboxService';
 import { registerInboxRoutes } from './inbox/inboxRoutes';
 import { registerWebhookRoutes } from './triggers/webhookRoute';
-import { TriggerHost } from './triggers/triggerHost';
+import { createTriggerRuntime } from './triggers/runtime';
 import { registerRatingRoutes } from './ratings';
 import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
@@ -1016,23 +1015,14 @@ function legacyWorkspaceContext(
     workspaceId: workspaceRefFor(options.baseDir).id,
   });
   inbox.start();
-  // The legacy pair gets the same trigger host the real context builds
-  // (R08a) - webhook routes read it through workspaceOf(req).
-  const triggers = new TriggerHost({
+  // The legacy pair gets the same trigger stack the real context builds
+  // (R08a host + R08c cron) - webhook routes read it through workspaceOf(req).
+  const { triggers, cron } = createTriggerRuntime({
+    baseDir: options.baseDir,
     repo,
     runManager: options.runManager,
     events,
-    log: (agentId, message, level = 'info') =>
-      options.runManager.emit('log', agentId, {
-        id: randomUUID(),
-        agentId,
-        timestamp: new Date().toISOString(),
-        level,
-        phase: 'trigger',
-        message,
-      } satisfies LogEntry),
   });
-  void triggers.start();
   return {
     ref: workspaceRefFor(options.baseDir),
     repo,
@@ -1058,6 +1048,7 @@ function legacyWorkspaceContext(
     passes: passRunner,
     inbox,
     triggers,
+    cron,
   };
 }
 
