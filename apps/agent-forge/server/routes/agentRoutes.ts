@@ -44,6 +44,7 @@ import type {
   VersionSource,
 } from '../../shared/wireTypes';
 import { computeRequirements, requirementDeps } from '../author/requirements';
+import { readAgentRecord } from '../agentRecord';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { enabledPatch } from '../lifecycle/enabledState';
 import type { SecretsStore } from '../secretsStore';
@@ -110,17 +111,8 @@ async function toListItem(ws: WorkspaceContext, id: string): Promise<AgentListIt
   };
 }
 
-/** One agent's `AgentRecord`; `undefined` when it has no spec file. */
-async function toRecord(ws: WorkspaceContext, id: string): Promise<AgentRecord | undefined> {
-  const spec = await ws.repo.readSpec(id);
-  if (spec === undefined) return undefined;
-  const [meta, layout, latest] = await Promise.all([
-    ws.repo.readMeta(id),
-    ws.repo.readLayout(id),
-    ws.versions.latest(id),
-  ]);
-  return { id, spec, meta, layout, updatedAt: ws.repo.updatedAt(id), latestVersion: latest?.version ?? null };
-}
+/** One agent's `AgentRecord` - the shared assembler in ../agentRecord. */
+const toRecord = readAgentRecord;
 
 function sendAgentNotFound(res: Response, id: string): void {
   sendError(res, 404, `No saved agent '${id}'`, 'LOUSHO_AGENT_NOT_FOUND');

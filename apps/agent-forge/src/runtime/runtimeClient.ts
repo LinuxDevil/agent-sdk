@@ -31,6 +31,8 @@ import type {
   DeployResult,
   ForkRunRequest,
   ForkRunResponse,
+  ImportPreview,
+  ImportRequest,
   McpProbeRequest,
   McpProbeResponse,
   PassSettings,
@@ -708,6 +710,31 @@ class RuntimeClient implements AgentApi {
       }
     }
     return { blob: await res.blob(), filename, warnings };
+  }
+
+  /**
+   * `POST /agents/import/preview` (L08a): parses pasted YAML/JSON/bundle
+   * text and answers what the import would write - clash, resolved id,
+   * requirements, prompts and warnings - without writing anything.
+   */
+  // fallow-ignore-next-line unused-class-member -- contract surface (L08a); L08b's import sheet consumes it
+  async previewImport(request: ImportRequest): Promise<ImportPreview> {
+    return this.request<ImportPreview>('/agents/import/preview', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+  }
+
+  /**
+   * `POST /agents/import` (L08a): writes the pasted spec in `request.mode`
+   * (`new`/`copy` answer 201, `replace` 200) and answers the `AgentRecord`.
+   */
+  // fallow-ignore-next-line unused-class-member -- contract surface (L08a); L08b's import sheet consumes it
+  async importAgent(request: ImportRequest): Promise<AgentRecord> {
+    return this.request<AgentRecord>('/agents/import', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
   }
 
   /**
