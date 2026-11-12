@@ -173,6 +173,7 @@ export async function startStudioServer(
     settingsStore,
     observe: options.observe !== false,
     passRunner,
+    spendLog,
     alerts,
   });
   // A test-injected versioner replaces the context's default one before the

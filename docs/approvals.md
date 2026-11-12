@@ -478,6 +478,32 @@ they reach the model and reports every decision through `onDecision`. Pass a
 `fallback` approve callback to keep a second line of defense for escalated
 calls.
 
+An AgentSpec v2 wires the same machinery from a permission rule: `action:
+'auto'` compiles to `ask`, and a host that supplies `autoApprover` (and
+optionally `onAutoApproval`) gets the model-scored callback for exactly
+those rules — first match still wins, so an `allow` listed before an `auto`
+rule means the model is never consulted.
+
+```yaml
+permissions:
+  - id: p1
+    tool: github_create_issue
+    action: auto
+```
+
+```ts
+import { modelAutoApprover, specV2ToAgent } from 'lousho';
+
+const agent = await specV2ToAgent(spec, {
+  baseDir,
+  autoApprover: modelAutoApprover({ provider: cheapProvider }),
+  onAutoApproval: (d) => console.log(d.toolName, d.outcome, d.cause),
+});
+```
+
+With no `autoApprover` on the host, `action: 'auto'` behaves exactly like
+`ask`.
+
 ### Streaming the continued run
 
 `agent.approvals.streamResolve(decision, { signal })` and

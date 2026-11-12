@@ -98,17 +98,20 @@ function createEvalServices(baseDir: string, opts: EvalHarnessOptions): EvalServ
   const sessionsDir = path.join(baseDir, '.lousho', 'assistant', 'sessions');
   fs.mkdirSync(sessionsDir, { recursive: true });
   const sessions = new AuthorSessionStore(sessionsDir);
+  const evalSpendLog = new SpendLog(path.join(baseDir, '.lousho', 'passes', 'spend.jsonl'));
   const workspace = createWorkspaceContext(workspaceRefFor(baseDir), {
     secretsStore: secrets,
     settingsStore: settings,
     observe: false,
     // Evals never run real passes; the runner exists only to satisfy the
-    // context shape, writing to a throwaway spend log under baseDir.
+    // context shape, writing to a throwaway spend log under baseDir (one
+    // instance shared with `spendLog` below so appends stay serialized).
     passRunner: new PassRunner({
       baseDir,
-      spendLog: new SpendLog(path.join(baseDir, '.lousho', 'passes', 'spend.jsonl')),
+      spendLog: evalSpendLog,
       isEnabled: () => false,
     }),
+    spendLog: evalSpendLog,
     // Evals never trigger runs; the store exists only to satisfy the
     // context shape, under the same throwaway `.lousho` as the spend log.
     alerts: new AlertStore(globalPaths.alerts),

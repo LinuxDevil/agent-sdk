@@ -39,6 +39,7 @@ import {
   type AgentHook,
   type AgentSpecV2,
   type ApprovalStore,
+  type AutoApprovalDecision,
   type CheckpointStore,
   type SimpleAgent,
   type SpecHost,
@@ -46,9 +47,12 @@ import {
   type TraceExporter,
 } from 'lousho';
 import type { AgentFlow } from 'lousho/flows';
+import { studioAutoApprover } from './autoApproval';
 import { asAgentFlow, LOCAL_TOOLS, resolveProviderForModel } from './buildAgent';
 import type { FileApprovalStore } from './approvalStore';
+import type { SpendLog } from './passes/spendLog';
 import { isSecretProvider, PROVIDER_KEY_ENV, type SecretsStore } from './secretsStore';
+import type { SettingsStore } from './settingsStore';
 
 /**
  * What a Studio workspace hands `buildRunnableAgent`: the workspace root
@@ -63,6 +67,14 @@ export interface StudioRunDeps {
   checkpointStore: CheckpointStore;
   approvalStore: FileApprovalStore;
   secretsStore?: SecretsStore;
+  /**
+   * The Studio-global stores auto-approval needs (R01b): `settings` for the
+   * `autoApprovalModel`/`auto_approval` switches, `spend` for the per-decision
+   * `auto_approval` PassRecord. Both absent → `action: 'auto'` rules behave
+   * as plain `ask`.
+   */
+  settings?: SettingsStore;
+  spend?: SpendLog;
 }
 
 /** The per-run wiring that is not part of the spec: event sink, trace exporter and Studio-appended hooks. */
@@ -72,6 +84,8 @@ export interface RunWiring {
   captureContent?: boolean;
   /** Appended after the spec's own hooks (the step-debugger's `agentHooks()`). */
   extraHooks?: readonly AgentHook[];
+  /** One callback per auto-approval decision (R01b); RunManager turns it into the Logs-tab row. */
+  onAutoApproval?: (decision: AutoApprovalDecision) => void;
 }
 
 /** What `buildRunnableAgent` returns: the built agent plus the side data RunManager/the status payload need. */
@@ -179,11 +193,17 @@ export async function buildRunnableAgent(
   wiring: RunWiring
 ): Promise<RunnableAgent> {
   const approvals = scopedApprovalStore(deps.approvalStore, agentId);
+  const autoApprover =
+    deps.settings !== undefined && deps.spend !== undefined
+      ? studioAutoApprover({ settings: deps.settings, secretsStore: deps.secretsStore, spend: deps.spend, agentId })
+      : undefined;
   const host: SpecHost = {
     baseDir: path.join(deps.baseDir, '.lousho', 'agents'),
     resolveSecret: (name) => deps.secretsStore?.getSecret(name),
     exporter: wiring.exporter,
     store: { checkpoints: deps.checkpointStore, approvals },
+    ...(autoApprover !== undefined && { autoApprover }),
+    ...(wiring.onAutoApproval !== undefined && { onAutoApproval: wiring.onAutoApproval }),
   };
 
   const { spec: compilable, localTools } = splitLocalTools(spec);

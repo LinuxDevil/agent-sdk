@@ -33,6 +33,7 @@ import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
 import type { PassRunner } from '../passes/passRunner';
+import type { SpendLog } from '../passes/spendLog';
 import type { AlertStore } from '../inbox/alertStore';
 import { InboxService } from '../inbox/inboxService';
 import { attachFailureStreak } from '../lifecycle/failureStreak';
@@ -121,6 +122,8 @@ export interface WorkspaceServices {
   observe: boolean;
   /** The app's one PassRunner, stamped onto every context this builds. */
   passRunner: PassRunner;
+  /** The app's one spend log (R01b): auto-approval decisions append `auto_approval` records to it directly, off the PassRunner. */
+  spendLog: SpendLog;
   /** The Studio-global inbox alert store (L12) every workspace's failure-streak pass writes to. */
   alerts: AlertStore;
 }
@@ -157,6 +160,8 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     checkpointStore,
     approvalStore,
     secretsStore: services.secretsStore,
+    settings: services.settingsStore,
+    spend: services.spendLog,
   });
   const runs = new RunManager({
     baseDir: ref.root,

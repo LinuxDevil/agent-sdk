@@ -43,6 +43,7 @@ import { HostRunNotActiveError, type AgentHost, type HostEvent, type HostRunResu
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
 import { approvalDeadline, EXPIRED_APPROVAL_NOTE, NO_ANSWER_TEXT } from './approvalDeadline';
+import { autoApprovalLogEntry } from './autoApproval';
 import { DebugSession, type BreakpointKey } from './debugController';
 import { FileChatStore, previewFor } from './chatStore';
 import { markRunInput, markSteerInputs, reconcileChatMessages } from './chatReconcile';
@@ -742,6 +743,8 @@ export class RunManager extends EventEmitter {
         ...(options.pins !== undefined && options.pins.length > 0 ? [pinnedResultsHook(options.pins)] : []),
       ],
       onEvent: (event) => this.onHostEvent(agentId, event, live),
+      // R01b: every auto-approval decision becomes an 'approval'-phase Logs row.
+      onAutoApproval: (decision) => this.emit('log', agentId, autoApprovalLogEntry(agentId, decision)),
     });
     live.runId = runId;
     this.setEntry(

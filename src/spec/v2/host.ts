@@ -5,7 +5,9 @@
  * resolve/ hosts so every resolver sees the fields it already knows.
  * Browser-safe: type-only imports.
  */
+import type { ApproveToolCall } from '../../createAgentApprovals';
 import type { SimpleAgent } from '../../createAgent';
+import type { AutoApprovalDecision, AutoApprover } from '../../execution/autoApproval';
 import type { TraceExporter } from '../../execution/tracing';
 import type { AgentStore } from '../../storage/agentStore';
 import type { HookHost } from './resolve/hooks';
@@ -34,4 +36,14 @@ export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'>, Me
   loadAgentRef?(ref: string): Promise<AgentSpecV2>;
   /** Target of a handoff that is not one of this spec's subagents (an agent id in Studio). */
   resolveHandoffAgent?(agent: string): Promise<SimpleAgent>;
+  /** The host's own approve callback (createAgent's `approve`); with `autoApprover` it decides non-auto calls and auto calls the model escalates. */
+  approve?: ApproveToolCall;
+  /**
+   * Model approver for `action: 'auto'` permission rules (R01): a confident
+   * score runs the call, anything else defers to `approve`/a human. Absent →
+   * auto rules behave exactly like `ask`.
+   */
+  autoApprover?: AutoApprover;
+  /** Called once per auto-rule decision (approved or escalated); a throwing listener never changes the verdict. */
+  onAutoApproval?: (decision: AutoApprovalDecision) => void;
 }

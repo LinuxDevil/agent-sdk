@@ -929,8 +929,13 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * legacy `{agentStore, runManager}` form instead of a ready-built
  * `workspace`: the launch folder's ref around those two stores.
  */
-function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunner, alerts: AlertStore): WorkspaceContext {
-  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner, alerts);
+function defaultWorkspaceContext(
+  options: CreateAppOptions,
+  passRunner: PassRunner,
+  alerts: AlertStore,
+  autoApproval: { settings: SettingsStore; spendLog: SpendLog }
+): WorkspaceContext {
+  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner, alerts, autoApproval);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
   if (options.eventBus !== undefined) workspace = { ...workspace, events: options.eventBus };
@@ -968,7 +973,8 @@ function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunn
 function legacyWorkspaceContext(
   options: CreateAppOptions & { workspace?: undefined },
   passRunner: PassRunner,
-  alerts: AlertStore
+  alerts: AlertStore,
+  autoApproval: { settings: SettingsStore; spendLog: SpendLog }
 ): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
   const versions = new VersionStore(repo);
@@ -1004,6 +1010,8 @@ function legacyWorkspaceContext(
       checkpointStore: new FileCheckpointStore(options.baseDir),
       approvalStore: new FileApprovalStore(options.baseDir),
       secretsStore: options.secretsStore,
+      settings: autoApproval.settings,
+      spend: autoApproval.spendLog,
     }),
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
@@ -1031,7 +1039,7 @@ export function createApp(options: CreateAppOptions): Express {
     options.passRunner ??
     new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
   const alerts = options.alerts ?? new AlertStore(paths.alerts);
-  const workspace = defaultWorkspaceContext(options, passRunner, alerts);
+  const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog });
   // One resolver for the middleware below and the Author tools' per-call
   // workspace lookup (PLAN 19.3 - until W02a it resolves the launch
   // context whatever id comes in).
