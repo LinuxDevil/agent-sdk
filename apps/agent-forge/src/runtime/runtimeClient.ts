@@ -337,7 +337,6 @@ class RuntimeClient implements AgentApi {
    * agent's published spec and answers the pinned version number. Idempotent:
    * pinning the already-published version is a no-op.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L14a); L14b's publish UI consumes it
   async publish(agentId: string, version?: number): Promise<{ publishedVersion: number }> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/publish`, {
       method: 'POST',

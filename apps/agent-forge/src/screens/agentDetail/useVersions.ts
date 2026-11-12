@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback } from 'react';
 
-import { errorMessage } from '../../components/errorMessage';
 import { runtimeClient } from '../../runtime/runtimeClient';
+import { useFetchedResource } from '../../state/useFetchedResource';
 import { useStudioEvents } from '../../state/useStudioEvents';
 import type { StudioEvent, VersionListItem } from '../../../shared/wireTypes';
 
@@ -17,9 +17,8 @@ const VERSION_REASONS = new Set<Extract<StudioEvent, { type: 'agent.changed' }>[
  * The Versions tab's data (L01): `GET /agents/:id/versions` on mount and
  * whenever `agentId` changes, refreshed live by the shared `/events`
  * socket - `version.summary` fills a pending summary in place, an
- * `agent.changed` with a version-writing reason re-fetches. A request
- * counter drops stale responses so a slow earlier fetch cannot overwrite
- * a newer one.
+ * `agent.changed` with a version-writing reason re-fetches. The
+ * fetch/guard skeleton is `useFetchedResource`.
  */
 export function useVersions(agentId: string): {
   items: VersionListItem[] | undefined;
@@ -28,36 +27,16 @@ export function useVersions(agentId: string): {
   refresh(): Promise<void>;
   patchSummary(version: number, summary: string): void;
 } {
-  const [items, setItems] = useState<VersionListItem[] | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [loading, setLoading] = useState(true);
-  const requestRef = useRef(0);
-
-  const refresh = useCallback(async () => {
-    const request = ++requestRef.current;
-    setLoading(true);
-    try {
-      const list = await runtimeClient.listVersions(agentId);
-      if (request !== requestRef.current) return;
-      setItems(list);
-      setError(undefined);
-    } catch (err) {
-      if (request !== requestRef.current) return;
-      setError(errorMessage(err));
-    } finally {
-      if (request === requestRef.current) setLoading(false);
-    }
-  }, [agentId]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const { value: items, error, loading, refresh, setValue: setItems } = useFetchedResource<VersionListItem[]>({
+    key: agentId,
+    fetch: (id) => runtimeClient.listVersions(id),
+  });
 
   const patchSummary = useCallback((version: number, summary: string) => {
     setItems((prev) =>
       prev === undefined ? prev : prev.map((item) => (item.version === version ? { ...item, summary } : item)),
     );
-  }, []);
+  }, [setItems]);
 
   useStudioEvents(
     useCallback(
