@@ -32,6 +32,9 @@ import type {
   ForkRunResponse,
   McpProbeRequest,
   McpProbeResponse,
+  PassSettings,
+  PassSettingsPatch,
+  PassSpendSummary,
   McpServerSpecV2,
   PatchAgentMetaRequest,
   PromptSuggestion,
@@ -795,6 +798,26 @@ class RuntimeClient implements AgentApi {
    */
   async saveAuthorSettings(patch: Partial<AuthorSettings>): Promise<AuthorSettingsPayload> {
     return this.request('/settings/author', { method: 'PUT', body: JSON.stringify(patch) });
+  }
+
+  /** The background passes' model choices and per-kind switches (`GET /settings/passes`, L06b). */
+  async getPassSettings(): Promise<PassSettings> {
+    return this.request('/settings/passes', { method: 'GET' });
+  }
+
+  /**
+   * Patches the pass settings (`PUT /settings/passes`) and answers the
+   * effective settings. Rejects with the server's `{ error }` (400 for a
+   * `model` that is not `provider/model` or an unknown `enabled` kind).
+   */
+  async savePassSettings(patch: PassSettingsPatch): Promise<PassSettings> {
+    return this.request('/settings/passes', { method: 'PUT', body: JSON.stringify(patch) });
+  }
+
+  /** This window's pass spend rollup (`GET /settings/passes/spend?month=YYYY-MM`, L06a). */
+  async getPassSpend(month?: string): Promise<PassSpendSummary> {
+    const query = month === undefined ? '' : `?month=${encodeURIComponent(month)}`;
+    return this.request(`/settings/passes/spend${query}`, { method: 'GET' });
   }
 
   /**

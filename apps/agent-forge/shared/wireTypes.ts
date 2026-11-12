@@ -377,6 +377,72 @@ export interface SettingsFile {
   profiles: SettingsProfile[];
   /** Stored partial overrides for the Agent Author's model choices; `readAuthorSettings` merges the defaults under them. */
   author?: Partial<AuthorSettings>;
+  /** Stored partial overrides for the background passes' model choices and per-kind switches; `SettingsStore.passes()` merges the defaults under them. */
+  passes?: PassSettings;
+}
+
+/**
+ * The background passes' kinds (L06): version summaries, draft reviews,
+ * portability checks, prompt suggestions, auto approvals and eval judges.
+ * Declared here (not in `server/passes/passRunner.ts`) so the Settings
+ * card can enumerate them - one declaration, imported by the server.
+ */
+export type PassKind =
+  | 'version_summary'
+  | 'draft_review'
+  | 'portability_check'
+  | 'prompt_suggestion'
+  | 'auto_approval'
+  | 'eval_judge';
+
+/** Every `PassKind`, in display order. */
+export const PASS_KINDS: readonly PassKind[] = [
+  'version_summary',
+  'draft_review',
+  'portability_check',
+  'prompt_suggestion',
+  'auto_approval',
+  'eval_judge',
+];
+
+/** The Settings card's row label per pass kind. */
+export const PASS_KIND_LABELS: Record<PassKind, string> = {
+  version_summary: 'Version summaries',
+  draft_review: 'Draft reviews',
+  portability_check: 'Portability checks',
+  prompt_suggestion: 'Prompt suggestions',
+  auto_approval: 'Automatic tool approvals',
+  eval_judge: 'Eval judges',
+};
+
+/**
+ * `GET/PUT /settings/passes`'s answer (L06b): which model the passes call,
+ * which model auto-approvals use, and which kinds run at all. Stored
+ * sparsely in `settings.json` under `passes`; `SettingsStore.passes()`
+ * merges stored values over these defaults.
+ */
+export interface PassSettings {
+  /** `provider/model` the pass kinds share; default `anthropic/claude-haiku-5-5`. */
+  model: string;
+  /** `provider/model` auto-approvals score tool calls with; default `anthropic/claude-haiku-5-5`. */
+  autoApprovalModel: string;
+  /** Per-kind on/off; default every kind on. */
+  enabled: Record<PassKind, boolean>;
+}
+
+/** A `PUT /settings/passes` body: any subset of {@link PassSettings}, `enabled` itself sparse per kind. */
+export interface PassSettingsPatch {
+  model?: string;
+  autoApprovalModel?: string;
+  enabled?: Partial<Record<PassKind, boolean>>;
+}
+
+/** The `GET /settings/passes/spend` answer (L06a): this window's totals rolled up per kind. */
+export interface PassSpendSummary {
+  month: string;
+  totalUsd: number;
+  calls: number;
+  byKind: Partial<Record<PassKind, { calls: number; costUsd: number }>>;
 }
 
 /** R2: `POST /agents/:id/deploy`'s result - the shelled-out `lousho build` child process's outcome. */

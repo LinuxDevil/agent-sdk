@@ -133,6 +133,9 @@ import { createAuthorServices } from './author/services';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
+import { PassRunner } from './passes/passRunner';
+import { SpendLog } from './passes/spendLog';
+import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { sdkRootDir } from './sdkRoot';
 
@@ -216,6 +219,15 @@ interface CreateAppBaseOptions {
    * missing folder makes `searchDocs` answer `UNAVAILABLE`, not fail.
    */
   docsDir?: string;
+  /**
+   * The app's one PassRunner for background model passes (passes/
+   * passRunner.ts) - stamped onto the workspace context as `passes` and
+   * closed by `startStudioServer`. Defaults to `new PassRunner({ baseDir,
+   * spendLog })`; a test injects its own (short backoff, stub exporter).
+   */
+  passRunner?: PassRunner;
+  /** The spend log `passRunner` and `GET /settings/passes/spend` share. Defaults to `new SpendLog(studioPaths().spend)`. */
+  spendLog?: SpendLog;
 }
 
 /**
@@ -864,11 +876,14 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * legacy `{agentStore, runManager}` form instead of a ready-built
  * `workspace`: the launch folder's ref around those two stores.
  */
-function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
-  let workspace = options.workspace ?? legacyWorkspaceContext(options);
+function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunner): WorkspaceContext {
+  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
   if (options.eventBus !== undefined) workspace = { ...workspace, events: options.eventBus };
+  // `passRunner` overrides the context's runner the same way: a caller
+  // passing both a ready `workspace` and its own runner means the runner.
+  if (options.passRunner !== undefined) workspace = { ...workspace, passes: options.passRunner };
   // `idleVersioner` is a test seam too: it swaps the context's idle-version
   // scheduler - the one `workspaceOf(req).idleVersioner` touches/cancels.
   if (options.idleVersioner !== undefined) workspace = { ...workspace, idleVersioner: options.idleVersioner };
@@ -880,7 +895,7 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
  * `{agentStore, runManager}` pair instead of a ready-built `workspace`:
  * the launch folder's ref around those two stores.
  */
-function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefined }): WorkspaceContext {
+function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefined }, passRunner: PassRunner): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
   const versions = new VersionStore(repo);
   return {
@@ -903,6 +918,7 @@ function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefi
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
     events: new StudioEventBus(),
+    passes: passRunner,
   };
 }
 
@@ -916,7 +932,14 @@ export function createApp(options: CreateAppOptions): Express {
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
   const workspaceRegistry = options.workspaceRegistry ?? new WorkspaceRegistry(paths.workspaces);
-  const workspace = defaultWorkspaceContext(options);
+  // The app's one spend log and pass runner (passes/): Studio-global, so
+  // they live next to the other studioPaths() stores rather than per
+  // workspace. `passRunner` defaults to one over this `spendLog`.
+  const spendLog = options.spendLog ?? new SpendLog(paths.spend);
+  const passRunner =
+    options.passRunner ??
+    new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
+  const workspace = defaultWorkspaceContext(options, passRunner);
   // One resolver for the middleware below and the Author tools' per-call
   // workspace lookup (PLAN 19.3 - until W02a it resolves the launch
   // context whatever id comes in).
@@ -1052,6 +1075,9 @@ export function createApp(options: CreateAppOptions): Express {
   // fallback so a proxied GET never gets index.html.
   // Test-on-trace for judge rules runs here (the daemon has no provider keys); before the proxy.
   registerJudgeTestRoute(app, { secretsStore: secrets, ...(judge ? { judge } : {}) });
+  // The pass spend summary (passes/passRoutes.ts) - before the observe
+  // proxy so `/settings/passes/spend` is never proxied.
+  registerPassRoutes(app, { spendLog, settings });
   registerObserveProxy(app);
   registerStaticClient(app, staticDir);
 

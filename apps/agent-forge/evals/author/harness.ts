@@ -30,6 +30,8 @@ import { sdkRootDir } from '../../server/sdkRoot';
 import { createWorkspaceContext, singleWorkspace, type WorkspaceContext } from '../../server/workspace/context';
 import { workspaceRefFor } from '../../server/workspace/workspaceId';
 import { studioPathsFor } from '../../server/workspace/studioPaths';
+import { PassRunner } from '../../server/passes/passRunner';
+import { SpendLog } from '../../server/passes/spendLog';
 import { collectParts, type CollectedTranscript } from './checks';
 import type { AuthorScenario } from './scenario';
 
@@ -99,6 +101,13 @@ function createEvalServices(baseDir: string, opts: EvalHarnessOptions): EvalServ
     secretsStore: secrets,
     settingsStore: settings,
     observe: false,
+    // Evals never run real passes; the runner exists only to satisfy the
+    // context shape, writing to a throwaway spend log under baseDir.
+    passRunner: new PassRunner({
+      baseDir,
+      spendLog: new SpendLog(path.join(baseDir, '.lousho', 'passes', 'spend.jsonl')),
+      isEnabled: () => false,
+    }),
   });
   const workspaceResolver = singleWorkspace(workspace);
   const services = createAuthorServices({
