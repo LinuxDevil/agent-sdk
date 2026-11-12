@@ -30,6 +30,7 @@ import { createAuthorRunner } from './author/wiring';
 import { TemplateCatalog } from './templates/templateCatalog';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
+import { AlertStore } from './inbox/alertStore';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -163,11 +164,16 @@ export async function startStudioServer(
     spendLog,
     isEnabled: (kind) => settingsStore.passes().enabled[kind],
   });
+  // The Studio-global inbox alert store (L12): the failure-streak pass
+  // writes `auto_disabled` alerts here per workspace; R02a's inbox routes
+  // read the same instance off the app options.
+  const alerts = new AlertStore(paths.alerts);
   const workspace = createWorkspaceContext(launchRef, {
     secretsStore,
     settingsStore,
     observe: options.observe !== false,
     passRunner,
+    alerts,
   });
   // A test-injected versioner replaces the context's default one before the
   // app and `close()` below both read `workspace.idleVersioner`.
@@ -211,6 +217,7 @@ export async function startStudioServer(
     templateCatalog,
     spendLog,
     passRunner,
+    alerts,
   });
   const server = http.createServer(app);
   // One upgrade listener for every WS endpoint: the shared Host/Origin/

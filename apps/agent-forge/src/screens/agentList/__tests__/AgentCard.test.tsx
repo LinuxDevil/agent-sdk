@@ -137,6 +137,15 @@ describe('AgentCard', () => {
     expect(foot.querySelector('time[dateTime="not-a-date"]')).toBeNull();
     expect(foot.querySelectorAll('time')).toHaveLength(1);
   });
+
+  it('shows the Auto-off pill only for an auto-disabled agent (L12)', () => {
+    const auto = setup({ enabled: false, disabledReason: 'auto_failure_streak' });
+    expect(auto.host.querySelector('.status-pill.pill-warning')?.textContent).toBe('Auto-off');
+    const manual = setup({ enabled: false, disabledReason: 'manual' });
+    expect(manual.host.querySelector('.status-pill.pill-warning')).toBeNull();
+    const on = setup({ enabled: true });
+    expect(on.host.querySelector('.status-pill.pill-warning')).toBeNull();
+  });
 });
 
 describe('lastRunLabel', () => {

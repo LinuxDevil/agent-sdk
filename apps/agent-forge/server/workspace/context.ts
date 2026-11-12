@@ -33,6 +33,8 @@ import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
 import type { PassRunner } from '../passes/passRunner';
+import type { AlertStore } from '../inbox/alertStore';
+import { attachFailureStreak } from '../lifecycle/failureStreak';
 import { attachVersionSummaries } from '../passes/versionSummary';
 import { attachDraftReviews } from '../passes/draftReview';
 
@@ -109,6 +111,8 @@ export interface WorkspaceServices {
   observe: boolean;
   /** The app's one PassRunner, stamped onto every context this builds. */
   passRunner: PassRunner;
+  /** The Studio-global inbox alert store (L12) every workspace's failure-streak pass writes to. */
+  alerts: AlertStore;
 }
 
 /**
@@ -186,6 +190,11 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     settings: services.settingsStore,
     workspaceId: ref.id,
   });
+  // The triggered-run failure streak (L12): five consecutive failed
+  // 'trigger' runs auto-disable the agent and raise an inbox alert; the
+  // AlertStore is Studio-global, everything else is this workspace's.
+  // Same dispose() caveat as the attaches above.
+  attachFailureStreak({ runManager: runs, repo, alerts: services.alerts, events, workspaceId: ref.id });
   return {
     ref,
     repo,

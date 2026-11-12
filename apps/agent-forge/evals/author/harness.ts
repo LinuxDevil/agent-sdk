@@ -32,6 +32,7 @@ import { workspaceRefFor } from '../../server/workspace/workspaceId';
 import { studioPathsFor } from '../../server/workspace/studioPaths';
 import { PassRunner } from '../../server/passes/passRunner';
 import { SpendLog } from '../../server/passes/spendLog';
+import { AlertStore } from '../../server/inbox/alertStore';
 import { collectParts, type CollectedTranscript } from './checks';
 import type { AuthorScenario } from './scenario';
 
@@ -108,6 +109,9 @@ function createEvalServices(baseDir: string, opts: EvalHarnessOptions): EvalServ
       spendLog: new SpendLog(path.join(baseDir, '.lousho', 'passes', 'spend.jsonl')),
       isEnabled: () => false,
     }),
+    // Evals never trigger runs; the store exists only to satisfy the
+    // context shape, under the same throwaway `.lousho` as the spend log.
+    alerts: new AlertStore(globalPaths.alerts),
   });
   const workspaceResolver = singleWorkspace(workspace);
   const services = createAuthorServices({

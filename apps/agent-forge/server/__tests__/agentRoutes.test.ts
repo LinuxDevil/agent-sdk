@@ -97,6 +97,20 @@ describe('agent routes v2', () => {
       expect(ann).not.toHaveProperty('lastRun');
     });
 
+    it('carries meta.disabledReason on the list item (L12)', async () => {
+      await putV2('ops');
+      const meta = await repo.readMeta('ops');
+      await repo.writeMeta('ops', {
+        ...meta,
+        enabled: false,
+        disabledAt: '2026-01-01T00:00:00.000Z',
+        disabledReason: 'auto_failure_streak',
+      });
+      const res = await request(app()).get('/agents');
+      expect(res.status).toBe(200);
+      expect((res.body as AgentListItem[])[0]).toMatchObject({ enabled: false, disabledReason: 'auto_failure_streak' });
+    });
+
     it('skips a spec file it cannot read instead of failing the list', async () => {
       await putV2('good');
       fs.mkdirSync(repo.agentsDir(), { recursive: true });

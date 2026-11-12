@@ -106,7 +106,7 @@ function timeText(iso: string, now: number): TimeText | null {
  * contrast - only the tile goes grey - so the card stays AA-readable.
  */
 export function AgentCard({ agent, onOpen, onToggleEnabled, toggling = false, now = Date.now() }: AgentCardProps): JSX.Element {
-  const { id, name, description, model, enabled, labels, updatedAt, publishedVersion, lastRun } = agent;
+  const { id, name, description, model, enabled, disabledReason, labels, updatedAt, publishedVersion, lastRun } = agent;
   const nameId = `agent-card-name-${encodeURIComponent(id)}`;
   const caps = capabilityChips(agent.counts);
   const lastRunTime = lastRun ? timeText(lastRun.at, now) : null;
@@ -160,6 +160,9 @@ export function AgentCard({ agent, onOpen, onToggleEnabled, toggling = false, no
                 disabled={toggling}
                 onChange={(value) => onToggleEnabled(id, value)}
               />
+              {!enabled && disabledReason === 'auto_failure_streak' && (
+                <span className="status-pill pill-warning">Auto-off</span>
+              )}
             </div>
           </div>
           {description !== '' && (

@@ -109,6 +109,15 @@ export interface AgentRunStatusPayload {
    * pane can keep showing it.
    */
   steering?: SteerInfo[];
+  /**
+   * What started this run (L12): `'trigger'` for runs a trigger launched
+   * (`triggerId` names which), `'manual'`/absent for Run/chat starts. Set
+   * on launch and kept through approve()/resume of the same run; cleared
+   * by the next manual run. The failure-streak pass counts only
+   * `'trigger'` runs.
+   */
+  source?: 'manual' | 'trigger';
+  triggerId?: string;
   updatedAt: string;
 }
 
@@ -713,6 +722,8 @@ export interface AgentListItem {
   description: string;
   model: string;
   enabled: boolean;
+  /** Why the agent is off (`meta.disabledReason`) - the card's Auto-off pill keys on `'auto_failure_streak'` (L12). */
+  disabledReason?: AgentMeta['disabledReason'];
   labels: string[];
   /** Spec file mtime - what the list sorts and displays as "last edited". */
   updatedAt: string;
