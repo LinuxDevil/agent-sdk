@@ -1,4 +1,5 @@
-import { schemaProblems, type InputProblem } from '../client/inputs';
+import { checkPageInputs, schemaProblems, type InputProblem } from '../client/inputs';
+import { SDKError } from '../../utils/sdkError';
 import type { EffectiveHarness } from '../contracts/compose';
 import type { ArtifactRef, ArtifactSink, PageEngine, PageErrorKind, PageInput, PageResult, PageRunContext, PageRunEvent, PageUsage } from '../contracts/execution';
 import { pageSchema, type PageManifest } from '../contracts/page';
@@ -43,6 +44,10 @@ const EMPTY_USAGE: PageUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0
 
 function readPage(workspace: LoadedWorkspace, pageId: string): PageManifest {
   const path = `pages/${pageId}/page.json`;
+  if (!Object.hasOwn(workspace.manifest.pages, pageId) || workspace.tree[path] === undefined) {
+    const known = Object.keys(workspace.manifest.pages).map((id) => `'${id}'`).join(', ');
+    throw new SDKError(`page-unknown: the workspace has no page '${pageId}'; its pages are ${known || 'none'}.`, 'LOUSHO_WORKSPACE_PAGE_UNKNOWN');
+  }
   return pageSchema.parse(jsonOf(workspace.tree[path], path));
 }
 
@@ -83,6 +88,7 @@ async function engineSetup(workspace: LoadedWorkspace, page: PageManifest, harne
     { capabilities: harness.capabilities?.require ?? [], attachments: resolved.map((item) => ({ alias: item.alias, agentOwned: item.agentOwned, pageOwned: item.pageOwned })) },
     host.tools
   );
+  for (const warning of policy.warnings) console.warn(`[lousho] runPage: page '${page.id}': ${warning}`);
   const attachments: Record<string, PageAttachment> = Object.fromEntries(resolved.map((item) => [item.alias, { resolved: item, policy: policy.attachments[item.alias] }]));
   return {
     workspace,
@@ -173,7 +179,7 @@ export async function runPage(workspace: LoadedWorkspace, input: PageInput, ctx:
   const page = readPage(workspace, input.pageId);
   const harness = resolvePageHarness(workspace, page.id, profileStoreFor(workspace, ctx.host.globalProfiles));
   const inputSchema = schemaOf(harness.inputs?.schema);
-  const invalid = inputSchema === undefined ? [] : schemaProblems(inputSchema, input.inputs, 'inputs');
+  const invalid = inputSchema === undefined ? [] : checkPageInputs(inputSchema, input.inputs);
   if (invalid.length > 0) {
     emit({ type: 'finished', status: 'failed' });
     return failed(ctx.runId, 'invalid-input', `the inputs are invalid: ${describe(invalid)}`);

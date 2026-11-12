@@ -104,7 +104,7 @@ describe('runPage', () => {
     const [revised] = userTexts(model, 1);
     expect(revised).toContain('Ranked low.');
     expect(revised).toContain('Rank it higher.');
-    expect(revised).not.toContain('{"ranking":"low"}');
+    expect(revised).toContain(JSON.stringify({ ranking: 'low' }, null, 2));
   });
 
   it('defaults an empty task to the UI title, else the page id', async () => {
@@ -137,6 +137,53 @@ describe('runPage', () => {
     const step = events.find((event) => event.type === 'step');
     expect(invoke?.attributes['lousho.harness.hash']).toBe(step && 'harnessHash' in step ? step.harnessHash : undefined);
     expect(typeof invoke?.attributes['lousho.harness.part_hash']).toBe('string');
+  });
+
+  it('the repair turn shares the page limits with the first turn', async () => {
+    const page = JSON.parse(codingFiles()['pages/support-triage/page.json']) as { execution: Record<string, unknown> };
+    page.execution.limits = { maxTurns: 2 };
+    const workspace = await load({ 'pages/support-triage/page.json': JSON.stringify(page) });
+    const model = mockModel(['{"wrong":1}', '{"wrong":2}', '{"ranking":"urgent"}']);
+    const result = await runPage(workspace, triage({ report: 'x' }), context(hostWith(model), 'run-17'));
+    expect(result).toMatchObject({ status: 'failed', error: { kind: 'budget' } });
+    expect(result.usage.modelCalls).toBe(model.calls.length);
+  });
+
+  it('cost counts across the repair turn', async () => {
+    const page = JSON.parse(codingFiles()['pages/support-triage/page.json']) as { execution: Record<string, unknown> };
+    page.execution.limits = { maxCostUsd: 0.0016 };
+    const workspace = await load({ 'pages/support-triage/page.json': JSON.stringify(page) });
+    const usage = { inputTokens: 1000, outputTokens: 1000 };
+    const model = mockModel([{ text: '{"wrong":1}', usage }, { text: '{"wrong":2}', usage }, { text: '{"wrong":3}', usage }, { text: '{"ranking":"urgent"}', usage }], { defaultModel: 'gpt-4o-mini' });
+    const result = await runPage(workspace, triage({ report: 'x' }), context(hostWith(model), 'run-22'));
+    expect(model.calls).toHaveLength(3);
+    expect(result).toMatchObject({ status: 'failed', error: { kind: 'budget' } });
+    expect(result.usage.costUsd).toBeCloseTo(0.00225, 10);
+  });
+
+  it('running out of maxDurationMs ends the run timed-out', async () => {
+    const page = JSON.parse(codingFiles()['pages/support-triage/page.json']) as { execution: Record<string, unknown> };
+    page.execution.limits = { maxDurationMs: 20 };
+    const workspace = await load({ 'pages/support-triage/page.json': JSON.stringify(page) });
+    const result = await runPage(workspace, triage({ report: 'x' }), context(hostWith(mockModel([{ text: '{"ranking":"low"}', delayMs: 500 }])), 'run-18'));
+    expect(result).toMatchObject({ status: 'timed-out', error: { kind: 'timeout' } });
+  });
+
+  it('an unknown page id throws page-unknown', async () => {
+    const workspace = await load();
+    await expect(runPage(workspace, { pageId: 'nope', task: '' }, context(hostWith(mockModel([])), 'run-19'))).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PAGE_UNKNOWN' });
+    await expect(runPage(workspace, { pageId: 'toString', task: '' }, context(hostWith(mockModel([])), 'run-20'))).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PAGE_UNKNOWN' });
+  });
+
+  it('prints the page policy warnings', async () => {
+    const workspace = await load({ 'agents/triager/tools/missing_tool.ts': 'export {};\n' });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      await runPage(workspace, triage({ report: 'x' }), context(hostWith(mockModel(['{"ranking":"low"}'])), 'run-21'));
+      expect(warn.mock.calls.map(([line]) => String(line))).toContainEqual(expect.stringMatching(/^\[lousho\] runPage: page 'support-triage': agent: the agent's tool 'missing_tool'/));
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('a required artifact the run did not produce is an invalid output', async () => {

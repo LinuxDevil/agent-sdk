@@ -115,6 +115,13 @@ describe('the main agent and the page router', () => {
     expect(model.calls).toHaveLength(0);
   });
 
+  it('run with an unknown pageId rejects with the page runtime page-unknown error', async () => {
+    const workspace = await load('ops-desk');
+    const seen = newSeen();
+    await expect(session(workspace, mockModel([]), fakeEngines(seen)).run('Summarise today', { pageId: 'nope' })).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PAGE_UNKNOWN' });
+    expect(seen.inputs).toHaveLength(0);
+  });
+
   it('with mainAgent null, run without pageId returns no-main-agent', async () => {
     const workspace = await load('ops-desk');
     const seen = newSeen();

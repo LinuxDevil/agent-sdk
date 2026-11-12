@@ -505,15 +505,15 @@ Every engine emits the same labels, and attribution reads only these, never the 
 
 `runPage(workspace, input, ctx)` runs one page of a loaded workspace:
 
-1. It validates `input.inputs` against the effective `inputs.schema` with `checkPageInputs`, the same check the page UI runs in the browser (`lousho/workspaces/client`). On a problem it returns `failed` with `error.kind: 'invalid-input'` and every field path (`inputs.report: ...`) before any model call.
+1. It throws `LOUSHO_WORKSPACE_PAGE_UNKNOWN` for a page id the workspace does not list. It validates `input.inputs` against the effective `inputs.schema` with `checkPageInputs`, the same check the page UI runs in the browser (`lousho/workspaces/client`). On a problem it returns `failed` with `error.kind: 'invalid-input'` and every field path (`inputs.report: ...`) before any model call.
 2. It picks the engine for `execution.type` from `ctx.engines`, by default `ENGINES`. `engineFor(type)` throws `LOUSHO_WORKSPACE_ENGINE_UNKNOWN` when the registry has none; `ENGINES` has `single` today.
-3. It resolves the attachments, applies the policy with `pagePolicy()`, and runs the engine with the run id as its session id, `ctx.signal`, and the page's `execution.limits`.
+3. It resolves the attachments, applies the policy with `pagePolicy()` (each warning prints as a `[lousho] runPage:` console warning), and runs the engine with the run id as its session id, `ctx.signal`, and the page's `execution.limits`.
 4. It validates `output` against `outputs.schema` and checks that every artifact marked `required` was stored.
 5. On an invalid output it gives the engine one repair turn, a revise of the same run whose instruction starts `your output failed:`, then returns `failed` with `invalid-output`.
 
 An empty `task` becomes the page UI's `title`, else the page id. A page gets only the task, its inputs and, for a revise, the earlier run's `PageResult` (`ctx.prior`). It never sees the main agent's conversation or another page's transcript.
 
-The `single` engine runs the page's one attachment in its own session, with structured output (the `output` mode of an AgentSpec) when the harness has an output schema. That mode also makes one repair call inside a turn when a reply does not parse.
+The `single` engine runs the page's one attachment in its own session, with structured output (the `output` mode of an AgentSpec) when the harness has an output schema. That mode also makes one repair call inside a turn when a reply does not parse or does not match the output schema, so the runtime's repair turn comes after it. The session carries the page's limits, so turns, cost and duration count across both turns, and running out of `maxDurationMs` ends the run `timed-out` with `error.kind: 'timeout'`.
 
 The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `exporter`, `globalAgents`, `globalProfiles` and `createMemory(file)`, which builds the slot for a `shared/memory/*.ts` file. `ctx.sharedRun` (a `createSharedContextRun()` object) makes every page of one workspace run, and the main agent, share the same shared memory instances. Every agent the runtime builds gets its step's labels from `labelsFor()` as `lousho.*` attributes on its `invoke_agent` span (`labelAttributes()`, with the workspace id, the harness part hash and a `global:` agent's version and sha256), and the engine puts the same labels on its `step` events.
 
