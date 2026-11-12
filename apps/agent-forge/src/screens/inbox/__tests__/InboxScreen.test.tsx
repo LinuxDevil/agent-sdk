@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   approve: vi.fn(),
   answer: vi.fn(),
   dismissAlert: vi.fn(),
+  addAlertToDataset: vi.fn(),
   subscribeEvents: vi.fn(() => () => {}),
 }));
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
@@ -65,7 +66,7 @@ const draft = (): InboxItem =>
     detail: 'Tighten the refund policy.',
   }) as InboxItem;
 
-const alert = (): InboxItem =>
+const alert = (over: Partial<InboxItem> = {}): InboxItem =>
   ({
     ...base,
     id: 'alert:support-bot:al1',
@@ -75,6 +76,7 @@ const alert = (): InboxItem =>
     payload: {},
     title: 'Auto-approval disabled',
     detail: '5 failures in a row',
+    ...over,
   }) as InboxItem;
 
 const suggestion = (): InboxItem =>
@@ -109,6 +111,7 @@ beforeEach(() => {
   api.approve.mockReset().mockResolvedValue({});
   api.answer.mockReset().mockResolvedValue({});
   api.dismissAlert.mockReset().mockResolvedValue(undefined);
+  api.addAlertToDataset.mockReset().mockResolvedValue({ dataset: 'support-bot-regressions', exampleId: 'ex1' });
   api.subscribeEvents.mockClear();
 });
 
@@ -182,6 +185,31 @@ describe('InboxScreen', () => {
     await settle();
     expect(api.dismissAlert).toHaveBeenCalledWith('al1');
     expect(container.querySelector('.inbox-row')).toBeNull();
+  });
+
+  it('adds a low-rating alert’s trace to the regressions dataset (R04b)', async () => {
+    api.listInbox.mockResolvedValue([
+      alert({ alertKind: 'low_rating', payload: { traceId: 't-1' }, title: 'Run rated 2' }),
+    ]);
+    const container = mount();
+    await settle();
+
+    const add = button(container, 'Add to dataset support-bot-regressions');
+    expect(add).toBeDefined();
+    await act(async () => add.click());
+    await settle();
+
+    expect(api.addAlertToDataset).toHaveBeenCalledWith('support-bot', 'al1');
+    expect(container.textContent).toContain('Added to support-bot-regressions');
+    // The row stays - the alert is dismissed separately.
+    expect(container.querySelector('.inbox-row')).not.toBeNull();
+  });
+
+  it('does not offer the dataset action on other alert kinds', async () => {
+    api.listInbox.mockResolvedValue([alert()]);
+    const container = mount();
+    await settle();
+    expect(button(container, 'Add to dataset support-bot-regressions')).toBeUndefined();
   });
 
   it('links draft, suggestion and alert rows to their screens', async () => {

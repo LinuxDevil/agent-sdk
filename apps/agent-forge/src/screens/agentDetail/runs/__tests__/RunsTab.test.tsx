@@ -6,10 +6,17 @@ import type { AgentSpecV2 } from 'lousho/spec';
 import type { ObserveScoreRow } from '../../../../observe/types';
 import { render } from '../../../../ui/__tests__/render';
 
-const mocks = vi.hoisted(() => ({ listTraces: vi.fn(), listScores: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listTraces: vi.fn(), listScores: vi.fn(), rateRun: vi.fn() }));
 
 vi.mock('../../../../runtime/runtimeClient', () => ({
-  runtimeClient: { listTraces: mocks.listTraces },
+  runtimeClient: { listTraces: mocks.listTraces, rateRun: mocks.rateRun },
+  RuntimeApiError: class RuntimeApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
 }));
 
 vi.mock('../../../../observe/observeClient', async (importOriginal) => {
@@ -18,6 +25,7 @@ vi.mock('../../../../observe/observeClient', async (importOriginal) => {
 });
 
 import { ObserveDaemonDownError } from '../../../../observe/observeClient';
+import { ToastProvider } from '../../../../ui/Toast';
 import { AgentDetailContext } from '../../AgentDetailContext';
 import { RunsTab } from '../RunsTab';
 
@@ -85,9 +93,11 @@ function score(traceId: string, value: number, comment: string | null = null): O
 /** Mounts the tab inside the detail context the route provides. */
 function renderTab() {
   return render(
-    <AgentDetailContext.Provider value={{ record: record(), refresh: () => {}, setRecord: () => {} }}>
-      <RunsTab />
-    </AgentDetailContext.Provider>,
+    <ToastProvider>
+      <AgentDetailContext.Provider value={{ record: record(), refresh: () => {}, setRecord: () => {} }}>
+        <RunsTab />
+      </AgentDetailContext.Provider>
+    </ToastProvider>,
   );
 }
 
@@ -110,6 +120,8 @@ async function clickAndFlush(host: HTMLElement, label: string) {
 beforeEach(() => {
   mocks.listTraces.mockReset();
   mocks.listScores.mockReset();
+  mocks.rateRun.mockReset();
+  mocks.rateRun.mockResolvedValue(undefined);
   mocks.listTraces.mockResolvedValue([]);
   mocks.listScores.mockResolvedValue([]);
 });
@@ -138,10 +150,12 @@ describe('RunsTab', () => {
     expect(rows[0].querySelector('.status-badge-label')?.textContent).toBe('Done');
     expect(rows[1].querySelector('.status-badge-label')?.textContent).toBe('Failed');
 
-    const rating = rows[0].querySelector('.runs-rating')!;
-    expect(rating.getAttribute('aria-label')).toBe('Rated 4 out of 5');
-    expect(rating.getAttribute('title')).toBe('nice');
-    expect(rows[1].querySelector('.runs-rating')?.classList.contains('runs-rating-low')).toBe(true);
+    // R04b: the rating column is the 1-5 RatingControl - t1's stored 4
+    // checks option 4 and lights options 1-4.
+    const rating = rows[0].querySelector('.rating[role="radiogroup"]')!;
+    expect(rating.querySelector('[aria-label="4, Great"]')?.getAttribute('aria-checked')).toBe('true');
+    expect(rows[0].querySelectorAll('.rating-option-on').length).toBe(4);
+    expect(rows[1].querySelectorAll('.rating-option-on').length).toBe(2);
 
     const open = rows[0].querySelector<HTMLAnchorElement>('a[href="#/traces/t1"]')!;
     expect(open.textContent).toBe('Open trace');
@@ -156,8 +170,8 @@ describe('RunsTab', () => {
     await flush();
 
     expect(host.querySelectorAll('tbody tr').length).toBe(1);
-    expect(host.querySelector('.runs-rating')).toBeNull();
-    expect(host.querySelector('.value-missing')?.textContent).toBe('—');
+    // No stored rating: every option renders unselected.
+    expect(host.querySelector('.rating-option-on')).toBeNull();
     expect(host.querySelector('.runs-note')?.textContent).toContain(
       'Ratings need the observe daemon (lousho observe). Runs still show.',
     );
@@ -183,6 +197,23 @@ describe('RunsTab', () => {
 
     expect(mocks.listTraces).toHaveBeenCalledTimes(2);
     expect(host.querySelectorAll('tbody tr').length).toBe(1);
+  });
+
+  it('posts the picked rating for the row’s trace (R04b)', async () => {
+    mocks.listTraces.mockResolvedValue([trace('t1'), trace('t2')]);
+    const host = renderTab();
+    await flush();
+
+    const option = host.querySelector<HTMLButtonElement>('tbody tr:nth-child(2) [aria-label="2, Fair"]')!;
+    // Synchronous act: the optimistic paint lands before the post-save
+    // refresh unmounts the table behind its loading skeleton.
+    act(() => option.click());
+
+    expect(mocks.rateRun).toHaveBeenCalledWith('support-bot', { traceId: 't2', value: 2 });
+    const row = host.querySelectorAll('tbody tr')[1];
+    expect(row.querySelectorAll('.rating-option-on').length).toBe(2);
+    expect(row.querySelector('[aria-label="2, Fair"]')?.getAttribute('aria-checked')).toBe('true');
+    await flush();
   });
 
   it('Refresh refetches both the runs and the ratings', async () => {

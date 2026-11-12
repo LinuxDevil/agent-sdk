@@ -25,6 +25,7 @@ vi.mock('../../../state/AppState', () => ({
 
 import { TestPane } from '../TestPane';
 import { useRunElapsed } from '../useRunElapsed';
+import { ToastProvider } from '../../../ui/Toast';
 
 const T0 = '2026-01-01T00:00:00.000Z';
 
@@ -60,13 +61,19 @@ describe('TestPane run bar', () => {
 
   it('shows the model and Open trace for a finished run, but no elapsed clock', () => {
     state.runStatus = status({ status: 'done', provider: 'openai/gpt-4o', traceId: 'trace-9' });
-    const container = render(<TestPane />);
+    const container = render(
+      <ToastProvider>
+        <TestPane />
+      </ToastProvider>,
+    );
     const bar = container.querySelector('.test-run-bar')!;
     expect(bar.querySelector('.test-run-model')?.textContent).toBe('openai/gpt-4o');
     const link = bar.querySelector<HTMLAnchorElement>('.run-trace-link')!;
     expect(link.getAttribute('href')).toBe('#/traces/trace-9');
     expect(link.getAttribute('aria-label')).toBe('Open trace');
     expect(bar.querySelector('.test-run-elapsed')).toBeNull();
+    // R04b: a finished run offers the 1-5 rating right in the bar.
+    expect(bar.querySelector('.rating[role="radiogroup"]')).not.toBeNull();
   });
 
   it('hides Open trace until the status carries a traceId', () => {
