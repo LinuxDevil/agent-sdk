@@ -242,7 +242,7 @@ export function registerDraftRoutes(app: Express): void {
           if ('labels' in cur.patch) {
             await ws.repo.writeMeta(id, { ...meta, labels: next.labels, updatedAt: new Date().toISOString() });
           }
-          await ws.versions.capture(id, { kind: 'update', source: 'draft' });
+          await ws.versions.capture(id, { kind: 'update', source: 'draft', requestText: cur.reason });
           const settled = await ws.drafts.settle(id, 'approved', { draftId: cur.id, note: parsed.note });
           res.json(settled);
           ws.events.publish({ type: 'draft.changed', agentId: id, draftId: settled.id, status: settled.status });

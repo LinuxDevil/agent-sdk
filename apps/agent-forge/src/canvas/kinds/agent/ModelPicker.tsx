@@ -9,8 +9,9 @@
  */
 import { useState, type ChangeEvent, type ChangeEventHandler } from 'react';
 import { Field } from '../../../ui/Field';
-import { Input, Select, type SelectGroup } from '../../../ui/controls';
+import { Input, Select } from '../../../ui/controls';
 import { refreshCatalog, useCatalog } from '../../useCatalog';
+import { modelGroups } from '../../modelGroups';
 import { AGENT_MODEL_PATTERN } from '../../../graph/v2/kinds/agent';
 import '../../fields/fields.css';
 
@@ -29,17 +30,6 @@ export const MODEL_ID_ERROR = 'Use provider/model, e.g. anthropic/claude-sonnet-
 
 /** The select value of the "Other…" option (no catalog id can equal it). */
 const OTHER = '__other__';
-
-/** One `<optgroup>` per provider, alphabetically; an unavailable model is labelled '(no key)'. */
-function groupsOf(models: { id: string; provider: string; available: boolean }[]): SelectGroup[] {
-  const providers = [...new Set(models.map((m) => m.provider))].sort();
-  return providers.map((provider) => ({
-    label: provider,
-    options: models
-      .filter((m) => m.provider === provider)
-      .map((m) => ({ value: m.id, label: m.available ? m.id : `${m.id} (no key)` })),
-  }));
-}
 
 /** The field error: a required/pattern problem on the value first, else the catalog's failure. */
 function errorOf(value: string | undefined, catalogError: string | undefined): string | undefined {
@@ -112,7 +102,7 @@ export function ModelPicker({ id, value, onChange }: ModelPickerProps): JSX.Elem
         <Select
           value={value ?? ''}
           placeholder="Pick a model"
-          groups={groupsOf(models ?? [])}
+          groups={modelGroups(models ?? [])}
           options={[{ value: OTHER, label: 'Other…' }]}
           onChange={onSelect}
         />

@@ -3,23 +3,17 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { agentSpecV2Schema, type AgentSpecV2 } from 'lousho';
-import type {
-  AuthorAssistantMessage,
-  AuthorMessage,
-  AuthorToolFailure,
-  AuthorUserMessage,
-  ProposalOutput,
-} from '../../../../shared/authorWire';
+import type { AuthorToolFailure, ProposalOutput } from '../../../../shared/authorWire';
 import type { StudioEvent } from '../../../../shared/wireTypes';
 import { AgentRepo, defaultMeta } from '../../../storage/agentRepo';
 import { VersionStore } from '../../../storage/versionStore';
 import { specHash } from '../../../storage/specHash';
 import { StudioEventBus } from '../../../events/eventBus';
 import { AuthorSessionStore } from '../../sessionStore';
-import { requestTextFor, writeProposal, type WriteContext } from '../save';
+import { writeProposal, type WriteContext } from '../save';
 
 /**
- * writeProposal + requestTextFor (AA10b): the one write path behind the
+ * writeProposal (AA10b): the one write path behind the
  * save tools and the card's Apply button. Real AgentRepo / VersionStore /
  * AuthorSessionStore over a temp dir, so the assertions read the files
  * Studio would actually write.
@@ -49,64 +43,6 @@ function card(proposalId: string, over: Partial<ProposalOutput> = {}): ProposalO
     ...over,
   };
 }
-
-function userMsg(text: string, id = 'm_u1'): AuthorUserMessage {
-  return { id, role: 'user', text, at: '2026-01-01T00:00:00.000Z' };
-}
-
-function uiSave(proposalId: string): AuthorUserMessage {
-  return {
-    id: 'm_ui',
-    role: 'user',
-    text: '',
-    at: '2026-01-01T00:01:00.000Z',
-    uiEvent: { kind: 'save', proposalId, agentId: 'a', version: 1 },
-  };
-}
-
-function assistantCard(proposalId: string): AuthorAssistantMessage {
-  return {
-    id: 'm_a1',
-    role: 'assistant',
-    parts: [
-      { type: 'tool', toolCallId: proposalId, name: 'proposeAgent', input: { draft: {} }, output: { ok: true }, state: 'done' },
-    ],
-    at: '2026-01-01T00:02:00.000Z',
-  };
-}
-
-describe('requestTextFor', () => {
-  it('returns the last non-empty user text before the assistant message holding the card', () => {
-    const messages: AuthorMessage[] = [
-      userMsg('first ask', 'm_u1'),
-      assistantCard('call_older'),
-      userMsg('second ask', 'm_u2'),
-      assistantCard('call_p1'),
-    ];
-    expect(requestTextFor(messages, 'call_p1')).toBe('second ask');
-    expect(requestTextFor(messages, 'call_older')).toBe('first ask');
-  });
-
-  it('cuts to 400 chars with an ellipsis', () => {
-    const messages: AuthorMessage[] = [userMsg('x'.repeat(500)), assistantCard('call_p1')];
-    const text = requestTextFor(messages, 'call_p1');
-    expect(text).toHaveLength(400);
-    expect(text?.endsWith('…')).toBe(true);
-  });
-
-  it('skips uiEvent user messages', () => {
-    const withUi: AuthorMessage[] = [userMsg('the real ask'), uiSave('call_p0'), assistantCard('call_p1')];
-    expect(requestTextFor(withUi, 'call_p1')).toBe('the real ask');
-    const onlyUi: AuthorMessage[] = [uiSave('call_p0'), assistantCard('call_p1')];
-    expect(requestTextFor(onlyUi, 'call_p1')).toBeNull();
-  });
-
-  it('returns null when the card or a preceding user text is absent', () => {
-    expect(requestTextFor([userMsg('hi'), assistantCard('call_p1')], 'call_nope')).toBeNull();
-    expect(requestTextFor([assistantCard('call_p1')], 'call_p1')).toBeNull();
-    expect(requestTextFor([userMsg('   '), assistantCard('call_p1')], 'call_p1')).toBeNull();
-  });
-});
 
 describe('writeProposal', () => {
   let dir: string;

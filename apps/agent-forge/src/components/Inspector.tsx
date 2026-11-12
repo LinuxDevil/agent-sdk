@@ -2,7 +2,8 @@ import { useRef } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { Activity, CircleAlert, MousePointerClick, TriangleAlert } from 'lucide-react';
 import { useAppState } from '../state/AppState';
-import { patchNode, setNodeData } from '../graph/v2/mutations';
+import { patchFlowMeta, patchNode, setNodeData } from '../graph/v2/mutations';
+import { reorderChild, setOptionCondition } from '../graph/v2/kinds/flow';
 import { toolNodeName } from '../graph/v2/nodeIds';
 import type { Graph, GraphNode, Problem, ToolNodeData } from '../graph/v2/types';
 import { ROOT_AGENT_ID } from '../graph/v2/types';
@@ -220,6 +221,18 @@ function NodeInspector({ selected }: { selected: GraphNode }) {
         history: { label: 'Edit', coalesceKey: `field:${selectedId}:${Object.keys(patch)[0] ?? ''}` },
       }),
     replace: (data) => setGraph((g) => setNodeData(g, selectedId, data)),
+    patchFlowMeta: (patch) =>
+      setGraph((g) => patchFlowMeta(g, selectedId, patch), {
+        history: { label: 'Edit flow', coalesceKey: `flowmeta:${selectedId}:${Object.keys(patch)[0] ?? ''}` },
+      }),
+    moveChild: (childId, delta) =>
+      setGraph((g) => reorderChild(g, selectedId, childId, delta), {
+        history: { label: 'Reorder step', coalesceKey: `floworder:${selectedId}` },
+      }),
+    setOptionCondition: (childId, condition) =>
+      setGraph((g) => setOptionCondition(g, selectedId, childId, condition), {
+        history: { label: 'Edit condition', coalesceKey: `flowcond:${selectedId}:${childId}` },
+      }),
     problems: nodeProblems,
   };
   const breakpointKey = breakpointKeyFor(selected);

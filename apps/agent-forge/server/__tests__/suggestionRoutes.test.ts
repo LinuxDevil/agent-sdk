@@ -140,7 +140,12 @@ describe('suggestion routes', () => {
 
     const res = await request(app()).post('/agents/ops/suggestions/sug-1/apply');
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ version: 1, kind: 'update', source: 'suggestion' });
+    expect(res.body).toMatchObject({
+      version: 1,
+      kind: 'update',
+      source: 'suggestion',
+      requestText: 'From run trace-1: Missing operational fact',
+    });
     expect(res.body.changedFields).toContain('instructions');
 
     expect(await instructions()).toBe('Check the queues. Always cite sources.');

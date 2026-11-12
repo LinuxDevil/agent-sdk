@@ -29,6 +29,7 @@ import type { AgentSpec } from 'lousho';
 import { evaluatorTraceFrom, type EvaluatorTrace, type ObservationRow } from 'lousho/traces';
 import { buildAgentFromSpec } from './buildAgent';
 import { daemonHeaders, observeTarget } from './observeProxy';
+import { firstJsonObject } from './passes/jsonReply';
 import { providerOf } from './playground';
 import type { SecretsStore } from './secretsStore';
 
@@ -104,40 +105,6 @@ export function judgePrompt(trace: EvaluatorTrace): string {
     `Output:\n${clip(trace.output)}`,
     `Error:\n${clip(trace.error_message)}`,
   ].join('\n\n');
-}
-
-/** How many `{` (and, per `{`, how many `}`) the reply scan tries before it gives up on a long prose reply. */
-const MAX_BRACES = 50;
-
-/** A JSON object, or `undefined` when `slice` is not one. */
-function objectOf(slice: string): Record<string, unknown> | undefined {
-  try {
-    const parsed: unknown = JSON.parse(slice);
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Indexes of `char` in `text` from `from` on, at most {@link MAX_BRACES}. */
-function indexesOf(text: string, char: string, from = 0): number[] {
-  const found: number[] = [];
-  for (let i = text.indexOf(char, from); i !== -1 && found.length < MAX_BRACES; i = text.indexOf(char, i + 1)) found.push(i);
-  return found;
-}
-
-/**
- * The first JSON object in `text`: from the earliest `{`, the shortest
- * `{...}` that parses (so braces inside strings or prose are tolerated).
- */
-function firstJsonObject(text: string): Record<string, unknown> | undefined {
-  for (const start of indexesOf(text, '{')) {
-    for (const end of indexesOf(text, '}', start)) {
-      const object = objectOf(text.slice(start, end + 1));
-      if (object !== undefined) return object;
-    }
-  }
-  return undefined;
 }
 
 /**

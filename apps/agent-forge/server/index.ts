@@ -28,6 +28,8 @@ import { createAuthorUpgradeHandler } from './author/authorStream';
 import { AuthorTurnRunner } from './author/turnRunner';
 import { createAuthorRunner } from './author/wiring';
 import { TemplateCatalog } from './templates/templateCatalog';
+import { PassRunner } from './passes/passRunner';
+import { SpendLog } from './passes/spendLog';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -152,10 +154,20 @@ export async function startStudioServer(
   // its stored ref is the launch context's identity.
   const registry = new WorkspaceRegistry(paths.workspaces);
   const launchRef = await registry.ensure(baseDir);
+  // The app's one pass runner + spend log (passes/): Studio-global, shared
+  // by every workspace context through WorkspaceServices, and the same
+  // instances the spend route and `close()` use.
+  const spendLog = new SpendLog(paths.spend);
+  const passRunner = new PassRunner({
+    baseDir,
+    spendLog,
+    isEnabled: (kind) => settingsStore.passes().enabled[kind],
+  });
   const workspace = createWorkspaceContext(launchRef, {
     secretsStore,
     settingsStore,
     observe: options.observe !== false,
+    passRunner,
   });
   // A test-injected versioner replaces the context's default one before the
   // app and `close()` below both read `workspace.idleVersioner`.
@@ -197,6 +209,8 @@ export async function startStudioServer(
     sessions: authorSessions,
     authorRunner,
     templateCatalog,
+    spendLog,
+    passRunner,
   });
   const server = http.createServer(app);
   // One upgrade listener for every WS endpoint: the shared Host/Origin/
@@ -224,6 +238,9 @@ export async function startStudioServer(
     url: `http://${urlHost}:${boundPort}/?token=${encodeURIComponent(token)}`,
     close: async () => {
       judgeLoop?.stop();
+      // Abort in-flight passes and settle queued ones; running jobs get the
+      // abort signal and their records land if they settle before exit.
+      passRunner.close();
       // Flush pending idle-version captures before the socket stops taking writes.
       await workspace.idleVersioner.flushAll();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));

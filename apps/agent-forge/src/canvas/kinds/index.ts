@@ -75,6 +75,23 @@ export interface KindFieldsProps<K extends NodeKind> {
   patch: (patch: Record<string, unknown>) => void;
   /** `setNodeData(graph, node.id, data)` through `setGraph`. */
   replace: (data: NodeOfKind<K>['data']) => void;
+  /**
+   * Flow root step only: merges `patch` into `data.flowMeta` (the
+   * `AgentFlow` wrapper fields — code, name, inputs, …). Undefined on
+   * non-flow selections and in test doubles.
+   */
+  patchFlowMeta?: (patch: Record<string, unknown>) => void;
+  /**
+   * Flow containers only: moves `childId` `delta` places inside the
+   * node's ordered children (sequence/parallel `steps`, router `options`).
+   */
+  moveChild?: (childId: string, delta: -1 | 1) => void;
+  /**
+   * Flow `oneOf` nodes only: sets a router option's `condition` (empty
+   * makes it the default branch). Lives outside `data.step`, so it is not
+   * reachable through `patch`.
+   */
+  setOptionCondition?: (childId: string, condition: string) => void;
   /** `validateGraph(graph)` filtered to this node (C19 fills it; `[]` before). */
   problems: Problem[];
 }

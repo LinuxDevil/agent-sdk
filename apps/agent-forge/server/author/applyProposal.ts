@@ -21,7 +21,8 @@ import type {
 import type { WorkspaceResolver } from '../workspace/context';
 import { identityOfProposal, resolveStoredProposal } from './proposal/gate';
 import { agentGoneFailure, unknownProposalFailure } from './proposal/failures';
-import { requestTextFor, writeProposal } from './proposal/save';
+import { requestTextForProposal } from './requestText';
+import { writeProposal } from './proposal/save';
 import type { AuthorSessionStore } from './sessionStore';
 
 /** The stores Apply needs: the session store (transcript + createdAgentIds) and the session's workspace. */
@@ -79,7 +80,7 @@ export async function applyStoredProposal(
   }
   const result = await writeProposal(identity, resolved.output, {
     sessionId: session.id,
-    requestText: requestTextFor(session.transcript, proposalId),
+    requestText: requestTextForProposal(session.transcript, proposalId),
     agents: ws.repo,
     versions: ws.versions,
     sessions: deps.sessions,

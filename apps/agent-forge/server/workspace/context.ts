@@ -32,6 +32,8 @@ import type { AgentHost } from '../host/agentHost';
 import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
+import type { PassRunner } from '../passes/passRunner';
+import { attachVersionSummaries } from '../passes/versionSummary';
 
 /** Everything a per-agent route needs for one workspace. */
 export interface WorkspaceContext {
@@ -65,6 +67,13 @@ export interface WorkspaceContext {
    * workspace's tabs. Per workspace, like the stores.
    */
   events: StudioEventBus;
+  /**
+   * The app's one PassRunner (passes/passRunner.ts) - Studio-global like
+   * settings, shared by every workspace: background passes a route or
+   * store kicks off enqueue here so dedupe, retries and the spend log
+   * apply app-wide.
+   */
+  passes: PassRunner;
 }
 
 /**
@@ -97,6 +106,8 @@ export interface WorkspaceServices {
   settingsStore: SettingsStore;
   /** Report runs to the observe daemon (`true` in the studio, `false` in embeddings/tests). */
   observe: boolean;
+  /** The app's one PassRunner, stamped onto every context this builds. */
+  passRunner: PassRunner;
 }
 
 /**
@@ -150,6 +161,18 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     // Builder runs report to the observe daemon, so "Open trace" resolves.
     ...(services.observe ? { observe: true as const } : {}),
   });
+  const events = new StudioEventBus();
+  // The version-summary pass (L04): every written version enqueues its
+  // `version_summary` job on the app's one PassRunner; the returned
+  // unsubscribe has no caller until W02a's context dispose().
+  attachVersionSummaries({
+    versions,
+    passRunner: services.passRunner,
+    events,
+    secretsStore: services.secretsStore,
+    settings: services.settingsStore,
+    workspaceId: ref.id,
+  });
   return {
     ref,
     repo,
@@ -161,6 +184,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     host,
     runs,
     chatTriggers: chatTriggersFor(runs),
-    events: new StudioEventBus(),
+    events,
+    passes: services.passRunner,
   };
 }

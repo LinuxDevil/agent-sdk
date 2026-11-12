@@ -13,6 +13,7 @@ import { SuggestionStore } from '../../storage/suggestionStore';
 import { VersionStore } from '../../storage/versionStore';
 import { IdleVersioner } from '../../storage/idleVersioner';
 import { singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from '../context';
+import { PassRunner } from '../../passes/passRunner';
 import { requestedWorkspaceId, workspaceMiddleware, workspaceOf } from '../middleware';
 
 const emptyStore: LegacyAgentStore = {
@@ -36,6 +37,7 @@ function ctx(id: string): WorkspaceContext {
     runs: {} as RunManager,
     chatTriggers: new TriggerRegistry(),
     events: new StudioEventBus(),
+    passes: new PassRunner({ baseDir: `/root/${id}` }),
   };
 }
 
