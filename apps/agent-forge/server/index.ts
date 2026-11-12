@@ -158,7 +158,11 @@ export async function startStudioServer(
   // by every workspace context through WorkspaceServices, and the same
   // instances the spend route and `close()` use.
   const spendLog = new SpendLog(paths.spend);
-  const passRunner = new PassRunner({ baseDir, spendLog });
+  const passRunner = new PassRunner({
+    baseDir,
+    spendLog,
+    isEnabled: (kind) => settingsStore.passes().enabled[kind],
+  });
   const workspace = createWorkspaceContext(launchRef, {
     secretsStore,
     settingsStore,

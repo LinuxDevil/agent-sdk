@@ -23,6 +23,20 @@ vi.mock('../../runtime/runtimeClient', () => ({
       ready: true,
     }),
     catalogModels: async () => [],
+    getPassSettings: async () => ({
+      model: 'anthropic/claude-haiku-5-5',
+      autoApprovalModel: 'anthropic/claude-haiku-5-5',
+      enabled: {
+        version_summary: true,
+        draft_review: true,
+        portability_check: true,
+        prompt_suggestion: true,
+        auto_approval: true,
+        eval_judge: true,
+      },
+    }),
+    savePassSettings: async (patch: unknown) => patch,
+    getPassSpend: async () => ({ month: '2026-11', totalUsd: 0, calls: 0, byKind: {} }),
   },
 }));
 vi.mock('../../shell/DaemonStatus', () => ({
@@ -63,7 +77,7 @@ describe('SettingsPanel', () => {
     expect(sectionNames(host)).toEqual(['Provider keys', 'Settings profile', 'Deploy target']);
   });
 
-  it('the routed screen adds Appearance, Agent Author, Collector and Keyboard shortcuts', async () => {
+  it('the routed screen adds Appearance, Agent Author, Background passes, Collector and Keyboard shortcuts', async () => {
     const host = await mount('screen');
     expect(sectionNames(host)).toEqual([
       'Appearance',
@@ -71,6 +85,7 @@ describe('SettingsPanel', () => {
       'Agent Author',
       'Settings profile',
       'Deploy target',
+      'Background passes',
       'Collector',
       'Keyboard shortcuts',
     ]);

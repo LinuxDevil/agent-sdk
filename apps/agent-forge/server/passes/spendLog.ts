@@ -13,7 +13,10 @@
  */
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import type { PassKind, PassRecord } from './passRunner';
+import type { PassSpendSummary } from '../../shared/wireTypes';
+import type { PassRecord } from './passRunner';
+
+export type { PassSpendSummary };
 
 /**
  * Appends `PassRecord`s to `<file>` and reads them back. Appends are
@@ -75,14 +78,6 @@ export class SpendLog {
     }
     return records;
   }
-}
-
-/** The `GET /settings/passes/spend` answer. */
-export interface PassSpendSummary {
-  month: string;
-  totalUsd: number;
-  calls: number;
-  byKind: Partial<Record<PassKind, { calls: number; costUsd: number }>>;
 }
 
 /**
