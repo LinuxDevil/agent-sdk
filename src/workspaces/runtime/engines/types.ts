@@ -10,7 +10,8 @@ import type { LoadedWorkspace } from '../loadWorkspace';
 import type { AgentPolicyOptions, HostToolRegistry } from '../policy';
 import type { ProfileStore } from '../profileStore';
 import type { ResolvedAttachment } from '../resolveAgents';
-import type { SharedContext } from '../sharedContext';
+import type { SharedContext, SharedMemoryFile } from '../sharedContext';
+import type { MemorySlot } from '../../../memory/defineMemory';
 
 /** What the policy lets one tool of one attachment do; the host's `bindTool` enforces it. */
 export interface PageToolScope {
@@ -48,6 +49,8 @@ export interface PageRuntimeHost {
   globalAgents?: GlobalAgentRegistry;
   /** Answers `global:` harness profile refs. */
   globalProfiles?: ProfileStore;
+  /** Builds the slot for a `shared/memory/*.ts` file; the core never runs workspace code. */
+  createMemory?: (file: SharedMemoryFile) => MemorySlot;
 }
 
 /** One attachment of the page, resolved, with the policy applied. */

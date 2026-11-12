@@ -436,7 +436,7 @@ A workspace agent is read from its files and nothing in it is run, so settings i
 | Approvals | A tool in `approvals.require` asks for approval every time, in an agent run and in a workflow `toolCall` step, whatever an `allow` rule or the permission mode says. So does a Studio tool ref with `approval: 'always'`. A host tool's own `needsApproval` ask is kept the same way: an agent `allow` never lifts it. A deny still denies |
 | Capabilities | `pagePolicy()` fails page start with `LOUSHO_WORKSPACE_CAPABILITY_MISSING` (`capability-missing`) when `capabilities.require` names something no tool in the page's effective toolsets provides. A tool that a ceiling or workspace rule denies outright provides nothing. A capability never grants a tool |
 
-`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset. `attachmentAgent()` is the only place the page runtime builds an agent: it takes those options, passes every tool through the host's `bindTool(descriptor, scope)` with the tool's `secrets`, `network.allowHosts` and `sandbox.required`, and the host enforces them.
+`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset. `attachmentAgent()` is the only place the page runtime builds a page agent, and `createMainAgent()` the only place it builds the main agent: it takes those options, passes every tool through the host's `bindTool(descriptor, scope)` with the tool's `secrets`, `network.allowHosts` and `sandbox.required`, and the host enforces them.
 
 ```ts
 import { narrowPolicy, pagePolicy, type HostToolRegistry } from 'lousho/workspaces';
@@ -515,7 +515,26 @@ An empty `task` becomes the page UI's `title`, else the page id. A page gets onl
 
 The `single` engine runs the page's one attachment in its own session, with structured output (the `output` mode of an AgentSpec) when the harness has an output schema. That mode also makes one repair call inside a turn when a reply does not parse.
 
-The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `globalAgents` and `globalProfiles`.
+The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `globalAgents`, `globalProfiles` and `createMemory(file)`, which builds the slot for a `shared/memory/*.ts` file. `ctx.sharedRun` (a `createSharedContextRun()` object) makes every page of one workspace run, and the main agent, share the same shared memory instances.
+
+### The main agent and the page router
+
+`openWorkspaceSession(workspace, ctx)` opens one conversation with a loaded workspace. `ctx` has the `host`, `artifacts(runId)` for each page run's sink, and optionally `newRunId`, `sessionId`, `emit(runId, event)`, `engines`, `mode` and `sharedRun`. `session.run(message, options)` returns a `WorkspaceTurn`:
+
+| Situation | `run(message)` | `run(message, { pageId, inputs })` |
+| --- | --- | --- |
+| `mainAgent: null`, any number of pages | `{ kind: 'error' }` with a `WorkspaceRunError` (`LOUSHO_WORKSPACE_NO_MAIN_AGENT`, `no-main-agent: pass pageId or call runPage`); there is no router | `{ kind: 'page' }`: runs that page directly |
+| A main agent | `{ kind: 'main' }`: the main agent answers in its own thread and may route | `{ kind: 'page' }`: runs that page directly |
+
+The main agent is built from `main-agent/` with the shared policy and its own tools, plus the shared context when `inheritsShared` is true. Its prompt is `assembleMainInstructions()` over `main-agent/` and, when present, the main-agent harness. It gets these router tools:
+
+- `run_page_<id>` for each page, described by `page.description`, with parameters `{ task, inputs? }` where `inputs` is the page's effective `inputs.schema`. When the main harness lists `routes`, only those pages get a tool.
+- `revise_page_run({ runId, instruction })`: runs the page again with the earlier `PageResult` as `prior`.
+- `list_page_runs()`: the session's runs, with `runId`, `pageId`, `status` and `revises`.
+
+Each tool calls `runPage()` and returns the `summary`, the error and the artifact refs between `<untrusted>` and `</untrusted>`, after a line telling the main agent to treat it as data; any such tags in the page's text are stripped first. Because results land in the main agent's thread, a follow-up ("make a Facebook version") sees them, while the page sees only its own task and inputs.
+
+The runtime, not the prompt, enforces two main-harness settings. `limits.maxConcurrentPages` caps the page runs in flight at once, clamped to `workspace.json`'s `defaults.limits.maxConcurrentPages` (default 3). A page that ends `failed` or `timed-out` is never re-run automatically, except once when `onPageFailure` is `retry-once`; the retry's record names the run it retries in `retries`.
 
 ### Type switching
 

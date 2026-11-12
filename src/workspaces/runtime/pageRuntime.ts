@@ -13,7 +13,7 @@ import { pagePolicy } from './policy';
 import { jsonOf } from './profileStore';
 import { resolveAttachments } from './resolveAgents';
 import { profileStoreFor, resolvePageHarness } from './resolveHarness';
-import { resolveSharedContext } from './sharedContext';
+import { resolveSharedContext, type SharedContextRun } from './sharedContext';
 
 /** What {@link runPage} needs besides the workspace and the input. */
 export interface PageRuntimeContext {
@@ -33,6 +33,8 @@ export interface PageRuntimeContext {
   engines?: EngineRegistry;
   /** The load mode for agent resolution (default `default`). */
   mode?: LoadWorkspaceOptions['mode'];
+  /** The workspace run this page belongs to, so its pages and the main agent share one set of shared memory instances. */
+  sharedRun?: SharedContextRun;
 }
 
 const EMPTY_POLICY: WorkspacePolicy = { permissions: [], tools: { allow: [] }, secrets: [] };
@@ -44,7 +46,7 @@ function readPage(workspace: LoadedWorkspace, pageId: string): PageManifest {
   return pageSchema.parse(jsonOf(workspace.tree[path], path));
 }
 
-function effectivePolicy(workspace: LoadedWorkspace, host: PageRuntimeHost): EffectivePolicy {
+export function effectivePolicy(workspace: LoadedWorkspace, host: PageRuntimeHost): EffectivePolicy {
   const file = workspace.tree[SHARED_POLICY_FILE];
   const own = file === undefined ? EMPTY_POLICY : workspacePolicySchema.parse(jsonOf(file, SHARED_POLICY_FILE));
   return narrowPolicy(host.ceiling, own);
@@ -86,7 +88,7 @@ async function engineSetup(workspace: LoadedWorkspace, page: PageManifest, harne
     workspace,
     page,
     harness,
-    shared: resolveSharedContext(workspace, { audience: { page: page.id } }),
+    shared: resolveSharedContext(workspace, { audience: { page: page.id }, ...(ctx.sharedRun && { run: ctx.sharedRun }), ...(host.createMemory && { createMemory: host.createMemory }) }),
     attachments,
     host,
     ...(ctx.prior && { prior: ctx.prior }),

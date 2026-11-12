@@ -35,5 +35,6 @@ export type { AgentOwned, AgentFiles } from './runtime/agentDirView';
 export { assembleInstructions, assembleMainInstructions, agentRunOptions, type AssembleInstructionsInput, type AssembleMainInput, type AssembledInstructions, type AssembledMainInstructions, type AssembledSection, type InstructionsSource, type ExplainedSection, type AgentRunOptions, type MainHarnessInput, type MainPageInfo } from './runtime/assemble';
 export { effectiveToolset, effectivePermissions, agentPolicyOptions, pagePolicy, type HostTool, type HostToolRegistry, type EffectiveTool, type EffectiveToolset, type EffectivePermissions, type PolicyAgent, type PolicyAttachment, type AgentPolicyOptions, type PagePolicy } from './runtime/policy';
 export { runPage, type PageRuntimeContext } from './runtime/pageRuntime';
+export { openWorkspaceSession, WorkspaceRunError, type WorkspaceSession, type WorkspaceSessionContext, type WorkspaceRunOptions, type WorkspaceTurn, type PageRunRecord } from './runtime/router';
 export { ENGINES, engineFor, singleEngine, type EngineRegistry, type PageAttachment, type PageEngineFactory, type PageEngineSetup, type PageRuntimeHost, type PageToolScope } from './runtime/engines';
 export { checkRegistry, checkNameOf, resolveCheck, type WorkspaceCheckRegistry } from './runtime/checks';

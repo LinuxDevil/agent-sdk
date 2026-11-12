@@ -85,5 +85,6 @@ export function attachmentAgent(setup: PageEngineSetup, alias: string, options: 
     ...(run.reasoning !== undefined && { reasoning: run.reasoning }),
     ...(run.modelSettings !== undefined && { modelSettings: run.modelSettings }),
     ...(options.output !== undefined && { output: options.output }),
+    ...(setup.shared.memorySlots.length > 0 && { memory: setup.shared.memorySlots.map((item) => item.slot) }),
   });
 }

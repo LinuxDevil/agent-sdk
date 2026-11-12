@@ -794,6 +794,7 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: "Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.";
     readonly LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.";
     readonly LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.";
+    readonly LOUSHO_WORKSPACE_NO_MAIN_AGENT: "Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.";
 };
 
 // @public
@@ -1372,6 +1373,9 @@ interface OAuthToken {
 }
 
 // @public
+export function openWorkspaceSession(workspace: LoadedWorkspace, ctx: WorkspaceSessionContext): WorkspaceSession;
+
+// @public
 export function opFiles(operation: AuthoringOp, tree: WorkspaceTree): string[];
 
 // @public
@@ -1585,6 +1589,17 @@ export type PageRunEvent = PageStartedEvent | PageStepEvent | PageArtifactEvent 
 export type PageRunLabels = Pick<PageStepLabels, 'page' | 'harnessHash' | 'executionType'>;
 
 // @public
+export interface PageRunRecord {
+    inputs?: unknown;
+    pageId: string;
+    result: PageResult;
+    retries?: string;
+    revises?: string;
+    runId: string;
+    task: string;
+}
+
+// @public
 export type PageRunStatus = 'ok' | 'failed' | 'timed-out' | 'cancelled' | 'needs-approval';
 
 // @public
@@ -1596,6 +1611,7 @@ export interface PageRuntimeContext {
     mode?: LoadWorkspaceOptions['mode'];
     prior?: PageResult;
     runId: string;
+    sharedRun?: SharedContextRun;
     signal?: AbortSignal;
 }
 
@@ -1603,6 +1619,7 @@ export interface PageRuntimeContext {
 export interface PageRuntimeHost {
     bindTool(descriptor: ToolDescriptor, scope: PageToolScope): ToolDescriptor;
     ceiling: PolicyCeiling;
+    createMemory?: (file: SharedMemoryFile) => MemorySlot;
     globalAgents?: GlobalAgentRegistry;
     globalProfiles?: ProfileStore;
     provider?: (model: string | undefined) => LLMProvider;
@@ -2769,9 +2786,22 @@ export type WorkspaceProblemSeverity = 'error' | 'warning' | 'info';
 export function workspaceProfiles(tree: WorkspaceTree, dir?: string): ProfileStore;
 
 // @public
+export class WorkspaceRunError extends SDKError {
+    constructor();
+    readonly kind: 'no-main-agent';
+}
+
+// @public
 export interface WorkspaceRunEvents {
     append(runId: string, event: PageRunEvent): Promise<WireRunEvent>;
     read(runId: string, lastEventId?: number): Promise<WireRunEvent[]>;
+}
+
+// @public
+export interface WorkspaceRunOptions {
+    inputs?: unknown;
+    pageId?: string;
+    signal?: AbortSignal;
 }
 
 // @public
@@ -2787,6 +2817,24 @@ export interface WorkspaceRunStore {
 export interface WorkspaceScope {
     projectId: string;
     workspaceId: string;
+}
+
+// @public
+export interface WorkspaceSession {
+    run(message: string, options?: WorkspaceRunOptions): Promise<WorkspaceTurn>;
+    runs(): readonly PageRunRecord[];
+}
+
+// @public
+export interface WorkspaceSessionContext {
+    artifacts: (runId: string) => ArtifactSink;
+    emit?: (runId: string, event: PageRunEvent) => void;
+    engines?: EngineRegistry;
+    host: PageRuntimeHost;
+    mode?: LoadWorkspaceOptions['mode'];
+    newRunId?: () => string;
+    sessionId?: string;
+    sharedRun?: SharedContextRun;
 }
 
 // @public
@@ -2816,6 +2864,20 @@ export interface WorkspaceThreadStore {
 
 // @public
 export type WorkspaceTree = Readonly<Record<string, unknown>>;
+
+// @public
+export type WorkspaceTurn = {
+    kind: 'main';
+    text: string;
+    finishReason: string;
+    runs: PageRunRecord[];
+} | {
+    kind: 'page';
+    record: PageRunRecord;
+} | {
+    kind: 'error';
+    error: WorkspaceRunError;
+};
 
 // @public
 export class WorkspaceValidationError extends SDKError {
