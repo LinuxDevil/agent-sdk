@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
 import type { PageDetail } from 'lousho/workspaces/client';
 import { ConfirmDialog, Dialog } from '../../ui/Dialog';
@@ -12,53 +12,26 @@ import type { MainHarness } from './workspaceTypes';
 
 const KEBAB = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
-export function PagesSection() {
-  const { workspace, ops } = useWorkspace();
-  const client = useWorkspacesClient();
-  const [adding, setAdding] = useState(false);
-  const [removing, setRemoving] = useState<PageDetail | undefined>(undefined);
-  const [mainHarness, setMainHarness] = useState<MainHarness | undefined>(undefined);
+function useAddPage(open: boolean) {
+  const { ops } = useWorkspace();
   const [pageId, setPageId] = useState('');
   const [pageName, setPageName] = useState('');
   const [pageDescription, setPageDescription] = useState('');
   const [pageAgent, setPageAgent] = useState('agent');
-  const pages = workspace.pages;
 
-  const move = (index: number, delta: -1 | 1) => {
-    const ids = pages.map((page) => page.id);
-    const [id] = ids.splice(index, 1);
-    ids.splice(index + delta, 0, id);
-    void ops.send([{ op: 'reorder_pages', pages: ids }]);
-  };
-
-  const askRemove = (page: PageDetail) => {
-    setRemoving(page);
-    setMainHarness(undefined);
-    void client
-      .call('getMainHarness', { params: { id: workspace.id } })
-      .then((view) => setMainHarness(view.harness))
-      .catch(() => undefined);
-  };
-
-  const confirmRemove = () => {
-    const page = removing;
-    setRemoving(undefined);
-    if (page !== undefined) void ops.send([{ op: 'remove_page', page: page.id }]);
-  };
-
-  const openAdd = () => {
+  useEffect(() => {
+    if (!open) return;
     setPageId('');
     setPageName('');
     setPageDescription('');
     setPageAgent('agent');
-    setAdding(true);
-  };
+  }, [open]);
 
   const idError = pageId !== '' && !KEBAB.test(pageId) ? 'Use kebab-case, e.g. tiktok-videos' : undefined;
   const canCreate =
     pageId !== '' && idError === undefined && pageName.trim() !== '' && pageDescription.trim() !== '' && pageAgent.trim() !== '' && !ops.pending;
 
-  const create = async () => {
+  const create = async (): Promise<boolean> => {
     const view = await ops.send([
       {
         op: 'create_page',
@@ -68,22 +41,198 @@ export function PagesSection() {
         execution: { type: 'single', single: { agent: pageAgent } },
       },
     ]);
-    if (view !== undefined) {
-      setAdding(false);
-      setPageId('');
-      setPageName('');
-      setPageDescription('');
-      setPageAgent('agent');
-    }
+    return view !== undefined;
   };
 
-  const routesToPage = removing !== undefined && (mainHarness?.routes?.some((route) => route.page === removing.id) ?? false);
+  return { pageId, setPageId, pageName, setPageName, pageDescription, setPageDescription, pageAgent, setPageAgent, idError, canCreate, create };
+}
+
+function AddPageDialog({ open, onClose }: { open: boolean; onClose(): void }) {
+  const form = useAddPage(open);
+  const submit = async () => {
+    if (await form.create()) onClose();
+  };
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title="Add page"
+      size="sm"
+      description="Creates a single-agent page; the draft shows PRD018 until an agent with that alias is attached (P2.8)."
+      footer={
+        <>
+          <button type="button" className="btn" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="button" className="btn btn-primary" disabled={!form.canCreate} onClick={() => void submit()}>
+            Create
+          </button>
+        </>
+      }
+    >
+      <div className="ws-add-fields">
+        <Field id="add-page-id" label="Id" required error={form.idError} hint="Kebab-case; becomes the pages/ folder name.">
+          <Input value={form.pageId} onChange={(event) => form.setPageId(event.target.value)} />
+        </Field>
+        <Field id="add-page-name" label="Name" required>
+          <Input value={form.pageName} onChange={(event) => form.setPageName(event.target.value)} />
+        </Field>
+        <Field id="add-page-description" label="Description" required hint="The main agent routes on this">
+          <Textarea value={form.pageDescription} onChange={(event) => form.setPageDescription(event.target.value)} />
+        </Field>
+        <Field id="add-page-agent" label="First agent alias" required hint="The page runs as a single agent with this alias.">
+          <Input value={form.pageAgent} onChange={(event) => form.setPageAgent(event.target.value)} />
+        </Field>
+      </div>
+    </Dialog>
+  );
+}
+
+interface PageRowProps {
+  page: PageDetail;
+  index: number;
+  count: number;
+  pending: boolean;
+  onMove(index: number, delta: -1 | 1): void;
+  onRemove(page: PageDetail): void;
+}
+
+function PageRow({ page, index, count, pending, onMove, onRemove }: PageRowProps) {
+  const name = page.manifest.name;
+  return (
+    <li className="ws-page">
+      <div className="ws-page-info">
+        <span className="ws-page-name">{name}</span>
+        <code className="ws-page-id">{page.id}</code>
+        <span className="ws-page-desc">{page.manifest.description}</span>
+        <span className="ws-page-type">{page.manifest.execution.type}</span>
+      </div>
+      <span className="ws-page-actions dt-actions">
+        <button
+          type="button"
+          className="btn btn-sm"
+          data-roving
+          aria-label={`Move ${name} up`}
+          title={`Move ${name} up`}
+          disabled={index === 0 || pending}
+          onClick={() => onMove(index, -1)}
+        >
+          <ArrowUp size={14} strokeWidth={1.75} aria-hidden="true" />
+          Move up
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          aria-label={`Move ${name} down`}
+          title={`Move ${name} down`}
+          disabled={index === count - 1 || pending}
+          onClick={() => onMove(index, 1)}
+        >
+          <ArrowDown size={14} strokeWidth={1.75} aria-hidden="true" />
+          Move down
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm"
+          aria-label={`Remove ${name}`}
+          title={`Remove ${name}`}
+          disabled={pending}
+          onClick={() => onRemove(page)}
+        >
+          <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
+          Remove
+        </button>
+      </span>
+    </li>
+  );
+}
+
+function PagesList({
+  pages,
+  pending,
+  onMove,
+  onRemove,
+}: {
+  pages: PageDetail[];
+  pending: boolean;
+  onMove(index: number, delta: -1 | 1): void;
+  onRemove(page: PageDetail): void;
+}) {
+  return (
+    <ul className="ws-pages" onKeyDown={onRovingKeyDown}>
+      {pages.map((page, index) => (
+        <PageRow key={page.id} page={page} index={index} count={pages.length} pending={pending} onMove={onMove} onRemove={onRemove} />
+      ))}
+    </ul>
+  );
+}
+
+function RemovePageDialog({ page, onClose }: { page: PageDetail | undefined; onClose(): void }) {
+  const { workspace, ops } = useWorkspace();
+  const client = useWorkspacesClient();
+  const [mainHarness, setMainHarness] = useState<MainHarness | undefined>(undefined);
+
+  useEffect(() => {
+    setMainHarness(undefined);
+    if (page === undefined) return;
+    let cancelled = false;
+    void client
+      .call('getMainHarness', { params: { id: workspace.id } })
+      .then((view) => {
+        if (!cancelled) setMainHarness(view.harness);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [client, workspace.id, page]);
+
+  const routesToPage = page !== undefined && (mainHarness?.routes?.some((route) => route.page === page.id) ?? false);
+  const confirm = () => {
+    if (page !== undefined) void ops.send([{ op: 'remove_page', page: page.id }]);
+    onClose();
+  };
+
+  return (
+    <ConfirmDialog
+      open={page !== undefined}
+      title={page === undefined ? 'Remove page?' : `Remove “${page.manifest.name}”?`}
+      description={
+        page === undefined ? (
+          ''
+        ) : (
+          <>
+            This deletes <code>pages/{page.id}/</code> — page.json, harness/, agents.json, ui/ and resources/.
+            {routesToPage ? ' The main harness routes to this page; that route will need fixing (PRD015).' : ''}
+          </>
+        )
+      }
+      confirmLabel="Remove page"
+      pending={ops.pending}
+      onConfirm={confirm}
+      onCancel={onClose}
+    />
+  );
+}
+
+export function PagesSection() {
+  const { workspace, ops } = useWorkspace();
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<PageDetail | undefined>(undefined);
+  const pages = workspace.pages;
+
+  const move = (index: number, delta: -1 | 1) => {
+    const ids = pages.map((page) => page.id);
+    const [id] = ids.splice(index, 1);
+    ids.splice(index + delta, 0, id);
+    void ops.send([{ op: 'reorder_pages', pages: ids }]);
+  };
 
   return (
     <section className="ws-pages-section" aria-label="Pages">
       {pages.length > 0 ? (
         <div className="ws-pages-head">
-          <button type="button" className="btn btn-sm" onClick={openAdd}>
+          <button type="button" className="btn btn-sm" onClick={() => setAdding(true)}>
             Add page
           </button>
         </div>
@@ -92,111 +241,16 @@ export function PagesSection() {
         <EmptyState
           title="No pages yet"
           action={
-            <button type="button" className="btn" onClick={openAdd}>
+            <button type="button" className="btn" onClick={() => setAdding(true)}>
               Add page
             </button>
           }
         />
       ) : (
-        <ul className="ws-pages" onKeyDown={onRovingKeyDown}>
-          {pages.map((page, index) => (
-            <li key={page.id} className="ws-page">
-              <div className="ws-page-info">
-                <span className="ws-page-name">{page.manifest.name}</span>
-                <code className="ws-page-id">{page.id}</code>
-                <span className="ws-page-desc">{page.manifest.description}</span>
-                <span className="ws-page-type">{page.manifest.execution.type}</span>
-              </div>
-              <span className="ws-page-actions dt-actions">
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  data-roving
-                  aria-label={`Move ${page.manifest.name} up`}
-                  title={`Move ${page.manifest.name} up`}
-                  disabled={index === 0 || ops.pending}
-                  onClick={() => move(index, -1)}
-                >
-                  <ArrowUp size={14} strokeWidth={1.75} aria-hidden="true" />
-                  Move up
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  aria-label={`Move ${page.manifest.name} down`}
-                  title={`Move ${page.manifest.name} down`}
-                  disabled={index === pages.length - 1 || ops.pending}
-                  onClick={() => move(index, 1)}
-                >
-                  <ArrowDown size={14} strokeWidth={1.75} aria-hidden="true" />
-                  Move down
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  aria-label={`Remove ${page.manifest.name}`}
-                  title={`Remove ${page.manifest.name}`}
-                  disabled={ops.pending}
-                  onClick={() => askRemove(page)}
-                >
-                  <Trash2 size={14} strokeWidth={1.75} aria-hidden="true" />
-                  Remove
-                </button>
-              </span>
-            </li>
-          ))}
-        </ul>
+        <PagesList pages={pages} pending={ops.pending} onMove={move} onRemove={setRemoving} />
       )}
-      <Dialog
-        open={adding}
-        onClose={() => setAdding(false)}
-        title="Add page"
-        size="sm"
-        description="Creates a single-agent page; the draft shows PRD018 until an agent with that alias is attached (P2.8)."
-        footer={
-          <>
-            <button type="button" className="btn" onClick={() => setAdding(false)}>
-              Cancel
-            </button>
-            <button type="button" className="btn btn-primary" disabled={!canCreate} onClick={() => void create()}>
-              Create
-            </button>
-          </>
-        }
-      >
-        <div className="ws-add-fields">
-          <Field id="add-page-id" label="Id" required error={idError} hint="Kebab-case; becomes the pages/ folder name.">
-            <Input value={pageId} onChange={(event) => setPageId(event.target.value)} />
-          </Field>
-          <Field id="add-page-name" label="Name" required>
-            <Input value={pageName} onChange={(event) => setPageName(event.target.value)} />
-          </Field>
-          <Field id="add-page-description" label="Description" required hint="The main agent routes on this">
-            <Textarea value={pageDescription} onChange={(event) => setPageDescription(event.target.value)} />
-          </Field>
-          <Field id="add-page-agent" label="First agent alias" required hint="The page runs as a single agent with this alias.">
-            <Input value={pageAgent} onChange={(event) => setPageAgent(event.target.value)} />
-          </Field>
-        </div>
-      </Dialog>
-      <ConfirmDialog
-        open={removing !== undefined}
-        title={removing === undefined ? 'Remove page?' : `Remove “${removing.manifest.name}”?`}
-        description={
-          removing === undefined ? (
-            ''
-          ) : (
-            <>
-              This deletes <code>pages/{removing.id}/</code> — page.json, harness/, agents.json, ui/ and resources/.
-              {routesToPage ? ' The main harness routes to this page; that route will need fixing (PRD015).' : ''}
-            </>
-          )
-        }
-        confirmLabel="Remove page"
-        pending={ops.pending}
-        onConfirm={confirmRemove}
-        onCancel={() => setRemoving(undefined)}
-      />
+      <AddPageDialog open={adding} onClose={() => setAdding(false)} />
+      <RemovePageDialog page={removing} onClose={() => setRemoving(undefined)} />
     </section>
   );
 }
