@@ -310,7 +310,7 @@ function confineTool(tool: DefinedTool, item: RegistryItemStatus): DefinedTool {
   // 'exec' / 'needsApproval' ask for approval by declaration; an unattested item asks too - the stale
   // receipt must not silently certify the modified code, and an approval prompt is what surfaces it.
   const mustAsk = item.status === 'unattested' || item.permissions.exec === true || item.permissions.needsApproval === true;
-  const needsApproval = mustAsk ? alwaysAsk(tool.needsApproval) : tool.needsApproval;
+  const needsApproval = mustAsk ? alwaysAsk(tool.needsApproval, 'its install receipt requires approval') : tool.needsApproval;
   return {
     ...tool,
     execute,

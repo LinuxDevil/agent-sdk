@@ -1,4 +1,4 @@
-import { alwaysAsk, checkPermission, keepOwnApproval, type PermissionContext, type PermissionRule, type PermissionToolMatcher } from '../../execution/permissions';
+import { alwaysAsk, checkPermission, keepOwnApproval, matchesTool, type PermissionContext, type PermissionRule, type PermissionToolMatcher } from '../../execution/permissions';
 import { matchesHost } from '../../security/hostPattern';
 import { permissionsFromSpec } from '../../spec/v2/resolve/permissions';
 import type { SecretRef } from '../../spec/v2/secrets';
@@ -112,11 +112,15 @@ export interface PolicyAttachment {
   pageOwned: Pick<Attachment, 'tools'>;
 }
 
+const REQUIRED_APPROVAL_REASON = "the workspace policy's approvals.require or the agent's approval: 'always' requires approval";
+
+const OWN_APPROVAL_REASON = "the tool's own needsApproval asks, and no allow rule lifts it in a workspace";
+
 const anyCovers = (patterns: readonly string[], name: string): boolean => patterns.some((pattern) => toolCovers(pattern, name));
 
 function approvalOf(policy: EffectivePolicy, name: string, own: ToolDescriptor['needsApproval']): ToolDescriptor['needsApproval'] {
-  if (anyCovers(policy.approvals.require, name)) return alwaysAsk(own);
-  return own === undefined || own === false ? own : keepOwnApproval(own);
+  if (anyCovers(policy.approvals.require, name)) return alwaysAsk(own, REQUIRED_APPROVAL_REASON);
+  return own === undefined || own === false ? own : keepOwnApproval(own, OWN_APPROVAL_REASON);
 }
 
 function effectiveTool(policy: EffectivePolicy, name: string, host: HostTool): EffectiveTool {
@@ -139,12 +143,6 @@ export function effectiveToolset(
   return { tools: kept.map((name) => effectiveTool(policy, name, registry[name])), missing: agentTools.filter((name) => !known(name)) };
 }
 
-const matcherCovers = (matcher: PermissionToolMatcher, name: string): boolean => {
-  if (typeof matcher === 'string') return matcher === '*' || matcher === name;
-  if (matcher instanceof RegExp) return name.search(matcher) !== -1;
-  return matcher.some((entry) => matcherCovers(entry, name));
-};
-
 async function firstIndex(list: readonly PermissionRule[], args: Record<string, unknown>, ctx: PermissionContext): Promise<number> {
   return (await checkPermission({ permissions: list }, { ...ctx, args }))?.rule?.index ?? -1;
 }
@@ -162,29 +160,38 @@ const matcherNames = (matcher: PermissionToolMatcher): string[] => {
   return matcher instanceof RegExp ? [] : matcher.flatMap(matcherNames);
 };
 
-const shadows = (rule: PermissionRule, allowed: string): boolean => matcherCovers(rule.tool, allowed) || matcherNames(rule.tool).some((name) => toolCovers(allowed, name));
+function policyLists(policy: EffectivePolicy, agentPerms: readonly AgentPermission[] = []): PermissionRule[][] {
+  const agent = permissionsFromSpec(agentPerms.map((rule, index) => ({ ...rule, id: `agent-${index}` })));
+  return [permissionsFromSpec(policy.permissions.ceiling), permissionsFromSpec(policy.permissions.workspace), agent];
+}
 
-const unconditional = (policy: EffectivePolicy): PermissionRule[] =>
-  [...permissionsFromSpec(policy.permissions.ceiling), ...permissionsFromSpec(policy.permissions.workspace)].filter((rule) => rule.when === undefined);
+function decidedOutright(lists: readonly (readonly PermissionRule[])[], name: string, actions: readonly PermissionRule['action'][]): boolean {
+  return lists.some((list) => {
+    const first = list.find((rule) => matchesTool(rule.tool, name));
+    return first !== undefined && first.when === undefined && actions.includes(first.action);
+  });
+}
 
-function shadowWarnings(policy: EffectivePolicy, agentRules: readonly AgentPermission[]): string[] {
-  const blocking = unconditional(policy).filter((rule) => rule.action !== 'allow');
+function shadowed(policy: readonly (readonly PermissionRule[])[], allowed: string): boolean {
+  const names = [allowed, ...policy.flat().flatMap((rule) => matcherNames(rule.tool)).filter((name) => toolCovers(allowed, name))];
+  return names.some((name) => decidedOutright(policy, name, ['deny', 'ask']));
+}
+
+function shadowWarnings(policy: readonly (readonly PermissionRule[])[], agentRules: readonly AgentPermission[]): string[] {
   return agentRules
     .filter((rule) => rule.action === 'allow')
     .flatMap((rule) => (Array.isArray(rule.tool) ? rule.tool : [rule.tool]))
-    .filter((name) => blocking.some((rule) => shadows(rule, name)))
+    .filter((name) => shadowed(policy, name))
     .map((name) => `the agent allows '${name}', but a workspace or host policy rule denies or asks for it first; the allow never applies`);
 }
 
 /** An agent's permission rules under the policy: a ceiling or workspace deny or ask always holds, and an agent allow applies only where the policy decides nothing. */
 export function effectivePermissions(policy: EffectivePolicy, agentPerms: readonly AgentPermission[] | undefined): EffectivePermissions {
-  const ceiling = permissionsFromSpec(policy.permissions.ceiling);
-  const workspace = permissionsFromSpec(policy.permissions.workspace);
-  const agent = permissionsFromSpec((agentPerms ?? []).map((rule, index) => ({ ...rule, id: `agent-${index}` })));
+  const [ceiling, workspace, agent] = policyLists(policy, agentPerms);
   const all = [ceiling, workspace, agent];
   return {
     rules: [...rulesWith(all, 'deny'), ...rulesWith(all, 'ask'), ...rulesWith([agent], 'allow')],
-    warnings: shadowWarnings(policy, agentPerms ?? []),
+    warnings: shadowWarnings([ceiling, workspace], agentPerms ?? []),
   };
 }
 
@@ -219,10 +226,11 @@ export function agentPolicyOptions(policy: EffectivePolicy, input: { attachment?
   };
 }
 
-function capabilitiesOf(policy: EffectivePolicy, options: readonly AgentPolicyOptions[], registry: HostToolRegistry): Set<string> {
-  const denied = unconditional(policy).filter((rule) => rule.action === 'deny');
-  const usable = (name: string): boolean => !denied.some((rule) => matcherCovers(rule.tool, name));
-  return new Set(options.flatMap((option) => Object.keys(option.tools).filter(usable).flatMap((name) => registry[name].capabilities ?? [])));
+function capabilitiesOf(policy: EffectivePolicy, agent: PolicyAgent, options: AgentPolicyOptions, registry: HostToolRegistry): string[] {
+  const lists = policyLists(policy, agent.permissions);
+  return Object.keys(options.tools)
+    .filter((name) => !decidedOutright(lists, name, ['deny']))
+    .flatMap((name) => registry[name].capabilities ?? []);
 }
 
 /** Applies the policy to a page at start: options for every attachment, and `LOUSHO_WORKSPACE_CAPABILITY_MISSING` (`capability-missing`) when `capabilities` names something no effective tool provides. */
@@ -232,7 +240,7 @@ export function pagePolicy(
   registry: HostToolRegistry
 ): PagePolicy {
   const entries = page.attachments.map((attachment) => [attachment.alias, agentPolicyOptions(policy, { attachment: attachment.pageOwned, agent: attachment.agentOwned }, registry)] as const);
-  const provided = capabilitiesOf(policy, entries.map(([, options]) => options), registry);
+  const provided = new Set(page.attachments.flatMap((attachment, index) => capabilitiesOf(policy, attachment.agentOwned, entries[index][1], registry)));
   const missing = (page.capabilities ?? []).filter((capability) => !provided.has(capability));
   if (missing.length > 0) {
     throw new SDKError(
