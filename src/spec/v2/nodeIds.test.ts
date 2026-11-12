@@ -119,8 +119,11 @@ describe('specNodeIds remaining sections', () => {
   });
 
   it('names abort listeners abort:<id>', () => {
-    // abortListeners is `never` in the merged types (R03); specNodeIds still maps supplied data.
-    const ids = specNodeIds(spec({ abortListeners: [{ id: 'a1' }] as never }));
+    const ids = specNodeIds(
+      spec({
+        abortListeners: [{ id: 'a1', triggerId: 't1', when: 'true', match: 'true', scope: 'both' }],
+      })
+    );
     expect(ids.abortListeners).toEqual(['abort:a1']);
   });
 });

@@ -5,9 +5,11 @@
  * "not supported yet" issue. Browser-safe: no `node:*` imports.
  */
 import { z } from 'zod';
+import { safeExpressionVariables, ExpressionError } from '../../flows/safeExpression';
 import type { AgentFlow } from '../../types/flow';
 import { anyError, typeErrors } from '../../utils/zodCompat';
 import type { SpecObjectSchema } from '../schema';
+import { abortListenerListSchema } from './abortListeners';
 import { modelIdSchema, relativePathSchema } from './common';
 import { flowProblems, flowSpecSchema } from './flow';
 import { guardrailListSchema } from './guardrails';
@@ -86,7 +88,7 @@ export const agentSpecV2Shape = {
   hooks: hookListSchema.optional(),
   output: outputSpecSchema.optional(),
   triggers: triggerListSchema.optional(),
-  abortListeners: pendingField('abortListeners'),
+  abortListeners: abortListenerListSchema.optional(),
   flow: flowSpecSchema.optional(),
   evals: pendingField('evals'),
 };
@@ -107,7 +109,69 @@ function refineFlow(spec: { flow?: AgentFlow; subagents?: unknown }, ctx: z.Refi
   }
 }
 
-const schema = z.object(agentSpecV2Shape).strict().superRefine(refineFlow);
+/**
+ * `spec.abortListeners`' checks the entry schema cannot see (R03a): unique
+ * ids, `triggerId` naming a `webhook`/`channel` trigger, and `when`/`match`
+ * parsing as safeExpressions. A parse failure is an issue at the field with
+ * the error's `position` in `params` so a form can underline it; a missing
+ * variable is fine - only syntax and unsupported-construct `ExpressionError`s
+ * count, so the check parses with `safeExpressionVariables` rather than
+ * evaluating against an empty scope (which would reject every variable).
+ */
+function checkAbortListeners(
+  spec: { abortListeners?: { id: string; triggerId: string; when: string; match: string }[]; triggers?: { id: string; type: string }[] },
+  ctx: z.RefinementCtx
+): void {
+  const listeners = spec.abortListeners;
+  if (listeners === undefined) return;
+  const triggers = new Map((spec.triggers ?? []).map((trigger) => [trigger.id, trigger.type]));
+  const seen = new Set<string>();
+  for (let index = 0; index < listeners.length; index++) {
+    const listener = listeners[index];
+    const path = ['abortListeners', index];
+    if (seen.has(listener.id)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Abort listener id '${listener.id}' is used twice.`, path: [...path, 'id'] });
+    } else {
+      seen.add(listener.id);
+    }
+    const triggerType = triggers.get(listener.triggerId);
+    if (triggerType === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `No trigger '${listener.triggerId}' in this agent.`, path: [...path, 'triggerId'] });
+    } else if (triggerType !== 'webhook' && triggerType !== 'channel') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Abort listeners can only watch webhook or channel triggers; '${listener.triggerId}' is a ${triggerType} trigger.`,
+        path: [...path, 'triggerId'],
+      });
+    }
+    for (const field of ['when', 'match'] as const) {
+      try {
+        safeExpressionVariables(listener[field]);
+      } catch (error) {
+        if (error instanceof ExpressionError) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Expression error at ${error.position}: ${error.reason}`,
+            path: [...path, field],
+            params: { position: error.position },
+          });
+        } else {
+          throw error;
+        }
+      }
+    }
+  }
+}
+
+function refineSpec(
+  spec: { flow?: AgentFlow; subagents?: unknown; abortListeners?: { id: string; triggerId: string; when: string; match: string }[]; triggers?: { id: string; type: string }[] },
+  ctx: z.RefinementCtx
+): void {
+  refineFlow(spec, ctx);
+  checkAbortListeners(spec, ctx);
+}
+
+const schema = z.object(agentSpecV2Shape).strict().superRefine(refineSpec);
 // `.superRefine` wraps the object in a ZodEffects under zod 3, dropping `.shape`; SpecObjectSchema promises one.
 if (!('shape' in schema)) Object.assign(schema, { shape: agentSpecV2Shape });
 

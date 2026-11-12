@@ -278,3 +278,11 @@ describe('safeExpressionVariables', () => {
     expect(() => safeExpressionVariables('a ==')).toThrow(ExpressionError);
   });
 });
+
+describe('public export', () => {
+  it('is reachable from the flows index', async () => {
+    const flows = await import('./index');
+    expect(flows.evaluateSafeExpression).toBe(evaluateSafeExpression);
+    expect(flows.ExpressionError).toBe(ExpressionError);
+  });
+});

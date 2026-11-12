@@ -68,6 +68,7 @@ export { flowProblems, flowSpecSchema, type FlowProblem } from './flow';
 export type { AgentFlow } from '../../types/flow';
 
 // S22a: triggers schema and catalog.
+export { abortListenerSpecSchema, abortListenerListSchema, type AbortListenerScope, type AbortListenerSpec } from './abortListeners';
 export { triggerSpecSchema, type ChannelKind, type TriggerSpec } from './triggers';
 export { listTriggerTypes, type TriggerTypeInfo } from './triggerCatalog';
 
