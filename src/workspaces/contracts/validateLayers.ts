@@ -1,3 +1,4 @@
+import { goalProblems } from '../../goals/contract';
 import { readBaseHarness, type HarnessLayer } from './baseHarness';
 import { composeHarness, type EffectiveHarness } from './compose';
 import { harnessProfileSchema, hasExecutableCriterion, type Harness } from './harness';
@@ -141,8 +142,13 @@ const executableProblems: EffectiveCheck = (ctx, view, effective) => {
 const goalCheckProblems: EffectiveCheck = (ctx, view, effective) => {
   const file = `${view.dir}/goal.json`;
   const criteria = view.page?.execution.goal ? goalCriteria(ctx.tree[file]) : undefined;
-  const known = new Set((effective.evaluation?.criteria ?? []).map((criterion) => criterion.id));
-  return (criteria ?? []).flatMap((id, index) => (known.has(id) ? [] : [problem('PRD016', file, `checks.${index}.criterion`, `check names criterion '${id}', which no layer defines`)]));
+  if (criteria === undefined) return [];
+  const checks = criteria.map((criterion) => ({ criterion }));
+  return goalProblems({ checks }, effective.evaluation?.criteria ?? []).map((item) =>
+    item.kind === 'missing-criterion'
+      ? problem('PRD016', file, `checks.${item.index}.criterion`, item.message)
+      : problem('PRD033', file, 'checks', item.message)
+  );
 };
 
 const capabilityProblems: EffectiveCheck = (_ctx, view, effective) =>

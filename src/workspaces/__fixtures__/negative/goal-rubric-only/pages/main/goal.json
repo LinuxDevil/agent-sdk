@@ -1,0 +1,13 @@
+{
+  "schema": "lousho.goal/1",
+  "goal": "Write a clear report.",
+  "checks": [
+    {
+      "criterion": "reads-well"
+    }
+  ],
+  "stop": {
+    "maxIterations": 3,
+    "maxCostUsd": 1
+  }
+}

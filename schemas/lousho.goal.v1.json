@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://lousho.com/schemas/lousho.goal.v1.json",
+  "title": "lousho.goal/1",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "lousho.goal/1"
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "criterion": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "criterion"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "stop": {
+      "type": "object",
+      "properties": {
+        "maxIterations": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "maxDurationMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0
+        },
+        "maxCostUsd": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "onStall": {
+          "type": "string",
+          "enum": [
+            "stop",
+            "continue"
+          ]
+        },
+        "stallAfter": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        }
+      },
+      "required": [
+        "maxIterations",
+        "maxCostUsd"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema",
+    "goal",
+    "checks",
+    "stop"
+  ],
+  "additionalProperties": false
+}

@@ -35,7 +35,7 @@ const EXTRA_OPS: AuthoringOp[] = [
   { op: 'set_execution_config', page: 'facebook-videos', key: 'limits', value: { maxTurns: 6 } },
   { op: 'set_execution_config', page: 'facebook-videos', key: 'single', value: { agent: 'script' } },
   { op: 'set_execution_type', page: 'facebook-videos', type: 'single' },
-  { op: 'write_goal', page: 'facebook-videos', goal: { schema: 'lousho.goal/1', goal: 'Reach ten likes.' } },
+  { op: 'write_goal', page: 'facebook-videos', goal: { schema: 'lousho.goal/1', goal: 'Reach ten likes.', checks: [{ criterion: 'script-present' }], stop: { maxIterations: 3, maxCostUsd: 1 } } },
   { op: 'reset_page_ui', page: 'instagram-videos' },
   { op: 'remove_page', page: 'facebook-videos' },
 ];
