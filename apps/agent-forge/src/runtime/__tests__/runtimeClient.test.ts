@@ -248,13 +248,13 @@ describe('RuntimeClient suggestion methods', () => {
       'fetch',
       vi.fn(async () =>
         jsonResponse(409, {
-          error: 'The instructions changed since this suggestion was made.',
+          error: 'The instructions changed since this was suggested.',
           code: 'LOUSHO_SUGGESTION_CONFLICT',
         })
       )
     );
     await expect(client.applySuggestion('a1', 'sug-1')).rejects.toMatchObject({
-      message: 'The instructions changed since this suggestion was made.',
+      message: 'The instructions changed since this was suggested.',
       status: 409,
       code: 'LOUSHO_SUGGESTION_CONFLICT',
     });

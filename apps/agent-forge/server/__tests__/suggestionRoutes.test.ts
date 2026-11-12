@@ -211,7 +211,7 @@ describe('suggestion routes', () => {
     const res = await request(app()).post('/agents/ops/suggestions/sug-1/apply');
     expect(res.status).toBe(409);
     expect(res.body).toEqual({
-      error: 'The instructions changed since this suggestion was made.',
+      error: 'The instructions changed since this was suggested.',
       code: 'LOUSHO_SUGGESTION_CONFLICT',
     });
     expect(await store.get('ops', 'sug-1')).toMatchObject({ status: 'conflict' });
