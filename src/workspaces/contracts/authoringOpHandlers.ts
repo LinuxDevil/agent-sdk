@@ -1,7 +1,7 @@
 import { issuePath, type SafeParser } from '../../utils/zodCompat';
 import { attachmentsSchema } from './agentRefs';
 import { baseHarnessSchema, type WorkspaceTree } from './baseHarness';
-import { harnessSchema } from './harness';
+import { harnessProfileSchema, harnessSchema } from './harness';
 import { mainHarnessSchema } from './mainHarness';
 import { pageSchema } from './page';
 import { SHARED_PATH_PATTERNS } from './shared';
@@ -395,6 +395,49 @@ function writeSharedInstruction(op: Op<'write_shared_instruction'>): Plan {
   return SHARED_PATH_PATTERNS.instructions.test(path) ? build([{ path, doc: op.text }]) : fail(path, 'must be shared/instructions/<name>.md');
 }
 
+const PROFILE_PREFIX = 'workspace:';
+
+function profileDir(ref: string): string {
+  return `harness-profiles/${ref.slice(PROFILE_PREFIX.length)}`;
+}
+
+function setProfile(op: Op<'set_profile'>, tree: WorkspaceTree): Plan {
+  if (manifestOf(tree) === undefined) return missingManifest();
+  const dir = profileDir(op.ref);
+  const prose = Object.entries(op.prose ?? {}).map(([file, text]): Entry => ({ path: `${dir}/${file}`, doc: text }));
+  return build([{ path: `${dir}/harness.json`, doc: op.profile, schema: harnessProfileSchema }, ...prose]);
+}
+
+function deleteProfile(op: Op<'delete_profile'>, tree: WorkspaceTree): Plan {
+  const dir = profileDir(op.ref);
+  if (!(`${dir}/harness.json` in tree)) return fail(`${dir}/harness.json`, `profile '${op.ref}' does not exist`);
+  const files = Object.keys(tree).filter((path) => path.startsWith(`${dir}/`));
+  const nested = files.find((path) => path !== `${dir}/harness.json` && path.endsWith('/harness.json'));
+  return nested === undefined ? { writes: {}, deletes: files } : fail(nested, `profile '${op.ref}' has another profile inside it; delete that one first`);
+}
+
+function resourcePath(tree: WorkspaceTree, target: Op<'set_resource'>['target'], file: string): string | Plan {
+  if (manifestOf(tree) === undefined) return missingManifest();
+  if (target.kind === 'base') return `harness/resources/${file}`;
+  return pageDoc(tree, target.page) === undefined ? missingPage(target.page) : `pages/${target.page}/resources/${file}`;
+}
+
+function setResource(op: Op<'set_resource'>, tree: WorkspaceTree): Plan {
+  const path = resourcePath(tree, op.target, op.file);
+  return typeof path === 'string' ? build([{ path, doc: op.text }]) : path;
+}
+
+function deleteResource(op: Op<'delete_resource'>, tree: WorkspaceTree): Plan {
+  const path = resourcePath(tree, op.target, op.file);
+  if (typeof path !== 'string') return path;
+  return path in tree ? { writes: {}, deletes: [path] } : fail(path, 'does not exist');
+}
+
+function setMainModel(op: Op<'set_main_model'>, tree: WorkspaceTree): Plan {
+  if (mainDirOf(tree) === undefined) return fail('workspace.json', 'mainAgent is null; there is no main agent');
+  return setDocField(tree, 'main-agent/agent.json', { safeParse: (doc: unknown) => ({ success: true as const, data: doc }) }, 'model', op.model);
+}
+
 type Handlers = { [N in AuthoringOp['op']]: (op: Op<N>, tree: WorkspaceTree) => Plan };
 
 const HANDLERS: Handlers = {
@@ -424,10 +467,17 @@ const HANDLERS: Handlers = {
   write_page_ui: writePageUi,
   reset_page_ui: resetPageUi,
   write_shared_instruction: writeSharedInstruction,
+  set_profile: setProfile,
+  delete_profile: deleteProfile,
+  set_resource: setResource,
+  delete_resource: deleteResource,
+  set_main_model: setMainModel,
 };
 
 const NAME = '[a-z][a-z0-9]*(?:-[a-z0-9]+)*';
 const PROSE = '[A-Za-z0-9][A-Za-z0-9._-]*\\.md';
+const RESOURCE = '[A-Za-z0-9][A-Za-z0-9._-]*\\.(?:md|txt)';
+const PROFILE = 'harness-profiles/[a-z0-9][a-z0-9-]*(?:/[a-z0-9][a-z0-9-]*)*';
 const ALLOWED_PATHS: readonly RegExp[] = [
   /^workspace\.json$/,
   new RegExp(`^harness/(?:harness\\.json|${PROSE})$`),
@@ -435,12 +485,15 @@ const ALLOWED_PATHS: readonly RegExp[] = [
   new RegExp(`^agents/${NAME}/(?:agent|instructions)\\.(?:json|md)$`),
   new RegExp(`^pages/${NAME}/(?:page\\.json|agents\\.json|workflow\\.json|goal\\.json|ui/page\\.ui\\.json|harness/(?:harness\\.json|${PROSE})|agents/${NAME}/(?:agent|instructions)\\.(?:json|md))$`),
   new RegExp(`^shared/instructions/${PROSE}$`),
+  new RegExp(`^${PROFILE}/(?:harness\\.json|${PROSE})$`),
+  new RegExp(`^(?:harness|pages/${NAME})/resources/${RESOURCE}$`),
 ];
 const PAGE_FOLDER = new RegExp(`^pages/${NAME}/`);
+const PROFILE_FOLDER = new RegExp(`^${PROFILE}/`);
 
 const isSafePath = (path: string): boolean => !path.includes('\\') && path.split('/').every((segment) => segment !== '' && segment !== '.' && segment !== '..');
 const isAllowedWrite = (path: string): boolean => isSafePath(path) && ALLOWED_PATHS.some((pattern) => pattern.test(path));
-const isAllowedDelete = (path: string): boolean => isAllowedWrite(path) || (isSafePath(path) && PAGE_FOLDER.test(path));
+const isAllowedDelete = (path: string): boolean => isAllowedWrite(path) || (isSafePath(path) && (PAGE_FOLDER.test(path) || PROFILE_FOLDER.test(path)));
 
 function pathProblems(plan: { writes: Record<string, unknown>; deletes?: string[] }): Problem[] {
   const refused = [...Object.keys(plan.writes).filter((path) => !isAllowedWrite(path)), ...(plan.deletes ?? []).filter((path) => !isAllowedDelete(path))];
@@ -452,6 +505,8 @@ function harnessTargetOf(op: AuthoringOp): ProseTarget | undefined {
     case 'write_harness_prose':
     case 'add_criterion':
     case 'remove_criterion':
+    case 'set_resource':
+    case 'delete_resource':
       return op.target;
     case 'set_harness_field':
     case 'attach_agent':
@@ -484,6 +539,7 @@ function customTarget(tree: WorkspaceTree, target: ProseTarget): boolean {
 }
 
 function usesCustomPath(op: AuthoringOp, tree: WorkspaceTree): boolean {
+  if (op.op === 'set_profile' || op.op === 'delete_profile') return manifestOf(tree)?.harnessProfiles !== undefined;
   const target = harnessTargetOf(op);
   if (target !== undefined) return customTarget(tree, target);
   const workspaceAgent = (op.op === 'create_agent' || op.op === 'write_agent_prose') && op.page === undefined;

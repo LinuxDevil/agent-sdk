@@ -170,7 +170,7 @@ describe('authoring operations', () => {
     const schema = authoringOpJsonSchema() as { anyOf?: { properties?: { op?: { const?: string } } }[]; oneOf?: { properties?: { op?: { const?: string } } }[] };
     const branches = schema.anyOf ?? schema.oneOf ?? [];
     expect(branches.map((branch) => branch.properties?.op?.const).sort()).toEqual([...AUTHORING_OP_NAMES].sort());
-    expect(AUTHORING_OP_NAMES).toHaveLength(26);
+    expect(AUTHORING_OP_NAMES).toHaveLength(31);
   });
 
   it('create_workspace refuses an existing workspace and other ops need one', () => {
