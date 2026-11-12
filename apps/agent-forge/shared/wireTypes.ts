@@ -854,19 +854,36 @@ export type SpecPatch = { [K in Exclude<keyof AgentSpecV2, 'version'>]?: AgentSp
   labels?: string[] | null;
 };
 
+/** One thing the draft auto-review flagged, grouped by rubric area. */
+export interface DraftConcern {
+  area: 'safety' | 'coherence' | 'trigger_reach';
+  detail: string;
+}
+
 /**
  * The advisory auto-review a pending draft carries once the review pass
  * has looked at it (filled by the pass, never at create time). The
- * `fingerprint` binds the verdict to the exact submission it judged.
+ * `fingerprint` binds the verdict to the exact submission it judged;
+ * `safe` is null whenever no model verdict exists (`unavailable`).
  */
 export interface DraftAutoReview {
-  outcome: 'approved' | 'escalated' | 'unavailable';
-  safe: boolean;
+  outcome: 'clear' | 'escalated' | 'unavailable';
+  safe: boolean | null;
   rationale: string;
-  concerns: { area: 'safety' | 'coherence' | 'trigger_reach'; detail: string }[];
-  modelId: string | null;
-  checkedAt: string;
+  concerns: DraftConcern[];
   fingerprint: string;
+  model: string | null;
+  checkedAt: string;
+}
+
+/**
+ * The draft's changed field paths split by risk class (L11a): `routine`
+ * edits can be reviewed at a glance, `gated` ones always need the user's
+ * click. Paths are `SpecChange.field` values ('tools[web-fetch]').
+ */
+export interface DraftFieldClasses {
+  routine: string[];
+  gated: string[];
 }
 
 /**
@@ -888,6 +905,8 @@ export interface ChangeDraft {
   /** `specHash()` of the working copy when the draft was made. */
   baseSpecHash: string;
   autoReview: DraftAutoReview | null;
+  /** Routine/gated split of the draft's changed fields; null until the review pass classifies them. */
+  classes: DraftFieldClasses | null;
   /** Reviewer note recorded on approve/reject. */
   note: string | null;
   createdAt: string;

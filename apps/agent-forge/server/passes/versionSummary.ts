@@ -14,7 +14,7 @@ import { diffLines, type Change } from 'diff';
 import { z } from 'zod';
 import type { AgentSpecV2 } from 'lousho';
 import { fieldLabel } from '../../shared/specFieldLabels';
-import { keyedItems, skillKey, toolKey } from '../../shared/nodeIds';
+import { nodeIdList, skillKey, toolKey } from '../../shared/nodeIds';
 import type { SpecFieldKey } from '../../shared/specFields';
 import { specFieldValue } from '../../shared/specFields';
 import type { SpecSnapshot, VersionListItem, VersionRecord } from '../../shared/wireTypes';
@@ -96,12 +96,7 @@ function capBlock(block: string): string {
 }
 
 /** A comma-joined list of node-id-style keys (`tool:<key>`, `skill:<key>`) for a spec list. */
-function nodeIds<T>(items: readonly T[] | undefined, keyOf: (item: T) => string, prefix: string): string | undefined {
-  if (items === undefined || items.length === 0) return undefined;
-  return keyedItems(items, keyOf)
-    .map(({ key }) => `${prefix}${key}`)
-    .join(', ');
-}
+const nodeIds = nodeIdList;
 
 /** The `Instructions:` fact: the prompt text itself, capped, or its `{ file }` pointer. */
 function instructionsFact(spec: AgentSpecV2): string {
