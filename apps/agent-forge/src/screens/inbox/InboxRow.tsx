@@ -25,15 +25,20 @@ function expiresLabel(expiresAt: string | null, now: number): string | null {
   return `Expires in ${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-interface RowProps {
+interface RowProps extends InboxActionHandlers {
   item: InboxItem;
   /** The row's action is in flight: its buttons disable with a "Sending…" title. */
   acting: boolean;
   /** The screen's shared clock (ms epoch), ticking once a second. */
   now: number;
+}
+
+/** The callbacks every inbox row offers, shared by the row and its group wrapper. */
+export interface InboxActionHandlers {
   onApprove: (item: InboxItem & { kind: 'approval' }, approved: boolean) => void;
   onAnswer: (item: InboxItem & { kind: 'question' }, answer: string) => void;
   onDismiss: (item: InboxItem & { kind: 'alert' }) => void;
+  onAddToDataset: (item: InboxItem & { kind: 'alert' }) => void;
 }
 
 const agentHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/canvas`;
@@ -125,34 +130,71 @@ function QuestionActions({ item, disabled, expired, onAnswer }: { item: InboxIte
   );
 }
 
+/** The disabled-button title: expiry wins over the in-flight "Sending…". */
+function actionTitle(expired: boolean, disabled: boolean, expiredText = 'This request expired'): string | undefined {
+  if (expired) return expiredText;
+  return disabled ? 'Sending…' : undefined;
+}
+
+/** The approval row's Approve/Deny pair. */
+function ApprovalActions({ item, expired, disabled, onApprove }: { item: InboxItem & { kind: 'approval' }; expired: boolean; disabled: boolean; onApprove: RowProps['onApprove'] }) {
+  const title = actionTitle(expired, disabled);
+  return (
+    <>
+      <ActionButton
+        label="Approve"
+        className="btn btn-success btn-sm"
+        disabled={disabled || expired}
+        title={title}
+        onClick={() => onApprove(item, true)}
+      />
+      <ActionButton
+        label="Deny"
+        className="btn btn-secondary btn-sm"
+        disabled={disabled || expired}
+        title={title}
+        onClick={() => onApprove(item, false)}
+      />
+    </>
+  );
+}
+
+/** The alert row's actions: a low-rating alert also offers the regressions dataset. */
+function AlertActions({ item, disabled, onAddToDataset, onDismiss }: { item: InboxItem & { kind: 'alert' }; disabled: boolean; onAddToDataset: RowProps['onAddToDataset']; onDismiss: RowProps['onDismiss'] }) {
+  return (
+    <>
+      {item.alertKind === 'low_rating' && (
+        <ActionButton
+          label={`Add to dataset ${item.agentId}-regressions`}
+          className="btn btn-secondary btn-sm"
+          disabled={disabled}
+          title={actionTitle(false, disabled)}
+          onClick={() => onAddToDataset(item)}
+        />
+      )}
+      <a className="btn btn-secondary btn-sm" href={overviewHref(item)}>
+        Open agent
+      </a>
+      <ActionButton
+        label="Dismiss"
+        className="btn btn-ghost btn-sm"
+        disabled={disabled}
+        title={actionTitle(false, disabled)}
+        onClick={() => onDismiss(item)}
+      />
+    </>
+  );
+}
+
 /** The per-kind action cluster; a lookup keeps the row's branches flat. */
 function RowActions(props: RowProps) {
-  const { item, acting, now, onApprove, onAnswer, onDismiss } = props;
+  const { item, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset } = props;
   const expired = isExpired(item, now);
   const disabled = acting;
-  const expiredTitle = 'This request expired';
-  const sendingTitle = 'Sending…';
 
   switch (item.kind) {
     case 'approval':
-      return (
-        <>
-          <ActionButton
-            label="Approve"
-            className="btn btn-success btn-sm"
-            disabled={disabled || expired}
-            title={expired ? expiredTitle : disabled ? sendingTitle : undefined}
-            onClick={() => onApprove(item, true)}
-          />
-          <ActionButton
-            label="Deny"
-            className="btn btn-secondary btn-sm"
-            disabled={disabled || expired}
-            title={expired ? expiredTitle : disabled ? sendingTitle : undefined}
-            onClick={() => onApprove(item, false)}
-          />
-        </>
-      );
+      return <ApprovalActions item={item} expired={expired} disabled={disabled} onApprove={onApprove} />;
     case 'question':
       return <QuestionActions item={item} disabled={disabled} expired={expired} onAnswer={onAnswer} />;
     case 'draft':
@@ -163,20 +205,7 @@ function RowActions(props: RowProps) {
         </a>
       );
     case 'alert':
-      return (
-        <>
-          <a className="btn btn-secondary btn-sm" href={overviewHref(item)}>
-            Open agent
-          </a>
-          <ActionButton
-            label="Dismiss"
-            className="btn btn-ghost btn-sm"
-            disabled={disabled}
-            title={disabled ? sendingTitle : undefined}
-            onClick={() => onDismiss(item)}
-          />
-        </>
-      );
+      return <AlertActions item={item} disabled={disabled} onAddToDataset={onAddToDataset} onDismiss={onDismiss} />;
   }
 }
 

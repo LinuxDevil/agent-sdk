@@ -1,4 +1,5 @@
-import { CircleAlert, Info, Play, RefreshCw, Star } from 'lucide-react';
+import { useMemo } from 'react';
+import { CircleAlert, Info, Play, RefreshCw } from 'lucide-react';
 
 import { agentTabPath } from '../../agents/agentTabs';
 import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../../observe/format';
@@ -6,6 +7,7 @@ import { navigate } from '../../../router/router';
 import { Card } from '../../../ui/Card';
 import { DataTable, type Column } from '../../../ui/DataTable';
 import { EmptyState } from '../../../ui/EmptyState';
+import { RatingControl } from '../../../ui/RatingControl';
 import { StatusBadge } from '../../../ui/StatusBadge';
 import { statusKey } from '../../../ui/status';
 import { useAgentDetail } from '../AgentDetailContext';
@@ -13,23 +15,8 @@ import type { RunRow } from './runsModel';
 import { useAgentRuns } from './useAgentRuns';
 import './runs.css';
 
-/** The rating cell: "—" when unrated, else a star and the 1-5 value (danger at ≤ 2, comment as tooltip). */
-function RatingCell({ rating, ratingComment }: Pick<RunRow, 'rating' | 'ratingComment'>): JSX.Element {
-  if (rating == null) return <span className="value-missing">—</span>;
-  return (
-    <span
-      className={rating <= 2 ? 'runs-rating runs-rating-low' : 'runs-rating'}
-      aria-label={`Rated ${rating} out of 5`}
-      title={ratingComment ?? undefined}
-    >
-      <Star size={12} aria-hidden="true" />
-      <span aria-hidden="true">{rating}</span>
-    </span>
-  );
-}
-
 /** The Runs tab's columns, in order (PLAN §11: status, run, started, duration, tokens, cost, rating, open). */
-const COLUMNS: Column<RunRow>[] = [
+const columnsFor = (agentId: string, onRated: () => void): Column<RunRow>[] => [
   {
     key: 'status',
     header: 'Status',
@@ -76,8 +63,10 @@ const COLUMNS: Column<RunRow>[] = [
     key: 'rating',
     header: 'Rating',
     align: 'right',
-    width: 88,
-    render: (r) => <RatingCell rating={r.rating} ratingComment={r.ratingComment} />,
+    width: 150,
+    render: (r) => (
+      <RatingControl agentId={agentId} traceId={r.traceId} value={r.rating} size="sm" onRated={onRated} />
+    ),
   },
   {
     key: 'open',
@@ -96,6 +85,7 @@ const COLUMNS: Column<RunRow>[] = [
   },
 ];
 
+
 /**
  * The Runs tab (A11, PLAN §11): this agent's runs newest first in a
  * DataTable, each row opening its trace (`#/traces/:id`), with the human
@@ -106,6 +96,7 @@ export function RunsTab(): JSX.Element {
   const { record } = useAgentDetail();
   const { rows, loading, error, ratingsUnavailable, refresh } = useAgentRuns(record.id);
   const testPaneHref = `#${agentTabPath(record.id, 'canvas')}?test=1`;
+  const columns = useMemo(() => columnsFor(record.id, refresh), [record.id, refresh]);
 
   return (
     <div className="runs-tab">
@@ -139,7 +130,7 @@ export function RunsTab(): JSX.Element {
         <Card padding="none">
           <DataTable
             id="agent-runs"
-            columns={COLUMNS}
+            columns={columns}
             rows={rows ?? []}
             rowKey={(r) => r.traceId}
             onRowOpen={(r) => navigate(`/traces/${r.traceId}`)}

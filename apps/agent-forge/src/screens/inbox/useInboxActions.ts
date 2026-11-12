@@ -61,5 +61,34 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
     [act],
   );
 
-  return { acting, onApprove, onAnswer, onDismiss };
+  /** Low-rating alerts (R04b): seeds the trace into `<agentId>-regressions`; the row stays until dismissed. */
+  const onAddToDataset = useCallback(
+    async (item: InboxItem & { kind: 'alert' }) => {
+      setActing((prev) => new Set(prev).add(item.id));
+      try {
+        const { dataset } = await runtimeClient.addAlertToDataset(item.agentId, item.alertId);
+        toast.show({
+          message: `Added to ${dataset}`,
+          tone: 'success',
+          action: {
+            label: 'Open dataset',
+            onClick: () => {
+              window.location.hash = `#/evals/datasets/${encodeURIComponent(dataset)}`;
+            },
+          },
+        });
+      } catch (cause) {
+        toast.show({ message: errorMessage(cause), tone: 'error' });
+      } finally {
+        setActing((prev) => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+      }
+    },
+    [toast],
+  );
+
+  return { acting, onApprove, onAnswer, onDismiss, onAddToDataset };
 }

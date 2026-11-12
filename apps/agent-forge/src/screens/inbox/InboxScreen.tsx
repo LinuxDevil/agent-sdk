@@ -4,7 +4,7 @@ import { EmptyState } from '../../ui/EmptyState';
 import { SkeletonRows } from '../../ui/Skeleton';
 import { ScreenHeader } from '../../shell/ScreenHeader';
 import type { InboxItem, InboxItemKind } from '../../../shared/wireTypes';
-import { InboxRow } from './InboxRow';
+import { InboxRow, type InboxActionHandlers } from './InboxRow';
 import { useInboxActions } from './useInboxActions';
 import { useInboxData } from './useInboxData';
 import './inbox.css';
@@ -51,16 +51,13 @@ function InboxEmpty() {
   );
 }
 
-interface InboxGroupsProps {
+interface InboxGroupsProps extends InboxActionHandlers {
   items: InboxItem[];
   acting: ReadonlySet<string>;
   now: number;
-  onApprove: (item: InboxItem & { kind: 'approval' }, approved: boolean) => void;
-  onAnswer: (item: InboxItem & { kind: 'question' }, answer: string) => void;
-  onDismiss: (item: InboxItem & { kind: 'alert' }) => void;
 }
 
-function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss }: InboxGroupsProps) {
+function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset }: InboxGroupsProps) {
   return (
     <div className="inbox">
       {GROUPS.map((group) => {
@@ -81,6 +78,7 @@ function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss }: Inb
                   onApprove={onApprove}
                   onAnswer={onAnswer}
                   onDismiss={onDismiss}
+                  onAddToDataset={onAddToDataset}
                 />
               ))}
             </ul>
@@ -93,7 +91,7 @@ function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss }: Inb
 
 function InboxBody({ data }: { data: ReturnType<typeof useInboxData> }) {
   const { items, setItems, state, error, now, refresh } = data;
-  const { acting, onApprove, onAnswer, onDismiss } = useInboxActions(items, setItems);
+  const { acting, onApprove, onAnswer, onDismiss, onAddToDataset } = useInboxActions(items, setItems);
   const header = <InboxHeader onRefresh={() => void refresh()} />;
 
   if (state === 'loading') {
@@ -123,7 +121,7 @@ function InboxBody({ data }: { data: ReturnType<typeof useInboxData> }) {
   return (
     <>
       {header}
-      <InboxGroups items={items} acting={acting} now={now} onApprove={onApprove} onAnswer={onAnswer} onDismiss={onDismiss} />
+      <InboxGroups items={items} acting={acting} now={now} onApprove={onApprove} onAnswer={onAnswer} onDismiss={onDismiss} onAddToDataset={onAddToDataset} />
     </>
   );
 }
