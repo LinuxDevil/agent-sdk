@@ -7,7 +7,7 @@
 import { z } from 'zod';
 
 // @public
-export const abortListenerListSchema: z.ZodArray<z.ZodType<AbortListenerSpec, z.ZodTypeDef, AbortListenerSpec>, "many">;
+export const abortListenerListSchema: z.ZodType<AbortListenerSpec[]>;
 
 // @public
 export type AbortListenerScope = 'queued' | 'running' | 'both';
