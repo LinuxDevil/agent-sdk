@@ -15,6 +15,8 @@ export type ScreenId =
   | 'evaluators'
   | 'prompts'
   | 'hub'
+  | 'workspaces'
+  | 'workspace'
   | 'settings';
 
 /** One hash route: its pattern, the screen it shows, and a concrete path that exercises it. */
@@ -53,5 +55,8 @@ export const ROUTES: readonly RouteEntry[] = [
   { pattern: '/prompts/:name', screen: 'prompts', example: '/prompts/e2e-prompt' },
   { pattern: '/hub', screen: 'hub', example: '/hub' },
   { pattern: '/hub/:namespace', screen: 'hub', example: '/hub/e2e-namespace' },
+  { pattern: '/workspaces', screen: 'workspaces', example: '/workspaces' },
+  { pattern: '/workspaces/:id', screen: 'workspace', example: '/workspaces/e2e-workspace' },
+  { pattern: '/workspaces/:id/:section', screen: 'workspace', example: '/workspaces/e2e-workspace/pages' },
   { pattern: '/settings', screen: 'settings', example: '/settings' },
 ];

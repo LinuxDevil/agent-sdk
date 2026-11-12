@@ -136,6 +136,8 @@ const FILTERS: Record<ScreenId, string> = {
   evaluators: '?kind=code&enabled=true&trace=e2e-trace',
   prompts: '?diff=1,2',
   hub: '?agent=triage-bot&scope=fleet',
+  workspaces: '?q=market',
+  workspace: '',
   settings: '',
 };
 
@@ -229,6 +231,9 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
   '/playground': async (main) => {
     await expect(main.getByRole('textbox', { name: 'Content of message 1' })).toHaveValue('Where is my order?');
   },
+  '/workspaces': async (main) => {
+    await expect(main.getByRole('searchbox', { name: 'Filter workspaces' })).toHaveValue('market');
+  },
 };
 CONTROLS['/hub/:namespace'] = CONTROLS['/hub'];
 // `/agents/:id` redirects to the canvas tab, and an unbuilt `/agents/:id/:tab`
@@ -245,6 +250,8 @@ const NO_CONTROLS = new Set([
   '/threads/:sessionId', // a thread's turns; the list's filters only ride along in the URL
   '/evals/queues/:id', // one queue's review pane; no URL-backed controls beyond the id
   '/prompts', // the registry list has no filters
+  '/workspaces/:id', // one workspace; no URL-backed controls
+  '/workspaces/:id/:section', // one workspace section; no URL-backed controls
   '/settings', // no URL state
 ]);
 
