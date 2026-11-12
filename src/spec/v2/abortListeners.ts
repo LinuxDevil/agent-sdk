@@ -54,4 +54,6 @@ export const abortListenerSpecSchema: z.ZodType<AbortListenerSpec> = z
   .strict();
 
 /** The `spec.abortListeners` list (zod): at most 20 entries. */
-export const abortListenerListSchema = z.array(abortListenerSpecSchema).max(20, 'must have at most 20 entries');
+export const abortListenerListSchema: z.ZodType<AbortListenerSpec[]> = z
+  .array(abortListenerSpecSchema)
+  .max(20, 'must have at most 20 entries');
