@@ -42,6 +42,7 @@ import { attachFailureStreak } from '../lifecycle/failureStreak';
 import { attachVersionSummaries } from '../passes/versionSummary';
 import { attachDraftReviews } from '../passes/draftReview';
 import { createTriggerRuntime } from '../triggers/runtime';
+import { attachChainTriggers } from '../triggers/chainTriggers';
 import type { CronTriggers } from '../triggers/cronTriggers';
 import type { TriggerHost } from '../triggers/triggerHost';
 
@@ -321,6 +322,11 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   const idleVersioner = createIdleVersioner(versions);
   const detachPasses = [detachVersionSummaries, detachDraftReviews, detachFailureStreak];
   let disposed = false;
+  // Agent chain triggers (R07): a finished run of A dispatches every
+  // `after: 'A'` trigger through the host - host runs via onRunEnd,
+  // manual test runs via the RunManager status stream. Same dispose()
+  // caveat as the attaches above.
+  attachChainTriggers({ host: triggers, repo, runManager: runs, log: (a, m, l) => triggers.log(a, m, l) });
   return {
     ref,
     repo,

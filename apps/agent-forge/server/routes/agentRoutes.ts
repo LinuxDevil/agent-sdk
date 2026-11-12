@@ -45,6 +45,7 @@ import { computeRequirements, requirementDeps } from '../author/requirements';
 import { readAgentRecord } from '../agentRecord';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { copyAgent } from '../lifecycle/copy';
+import { ChainInvalidError } from '../triggers/chainTriggers';
 import { enabledPatch } from '../lifecycle/enabledState';
 import type { SecretsStore } from '../secretsStore';
 import { defaultMeta, InvalidSpecError } from '../storage/agentRepo';
@@ -274,6 +275,10 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         res.status(201).json(record);
         ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
       } catch (error) {
+        if (error instanceof ChainInvalidError) {
+          sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
+          return;
+        }
         if (error instanceof InvalidSpecError) {
           sendError(res, 400, error.message, error.code, { issues: error.issues });
           return;
@@ -351,6 +356,10 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
           await ws.repo.writeSpec(id, spec);
         });
       } catch (error) {
+        if (error instanceof ChainInvalidError) {
+          sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
+          return;
+        }
         if (error instanceof InvalidSpecError) {
           sendError(res, 400, error.message, error.code, { issues: error.issues });
           return;
