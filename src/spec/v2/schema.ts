@@ -118,53 +118,50 @@ function refineFlow(spec: { flow?: AgentFlow; subagents?: unknown }, ctx: z.Refi
  * count, so the check parses with `safeExpressionVariables` rather than
  * evaluating against an empty scope (which would reject every variable).
  */
-function checkAbortListeners(
-  spec: { abortListeners?: { id: string; triggerId: string; when: string; match: string }[]; triggers?: { id: string; type: string }[] },
-  ctx: z.RefinementCtx
-): void {
+type AbortListenerEntry = { id: string; triggerId: string; when: string; match: string };
+type AbortListenerSpec = { abortListeners?: AbortListenerEntry[]; triggers?: { id: string; type: string }[] };
+
+function abortIssue(ctx: z.RefinementCtx, message: string, path: (string | number)[], params?: { position: number }): void {
+  ctx.addIssue({ code: z.ZodIssueCode.custom, message, path, ...(params ? { params } : {}) });
+}
+
+function checkAbortTrigger(listener: AbortListenerEntry, triggers: Map<string, string>, path: (string | number)[], ctx: z.RefinementCtx): void {
+  const triggerType = triggers.get(listener.triggerId);
+  if (triggerType === undefined) {
+    abortIssue(ctx, `No trigger '${listener.triggerId}' in this agent.`, [...path, 'triggerId']);
+  } else if (triggerType !== 'webhook' && triggerType !== 'channel') {
+    abortIssue(ctx, `Abort listeners can only watch webhook or channel triggers; '${listener.triggerId}' is a ${triggerType} trigger.`, [...path, 'triggerId']);
+  }
+}
+
+function checkAbortExpression(listener: AbortListenerEntry, field: 'when' | 'match', path: (string | number)[], ctx: z.RefinementCtx): void {
+  try {
+    safeExpressionVariables(listener[field]);
+  } catch (error) {
+    if (!(error instanceof ExpressionError)) throw error;
+    abortIssue(ctx, `Expression error at ${error.position}: ${error.reason}`, [...path, field], { position: error.position });
+  }
+}
+
+function checkAbortListener(listener: AbortListenerEntry, index: number, triggers: Map<string, string>, seen: Set<string>, ctx: z.RefinementCtx): void {
+  const path: (string | number)[] = ['abortListeners', index];
+  if (seen.has(listener.id)) abortIssue(ctx, `Abort listener id '${listener.id}' is used twice.`, [...path, 'id']);
+  else seen.add(listener.id);
+  checkAbortTrigger(listener, triggers, path, ctx);
+  checkAbortExpression(listener, 'when', path, ctx);
+  checkAbortExpression(listener, 'match', path, ctx);
+}
+
+function checkAbortListeners(spec: AbortListenerSpec, ctx: z.RefinementCtx): void {
   const listeners = spec.abortListeners;
   if (listeners === undefined) return;
   const triggers = new Map((spec.triggers ?? []).map((trigger) => [trigger.id, trigger.type]));
   const seen = new Set<string>();
-  for (let index = 0; index < listeners.length; index++) {
-    const listener = listeners[index];
-    const path = ['abortListeners', index];
-    if (seen.has(listener.id)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Abort listener id '${listener.id}' is used twice.`, path: [...path, 'id'] });
-    } else {
-      seen.add(listener.id);
-    }
-    const triggerType = triggers.get(listener.triggerId);
-    if (triggerType === undefined) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `No trigger '${listener.triggerId}' in this agent.`, path: [...path, 'triggerId'] });
-    } else if (triggerType !== 'webhook' && triggerType !== 'channel') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Abort listeners can only watch webhook or channel triggers; '${listener.triggerId}' is a ${triggerType} trigger.`,
-        path: [...path, 'triggerId'],
-      });
-    }
-    for (const field of ['when', 'match'] as const) {
-      try {
-        safeExpressionVariables(listener[field]);
-      } catch (error) {
-        if (error instanceof ExpressionError) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: `Expression error at ${error.position}: ${error.reason}`,
-            path: [...path, field],
-            params: { position: error.position },
-          });
-        } else {
-          throw error;
-        }
-      }
-    }
-  }
+  listeners.forEach((listener, index) => checkAbortListener(listener, index, triggers, seen, ctx));
 }
 
 function refineSpec(
-  spec: { flow?: AgentFlow; subagents?: unknown; abortListeners?: { id: string; triggerId: string; when: string; match: string }[]; triggers?: { id: string; type: string }[] },
+  spec: AbortListenerSpec & { flow?: AgentFlow; subagents?: unknown },
   ctx: z.RefinementCtx
 ): void {
   refineFlow(spec, ctx);
