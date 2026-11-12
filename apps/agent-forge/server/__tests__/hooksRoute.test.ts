@@ -81,6 +81,7 @@ function appWith(
     dispatch,
     runsOf: () => [],
     cancel: () => undefined,
+    isEnabled: () => true,
     log: () => {},
     ...hostExtra,
   } as unknown as TriggerHost;
@@ -305,5 +306,33 @@ describe('POST /hooks/:agentId/<path>', () => {
     expect(res.status).toBe(202);
     expect(res.body.cancelled).toEqual([]);
     expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it('answers 409 LOUSHO_AGENT_DISABLED for a turned-off agent after auth (R09)', async () => {
+    const { app, dispatch } = appWith([SIGNED], undefined, { isEnabled: () => false });
+    const body = JSON.stringify({ action: 'deploy' });
+    const res = await request(app)
+      .post(`/hooks/${AGENT}/hooks/t1`)
+      .set('content-type', 'application/json')
+      .set('x-signature-256', sign(body))
+      .send(body);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('LOUSHO_AGENT_DISABLED');
+    expect(res.body.error).toBe('Agent is turned off');
+    expect(dispatch).not.toHaveBeenCalled();
+  });
+
+  it('still rejects an unauthenticated call on a disabled agent before the enabled gate (R09)', async () => {
+    // Auth runs first: an unsigned remote call gets 403, never the 409 that
+    // would confirm the agent exists.
+    const { app } = appWith([OPEN], undefined, { isEnabled: () => false });
+    const res = await request(app)
+      .post(`/hooks/${AGENT}/hooks/open`)
+      .set('host', 'staging.example.com')
+      .send('x');
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe('This webhook has no secret, so it only accepts local calls.');
   });
 });
