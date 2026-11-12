@@ -74,9 +74,12 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * The `lousho/spec` subpath (S23: dist/spec/{index.js,index.mjs,index.d.ts,
  * index.d.mts}) pushed the packed size to 5,276,320 bytes (~5.03 MiB);
  * packed budget raised to 5.5 MiB (~9% headroom).
+ * CI measured 25,175,308 bytes (~24.0 MiB) unpacked / 6.9 MB packed at
+ * 1186 entries on the trigger-host stack (R08a webhook host + R08c cron,
+ * 2026-11-12); unpacked budget raised to 26 MiB (~8% headroom).
  */
 const MAX_ENTRIES = 1300;
-const MAX_UNPACKED_BYTES = 24 * 1024 * 1024;
+const MAX_UNPACKED_BYTES = 26 * 1024 * 1024;
 const MAX_PACKED_BYTES = 7 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
