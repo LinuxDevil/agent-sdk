@@ -1258,3 +1258,17 @@ export type InboxItem =
 export interface InboxCount {
   count: number;
 }
+
+/** `POST /agents/:id/rating`'s body (R04a): a 1-5 human score on the run's trace. */
+export interface RatingRequest {
+  traceId: string;
+  value: 1 | 2 | 3 | 4 | 5;
+  /** Optional rationale, at most 2000 chars; the low-rating alert keeps its first 280. */
+  comment?: string;
+}
+
+/** Human-score labels, indexed by `value - 1`. */
+export const RATING_LABELS = ['Poor', 'Fair', 'Good', 'Great', 'Excellent'] as const;
+
+/** Ratings at or below this value raise a `low_rating` inbox alert (R04a). */
+export const LOW_RATING_MAX = 2;
