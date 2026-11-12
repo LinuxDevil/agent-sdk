@@ -777,7 +777,6 @@ class RuntimeClient implements AgentApi {
    * `PortabilityAnalysis` - findings plus the `[YOUR …]`-adapted
    * instructions an `adapt=1` export substitutes.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L09a); L09b's export sheet consumes it
   async checkPortability(agentId: string): Promise<PortabilityAnalysis> {
     return this.request<PortabilityAnalysis>(`/agents/${encodeURIComponent(agentId)}/portability`, {
       method: 'POST',
@@ -790,7 +789,6 @@ class RuntimeClient implements AgentApi {
    * pasted YAML/JSON/bundle text (parsed like `previewImport`) before the
    * agent exists; the analysis caches in memory server-side.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L09a); L09b's export sheet consumes it
   async checkImportPortability(text: string): Promise<PortabilityAnalysis> {
     return this.request<PortabilityAnalysis>('/agents/import/portability', {
       method: 'POST',

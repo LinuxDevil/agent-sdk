@@ -10,6 +10,7 @@ const api = vi.hoisted(() => ({
   previewImport: vi.fn(),
   importAgent: vi.fn(),
   listAgents: vi.fn(),
+  checkImportPortability: vi.fn(),
 }));
 vi.mock('../../../../runtime/runtimeClient', () => ({
   runtimeClient: api,
@@ -120,6 +121,17 @@ beforeEach(() => {
   api.listAgents.mockResolvedValue(AGENTS);
   api.previewImport.mockResolvedValue(preview());
   api.importAgent.mockResolvedValue(record());
+  api.checkImportPortability.mockResolvedValue({
+    kind: 'portability',
+    id: 'portability-abc',
+    agentId: null,
+    specHash: 'sha256:abc',
+    summary: 'Nothing hard-coded.',
+    findings: [],
+    adaptedInstructions: null,
+    model: null,
+    createdAt: '2026-10-29T12:00:00Z',
+  });
   window.history.replaceState(null, '', '/#/agents');
 });
 
@@ -376,5 +388,55 @@ describe('ImportSheet file picking and reset', () => {
     expect(textarea().value).toBe('');
     expect(document.querySelector('.import-preview-name')).toBeNull();
     expect(api.previewImport).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ImportSheet portability panel (L09b)', () => {
+  const portability = () => sheet().querySelector<HTMLElement>('.portability');
+  const checkButton = (label: string) =>
+    [...(portability()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+      (b) => b.textContent === label
+    );
+
+  it('is hidden until the preview is valid, then offers the check', async () => {
+    mount();
+    await flush();
+    expect(portability()).toBeNull();
+
+    typeInto(textarea(), SPEC_TEXT);
+    await settleDebounce();
+    expect(portability()).not.toBeNull();
+    expect(checkButton('Check for hard-coded details')).toBeTruthy();
+    expect(api.checkImportPortability).not.toHaveBeenCalled();
+  });
+
+  it('stays hidden while the preview has a schema error', async () => {
+    const { RuntimeApiError } = await import('../../../../runtime/runtimeClient');
+    api.previewImport.mockRejectedValue(new RuntimeApiError('bad spec', 400, 'LOUSHO_SCHEMA'));
+    mount();
+    await flush();
+    typeInto(textarea(), 'name: X');
+    await settleDebounce();
+    expect(document.querySelector('.import-error')).not.toBeNull();
+    expect(portability()).toBeNull();
+  });
+
+  it('runs the check against the pasted text and resets when the text changes', async () => {
+    mount();
+    await flush();
+    typeInto(textarea(), SPEC_TEXT);
+    await settleDebounce();
+
+    await act(async () => checkButton('Check for hard-coded details')!.click());
+    await flush();
+    expect(api.checkImportPortability).toHaveBeenCalledWith(SPEC_TEXT);
+    expect(portability()?.textContent).toContain('Nothing hard-coded found.');
+    expect(checkButton('Check again')).toBeTruthy();
+
+    typeInto(textarea(), `${SPEC_TEXT}\ninstructions: More.`);
+    await settleDebounce();
+    expect(checkButton('Check for hard-coded details')).toBeTruthy();
+    expect(checkButton('Check again')).toBeUndefined();
+    expect(portability()?.textContent).not.toContain('Nothing hard-coded found.');
   });
 });

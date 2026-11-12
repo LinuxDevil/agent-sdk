@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   duplicateAgent: vi.fn(),
   deleteAgent: vi.fn(),
   downloadExport: vi.fn(),
+  checkPortability: vi.fn(),
 }));
 
 vi.mock('../../../runtime/runtimeClient', () => ({
@@ -18,6 +19,16 @@ vi.mock('../../../runtime/runtimeClient', () => ({
     duplicateAgent: mocks.duplicateAgent,
     deleteAgent: mocks.deleteAgent,
     downloadExport: mocks.downloadExport,
+    checkPortability: mocks.checkPortability,
+  },
+  RuntimeApiError: class RuntimeApiError extends Error {
+    constructor(
+      message: string,
+      public readonly status: number,
+      public readonly code?: string
+    ) {
+      super(message);
+    }
   },
 }));
 
@@ -98,23 +109,22 @@ beforeEach(() => {
   mocks.duplicateAgent.mockReset();
   mocks.deleteAgent.mockReset();
   mocks.downloadExport.mockReset();
-  mocks.downloadExport.mockResolvedValue({ blob: new Blob(['spec']), filename: 'support-bot.yaml', warnings: [] });
+  mocks.checkPortability.mockReset();
   takePendingOpen(); // drain any queued Author open
   appState.agentId = 'other-agent';
   window.history.replaceState(null, '', '/#/agents/support-bot/overview');
 });
 
 describe('AgentActionsMenu', () => {
-  it('lists Change with AI, Duplicate, Export YAML and Delete agent… with one separator and a danger delete', () => {
+  it('lists Change with AI, Duplicate, Export… and Delete agent… with one separator and a danger delete', () => {
     renderMenu();
     const menu = openMenu();
 
     const labels = [...menu.querySelectorAll<HTMLElement>('[role^="menuitem"]')].map((el) => el.textContent ?? '');
     expect(labels[0]).toContain('Change with AI');
     expect(labels[1]).toContain('Duplicate');
-    expect(labels[2]).toContain('Export YAML');
-    expect(labels[3]).toContain('Export bundle');
-    expect(labels[4]).toContain('Delete agent…');
+    expect(labels[2]).toContain('Export…');
+    expect(labels[3]).toContain('Delete agent…');
     expect(menu.querySelectorAll('[role="separator"]').length).toBe(1);
     expect(menuItem('Delete agent…').classList.contains('menu-item-danger')).toBe(true);
   });
@@ -144,31 +154,14 @@ describe('AgentActionsMenu', () => {
     expect(window.location.hash).toBe('#/agents/support-bot-copy/canvas');
   });
 
-  it('exports the spec as <id>.yaml via the export route and toasts the filename', async () => {
-    const originalCreate = URL.createObjectURL;
-    const originalRevoke = URL.revokeObjectURL;
-    const originalClick = HTMLAnchorElement.prototype.click;
-    const downloads: string[] = [];
-    URL.createObjectURL = () => 'blob:mock';
-    URL.revokeObjectURL = () => {};
-    HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
-      downloads.push(this.download);
-    };
-    try {
-      renderMenu();
-      openMenu();
-      await act(async () => {
-        menuItem('Export YAML').click();
-      });
-    } finally {
-      URL.createObjectURL = originalCreate;
-      URL.revokeObjectURL = originalRevoke;
-      HTMLAnchorElement.prototype.click = originalClick;
-    }
-
-    expect(mocks.downloadExport).toHaveBeenCalledWith('support-bot', 'yaml');
-    expect(downloads).toEqual(['support-bot.yaml']);
-    expect(toastTexts()).toContain('Exported support-bot.yaml');
+  it('opens the export sheet from Export… without downloading yet', async () => {
+    renderMenu();
+    openMenu();
+    await act(async () => {
+      menuItem('Export…').click();
+    });
+    expect(document.querySelector('.sheet-title')?.textContent).toBe('Export Support bot');
+    expect(mocks.downloadExport).not.toHaveBeenCalled();
   });
 
   it('asks before deleting; confirm deletes, toasts and returns to #/agents', async () => {
