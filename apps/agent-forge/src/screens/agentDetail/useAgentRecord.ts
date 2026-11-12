@@ -1,7 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import type { AgentRecord } from '../../../shared/wireTypes';
+import type { AgentRecord, StudioEvent } from '../../../shared/wireTypes';
 import { RuntimeApiError, runtimeClient } from '../../runtime/runtimeClient';
+import { useStudioEvents } from '../../state/useStudioEvents';
+
+/** `agent.changed` reasons that can move the record's publish pointer or published-version badge. */
+const RECORD_REASONS = new Set<Extract<StudioEvent, { type: 'agent.changed' }>['reason']>([
+  'meta',
+  'version',
+  'save',
+  'restore',
+  'import',
+]);
 
 /** What {@link useAgentRecord} reports while (and after) one agent's record loads. */
 export interface AgentRecordState {
@@ -64,6 +74,19 @@ export function useAgentRecord(id: string): AgentRecordState {
     setError(undefined);
     setLoading(false);
   }, []);
+
+  // L14b live updates: a publish (meta), a new version, a save, a restore
+  // or an import can move `publishState`/`meta.publishedVersion`, so the
+  // record refetches on those `agent.changed` reasons for this agent.
+  useStudioEvents(
+    useCallback(
+      (event: StudioEvent) => {
+        if (event.type !== 'agent.changed' || event.agentId !== id) return;
+        if (RECORD_REASONS.has(event.reason)) refresh();
+      },
+      [id, refresh],
+    ),
+  );
 
   return { record, loading, notFound, error, refresh, setRecord };
 }

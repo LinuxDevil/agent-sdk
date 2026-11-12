@@ -4,6 +4,7 @@ import { CircleAlert, CircleCheck, CircleDashed, Clock, Cpu, Play, Wrench, Zap, 
 import type { AgentRecord, Requirement } from '../../../shared/wireTypes';
 import { fmtAge } from '../../observe/format';
 import { agentTabItems, agentTabPath, type AgentTab } from '../agents/agentTabs';
+import { PublishStatePill } from '../../components/PublishPill';
 import { usePendingDraftCount } from '../../state/usePendingDraftCount';
 import { AgentTile } from '../../ui/AgentTile';
 import { StatusBadge } from '../../ui/StatusBadge';
@@ -162,6 +163,7 @@ export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsIte
         </div>
         <div className="agent-detail-actions">
           {enabledControl ?? <StatusBadge status={meta.enabled ? 'enabled' : 'disabled'} />}
+          <PublishStatePill state={record.publishState} />
           <a className="btn btn-primary btn-sm" href={`#${agentTabPath(id, 'canvas')}?test=1`}>
             <Play size={14} strokeWidth={1.75} aria-hidden="true" />
             Test

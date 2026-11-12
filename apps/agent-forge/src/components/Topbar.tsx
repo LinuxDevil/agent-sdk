@@ -20,7 +20,9 @@ import { errorMessage } from './errorMessage';
 import { RunStatus } from './RunStatus';
 import { useOpenTrace } from './test/useOpenTrace';
 import { ToolbarMoreMenu, type ToolbarMenuItem } from './ToolbarMoreMenu';
+import { PublishPill } from './PublishPill';
 import { navigate } from '../router/router';
+import { usePublishState } from '../state/usePublishState';
 import { useSaveVersionAction } from '../screens/agents/useSaveVersionShortcut';
 
 /** A toolbar button's 16px leading icon. */
@@ -369,7 +371,8 @@ function useNarrowMenuItems(openImport: () => void, exportSpec: () => void): Too
  * badge move into the "More actions" menu.
  */
 function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>) {
-  const { runStatus } = useAppState();
+  const { runStatus, agentId, dirty } = useAppState();
+  const publish = usePublishState(agentId);
   const provider = useModelProvider();
   const problemErrors = useProblemErrorCount();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
@@ -396,6 +399,9 @@ function NarrowTopbar({ openPanel, onTogglePanel }: Omit<TopbarProps, 'narrow'>)
         onStop={() => void handleStop()}
       />
       <ToolButton Icon={Save} label="Save" className="btn btn-primary btn-collapse" onClick={() => void handleSave()} />
+      {publish.state !== undefined && (
+        <PublishPill agentId={agentId} state={publish.state} dirty={dirty} onPublished={() => void publish.refresh()} />
+      )}
       <ToolbarMoreMenu items={items}>
         {provider && (
           <div className="overflow-menu-env" role="none">
@@ -425,7 +431,8 @@ export function Topbar({ narrow = false, openPanel, onTogglePanel }: TopbarProps
  * on the right.
  */
 function WideTopbar() {
-  const { runStatus } = useAppState();
+  const { runStatus, agentId, dirty } = useAppState();
+  const publish = usePublishState(agentId);
   const problemErrors = useProblemErrorCount();
   const { actionError, handleRun, handleStop, handleSave, handleImport } = useRunActions();
   const { fileInput, openImport, exportSpec } = useSpecFiles(handleImport);
@@ -460,6 +467,9 @@ function WideTopbar() {
         {fileInput}
         <ToolButton Icon={Download} label="Export" className="btn btn-ghost collapse-1" onClick={exportSpec} />
         <ToolButton Icon={Save} label="Save" className="btn btn-primary" onClick={() => void handleSave()} />
+        {publish.state !== undefined && (
+          <PublishPill agentId={agentId} state={publish.state} dirty={dirty} onPublished={() => void publish.refresh()} />
+        )}
       </div>
     </header>
   );

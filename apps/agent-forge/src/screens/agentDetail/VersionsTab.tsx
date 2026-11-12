@@ -1,18 +1,17 @@
-import { useCallback, useState, type JSX } from 'react';
+import { useState, type JSX } from 'react';
 import { Flag, Pencil, PlusCircle, Rocket, RotateCcw, type LucideIcon } from 'lucide-react';
 
-import { errorMessage } from '../../components/errorMessage';
 import { relativeTime } from '../../components/formatTime';
-import { runtimeClient } from '../../runtime/runtimeClient';
-import { useToast } from '../../ui/Toast';
 import { EmptyState } from '../../ui/EmptyState';
 import { SkeletonRows } from '../../ui/Skeleton';
 import type { VersionKind, VersionListItem } from '../../../shared/wireTypes';
 import { useAgentDetail } from './AgentDetailContext';
+import { PublishVersionDialog } from './PublishVersionDialog';
 import { RestoreDialog } from './RestoreDialog';
 import { useAppState } from '../../state/AppState';
 import { VersionDiffSheet } from './VersionDiffSheet';
 import { fieldLabel, kindLabel, SOURCE_LABELS, summaryPending } from './versionLabels';
+import { useVersionActions } from './useVersionActions';
 import { useVersions } from './useVersions';
 import './versions.css';
 
@@ -28,6 +27,77 @@ const KIND_ICONS: Record<VersionKind, LucideIcon> = {
 /** Field chips shown before the `+N` overflow chip. */
 const MAX_FIELD_CHIPS = 4;
 
+/** The row's action buttons: Changes (except a baseline v1), Restore (not on the current item), Publish this (L14b; not on the pin or a baseline). */
+function VersionActions({
+  item,
+  isCurrent,
+  isPublished,
+  onShowChanges,
+  onRestore,
+  onPublish,
+}: {
+  item: VersionListItem;
+  isCurrent: boolean;
+  isPublished: boolean;
+  onShowChanges(version: number): void;
+  onRestore(version: number): void;
+  onPublish(version: number): void;
+}): JSX.Element {
+  return (
+    <div className="version-actions">
+      {!(item.kind === 'baseline' && item.version === 1) && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => onShowChanges(item.version)}
+        >
+          Changes
+        </button>
+      )}
+      {!isCurrent && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => onRestore(item.version)}
+        >
+          <RotateCcw size={14} strokeWidth={1.75} aria-hidden="true" />
+          Restore
+        </button>
+      )}
+      {!isPublished && item.kind !== 'baseline' && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => onPublish(item.version)}
+        >
+          <Rocket size={14} strokeWidth={1.75} aria-hidden="true" />
+          Publish this
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The head row's right-side pills: "Current" on the newest item, "Published" on the pin (L14b). */
+function VersionHeadBadges({ isCurrent, isPublished }: { isCurrent: boolean; isPublished: boolean }): JSX.Element {
+  return (
+    <>
+      {isCurrent && (
+        <span className="status-pill pill-info">
+          <span className="dot" aria-hidden="true" />
+          Current
+        </span>
+      )}
+      {isPublished && (
+        <span className="status-pill pill-ok">
+          <span className="dot" aria-hidden="true" />
+          Published
+        </span>
+      )}
+    </>
+  );
+}
+
 /**
  * One timeline row (L01): number, kind/source, the "Current" pill on the
  * newest item, relative time, the summary (skeleton while the summary
@@ -39,20 +109,31 @@ const MAX_FIELD_CHIPS = 4;
 function VersionItem({
   item,
   isCurrent,
+  isPublished,
   onShowChanges,
   onRestore,
+  onPublish,
 }: {
   item: VersionListItem;
   isCurrent: boolean;
+  /** `item.version` is the publish pointer's pin (L14b). */
+  isPublished: boolean;
   onShowChanges(version: number): void;
   onRestore(version: number): void;
+  onPublish(version: number): void;
 }): JSX.Element {
   const Icon = KIND_ICONS[item.kind];
   const pending = summaryPending(item);
   const shown = item.changedFields.slice(0, MAX_FIELD_CHIPS);
   const hidden = item.changedFields.length - shown.length;
   return (
-    <li className="version-item" data-version={item.version} data-kind={item.kind} data-current={isCurrent ? 'true' : undefined}>
+    <li
+      className="version-item"
+      data-version={item.version}
+      data-kind={item.kind}
+      data-current={isCurrent ? 'true' : undefined}
+      data-published={isPublished ? 'true' : undefined}
+    >
       <span className="version-dot" aria-hidden="true">
         <Icon size={14} strokeWidth={1.75} aria-hidden="true" />
       </span>
@@ -61,12 +142,7 @@ function VersionItem({
           <span className="version-number">v{item.version}</span>
           <span className="version-kind">{kindLabel(item)}</span>
           <span className="version-source">{SOURCE_LABELS[item.source]}</span>
-          {isCurrent && (
-            <span className="status-pill pill-info">
-              <span className="dot" aria-hidden="true" />
-              Current
-            </span>
-          )}
+          <VersionHeadBadges isCurrent={isCurrent} isPublished={isPublished} />
           <time className="version-time" dateTime={item.createdAt} title={new Date(item.createdAt).toLocaleString()}>
             {relativeTime(item.createdAt)}
           </time>
@@ -92,27 +168,14 @@ function VersionItem({
             {hidden > 0 && <li className="chip">+{hidden}</li>}
           </ul>
         )}
-        <div className="version-actions">
-          {!(item.kind === 'baseline' && item.version === 1) && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => onShowChanges(item.version)}
-            >
-              Changes
-            </button>
-          )}
-          {!isCurrent && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => onRestore(item.version)}
-            >
-              <RotateCcw size={14} strokeWidth={1.75} aria-hidden="true" />
-              Restore
-            </button>
-          )}
-        </div>
+        <VersionActions
+          item={item}
+          isCurrent={isCurrent}
+          isPublished={isPublished}
+          onShowChanges={onShowChanges}
+          onRestore={onRestore}
+          onPublish={onPublish}
+        />
       </div>
     </li>
   );
@@ -127,18 +190,23 @@ function VersionList({
   items,
   error,
   saving,
+  publishedVersion,
   onSave,
   onRetry,
   onShowChanges,
   onRestore,
+  onPublish,
 }: {
   items: VersionListItem[] | undefined;
   error: string | undefined;
   saving: boolean;
+  /** The publish pointer's pin, `null` when nothing is published (L14b). */
+  publishedVersion: number | null;
   onSave(): void;
   onRetry(): void;
   onShowChanges(version: number): void;
   onRestore(version: number): void;
+  onPublish(version: number): void;
 }): JSX.Element {
   if (error !== undefined) {
     return (
@@ -182,8 +250,10 @@ function VersionList({
           key={item.version}
           item={item}
           isCurrent={index === 0}
+          isPublished={publishedVersion !== null && item.version === publishedVersion}
           onShowChanges={onShowChanges}
           onRestore={onRestore}
+          onPublish={onPublish}
         />
       ))}
     </ol>
@@ -202,43 +272,19 @@ export function VersionsTab(): JSX.Element {
   const { record, refresh } = useAgentDetail();
   const { items, error, refresh: refreshVersions } = useVersions(record.id);
   const app = useAppState();
-  const toast = useToast();
-  const [saving, setSaving] = useState(false);
   // The version whose diff sheet is open; null keeps the one shared sheet closed.
   const [diffFor, setDiffFor] = useState<number | null>(null);
   // The version the restore dialog is confirming; null keeps it closed.
   const [restoreFor, setRestoreFor] = useState<number | null>(null);
-
-  const saveVersion = useCallback(async () => {
-    setSaving(true);
-    try {
-      const { item, created } = await runtimeClient.saveVersion(record.id);
-      toast.show({
-        message: created ? `Saved v${item.version}` : `Nothing changed since v${item.version}`,
-        tone: created ? 'success' : 'info',
-      });
-      await refreshVersions();
-    } catch (err) {
-      toast.show({ message: errorMessage(err), tone: 'error' });
-    } finally {
-      setSaving(false);
-    }
-  }, [record.id, refreshVersions, toast]);
-
-  // L03: the restore wrote a new version server-side; the open editor
-  // drops its local edits for the restored spec (`discardLocal`), the
-  // record and the timeline refetch, and the dialog closes.
-  const restored = useCallback(
-    (item: VersionListItem) => {
-      const from = item.restoredFromVersion ?? restoreFor;
-      setRestoreFor(null);
-      toast.show({ message: `Restored v${from} as v${item.version}`, tone: 'success' });
-      void app.reload({ discardLocal: true });
-      refresh();
-      void refreshVersions();
-    },
-    [app, refresh, refreshVersions, restoreFor, toast],
-  );
+  // The version the "Publish this" dialog is confirming; null keeps it closed (L14b).
+  const [publishFor, setPublishFor] = useState<number | null>(null);
+  const { saving, saveVersion, restored, published } = useVersionActions({
+    agentId: record.id,
+    refreshVersions,
+    refreshRecord: refresh,
+    reload: app.reload,
+    restoreFor,
+  });
 
   return (
     <section className="versions" aria-labelledby="versions-title">
@@ -263,10 +309,12 @@ export function VersionsTab(): JSX.Element {
         items={items}
         error={error}
         saving={saving}
+        publishedVersion={record.publishState.version}
         onSave={() => void saveVersion()}
         onRetry={() => void refreshVersions()}
         onShowChanges={setDiffFor}
         onRestore={setRestoreFor}
+        onPublish={setPublishFor}
       />
       <VersionDiffSheet
         agentId={record.id}
@@ -282,7 +330,20 @@ export function VersionsTab(): JSX.Element {
         dirty={app.dirty}
         open={restoreFor !== null}
         onClose={() => setRestoreFor(null)}
-        onRestored={restored}
+        onRestored={(item) => {
+          restored(item);
+          setRestoreFor(null);
+        }}
+      />
+      <PublishVersionDialog
+        agentId={record.id}
+        version={publishFor ?? 0}
+        open={publishFor !== null}
+        onClose={() => setPublishFor(null)}
+        onPublished={(version) => {
+          published(version);
+          setPublishFor(null);
+        }}
       />
     </section>
   );
