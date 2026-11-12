@@ -200,6 +200,7 @@ export function agentRunSpanInit(
       [SdkAttr.TASK_ID]: subagent?.taskId,
       [GenAiAttr.AGENT_ID]: agent.id,
       [SdkAttr.HARNESS_REVISION]: agent.harnessRevision,
+      ...agent.spanAttributes,
       [GenAiAttr.PROVIDER_NAME]: provider?.name,
       [GenAiAttr.REQUEST_MODEL]: agent.settings?.model || provider?.defaultModel || undefined,
       [GenAiAttr.CONVERSATION_ID]: sessionId,

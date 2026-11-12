@@ -34,3 +34,4 @@ export { projectAgentRegistry } from './source/projectAgentRegistry';
 export type { AgentOwned, AgentFiles } from './runtime/agentDirView';
 export { assembleInstructions, assembleMainInstructions, agentRunOptions, type AssembleInstructionsInput, type AssembleMainInput, type AssembledInstructions, type AssembledMainInstructions, type AssembledSection, type InstructionsSource, type ExplainedSection, type AgentRunOptions, type MainHarnessInput, type MainPageInfo } from './runtime/assemble';
 export { effectiveToolset, effectivePermissions, agentPolicyOptions, pagePolicy, type HostTool, type HostToolRegistry, type EffectiveTool, type EffectiveToolset, type EffectivePermissions, type PolicyAgent, type PolicyAttachment, type AgentPolicyOptions, type PagePolicy } from './runtime/policy';
+export { labelsFor, labelAttributes, type StepLabelInput, type LabelExtras } from './runtime/labels';
