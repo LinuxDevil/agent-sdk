@@ -280,7 +280,7 @@ type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
 export const AUTHORING_OP_NAMES: readonly AuthoringOp['op'][];
 
 // @public
-export type AuthoringOp = CreateWorkspaceOp | SetWorkspaceFieldOp | CreatePageOp | RemovePageOp | ReorderPagesOp | SetPageFieldOp | SetHarnessFieldOp | WriteHarnessProseOp | AddExtendsOp | RemoveExtendsOp | SetBaseHarnessFieldOp | SetMainHarnessFieldOp | AddCriterionOp | RemoveCriterionOp | CreateAgentOp | WriteAgentProseOp | AttachAgentOp | DetachAgentOp | SetAttachmentFieldOp | SetExecutionTypeOp | SetExecutionConfigOp | WriteWorkflowOp | WriteGoalOp | WritePageUiOp | ResetPageUiOp | WriteSharedInstructionOp;
+export type AuthoringOp = CreateWorkspaceOp | SetWorkspaceFieldOp | CreatePageOp | RemovePageOp | ReorderPagesOp | SetPageFieldOp | SetHarnessFieldOp | WriteHarnessProseOp | AddExtendsOp | RemoveExtendsOp | SetBaseHarnessFieldOp | SetMainHarnessFieldOp | AddCriterionOp | RemoveCriterionOp | CreateAgentOp | WriteAgentProseOp | AttachAgentOp | DetachAgentOp | SetAttachmentFieldOp | SetExecutionTypeOp | SetExecutionConfigOp | WriteWorkflowOp | WriteGoalOp | WritePageUiOp | ResetPageUiOp | WriteSharedInstructionOp | SetProfileOp | DeleteProfileOp | SetResourceOp | DeleteResourceOp | SetMainModelOp;
 
 // @public
 export function authoringOpJsonSchema(): Record<string, unknown>;
@@ -502,6 +502,19 @@ interface DelegatedUsage {
     toolErrors?: number;
     // (undocumented)
     totalTokens: number;
+}
+
+// @public
+interface DeleteProfileOp {
+    op: 'delete_profile';
+    ref: string;
+}
+
+// @public
+interface DeleteResourceOp {
+    file: string;
+    op: 'delete_resource';
+    target: HarnessTarget;
 }
 
 // @public
@@ -1665,11 +1678,33 @@ interface SetMainHarnessFieldOp {
 }
 
 // @public
+interface SetMainModelOp {
+    model?: string;
+    op: 'set_main_model';
+}
+
+// @public
 interface SetPageFieldOp {
     field: PageField;
     op: 'set_page_field';
     page: string;
     value?: unknown;
+}
+
+// @public
+interface SetProfileOp {
+    op: 'set_profile';
+    profile: Record<string, unknown>;
+    prose?: Record<string, string>;
+    ref: string;
+}
+
+// @public
+interface SetResourceOp {
+    file: string;
+    op: 'set_resource';
+    target: HarnessTarget;
+    text: string;
 }
 
 // @public
