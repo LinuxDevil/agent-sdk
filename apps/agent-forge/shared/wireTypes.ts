@@ -1475,3 +1475,13 @@ export interface HostStatus {
   banner: HostBanner | null;
   recentStderr?: string[];
 }
+
+/** `GET /agents/:id/triggers/status` row (R08b): one channel trigger's public URL and mount error. */
+export interface ChannelTriggerStatus {
+  triggerId: string;
+  channel: 'telegram' | 'slack' | 'github' | 'teams' | 'discord' | 'http';
+  /** Path (origin-relative) to paste into the platform's webhook settings. */
+  url: string;
+  /** Mount failure (`Channel <kind> needs <key>`, duplicate kind), `null` when served. */
+  error: string | null;
+}

@@ -160,3 +160,8 @@
     gap: 2px;
   }
 }
+
+.agent-overview-channel-error {
+  color: var(--danger);
+  font-size: 12px;
+}
