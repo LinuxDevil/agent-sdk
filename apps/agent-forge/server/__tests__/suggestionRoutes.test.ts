@@ -62,6 +62,7 @@ const ANALYSIS: PortabilityAnalysis = {
     },
   ],
   adaptedInstructions: null,
+  model: null,
   createdAt: '2026-02-03T04:05:07.000Z',
 };
 
@@ -105,7 +106,7 @@ describe('suggestion routes', () => {
     expect(res.status).toBe(204);
   };
 
-  const seed = (record: StoredSuggestion) => store.save(record.agentId, record);
+  const seed = (record: StoredSuggestion) => store.save(record.agentId ?? 'ops', record);
   const seedSuggestion = (overrides: Partial<PromptSuggestion> = {}) => seed({ ...SUGGESTION, ...overrides });
   const instructions = async (id = 'ops') => (await repo.readSpec(id))?.instructions;
 

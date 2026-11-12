@@ -136,6 +136,7 @@ import { registerSecretRoutes } from './routes/secretRoutes';
 import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
 import { registerImportRoutes } from './lifecycle/import';
+import { registerPortabilityRoutes } from './passes/portabilityRoutes';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
@@ -1073,6 +1074,12 @@ export function createApp(options: CreateAppOptions): Express {
   // `import` is never read as an agent id; stores come from
   // workspaceOf(req), the workspace seam.
   registerImportRoutes(app, { secrets });
+  // Portability check (L09a): `POST /agents/:id/portability` +
+  // `POST /agents/import/portability` (passes/portabilityRoutes.ts).
+  // Registered BEFORE the `/agents/:id` routes for the same reason as the
+  // import routes: `import` is a valid agent id. Per-agent stores come
+  // from workspaceOf(req); secrets/settings are Studio-global deps.
+  registerPortabilityRoutes(app, { secretsStore: secrets, settings });
   // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).

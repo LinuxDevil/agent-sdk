@@ -1020,14 +1020,29 @@ export interface PromptSuggestion {
   updatedAt: string;
 }
 
+/** Where in the spec a portability finding sits (L09a). */
+export type PortabilityLocation = 'instructions' | 'triggers' | 'tools' | 'mcpServers' | 'hooks' | 'other';
+
+/** What kind of owner-specific reference a portability finding is (L09a). */
+export type PortabilityKind =
+  | 'repository'
+  | 'email_address'
+  | 'channel'
+  | 'path'
+  | 'host'
+  | 'secret'
+  | 'person'
+  | 'url'
+  | 'other';
+
 /**
  * One flagged sender-specific reference the portability check pass
  * reported: the exact `quote`, where it sits in the spec, what it is,
  * and the placeholder/edit the recipient should make.
  */
 export interface PortabilityFinding {
-  location: 'instructions' | 'triggers' | 'tools' | 'mcpServers' | 'other';
-  kind: 'repository' | 'email_address' | 'slack_channel' | 'path' | 'url' | 'secret' | 'person' | 'other';
+  location: PortabilityLocation;
+  kind: PortabilityKind;
   quote: string;
   explanation: string;
   suggestion: string;
@@ -1038,17 +1053,20 @@ export interface PortabilityFinding {
  * check pass writes on export/copy/import: the findings plus
  * `adaptedInstructions` (the instructions rewritten with `[YOUR …]`
  * placeholders, `null` when nothing needed adapting). Cached by
- * `specHash` - re-run only when the spec changed.
+ * `specHash` - re-run only when the spec changed. `agentId` is `null`
+ * for pasted import text (cached in memory instead of the store).
  */
 export interface PortabilityAnalysis {
   kind: 'portability';
   id: string;
-  agentId: string;
+  agentId: string | null;
   /** `specHash()` of the spec this analysis ran on - the cache key. */
   specHash: string;
   summary: string;
   findings: PortabilityFinding[];
   adaptedInstructions: string | null;
+  /** The `provider/model` the pass ran on; `null` when no model was reached. */
+  model: string | null;
   createdAt: string;
 }
 
