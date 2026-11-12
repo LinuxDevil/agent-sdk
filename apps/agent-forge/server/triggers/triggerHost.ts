@@ -206,6 +206,15 @@ export class TriggerHost {
     return () => this.endListeners.delete(listener);
   }
 
+  /**
+   * The workspace run-log sink (phase `trigger`) - trigger adapters
+   * (cron R08c, channels R08b, chains R07) log their own lines through
+   * it so every trigger message lands on the same stream.
+   */
+  log(agentId: string, message: string, level: 'info' | 'warn' | 'error' = 'info'): void {
+    this.deps.log(agentId, message, level);
+  }
+
   private stateFor(agentId: string): AgentTriggers {
     let state = this.agents.get(agentId);
     if (!state) {

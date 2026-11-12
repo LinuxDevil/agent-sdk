@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentSpecV2 } from 'lousho';
 import type { TriggerSpec } from 'lousho/spec';
@@ -53,6 +53,8 @@ function repoWith(specs: Record<string, AgentSpecV2 | undefined>): AgentRepo {
   } as unknown as AgentRepo;
 }
 
+const made: TriggerHost[] = [];
+
 function makeHost(specs: Record<string, AgentSpecV2 | undefined>, queueCap?: number) {
   const runs = new FakeRuns();
   const events = new StudioEventBus();
@@ -64,8 +66,13 @@ function makeHost(specs: Record<string, AgentSpecV2 | undefined>, queueCap?: num
     log: (_agentId, message) => logs.push(message),
     ...(queueCap !== undefined ? { queueCap } : {}),
   });
+  made.push(host);
   return { host, runs, events, logs };
 }
+
+afterEach(() => {
+  for (const host of made.splice(0)) host.stop();
+});
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
