@@ -25,7 +25,8 @@
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
- *   POST /agents/:id/stop            -> abort the in-flight run, if any
+ *   POST /agents/:id/abort          -> body (optional): { reason?: string } (1..200 chars, default 'user')
+ *   POST /agents/:id/stop           -> abort the in-flight run, if any (delegates to /abort's path)
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
  *   POST /agents/:id/approve         -> body: { approvalId, approved, note? } or { approvalId, answer } for a question pause
  *   POST /agents/:id/steer           -> body: { message } - 202 SteerResponse; 409 when nothing is running / a flow run
@@ -88,7 +89,7 @@ import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
 import { configureStudioHome } from './workspace/studioPaths';
@@ -381,11 +382,32 @@ function registerRunRoutes(app: Express): void {
     })
   );
 
-  app.post('/agents/:id/stop', (req, res) => {
-    const runs = workspaceOf(req).runs;
-    runs.stop(paramId(req));
-    res.status(202).json(runs.status(paramId(req)));
-  });
+  // /abort is the primary cancel route (PLAN §5); /stop keeps its old
+  // contract and is the same call with the default 'user' reason. Both
+  // await RunManager.abort so a paused run's 'stopped' status is already
+  // on the entry when the 202 body is read.
+  app.post(
+    '/agents/:id/abort',
+    asyncRoute(async (req, res) => {
+      const { reason } = (req.body ?? {}) as AbortRunRequest;
+      if (reason !== undefined && (typeof reason !== 'string' || reason.length < 1 || reason.length > 200)) {
+        sendError(res, 400, "'reason' must be 1 to 200 characters", 'LOUSHO_BODY_INVALID');
+        return;
+      }
+      const runs = workspaceOf(req).runs;
+      await runs.abort(paramId(req), reason);
+      res.status(202).json(runs.status(paramId(req)));
+    })
+  );
+
+  app.post(
+    '/agents/:id/stop',
+    asyncRoute(async (req, res) => {
+      const runs = workspaceOf(req).runs;
+      await runs.abort(paramId(req), 'user');
+      res.status(202).json(runs.status(paramId(req)));
+    })
+  );
 
   app.get('/agents/:id/status', (req, res) => {
     res.json(workspaceOf(req).runs.status(paramId(req)));

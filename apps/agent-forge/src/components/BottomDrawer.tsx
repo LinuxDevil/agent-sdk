@@ -9,6 +9,7 @@ import { HistoryPanel } from './debug/HistoryPanel';
 import { ProblemsPanel } from './debug/ProblemsPanel';
 import { DebugBar } from './debug/DebugBar';
 import { TestPane } from './test/TestPane';
+import { StopButton } from './test/StopButton';
 import { SteerBox } from './test/SteerBox';
 import { SettingsPanel } from './SettingsPanel';
 import { tabIds, tabListKeyDown } from './tabs';
@@ -26,7 +27,7 @@ const TABS: { id: DrawerTab; label: string; Icon: LucideIcon }[] = [
 const TAB_IDS = TABS.map((t) => t.id);
 
 const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
-  test: () => <TestPane aboveComposer={<SteerBox />} />,
+  test: () => <TestPane runActions={<StopButton />} aboveComposer={<SteerBox />} />,
   problems: () => <ProblemsPanel />,
   logs: () => <LogsPanel />,
   trace: () => <TracePanel />,

@@ -60,8 +60,11 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
     setDebugState(next);
   }, [agentId]);
 
+  // Stop/abort: /agents/:id/abort cancels a running OR approval-paused run
+  // and records the reason on the status payload; /stop delegates to it
+  // server-side with the default 'user' reason.
   const stopAgent = useCallback(async () => {
-    await runtimeClient.stop(agentId);
+    await runtimeClient.abort(agentId);
   }, [agentId]);
 
   const approveAgent = useCallback(
