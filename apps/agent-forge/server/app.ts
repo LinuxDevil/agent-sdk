@@ -135,6 +135,7 @@ import { createAuthorServices } from './author/services';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
+import { registerImportRoutes } from './lifecycle/import';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
@@ -1067,6 +1068,11 @@ export function createApp(options: CreateAppOptions): Express {
     next();
   });
 
+  // Agent import: `POST /agents/import/preview` + `POST /agents/import`
+  // (lifecycle/import.ts). Registered BEFORE the `/agents/:id` routes so
+  // `import` is never read as an agent id; stores come from
+  // workspaceOf(req), the workspace seam.
+  registerImportRoutes(app, { secrets });
   // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).

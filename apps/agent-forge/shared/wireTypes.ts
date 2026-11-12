@@ -1142,3 +1142,45 @@ export interface AgentBundle {
   /** ISO time the bundle was built. */
   exportedAt: string;
 }
+
+/**
+ * How `POST /agents/import` resolves the pasted spec's id (L08a): `new`
+ * takes the first free `<slug>`/`<slug>-N`, `copy` writes `<base>-copy[-N]`
+ * beside `targetId` (or the suggested id), `replace` overwrites `targetId`.
+ */
+export type ImportMode = 'new' | 'replace' | 'copy';
+
+/** `POST /agents/import/preview` and `POST /agents/import` body. */
+export interface ImportRequest {
+  /** Pasted YAML, JSON spec, or `lousho.agent-bundle` text (at most 1 MB). */
+  text: string;
+  mode: ImportMode;
+  /** The agent `replace` overwrites, or the id `copy` derives its name from. */
+  targetId?: string;
+}
+
+/**
+ * `POST /agents/import/preview`'s answer (L08a): the parsed spec after
+ * `upgradeSpec`, what each mode would write it as, and everything the
+ * import sheet shows before committing - the name clash, the readiness
+ * rows, the bundle's prompts and the warnings (bad tags dropped, spec
+ * upgraded, daemon-bound prompts).
+ */
+export interface ImportPreview {
+  format: 'yaml' | 'json' | 'bundle';
+  /** The spec after `upgradeSpec` - what would be written. */
+  spec: AgentSpecV2;
+  /** Bundle labels, normalised; `[]` for a bare spec. */
+  labels: string[];
+  /** `slugifyAgentId(spec.name)` - the id `new` starts from. */
+  suggestedId: string;
+  /** The existing agent `suggestedId` names, or `null` when it is free. */
+  clash: { id: string; name: string } | null;
+  /** The id the requested `mode` would write. */
+  resolvedId: string;
+  /** The spec's readiness rows (`computeRequirements`, AA13). */
+  requirements: Requirement[];
+  /** The bundle's prompts (`{ name, version }` - content stays server-side). */
+  prompts: Array<{ name: string; version: number }>;
+  warnings: string[];
+}
