@@ -60,10 +60,61 @@ export interface GoalCriterionResult {
 }
 
 // @public
+export interface GoalIteration {
+    check: GoalCheckResult;
+    index: number;
+    output: unknown;
+    stepIndex: number;
+    text: string;
+    usage: GoalUsage;
+}
+
+// @public
+export interface GoalLead {
+    run(prompt: string, context: {
+        iteration: number;
+        stepIndex: number;
+        signal: AbortSignal;
+    }): Promise<GoalLeadTurn>;
+}
+
+// @public
+export interface GoalLeadTurn {
+    output?: unknown;
+    text: string;
+    usage: GoalUsage;
+}
+
+// @public
+export type GoalOutcome = 'done' | 'max-iterations' | 'max-duration' | 'budget' | 'stalled' | 'aborted' | 'error';
+
+// @public
 export interface GoalProblem {
     index?: number;
     kind: 'missing-criterion' | 'no-executable-check';
     message: string;
+}
+
+// @public
+export interface GoalRunLimits {
+    maxCostUsd?: number;
+    maxDurationMs?: number;
+    maxTokens?: number;
+}
+
+// @public
+export interface GoalRunResult {
+    error?: {
+        kind: string;
+        message: string;
+        iteration?: number;
+    };
+    iterations: GoalIteration[];
+    outcome: GoalOutcome;
+    output?: unknown;
+    status: 'ok' | 'failed' | 'timed-out' | 'cancelled';
+    text: string;
+    usage: GoalUsage;
 }
 
 // @public
@@ -78,12 +129,53 @@ export interface GoalSpec {
 }
 
 // @public
+export interface GoalStepCounter {
+    next(): number;
+    peek(): number;
+}
+
+// @public
+export function goalStepCounter(start?: number): GoalStepCounter;
+
+// @public
+export interface GoalStepEvent {
+    iteration: number;
+    kind: 'goal-iteration';
+    phase: 'start' | 'done';
+    stepIndex: number;
+}
+
+// @public
 export interface GoalStop {
     maxCostUsd: number;
     maxDurationMs?: number;
     maxIterations: number;
     onStall?: 'stop' | 'continue';
     stallAfter?: number;
+}
+
+// @public
+export interface GoalUsage {
+    costUsd?: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+}
+
+// @public
+export function runGoal(options: RunGoalOptions): Promise<GoalRunResult>;
+
+// @public
+export interface RunGoalOptions {
+    check: GoalCheck;
+    delegates?: readonly string[];
+    emit?: (event: GoalStepEvent) => void;
+    goal: GoalSpec;
+    lead: GoalLead;
+    limits?: GoalRunLimits;
+    now?: () => number;
+    signal?: AbortSignal;
+    steps?: GoalStepCounter;
 }
 
 // (No @packageDocumentation comment for this package)

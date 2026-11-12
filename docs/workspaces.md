@@ -198,6 +198,8 @@ The goal file of a goal-oriented page, named by `page.json` `execution.goal.goal
 
 `goal.json` is structure: improvement never edits it (R10); people change it with the `write_goal` operation. The goal page's `lead` and `delegates` are in `page.json` `execution.goal`, so every attachment stays usable under every type.
 
+**How the loop stops.** The loop runs one turn per iteration in one session. It stops when the check passes, or at `maxIterations`, `maxDurationMs` or `maxCostUsd`, whichever comes first. The run's spend cap (P5.30) and the page's limits apply on top, the lower value of each winning. A stall — `stallAfter` iterations in a row without a better check score — stops the loop as `stalled` unless `onStall` is `continue`. Every iteration is a `goal-iteration` step, so a failure is attributed to the iteration it happened in.
+
 ### Model precedence and `models.provider`
 
 `resolvePageModel` (exported from `lousho/workspaces`) picks the model a page's agent runs with. The first level that sets a model wins:
