@@ -1,0 +1,345 @@
+{
+  "instagram-videos/script": [
+    {
+      "id": "agent",
+      "text": "Write a script that fits the requested length.",
+      "provenance": [
+        "agents/script-maker/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "provenance": [
+        "harness/harness.json",
+        "workspace:platforms/instagram",
+        "workspace:content-types/educational",
+        "workspace:audiences/general",
+        "pages/instagram-videos/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nWrites the script.",
+      "provenance": [
+        "pages/instagram-videos/agents.json#script.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "instagram-videos/video": [
+    {
+      "id": "agent",
+      "text": "Render the video the script describes.",
+      "provenance": [
+        "agents/video-maker/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "provenance": [
+        "harness/harness.json",
+        "workspace:platforms/instagram",
+        "workspace:content-types/educational",
+        "workspace:audiences/general",
+        "pages/instagram-videos/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nRenders the video.",
+      "provenance": [
+        "pages/instagram-videos/agents.json#video.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "instagram-videos/voice": [
+    {
+      "id": "agent",
+      "text": "Read the script in the requested tone.",
+      "provenance": [
+        "agents/voice-maker/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "provenance": [
+        "harness/harness.json",
+        "workspace:platforms/instagram",
+        "workspace:content-types/educational",
+        "workspace:audiences/general",
+        "pages/instagram-videos/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nRecords the voice-over.",
+      "provenance": [
+        "pages/instagram-videos/agents.json#voice.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "facebook-videos/script": [
+    {
+      "id": "agent",
+      "text": "Write a script that fits the requested length.",
+      "provenance": [
+        "agents/script-maker/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "provenance": [
+        "harness/harness.json",
+        "workspace:platforms/facebook",
+        "workspace:content-types/educational",
+        "workspace:audiences/young-adults",
+        "pages/facebook-videos/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nWrites the script.",
+      "provenance": [
+        "pages/facebook-videos/agents.json#script.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "facebook-videos/video": [
+    {
+      "id": "agent",
+      "text": "Render the video the script describes.",
+      "provenance": [
+        "agents/video-maker/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "provenance": [
+        "harness/harness.json",
+        "workspace:platforms/facebook",
+        "workspace:content-types/educational",
+        "workspace:audiences/young-adults",
+        "pages/facebook-videos/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nRenders the video.",
+      "provenance": [
+        "pages/facebook-videos/agents.json#video.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "facebook-videos/voice": [
+    {
+      "id": "agent",
+      "text": "Read the script in the requested tone.",
+      "provenance": [
+        "agents/voice-maker/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "provenance": [
+        "harness/harness.json",
+        "workspace:platforms/facebook",
+        "workspace:content-types/educational",
+        "workspace:audiences/young-adults",
+        "pages/facebook-videos/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nRecords the voice-over.",
+      "provenance": [
+        "pages/facebook-videos/agents.json#voice.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "content-research/lead": [
+    {
+      "id": "agent",
+      "text": "Plan the questions, delegate the facts, and stop when the findings answer the question.",
+      "provenance": [
+        "agents/research-lead/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Content research\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nAnswer the question with findings a video can use, and list the sources.\n\n### Audience\n\nVideo makers who need facts they can cite.\n\n### Constraints\n\n- Follow the brand voice.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: findings (required), sources.\n\n### Resources\n\n- resources/research-notes.md",
+      "provenance": [
+        "harness/harness.json",
+        "workspace:content-types/educational",
+        "workspace:audiences/general",
+        "pages/content-research/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nLeads the research.",
+      "provenance": [
+        "pages/content-research/agents.json#lead.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "content-research/script": [
+    {
+      "id": "agent",
+      "text": "Write a script that fits the requested length.",
+      "provenance": [
+        "agents/script-maker/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "harness",
+      "text": "## Task environment: Content research\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nAnswer the question with findings a video can use, and list the sources.\n\n### Audience\n\nVideo makers who need facts they can cite.\n\n### Constraints\n\n- Follow the brand voice.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: findings (required), sources.\n\n### Resources\n\n- resources/research-notes.md",
+      "provenance": [
+        "harness/harness.json",
+        "workspace:content-types/educational",
+        "workspace:audiences/general",
+        "pages/content-research/harness/harness.json"
+      ]
+    },
+    {
+      "id": "role",
+      "text": "## Your role on this page\n\nLooks up facts.",
+      "provenance": [
+        "pages/content-research/agents.json#script.role"
+      ]
+    },
+    {
+      "id": "engine",
+      "text": "",
+      "provenance": []
+    }
+  ],
+  "main-agent": [
+    {
+      "id": "agent",
+      "text": "Route each request to the page that fits it, and ask when the channel is unclear.",
+      "provenance": [
+        "main-agent/instructions.md"
+      ]
+    },
+    {
+      "id": "shared",
+      "text": "## Workspace rules\n\nFriendly, plain and confident.\n\n### shared:brand/palette.json\n\n{\n  \"primary\": \"#1f6feb\",\n  \"accent\": \"#f78166\",\n  \"background\": \"#ffffff\",\n  \"text\": \"#1b1f24\"\n}\n",
+      "provenance": [
+        "shared/instructions/00-brand-voice.md",
+        "shared/brand/palette.json"
+      ]
+    },
+    {
+      "id": "routing",
+      "text": "## How to route and respond\n\nRoute to the page that matches the channel.\n\n### Routes\n\n- instagram-videos: The user wants an Instagram video.\n- facebook-videos: The user wants a Facebook video.\n- content-research: The user wants research on a topic before making a video.\n\n### Clarifying\n\n- Ask first when: The channel is not named.\n- Ask first when: The topic is missing.\n- Run at once when: The channel and the topic are both clear.\n\n### Presenting results\n\n- Style: Short and friendly.\n- Follow-ups: Offer one next step.\n- Revisions: Ask what to change.\n\n### When a page fails\n\nPolicy: ask.",
+      "provenance": [
+        "main-agent/harness/main-harness.json",
+        "main-agent/harness/routing.md"
+      ]
+    }
+  ]
+}

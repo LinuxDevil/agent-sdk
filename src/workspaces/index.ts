@@ -23,7 +23,7 @@ export { readSourceTree, type SourceTree } from './source/tree';
 export { sqliteWorkspaceSource, postgresWorkspaceSource, type DbSourceOptions, type DbWorkspaceSource } from './source/dbSource';
 export { loadWorkspace, type LoadWorkspaceOptions, type LoadedWorkspace } from './runtime/loadWorkspace';
 export { workspaceProfiles, globalProfiles, type ProfileStore } from './runtime/profileStore';
-export { resolvePageHarness, explainHarness, profileStoreFor, type HarnessCache, type ResolveHarnessOptions } from './runtime/resolveHarness';
+export { resolvePageHarness, explainHarness, profileStoreFor, harnessFilesFor, type HarnessFiles, type HarnessCache, type ResolveHarnessOptions } from './runtime/resolveHarness';
 export { WorkspaceValidationError } from './runtime/validationError';
 export type { WorkspaceManifestView, PageManifestView, PageInheritsView, AttachmentView } from './runtime/manifestView';
 export type { WorkspaceSource, SourceRef, RevisionId, RevisionKind, RevisionActor, RevisionMeta, SourceReadOptions, SourceWriteOptions, WorkspaceChanges } from './source/types';
