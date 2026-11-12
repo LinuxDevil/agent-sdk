@@ -1,0 +1,21 @@
+.lwr-root { font-family: var(--lousho-ui-font, system-ui, sans-serif); color: var(--lousho-ui-text, #18181b); background: var(--lousho-ui-bg, transparent); display: grid; gap: var(--lousho-ui-gap, 12px); }
+.lwr-title, .lwr-heading { margin: 0; font-weight: 600; }
+.lwr-stack, .lwr-section, .lwr-card, .lwr-field, .lwr-output, .lwr-status, .lwr-progress { display: grid; gap: var(--lousho-ui-gap, 12px); }
+.lwr-row { display: flex; flex-wrap: wrap; gap: var(--lousho-ui-gap, 12px); align-items: center; }
+.lwr-card { background: var(--lousho-ui-surface, #ffffff); border: 1px solid var(--lousho-ui-border, #e4e4e8); border-radius: var(--lousho-ui-radius, 8px); padding: var(--lousho-ui-gap, 12px); }
+.lwr-label { font-weight: 500; margin: 0; }
+.lwr-note { color: var(--lousho-ui-muted, #52525b); margin: 0; }
+.lwr-error { color: var(--lousho-ui-danger, #b91c1c); margin: 0; }
+.lwr-input { font: inherit; color: inherit; background: var(--lousho-ui-surface, #ffffff); border: 1px solid var(--lousho-ui-border, #d2d2d8); border-radius: var(--lousho-ui-radius, 8px); padding: 6px 8px; }
+.lwr-input:focus-visible, .lwr-button:focus-visible, [role='tab']:focus-visible { outline: 2px solid var(--lousho-ui-accent, #4f46e5); outline-offset: 2px; }
+.lwr-button { font: inherit; padding: 6px 12px; border-radius: var(--lousho-ui-radius, 8px); border: 1px solid var(--lousho-ui-border, #d2d2d8); background: var(--lousho-ui-surface, #ffffff); color: inherit; cursor: pointer; }
+.lwr-primary { background: var(--lousho-ui-accent, #4f46e5); color: var(--lousho-ui-on-accent, #ffffff); border-color: transparent; }
+.lwr-button:disabled { opacity: 0.6; cursor: not-allowed; }
+.lwr-pre, .lwr-json { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.lwr-json { font-family: var(--lousho-ui-mono, ui-monospace, monospace); }
+.lwr-table { border-collapse: collapse; }
+.lwr-table th, .lwr-table td { border: 1px solid var(--lousho-ui-border, #e4e4e8); padding: 4px 8px; text-align: left; }
+.lwr-tabs [role='tablist'] { display: flex; gap: 4px; border-bottom: 1px solid var(--lousho-ui-border, #e4e4e8); }
+.lwr-tabs [role='tab'] { font: inherit; background: none; border: none; padding: 6px 10px; color: var(--lousho-ui-muted, #52525b); cursor: pointer; }
+.lwr-tabs [role='tab'][aria-selected='true'] { color: var(--lousho-ui-text, #18181b); border-bottom: 2px solid var(--lousho-ui-accent, #4f46e5); }
+.lwr-gallery { margin: 0; padding-left: 1.2em; }

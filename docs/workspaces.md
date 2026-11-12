@@ -536,6 +536,10 @@ No catalog component binds an array input; only `schemaForm` on the parent can.
 
 A page with no `ui/page.ui.json` gets `defaultPageUi(effective, type)`: a `schemaForm` bound to `inputs` (when the harness has an input schema), a row with `runButton` and `cancelButton`, `runStatus`, `progress`, one view per output field (`markdown` for a string, `table` for an array, `text` for a number, integer or boolean, `json` for anything else, or one `json` view of `outputs` when the schema is a path, has a `$ref` or lists no fields), and an `artifactGallery` when `outputs.artifacts` is not empty. It is the same for every execution type, so switching a page's type never changes its UI, and it always passes `validateUiBindings`. `reset_page_ui` deletes the file so this default applies again; services and the CLI build it on read, from the page's effective harness. `reviseBox` and `versionList` are not in it.
 
+### Rendering a page UI
+
+`@lousho/workspaces-react` (`packages/workspaces-react`) renders a page UI in any React 18 or later app: `PageApp` takes an `ApiClient`, a workspace id and a page id, loads the UI spec and the effective input schema through the client, and draws the catalog. It never takes a URL, so a host binds the client to its own server-side proxy. Every label, title, placeholder and piece of model output is drawn as a text node; the schema blocklist above is defence in depth. Hosts theme it with the `--lousho-ui-*` CSS variables listed in the package README.
+
 ## Authoring operations
 
 Chat and forms edit a workspace through one closed set of typed operations, not raw files. `applyOps(tree, ops, { validate })` is pure: it applies the operations in order to a tree, writes only known files at their default paths (never `shared/policies/**`), and runs `validate` on the result. With any problem it returns the original tree and every problem, each naming its operation index. `validate` is required so callers pass `validateWorkspace`.

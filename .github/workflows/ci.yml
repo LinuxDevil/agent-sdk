@@ -38,6 +38,8 @@ jobs:
       # and the diff committed. Runs only here so the report reflects the default peers, not the compat job's ai/zod pairing.
       - run: npm run api:check
       - run: npm run build --workspace=packages/create-lousho
+      - run: npm run typecheck --workspace=packages/workspaces-react
+      - run: npm run build --workspace=packages/workspaces-react
       # Every ```ts block in README.md and docs/*.md must type-check against
       # src/ (quick-start also runs against the packed tarball). Needs dist/.
       - run: npm run docs:verify-snippets -- --skip-build

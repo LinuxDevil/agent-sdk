@@ -6,14 +6,14 @@ import pkg from './package.json';
  * Examples import the SDK by its package name, like a reader's app would.
  * Under vitest those imports resolve to src/ (the same mapping as the
  * tsconfig.json `paths`), so the examples' tests need no build and never mix
- * dist/ classes with src/ ones. Scoped to examples/: other tests that import
- * the package name keep resolving to the built dist/.
+ * dist/ classes with src/ ones. Scoped to examples/ and packages/workspaces-react/:
+ * other tests that import the package name keep resolving to the built dist/.
  */
 function examplesSelfImports(): Plugin {
   // Vite hands resolveId importers with forward slashes on every platform, so
   // the prefix is compared in that form; with path.sep this never matched on
   // Windows and examples silently ran against dist/.
-  const examplesDir = path.join(__dirname, 'examples').split(path.sep).join('/') + '/';
+  const selfImportDirs = ['examples', 'packages/workspaces-react'].map((dir) => path.join(__dirname, dir).split(path.sep).join('/') + '/');
   const targets = new Map(
     Object.entries(pkg.exports).map(([subpath, entry]) => [
       subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
@@ -27,7 +27,7 @@ function examplesSelfImports(): Plugin {
     name: 'examples-self-imports',
     enforce: 'pre',
     resolveId(id, importer) {
-      return importer?.startsWith(examplesDir) ? (targets.get(id) ?? null) : null;
+      return importer !== undefined && selfImportDirs.some((dir) => importer.startsWith(dir)) ? (targets.get(id) ?? null) : null;
     },
   };
 }
@@ -37,6 +37,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    environmentMatchGlobs: [['packages/workspaces-react/**', 'jsdom']],
+    environmentOptions: { jsdom: { url: 'http://localhost' } },
     // A per-run TMPDIR, removed when the run ends (scripts/vitestTmpdir.ts).
     globalSetup: ['./scripts/vitestTmpdir.ts'],
     // Adds '**/*.eval.ts' alongside vitest's own default
