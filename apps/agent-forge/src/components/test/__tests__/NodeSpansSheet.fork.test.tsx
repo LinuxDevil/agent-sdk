@@ -32,6 +32,12 @@ vi.mock('../../../state/AppState', () => ({
     } as unknown as AgentSpecV2),
     spans: state.spans,
     runStatus: state.runStatus,
+    chat: { messages: [] },
+    pins: [],
+    togglePin: vi.fn(),
+    clearPins: vi.fn(),
+    isPinned: () => false,
+    runFromHere: vi.fn(),
   }),
 }));
 

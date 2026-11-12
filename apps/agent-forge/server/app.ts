@@ -25,7 +25,7 @@
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
- *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
+ *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string, pins?: ToolPin[] }
  *   POST /agents/:id/abort          -> body (optional): { reason?: string } (1..200 chars, default 'user')
  *   POST /agents/:id/stop           -> abort the in-flight run, if any (delegates to /abort's path)
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
@@ -90,7 +90,8 @@ import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import { pinsProblem } from './pins';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
 import { configureStudioHome } from './workspace/studioPaths';
@@ -358,9 +359,14 @@ function registerRunRoutes(app: Express): void {
   app.post(
     '/agents/:id/run',
     asyncRoute(async (req, res) => {
-      const { spec, input } = req.body as { spec?: unknown; input?: string };
+      const { spec, input, pins } = req.body as Partial<RunAgentRequest>;
       if (typeof input !== 'string' || !input) {
         res.status(400).json({ error: "Request body must include a non-empty 'input' string" });
+        return;
+      }
+      const pinsError = pinsProblem(pins);
+      if (pinsError !== undefined) {
+        sendError(res, 400, pinsError, 'LOUSHO_PINS_INVALID');
         return;
       }
       try {
@@ -371,7 +377,7 @@ function registerRunRoutes(app: Express): void {
           return;
         }
         const runs = ws.runs;
-        await runs.run(paramId(req), input, resolved.spec);
+        await runs.run(paramId(req), input, resolved.spec, { pins });
         res.status(202).json(runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [

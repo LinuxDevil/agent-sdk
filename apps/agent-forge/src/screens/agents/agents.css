@@ -991,6 +991,18 @@ button.breakpoint-toggle {
   font-size: 13px;
   font-weight: 600;
 }
+/* T04 "run from here": the small Pin badge on a tool node with a pinned result. */
+.node-pin-badge {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 .rf-node-head .input {
   flex: 1;
   min-width: 0;

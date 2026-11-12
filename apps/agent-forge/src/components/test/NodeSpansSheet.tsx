@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { ArrowLeft, GitBranch, ListTree } from 'lucide-react';
+import { ArrowLeft, GitBranch, ListTree, Pin } from 'lucide-react';
 import type { ObserveObservationRow, ObserveScoreRow } from '../../observe/types';
 import { useAppState } from '../../state/AppState';
 import { viewFor } from '../../canvas/kinds';
@@ -12,13 +12,17 @@ import { spansToObservations } from '../debug/spansToObservations';
 import { ForkResult, ReplayEditor, useForkReplay, useRunHistory, type ForkPatch, type ForkView } from '../debug/forkReplay';
 import { stepForToolSpan } from './forkFromSpan';
 import { spansForNode } from './nodeSpans';
+import { lastUserInput, pinFromSpan } from '../../state/pins';
 import './nodeSpans.css';
-import type { AgentRunStatusPayload, RunHistoryStep, SpanEvent } from '../../../shared/wireTypes';
+import type { AgentRunStatusPayload, RunHistoryStep, SpanEvent, ToolPin } from '../../../shared/wireTypes';
 
 const NO_SCORES: ObserveScoreRow[] = [];
 
 /** Disabled "Fork from here": a tool call the checkpoint history does not know can not be replayed from a checkpoint. */
 const NO_CHECKPOINT_TITLE = 'This call has no checkpoint. Forking needs a checkpointed run of the agent.';
+
+/** Why a tool span's pin toggle is disabled (its `title`). */
+const NO_RECORDED_RESULT = 'This run did not record the tool result. Turn on content capture to pin it.';
 
 /** The node's display label: its kind's title on the graph, else its id. */
 function nodeLabel(graph: Graph, nodeId: string): string {
@@ -142,34 +146,139 @@ function SheetBody({ error, forking, replay, onForked, onCancelFork, showingFork
   );
 }
 
-/**
- * The open sheet for `spansNodeId`. The run-history fetch and the
- * fork/replay hooks live here (not in {@link NodeSpansSheet}) so nothing is
- * fetched while the sheet is closed.
- */
-function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
-  const { agentId, closeNodeSpans, displayGraph, spans, runStatus } = useAppState();
-  const [mode, setMode] = useState<TraceViewMode>('tree');
-  const [selectedObsId, setSelectedObsId] = useState<string | null>(null);
-  const [forkingSpanId, setForkingSpanId] = useState<string>();
-  const [showingFork, setShowingFork] = useState(false);
-  const steps = useRunHistory(agentId, runStatus?.updatedAt);
-  const { fork, error, replay } = useForkReplay(agentId);
+/** The sheet footer: on tool nodes the pins chip, Clear and "Run from here", plus the trace link when the run has one. */
+function SpansFooter({
+  toolNode,
+  pinCount,
+  runDisabledReason,
+  traceId,
+  onClearPins,
+  onRunFromHere,
+}: {
+  toolNode: boolean;
+  pinCount: number;
+  runDisabledReason: string | undefined;
+  traceId: string | undefined;
+  onClearPins(): void;
+  onRunFromHere(): void;
+}): ReactNode {
+  const trace = traceFooter(traceId);
+  if (!toolNode) return trace;
+  return (
+    <div className="node-spans-footer">
+      <span className="node-pins-chip" title="Tool results replayed by Run from here">
+        {pinCount} pinned
+      </span>
+      {pinCount > 0 && (
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onClearPins}>
+          Clear
+        </button>
+      )}
+      <button
+        type="button"
+        className="btn btn-primary btn-sm"
+        disabled={runDisabledReason !== undefined}
+        title={runDisabledReason}
+        onClick={onRunFromHere}
+      >
+        Run from here
+      </button>
+      {trace}
+    </div>
+  );
+}
 
-  // A different node opens with a fresh selection and fork state (the mode carries over).
-  useEffect(() => {
-    setSelectedObsId(null);
-    setForkingSpanId(undefined);
-    setShowingFork(false);
-  }, [spansNodeId]);
+/** The pin/unpin toggle shown beside an inspected tool row (T04). */
+function PinToggle({
+  pin,
+  isPinned,
+  togglePin,
+}: {
+  pin: ToolPin | undefined;
+  isPinned(pin: ToolPin): boolean;
+  togglePin(pin: ToolPin): void;
+}): ReactNode {
+  const pinned = pin !== undefined && isPinned(pin);
+  return (
+    <button
+      type="button"
+      className="node-pin-toggle"
+      aria-pressed={pinned}
+      disabled={pin === undefined}
+      title={pin === undefined ? NO_RECORDED_RESULT : pinned ? 'Stop replaying this result' : 'Replay this result on the next run'}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (pin !== undefined) togglePin(pin);
+      }}
+    >
+      <Pin size={12} strokeWidth={1.75} aria-hidden="true" />
+      {pinned ? 'Unpin' : 'Pin this result'}
+    </button>
+  );
+}
 
-  const nodeSpans = useMemo(() => spansForNode(spans, spansNodeId), [spans, spansNodeId]);
-  const observations = useMemo(() => spansToObservations(nodeSpans), [nodeSpans]);
-  const now = useNow(nodeSpans.some((span) => span.endTime === undefined));
-  const traceId = lastRunTraceId(runStatus, spans);
-  const forking = useMemo(() => forkTargetOf(nodeSpans, steps, forkingSpanId), [nodeSpans, steps, forkingSpanId]);
-  const toolNode = spansNodeId.startsWith('tool:');
+/** The span trace inside the sheet: the shared TraceViewer in tree/table mode. */
+function SpansViewer({
+  observations,
+  selectedObsId,
+  onSelect,
+  mode,
+  onModeChange,
+  now,
+  renderFeedback,
+  rowAction,
+}: {
+  observations: ReturnType<typeof spansToObservations>;
+  selectedObsId: string | null;
+  onSelect(obsId: string | null): void;
+  mode: TraceViewMode;
+  onModeChange(mode: TraceViewMode): void;
+  now: number;
+  renderFeedback(row: ObserveObservationRow): ReactNode;
+  rowAction?: (row: ObserveObservationRow) => ReactNode;
+}): ReactNode {
+  return (
+    <TraceViewer
+      observations={observations}
+      scores={NO_SCORES}
+      selectedObsId={selectedObsId}
+      onSelect={onSelect}
+      mode={mode}
+      onModeChange={onModeChange}
+      now={now}
+      playgroundLinks={false}
+      renderFeedback={renderFeedback}
+      rowAction={rowAction}
+    />
+  );
+}
 
+/** Why "Run from here" is disabled (`title`/`disabled` reason), or undefined when it can run. */
+function runFromHereDisabledReason(live: boolean, hasInput: boolean): string | undefined {
+  if (live) return 'Wait for the current run to finish';
+  return hasInput ? undefined : 'Send a message first';
+}
+
+/** The per-row actions of the spans sheet: T08's "Fork from here" under inspected tool rows and T04's pin toggle. */
+function useSpanRowActions({
+  toolNode,
+  spansNodeId,
+  nodeSpans,
+  steps,
+  spanById,
+  isPinned,
+  togglePin,
+  setForkingSpanId,
+}: {
+  toolNode: boolean;
+  spansNodeId: string;
+  nodeSpans: SpanEvent[];
+  steps: RunHistoryStep[];
+  spanById: Map<string, SpanEvent>;
+  isPinned(pin: ToolPin): boolean;
+  togglePin(pin: ToolPin): void;
+  setForkingSpanId(id: string | undefined): void;
+}) {
   // A "Fork from here" action under an inspected tool step of a tool node,
   // enabled when the checkpoint history has the step that produced that call.
   const renderForkAction = useCallback(
@@ -191,10 +300,84 @@ function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
         </button>
       );
     },
-    [toolNode, nodeSpans, steps],
+    [toolNode, nodeSpans, steps, setForkingSpanId],
   );
 
+  /** The row's pin toggle, or undefined for non-tool rows (the viewer keeps its default slot). */
+  const rowAction = useCallback(
+    (row: ObserveObservationRow): ReactNode => {
+      if (!toolNode || row.kind !== 'tool') return undefined;
+      const span = spanById.get(row.obs_id);
+      return <PinToggle pin={span === undefined ? undefined : pinFromSpan(spansNodeId, span)} isPinned={isPinned} togglePin={togglePin} />;
+    },
+    [toolNode, spanById, spansNodeId, isPinned, togglePin],
+  );
+
+  return { renderForkAction, rowAction };
+}
+
+/**
+ * The open sheet for `spansNodeId`. The run-history fetch and the
+ * fork/replay hooks live here (not in {@link NodeSpansSheet}) so nothing is
+ * fetched while the sheet is closed.
+ *
+ * On `tool:*` nodes each inspected tool span also offers "Fork from here"
+ * (T08, when the checkpoint history has the step) and a "Pin this
+ * result"/"Unpin" toggle (T04); the footer carries the pins chip and the
+ * "Run from here" button that re-runs the agent from the last user input
+ * with the pinned results replayed.
+ */
+function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
+  const {
+    agentId,
+    closeNodeSpans,
+    displayGraph,
+    spans,
+    runStatus,
+    chat,
+    pins,
+    togglePin,
+    clearPins,
+    isPinned,
+    runFromHere,
+  } = useAppState();
+  const [mode, setMode] = useState<TraceViewMode>('tree');
+  const [selectedObsId, setSelectedObsId] = useState<string | null>(null);
+  const [forkingSpanId, setForkingSpanId] = useState<string>();
+  const [showingFork, setShowingFork] = useState(false);
+  const steps = useRunHistory(agentId, runStatus?.updatedAt);
+  const { fork, error, replay } = useForkReplay(agentId);
+
+  // A different node opens with a fresh selection and fork state (the mode carries over).
+  useEffect(() => {
+    setSelectedObsId(null);
+    setForkingSpanId(undefined);
+    setShowingFork(false);
+  }, [spansNodeId]);
+
+  const nodeSpans = useMemo(() => spansForNode(spans, spansNodeId), [spans, spansNodeId]);
+  const observations = useMemo(() => spansToObservations(nodeSpans), [nodeSpans]);
+  const now = useNow(nodeSpans.some((span) => span.endTime === undefined));
+  const traceId = lastRunTraceId(runStatus, spans);
+  const forking = useMemo(() => forkTargetOf(nodeSpans, steps, forkingSpanId), [nodeSpans, steps, forkingSpanId]);
+  // Pin actions exist on tool nodes only (the `tool:<key>` canvas ids).
+  const toolNode = spansNodeId.startsWith('tool:');
+  const spanById = useMemo(() => new Map(nodeSpans.map((span) => [span.id, span])), [nodeSpans]);
+  const { renderForkAction, rowAction } = useSpanRowActions({
+    toolNode,
+    spansNodeId,
+    nodeSpans,
+    steps,
+    spanById,
+    isPinned,
+    togglePin,
+    setForkingSpanId,
+  });
+
   const count = nodeSpans.length;
+  const live = isLive(runStatus);
+  const hasInput = lastUserInput(chat.messages) !== undefined;
+  const runDisabledReason = runFromHereDisabledReason(live, hasInput);
 
   return (
     <Sheet
@@ -202,8 +385,17 @@ function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
       onClose={closeNodeSpans}
       size="xl"
       title={`Spans · ${nodeLabel(displayGraph, spansNodeId)}`}
-      description={spansDescription(count, isLive(runStatus))}
-      footer={traceFooter(traceId)}
+      description={spansDescription(count, live)}
+      footer={
+        <SpansFooter
+          toolNode={toolNode}
+          pinCount={pins.length}
+          runDisabledReason={runDisabledReason}
+          traceId={traceId}
+          onClearPins={clearPins}
+          onRunFromHere={() => void runFromHere()}
+        />
+      }
     >
       <SheetBody
         error={error}
@@ -220,16 +412,15 @@ function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
         onBackToSpans={() => setShowingFork(false)}
         hasSpans={count > 0}
         viewer={
-          <TraceViewer
+          <SpansViewer
             observations={observations}
-            scores={NO_SCORES}
             selectedObsId={selectedObsId}
             onSelect={setSelectedObsId}
             mode={mode}
             onModeChange={setMode}
             now={now}
-            playgroundLinks={false}
             renderFeedback={renderForkAction}
+            rowAction={toolNode ? rowAction : undefined}
           />
         }
       />
@@ -243,12 +434,6 @@ function SpansSheet({ spansNodeId }: { spansNodeId: string }) {
  * (`AppState.spansNodeId`), it shows only that node's spans — and its
  * subagent children's — of the live/last run in the shared `TraceViewer`.
  * Renders nothing while `spansNodeId` is undefined.
- *
- * On `tool:*` nodes each inspected tool span also offers "Fork from here":
- * when the run's checkpoint history contains the step that produced the
- * call, it opens the shared `ReplayEditor` with that call preselected and
- * replays from it (`POST /runs/:id/fork`); the sheet body then shows the
- * fork's side-by-side comparison until "Back to spans".
  */
 export function NodeSpansSheet(): JSX.Element | null {
   const { spansNodeId } = useAppState();

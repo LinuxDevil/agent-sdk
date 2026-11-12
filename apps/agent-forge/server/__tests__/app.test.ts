@@ -168,6 +168,23 @@ describe('HTTP API', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /agents/:id/run rejects malformed pins with 400 LOUSHO_PINS_INVALID', async () => {
+    const res = await request(app)
+      .post('/agents/bar/run')
+      .send({ spec: SPEC, input: 'hi', pins: [{}] });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('LOUSHO_PINS_INVALID');
+  });
+
+  it('POST /agents/:id/run rejects more than 50 pins', async () => {
+    const pins = Array.from({ length: 51 }, (_, i) => ({ nodeId: `tool:t${i}`, toolName: `t${i}`, result: i }));
+    const res = await request(app)
+      .post('/agents/bar/run')
+      .send({ spec: SPEC, input: 'hi', pins });
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('LOUSHO_PINS_INVALID');
+  });
+
   // The "already running" 409 guard itself is covered deterministically at
   // the RunManager unit level (runRegistry.test.ts) by calling run() twice
   // back-to-back with no intervening await. Reproducing that race through

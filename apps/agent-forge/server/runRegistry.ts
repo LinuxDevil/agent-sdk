@@ -63,7 +63,9 @@ import type {
   ChatSessionMeta,
   ChatSessionRecord,
   RunHistoryStep,
+  ToolPin,
 } from '../shared/wireTypes';
+import { pinnedResultsHook } from './pins';
 
 interface RunEntry {
   status: RunStatus;
@@ -504,12 +506,17 @@ export class RunManager extends EventEmitter {
    * it re-sends the message the interrupted run started from; after a
    * finished run it continues the conversation.
    */
-  async run(agentId: string, input: string, spec?: AgentSpecV2): Promise<void> {
+  async run(
+    agentId: string,
+    input: string,
+    spec?: AgentSpecV2,
+    options?: { pins?: ToolPin[] }
+  ): Promise<void> {
     const existing = this.entries.get(agentId);
     if (existing && existing.status === 'running') {
       throw new AlreadyRunningError(`Agent '${agentId}' is already running`);
     }
-    await this.launch(agentId, input, spec, { runInput: input });
+    await this.launch(agentId, input, spec, { runInput: input, pins: options?.pins });
   }
 
   /**
@@ -663,7 +670,7 @@ export class RunManager extends EventEmitter {
     agentId: string,
     input: AgentInput,
     spec?: AgentSpecV2,
-    options: { runInput?: string } = {}
+    options: { runInput?: string; pins?: ToolPin[] } = {}
   ): Promise<void> {
     const existing = this.entries.get(agentId);
     const resolvedSpec = await this.resolveLaunchSpec(agentId, spec, existing);
@@ -687,7 +694,7 @@ export class RunManager extends EventEmitter {
     input: AgentInput,
     resolvedSpec: AgentSpecV2,
     existing: RunEntry | undefined,
-    options: { runInput?: string }
+    options: { runInput?: string; pins?: ToolPin[] }
   ): Promise<void> {
     const sessionId = agentId;
     const debugSession = this.makeDebugSession(agentId);
@@ -702,7 +709,13 @@ export class RunManager extends EventEmitter {
       sessionId,
       input,
       captureContent: this.captureContentFor(agentId),
-      extraHooks: debugSession.agentHooks(),
+      // The debugger hook first, then this run's pins (T04): a pinned tool
+      // call resolves to its recorded result without executing - for this
+      // launch only, never stored and never sent on chat turns.
+      extraHooks: [
+        ...debugSession.agentHooks(),
+        ...(options.pins !== undefined && options.pins.length > 0 ? [pinnedResultsHook(options.pins)] : []),
+      ],
       onEvent: (event) => this.onHostEvent(agentId, event, live),
     });
     live.runId = runId;

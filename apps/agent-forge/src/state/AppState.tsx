@@ -12,6 +12,7 @@ import type {
   AgentRunStatusPayload,
   LogEntry,
   SpanEvent,
+  ToolPin,
   DebugStatePayload,
   ChatSessionMeta,
   ChatSessionRecord,
@@ -25,6 +26,7 @@ import { useNodeSpans } from './useNodeSpans';
 import { agentRouteId } from '../screens/agents/agentRoute';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
+import { usePins } from './usePins';
 
 type RailTab = 'agents' | 'nodes';
 export type DrawerTab = 'test' | 'problems' | 'logs' | 'trace' | 'output' | 'history' | 'settings';
@@ -166,6 +168,25 @@ interface AppState {
   runAgent: (input: string) => Promise<void>;
   /** POSTs `/agents/:id/abort` - cancels the active run (running or approval-paused); see runtimeClient.ts/runRegistry.ts for what this can and can't interrupt. */
   stopAgent: () => Promise<void>;
+  /**
+   * The tool results pinned from a node's spans sheet (T04 "run from
+   * here"): sent as `pins` on the next `runFromHere()` only - chat turns
+   * and plain `runAgent()` calls never carry them.
+   */
+  pins: ToolPin[];
+  /** Adds `pin` to `pins`, or removes the pin with the same node/tool/args key when already pinned. */
+  togglePin: (pin: ToolPin) => void;
+  /** Drops every pin (the spans sheet's clear action). */
+  clearPins: () => void;
+  /** True when a pin with `pin`'s node/tool/args key is in `pins`. */
+  isPinned: (pin: ToolPin) => boolean;
+  /**
+   * "Run from here": re-runs the agent with the newest user chat message
+   * as input and `pins` replayed (pinned tool calls return their recorded
+   * result instead of executing). Closes the spans sheet and switches the
+   * drawer to the Test tab. No-op without a user message or while running.
+   */
+  runFromHere: () => Promise<void>;
   /** Resolves the run's current pending approval, if any, via `/agents/:id/approve`. */
   approveAgent: (approved: boolean, note?: string) => Promise<void>;
   /** Pushes `message` into the live run's input queue via `/agents/:id/steer`; rejects when nothing is running (or a flow run). */
@@ -334,6 +355,17 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const agentStatuses = useAgentStatuses(doc.agents);
   const stream = useAgentStream(agentId);
   const run = useRunControls({ agentId, spec, ...stream });
+  const pinsState = usePins({
+    agentId,
+    spec,
+    chat: stream.chat,
+    runStatus: stream.runStatus,
+    setLogs: stream.setLogs,
+    setSpans: stream.setSpans,
+    setNodeStates: stream.setNodeStates,
+    closeNodeSpans: nodeSpans.closeNodeSpans,
+    setDrawerTab,
+  });
   const chatControls = useChatControls({ agentId, spec, ...stream });
   const { activeProfile, refreshActiveProfile } = useActiveProfile();
 
@@ -357,6 +389,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }),
     ...nodeSpans,
     ...run,
+    ...pinsState,
     agentStatuses,
     ...stream,
     ...chatControls,
