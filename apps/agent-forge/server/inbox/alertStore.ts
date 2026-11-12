@@ -12,9 +12,11 @@ import { randomUUID } from 'node:crypto';
 import { promises as fsPromises } from 'node:fs';
 import * as path from 'node:path';
 import { readJsonFile, withAgentLock, writeJsonAtomic } from '../storage/atomic';
+import type { AlertKind } from '../../shared/wireTypes';
 
-/** The kinds of inbox alert Studio raises today; R02a/R02b/R05-R09 add producers, not kinds. */
-export type AlertKind = 'auto_disabled' | 'publish_failed' | 'low_rating';
+// The kind union lives in shared/wireTypes.ts (the inbox items carry it);
+// re-exported here so existing `from './alertStore'` imports keep working.
+export type { AlertKind };
 
 /** One inbox alert record as stored in `alerts.json`. */
 export interface InboxAlert {

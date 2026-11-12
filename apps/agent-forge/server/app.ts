@@ -22,6 +22,9 @@
  *   GET  /agents/:id/suggestions      -> PromptSuggestion[] - open first, then newest (routes/suggestionRoutes.ts)
  *   POST /agents/:id/suggestions/:sid/apply -> hash-guarded instructions edit, 201 VersionListItem | 404/409
  *   POST /agents/:id/suggestions/:sid/dismiss -> 204 | 404/409
+ *   GET  /inbox                      -> InboxItem[] - approvals, questions, drafts, suggestions, alerts (inbox/inboxRoutes.ts)
+ *   GET  /inbox/count                -> InboxCount
+ *   POST /inbox/alerts/:alertId/dismiss -> 204 | 404
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
@@ -141,6 +144,8 @@ import { registerPublishRoutes } from './lifecycle/publish';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
+import { InboxService } from './inbox/inboxService';
+import { registerInboxRoutes } from './inbox/inboxRoutes';
 import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
@@ -242,6 +247,13 @@ interface CreateAppBaseOptions {
    * `new AlertStore(studioPaths().alerts)`.
    */
   alerts?: AlertStore;
+  /**
+   * The default workspace context's `InboxService` (R02a) - a test seam,
+   * like `eventBus`: inject a stub to answer `/inbox*` without building
+   * the real stores. Defaults to the context's own (built by
+   * `createWorkspaceContext`/`legacyWorkspaceContext`).
+   */
+  inbox?: InboxService;
 }
 
 /**
@@ -274,6 +286,7 @@ const API_PREFIXES = [
   '/assistant',
   '/templates',
   '/events',
+  '/inbox',
 ];
 
 /** The only methods served without the token, and only off the API (`/health`, the static client). */
@@ -905,7 +918,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events|\/inbox).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -917,7 +930,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * `workspace`: the launch folder's ref around those two stores.
  */
 function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunner, alerts: AlertStore): WorkspaceContext {
-  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner);
+  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner, alerts);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
   if (options.eventBus !== undefined) workspace = { ...workspace, events: options.eventBus };
@@ -927,6 +940,9 @@ function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunn
   // `idleVersioner` is a test seam too: it swaps the context's idle-version
   // scheduler - the one `workspaceOf(req).idleVersioner` touches/cancels.
   if (options.idleVersioner !== undefined) workspace = { ...workspace, idleVersioner: options.idleVersioner };
+  // `inbox` is a test seam too (R02a): it swaps the context's InboxService
+  // - the one `/inbox*` handlers read through workspaceOf(req).
+  if (options.inbox !== undefined) workspace = { ...workspace, inbox: options.inbox };
   // A caller-built `workspace` already carries its failure-streak attach
   // (createWorkspaceContext); the legacy `{agentStore, runManager}` pair
   // gets the same wiring here (L12), on the final - possibly
@@ -949,17 +965,37 @@ function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunn
  * `{agentStore, runManager}` pair instead of a ready-built `workspace`:
  * the launch folder's ref around those two stores.
  */
-function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefined }, passRunner: PassRunner): WorkspaceContext {
+function legacyWorkspaceContext(
+  options: CreateAppOptions & { workspace?: undefined },
+  passRunner: PassRunner,
+  alerts: AlertStore
+): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
   const versions = new VersionStore(repo);
+  const drafts = new DraftStore(repo);
+  const suggestions = new SuggestionStore(repo);
+  const events = new StudioEventBus();
+  // The legacy pair's approval store is only read through `peek` by the
+  // inbox, so a second instance over the same directory is consistent.
+  const inbox = new InboxService({
+    repo,
+    runManager: options.runManager,
+    approvalStore: new FileApprovalStore(options.baseDir),
+    drafts,
+    suggestions,
+    alerts,
+    events,
+    workspaceId: workspaceRefFor(options.baseDir).id,
+  });
+  inbox.start();
   return {
     ref: workspaceRefFor(options.baseDir),
     repo,
     agentStore: options.agentStore,
     versions,
-    drafts: new DraftStore(repo),
+    drafts,
     idleVersioner: createIdleVersioner(versions),
-    suggestions: new SuggestionStore(repo),
+    suggestions,
     // The legacy pair's RunManager carries its own host; this one exists to
     // satisfy the context shape (nothing reads ws.host yet - catalog/steer
     // routes are later tickets).
@@ -971,8 +1007,9 @@ function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefi
     }),
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
-    events: new StudioEventBus(),
+    events,
     passes: passRunner,
+    inbox,
   };
 }
 
@@ -1147,6 +1184,9 @@ export function createApp(options: CreateAppOptions): Express {
   // The pass spend summary (passes/passRoutes.ts) - before the observe
   // proxy so `/settings/passes/spend` is never proxied.
   registerPassRoutes(app, { spendLog, settings });
+  // The inbox (inbox/inboxRoutes.ts, R02a): `/inbox`, `/inbox/count` and
+  // alert dismiss - the service comes from workspaceOf(req).inbox.
+  registerInboxRoutes(app);
   registerObserveProxy(app);
   registerStaticClient(app, staticDir);
 

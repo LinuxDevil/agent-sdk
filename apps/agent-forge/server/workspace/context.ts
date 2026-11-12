@@ -34,6 +34,7 @@ import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
 import type { PassRunner } from '../passes/passRunner';
 import type { AlertStore } from '../inbox/alertStore';
+import { InboxService } from '../inbox/inboxService';
 import { attachFailureStreak } from '../lifecycle/failureStreak';
 import { attachVersionSummaries } from '../passes/versionSummary';
 import { attachDraftReviews } from '../passes/draftReview';
@@ -77,6 +78,15 @@ export interface WorkspaceContext {
    * apply app-wide.
    */
   passes: PassRunner;
+  /**
+   * This workspace's inbox (inbox/inboxService.ts, R02a): the
+   * approvals/questions/drafts/suggestions/alerts union `GET /inbox`
+   * lists and `inbox.count` counts. Built and `start()`ed here; `stop()`
+   * has no caller until a context dispose exists (same caveat as the
+   * pass attaches above - `startStudioServer`'s `close()` stops the
+   * launch context's).
+   */
+  inbox: InboxService;
 }
 
 /**
@@ -195,6 +205,21 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // AlertStore is Studio-global, everything else is this workspace's.
   // Same dispose() caveat as the attaches above.
   attachFailureStreak({ runManager: runs, repo, alerts: services.alerts, events, workspaceId: ref.id });
+  // The inbox (R02a): one service per workspace over this context's own
+  // stores plus the Studio-global alert list (filtered to ref.id). It
+  // `start()`s its recount subscriptions here; `close()` stops the
+  // launch context's (index.ts).
+  const inbox = new InboxService({
+    repo,
+    runManager: runs,
+    approvalStore,
+    drafts,
+    suggestions,
+    alerts: services.alerts,
+    events,
+    workspaceId: ref.id,
+  });
+  inbox.start();
   return {
     ref,
     repo,
@@ -208,5 +233,6 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     chatTriggers: chatTriggersFor(runs),
     events,
     passes: services.passRunner,
+    inbox,
   };
 }
