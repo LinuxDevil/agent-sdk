@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { CircleAlert, Info, Play, RefreshCw } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import { CircleAlert, Info, Play, RefreshCw, Sparkles } from 'lucide-react';
 
 import { agentTabPath } from '../../agents/agentTabs';
 import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../../observe/format';
@@ -11,12 +11,19 @@ import { RatingControl } from '../../../ui/RatingControl';
 import { StatusBadge } from '../../../ui/StatusBadge';
 import { statusKey } from '../../../ui/status';
 import { useAgentDetail } from '../AgentDetailContext';
+import { errorMessage } from '../../../components/errorMessage';
+import { useSuggestFix } from '../../../state/useSuggestFix';
+import { useToast } from '../../../ui/Toast';
 import type { RunRow } from './runsModel';
 import { useAgentRuns } from './useAgentRuns';
 import './runs.css';
 
 /** The Runs tab's columns, in order (PLAN §11: status, run, started, duration, tokens, cost, rating, open). */
-const columnsFor = (agentId: string, onRated: () => void): Column<RunRow>[] => [
+const columnsFor = (
+  agentId: string,
+  onRated: () => void,
+  suggest: { canSuggest: boolean; pendingTraceId: string | null; onSuggestFix(traceId: string): void }
+): Column<RunRow>[] => [
   {
     key: 'status',
     header: 'Status',
@@ -72,15 +79,33 @@ const columnsFor = (agentId: string, onRated: () => void): Column<RunRow>[] => [
     key: 'open',
     header: <span className="visually-hidden">Open</span>,
     align: 'right',
-    width: 112,
+    width: 200,
     render: (r) => (
-      <a
-        className="btn btn-ghost btn-sm"
-        href={`#/traces/${encodeURIComponent(r.traceId)}`}
-        aria-label={`Open trace ${r.traceId}`}
-      >
-        Open trace
-      </a>
+      <span className="runs-actions">
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={!suggest.canSuggest || suggest.pendingTraceId !== null}
+          title={
+            !suggest.canSuggest
+              ? 'Suggestions need inline instructions'
+              : suggest.pendingTraceId !== null
+                ? 'Suggesting…'
+                : undefined
+          }
+          onClick={() => suggest.onSuggestFix(r.traceId)}
+        >
+          <Sparkles size={14} strokeWidth={1.75} aria-hidden="true" />
+          Suggest a fix
+        </button>
+        <a
+          className="btn btn-ghost btn-sm"
+          href={`#/traces/${encodeURIComponent(r.traceId)}`}
+          aria-label={`Open trace ${r.traceId}`}
+        >
+          Open trace
+        </a>
+      </span>
     ),
   },
 ];
@@ -96,7 +121,25 @@ export function RunsTab(): JSX.Element {
   const { record } = useAgentDetail();
   const { rows, loading, error, ratingsUnavailable, refresh } = useAgentRuns(record.id);
   const testPaneHref = `#${agentTabPath(record.id, 'canvas')}?test=1`;
-  const columns = useMemo(() => columnsFor(record.id, refresh), [record.id, refresh]);
+  const toast = useToast();
+  const suggestFix = useSuggestFix();
+  const [pendingTraceId, setPendingTraceId] = useState<string | null>(null);
+  // The pass only edits inline instructions - a `{ file }` ref disables the button.
+  const canSuggest = typeof record.spec.instructions === 'string';
+  const onSuggestFix = useCallback(
+    (traceId: string) => {
+      setPendingTraceId(traceId);
+      suggestFix(record.id, traceId).catch((cause: unknown) => {
+        toast.show({ message: errorMessage(cause), tone: 'error' });
+        setPendingTraceId(null);
+      });
+    },
+    [record.id, suggestFix, toast]
+  );
+  const columns = useMemo(
+    () => columnsFor(record.id, refresh, { canSuggest, pendingTraceId, onSuggestFix }),
+    [record.id, refresh, canSuggest, pendingTraceId, onSuggestFix]
+  );
 
   return (
     <div className="runs-tab">

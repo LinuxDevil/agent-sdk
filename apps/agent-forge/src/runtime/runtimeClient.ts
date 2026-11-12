@@ -394,6 +394,21 @@ class RuntimeClient implements AgentApi {
     );
   }
 
+  /**
+   * "Suggest a fix" (R06): reserves a suggestion id and answers 202 while
+   * the `prompt_suggestion` pass reads the trace's friction digest; the
+   * record lands under `suggestions/<id>.json` (announced by the
+   * `suggestion.new` event) when it finishes. 409 while one is already
+   * in flight for the trace, 422 when the agent's instructions live in a
+   * file (`LOUSHO_SUGGESTION_UNSUPPORTED`).
+   */
+  async suggestFromTrace(agentId: string, traceId: string): Promise<{ suggestionId: string }> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/suggestions/from-trace`, {
+      method: 'POST',
+      body: JSON.stringify({ traceId }),
+    });
+  }
+
   /** The workspace the studio serves (`baseDir` is its root; `workspace` is the full ref for addressing it by id). */
   async workspace(): Promise<WorkspaceInfo> {
     return this.request('/workspace', { method: 'GET' });

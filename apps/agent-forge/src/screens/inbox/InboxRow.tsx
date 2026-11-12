@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Sparkles, type LucideIcon } from 'lucide-react';
 
 import { fmtAge } from '../../observe/format';
 import { AgentTile } from '../../ui/AgentTile';
@@ -39,6 +40,7 @@ export interface InboxActionHandlers {
   onAnswer: (item: InboxItem & { kind: 'question' }, answer: string) => void;
   onDismiss: (item: InboxItem & { kind: 'alert' }) => void;
   onAddToDataset: (item: InboxItem & { kind: 'alert' }) => void;
+  onSuggestFix: (item: InboxItem & { kind: 'alert' }) => void;
 }
 
 const agentHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/canvas`;
@@ -70,16 +72,19 @@ function ActionButton({
   className,
   disabled,
   title,
+  icon: Icon,
   onClick,
 }: {
   label: string;
   className: string;
   disabled: boolean;
   title?: string;
+  icon?: LucideIcon;
   onClick: () => void;
 }) {
   return (
     <button type="button" className={className} disabled={disabled} title={title} onClick={onClick}>
+      {Icon !== undefined && <Icon size={14} strokeWidth={1.75} aria-hidden="true" />}
       {label}
     </button>
   );
@@ -159,18 +164,31 @@ function ApprovalActions({ item, expired, disabled, onApprove }: { item: InboxIt
   );
 }
 
-/** The alert row's actions: a low-rating alert also offers the regressions dataset. */
-function AlertActions({ item, disabled, onAddToDataset, onDismiss }: { item: InboxItem & { kind: 'alert' }; disabled: boolean; onAddToDataset: RowProps['onAddToDataset']; onDismiss: RowProps['onDismiss'] }) {
+/** The alert row's actions: a low-rating alert also offers the regressions dataset and "Suggest a fix". */
+function AlertActions({ item, disabled, onAddToDataset, onDismiss, onSuggestFix }: { item: InboxItem & { kind: 'alert' }; disabled: boolean; onAddToDataset: RowProps['onAddToDataset']; onDismiss: RowProps['onDismiss']; onSuggestFix: RowProps['onSuggestFix'] }) {
+  const traceId = item.alertKind === 'low_rating' ? item.payload.traceId : undefined;
   return (
     <>
       {item.alertKind === 'low_rating' && (
-        <ActionButton
-          label={`Add to dataset ${item.agentId}-regressions`}
-          className="btn btn-secondary btn-sm"
-          disabled={disabled}
-          title={actionTitle(false, disabled)}
-          onClick={() => onAddToDataset(item)}
-        />
+        <>
+          {typeof traceId === 'string' && traceId !== '' && (
+            <ActionButton
+              label="Suggest a fix"
+              className="btn btn-secondary btn-sm"
+              disabled={disabled}
+              title={actionTitle(false, disabled)}
+              icon={Sparkles}
+              onClick={() => onSuggestFix(item)}
+            />
+          )}
+          <ActionButton
+            label={`Add to dataset ${item.agentId}-regressions`}
+            className="btn btn-secondary btn-sm"
+            disabled={disabled}
+            title={actionTitle(false, disabled)}
+            onClick={() => onAddToDataset(item)}
+          />
+        </>
       )}
       <a className="btn btn-secondary btn-sm" href={overviewHref(item)}>
         Open agent
@@ -188,7 +206,7 @@ function AlertActions({ item, disabled, onAddToDataset, onDismiss }: { item: Inb
 
 /** The per-kind action cluster; a lookup keeps the row's branches flat. */
 function RowActions(props: RowProps) {
-  const { item, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset } = props;
+  const { item, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix } = props;
   const expired = isExpired(item, now);
   const disabled = acting;
 
@@ -205,7 +223,15 @@ function RowActions(props: RowProps) {
         </a>
       );
     case 'alert':
-      return <AlertActions item={item} disabled={disabled} onAddToDataset={onAddToDataset} onDismiss={onDismiss} />;
+      return (
+        <AlertActions
+          item={item}
+          disabled={disabled}
+          onAddToDataset={onAddToDataset}
+          onDismiss={onDismiss}
+          onSuggestFix={onSuggestFix}
+        />
+      );
   }
 }
 

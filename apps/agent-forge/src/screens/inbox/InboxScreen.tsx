@@ -57,7 +57,7 @@ interface InboxGroupsProps extends InboxActionHandlers {
   now: number;
 }
 
-function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset }: InboxGroupsProps) {
+function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix }: InboxGroupsProps) {
   return (
     <div className="inbox">
       {GROUPS.map((group) => {
@@ -79,6 +79,7 @@ function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss, onAdd
                   onAnswer={onAnswer}
                   onDismiss={onDismiss}
                   onAddToDataset={onAddToDataset}
+                  onSuggestFix={onSuggestFix}
                 />
               ))}
             </ul>
@@ -91,7 +92,7 @@ function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss, onAdd
 
 function InboxBody({ data }: { data: ReturnType<typeof useInboxData> }) {
   const { items, setItems, state, error, now, refresh } = data;
-  const { acting, onApprove, onAnswer, onDismiss, onAddToDataset } = useInboxActions(items, setItems);
+  const { acting, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix } = useInboxActions(items, setItems);
   const header = <InboxHeader onRefresh={() => void refresh()} />;
 
   if (state === 'loading') {
@@ -121,7 +122,7 @@ function InboxBody({ data }: { data: ReturnType<typeof useInboxData> }) {
   return (
     <>
       {header}
-      <InboxGroups items={items} acting={acting} now={now} onApprove={onApprove} onAnswer={onAnswer} onDismiss={onDismiss} onAddToDataset={onAddToDataset} />
+      <InboxGroups items={items} acting={acting} now={now} onApprove={onApprove} onAnswer={onAnswer} onDismiss={onDismiss} onAddToDataset={onAddToDataset} onSuggestFix={onSuggestFix} />
     </>
   );
 }
