@@ -1,3 +1,4 @@
+import type { TraceExporter } from '../../../execution/tracing';
 import type { LLMProvider } from '../../../providers';
 import type { ToolDescriptor } from '../../../types';
 import type { SecretRef } from '../../../spec/v2/secrets';
@@ -44,6 +45,8 @@ export interface PageRuntimeHost {
   bindTool(descriptor: ToolDescriptor, scope: PageToolScope): ToolDescriptor;
   /** The provider for an attachment's resolved model; without it `createAgent` resolves the model string itself. */
   provider?: (model: string | undefined) => LLMProvider;
+  /** Receives every page agent's spans, labelled with the step's `lousho.*` attributes. */
+  exporter?: TraceExporter;
   /** Answers `global:` agent refs. */
   globalAgents?: GlobalAgentRegistry;
   /** Answers `global:` harness profile refs. */

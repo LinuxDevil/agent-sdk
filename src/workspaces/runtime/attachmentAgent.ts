@@ -3,12 +3,23 @@ import type { RunLimits } from '../../execution/budget';
 import type { OutputSpec } from '../../execution/structuredOutput';
 import type { ToolDescriptor } from '../../types';
 import { SDKError } from '../../utils/sdkError';
+import type { PageStepLabels, StepKind } from '../contracts/execution';
 import type { PageExecutionLimits } from '../contracts/page';
 import { agentRunOptions, assembleInstructions } from './assemble';
 import type { PageAttachment, PageEngineSetup } from './engines/types';
+import { labelAttributes, labelsFor } from './labels';
 
 /** Options of {@link attachmentAgent}. */
 interface AttachmentAgentOptions {
+  /** The step the agent runs, labelled on its spans and on the engine's step events. */
+  step: {
+    /** What kind of step this is. */
+    stepKind: StepKind;
+    /** The step's position in the run, from 0. */
+    stepIndex: number;
+    /** The lead step a delegate runs under. */
+    parentStepIndex?: number;
+  };
   /** The engine's own prompt text, section 5 of the assembled instructions. */
   engineFraming?: string;
   /** Structured output for the agent's final reply. */
@@ -61,8 +72,16 @@ function modelSource(setup: PageEngineSetup, model: string | undefined): Pick<Cr
   return model === undefined ? {} : { model };
 }
 
-/** Builds the agent for one attachment of a page: assembled instructions, only the policy's tools (each bound by the host to its secrets, network and sandbox), the policy's permissions, and the smallest limits. The only place the page runtime builds an agent. */
-export function attachmentAgent(setup: PageEngineSetup, alias: string, options: AttachmentAgentOptions = {}): SimpleAgent {
+/** An attachment's agent and the step labels on its spans. */
+export interface AttachmentAgent {
+  /** The agent. */
+  agent: SimpleAgent;
+  /** The labels its `invoke_agent` span carries; engines put the same labels on step events. */
+  labels: PageStepLabels;
+}
+
+/** Builds the agent for one attachment of a page: assembled instructions, only the policy's tools (each bound by the host to its secrets, network and sandbox), the policy's permissions, the smallest limits, and the step's labels as span attributes. The only place the page runtime builds an agent. */
+export function attachmentAgent(setup: PageEngineSetup, alias: string, options: AttachmentAgentOptions): AttachmentAgent {
   const attachment = attachmentOf(setup, alias);
   const { resolved, policy } = attachment;
   const run = agentRunOptions(resolved, setup.harness);
@@ -75,7 +94,13 @@ export function attachmentAgent(setup: PageEngineSetup, alias: string, options: 
     page: { id: setup.page.id, name: setup.page.name },
     ...(options.engineFraming !== undefined && { engineFraming: options.engineFraming }),
   });
-  return createAgent({
+  const labels = labelsFor({ page: setup.page.id, harnessHash: setup.harness.hash, executionType: setup.page.execution.type, attachment: alias, ...options.step });
+  const spanAttributes = labelAttributes(labels, {
+    workspace: setup.workspace.manifest.id,
+    harnessPartHash: instructions.harnessPartHash,
+    ...(resolved.version !== undefined && { agentRef: { version: resolved.version, sha256: resolved.sha256 } }),
+  });
+  const agent = createAgent({
     name: resolved.agentOwned.name,
     instructions: instructions.text,
     ...modelSource(setup, run.model),
@@ -85,5 +110,8 @@ export function attachmentAgent(setup: PageEngineSetup, alias: string, options: 
     ...(run.reasoning !== undefined && { reasoning: run.reasoning }),
     ...(run.modelSettings !== undefined && { modelSettings: run.modelSettings }),
     ...(options.output !== undefined && { output: options.output }),
+    ...(setup.host.exporter !== undefined && { exporter: setup.host.exporter }),
+    spanAttributes,
   });
+  return { agent, labels };
 }
