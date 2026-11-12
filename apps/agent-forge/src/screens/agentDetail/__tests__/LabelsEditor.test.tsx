@@ -118,30 +118,46 @@ describe('HeaderLabels', () => {
     expect(empty.querySelector('.agent-detail-labels')).toBeNull();
   });
 
-  it('adds labels in the dialog, flags duplicates and Backspace removes the last chip', () => {
+  it('adds labels in the dialog, dedupes silently, collapses inner whitespace and Backspace removes the last chip', () => {
     const host = render(<Harness initial={record(['alpha'])} />);
     openDialog(host);
     expect(dialog()?.textContent).toContain('Edit labels');
     expect(dialogChips()).toEqual(['alpha']);
 
-    type('Billing');
+    type('Billing  Ops');
     key('Enter');
-    expect(dialogChips()).toEqual(['alpha', 'billing']);
+    expect(dialogChips()).toEqual(['alpha', 'billing ops']);
     expect(dialogInput().value).toBe('');
 
-    type('billing');
+    // A duplicate normalises away silently: no problem, chips unchanged.
+    type('billing ops');
     key('Enter');
-    expect(problem()).toBe('“billing” is already added.');
-    expect(dialogChips()).toEqual(['alpha', 'billing']);
-
-    // Typing clears the problem.
-    type('x');
     expect(problem()).toBeUndefined();
-    key('Backspace');
-    // Empty the draft text first, then Backspace removes the last chip.
+    expect(dialogChips()).toEqual(['alpha', 'billing ops']);
+
+    // Empty the draft text, then Backspace removes the last chip.
     type('');
     key('Backspace');
     expect(dialogChips()).toEqual(['alpha']);
+  });
+
+  it('refuses a label over 32 characters with the LabelError message and keeps the chips unchanged', () => {
+    const host = render(<Harness initial={record(['alpha'])} />);
+    openDialog(host);
+
+    const tooLong = 'x'.repeat(33);
+    type(tooLong);
+    // The live check shows the message before Enter is even pressed.
+    expect(problem()).toBe(`Label "${tooLong}" is longer than 32 characters.`);
+    key('Enter');
+    expect(problem()).toBe(`Label "${tooLong}" is longer than 32 characters.`);
+    expect(dialogChips()).toEqual(['alpha']);
+
+    // Fixing the text clears the live problem.
+    type('fine');
+    expect(problem()).toBeUndefined();
+    key('Enter');
+    expect(dialogChips()).toEqual(['alpha', 'fine']);
   });
 
   it('saves through patchAgentMeta, closes and toasts; Save is disabled when unchanged', async () => {

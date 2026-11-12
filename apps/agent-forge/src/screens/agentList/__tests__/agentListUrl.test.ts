@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { AgentListItem } from '../../../../shared/wireTypes';
-import { filterAgents, labelOptions, parseAgentListQuery } from '../agentListUrl';
+import { filterAgents, parseAgentListQuery, parseLabelsParam } from '../agentListUrl';
 
 const item = (over: Partial<AgentListItem>): AgentListItem => ({
   id: 'agent',
@@ -16,17 +16,30 @@ const item = (over: Partial<AgentListItem>): AgentListItem => ({
   ...over,
 });
 
+describe('parseLabelsParam', () => {
+  it('normalises the comma-separated value and keeps selection order', () => {
+    expect(parseLabelsParam('Billing Ops, support')).toEqual(['billing ops', 'support']);
+    expect(parseLabelsParam('a,a, B ')).toEqual(['a', 'b']);
+  });
+
+  it('answers [] for absent or invalid input', () => {
+    expect(parseLabelsParam(null)).toEqual([]);
+    expect(parseLabelsParam('')).toEqual([]);
+    expect(parseLabelsParam(`a,${'x'.repeat(40)}`)).toEqual([]);
+  });
+});
+
 describe('parseAgentListQuery', () => {
-  it('reads q, the comma-separated label set and enabled', () => {
-    expect(parseAgentListQuery(new URLSearchParams('q=Bot&label=b,a&enabled=off'))).toEqual({
+  it('reads q, the comma-separated labels set and enabled', () => {
+    expect(parseAgentListQuery(new URLSearchParams('q=Bot&labels=b,a&enabled=off'))).toEqual({
       q: 'Bot',
       labels: ['b', 'a'],
       enabled: 'off',
     });
   });
 
-  it('drops an unknown enabled value and absent keys', () => {
-    expect(parseAgentListQuery(new URLSearchParams('enabled=maybe'))).toEqual({
+  it('drops an unknown enabled value, an invalid labels value and absent keys', () => {
+    expect(parseAgentListQuery(new URLSearchParams(`enabled=maybe&labels=${'x'.repeat(40)}`))).toEqual({
       q: '',
       labels: [],
       enabled: undefined,
@@ -55,9 +68,16 @@ describe('filterAgents', () => {
     expect(ids({ q: 'support', labels: [], enabled: undefined })).toEqual(['support-bot']);
   });
 
-  it('requires every selected label', () => {
-    expect(ids({ q: '', labels: ['billing', 'github'], enabled: undefined })).toEqual(['pr-reviewer']);
+  it('keeps agents carrying ANY selected label (OR)', () => {
+    expect(ids({ q: '', labels: ['billing', 'github'], enabled: undefined })).toEqual(['pr-reviewer', 'support-bot']);
+    expect(ids({ q: '', labels: ['github'], enabled: undefined })).toEqual(['pr-reviewer']);
     expect(ids({ q: '', labels: ['billing'], enabled: undefined })).toEqual(['pr-reviewer', 'support-bot']);
+    expect(ids({ q: '', labels: ['missing'], enabled: undefined })).toEqual([]);
+  });
+
+  it('normalises both sides when matching labels', () => {
+    const spaced = [item({ id: 'a', labels: ['Billing Ops'] })];
+    expect(filterAgents(spaced, { q: '', labels: ['billing  ops'], enabled: undefined }).map((a) => a.id)).toEqual(['a']);
   });
 
   it('filters on enabled', () => {
@@ -67,19 +87,5 @@ describe('filterAgents', () => {
 
   it('sorts by name case-insensitively, then id', () => {
     expect(ids({ q: '', labels: [], enabled: undefined })).toEqual(['docs-qa', 'pr-reviewer', 'support-bot']);
-  });
-});
-
-describe('labelOptions', () => {
-  it('lists every label sorted, with counts', () => {
-    const items = [
-      item({ id: 'a', labels: ['billing', 'GitHub'] }),
-      item({ id: 'b', labels: ['billing'] }),
-      item({ id: 'c', labels: [] }),
-    ];
-    expect(labelOptions(items)).toEqual([
-      { value: 'billing', label: 'billing', count: 2 },
-      { value: 'github', label: 'github', count: 1 },
-    ]);
   });
 });

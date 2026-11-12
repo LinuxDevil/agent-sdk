@@ -34,14 +34,13 @@
 import type { Express, Response } from 'express';
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import { isValidAgentId } from '../../shared/agentId';
-import { labelsProblem, MAX_LABEL_LENGTH, MAX_LABELS, normalizeLabels } from '../../shared/labels';
+import { LabelError, MAX_LABEL_LENGTH, MAX_LABELS, normalizeLabels } from '../../shared/labels';
 import type {
   AgentLastRun,
   AgentListItem,
   AgentMeta,
   AgentRecord,
   CanvasLayout,
-  PatchAgentMetaRequest,
   VersionSource,
 } from '../../shared/wireTypes';
 import { computeRequirements, requirementDeps } from '../author/requirements';
@@ -253,27 +252,41 @@ async function createAgentFromTemplate(
   const spec: AgentSpecV2 = { ...detail.spec, name: name ?? detail.spec.name };
   const meta: AgentMeta = {
     ...defaultMeta(new Date().toISOString()),
-    labels: normalizeLabels(detail.summary.tags)
-      .filter((label) => label.length <= MAX_LABEL_LENGTH)
-      .slice(0, MAX_LABELS),
+    // Template tags are best-effort labels: a tag that fails the rules is
+    // dropped rather than failing the create (L13's normalizeLabels throws);
+    // the cap applies to the survivors, not the raw list.
+    labels: normalizeLabels(
+      detail.summary.tags
+        .flatMap((tag) => {
+          try {
+            return normalizeLabels([tag]);
+          } catch {
+            return [];
+          }
+        })
+        .slice(0, MAX_LABELS)
+    ),
     createdFrom: { kind: 'template', ref: templateId },
   };
   const id = uniqueAgentId(ws.repo, slugAgentId(name ?? templateId));
   return writeNewAgent(ws, id, spec, meta, undefined, 'template');
 }
 
-/** A validated `PATCH /agents/:id/meta` body, or the 400 message: at least one of `enabled`/`labels`, correctly typed. */
-function parseMetaBody(body: unknown): PatchAgentMetaRequest | string {
+/** A `PATCH /agents/:id/meta` body before label validation: `labels` stays `unknown` for {@link normalizeLabels} to judge. */
+interface ParsedMetaBody {
+  enabled: boolean | undefined;
+  labels: unknown;
+}
+
+/** A validated `PATCH /agents/:id/meta` body, or the 400 message: at least one of `enabled`/`labels`, `enabled` a boolean. */
+function parseMetaBody(body: unknown): ParsedMetaBody | string {
   if (!isObject(body)) return 'Request body must be an object';
   const { enabled, labels } = body;
   if (enabled === undefined && labels === undefined) {
     return "Request body must include 'enabled' or 'labels'";
   }
   if (enabled !== undefined && typeof enabled !== 'boolean') return "'enabled' must be a boolean";
-  if (labels !== undefined && (!Array.isArray(labels) || !labels.every((label) => typeof label === 'string'))) {
-    return "'labels' must be a string array";
-  }
-  return { enabled: enabled as boolean | undefined, labels: labels as string[] | undefined };
+  return { enabled: enabled as boolean | undefined, labels };
 }
 
 /** Deps for {@link registerAgentRoutes} - Studio-global services only; per-workspace stores still come from `workspaceOf(req)`. */
@@ -459,15 +472,19 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         sendError(res, 400, parsed, 'LOUSHO_BODY_INVALID');
         return;
       }
-      const labels = parsed.labels === undefined ? undefined : normalizeLabels(parsed.labels);
-      if (labels !== undefined) {
-        const problem = labelsProblem(labels);
-        if (problem !== undefined) {
-          sendError(res, 400, problem, 'LOUSHO_LABELS_INVALID', {
-            maxLabels: MAX_LABELS,
-            maxLength: MAX_LABEL_LENGTH,
-          });
-          return;
+      let labels: string[] | undefined;
+      if (parsed.labels !== undefined) {
+        try {
+          labels = normalizeLabels(parsed.labels);
+        } catch (error) {
+          if (error instanceof LabelError) {
+            sendError(res, 400, error.message, 'LOUSHO_LABELS_INVALID', {
+              maxLabels: MAX_LABELS,
+              maxLength: MAX_LABEL_LENGTH,
+            });
+            return;
+          }
+          throw error;
         }
       }
       const ws = workspaceOf(req);

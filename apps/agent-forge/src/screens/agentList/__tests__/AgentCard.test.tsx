@@ -70,13 +70,13 @@ describe('AgentCard', () => {
     expect(window.location.hash).not.toBe('#/agents/support-bot/overview');
   });
 
-  it('shows four labels plus a +N chip naming the hidden ones', () => {
+  it('shows three labels plus a +N chip naming the hidden ones', () => {
     const { host } = setup();
     const labels = [...host.querySelectorAll('.agent-card-label')];
-    expect(labels).toHaveLength(4);
+    expect(labels).toHaveLength(3);
     const more = host.querySelector('.agent-card-label-more')!;
-    expect(more.textContent).toBe('+1');
-    expect(more.getAttribute('title')).toBe('beta');
+    expect(more.textContent).toBe('+2');
+    expect(more.getAttribute('title')).toBe('vip, beta');
   });
 
   it('renders only the non-zero capability chips', () => {
