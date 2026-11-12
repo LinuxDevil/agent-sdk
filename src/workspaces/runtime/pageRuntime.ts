@@ -14,7 +14,7 @@ import { pagePolicy } from './policy';
 import { jsonOf } from './profileStore';
 import { resolveAttachments } from './resolveAgents';
 import { profileStoreFor, resolvePageHarness } from './resolveHarness';
-import { resolveSharedContext, type SharedContextRun } from './sharedContext';
+import { createSharedContextRun, resolveSharedContext, type SharedContextRun } from './sharedContext';
 
 /** What {@link runPage} needs besides the workspace and the input. */
 export interface PageRuntimeContext {
@@ -94,7 +94,7 @@ async function engineSetup(workspace: LoadedWorkspace, page: PageManifest, harne
     workspace,
     page,
     harness,
-    shared: resolveSharedContext(workspace, { audience: { page: page.id }, ...(ctx.sharedRun && { run: ctx.sharedRun }), ...(host.createMemory && { createMemory: host.createMemory }) }),
+    shared: resolveSharedContext(workspace, { audience: { page: page.id }, run: ctx.sharedRun ?? createSharedContextRun(), ...(host.createMemory && { createMemory: host.createMemory }) }),
     attachments,
     host,
     ...(ctx.prior && { prior: ctx.prior }),

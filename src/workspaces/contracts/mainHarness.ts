@@ -102,13 +102,18 @@ function scannedCopy(value: unknown, ctx: z.RefinementCtx): unknown {
 /** Zod schema for the main-agent harness (`lousho.main-harness/1`); forbidden R13 and R18 keys are errors at any depth. */
 export const mainHarnessSchema: z.ZodType<MainHarness> = z.any().transform(scannedCopy).pipe(mainHarnessObjectSchema);
 
+export function effectiveMaxConcurrentPages(manifest: WorkspaceManifest, harness: MainHarness | undefined): number {
+  const allowed = manifest.defaults?.limits?.maxConcurrentPages ?? DEFAULT_MAX_CONCURRENT_PAGES;
+  return Math.min(allowed, harness?.limits?.maxConcurrentPages ?? allowed);
+}
+
 /** Cross-checks a parsed main harness against the parsed workspace manifest; route page ids are left to `validateWorkspace`. */
 export function crossCheckMainHarness(harness: MainHarness, manifest: WorkspaceManifest): MainHarnessCrossCheck {
   const errors: string[] = [];
   const warnings: string[] = [];
   if (manifest.mainAgent === null) errors.push('a main harness needs a main agent, but workspace.json sets mainAgent to null');
   const requested = harness.limits?.maxConcurrentPages;
-  const allowed = manifest.defaults?.limits?.maxConcurrentPages ?? DEFAULT_MAX_CONCURRENT_PAGES;
+  const allowed = effectiveMaxConcurrentPages(manifest, undefined);
   if (requested !== undefined && requested > allowed) {
     warnings.push(`limits.maxConcurrentPages ${requested} is above the workspace's ${allowed}; it is clamped to ${allowed}`);
   }
