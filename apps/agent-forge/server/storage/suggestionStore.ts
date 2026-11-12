@@ -49,12 +49,13 @@ export function promptHash(instructions: string): string {
 }
 
 /**
- * The file name a `specHash`'s portability analysis lives under:
- * `'portability-' + specHash.slice('sha256:'.length, 'sha256:'.length + 16)`
+ * The file name (and record id) a `specHash`'s portability analysis lives
+ * under: `'portability-' + specHash.slice('sha256:'.length, 'sha256:'.length + 16)`
  * (64 bits of the digest - collision-safe per agent, readable in a
- * listing).
+ * listing). Exported for the portability pass, which stamps the same id
+ * on the records it writes.
  */
-function portabilityId(specHash: string): string {
+export function portabilityId(specHash: string): string {
   return `portability-${specHash.slice('sha256:'.length, 'sha256:'.length + 16)}`;
 }
 

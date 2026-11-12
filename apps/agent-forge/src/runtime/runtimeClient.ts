@@ -42,6 +42,7 @@ import type {
   PatchAgentMetaRequest,
   PromptSuggestion,
   ProviderKeyStatus,
+  PortabilityAnalysis,
   Requirement,
   RunComparisonPayload,
   RunHistoryPayload,
@@ -708,8 +709,13 @@ class RuntimeClient implements AgentApi {
    * server's `Content-Disposition` filename and the bundle's
    * `X-Lousho-Export-Warnings` list (empty for YAML and a clean bundle).
    */
-  async downloadExport(agentId: string, format: 'yaml' | 'bundle'): Promise<{ blob: Blob; filename: string; warnings: string[] }> {
-    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/export?format=${format}`, { method: 'GET' });
+  async downloadExport(
+    agentId: string,
+    format: 'yaml' | 'bundle',
+    opts?: { adapt?: boolean }
+  ): Promise<{ blob: Blob; filename: string; warnings: string[] }> {
+    const adapt = opts?.adapt === true ? '&adapt=1' : '';
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/export?format=${format}${adapt}`, { method: 'GET' });
     if (!res.ok) {
       const body = await res.json().catch(() => undefined);
       throw apiError(body, `Export of '${agentId}' failed with ${res.status}`, res.status);
@@ -750,6 +756,33 @@ class RuntimeClient implements AgentApi {
     return this.request<AgentRecord>('/agents/import', {
       method: 'POST',
       body: JSON.stringify(request),
+    });
+  }
+
+  /**
+   * `POST /agents/:id/portability` (L09a): runs the portability check pass
+   * for an agent (cached server-side by spec hash) and answers the
+   * `PortabilityAnalysis` - findings plus the `[YOUR …]`-adapted
+   * instructions an `adapt=1` export substitutes.
+   */
+  // fallow-ignore-next-line unused-class-member -- contract surface (L09a); L09b's export sheet consumes it
+  async checkPortability(agentId: string): Promise<PortabilityAnalysis> {
+    return this.request<PortabilityAnalysis>(`/agents/${encodeURIComponent(agentId)}/portability`, {
+      method: 'POST',
+      body: '{}',
+    });
+  }
+
+  /**
+   * `POST /agents/import/portability` (L09a): runs the same check on
+   * pasted YAML/JSON/bundle text (parsed like `previewImport`) before the
+   * agent exists; the analysis caches in memory server-side.
+   */
+  // fallow-ignore-next-line unused-class-member -- contract surface (L09a); L09b's export sheet consumes it
+  async checkImportPortability(text: string): Promise<PortabilityAnalysis> {
+    return this.request<PortabilityAnalysis>('/agents/import/portability', {
+      method: 'POST',
+      body: JSON.stringify({ text }),
     });
   }
 

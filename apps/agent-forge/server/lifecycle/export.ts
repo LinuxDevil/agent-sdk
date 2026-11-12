@@ -14,6 +14,7 @@ import type { AgentSpecV2 } from 'lousho';
 import type { AgentBundle } from '../../shared/wireTypes';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { daemonHeaders, observeTarget } from '../observeProxy';
+import { specHash } from '../storage/specHash';
 import { workspaceOf } from '../workspace/middleware';
 
 /** What `buildBundle` needs of an agent: the spec and its labels. */
@@ -175,14 +176,26 @@ export function registerExportRoutes(app: Express, deps: BundleDeps = {}): void 
         sendError(res, 404, `No agent '${id}'`);
         return;
       }
+      // `adapt=1` (L09a): export the portability check's adapted
+      // instructions instead of the working copy's - 409 until a check
+      // for the current spec hash exists and produced an adaptation.
+      let exportSpec = spec;
+      if (req.query.adapt === '1') {
+        const analysis = await ws.suggestions.findPortability(id, specHash(spec));
+        if (analysis === undefined || analysis.adaptedInstructions === null) {
+          sendError(res, 409, 'Run the portability check first.', 'LOUSHO_PORTABILITY_MISSING');
+          return;
+        }
+        exportSpec = { ...spec, instructions: analysis.adaptedInstructions };
+      }
       if (format === 'yaml') {
         res.setHeader('Content-Type', 'text/yaml; charset=utf-8');
         attachment(res, `${id}.yaml`);
-        res.send(exportYaml(spec));
+        res.send(exportYaml(exportSpec));
         return;
       }
       const meta = await ws.repo.readMeta(id);
-      const { bundle, warnings } = await buildBundle({ spec, labels: meta.labels }, deps);
+      const { bundle, warnings } = await buildBundle({ spec: exportSpec, labels: meta.labels }, deps);
       if (warnings.length > 0) {
         res.setHeader('X-Lousho-Export-Warnings', encodeURIComponent(JSON.stringify(warnings)));
       }

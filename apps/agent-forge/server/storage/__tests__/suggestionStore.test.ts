@@ -45,6 +45,7 @@ const ANALYSIS: PortabilityAnalysis = {
     },
   ],
   adaptedInstructions: null,
+  model: null,
   createdAt: '2026-02-03T04:05:07.000Z',
 };
 
