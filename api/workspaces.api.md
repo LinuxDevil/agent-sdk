@@ -228,6 +228,10 @@ export interface AssembleInstructionsInput {
     attachment: Attachment;
     engineFraming?: string;
     harness: EffectiveHarness;
+    harnessFiles?: {
+        base?: string;
+        page?: string;
+    };
     instructionsSource?: InstructionsSource;
     page: {
         id: string;
@@ -914,6 +918,15 @@ export type HarnessCache = Map<string, EffectiveHarness>;
 
 // @public
 type HarnessField = 'audience' | 'platform' | 'inputs' | 'outputs' | 'capabilities' | 'constraints' | 'evaluation' | 'runtime' | 'context';
+
+// @public
+export interface HarnessFiles {
+    base?: string;
+    page: string;
+}
+
+// @public
+export function harnessFilesFor(workspace: LoadedWorkspace, pageId: string): HarnessFiles;
 
 // @public
 export interface HarnessLayer {
