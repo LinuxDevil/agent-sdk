@@ -27,6 +27,29 @@ const INSTRUCTIONS_LINES = 12;
 
 /** One `spec.triggers` entry, narrowed off the spec. */
 type TriggerSpec = NonNullable<AgentSpecV2['triggers']>[number];
+type WebhookTrigger = Extract<TriggerSpec, { type: 'webhook' }>;
+
+/** The public URL a webhook trigger listens on: `/hooks/<agentId>` + the trigger's own `path`. */
+function webhookUrl(agentId: string, trigger: WebhookTrigger): string {
+  return `${window.location.origin}/hooks/${agentId}${trigger.path}`;
+}
+
+/** A webhook trigger's URL with a Copy button (R08a); the URL is public - no token rides it. */
+function WebhookUrl({ agentId, trigger }: { agentId: string; trigger: WebhookTrigger }): JSX.Element {
+  const url = webhookUrl(agentId, trigger);
+  return (
+    <span className="agent-overview-webhook">
+      <code>{url}</code>
+      <button
+        type="button"
+        className="btn btn-sm btn-ghost"
+        onClick={() => void navigator.clipboard?.writeText(url)}
+      >
+        Copy
+      </button>
+    </span>
+  );
+}
 
 /** A chip list for a card row: `None` (the muted missing marker) when the spec has no items. */
 function SpecChips({ items }: { items: string[] }): JSX.Element {
@@ -82,8 +105,8 @@ function CapabilitiesCard({ rows }: { rows: CapabilityRow[] }): JSX.Element {
   );
 }
 
-/** The Triggers card: one icon + line per trigger, or the empty copy. */
-function TriggersCard({ triggers }: { triggers: TriggerSpec[] }): JSX.Element {
+/** The Triggers card: one icon + line per trigger (webhooks also show their URL), or the empty copy. */
+function TriggersCard({ agentId, triggers }: { agentId: string; triggers: TriggerSpec[] }): JSX.Element {
   return (
     <Card title="Triggers">
       {triggers.length > 0 ? (
@@ -94,6 +117,7 @@ function TriggersCard({ triggers }: { triggers: TriggerSpec[] }): JSX.Element {
               <li key={trigger.id}>
                 <line.icon size={14} strokeWidth={1.75} aria-hidden="true" />
                 <span>{line.text}</span>
+                {trigger.type === 'webhook' && <WebhookUrl agentId={agentId} trigger={trigger} />}
               </li>
             );
           })}
@@ -236,7 +260,7 @@ export function AgentOverviewTab() {
         )}
       </Card>
       <CapabilitiesCard rows={capabilityRows(spec)} />
-      <TriggersCard triggers={spec.triggers ?? []} />
+      <TriggersCard agentId={record.id} triggers={spec.triggers ?? []} />
       <SafetyCard safety={safetySummary(spec)} />
       <RecentRunsCard agentId={record.id} />
     </div>

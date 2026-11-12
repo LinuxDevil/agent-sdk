@@ -52,6 +52,16 @@ function hostnameOf(host: string): string {
   return host.split(':')[0].toLowerCase();
 }
 
+/**
+ * `true` when a `Host` header names a loopback host (`localhost`,
+ * `127.0.0.1`, `[::1]`/`::1`, port allowed). The unsigned-webhook rule
+ * (R08a) uses it: a trigger with no secret accepts only calls that could
+ * have come from this machine.
+ */
+export function isLoopbackHost(host: string | undefined): boolean {
+  return host !== undefined && LOOPBACK_HOSTNAMES.has(hostnameOf(host));
+}
+
 function isAllowedHost(host: string | undefined, allowedHosts: string[]): boolean {
   if (!host) return false;
   const name = hostnameOf(host);

@@ -82,6 +82,12 @@
       "exports": [
         "schemaParts"
       ]
+    },
+    {
+      "file": "apps/agent-forge/server/triggers/triggerHost.ts",
+      "exports": [
+        "HostRun"
+      ]
     }
   ],
   "ignoreDependencies": [

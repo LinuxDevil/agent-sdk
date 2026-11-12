@@ -25,6 +25,8 @@
  *   GET  /inbox                      -> InboxItem[] - approvals, questions, drafts, suggestions, alerts (inbox/inboxRoutes.ts)
  *   GET  /inbox/count                -> InboxCount
  *   POST /inbox/alerts/:alertId/dismiss -> 204 | 404
+ *   POST /hooks/:agentId/<path>       -> webhook trigger fire (triggers/webhookRoute.ts, R08a);
+ *                                        public - HMAC or loopback-only, no studio token
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
@@ -72,6 +74,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import {
   agentSpecV2Schema,
@@ -95,7 +98,7 @@ import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, LogEntry, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
 import { pinsProblem } from './pins';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
@@ -148,6 +151,8 @@ import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
 import { InboxService } from './inbox/inboxService';
 import { registerInboxRoutes } from './inbox/inboxRoutes';
+import { registerWebhookRoutes } from './triggers/webhookRoute';
+import { TriggerHost } from './triggers/triggerHost';
 import { registerRatingRoutes } from './ratings';
 import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
@@ -330,6 +335,20 @@ function isApiPath(pathname: string): boolean {
  */
 function needsToken(req: Request): boolean {
   return !PUBLIC_METHODS.has(req.method) || isApiPath(req.path);
+}
+
+/**
+ * `POST /hooks/**` is the public webhook surface (R08a): external callers
+ * carry no studio token and may come from non-loopback hosts, so the
+ * global Host/Origin + token gate must not touch it - the webhook route
+ * applies its own rule (HMAC signature, or loopback-only when the
+ * trigger has no secret). `gatePath` normalizes the same way the token
+ * gate compares, so encoded/case-folded spellings can't slip past.
+ */
+function isWebhookPost(req: Request): boolean {
+  if (req.method !== 'POST') return false;
+  const normalised = gatePath(req.path);
+  return normalised !== undefined && normalised.startsWith('/hooks/');
 }
 
 type ErrorClass = new (...args: never[]) => Error;
@@ -921,7 +940,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events|\/inbox).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events|\/inbox|\/hooks).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -997,6 +1016,23 @@ function legacyWorkspaceContext(
     workspaceId: workspaceRefFor(options.baseDir).id,
   });
   inbox.start();
+  // The legacy pair gets the same trigger host the real context builds
+  // (R08a) - webhook routes read it through workspaceOf(req).
+  const triggers = new TriggerHost({
+    repo,
+    runManager: options.runManager,
+    events,
+    log: (agentId, message, level = 'info') =>
+      options.runManager.emit('log', agentId, {
+        id: randomUUID(),
+        agentId,
+        timestamp: new Date().toISOString(),
+        level,
+        phase: 'trigger',
+        message,
+      } satisfies LogEntry),
+  });
+  void triggers.start();
   return {
     ref: workspaceRefFor(options.baseDir),
     repo,
@@ -1021,6 +1057,7 @@ function legacyWorkspaceContext(
     events,
     passes: passRunner,
     inbox,
+    triggers,
   };
 }
 
@@ -1083,6 +1120,11 @@ export function createApp(options: CreateAppOptions): Express {
   // loopback Host and carry no foreign Origin; everything except a GET/HEAD of
   // `/health` or the static client also needs the token (see needsToken()).
   app.use((req, res, next) => {
+    // Webhook posts skip the whole gate - the route does its own auth.
+    if (isWebhookPost(req)) {
+      next();
+      return;
+    }
     const decision = access
       ? needsToken(req)
         ? checkApiAccess(req, access)
@@ -1094,6 +1136,10 @@ export function createApp(options: CreateAppOptions): Express {
     }
     next();
   });
+  // Raw bytes for `/hooks/**` BEFORE the JSON parser: webhook HMACs sign
+  // the exact body, and `express.raw` sets `req._body` so the JSON parser
+  // below leaves it alone. Every other route keeps `express.json`.
+  app.use('/hooks', express.raw({ type: () => true, limit: '1mb' }));
   app.use(express.json({ limit: '2mb' }));
   // Resolve every request's workspace before the first route so handlers
   // read their per-workspace stores from workspaceOf(req), never a
@@ -1198,6 +1244,10 @@ export function createApp(options: CreateAppOptions): Express {
   // The inbox (inbox/inboxRoutes.ts, R02a): `/inbox`, `/inbox/count` and
   // alert dismiss - the service comes from workspaceOf(req).inbox.
   registerInboxRoutes(app);
+  // Webhook triggers (triggers/webhookRoute.ts, R08a): `POST
+  // /hooks/:agentId/<path>` - the trigger host and repo come from
+  // workspaceOf(req); named-secret resolution is Studio-global.
+  registerWebhookRoutes(app, { resolveSecret: (name) => secrets.getSecret(name) });
   // Human run ratings (ratings.ts, R04a): `/agents/:id/rating` writes the
   // score to the observe daemon and may raise a low_rating alert; the
   // `/rating/:alertId/dataset` action copies the trace into the agent's

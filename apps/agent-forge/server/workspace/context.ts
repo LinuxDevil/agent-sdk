@@ -13,6 +13,8 @@
  * Studio was launched in; `WorkspaceResolver` is the seam a lazy,
  * registry-backed multi-workspace resolver plugs into later.
  */
+import { randomUUID } from 'node:crypto';
+
 import { TriggerRegistry } from 'lousho/triggers';
 import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
 import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
@@ -39,6 +41,8 @@ import { InboxService } from '../inbox/inboxService';
 import { attachFailureStreak } from '../lifecycle/failureStreak';
 import { attachVersionSummaries } from '../passes/versionSummary';
 import { attachDraftReviews } from '../passes/draftReview';
+import { TriggerHost } from '../triggers/triggerHost';
+import type { LogEntry } from '../../shared/wireTypes';
 
 /** Everything a per-agent route needs for one workspace. */
 export interface WorkspaceContext {
@@ -88,6 +92,14 @@ export interface WorkspaceContext {
    * launch context's).
    */
   inbox: InboxService;
+  /**
+   * This workspace's trigger host (triggers/triggerHost.ts, R08a): the
+   * per-agent trigger queue webhook/channel/cron dispatches run through.
+   * Built and `start()`ed here like the inbox; `stop()` is called by
+   * `startStudioServer`'s `close()` for the launch context (same caveat
+   * as the pass attaches for non-launch contexts until W02a dispose).
+   */
+  triggers: TriggerHost;
 }
 
 /**
@@ -225,6 +237,24 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     workspaceId: ref.id,
   });
   inbox.start();
+  // The trigger host (R08a): queues and launches `spec.triggers` runs
+  // through this workspace's own RunManager; its log lines land on the
+  // same run-log stream RunManager's own entries use (phase 'trigger').
+  const triggers = new TriggerHost({
+    repo,
+    runManager: runs,
+    events,
+    log: (agentId, message, level = 'info') =>
+      runs.emit('log', agentId, {
+        id: randomUUID(),
+        agentId,
+        timestamp: new Date().toISOString(),
+        level,
+        phase: 'trigger',
+        message,
+      } satisfies LogEntry),
+  });
+  void triggers.start();
   return {
     ref,
     repo,
@@ -239,5 +269,6 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     events,
     passes: services.passRunner,
     inbox,
+    triggers,
   };
 }

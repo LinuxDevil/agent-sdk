@@ -15,6 +15,7 @@ import { IdleVersioner } from '../../storage/idleVersioner';
 import { singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from '../context';
 import { PassRunner } from '../../passes/passRunner';
 import type { InboxService } from '../../inbox/inboxService';
+import type { TriggerHost } from '../../triggers/triggerHost';
 import { requestedWorkspaceId, workspaceMiddleware, workspaceOf } from '../middleware';
 
 const emptyStore: LegacyAgentStore = {
@@ -40,6 +41,7 @@ function ctx(id: string): WorkspaceContext {
     events: new StudioEventBus(),
     passes: new PassRunner({ baseDir: `/root/${id}` }),
     inbox: {} as InboxService,
+    triggers: {} as TriggerHost,
   };
 }
 
