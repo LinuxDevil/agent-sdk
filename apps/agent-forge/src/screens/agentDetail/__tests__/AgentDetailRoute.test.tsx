@@ -26,9 +26,11 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('../../../runtime/runtimeClient', () => ({
-  runtimeClient: { loadAgent: mocks.loadAgent, listTraces: mocks.listTraces },
+  runtimeClient: { loadAgent: mocks.loadAgent, listTraces: mocks.listTraces, getDraft: vi.fn(async () => undefined) },
   RuntimeApiError: mocks.MockRuntimeApiError,
 }));
+
+vi.mock('../../../state/useStudioEvents', () => ({ useStudioEvents: () => {} }));
 
 import { AgentDetailRoute } from '../AgentDetailRoute';
 
@@ -122,10 +124,10 @@ describe('AgentDetailRoute', () => {
     const configure = tabs.querySelector<HTMLAnchorElement>('[data-tab-id="configure"]')!;
     expect(configure.tagName).toBe('A');
     expect(configure.getAttribute('href')).toBe('#/agents/support-bot/configure');
-    const suggestions = tabs.querySelector('[data-tab-id="suggestions"]')!;
-    expect(suggestions.tagName).toBe('SPAN');
-    expect(suggestions.getAttribute('aria-disabled')).toBe('true');
-    expect(suggestions.getAttribute('title')).toBe('Coming in a later release');
+    // 'suggestions' is built (L11b): a link like the other built tabs.
+    const suggestions = tabs.querySelector<HTMLAnchorElement>('[data-tab-id="suggestions"]')!;
+    expect(suggestions.tagName).toBe('A');
+    expect(suggestions.getAttribute('href')).toBe('#/agents/support-bot/suggestions');
   });
 
   it('shows the published badge with the version number', async () => {

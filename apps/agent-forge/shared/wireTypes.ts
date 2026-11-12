@@ -943,6 +943,18 @@ export interface ChangeDraft {
   respondedAt: string | null;
 }
 
+/**
+ * `GET /agents/:id/draft`'s answer (L11b): the pending draft plus the
+ * diff of its patch over the working copy, computed per request so the
+ * Suggestions tab always shows today's spec, not the draft's base.
+ * `currentVersion` is the latest version number (0 when there are none)
+ * - the drift banner shows when it is greater than `baseVersion`.
+ */
+export interface DraftView extends ChangeDraft {
+  changes: SpecChange[];
+  currentVersion: number;
+}
+
 /** `POST /agents/:id/draft`'s body: the patch plus where it came from and why. */
 export interface CreateDraftRequest {
   patch: SpecPatch;

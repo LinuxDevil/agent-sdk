@@ -22,10 +22,11 @@ const AGENT_TAB_LABELS: Record<AgentTab, string> = {
  * Tabs with a screen behind them. 'canvas' is the builder screen, 'overview'
  * the detail screen's first tab (A05), 'runs' its runs table (A11);
  * 'configure' its form view (A07), 'code' the generated-code tab (A08);
- * 'suggestions' in R06; 'versions' is the detail screen's version timeline
- * (L01). An unbuilt tab's URL redirects to canvas.
+ * 'versions' is the detail screen's version timeline (L01), 'suggestions'
+ * its pending-draft review (L11b; R06 adds suggestion cards). An unbuilt
+ * tab's URL redirects to canvas.
  */
-export const BUILT_AGENT_TABS: ReadonlySet<AgentTab> = new Set<AgentTab>(['canvas', 'overview', 'configure', 'code', 'runs', 'versions']);
+export const BUILT_AGENT_TABS: ReadonlySet<AgentTab> = new Set<AgentTab>(['canvas', 'overview', 'configure', 'code', 'runs', 'versions', 'suggestions']);
 
 /** Whether `s` names an agent detail tab. */
 export function isAgentTab(s: string): s is AgentTab {
@@ -40,14 +41,16 @@ export function agentTabPath(id: string, tab: AgentTab): string {
 /**
  * The tab strip's items for agent `id`, in `AGENT_TABS` order: every tab is
  * a hash link to its `agentTabPath`, unbuilt tabs disabled with the shared
- * "Coming in a later release" reason. Shared by the detail header (A05) and
- * the builder's tab strip (A12).
+ * "Coming in a later release" reason. `counts` adds a pill to a tab (the
+ * Suggestions tab's pending-draft count, L11b). Shared by the detail
+ * header (A05) and the builder's tab strip (A12).
  */
-export function agentTabItems(id: string): TabItem[] {
+export function agentTabItems(id: string, counts?: Partial<Record<AgentTab, number>>): TabItem[] {
   return AGENT_TABS.map((t) => ({
     id: t,
     label: AGENT_TAB_LABELS[t],
     href: `#${agentTabPath(id, t)}`,
+    count: counts?.[t] || undefined,
     disabled: !BUILT_AGENT_TABS.has(t),
     disabledReason: 'Coming in a later release',
   }));

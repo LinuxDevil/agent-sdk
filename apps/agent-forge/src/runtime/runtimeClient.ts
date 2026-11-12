@@ -27,6 +27,7 @@ import type {
   CreateAgentRequest,
   CreateDraftRequest,
   DebugStatePayload,
+  DraftView,
   DeployResult,
   ForkRunRequest,
   ForkRunResponse,
@@ -231,9 +232,9 @@ class RuntimeClient implements AgentApi {
     await this.request(`/agents/${encodeURIComponent(agentId)}`, { method: 'DELETE' });
   }
 
-  /** The agent's pending change draft, or `undefined` when it has none (the route answers 204). */
-  async getDraft(agentId: string): Promise<ChangeDraft | undefined> {
-    return this.request<ChangeDraft | undefined>(`/agents/${encodeURIComponent(agentId)}/draft`, {
+  /** The agent's pending change draft as a `DraftView` (L11b), or `undefined` when it has none (the route answers 204). */
+  async getDraft(agentId: string): Promise<DraftView | undefined> {
+    return this.request<DraftView | undefined>(`/agents/${encodeURIComponent(agentId)}/draft`, {
       method: 'GET',
     });
   }

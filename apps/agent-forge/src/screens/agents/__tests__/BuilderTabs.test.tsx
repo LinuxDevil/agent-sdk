@@ -7,6 +7,7 @@ const appState = vi.hoisted(() => ({
   agents: [] as { id: string }[],
 }));
 vi.mock('../../../state/AppState', () => ({ useAppState: () => appState }));
+vi.mock('../../../state/usePendingDraftCount', () => ({ usePendingDraftCount: () => 0 }));
 
 import { BuilderTabs } from '../BuilderTabs';
 
@@ -21,10 +22,10 @@ describe('BuilderTabs', () => {
     const canvas = nav.querySelector('[data-tab-id="canvas"]')!;
     expect(canvas.getAttribute('aria-current')).toBe('page');
     expect(canvas.getAttribute('href')).toBe('#/agents/support-bot/canvas');
-    // Unbuilt tabs stay disabled placeholders, as on the detail header.
-    const suggestions = nav.querySelector('[data-tab-id="suggestions"]')!;
-    expect(suggestions.tagName).toBe('SPAN');
-    expect(suggestions.getAttribute('aria-disabled')).toBe('true');
+    // 'suggestions' is built (L11b): a link like the other built tabs.
+    const suggestions = nav.querySelector<HTMLAnchorElement>('[data-tab-id="suggestions"]')!;
+    expect(suggestions.tagName).toBe('A');
+    expect(suggestions.getAttribute('href')).toBe('#/agents/support-bot/suggestions');
     const configure = nav.querySelector<HTMLAnchorElement>('[data-tab-id="configure"]')!;
     expect(configure.tagName).toBe('A');
     expect(configure.getAttribute('href')).toBe('#/agents/support-bot/configure');
