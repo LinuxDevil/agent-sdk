@@ -40,6 +40,7 @@ import type { StatusKey } from '../../../ui/status';
 import { Sheet } from '../../../ui/Sheet';
 import { Skeleton } from '../../../ui/Skeleton';
 import { useToast } from '../../../ui/Toast';
+import { PortabilityPanel } from '../../agentDetail/export/PortabilityPanel';
 import { useImportPreview, type ImportPreviewState } from './useImportPreview';
 import './importSheet.css';
 
@@ -387,6 +388,12 @@ function ImportSheetFormView(props: ImportSheetFormViewProps): JSX.Element {
           />
         </Field>
         <PreviewBody state={previewState} />
+        {preview !== undefined ? (
+          <PortabilityPanel
+            key={source.text}
+            run={() => runtimeClient.checkImportPortability(source.text)}
+          />
+        ) : null}
         <ImportModeFields
           mode={mode}
           preview={preview}

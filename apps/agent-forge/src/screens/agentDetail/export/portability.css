@@ -1,0 +1,107 @@
+/* PortabilityPanel (L09b): the "Hard-coded details" section shared by the
+   export sheet (saved agent) and the import sheet (pasted text). Token pairs
+   only: text/surface-2, text-muted/surface-3, danger/danger-soft for the
+   secret chip (pair covered by contrast.test.ts). */
+
+.portability {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.portability-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.portability-title {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.portability-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+.portability-error,
+.portability-finding {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.portability-error {
+  align-items: flex-start;
+}
+
+.portability-error p {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+.portability-none,
+.portability-summary,
+.portability-explanation {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
+
+.portability-findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.portability-finding {
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.portability-finding-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.portability-quote {
+  margin: 0;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.portability-suggestion {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text);
+}
+
+.chip[data-tone="danger"] {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger);
+}

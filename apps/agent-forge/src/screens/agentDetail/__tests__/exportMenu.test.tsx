@@ -7,11 +7,22 @@ import { ToastProvider } from '../../../ui/Toast';
 
 const mocks = vi.hoisted(() => ({
   downloadExport: vi.fn(),
+  checkPortability: vi.fn(),
 }));
 
 vi.mock('../../../runtime/runtimeClient', () => ({
   runtimeClient: {
     downloadExport: mocks.downloadExport,
+    checkPortability: mocks.checkPortability,
+  },
+  RuntimeApiError: class RuntimeApiError extends Error {
+    constructor(
+      message: string,
+      public readonly status: number,
+      public readonly code?: string
+    ) {
+      super(message);
+    }
   },
 }));
 
@@ -70,75 +81,46 @@ async function clickItem(label: string): Promise<void> {
   });
 }
 
-function toastTexts(): string {
-  return [...document.querySelectorAll('.toast-message')].map((el) => el.textContent ?? '').join(' | ');
-}
-
-/** Records anchor downloads the way jsdom cannot. */
-function captureDownloads(): { downloads: string[]; restore: () => void } {
-  const downloads: string[] = [];
-  const originalCreate = URL.createObjectURL;
-  const originalRevoke = URL.revokeObjectURL;
-  const originalClick = HTMLAnchorElement.prototype.click;
-  URL.createObjectURL = () => 'blob:mock';
-  URL.revokeObjectURL = () => {};
-  HTMLAnchorElement.prototype.click = function (this: HTMLAnchorElement) {
-    downloads.push(this.download);
-  };
-  return {
-    downloads,
-    restore: () => {
-      URL.createObjectURL = originalCreate;
-      URL.revokeObjectURL = originalRevoke;
-      HTMLAnchorElement.prototype.click = originalClick;
-    },
-  };
-}
-
 beforeEach(() => {
   mocks.downloadExport.mockReset();
-  mocks.downloadExport.mockResolvedValue({ blob: new Blob(['{}']), filename: 'support-bot.lousho-agent.json', warnings: [] });
+  mocks.checkPortability.mockReset();
 });
 
-describe('export menu items (L07)', () => {
-  it('"Export bundle" downloads via downloadExport(id, "bundle") under the bundle filename', async () => {
-    const { downloads, restore } = captureDownloads();
-    try {
-      renderMenu();
-      openMenu();
-      await clickItem('Export bundle');
-    } finally {
-      restore();
-    }
-    expect(mocks.downloadExport).toHaveBeenCalledWith('support-bot', 'bundle');
-    expect(downloads).toEqual(['support-bot.lousho-agent.json']);
-    expect(toastTexts()).toContain('Exported support-bot.lousho-agent.json');
-  });
-
-  it('shows each bundle warning as a warning toast, one line each', async () => {
-    mocks.downloadExport.mockResolvedValue({
-      blob: new Blob(['{}']),
-      filename: 'support-bot.lousho-agent.json',
-      warnings: ['Prompt \'support@prod\' could not be read.', 'Dataset \'ds1\' could not be read.'],
-    });
-    const { restore } = captureDownloads();
-    try {
-      renderMenu();
-      openMenu();
-      await clickItem('Export bundle');
-    } finally {
-      restore();
-    }
-    expect(toastTexts()).toContain("Prompt 'support@prod' could not be read.");
-    expect(toastTexts()).toContain("Dataset 'ds1' could not be read.");
-    expect(toastTexts()).not.toContain('Exported support-bot.lousho-agent.json');
-  });
-
-  it('shows an error toast when the export fails', async () => {
-    mocks.downloadExport.mockRejectedValue(new Error('disk full'));
+describe('export menu item (L09b)', () => {
+  it('offers a single "Export…" item - the old YAML/bundle items are gone', async () => {
     renderMenu();
     openMenu();
-    await clickItem('Export YAML');
-    expect(toastTexts()).toContain('Export failed: disk full');
+    const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
+    const labels = [...menu.querySelectorAll('[role^="menuitem"]')].map((el) => el.textContent);
+    expect(labels.filter((l) => l?.includes('Export'))).toEqual(['Export…']);
+    expect(labels.some((l) => l?.includes('Export YAML'))).toBe(false);
+    expect(labels.some((l) => l?.includes('Export bundle'))).toBe(false);
+  });
+
+  it('opens the export sheet for this agent', async () => {
+    renderMenu();
+    openMenu();
+    await clickItem('Export…');
+    expect(document.querySelector('.sheet-title')?.textContent).toBe('Export Support bot');
+    expect(document.querySelector('.sheet-description')?.textContent).toBe(
+      'Download this agent to keep it, share it or import it into another workspace.'
+    );
+    expect(document.querySelector('.export-format legend')?.textContent).toBe('Format');
+    expect(mocks.downloadExport).not.toHaveBeenCalled();
+  });
+
+  it('closes the sheet from Cancel without downloading', async () => {
+    renderMenu();
+    openMenu();
+    await clickItem('Export…');
+    const cancel = [...document.querySelectorAll<HTMLButtonElement>('.sheet-footer button')].find((b) =>
+      b.textContent?.includes('Cancel')
+    )!;
+    await act(async () => {
+      cancel.click();
+      await Promise.resolve();
+    });
+    expect(document.querySelector('.sheet')).toBeNull();
+    expect(mocks.downloadExport).not.toHaveBeenCalled();
   });
 });
