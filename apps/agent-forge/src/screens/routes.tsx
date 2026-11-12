@@ -19,6 +19,9 @@ import { DatasetsScreen } from './datasets/DatasetsScreen';
 import { QueuesScreen } from './queues/QueuesScreen';
 import { EvaluatorsScreen } from './evaluators/EvaluatorsScreen';
 import { PlaygroundRoute } from './playground/PlaygroundScreen';
+import { WorkspacesScreen } from './workspaces/WorkspacesScreen';
+import { WorkspaceRoute } from './workspaces/WorkspaceRoute';
+import { WorkspacesClientProvider } from './workspaces/workspacesClient';
 import { useLeaveAgentsGuard } from './agents/useLeaveAgentsGuard';
 import { ROUTES, type ScreenId } from './routeTable';
 
@@ -83,6 +86,11 @@ const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   threads: ThreadsScreen,
   prompts: PromptsScreen,
   hub: HubScreen,
+  workspaces: () => (
+    <WorkspacesClientProvider>
+      <WorkspacesScreen />
+    </WorkspacesClientProvider>
+  ),
 };
 
 const SETTINGS_DESCRIPTION = 'Appearance, provider keys, profiles and the collector for this Studio.';
@@ -93,6 +101,12 @@ export function Screens() {
   if (screen === 'agents') return <AgentsScreen />;
   // The detail header is the page's header: no ScreenFrame around it (A05).
   if (screen === 'agentDetail') return <AgentDetailRoute />;
+  if (screen === 'workspace')
+    return (
+      <WorkspacesClientProvider>
+        <WorkspaceRoute />
+      </WorkspacesClientProvider>
+    );
 
   const Screen = SCREENS[screen];
   let content: ReactNode;

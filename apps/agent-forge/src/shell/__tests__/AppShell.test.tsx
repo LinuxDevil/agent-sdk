@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 describe('AppShell', () => {
-  it('renders the 10 nav items in order and the screen', () => {
+  it('renders the 11 nav items in order and the screen', () => {
     stubNarrow(false);
     render();
     const links = [...nav().querySelectorAll('a')];
@@ -65,6 +65,7 @@ describe('AppShell', () => {
       'Agents',
       'Templates',
       'Playground',
+      'Workspaces',
       'Traces',
       'Threads',
       'Monitoring',
@@ -77,6 +78,7 @@ describe('AppShell', () => {
       '#/agents',
       '#/templates',
       '#/playground',
+      '#/workspaces',
       '#/traces',
       '#/threads',
       '#/monitoring',
