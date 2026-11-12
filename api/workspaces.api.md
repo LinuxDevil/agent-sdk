@@ -465,6 +465,9 @@ export interface DbWorkspaceSource extends WorkspaceSource {
 }
 
 // @public
+export function defaultPageUi(effective: UiBindingTarget, _workType: WorkType): PageUi;
+
+// @public
 interface DefineMemoryOptions {
     description?: string;
     expose?: {
