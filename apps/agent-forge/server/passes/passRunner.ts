@@ -194,7 +194,6 @@ export class PassRunner {
    * Queues `job`; the same `${kind}:${key}` while queued or running
    * returns the same promise. Never rejects.
    */
-  // fallow-ignore-next-line unused-class-member -- the PassRunner contract's entry point; L06b's callPassModel and the concrete passes enqueue through it
   enqueue<T>(job: PassJob<T>): Promise<PassResult<T>> {
     if (this.closed || !(this.options.isEnabled ?? (() => true))(job.kind)) {
       const error = this.closed ? 'Studio is shutting down' : 'Turned off in settings';
