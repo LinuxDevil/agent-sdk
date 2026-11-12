@@ -223,7 +223,7 @@ describe('InboxService', () => {
     const items = await new InboxService(deps()).list();
     expect(items.map((item) => item.id)).toEqual(['approval:a2:held', 'approval:a1:ap1']);
     // a1's expiresAt is the store record's, not the status deadline.
-    expect(items[1].expiresAt).toBe('2099-02-01T00:00:00.000Z');
+    expect(items[1]).toMatchObject({ expiresAt: '2099-02-01T00:00:00.000Z' });
   });
 
   it('clips title/detail copy at 140 chars', async () => {
