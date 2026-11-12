@@ -515,6 +515,9 @@ interface CreateWorkspaceOp {
 }
 
 // @public
+export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceHost): WorkspaceRuntime;
+
+// @public
 export function createWorkspaceStores(backend: HostBackend, scope: WorkspaceScope): WorkspaceStores;
 
 // @public
@@ -796,6 +799,8 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.";
     readonly LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.";
     readonly LOUSHO_WORKSPACE_NO_MAIN_AGENT: "Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.";
+    readonly LOUSHO_WORKSPACE_HOST_INVALID: "Give the host the field the message names; pass bindTool when a policy requires a sandbox.";
+    readonly LOUSHO_WORKSPACE_RUNTIME_CLOSED: "Create a new runtime with createWorkspaceRuntime; a closed one takes no runs.";
 };
 
 // @public
@@ -1486,12 +1491,22 @@ export interface PageExecutionLimits {
 }
 
 // @public
+export interface PageExplanation {
+    harness: EffectiveHarness;
+    hash: string;
+    pageId: string;
+    revision: RevisionId;
+    text: string;
+}
+
+// @public
 type PageField = 'name' | 'description' | 'domain' | 'improve' | 'platform' | 'defaults' | 'runtime';
 
 // @public
 export interface PageFinishedEvent {
     status: PageRunStatus;
     type: 'finished';
+    usage?: PageUsage;
 }
 
 // @public
@@ -1614,6 +1629,12 @@ export interface PageRunContext {
 export type PageRunEvent = PageStartedEvent | PageStepEvent | PageArtifactEvent | PageApprovalEvent | PageProgressEvent | PageFinishedEvent;
 
 // @public
+export interface PageRunHooks {
+    end(runId: string, result: PageResult | undefined): Promise<void>;
+    start(runId: string, pageId: string, signal: AbortSignal | undefined): Promise<AbortSignal>;
+}
+
+// @public
 export type PageRunLabels = Pick<PageStepLabels, 'page' | 'harnessHash' | 'executionType'>;
 
 // @public
@@ -1647,6 +1668,7 @@ export interface PageRuntimeContext {
 export interface PageRuntimeHost {
     bindTool(descriptor: ToolDescriptor, scope: PageToolScope): ToolDescriptor;
     ceiling: PolicyCeiling;
+    checks?: WorkspaceCheckRegistry;
     createMemory?: (file: SharedMemoryFile) => MemorySlot;
     exporter?: TraceExporter;
     globalAgents?: GlobalAgentRegistry;
@@ -1850,6 +1872,11 @@ export type ProseTarget = HarnessTarget | {
 };
 
 // @public
+export interface ProviderResolver {
+    resolve(ref: string): LLMProvider;
+}
+
+// @public
 interface ProviderUsage {
     cachedInputTokens?: number;
     cacheWriteTokens?: number;
@@ -2016,6 +2043,14 @@ interface RunLimits {
 export function runPage(workspace: LoadedWorkspace, input: PageInput, ctx: PageRuntimeContext): Promise<PageResult>;
 
 // @public
+export interface RunPageOptions {
+    onEvent?: (event: WireRunEvent) => void;
+    runId?: string;
+    signal?: AbortSignal;
+    threadId?: string;
+}
+
+// @public
 export interface RunRecord extends WorkspaceScope {
     endedAt?: number;
     pageId: string;
@@ -2139,10 +2174,23 @@ type SecretRef = {
 };
 
 // @public
+export interface SecretResolver {
+    resolve(ref: SecretRef): Promise<string | undefined>;
+}
+
+// @public
 interface ServedBy {
     model?: string;
     // (undocumented)
     provider: string;
+}
+
+// @public
+interface SessionStore {
+    delete(id: string): Promise<void>;
+    load(id: string): Promise<Message[] | undefined>;
+    save(id: string, messages: readonly Message[]): Promise<void>;
+    saveIf?(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
 }
 
 // @public
@@ -2341,7 +2389,7 @@ export interface SqlClient extends SqlStatements {
 }
 
 // @public
-export function sqliteHostBackend(path: string): Promise<HostBackend>;
+export function sqliteHostBackend(db: string | SqlClient): Promise<HostBackend>;
 
 // @public
 export function sqliteSqlClient(path: string): SqlClient;
@@ -2473,6 +2521,9 @@ interface TextContentPart {
 
 // @public
 type ToolArrayEntry = DefinedTool | NamedToolDescriptor | HostedTool | Record<string, ToolDescriptor | HostedTool>;
+
+// @public
+export type ToolBinder = (descriptor: ToolDescriptor, scope: PageToolScope, secrets: SecretResolver) => ToolDescriptor;
 
 // @public
 interface ToolCall {
@@ -2762,6 +2813,31 @@ export interface WorkspaceCheckRegistry {
 type WorkspaceField = 'name' | 'version' | 'description' | 'domain' | 'mainAgent' | 'dependencies' | 'defaults' | 'budget' | 'improve';
 
 // @public
+export interface WorkspaceGlobals {
+    agents: GlobalAgentRegistry;
+    profiles: ProfileStore;
+}
+
+// @public
+export interface WorkspaceHost {
+    bindTool?: ToolBinder;
+    checks?: WorkspaceCheckRegistry;
+    createMemory?: (file: SharedMemoryFile) => MemorySlot;
+    engines?: EngineRegistry;
+    exporter?: TraceExporter;
+    globals: WorkspaceGlobals;
+    limits?: {
+        maxConcurrentRuns?: number;
+    };
+    newRunId?: () => string;
+    policyCeiling: PolicyCeiling;
+    providers: ProviderResolver;
+    secrets: SecretResolver;
+    stores: WorkspaceRuntimeStores;
+    tools: HostToolRegistry;
+}
+
+// @public
 export interface WorkspaceLimits {
     maxConcurrentPages?: number;
     maxCostUsdPerRun?: number;
@@ -2818,6 +2894,19 @@ export interface WorkspaceManifestView {
 }
 
 // @public
+export interface WorkspacePageEvent extends WireRunEvent {
+    type: 'page';
+}
+
+// @public
+export interface WorkspacePageUsage {
+    pageId: string;
+    runId: string;
+    status: PageRunStatus;
+    usage: PageUsage;
+}
+
+// @public
 export interface WorkspacePolicy {
     approvals?: {
         require: string[];
@@ -2863,9 +2952,22 @@ export class WorkspaceRunError extends SDKError {
 }
 
 // @public
+export type WorkspaceRunEvent = WorkspaceRunStartedEvent | WorkspacePageEvent | WorkspaceRunFinishedEvent;
+
+// @public
 export interface WorkspaceRunEvents {
     append(runId: string, event: PageRunEvent): Promise<WireRunEvent>;
     read(runId: string, lastEventId?: number): Promise<WireRunEvent[]>;
+}
+
+// @public
+export interface WorkspaceRunFinishedEvent {
+    pages: WorkspacePageUsage[];
+    runId: string;
+    status: PageRunStatus;
+    turn: WorkspaceTurn;
+    type: 'finished';
+    usage: PageUsage;
 }
 
 // @public
@@ -2876,12 +2978,47 @@ export interface WorkspaceRunOptions {
 }
 
 // @public
+export interface WorkspaceRunStartedEvent {
+    revision: RevisionId;
+    runId: string;
+    threadId: string;
+    type: 'started';
+}
+
+// @public
 export interface WorkspaceRunStore {
     finish(runId: string, status: PageRunStatus): Promise<RunRecord>;
     get(runId: string): Promise<RunRecord | undefined>;
     list(states?: readonly RunState[]): Promise<RunRecord[]>;
     markInterrupted(): Promise<RunRecord[]>;
     start(run: StartRun): Promise<RunRecord>;
+}
+
+// @public
+export interface WorkspaceRuntime {
+    cancel(runId: string): boolean;
+    close(): Promise<void>;
+    explain(pageId: string): Promise<PageExplanation>;
+    run(message: string, options: WorkspaceRuntimeRunOptions): AsyncIterable<WorkspaceRunEvent>;
+    runPage(pageId: string, input: Omit<PageInput, 'pageId'> & Partial<Pick<PageInput, 'pageId'>>, options?: RunPageOptions): Promise<PageResult>;
+}
+
+// @public
+export interface WorkspaceRuntimeRunOptions {
+    inputs?: unknown;
+    pageId?: string;
+    runId?: string;
+    signal?: AbortSignal;
+    threadId: string;
+}
+
+// @public
+export interface WorkspaceRuntimeStores {
+    artifacts: ArtifactStore;
+    checkpoints: WorkspaceCheckpointStore;
+    events?: WorkspaceRunEvents;
+    runs: WorkspaceRunStore;
+    threads: WorkspaceThreadStore;
 }
 
 // @public
@@ -2904,8 +3041,11 @@ export interface WorkspaceSessionContext {
     host: PageRuntimeHost;
     mode?: LoadWorkspaceOptions['mode'];
     newRunId?: () => string;
+    pageRuns?: PageRunHooks;
+    priorRuns?: readonly PageRunRecord[];
     sessionId?: string;
     sharedRun?: SharedContextRun;
+    threads?: SessionStore;
 }
 
 // @public
@@ -2941,6 +3081,7 @@ export type WorkspaceTurn = {
     kind: 'main';
     text: string;
     finishReason: string;
+    usage: PageUsage;
     runs: PageRunRecord[];
 } | {
     kind: 'page';
