@@ -97,54 +97,53 @@ export interface ParsedImport {
  * `LOUSHO_IMPORT_INVALID`) and prompts. Every failure is an
  * {@link ImportError} with the route's status/code.
  */
-export function parseImportText(text: string): ParsedImport {
-  const trimmed = text.trim();
-  if (trimmed === '') throw new ImportError('Paste a spec or a bundle first.', 400, 'LOUSHO_IMPORT_EMPTY');
-  if (Buffer.byteLength(trimmed, 'utf8') > MAX_IMPORT_BYTES) {
-    throw new ImportError('That import is over 1 MB.', 400, 'LOUSHO_IMPORT_TOO_LARGE');
+/** `JSON.parse` mapped onto `LOUSHO_IMPORT_INVALID`. */
+function parseJsonDoc(trimmed: string): unknown {
+  try {
+    return JSON.parse(trimmed);
+  } catch (error) {
+    throw new ImportError(`Not valid JSON: ${(error as Error).message}`, 400, 'LOUSHO_IMPORT_INVALID');
   }
+}
 
-  let format: ParsedImport['format'];
-  let rawSpec: unknown;
-  let labels: string[] = [];
-  let prompts: AgentBundle['prompts'] = [];
-
-  if (trimmed.startsWith('{')) {
-    let doc: unknown;
-    try {
-      doc = JSON.parse(trimmed);
-    } catch (error) {
-      throw new ImportError(`Not valid JSON: ${(error as Error).message}`, 400, 'LOUSHO_IMPORT_INVALID');
-    }
-    if (isObject(doc) && doc.kind === 'lousho.agent-bundle') {
-      format = 'bundle';
-      if (doc.version !== 1) {
-        throw new ImportError(`This bundle was made by a newer Studio (version ${String(doc.version)}).`, 400, 'LOUSHO_IMPORT_BUNDLE_VERSION');
-      }
-      rawSpec = doc.spec;
-      try {
-        labels = normalizeLabels(doc.labels);
-      } catch (error) {
-        if (error instanceof LabelError) throw new ImportError(error.message, 400, 'LOUSHO_IMPORT_INVALID');
-        throw error;
-      }
-      prompts = bundlePrompts(doc.prompts);
-    } else {
-      format = 'json';
-      rawSpec = doc;
-    }
-  } else {
-    format = 'yaml';
-    let doc: unknown;
-    try {
-      doc = parseYaml(trimmed);
-    } catch (error) {
-      throw new ImportError(`Not valid YAML: ${(error as Error).message}`, 400, 'LOUSHO_IMPORT_INVALID');
-    }
-    rawSpec = doc;
+/** `yaml`'s parse mapped onto `LOUSHO_IMPORT_INVALID`. */
+function parseYamlDoc(trimmed: string): unknown {
+  try {
+    return parseYaml(trimmed);
+  } catch (error) {
+    throw new ImportError(`Not valid YAML: ${(error as Error).message}`, 400, 'LOUSHO_IMPORT_INVALID');
   }
+}
 
-  const hadV2 = isObject(rawSpec) && rawSpec.version === 2;
+/** A bundle document's spec/labels/prompts; a newer `version` is refused outright. */
+function bundleParts(doc: Record<string, unknown>): { rawSpec: unknown; labels: string[]; prompts: AgentBundle['prompts'] } {
+  if (doc.version !== 1) {
+    throw new ImportError(`This bundle was made by a newer Studio (version ${String(doc.version)}).`, 400, 'LOUSHO_IMPORT_BUNDLE_VERSION');
+  }
+  let labels: string[];
+  try {
+    labels = normalizeLabels(doc.labels);
+  } catch (error) {
+    if (error instanceof LabelError) throw new ImportError(error.message, 400, 'LOUSHO_IMPORT_INVALID');
+    throw error;
+  }
+  return { rawSpec: doc.spec, labels, prompts: bundlePrompts(doc.prompts) };
+}
+
+/** Splits the trimmed text into format + raw document: JSON spec, bundle, or YAML. */
+function splitDocument(trimmed: string): { format: ParsedImport['format']; rawSpec: unknown; labels: string[]; prompts: AgentBundle['prompts'] } {
+  if (!trimmed.startsWith('{')) {
+    return { format: 'yaml', rawSpec: parseYamlDoc(trimmed), labels: [], prompts: [] };
+  }
+  const doc = parseJsonDoc(trimmed);
+  if (!isObject(doc) || doc.kind !== 'lousho.agent-bundle') {
+    return { format: 'json', rawSpec: doc, labels: [], prompts: [] };
+  }
+  return { format: 'bundle', ...bundleParts(doc) };
+}
+
+/** `upgradeSpec` + `agentSpecV2Schema` validation; the first issue's `path: message` is the error. */
+function upgradeAndValidate(rawSpec: unknown): AgentSpecV2 {
   let upgraded: unknown;
   try {
     upgraded = upgradeSpec(rawSpec);
@@ -157,8 +156,21 @@ export function parseImportText(text: string): ParsedImport {
     const first = issues[0];
     throw new ImportError(`${first.path}: ${first.message}`, 400, 'LOUSHO_IMPORT_INVALID', { issues });
   }
+  return result.data;
+}
+
+export function parseImportText(text: string): ParsedImport {
+  const trimmed = text.trim();
+  if (trimmed === '') throw new ImportError('Paste a spec or a bundle first.', 400, 'LOUSHO_IMPORT_EMPTY');
+  if (Buffer.byteLength(trimmed, 'utf8') > MAX_IMPORT_BYTES) {
+    throw new ImportError('That import is over 1 MB.', 400, 'LOUSHO_IMPORT_TOO_LARGE');
+  }
+
+  const { format, rawSpec, labels, prompts } = splitDocument(trimmed);
+  const hadV2 = isObject(rawSpec) && rawSpec.version === 2;
+  const spec = upgradeAndValidate(rawSpec);
   const warnings: string[] = hadV2 ? [] : ['Upgraded from spec v1.'];
-  return { format, spec: result.data, labels, prompts, warnings };
+  return { format, spec, labels, prompts, warnings };
 }
 
 /** The `exists` predicate the id resolvers share: spec file or leftover sidecar dir. */
