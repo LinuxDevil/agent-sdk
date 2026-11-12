@@ -235,6 +235,9 @@ export interface ApplyInput {
 export function applyProposal(dir: string, input: ApplyInput, approval: Approval): Promise<ApplyResult>;
 
 // @public
+export function applyProposalIn(store: HarnessStore, input: ApplyInput, approval: Approval): Promise<ApplyResult>;
+
+// @public
 export interface ApplyResult {
     from: string;
     to: string;
@@ -339,6 +342,13 @@ export interface AuditEntry {
 
 // @public
 export type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
+
+// @public
+export interface AuditLog {
+    append(entry: AuditInput): Promise<AuditEntry>;
+    read(): Promise<AuditEntry[]>;
+    verify(): Promise<number | undefined>;
+}
 
 // @public
 type BackgroundTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'awaiting-approval';
@@ -824,6 +834,9 @@ interface FlowPendingApproval {
 }
 
 // @public
+export function folderAuditLog(dir: string): AuditLog;
+
+// @public
 interface ForkOptions {
     checkpointStore: CheckpointStore;
     fromStep: number;
@@ -1034,6 +1047,13 @@ export interface Harness {
 }
 
 // @public
+export interface HarnessCommit {
+    action: 'apply' | 'rollback';
+    audit: AuditInput;
+    from: string;
+}
+
+// @public
 export function harnessHash(harness: Harness): string;
 
 // @public
@@ -1044,6 +1064,25 @@ export interface HarnessRevision {
     parent?: string;
     readOnly?: string[];
     source: 'baseline' | 'apply' | 'rollback';
+}
+
+// @public
+export interface HarnessStore {
+    readonly audit: AuditLog;
+    commit(next: Harness, commit: HarnessCommit): Promise<{
+        to: string;
+        written: string[];
+    }>;
+    readonly key: string;
+    read(): Promise<HarnessStoreState>;
+    revisions(): Promise<HarnessRevision[]>;
+    withLock<T>(task: () => Promise<T>): Promise<T>;
+}
+
+// @public
+export interface HarnessStoreState {
+    harness: Harness;
+    readOnly: string[];
 }
 
 // @public
@@ -2001,6 +2040,9 @@ export interface RollbackBy {
 
 // @public
 export function rollbackHarness(dir: string, to: string, by: RollbackBy): Promise<RollbackResult>;
+
+// @public
+export function rollbackHarnessIn(store: HarnessStore, to: string, by: RollbackBy): Promise<RollbackResult>;
 
 // @public
 export interface RollbackResult {

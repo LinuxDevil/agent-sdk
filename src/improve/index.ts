@@ -19,6 +19,8 @@ export { currentRevision, harnessHash, listRevisions, readAgentHarness, snapshot
 export type { HarnessRevision } from './revisions';
 export { applyProposal, lastGoodRevision, rollbackHarness } from './apply';
 export type { ApplyInput, ApplyResult, Approval, RollbackBy, RollbackResult } from './apply';
+export { folderAuditLog, type HarnessStore, type HarnessStoreState, type HarnessCommit, type AuditLog } from './harnessStore';
+export { applyProposalIn, rollbackHarnessIn } from './storeApply';
 export { checkApplied } from './monitor';
 export type { MonitorVerdict } from './monitor';
 export type { WindowStat } from '../observe/continuousScore';

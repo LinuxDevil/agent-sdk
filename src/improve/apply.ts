@@ -5,7 +5,7 @@ import { withFileLock } from '../storage/fileLock';
 import { appendAudit, cleanActor, readAudit, type AuditEntry } from './audit';
 import { validateHarness } from './harness';
 import { recoverInterruptedWrite, refusal, STALE_FIELD, writeHarnessFiles, writtenHash, type HarnessWrite } from './harnessWriter';
-import { harnessHash, listRevisions, readHarnessState, snapshotRevision } from './revisions';
+import { harnessHash, listRevisions, readHarnessState, snapshotRevision, type HarnessRevision } from './revisions';
 import type { Harness, ImproveResult } from './types';
 
 /** Who let a proposal through: the gate in auto mode, or a named person. */
@@ -87,13 +87,13 @@ async function withApplyLock<T>(dir: string, task: () => Promise<T>): Promise<T>
   });
 }
 
-function actorOf(approval: Approval): AuditEntry['actor'] {
+export function actorOf(approval: Approval): AuditEntry['actor'] {
   if (approval.mode === 'auto') return approval.by;
   if (typeof approval.approvedBy !== 'string' || approval.approvedBy.trim() === '') throw refusal('manual approval needs the name of the person who approved it.', 'approvedBy');
   return cleanActor(`person:${approval.approvedBy.trim()}`);
 }
 
-function checkedProposal(input: ApplyInput, current: Harness, approval: Approval): Harness {
+export function checkedProposal(input: ApplyInput, current: Harness, approval: Approval): Harness {
   const { result, base } = input;
   if (result.outcome !== 'proposal' || !result.harness) throw refusal(`only a proposal with a harness can be applied; this result is '${result.outcome}'.`, 'result');
   if (writtenHash(current) !== writtenHash(base)) throw refusal('the proposal is stale: the agent directory changed after the proposal was made. Run improve again.', STALE_FIELD);
@@ -197,10 +197,10 @@ function sameSkillText(a: Harness['skills'][string] | undefined, b: Harness['ski
   return a?.description.trim() === b?.description.trim() && a?.content.trim() === b?.content.trim();
 }
 
-function rollbackTarget(dir: string, to: string, current: Harness, expectedFrom: string | undefined): Harness {
+export function rollbackTarget(revisions: readonly HarnessRevision[], where: string, to: string, current: Harness, expectedFrom: string | undefined): Harness {
   if (expectedFrom !== undefined && harnessHash(current) !== expectedFrom) throw refusal(`the directory no longer holds revision ${expectedFrom.slice(0, 12)}; it changed after the rollback was planned.`, STALE_FIELD);
-  const target = listRevisions(dir).find((revision) => revision.id === to);
-  if (!target) throw refusal(`there is no saved revision '${to}' in ${dir}, or its saved file is missing or corrupted; see 'lousho improve revisions'.`, 'to');
+  const target = revisions.find((revision) => revision.id === to);
+  if (!target) throw refusal(`there is no saved revision '${to}' in ${where}, or its saved file is missing or corrupted; see 'lousho improve revisions'.`, 'to');
   if (writtenHash(current) === writtenHash(target.harness)) throw refusal(`the directory already holds revision ${to.slice(0, 12)}.`, 'to');
   const lost = (target.readOnly ?? []).find((name) => !sameSkillText(Object.hasOwn(current.skills, name) ? current.skills[name] : undefined, target.harness.skills[name]));
   if (lost !== undefined) throw refusal(`skill '${lost}' was read-only in revision ${to.slice(0, 12)} and has changed since, so it can't be restored safely.`, 'to');
@@ -211,7 +211,7 @@ function rollbackTarget(dir: string, to: string, current: Harness, expectedFrom:
 export async function rollbackHarness(dir: string, to: string, by: RollbackBy): Promise<RollbackResult> {
   const actor = cleanActor(by.actor);
   return withApplyLock(dir, async () => {
-    const { write, ...rolled } = await writeLocked(dir, actor, 'rollback', (current) => rollbackTarget(dir, to, current, by.expectedFrom), { prefix: `Rollback to ${to.slice(0, 12)} not done: ` });
+    const { write, ...rolled } = await writeLocked(dir, actor, 'rollback', (current) => rollbackTarget(listRevisions(dir), dir, to, current, by.expectedFrom), { prefix: `Rollback to ${to.slice(0, 12)} not done: ` });
     await appendAudit(dir, { actor, action: 'rollback', from: rolled.from, to: rolled.to, reason: by.reason });
     write.finish();
     return rolled;
