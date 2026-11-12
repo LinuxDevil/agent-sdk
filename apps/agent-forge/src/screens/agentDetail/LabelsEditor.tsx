@@ -7,6 +7,7 @@
  */
 import {
   useId,
+  useMemo,
   useRef,
   useState,
   type ClipboardEvent,
@@ -18,11 +19,11 @@ import {
 import { Pencil, Tag, X } from 'lucide-react';
 
 import type { AgentRecord } from '../../../shared/wireTypes';
+import { normalizeLabels } from '../../../shared/labels';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { Dialog } from '../../ui/Dialog';
 import { useToast } from '../../ui/Toast';
 import { useAgentDetail } from './AgentDetailContext';
-import { addLabels } from './labels';
 
 const MAX_SHOWN_LABELS = 3;
 
@@ -123,11 +124,30 @@ function LabelsChipInput({ draft, setDraft, text, setText, problem, setProblem }
 
   const focusInput = () => inputRef.current?.focus();
 
+  // Live check: what Enter/comma would store through shared/labels.ts, or
+  // the LabelError it throws - shown under the input before anything is
+  // added, so a bad label never lands in the draft.
+  const inputProblem = useMemo(() => {
+    if (text.trim() === '') return undefined;
+    try {
+      normalizeLabels([...draft, ...text.split(',')]);
+      return undefined;
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }, [draft, text]);
+  const shownProblem = problem ?? inputProblem;
+
   const commit = (raw: string) => {
-    const result = addLabels(draft, raw);
-    setDraft(result.labels);
-    setProblem(result.problem);
-    setText('');
+    try {
+      // Atomic: normalizeLabels throws before returning, so a bad piece
+      // leaves every chip untouched (L13).
+      setDraft(normalizeLabels([...draft, ...raw.split(',')]));
+      setProblem(undefined);
+      setText('');
+    } catch {
+      // inputProblem already names the LabelError; the chips stay as they were.
+    }
     focusInput();
   };
 
@@ -178,7 +198,7 @@ function LabelsChipInput({ draft, setDraft, text, setText, problem, setProblem }
           value={text}
           placeholder={draft.length > 0 ? '' : 'Add a label'}
           aria-label="Add a label"
-          aria-describedby={problem !== undefined ? problemId : undefined}
+          aria-describedby={shownProblem !== undefined ? problemId : undefined}
           onChange={(event) => {
             setText(event.target.value);
             setProblem(undefined);
@@ -187,9 +207,9 @@ function LabelsChipInput({ draft, setDraft, text, setText, problem, setProblem }
           onPaste={onPaste}
         />
       </div>
-      {problem !== undefined ? (
+      {shownProblem !== undefined ? (
         <p className="hint field-error" id={problemId} role="alert">
-          {problem}
+          {shownProblem}
         </p>
       ) : null}
     </>

@@ -1,12 +1,14 @@
 /**
- * The `#/agents` list's URL state and pure helpers (A02): the search text,
- * the label set and the on/off filter live in the hash query (`q`, `label`,
- * `enabled`), synced with `useQueryState` so edits replace the history entry
- * and Back leaves the screen. `filterAgents`/`labelOptions` are the pure
- * halves the screen and its tests share.
+ * The `#/agents` list's URL state and pure helpers (A02, labels per L13):
+ * the search text, the label set and the on/off filter live in the hash
+ * query (`q`, `labels`, `enabled`), synced with `useQueryState` so edits
+ * replace the history entry and Back leaves the screen.
+ * `filterAgents`/`parseAgentListQuery` are the pure halves the screen and
+ * its tests share; label rules come from `shared/labels.ts`.
  */
 import { useCallback } from 'react';
 import type { AgentListItem } from '../../../shared/wireTypes';
+import { matchesLabels, normalizeLabels } from '../../../shared/labels';
 import { navigate, parseHash } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
 
@@ -22,23 +24,28 @@ function parseEnabled(raw: string | null): AgentListFilter['enabled'] {
   return raw === 'on' || raw === 'off' ? raw : undefined;
 }
 
-/** `label` is comma-separated and lowercase; empty pieces drop out. */
-function parseLabels(raw: string | null): string[] {
+/**
+ * The `labels` query value, comma-separated in selection order: normalised
+ * through `shared/labels.ts`; anything invalid (a hand-edited hash) parses
+ * to no filter rather than breaking the list (L13).
+ */
+export function parseLabelsParam(raw: string | null): string[] {
   if (raw === null) return [];
-  return raw
-    .split(',')
-    .map((label) => label.trim().toLowerCase())
-    .filter((label) => label !== '');
+  try {
+    return normalizeLabels(raw.split(','));
+  } catch {
+    return [];
+  }
 }
 
 /**
  * Reads the list filter out of the hash query: `q` is the raw search text,
- * `label` a comma-separated lowercase set, `enabled` `'on'`/`'off'`.
+ * `labels` a comma-separated normalised set, `enabled` `'on'`/`'off'`.
  */
 export function parseAgentListQuery(query: URLSearchParams): AgentListFilter {
   return {
     q: query.get('q') ?? '',
-    labels: query.getAll('label').flatMap((value) => parseLabels(value)),
+    labels: parseLabelsParam(query.get('labels')),
     enabled: parseEnabled(query.get('enabled')),
   };
 }
@@ -56,7 +63,7 @@ const formatEnabled = (enabled: AgentListFilter['enabled']): string | null => en
  */
 export function useAgentListFilter(): [AgentListFilter, (next: AgentListFilter) => void] {
   const [q] = useQueryState('q', parseQ, formatQ);
-  const [labels] = useQueryState('label', parseLabels, formatLabels);
+  const [labels] = useQueryState('labels', parseLabelsParam, formatLabels);
   const [enabled] = useQueryState('enabled', parseEnabled, formatEnabled);
   const set = useCallback((next: AgentListFilter) => {
     const { path, query } = parseHash(window.location.hash);
@@ -66,7 +73,7 @@ export function useAgentListFilter(): [AgentListFilter, (next: AgentListFilter) 
       else params.set(key, value);
     };
     write('q', formatQ(next.q));
-    write('label', formatLabels(next.labels));
+    write('labels', formatLabels(next.labels));
     write('enabled', formatEnabled(next.enabled));
     const qs = params.toString();
     navigate(qs === '' ? path : `${path}?${qs}`, { replace: true });
@@ -76,23 +83,20 @@ export function useAgentListFilter(): [AgentListFilter, (next: AgentListFilter) 
 
 /**
  * The items the current filter keeps, sorted for the grid: `q` is a
- * case-insensitive substring over name, id, description and model; every
- * selected label must be on the item (compared lowercase); `enabled` matches
- * `meta.enabled`. Order is name (case-insensitive), then id.
+ * case-insensitive substring over name, id, description and model; the
+ * label facet keeps agents carrying ANY selected label (OR, L13's
+ * `matchesLabels`); `enabled` matches `meta.enabled`. Order is name
+ * (case-insensitive), then id.
  */
 export function filterAgents(items: AgentListItem[], filter: AgentListFilter): AgentListItem[] {
   const q = filter.q.trim().toLowerCase();
-  const labels = filter.labels.map((label) => label.toLowerCase());
   return items
     .filter((item) => {
       if (q !== '') {
         const haystack = `${item.name}\n${item.id}\n${item.description}\n${item.model}`.toLowerCase();
         if (!haystack.includes(q)) return false;
       }
-      if (labels.length > 0) {
-        const own = item.labels.map((label) => label.toLowerCase());
-        if (!labels.every((label) => own.includes(label))) return false;
-      }
+      if (!matchesLabels(item.labels, filter.labels)) return false;
       if (filter.enabled === 'on' && !item.enabled) return false;
       if (filter.enabled === 'off' && item.enabled) return false;
       return true;
@@ -103,20 +107,4 @@ export function filterAgents(items: AgentListItem[], filter: AgentListFilter): A
     );
 }
 
-/**
- * The Labels facet's options: every label across `items`, lowercased,
- * deduplicated, sorted, with the number of agents carrying it.
- */
-export function labelOptions(items: AgentListItem[]): { value: string; label: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    for (const raw of item.labels) {
-      const label = raw.trim().toLowerCase();
-      if (label === '') continue;
-      counts.set(label, (counts.get(label) ?? 0) + 1);
-    }
-  }
-  return [...counts.entries()]
-    .map(([value, count]) => ({ value, label: value, count }))
-    .sort((a, b) => a.value.localeCompare(b.value));
-}
+

@@ -41,7 +41,7 @@ export interface AgentCardProps {
   now?: number;
 }
 
-const MAX_LABELS = 4;
+const MAX_LABELS = 3;
 
 /** Footer copy for a last run's raw status, folded through {@link statusKey}. */
 export function lastRunLabel(status: string): string {

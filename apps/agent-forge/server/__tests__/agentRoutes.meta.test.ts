@@ -97,9 +97,8 @@ describe('PATCH /agents/:id/meta', () => {
     expect((await repo.readMeta('ops')).labels).toEqual([]);
   });
 
-  it.each([[{}], [{ enabled: 'yes' }], [{ labels: 'ops' }], [{ labels: [1] }]])(
-    '400s LOUSHO_BODY_INVALID for %j',
-    async (body) => {
+  // Non-array/non-string `labels` are LabelError cases (LOUSHO_LABELS_INVALID) covered by metaLabels.test.ts.
+  it.each([[{}], [{ enabled: 'yes' }]])('400s LOUSHO_BODY_INVALID for %j', async (body) => {
       await createOps();
       const res = await patch('ops', body);
       expect(res.status).toBe(400);

@@ -9,6 +9,7 @@
 import { useCallback, useMemo } from 'react';
 import { Bot, SearchX } from 'lucide-react';
 import type { AgentListItem } from '../../../shared/wireTypes';
+import { labelFacetOptions } from '../../../shared/labels';
 import { navigate } from '../../router/router';
 import { ScreenHeader } from '../../shell/ScreenHeader';
 import { EmptyState } from '../../ui/EmptyState';
@@ -18,7 +19,7 @@ import { facet } from '../listFilters';
 import { LoadErrorCard, LoadingGrid } from '../listStates';
 import { agentTabPath } from '../agents/agentTabs';
 import { AgentCard } from './AgentCard';
-import { filterAgents, labelOptions, useAgentListFilter, type AgentListFilter } from './agentListUrl';
+import { filterAgents, useAgentListFilter, type AgentListFilter } from './agentListUrl';
 import { NewAgentMenu, StartOptions } from './NewAgentMenu';
 import { useNewAgentActions, type NewAgentActions } from './newAgent';
 import { useAgentList, type AgentListState } from './useAgentList';
@@ -101,10 +102,10 @@ function AgentListBody({ list, items, visible, newAgent, onClearFilters, onOpen,
     return (
       <EmptyState
         icon={SearchX}
-        title="No matching agents"
-        hint="Try a different search or clear the filters."
+        title="No agents match these filters"
+        hint="Clear a filter to see more agents."
         action={
-          <button type="button" className="btn" onClick={onClearFilters}>
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onClearFilters}>
             Clear filters
           </button>
         }
@@ -122,9 +123,9 @@ function useAgentListFacets(
 ): FacetDef[] {
   const labelsFacet = useMemo<FacetDef>(
     () => ({
-      key: 'label',
+      key: 'labels',
       label: 'Labels',
-      options: labelOptions(items),
+      options: labelFacetOptions(items),
       value: filter.labels,
       onChange: (labels) => patch({ labels }),
     }),

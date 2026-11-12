@@ -142,7 +142,7 @@ describe('AgentListScreen', () => {
 
   it('shows the no-match state under a filter and Clear filters restores the URL and the cards', async () => {
     const host = await mountAt('#/agents?q=zzz');
-    expect(host.textContent).toContain('No matching agents');
+    expect(host.textContent).toContain('No agents match these filters');
     await act(async () => buttonNamed(host, 'Clear filters')!.click());
     await flush();
     expect(window.location.hash).toBe('#/agents');

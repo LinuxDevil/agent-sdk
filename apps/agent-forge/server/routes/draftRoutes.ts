@@ -17,6 +17,7 @@
 import type { Express, Response } from 'express';
 import { agentSpecV2Schema } from 'lousho';
 import { computeChangedFields, SPEC_FIELD_ORDER } from '../../shared/specFields';
+import { LabelError, normalizeLabels } from '../../shared/labels';
 import type {
   CreateDraftRequest,
   DraftOrigin,
@@ -250,9 +251,24 @@ export function registerDraftRoutes(app: Express): void {
             sendInvalidDraft(res, validation.error.issues);
             return;
           }
-          await ws.repo.writeSpec(id, next.spec);
+          // Draft patches are not label-validated at creation, so the
+          // write path normalises (L13) BEFORE the spec lands: a bad list
+          // is a 400, not a half-applied draft.
+          let labels: string[] | undefined;
           if ('labels' in cur.patch) {
-            await ws.repo.writeMeta(id, { ...meta, labels: next.labels, updatedAt: new Date().toISOString() });
+            try {
+              labels = normalizeLabels(next.labels);
+            } catch (error) {
+              if (error instanceof LabelError) {
+                sendError(res, 400, error.message, 'LOUSHO_LABELS_INVALID');
+                return;
+              }
+              throw error;
+            }
+          }
+          await ws.repo.writeSpec(id, next.spec);
+          if (labels !== undefined) {
+            await ws.repo.writeMeta(id, { ...meta, labels, updatedAt: new Date().toISOString() });
           }
           await ws.versions.capture(id, { kind: 'update', source: 'draft', requestText: cur.reason });
           const settled = await ws.drafts.settle(id, 'approved', { draftId: cur.id, note: parsed.note });
