@@ -166,7 +166,7 @@ interface AppState {
   nodeStates: NodeStates;
   /** POSTs the current graph's compiled spec + `input` to `/agents/:id/run`. */
   runAgent: (input: string) => Promise<void>;
-  /** POSTs `/agents/:id/stop` - see runtimeClient.ts/runRegistry.ts for what this can and can't interrupt. */
+  /** POSTs `/agents/:id/abort` - cancels the active run (running or approval-paused); see runtimeClient.ts/runRegistry.ts for what this can and can't interrupt. */
   stopAgent: () => Promise<void>;
   /**
    * The tool results pinned from a node's spans sheet (T04 "run from

@@ -124,6 +124,12 @@ interface RunEntry {
    */
   runInput?: string;
   /**
+   * Why the run was cancelled - only ever set on the transition to
+   * `status: 'stopped'` (see abort()), surfaced on the status payload as
+   * `abortReason` and cleared by the next launch.
+   */
+  abortReason?: string;
+  /**
    * The chat transcript for this agent's CURRENT chat session -
    * reconciled from the real `ExecutionResult.messages` on every run
    * settle (see chatReconcile.ts), plus the just-sent user message pushed
@@ -281,6 +287,7 @@ export class RunManager extends EventEmitter {
       result: entry.result,
       provider: entry.provider,
       traceId: entry.traceId,
+      abortReason: entry.abortReason,
       steering: entry.steering,
       updatedAt: entry.updatedAt,
     };
@@ -725,6 +732,7 @@ export class RunManager extends EventEmitter {
         startedAt: new Date().toISOString(),
         resultText: undefined,
         traceId: undefined,
+        abortReason: undefined,
         runInput: options.runInput,
         lastSpec: resolvedSpec,
         provider: modelLabel,
@@ -839,6 +847,7 @@ export class RunManager extends EventEmitter {
         startedAt: new Date().toISOString(),
         resultText: undefined,
         traceId: undefined,
+        abortReason: undefined,
         runInput: options.runInput,
         lastSpec: resolvedSpec,
         provider: `${provider.name}/${legacySpec.provider.model}`,
@@ -937,12 +946,17 @@ export class RunManager extends EventEmitter {
       this.recordPause(agentId, result, result.approvalId, entryBefore, reconciledMessages);
       return;
     }
+    const aborted = result.finishReason === 'aborted';
     const next = this.setEntry(agentId, {
-      status: result.finishReason === 'aborted' ? 'stopped' : 'done',
+      status: aborted ? 'stopped' : 'done',
       resultText: result.text,
       result,
       controller: undefined,
       hostRunId: undefined,
+      // The SDK reports the abort's reason as `{ name, message }` - the
+      // message is the string abort() passed through (e.g. 'user',
+      // 'abort_listener:<id>').
+      abortReason: aborted ? result.abortReason?.message : undefined,
       deadlineTimer: this.clearDeadlineTimer(entryBefore),
       messages: reconciledMessages,
     });
@@ -1003,9 +1017,25 @@ export class RunManager extends EventEmitter {
   /** Shared failure-path handling: a host run's 'failed' event, or a flow/execute() rejection. */
   private handleRunFailed(agentId: string, error: unknown): void {
     const entry = this.entries.get(agentId);
-    if (error instanceof RunAbortedError) {
-      // User-initiated stop() - a deliberate terminal state, not an error.
-      this.setEntry(agentId, { status: 'stopped', controller: undefined, hostRunId: undefined, deadlineTimer: this.clearDeadlineTimer(entry) });
+    // A user-initiated abort is a deliberate terminal state, not an error:
+    // the flow path surfaces it either as RunAbortedError (the provider
+    // wrapper's check) or as the controller signal's own reason
+    // (FlowExecutor's `signal.throwIfAborted()` rethrows it verbatim).
+    if (error instanceof RunAbortedError || entry?.controller?.signal.aborted) {
+      const signalReason: unknown = entry?.controller?.signal.reason;
+      const abortReason =
+        signalReason instanceof DOMException
+          ? signalReason.message
+          : typeof signalReason === 'string'
+            ? signalReason
+            : undefined;
+      this.setEntry(agentId, {
+        status: 'stopped',
+        controller: undefined,
+        hostRunId: undefined,
+        abortReason,
+        deadlineTimer: this.clearDeadlineTimer(entry),
+      });
       return;
     }
     this.setEntry(agentId, {
@@ -1080,44 +1110,80 @@ export class RunManager extends EventEmitter {
   }
 
   /**
-   * Requests cancellation of the in-flight run for `agentId`: the agent
-   * path aborts through the AgentHost (its run resolves
-   * `finishReason: 'aborted'`, which handleRunSettled maps to 'stopped'),
-   * the flow path aborts its controller (RunAbortedError → 'stopped').
-   * A PAUSED run has no live execution to signal: its `host.abort()`
-   * discards the pending approval files and emits no event, so this also
-   * marks the entry 'stopped' directly - a paused agent must never be
-   * stuck waiting for a settle that never comes.
-   * No-ops (rather than throwing) if the agent isn't currently running -
-   * Stop is safe to click on an already-stopped/idle agent.
+   * Cancels the in-flight run for `agentId` (`POST /agents/:id/abort`).
+   *
+   * - Running agent path: `host.abort(hostRunId, reason)` aborts the live
+   *   run; the `settled` event that follows (`finishReason: 'aborted'`)
+   *   maps to `status: 'stopped'` with `abortReason` in handleRunSettled.
+   * - Running flow path: the entry's AbortController is aborted with the
+   *   reason; the flow fails and handleRunFailed maps the abort (the
+   *   signal's own `aborted` state, not just RunAbortedError) to 'stopped',
+   *   not 'error'.
+   * - Paused on an approval: `host.abort()` discards the pending approval
+   *   itself (InProcessAgentHost resolves/deletes the pause file; a bridge
+   *   host deletes its own) and emits NO event, so the entry is marked
+   *   'stopped' directly once the call returns - a paused run must never
+   *   wait for a settle that never comes. Flows cannot pause, so a paused
+   *   entry is always the agent kind.
+   * - Idle/done/stopped (or no entry): a no-op, not an error - abort is
+   *   safe to call on an agent with nothing running.
    */
-  stop(agentId: string): void {
+  async abort(agentId: string, reason?: string): Promise<void> {
     const entry = this.entries.get(agentId);
     if (!entry) {
       return;
     }
+    const abortReason = reason ?? 'user';
     if (entry.status === 'paused') {
-      if (entry.kind === 'agent' && entry.hostRunId !== undefined) {
-        void this.opts.host.abort(entry.hostRunId, 'user');
-      }
-      this.setEntry(agentId, {
-        status: 'stopped',
-        reason: undefined,
-        pendingApproval: undefined,
-        deadlineTimer: this.clearDeadlineTimer(entry),
-        controller: undefined,
-        hostRunId: undefined,
-      });
+      await this.abortPaused(agentId, entry, abortReason);
       return;
     }
     if (entry.status !== 'running') {
       return;
     }
+    await this.abortRunning(entry, abortReason);
+  }
+
+  /** The running-run half of abort(): agent path through the host, flow path through its controller. */
+  private async abortRunning(entry: RunEntry, reason: string): Promise<void> {
     if (entry.kind === 'agent') {
-      if (entry.hostRunId !== undefined) void this.opts.host.abort(entry.hostRunId, 'user');
+      if (entry.hostRunId !== undefined) await this.opts.host.abort(entry.hostRunId, reason);
       return;
     }
-    entry.controller?.abort();
+    // DOMException named 'AbortError' keeps the SDK's abort detection (and
+    // the reason string readable off signal.reason) working - see
+    // abortableProvider.ts's RunAbortedError doc comment.
+    entry.controller?.abort(new DOMException(reason, 'AbortError'));
+  }
+
+  /**
+   * The paused-run half of abort(): the host discards the pending approval
+   * (no 'settled' event follows), then the entry is marked 'stopped' with
+   * the reason - see abort()'s doc comment for why the order matters.
+   */
+  private async abortPaused(agentId: string, entry: RunEntry, reason: string): Promise<void> {
+    if (entry.kind === 'agent' && entry.hostRunId !== undefined) {
+      await this.opts.host.abort(entry.hostRunId, reason);
+    }
+    this.setEntry(agentId, {
+      status: 'stopped',
+      reason: undefined,
+      pendingApproval: undefined,
+      deadlineTimer: this.clearDeadlineTimer(entry),
+      controller: undefined,
+      hostRunId: undefined,
+      abortReason: reason,
+    });
+  }
+
+  /**
+   * `POST /agents/:id/stop` - kept for existing callers (the draft tool's
+   * run timeout, older clients); now just `abort(agentId, 'user')`. Still
+   * synchronous on purpose: the abort itself proceeds in the background
+   * and the 'stopped' status arrives via the usual status push.
+   */
+  stop(agentId: string): void {
+    void this.abort(agentId, 'user');
   }
 
   /**

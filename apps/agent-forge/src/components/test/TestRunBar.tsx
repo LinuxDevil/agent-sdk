@@ -19,6 +19,13 @@ export function TestRunBar({ actions }: { actions?: ReactNode }) {
     <div className="test-run-bar" role="group" aria-label="Test run">
       <RunStatus showTraceLink={false} />
       {runStatus?.provider && <span className="test-run-model">{runStatus.provider}</span>}
+      {/* A non-default abort reason (e.g. 'abort_listener:<id>') is worth
+          surfacing; a plain user Stop needs no explanation. */}
+      {runStatus?.abortReason !== undefined && runStatus.abortReason !== 'user' && (
+        <span className="test-run-abort-reason" title={runStatus.abortReason}>
+          Reason: {runStatus.abortReason}
+        </span>
+      )}
       {elapsed !== undefined && (
         <span className="test-run-elapsed" role="timer" aria-label={`Running for ${elapsed}`}>
           {elapsed}

@@ -386,8 +386,17 @@ class RuntimeClient implements AgentApi {
     });
   }
 
-  async stop(agentId: string): Promise<AgentRunStatusPayload> {
-    return this.request(`/agents/${encodeURIComponent(agentId)}/stop`, { method: 'POST' });
+  /**
+   * `POST /agents/:id/abort` - cancels the agent's active run (running or
+   * paused on an approval) with an optional reason recorded on the status
+   * payload's `abortReason` (abort listeners pass `'abort_listener:<id>'`).
+   * A no-op 202 when nothing is running.
+   */
+  async abort(agentId: string, reason?: string): Promise<AgentRunStatusPayload> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/abort`, {
+      method: 'POST',
+      body: JSON.stringify(reason === undefined ? {} : { reason }),
+    });
   }
 
   async status(agentId: string): Promise<AgentRunStatusPayload> {
@@ -671,6 +680,33 @@ class RuntimeClient implements AgentApi {
       throw apiError(body, `Deploy of '${agentId}' failed with ${res.status}`, res.status);
     }
     return body as DeployResult;
+  }
+
+  /**
+   * `GET /agents/:id/export?format=yaml|bundle` (L07) as a Blob plus the
+   * server's `Content-Disposition` filename and the bundle's
+   * `X-Lousho-Export-Warnings` list (empty for YAML and a clean bundle).
+   */
+  async downloadExport(agentId: string, format: 'yaml' | 'bundle'): Promise<{ blob: Blob; filename: string; warnings: string[] }> {
+    const res = await this.fetch(`/agents/${encodeURIComponent(agentId)}/export?format=${format}`, { method: 'GET' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw apiError(body, `Export of '${agentId}' failed with ${res.status}`, res.status);
+    }
+    const disposition = res.headers.get('Content-Disposition') ?? '';
+    const filename = /filename="([^"]+)"/.exec(disposition)?.[1]
+      ?? (format === 'yaml' ? `${agentId}.yaml` : `${agentId}.lousho-agent.json`);
+    const warningsHeader = res.headers.get('X-Lousho-Export-Warnings');
+    let warnings: string[] = [];
+    if (warningsHeader !== null) {
+      try {
+        const parsed: unknown = JSON.parse(decodeURIComponent(warningsHeader));
+        if (Array.isArray(parsed)) warnings = parsed.filter((w): w is string => typeof w === 'string');
+      } catch {
+        // A malformed warnings header degrades to no warnings, never a failed download.
+      }
+    }
+    return { blob: await res.blob(), filename, warnings };
   }
 
   /**

@@ -96,6 +96,12 @@ export interface AgentRunStatusPayload {
   /** Trace id (root span id) of the latest run, once its first span started - the top bar's "Open trace" link. */
   traceId?: string;
   /**
+   * Why the run was cancelled - set when `status === 'stopped'` (`'user'` for
+   * a Stop click, `'abort_listener:<id>'` for an abort listener, any other
+   * caller-supplied reason). Cleared when the next run launches.
+   */
+  abortReason?: string;
+  /**
    * This run's steer messages (`POST /agents/:id/steer`), oldest first -
    * each one's delivery flips queued -> delivered/undelivered as the run
    * consumes it or ends. Reset to `[]` when the next run launches; the
@@ -104,6 +110,15 @@ export interface AgentRunStatusPayload {
    */
   steering?: SteerInfo[];
   updatedAt: string;
+}
+
+/** `POST /agents/:id/abort` body (the body itself is optional). */
+export interface AbortRunRequest {
+  /**
+   * Why the run is being cancelled: 1..200 characters, defaulting to `'user'`.
+   * Abort listeners pass `'abort_listener:<id>'` (PLAN §10).
+   */
+  reason?: string;
 }
 
 /** How far a steered message got: still waiting, joined the transcript, or the run ended first. */
@@ -868,19 +883,36 @@ export type SpecPatch = { [K in Exclude<keyof AgentSpecV2, 'version'>]?: AgentSp
   labels?: string[] | null;
 };
 
+/** One thing the draft auto-review flagged, grouped by rubric area. */
+export interface DraftConcern {
+  area: 'safety' | 'coherence' | 'trigger_reach';
+  detail: string;
+}
+
 /**
  * The advisory auto-review a pending draft carries once the review pass
  * has looked at it (filled by the pass, never at create time). The
- * `fingerprint` binds the verdict to the exact submission it judged.
+ * `fingerprint` binds the verdict to the exact submission it judged;
+ * `safe` is null whenever no model verdict exists (`unavailable`).
  */
 export interface DraftAutoReview {
-  outcome: 'approved' | 'escalated' | 'unavailable';
-  safe: boolean;
+  outcome: 'clear' | 'escalated' | 'unavailable';
+  safe: boolean | null;
   rationale: string;
-  concerns: { area: 'safety' | 'coherence' | 'trigger_reach'; detail: string }[];
-  modelId: string | null;
-  checkedAt: string;
+  concerns: DraftConcern[];
   fingerprint: string;
+  model: string | null;
+  checkedAt: string;
+}
+
+/**
+ * The draft's changed field paths split by risk class (L11a): `routine`
+ * edits can be reviewed at a glance, `gated` ones always need the user's
+ * click. Paths are `SpecChange.field` values ('tools[web-fetch]').
+ */
+export interface DraftFieldClasses {
+  routine: string[];
+  gated: string[];
 }
 
 /**
@@ -902,6 +934,8 @@ export interface ChangeDraft {
   /** `specHash()` of the working copy when the draft was made. */
   baseSpecHash: string;
   autoReview: DraftAutoReview | null;
+  /** Routine/gated split of the draft's changed fields; null until the review pass classifies them. */
+  classes: DraftFieldClasses | null;
   /** Reviewer note recorded on approve/reject. */
   note: string | null;
   createdAt: string;
@@ -1067,3 +1101,21 @@ export interface McpProbeTool {
  * 200, never HTTP errors).
  */
 export type McpProbeResponse = { ok: true; tools: McpProbeTool[] } | { ok: false; error: string };
+
+/**
+ * `GET /agents/:id/export?format=bundle`'s body (L07): the working-copy
+ * spec plus the pieces that live outside the YAML - labels, the prompt
+ * registry text `spec.promptRef` points at, and the eval datasets the
+ * spec gates on. Secret values never appear: the spec only ever holds
+ * `{ env }`/`{ secret }` references.
+ */
+export interface AgentBundle {
+  kind: 'lousho.agent-bundle';
+  version: 1;
+  spec: AgentSpecV2;
+  labels: string[];
+  prompts: Array<{ name: string; version: number; content: string }>;
+  evals?: Array<{ dataset: string; examples: Array<{ input: unknown; expected: unknown | null }> }>;
+  /** ISO time the bundle was built. */
+  exportedAt: string;
+}
