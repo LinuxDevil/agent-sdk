@@ -173,6 +173,8 @@ export const ERROR_CODES = {
   LOUSHO_WORKSPACE_INVALID: 'Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.',
   /** A page's agent reference names no agent folder, or no global agent version matches it. */
   LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.",
+  /** A main harness lists an instruction file for which no text was supplied. */
+  LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: 'Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.',
 } as const;
 
 /** A stable error code, e.g. `'LOUSHO_CONFIG_MISSING_PROVIDER'`. */

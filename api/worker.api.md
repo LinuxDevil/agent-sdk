@@ -1395,6 +1395,7 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: "Remove the NUL characters from the file the message names; a database workspace source stores text only.";
     readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
     readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
+    readonly LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: "Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.";
 };
 
 // @public
