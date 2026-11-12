@@ -8,7 +8,6 @@
 import { z } from 'zod';
 
 /** Every "not supported yet" issue message starts with this, so parseAgentSpecV2() can tell it from a plain validation problem. */
-// fallow-ignore-next-line unused-export -- consumed by later spec v2 section schemas raising the same issues
 export const UNSUPPORTED_PREFIX = 'not supported yet: ';
 
 /** Adds an issue saying `what` cannot run on this SDK version yet; `path` is relative to the refined value. */

@@ -34,7 +34,7 @@ import type {
   VersionSource,
 } from '../../shared/wireTypes';
 import type { AgentRepo } from './agentRepo';
-import { readJsonFile, writeJsonAtomic } from './atomic';
+import { readJsonFile, withAgentLock, writeFileAtomic, writeJsonAtomic } from './atomic';
 import { specHash } from './specHash';
 import { clampVersionText, VERSION_REQUEST_MAX_CHARS } from './versionText';
 
@@ -52,11 +52,16 @@ function sameLabels(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((label, index) => label === b[index]);
 }
 
+/** Called after a version's record + index line are durably written (never for a skipped no-op capture). */
+export type VersionWrittenListener = (agentId: string, item: VersionListItem) => void;
+
 /**
  * The version store over `repo`'s `.lousho/agents/<id>/versions/` trees.
  * `clock` is injectable for tests; it only stamps `createdAt`.
  */
 export class VersionStore {
+  private readonly writtenListeners = new Set<VersionWrittenListener>();
+
   constructor(
     private readonly repo: AgentRepo,
     private readonly clock: () => Date = () => new Date()
@@ -163,6 +168,30 @@ export class VersionStore {
   }
 
   /**
+   * Subscribes `listener` to every successful version write (the summary
+   * pass's hook, L04); the returned function unsubscribes it. Listener
+   * errors are caught and logged - a bad listener must never fail the
+   * write that already succeeded.
+   */
+  onVersionWritten(listener: VersionWrittenListener): () => void {
+    this.writtenListeners.add(listener);
+    return () => {
+      this.writtenListeners.delete(listener);
+    };
+  }
+
+  /** Fans `item` out to the `onVersionWritten` listeners; each runs behind its own try/catch. */
+  private notifyVersionWritten(agentId: string, item: VersionListItem): void {
+    for (const listener of this.writtenListeners) {
+      try {
+        listener(agentId, item);
+      } catch (error) {
+        console.warn(`[agent-forge] version-written listener failed for '${agentId}' v${item.version}:`, error);
+      }
+    }
+  }
+
+  /**
    * Snapshots the current working copy (spec + meta labels) as the next
    * version. Returns the written item, or `null` when the capture was a
    * no-op `update` (same spec hash and labels as the latest version).
@@ -181,6 +210,7 @@ export class VersionStore {
 
     const item = this.buildItem(input, latest, latestRecord?.snapshot, snapshot, hash);
     await this.persist(agentId, item, snapshot);
+    this.notifyVersionWritten(agentId, item);
     return item;
   }
 
@@ -201,5 +231,32 @@ export class VersionStore {
     if (items.some((item) => item.specHash === hash)) return null;
     if ((await this.repo.readWorkingHash(agentId)) === hash) return null;
     return this.capture(agentId, { kind: 'baseline', source: 'external_file_edit' });
+  }
+
+  /**
+   * Sets `summary` on version `version` only while it is still `null`:
+   * the record file and that version's index line are rewritten together
+   * under `withAgentLock` (a second, late summary never overwrites the
+   * first). Returns `false` when the version is unknown or already has a
+   * summary - including when the record file exists but its index line
+   * does not (the record write is rolled back by simply not touching it:
+   * see below, the index check runs first).
+   */
+  async setSummary(agentId: string, version: number, summary: string): Promise<boolean> {
+    return withAgentLock(agentId, async () => {
+      const record = await this.get(agentId, version);
+      if (record === undefined || record.summary !== null) return false;
+      const items = await this.readIndex(agentId);
+      const index = items.findIndex((item) => item.version === version);
+      if (index === -1) return false;
+      const updated: VersionRecord = { ...record, summary };
+      await writeJsonAtomic(this.recordPath(agentId, version), updated);
+      items[index] = { ...items[index], summary };
+      await writeFileAtomic(
+        this.indexPath(agentId),
+        `${items.map((item) => JSON.stringify(item)).join('\n')}\n`
+      );
+      return true;
+    });
   }
 }

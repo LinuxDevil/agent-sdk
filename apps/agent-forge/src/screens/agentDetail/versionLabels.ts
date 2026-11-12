@@ -1,57 +1,14 @@
 import { SPEC_FIELD_META } from '../../../shared/specFields';
 import type { SpecChange, SpecSection, VersionKind, VersionListItem, VersionSource } from '../../../shared/wireTypes';
 
-/**
+/*
  * Display labels for the Versions tab (L01), shared by L02/L03/L14b.
- * `FIELD_LABELS` covers every top-level `AgentSpecV2` key the version
- * records report in `changedFields`, plus 'labels' (the meta state a
- * snapshot carries); unknown keys fall back to the raw field name.
+ * The `FIELD_LABELS` table and `fieldLabel` live in
+ * `shared/specFieldLabels.ts` (L04) so the server's version-summary
+ * digest labels fields identically; re-exported here for the tab's
+ * existing importers.
  */
-export const FIELD_LABELS: Record<string, string> = {
-  name: 'Name',
-  description: 'Description',
-  labels: 'Labels',
-  model: 'Model',
-  fallbackModels: 'Fallback models',
-  instructions: 'Instructions',
-  instructionsByFamily: 'Instructions per model family',
-  promptRef: 'Prompt reference',
-  modelSettings: 'Model settings',
-  reasoning: 'Reasoning',
-  tools: 'Tools',
-  mcpServers: 'MCP servers',
-  skills: 'Skills',
-  memory: 'Memory',
-  subagents: 'Subagents',
-  subagentOptions: 'Subagent options',
-  maxSubagentDepth: 'Subagent depth',
-  handoffs: 'Handoffs',
-  maxHandoffs: 'Handoff limit',
-  guardrails: 'Guardrails',
-  permissions: 'Permission rules',
-  permissionMode: 'Permission mode',
-  approvalTtlMs: 'Approval timeout',
-  askQuestion: 'Ask questions',
-  hooks: 'Hooks',
-  output: 'Structured output',
-  limits: 'Limits',
-  maxSteps: 'Max steps',
-  compaction: 'Compaction',
-  retry: 'Retries',
-  rateLimit: 'Rate limit',
-  promptCaching: 'Prompt caching',
-  toolSearch: 'Tool search',
-  codeMode: 'Code mode',
-  triggers: 'Triggers',
-  abortListeners: 'Abort listeners',
-  flow: 'Flow',
-  evals: 'Eval gates',
-};
-
-/** The chip text for a changed-field key: its label, or the key itself when unmapped. */
-export function fieldLabel(field: string): string {
-  return FIELD_LABELS[field] ?? field;
-}
+export { FIELD_LABELS, fieldLabel } from '../../../shared/specFieldLabels';
 
 /**
  * The diff sheet's grouping for one `SpecChange` (L02): the server's
