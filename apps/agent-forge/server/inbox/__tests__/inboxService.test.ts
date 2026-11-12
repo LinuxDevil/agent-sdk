@@ -53,7 +53,7 @@ function suggestion(over: Partial<PromptSuggestion> = {}): PromptSuggestion {
     oldText: 'a',
     newText: 'b',
     confidence: 'high',
-    optimizationClass: 'c',
+    optimizationClass: 'Missing operational fact',
     evidence: 'e',
     expectedSaving: 'saves a step',
     risk: 'low',
@@ -61,6 +61,8 @@ function suggestion(over: Partial<PromptSuggestion> = {}): PromptSuggestion {
     status: 'open',
     createdAt: '2026-01-03T00:00:00.000Z',
     updatedAt: '2026-01-03T00:00:00.000Z',
+    resolvedAt: null,
+    appliedVersion: null,
     ...over,
   };
 }

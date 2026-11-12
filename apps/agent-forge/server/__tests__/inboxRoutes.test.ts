@@ -36,7 +36,7 @@ function promptSuggestion(agentId: string, over: Partial<PromptSuggestion> = {})
     oldText: 'a',
     newText: 'b',
     confidence: 'low',
-    optimizationClass: 'c',
+    optimizationClass: 'Missing operational fact',
     evidence: 'e',
     expectedSaving: 'one fewer round trip',
     risk: 'low',
@@ -44,6 +44,8 @@ function promptSuggestion(agentId: string, over: Partial<PromptSuggestion> = {})
     status: 'open',
     createdAt: '2026-01-03T00:00:00.000Z',
     updatedAt: '2026-01-03T00:00:00.000Z',
+    resolvedAt: null,
+    appliedVersion: null,
     ...over,
   };
 }

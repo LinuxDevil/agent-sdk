@@ -1189,7 +1189,7 @@ export function createApp(options: CreateAppOptions): Express {
   // Prompt suggestions: list, CAS-guarded apply and dismiss (server/
   // routes/suggestionRoutes.ts - stores come from workspaceOf(req), the
   // workspace seam, like drafts and versions).
-  registerSuggestionRoutes(app);
+  registerSuggestionRoutes(app, { secretsStore: secrets, settings });
   // Agent export: `GET /agents/:id/export?format=yaml|bundle` (lifecycle/
   // export.ts - the repo comes from workspaceOf(req), the workspace seam).
   registerExportRoutes(app);
