@@ -200,6 +200,8 @@ The goal file of a goal-oriented page, named by `page.json` `execution.goal.goal
 
 **How the loop stops.** The loop runs one turn per iteration in one session. It stops when the check passes, or at `maxIterations`, `maxDurationMs` or `maxCostUsd`, whichever comes first. The run's spend cap (P5.30) and the page's limits apply on top, the lower value of each winning. A stall — `stallAfter` iterations in a row without a better check score — stops the loop as `stalled` unless `onStall` is `continue`. Every iteration is a `goal-iteration` step, so a failure is attributed to the iteration it happened in.
 
+**Checkpoints and resume.** Given a `runId` and a checkpoint store, `runGoal` saves the loop's progress — the finished iterations, spend, elapsed time and stall count — as a checkpoint under the page run id after every iteration, and again with status `finished` at the end. `resumeGoal` reads that checkpoint and continues at the next iteration with the spend so far, so the limits count the whole run; a finished run returns its saved result and runs nothing. The turn that was running when the process died is not resumed mid-turn: it is run again from its start as the next iteration, its partial spend lost as for any crashed turn.
+
 ### Model precedence and `models.provider`
 
 `resolvePageModel` (exported from `lousho/workspaces`) picks the model a page's agent runs with. The first level that sets a model wins:
