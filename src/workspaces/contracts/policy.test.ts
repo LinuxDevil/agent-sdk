@@ -39,6 +39,11 @@ describe('policy schema', () => {
     expect(workspacePolicySchema.safeParse(empty).success).toBe(true);
   });
 
+  it('accepts an auto permission rule (R01: auto compiles to ask and is model-decided)', () => {
+    const result = workspacePolicySchema.safeParse(policy({ permissions: [{ id: 'a', tool: 'shell', action: 'auto' }] }));
+    expect(result.success).toBe(true);
+  });
+
   it.each([
     ['an empty object', {}],
     ['a missing permissions list', { tools: { allow: [] }, secrets: [] }],
@@ -56,7 +61,6 @@ describe('policy schema', () => {
     ['a sandbox mode', { ...empty, sandbox: { mode: 'container' } }],
     ['a non-boolean sandbox flag', { ...empty, sandbox: { required: 'yes' } }],
     ['a permission rule without an id', { ...empty, permissions: [{ tool: 'shell', action: 'deny' }] }],
-    ['an auto permission rule', { ...empty, permissions: [{ id: 'a', tool: 'shell', action: 'auto' }] }],
   ])('rejects %s', (_name, value) => {
     expect(workspacePolicySchema.safeParse(value).success).toBe(false);
   });

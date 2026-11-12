@@ -5284,7 +5284,7 @@ interface PermissionRuleSpec {
 }
 
 // @public
-export function permissionsFromSpec(rules: readonly PermissionRuleSpec[]): PermissionRule[];
+export function permissionsFromSpec(rules: readonly PermissionRuleSpec[]): SpecPermissions;
 
 // @public
 export type PermissionToolMatcher = string | readonly string[] | RegExp;
@@ -6779,9 +6779,12 @@ export type SpecGuardrailName = (typeof SPEC_GUARDRAIL_NAMES)[number];
 
 // @public
 export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'>, MemoryHost, SkillHost, HookHost {
+    approve?: ApproveToolCall;
+    autoApprover?: AutoApprover;
     baseDir: string;
     exporter?: TraceExporter;
     loadAgentRef?(ref: string): Promise<AgentSpecV2>;
+    onAutoApproval?: (decision: AutoApprovalDecision) => void;
     resolveHandoffAgent?(agent: string): Promise<SimpleAgent>;
     store?: AgentStore;
 }
@@ -6790,6 +6793,12 @@ export interface SpecHost extends SecretHost, Omit<ToolRefHost, 'agentName'>, Me
 export interface SpecObjectSchema<T> extends SpecSchema<T> {
     // (undocumented)
     readonly shape: Readonly<Record<string, unknown>>;
+}
+
+// @public
+interface SpecPermissions {
+    isAuto: (toolName: string, args: Record<string, unknown>) => boolean;
+    rules: PermissionRule[];
 }
 
 // @public

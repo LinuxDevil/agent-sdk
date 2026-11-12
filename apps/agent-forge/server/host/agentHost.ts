@@ -20,6 +20,7 @@ import type {
   AgentHook,
   AgentInput,
   AgentSpecV2,
+  AutoApprovalDecision,
   ExecutionResult,
   PendingApproval,
   Span,
@@ -66,6 +67,11 @@ export interface HostRunInput {
   onEvent: (event: HostEvent) => void;
   /** In-process only (the debugger's `agentHooks()`); a bridge host ignores it. */
   extraHooks?: readonly AgentHook[];
+  /**
+   * In-process only (R01b): called once per auto-approval decision so
+   * RunManager can log it; a bridge host ignores it.
+   */
+  onAutoApproval?: (decision: AutoApprovalDecision) => void;
 }
 
 export interface HostRun {

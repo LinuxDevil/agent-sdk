@@ -65,10 +65,10 @@ describe('spec v2 permissions', () => {
     expect(error.message).toContain('is not a valid regular expression');
   });
 
-  it("rejects ttlMs on a rule whose action is not 'ask'", () => {
+  it("rejects ttlMs on a rule whose action is not 'ask' or 'auto'", () => {
     const error = thrown(rule({ action: 'allow', ttlMs: 1000 }));
     expect(error.errors).toHaveProperty('permissions.0.ttlMs');
-    expect(error.message).toContain("only 'ask' rules wait for a decision; remove ttlMs");
+    expect(error.message).toContain("only 'ask' and 'auto' rules wait for a decision; remove ttlMs");
   });
 
   it('rejects glob syntax other than * and ? in tool', () => {
@@ -93,10 +93,11 @@ describe('spec v2 permissions', () => {
     expect(error.errors).toHaveProperty('permissions.1.id');
   });
 
-  it("rejects action 'auto' as not supported yet", () => {
-    const error = thrown(rule({ action: 'auto' }));
-    expect(error.code).toBe('LOUSHO_SPEC_UNSUPPORTED');
-    expect(error.errors).toHaveProperty('permissions.0.action');
-    expect(error.message).toContain("action 'auto'");
+  it("accepts action 'auto' (model-decided approvals, R01)", () => {
+    expect(parseAgentSpecV2(rule({ action: 'auto' })).permissions?.[0].action).toBe('auto');
+  });
+
+  it("accepts ttlMs on action 'auto' (it compiles to 'ask')", () => {
+    expect(parseAgentSpecV2(rule({ action: 'auto', ttlMs: 30000 })).permissions?.[0].ttlMs).toBe(30000);
   });
 });
