@@ -271,7 +271,9 @@ One rule: **a file a harness lists resolves from the folder that owns that harne
 | `local:<name>` agent | `pages/<page>/agents/<name>/` |
 | `workspace:<path>` profile | `<harnessProfiles>/<path>/harness.json` |
 
-A listed file that is missing is PRD032 (PRD004 for base-harness prose, PRD011 for main-harness prose). A schema given as a path is read into its layer before composition, so the effective harness and the UI binding check see the schema object, and two pages never resolve one base path to different files. A `global:` profile is resolved from the files the host's `resolveGlobal` returns for it. A check script is only checked for existence; the runtime runs it in P1.
+A listed file that is missing is PRD032 (PRD004 for base-harness prose, PRD011 for main-harness prose). A schema given as a path is read into its layer before composition, so the effective harness and the UI binding check see the schema object, and two pages never resolve one base path to different files. A `global:` profile is resolved from the files the host's `resolveGlobal` returns for it. A check script is only checked for existence, and only a `check` ending in a script extension is a path.
+
+A criterion's `check` names a check in the host's check registry, and the runtime never imports a workspace `.ts` file. Three forms name one: a script path (`harness/checks/script-present.ts`, folder sources only, and the file must exist) names its base name without the extension, `script-present`; a bare name (`script-present`) needs no file; a `builtin:<kind>?<params>` ref is its own name. `checkNameOf(check)` gives the registry name, `checkRegistry(map)` builds a `WorkspaceCheckRegistry` over a plain map, and `resolveCheck(registry, check)` looks a criterion's check up by that name.
 
 ## Harness composition
 
@@ -434,7 +436,7 @@ Agent settings a workspace agent would silently drop are refused at load: on a S
 | Approvals | A tool in `approvals.require` asks for approval every time, in an agent run and in a workflow `toolCall` step, whatever an `allow` rule or the permission mode says. So does a Studio tool ref with `approval: 'always'`. A host tool's own `needsApproval` ask is kept the same way: an agent `allow` never lifts it. A deny still denies |
 | Capabilities | `pagePolicy()` fails page start with `LOUSHO_WORKSPACE_CAPABILITY_MISSING` (`capability-missing`) when `capabilities.require` names something no tool in the page's effective toolsets provides. A tool that a ceiling or workspace rule denies outright provides nothing. A capability never grants a tool |
 
-`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset.
+`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset. `attachmentAgent()` is the only place the page runtime builds an agent: it takes those options, passes every tool through the host's `bindTool(descriptor, scope)` with the tool's `secrets`, `network.allowHosts` and `sandbox.required`, and the host enforces them.
 
 ```ts
 import { narrowPolicy, pagePolicy, type HostToolRegistry } from 'lousho/workspaces';
@@ -473,7 +475,7 @@ Every engine implements one interface, so the main agent, the wire contract and 
 ```ts
 import type { PageEngine, PageInput, PageResult, PageRunContext } from 'lousho/workspaces';
 
-async function runPage(engine: PageEngine, input: PageInput, ctx: PageRunContext): Promise<PageResult> {
+async function runEngine(engine: PageEngine, input: PageInput, ctx: PageRunContext): Promise<PageResult> {
   ctx.emit({ type: 'progress', message: `running ${input.pageId} as ${engine.type}` });
   return engine.run(input, ctx);
 }
@@ -500,6 +502,22 @@ Every engine emits the same labels, and attribution reads only these, never the 
 - `StepKind`, listed in `STEP_KINDS`: `single`, `workflow-step`, `delegate`, `goal-iteration`.
 - `WORK_TYPE_STEP_KINDS` names the kinds each type may emit: `single` emits `single`; `multi-agent` emits `single` and `delegate`; `workflow` emits `workflow-step` and `delegate`; `goal-oriented` emits `goal-iteration` and `delegate`.
 - `PageRunEvent` is one of `started`, `step` (with `phase: "start"` or `"done"`), `artifact`, `approval` (`approvalId`, `kind`, `expiresAt?`), `progress` (`message`, `fraction?`) or `finished` (`status`).
+
+### Running a page
+
+`runPage(workspace, input, ctx)` runs one page of a loaded workspace:
+
+1. It validates `input.inputs` against the effective `inputs.schema` with `checkPageInputs`, the same check the page UI runs in the browser (`lousho/workspaces/client`). On a problem it returns `failed` with `error.kind: 'invalid-input'` and every field path (`inputs.report: ...`) before any model call.
+2. It picks the engine for `execution.type` from `ctx.engines`, by default `ENGINES`. `engineFor(type)` throws `LOUSHO_WORKSPACE_ENGINE_UNKNOWN` when the registry has none; `ENGINES` has `single` today.
+3. It resolves the attachments, applies the policy with `pagePolicy()`, and runs the engine with the run id as its session id, `ctx.signal`, and the page's `execution.limits`.
+4. It validates `output` against `outputs.schema` and checks that every artifact marked `required` was stored.
+5. On an invalid output it gives the engine one repair turn, a revise of the same run whose instruction starts `your output failed:`, then returns `failed` with `invalid-output`.
+
+An empty `task` becomes the page UI's `title`, else the page id. A page gets only the task, its inputs and, for a revise, the earlier run's `PageResult` (`ctx.prior`). It never sees the main agent's conversation or another page's transcript.
+
+The `single` engine runs the page's one attachment in its own session, with structured output (the `output` mode of an AgentSpec) when the harness has an output schema. That mode also makes one repair call inside a turn when a reply does not parse.
+
+The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `globalAgents` and `globalProfiles`.
 
 ### Type switching
 
@@ -664,7 +682,7 @@ These are the rules the contracts enforce. The number is the rule's id in the pr
 
 ## The runtime pipeline (P1)
 
-Not built yet. The planned order, from a request to a reply, is: load the workspace from a source, resolve agents and harness layers, resolve shared context, apply policy under the host's limit, run the main agent (when there is one), route to a page, compose the page's harness, run the page's engine, validate the output against `outputs.schema`, and return a `PageResult` to the main agent. Everything the pipeline reads is defined on this page, and a new field lands in its schema, its JSON Schema and this page in the same change as its first reader.
+The page runtime is built (`runPage`, above); the main agent and router are not built yet. The planned order, from a request to a reply, is: load the workspace from a source, resolve agents and harness layers, resolve shared context, apply policy under the host's limit, run the main agent (when there is one), route to a page, compose the page's harness, run the page's engine, validate the output against `outputs.schema`, and return a `PageResult` to the main agent. Everything the pipeline reads is defined on this page, and a new field lands in its schema, its JSON Schema and this page in the same change as its first reader.
 
 ## JSON Schema export
 
