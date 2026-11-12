@@ -35,6 +35,7 @@ const record = (id: string, s: AgentSpecV2, l: CanvasLayout): AgentRecord => ({
   layout: l,
   updatedAt: 't',
   latestVersion: null,
+  publishState: { version: null, matchesWorkingCopy: false, publishedAt: null },
 });
 
 const listItem = (id: string): AgentListItem => ({
