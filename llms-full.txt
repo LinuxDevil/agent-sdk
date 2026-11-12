@@ -25238,12 +25238,12 @@ The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy
 The main agent is built from `main-agent/` with the shared policy and its own tools, plus the shared context when `inheritsShared` is true. Its prompt is `assembleMainInstructions()` over `main-agent/` and, when present, the main-agent harness. It gets these router tools:
 
 - `run_page_<id>` for each page, described by `page.description`, with parameters `{ task, inputs? }` where `inputs` is the page's effective `inputs.schema`. When the main harness lists `routes`, only those pages get a tool.
-- `revise_page_run({ runId, instruction })`: runs the page again with the earlier `PageResult` as `prior`.
-- `list_page_runs()`: the session's runs, with `runId`, `pageId`, `status` and `revises`.
+- `revise_page_run({ runId, instruction })`: runs the page again with the earlier `PageResult` as `prior`. Only runs the main agent made through its router tools can be revised, and only for pages it may route to.
+- `list_page_runs()`: the runs the main agent made, with `runId`, `pageId`, `status` and `revises`. Direct runs (`run(message, { pageId })`) are not listed.
 
 Each tool calls `runPage()` and returns the `summary`, the error and the artifact refs between `<untrusted>` and `</untrusted>`, after a line telling the main agent to treat it as data; any such tags in the page's text are stripped first. Because results land in the main agent's thread, a follow-up ("make a Facebook version") sees them, while the page sees only its own task and inputs.
 
-The runtime, not the prompt, enforces two main-harness settings. `limits.maxConcurrentPages` caps the page runs in flight at once, clamped to `workspace.json`'s `defaults.limits.maxConcurrentPages` (default 3). A page that ends `failed` or `timed-out` is never re-run automatically, except once when `onPageFailure` is `retry-once`; the retry's record names the run it retries in `retries`.
+The runtime, not the prompt, enforces two main-harness settings. `limits.maxConcurrentPages` caps the page runs in flight at once, clamped to `workspace.json`'s `defaults.limits.maxConcurrentPages` (default 3). A page that ends `failed` or `timed-out` is never re-run automatically, except once when `onPageFailure` is `retry-once`; the retry's record names the run it retries in `retries`, and its tool result tells the main agent not to run the page again. Router tools exist only when there is a main agent, so one page whose harness cannot be resolved never blocks direct runs of the others. The main agent's model follows the same rules as a page agent's (its own default, then `defaults.model`), wrapped by `models.provider`.
 
 ### Type switching
 
