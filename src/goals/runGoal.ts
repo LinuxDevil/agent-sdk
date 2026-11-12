@@ -1,4 +1,6 @@
+import { SDKError } from '../execution/errors';
 import type { GoalCheck, GoalCheckResult, GoalSpec } from './contract';
+import { progressOf, toCheckpoint, type GoalCheckpointStore, type GoalProgress } from './goalCheckpoint';
 
 /** Tokens and spend of a goal run or one of its iterations. */
 export interface GoalUsage {
@@ -122,6 +124,12 @@ export interface RunGoalOptions {
   steps?: GoalStepCounter;
   /** Clock in epoch ms, for tests. */
   now?: () => number;
+  /** The page run id the checkpoints are saved under; required with `checkpoints`. */
+  runId?: string;
+  /** Saves a checkpoint after every iteration and at the end. */
+  checkpoints?: GoalCheckpointStore;
+  /** Progress to continue from; set by `resumeGoal`. */
+  resume?: GoalProgress;
 }
 
 const MAX_REASON = 500;
@@ -273,6 +281,21 @@ function failIteration(state: LoopState, index: number, error: unknown, signal: 
   return { ...finish(state, 'error', caps), error: { kind: 'engine', message: `iteration ${index}: ${message}`, iteration: index } };
 }
 
+async function save(options: RunGoalOptions, state: LoopState, steps: GoalStepCounter, elapsedMs: number, finished?: GoalRunResult): Promise<void> {
+  if (!options.checkpoints || options.runId === undefined) return;
+  const progress: GoalProgress = {
+    iteration: state.iterations.length,
+    iterations: state.iterations,
+    usage: state.usage,
+    best: state.best,
+    flat: state.flat,
+    elapsedMs,
+    nextStepIndex: steps.peek(),
+    ...(finished && { finished }),
+  };
+  await options.checkpoints.save(options.runId, toCheckpoint(options.runId, progress, finished ? 'finished' : 'in-progress'));
+}
+
 /** A step counter starting at `start` (default 0). */
 export function goalStepCounter(start = 0): GoalStepCounter {
   let next = start;
@@ -281,22 +304,48 @@ export function goalStepCounter(start = 0): GoalStepCounter {
 
 /** Runs `lead` one turn per iteration until `check` passes or a limit stops it; never throws for a stop. */
 export async function runGoal(options: RunGoalOptions): Promise<GoalRunResult> {
+  if ((options.runId === undefined) !== (options.checkpoints === undefined)) {
+    throw new SDKError('runGoal: pass runId and checkpoints together, or neither.', 'LOUSHO_CONFIG_INVALID');
+  }
   const now = options.now ?? Date.now;
-  const caps = capsOf(options.goal, options.limits, now());
-  const steps = options.steps ?? goalStepCounter();
-  const state: LoopState = { iterations: [], usage: ZERO, best: -1, flat: 0 };
+  const startedAt = now();
+  const before = options.resume?.elapsedMs ?? 0;
+  const caps = capsOf(options.goal, options.limits, startedAt - before);
+  const steps = options.steps ?? goalStepCounter(options.resume?.nextStepIndex ?? 0);
+  const state: LoopState =
+    options.resume === undefined
+      ? { iterations: [], usage: ZERO, best: -1, flat: 0 }
+      : { iterations: [...options.resume.iterations], usage: options.resume.usage, best: options.resume.best, flat: options.resume.flat };
+  const elapsed = () => before + (now() - startedAt);
+  const done = async (outcome: GoalOutcome): Promise<GoalRunResult> => {
+    const result = finish(state, outcome, caps);
+    await save(options, state, steps, elapsed(), result);
+    return result;
+  };
   for (;;) {
     const stop = stopBefore(state, caps, now(), options.signal);
-    if (stop !== undefined) return finish(state, stop, caps);
+    if (stop !== undefined) return done(stop);
     const index = state.iterations.length + 1;
     let iteration: GoalIteration;
     try {
       iteration = await iterate(options, state, index, steps, iterationSignal(options, caps, now()));
     } catch (error) {
-      return failIteration(state, index, error, options.signal, caps, now());
+      const result = failIteration(state, index, error, options.signal, caps, now());
+      await save(options, state, steps, elapsed(), result);
+      return result;
     }
     record(state, iteration);
-    if (iteration.check.done) return finish(state, 'done', caps);
-    if (stalled(state, caps)) return finish(state, 'stalled', caps);
+    await save(options, state, steps, elapsed());
+    if (iteration.check.done) return done('done');
+    if (stalled(state, caps)) return done('stalled');
   }
+}
+
+/** Continues a goal run from its last checkpoint at the next iteration; returns the saved result for a finished run. */
+export async function resumeGoal(options: RunGoalOptions & { runId: string; checkpoints: GoalCheckpointStore }): Promise<GoalRunResult> {
+  const checkpoint = await options.checkpoints.load(options.runId);
+  const progress = checkpoint ? progressOf(checkpoint) : undefined;
+  if (!progress) throw new SDKError(`resumeGoal: run '${options.runId}' has no goal checkpoint.`, 'LOUSHO_CHECKPOINT_NOT_FOUND');
+  if (progress.finished) return progress.finished;
+  return runGoal({ ...options, resume: progress });
 }

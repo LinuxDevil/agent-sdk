@@ -7,6 +7,19 @@
 import { z } from 'zod';
 
 // @public
+interface AgentFingerprint {
+    hash: string;
+    instructions: string;
+    model?: string;
+    tools: Record<string, string>;
+    // (undocumented)
+    version: number;
+}
+
+// @public
+type ApprovalKind = 'tool' | 'question' | 'sign-in';
+
+// @public
 interface Check<T> {
     // (undocumented)
     evaluate(value: T): CheckOutcome;
@@ -23,6 +36,110 @@ interface CheckOutcome {
 }
 
 // @public
+interface Checkpoint {
+    agentFingerprint?: AgentFingerprint;
+    // (undocumented)
+    agentId: string;
+    approvalId?: string;
+    approvalIds?: string[];
+    approvalKind?: ApprovalKind;
+    attempts?: number;
+    businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
+    // (undocumented)
+    finishReason?: string;
+    flow?: FlowCheckpointState;
+    lastError?: CheckpointError;
+    // (undocumented)
+    messages: Message[];
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+    runConfig?: unknown;
+    // (undocumented)
+    sessionId: string;
+    startedToolCallIds?: string[];
+    status?: CheckpointStatus;
+    // (undocumented)
+    stepIndex: number;
+    stepUsage?: StepUsage[];
+    // (undocumented)
+    toolCalls: unknown[];
+    unstarted?: boolean;
+    usage: CheckpointUsage;
+}
+
+// @public
+interface CheckpointError {
+    at: string;
+    category?: string;
+    code?: string;
+    // (undocumented)
+    message: string;
+    retryable: boolean;
+}
+
+// @public
+type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
+
+// @public
+type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
+
+// @public
+type ContentPart = TextContentPart | ImageContentPart | FileContentPart;
+
+// @public
+interface DelegatedUsage {
+    costPartial?: boolean;
+    costUsd: number | undefined;
+    // (undocumented)
+    estimated: boolean;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    runs: number;
+    toolErrors?: number;
+    // (undocumented)
+    totalTokens: number;
+}
+
+// @public
+interface FileContentPart {
+    // (undocumented)
+    data: string | Uint8Array;
+    // (undocumented)
+    filename?: string;
+    // (undocumented)
+    mimeType: string;
+    // (undocumented)
+    type: 'file';
+}
+
+// @public
+interface FlowCheckpointState {
+    choices: Record<string, number>;
+    code: string;
+    completedNodeIds: string[];
+    nodeResults: Record<string, unknown>;
+    output?: unknown;
+    pendingApproval?: FlowPendingApproval;
+    steps: number;
+    structure?: string;
+    usage: ProviderUsage;
+    variables: Record<string, unknown>;
+}
+
+// @public
+interface FlowPendingApproval {
+    approvalId: string;
+    args: Record<string, unknown>;
+    nodeId: string;
+    toolName: string;
+}
+
+// @public
 export type GoalCheck = (context: {
     iteration: number;
     output: unknown;
@@ -30,6 +147,12 @@ export type GoalCheck = (context: {
 
 // @public
 export function goalCheck(goal: Pick<GoalSpec, 'checks'>, checks: Readonly<Record<string, Check<unknown>>>): GoalCheck;
+
+// @public
+export interface GoalCheckpointStore {
+    load(runId: string): Promise<Checkpoint | null>;
+    save(runId: string, checkpoint: Checkpoint): Promise<void>;
+}
 
 // @public
 export interface GoalCheckRef {
@@ -93,6 +216,18 @@ export interface GoalProblem {
     index?: number;
     kind: 'missing-criterion' | 'no-executable-check';
     message: string;
+}
+
+// @public
+export interface GoalProgress {
+    best: number;
+    elapsedMs: number;
+    finished?: GoalRunResult;
+    flat: number;
+    iteration: number;
+    iterations: GoalIteration[];
+    nextStepIndex: number;
+    usage: GoalUsage;
 }
 
 // @public
@@ -163,19 +298,166 @@ export interface GoalUsage {
 }
 
 // @public
+interface ImageContentPart {
+    // (undocumented)
+    image: string | Uint8Array;
+    // (undocumented)
+    mimeType?: string;
+    // (undocumented)
+    type: 'image';
+}
+
+// @public
+interface Message {
+    content: string | ContentPart[];
+    isError?: boolean;
+    metadata?: Record<string, unknown>;
+    // (undocumented)
+    name?: string;
+    reasoning?: ReasoningBlock[];
+    // (undocumented)
+    role: MessageRole;
+    toolCallId?: string;
+    toolCalls?: ToolCall[];
+    toolName?: string;
+}
+
+// @public
+type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
+
+// @public
+interface ModelUsage {
+    calls: number;
+    costPartial?: boolean;
+    costUsd?: number;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    outputTokens: number;
+}
+
+// @public
+interface Principal {
+    authenticator: string;
+    claims?: Readonly<Record<string, unknown>>;
+    id: string;
+    issuer?: string;
+    // (undocumented)
+    type: 'user' | 'service';
+}
+
+// @public
+interface ProviderUsage {
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    // (undocumented)
+    completionTokens: number;
+    costUsd?: number;
+    // (undocumented)
+    promptTokens: number;
+    reasoningTokens?: number;
+    // (undocumented)
+    totalTokens: number;
+}
+
+// @public
+interface ReasoningBlock {
+    // (undocumented)
+    redactedData?: string;
+    // (undocumented)
+    signature?: string;
+    // (undocumented)
+    text: string;
+}
+
+// @public
+export function resumeGoal(options: RunGoalOptions & {
+    runId: string;
+    checkpoints: GoalCheckpointStore;
+}): Promise<GoalRunResult>;
+
+// @public
 export function runGoal(options: RunGoalOptions): Promise<GoalRunResult>;
 
 // @public
 export interface RunGoalOptions {
     check: GoalCheck;
+    checkpoints?: GoalCheckpointStore;
     delegates?: readonly string[];
     emit?: (event: GoalStepEvent) => void;
     goal: GoalSpec;
     lead: GoalLead;
     limits?: GoalRunLimits;
     now?: () => number;
+    resume?: GoalProgress;
+    runId?: string;
     signal?: AbortSignal;
     steps?: GoalStepCounter;
+}
+
+// @public
+interface RunUsage {
+    byModel: Record<string, ModelUsage>;
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    // @deprecated (undocumented)
+    completionTokens: number;
+    costPartial?: boolean;
+    costUsd: number | undefined;
+    delegated?: DelegatedUsage;
+    estimated: boolean;
+    hostedToolCalls?: Partial<Record<string, number>>;
+    // (undocumented)
+    inputTokens: number;
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    // @deprecated (undocumented)
+    promptTokens: number;
+    reasoningTokens?: number;
+    // (undocumented)
+    totalTokens: number;
+}
+
+// @public
+interface StepUsage {
+    costUsd?: number;
+    estimated: boolean;
+    model: string;
+    step: number;
+    // (undocumented)
+    usage: Usage;
+}
+
+// @public
+interface TextContentPart {
+    // (undocumented)
+    text: string;
+    // (undocumented)
+    type: 'text';
+}
+
+// @public
+interface ToolCall {
+    // (undocumented)
+    function: {
+        name: string;
+        arguments: string;
+    };
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    type: 'function';
+}
+
+// @public
+interface Usage {
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens?: number;
+    totalTokens: number;
 }
 
 // (No @packageDocumentation comment for this package)
