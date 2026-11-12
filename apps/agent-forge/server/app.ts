@@ -137,6 +137,7 @@ import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
 import { registerImportRoutes } from './lifecycle/import';
 import { registerPortabilityRoutes } from './passes/portabilityRoutes';
+import { registerPublishRoutes } from './lifecycle/publish';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
@@ -1098,6 +1099,9 @@ export function createApp(options: CreateAppOptions): Express {
   // Agent export: `GET /agents/:id/export?format=yaml|bundle` (lifecycle/
   // export.ts - the repo comes from workspaceOf(req), the workspace seam).
   registerExportRoutes(app);
+  // Publish pointer: `POST /agents/:id/publish` (lifecycle/publish.ts -
+  // stores come from workspaceOf(req), the workspace seam).
+  registerPublishRoutes(app);
   registerWorkspaceRoute(app);
   // The workspace registry's routes (`GET/POST /workspaces`,
   // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:

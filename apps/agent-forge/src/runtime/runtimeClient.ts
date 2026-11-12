@@ -316,6 +316,24 @@ class RuntimeClient implements AgentApi {
   }
 
   // -------------------------------------------------------------------
+  // `/agents/:id/publish` - the publish pointer (L14a). See
+  // server/lifecycle/publish.ts.
+  // -------------------------------------------------------------------
+
+  /**
+   * Pins `version` (or the working copy's new `publish` version) as the
+   * agent's published spec and answers the pinned version number. Idempotent:
+   * pinning the already-published version is a no-op.
+   */
+  // fallow-ignore-next-line unused-class-member -- contract surface (L14a); L14b's publish UI consumes it
+  async publish(agentId: string, version?: number): Promise<{ publishedVersion: number }> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/publish`, {
+      method: 'POST',
+      body: JSON.stringify(version === undefined ? {} : { version }),
+    });
+  }
+
+  // -------------------------------------------------------------------
   // `/agents/:id/suggestions` - the prompt suggestions the Suggestions
   // tab lists and settles. See server/routes/suggestionRoutes.ts.
   // -------------------------------------------------------------------
@@ -723,7 +741,6 @@ class RuntimeClient implements AgentApi {
    * text and answers what the import would write - clash, resolved id,
    * requirements, prompts and warnings - without writing anything.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L08a); L08b's import sheet consumes it
   async previewImport(request: ImportRequest): Promise<ImportPreview> {
     return this.request<ImportPreview>('/agents/import/preview', {
       method: 'POST',
@@ -735,7 +752,6 @@ class RuntimeClient implements AgentApi {
    * `POST /agents/import` (L08a): writes the pasted spec in `request.mode`
    * (`new`/`copy` answer 201, `replace` 200) and answers the `AgentRecord`.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L08a); L08b's import sheet consumes it
   async importAgent(request: ImportRequest): Promise<AgentRecord> {
     return this.request<AgentRecord>('/agents/import', {
       method: 'POST',

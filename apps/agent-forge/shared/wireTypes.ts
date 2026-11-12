@@ -734,6 +734,19 @@ export interface AgentListItem {
 }
 
 /**
+ * Where an agent's publish pointer (L14a) stands: the pinned version, whether
+ * the working copy still hashes to that version's spec, and when it was
+ * pinned. `version: null` means nothing is published.
+ */
+export interface PublishState {
+  version: number | null;
+  /** `specHash(working copy) === published version's specHash`; `false` when `version` is null. */
+  matchesWorkingCopy: boolean;
+  /** `createdAt` of the pinned version record, `null` when `version` is null. */
+  publishedAt: string | null;
+}
+
+/**
  * `GET /agents/:id` (v2): the working copy plus its `meta.json`/`layout.json`
  * sidecars and the newest version number - the detail header's (A05) and
  * Author's (AA06) one-read view of an agent.
@@ -746,6 +759,8 @@ export interface AgentRecord {
   updatedAt: string;
   /** Newest version number, `null` when the agent has no versions yet. */
   latestVersion: number | null;
+  /** The publish pointer's state (L14a) - whether the working copy still matches what is published. */
+  publishState: PublishState;
   /**
    * The spec's readiness rows (`computeRequirements`, AA13): what the agent
    * needs before it can run. The header's readiness chips and the Author's

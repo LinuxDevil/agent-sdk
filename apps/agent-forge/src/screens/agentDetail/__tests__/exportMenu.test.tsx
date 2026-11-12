@@ -41,6 +41,7 @@ const record: AgentRecord = {
   layout: { schemaVersion: 1, nodes: {}, notes: [] },
   updatedAt: '2026-10-29T10:00:00Z',
   latestVersion: null,
+  publishState: { version: null, matchesWorkingCopy: false, publishedAt: null },
 };
 
 function renderMenu(): void {
