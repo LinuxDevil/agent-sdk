@@ -1217,3 +1217,44 @@ export interface ImportPreview {
   prompts: Array<{ name: string; version: number }>;
   warnings: string[];
 }
+
+/**
+ * The inbox alert kinds (L12 producers; R04a adds `low_rating` writes).
+ * Declared here - not in server/inbox/alertStore.ts - because the inbox
+ * wire items below carry it and wireTypes must stay isomorphic.
+ */
+export type AlertKind = 'auto_disabled' | 'publish_failed' | 'low_rating';
+
+/** What waits on the user in the Inbox (R02a): a tool approval, an `ask_question`, a pending draft, an open prompt suggestion or an alert. */
+export type InboxItemKind = 'approval' | 'question' | 'draft' | 'suggestion' | 'alert';
+
+export interface InboxItemBase {
+  /** Stable id: `<kind>:<agentId>:<ref>` - approval/question `<approvalId>`, draft `<draftId>`, suggestion `<suggestionId>`, alert `<alertId>`. */
+  id: string;
+  kind: InboxItemKind;
+  agentId: string;
+  /** The workspace the item belongs to (`WorkspaceRef.id`); `?ws=all` merges items across workspaces (W09a). */
+  workspaceId: string;
+  agentName: string;
+  title: string;
+  detail: string | null;
+  /** ISO instant it started waiting. */
+  at: string;
+}
+
+/**
+ * One row of `GET /inbox` (PLAN §10): everything across this workspace's
+ * agents that needs a human. Sorted by `expiresAt` ascending (soonest
+ * deadline first, items without one last), then `at` descending.
+ */
+export type InboxItem =
+  | (InboxItemBase & { kind: 'approval'; approvalId: string; toolName: string; args: Record<string, unknown>; expiresAt: string | null })
+  | (InboxItemBase & { kind: 'question'; approvalId: string; question: string; options: string[]; allowFreeText: boolean; expiresAt: string | null })
+  | (InboxItemBase & { kind: 'draft'; draftId: string; origin: DraftOrigin; gated: boolean })
+  | (InboxItemBase & { kind: 'suggestion'; suggestionId: string; confidence: 'high' | 'low' })
+  | (InboxItemBase & { kind: 'alert'; alertId: string; alertKind: AlertKind; payload: Record<string, unknown> });
+
+/** `GET /inbox/count`'s answer - also the `inbox.count` WS event's payload. */
+export interface InboxCount {
+  count: number;
+}

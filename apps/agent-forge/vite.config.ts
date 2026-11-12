@@ -54,6 +54,8 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // The inbox (R02a): approvals/questions/drafts/suggestions/alerts + count + alert dismiss.
+      '/inbox': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
     },
   },
   test: {
