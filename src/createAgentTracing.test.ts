@@ -547,3 +547,16 @@ describe('the harness revision on the invoke_agent span', () => {
     expect(revisionOf(exporter.ended)).toBeUndefined();
   });
 });
+
+describe('createAgent({ spanAttributes })', () => {
+  it('labels become attributes; unlabeled agents emit none', async () => {
+    const labeled = recording();
+    await createAgent({ name: 'a', provider: mockModel(['Hi.']), exporter: labeled, spanAttributes: { 'lousho.page': 'instagram', 'lousho.step.index': 2 } }).send('Hello');
+    const unlabeled = recording();
+    await createAgent({ name: 'a', provider: mockModel(['Hi.']), exporter: unlabeled }).send('Hello');
+
+    const root = (spans: Span[]) => spans.find((span) => op(span) === 'invoke_agent')!.attributes;
+    expect(root(labeled.ended)).toMatchObject({ 'lousho.page': 'instagram', 'lousho.step.index': 2 });
+    expect(Object.keys(root(unlabeled.ended)).filter((key) => /^lousho\.(workspace|page|attachment|execution_type|step|harness\.(hash|part_hash)|agent\.ref)/.test(key))).toEqual([]);
+  });
+});

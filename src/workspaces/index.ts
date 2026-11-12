@@ -37,3 +37,4 @@ export { effectiveToolset, effectivePermissions, agentPolicyOptions, pagePolicy,
 export { runPage, type PageRuntimeContext } from './runtime/pageRuntime';
 export { ENGINES, engineFor, singleEngine, type EngineRegistry, type PageAttachment, type PageEngineFactory, type PageEngineSetup, type PageRuntimeHost, type PageToolScope } from './runtime/engines';
 export { checkRegistry, checkNameOf, resolveCheck, type WorkspaceCheckRegistry } from './runtime/checks';
+export { labelsFor, labelAttributes, type StepLabelInput, type LabelExtras } from './runtime/labels';
