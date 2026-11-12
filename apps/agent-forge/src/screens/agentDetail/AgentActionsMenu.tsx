@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Copy, Download, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, FileDown, Package, Sparkles, Trash2 } from 'lucide-react';
 
 import { openAuthor } from '../../author/authorEntry';
 import type { AgentRecord } from '../../../shared/wireTypes';
@@ -7,7 +7,7 @@ import { navigate } from '../../router/router';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { useAppState } from '../../state/AppState';
 import { errorMessage } from '../../components/errorMessage';
-import { downloadYaml } from '../../persistence/importExport';
+import { downloadBlob } from '../../persistence/importExport';
 import { ConfirmDialog } from '../../ui/Dialog';
 import { Menu, type MenuEntry } from '../../ui/Menu';
 import { useToast } from '../../ui/Toast';
@@ -17,8 +17,8 @@ import { agentTabPath } from '../agents/agentTabs';
  * The detail header's overflow menu (PLAN §11, A12): Change with AI (AA19's
  * Author entry point focused on this agent), Duplicate (a
  * `POST /agents { from: { copyOf } }` copy that opens its Overview), Export
- * YAML (a client-side `<a download>` of the spec until L07's export sheet)
- * and Delete agent… behind a ConfirmDialog. Passed to `AgentDetailHeader`'s
+ * YAML and Export bundle (L07's `GET /agents/:id/export` downloads) and
+ * Delete agent… behind a ConfirmDialog. Passed to `AgentDetailHeader`'s
  * `menu` prop by `AgentDetailRoute`.
  */
 export function AgentActionsMenu({ record }: { record: AgentRecord }): JSX.Element {
@@ -26,12 +26,13 @@ export function AgentActionsMenu({ record }: { record: AgentRecord }): JSX.Eleme
   const toast = useToast();
   const { agentId, switchAgent } = useAppState();
   const [duplicating, setDuplicating] = useState(false);
+  const [exporting, setExporting] = useState<'yaml' | 'bundle' | undefined>(undefined);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
 
   /** The reason every item is off while an action is in flight; `undefined` when idle. */
-  const busyReason = duplicating ? 'Duplicating…' : deleting ? 'Deleting…' : undefined;
+  const busyReason = duplicating ? 'Duplicating…' : deleting ? 'Deleting…' : exporting !== undefined ? 'Exporting…' : undefined;
 
   async function duplicate(): Promise<void> {
     setDuplicating(true);
@@ -46,10 +47,18 @@ export function AgentActionsMenu({ record }: { record: AgentRecord }): JSX.Eleme
     }
   }
 
-  function exportYaml(): void {
-    const filename = `${id}.yaml`;
-    downloadYaml(spec, filename);
-    toast.show({ message: `Exported ${filename}`, tone: 'success' });
+  async function downloadExport(format: 'yaml' | 'bundle'): Promise<void> {
+    setExporting(format);
+    try {
+      const { blob, filename, warnings } = await runtimeClient.downloadExport(id, format);
+      downloadBlob(blob, filename);
+      for (const warning of warnings) toast.show({ message: warning, tone: 'warning' });
+      if (warnings.length === 0) toast.show({ message: `Exported ${filename}`, tone: 'success' });
+    } catch (error) {
+      toast.show({ message: `Export failed: ${errorMessage(error)}`, tone: 'error' });
+    } finally {
+      setExporting(undefined);
+    }
   }
 
   async function confirmDelete(): Promise<void> {
@@ -89,12 +98,20 @@ export function AgentActionsMenu({ record }: { record: AgentRecord }): JSX.Eleme
       onSelect: () => void duplicate(),
     },
     {
-      id: 'export',
+      id: 'export-yaml',
       label: 'Export YAML',
-      icon: Download,
+      icon: FileDown,
       disabled: busyReason !== undefined,
       disabledReason: busyReason,
-      onSelect: exportYaml,
+      onSelect: () => void downloadExport('yaml'),
+    },
+    {
+      id: 'export-bundle',
+      label: 'Export bundle',
+      icon: Package,
+      disabled: busyReason !== undefined,
+      disabledReason: busyReason,
+      onSelect: () => void downloadExport('bundle'),
     },
     { id: 'sep-actions', separator: true },
     {

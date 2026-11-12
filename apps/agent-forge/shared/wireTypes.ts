@@ -1053,3 +1053,21 @@ export interface McpProbeTool {
  * 200, never HTTP errors).
  */
 export type McpProbeResponse = { ok: true; tools: McpProbeTool[] } | { ok: false; error: string };
+
+/**
+ * `GET /agents/:id/export?format=bundle`'s body (L07): the working-copy
+ * spec plus the pieces that live outside the YAML - labels, the prompt
+ * registry text `spec.promptRef` points at, and the eval datasets the
+ * spec gates on. Secret values never appear: the spec only ever holds
+ * `{ env }`/`{ secret }` references.
+ */
+export interface AgentBundle {
+  kind: 'lousho.agent-bundle';
+  version: 1;
+  spec: AgentSpecV2;
+  labels: string[];
+  prompts: Array<{ name: string; version: number; content: string }>;
+  evals?: Array<{ dataset: string; examples: Array<{ input: unknown; expected: unknown | null }> }>;
+  /** ISO time the bundle was built. */
+  exportedAt: string;
+}
