@@ -33,7 +33,6 @@
  */
 import type { Express, Response } from 'express';
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
-import { isValidAgentId } from '../../shared/agentId';
 import { LabelError, MAX_LABEL_LENGTH, MAX_LABELS, normalizeLabels } from '../../shared/labels';
 import type {
   AgentLastRun,
@@ -46,10 +45,11 @@ import type {
 import { computeRequirements, requirementDeps } from '../author/requirements';
 import { readAgentRecord } from '../agentRecord';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
+import { copyAgent } from '../lifecycle/copy';
 import { enabledPatch } from '../lifecycle/enabledState';
 import type { SecretsStore } from '../secretsStore';
 import { defaultMeta, InvalidSpecError } from '../storage/agentRepo';
-import { copyAgentId, slugAgentId, uniqueAgentId } from '../storage/agentIds';
+import { slugAgentId, uniqueAgentId } from '../storage/agentIds';
 import { withAgentLock } from '../storage/atomic';
 import { mergeLegacySave } from '../storage/legacySpec';
 import { TEMPLATE_ID_RE, type TemplateCatalog } from '../templates/templateCatalog';
@@ -154,11 +154,6 @@ function parseCreateBody(body: unknown): ParsedCreateBody | string {
   return "'from' must be 'blank', { template: string } or { copyOf: string }";
 }
 
-/** `text` clamped to the spec-name cap (64 chars) - keeps `'<name> copy'` a valid spec name. */
-function cut64(text: string): string {
-  return text.slice(0, 64);
-}
-
 /**
  * The spec + meta (+ layout) write and the version-1 `create` capture a
  * new agent gets, all inside `withAgentLock(newId)` - then the same
@@ -198,31 +193,6 @@ async function createBlankAgent(ws: WorkspaceContext, name: string | undefined):
   const meta: AgentMeta = { ...defaultMeta(new Date().toISOString()), createdFrom: { kind: 'blank' } };
   const id = uniqueAgentId(ws.repo, slugAgentId(name ?? 'untitled-agent'));
   return writeNewAgent(ws, id, spec, meta, undefined, 'editor');
-}
-
-/**
- * The copy `POST /agents`: the source spec renamed `'<name> copy'` (or
- * `name`), labels and layout copied, enabled `createdFrom: { kind:
- * 'copy', ref }` meta, `publishedVersion: null` - the copy is never born
- * published. `undefined` when `copyOf` names no saved agent.
- */
-async function createAgentCopy(
-  ws: WorkspaceContext,
-  copyOf: string,
-  name: string | undefined
-): Promise<AgentRecord | undefined> {
-  if (!isValidAgentId(copyOf)) return undefined;
-  const source = await ws.repo.readSpec(copyOf);
-  if (source === undefined) return undefined;
-  const spec: AgentSpecV2 = { ...source, name: name ?? cut64(`${source.name} copy`) };
-  const meta: AgentMeta = {
-    ...defaultMeta(new Date().toISOString()),
-    labels: (await ws.repo.readMeta(copyOf)).labels,
-    createdFrom: { kind: 'copy', ref: copyOf },
-  };
-  const layout = await ws.repo.readLayout(copyOf);
-  const id = copyAgentId(ws.repo, copyOf);
-  return writeNewAgent(ws, id, spec, meta, layout, 'copy');
 }
 
 /**
@@ -349,13 +319,13 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
           return;
         }
         if (parsed.kind === 'copy') {
-          const record = await createAgentCopy(ws, parsed.copyOf, parsed.name);
+          const record = await copyAgent(ws, parsed.copyOf, parsed.name);
           if (record === undefined) {
-            sendError(res, 404, `No saved agent '${parsed.copyOf}'`, 'LOUSHO_AGENT_NOT_FOUND');
+            sendError(res, 404, `No agent '${parsed.copyOf}' to copy`, 'LOUSHO_AGENT_NOT_FOUND');
             return;
           }
           res.status(201).json(record);
-          ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
+          ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'version' });
           return;
         }
         const record = await createBlankAgent(ws, parsed.name);

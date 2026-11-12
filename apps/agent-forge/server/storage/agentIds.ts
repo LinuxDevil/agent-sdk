@@ -56,12 +56,3 @@ export function uniqueAgentId(repo: AgentRepo, base: string): string {
   }
 }
 
-/** `<id>-copy`, else `<id>-copy-2`, `<id>-copy-3`, ... - the same availability rule as {@link uniqueAgentId}. */
-export function copyAgentId(repo: AgentRepo, sourceId: string): string {
-  const base = `${sourceId}-copy`;
-  if (!agentIdTaken(repo, base)) return base;
-  for (let n = 2; ; n++) {
-    const id = `${base}-${n}`;
-    if (!agentIdTaken(repo, id)) return id;
-  }
-}

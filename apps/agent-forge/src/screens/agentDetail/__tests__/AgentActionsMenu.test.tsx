@@ -7,6 +7,7 @@ import { ToastProvider } from '../../../ui/Toast';
 
 const mocks = vi.hoisted(() => ({
   createAgentRecord: vi.fn(),
+  duplicateAgent: vi.fn(),
   deleteAgent: vi.fn(),
   downloadExport: vi.fn(),
 }));
@@ -14,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../../runtime/runtimeClient', () => ({
   runtimeClient: {
     createAgentRecord: mocks.createAgentRecord,
+    duplicateAgent: mocks.duplicateAgent,
     deleteAgent: mocks.deleteAgent,
     downloadExport: mocks.downloadExport,
   },
@@ -93,6 +95,7 @@ function toastTexts(): string {
 
 beforeEach(() => {
   mocks.createAgentRecord.mockReset();
+  mocks.duplicateAgent.mockReset();
   mocks.deleteAgent.mockReset();
   mocks.downloadExport.mockReset();
   mocks.downloadExport.mockResolvedValue({ blob: new Blob(['spec']), filename: 'support-bot.yaml', warnings: [] });
@@ -125,8 +128,8 @@ describe('AgentActionsMenu', () => {
     expect(takePendingOpen()).toEqual({ source: 'agent-header', focus: { mode: 'edit', agentId: 'support-bot' } });
   });
 
-  it('duplicates the agent, toasts and opens the copy’s overview', async () => {
-    mocks.createAgentRecord.mockResolvedValue({ id: 'support-bot-copy', spec: { name: 'support-bot copy' } });
+  it('duplicates the agent, toasts and opens the copy’s canvas', async () => {
+    mocks.duplicateAgent.mockResolvedValue({ id: 'support-bot-copy', spec: { name: 'support-bot copy' } });
     renderMenu();
     openMenu();
 
@@ -136,9 +139,9 @@ describe('AgentActionsMenu', () => {
     });
     await flush();
 
-    expect(mocks.createAgentRecord).toHaveBeenCalledWith({ from: { copyOf: 'support-bot' } });
-    expect(toastTexts()).toContain('Duplicated as “support-bot copy”');
-    expect(window.location.hash).toBe('#/agents/support-bot-copy/overview');
+    expect(mocks.duplicateAgent).toHaveBeenCalledWith('support-bot');
+    expect(toastTexts()).toContain('Made a copy: support-bot copy. It is off until you turn it on.');
+    expect(window.location.hash).toBe('#/agents/support-bot-copy/canvas');
   });
 
   it('exports the spec as <id>.yaml via the export route and toasts the filename', async () => {

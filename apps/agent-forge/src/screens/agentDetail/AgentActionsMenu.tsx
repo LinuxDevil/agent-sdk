@@ -16,7 +16,7 @@ import { agentTabPath } from '../agents/agentTabs';
 /**
  * The detail header's overflow menu (PLAN §11, A12): Change with AI (AA19's
  * Author entry point focused on this agent), Duplicate (a
- * `POST /agents { from: { copyOf } }` copy that opens its Overview), Export
+ * `POST /agents { from: { copyOf } }` copy that opens its canvas), Export
  * YAML and Export bundle (L07's `GET /agents/:id/export` downloads) and
  * Delete agent… behind a ConfirmDialog. Passed to `AgentDetailHeader`'s
  * `menu` prop by `AgentDetailRoute`.
@@ -37,11 +37,14 @@ export function AgentActionsMenu({ record }: { record: AgentRecord }): JSX.Eleme
   async function duplicate(): Promise<void> {
     setDuplicating(true);
     try {
-      const copy = await runtimeClient.createAgentRecord({ from: { copyOf: id } });
-      toast.show({ message: `Duplicated as “${copy.spec.name}”`, tone: 'success' });
-      navigate(agentTabPath(copy.id, 'overview'));
+      const copy = await runtimeClient.duplicateAgent(id);
+      toast.show({
+        message: `Made a copy: ${copy.spec.name}. It is off until you turn it on.`,
+        tone: 'success',
+      });
+      navigate(agentTabPath(copy.id, 'canvas'));
     } catch (error) {
-      toast.show({ message: errorMessage(error), tone: 'error' });
+      toast.show({ message: `Couldn't duplicate: ${errorMessage(error)}`, tone: 'error' });
     } finally {
       setDuplicating(false);
     }
