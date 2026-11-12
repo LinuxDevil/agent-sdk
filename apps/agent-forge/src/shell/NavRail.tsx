@@ -1,5 +1,6 @@
-import { Activity, Bot, Boxes, ClipboardCheck, FileText, FlaskConical, LayoutTemplate, Library, LineChart, MessagesSquare, Settings, Sparkles, type LucideIcon } from 'lucide-react';
+import { Activity, Bot, Boxes, ClipboardCheck, FileText, FlaskConical, Inbox, LayoutTemplate, Library, LineChart, MessagesSquare, Settings, Sparkles, type LucideIcon } from 'lucide-react';
 import { openAuthor } from '../author/authorEntry';
+import { useInboxCount } from '../state/useInboxCount';
 import { useRoute } from '../router/useRoute';
 import { DaemonStatus } from './DaemonStatus';
 import { NavBrand } from './NavBrand';
@@ -17,6 +18,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: 'agents', label: 'Agents', href: '#/agents', section: 'Build', icon: Bot },
+  { id: 'inbox', label: 'Inbox', href: '#/inbox', section: 'Build', icon: Inbox },
   { id: 'templates', label: 'Templates', href: '#/templates', section: 'Build', icon: LayoutTemplate },
   { id: 'playground', label: 'Playground', href: '#/playground', section: 'Build', icon: FlaskConical },
   { id: 'workspaces', label: 'Workspaces', href: '#/workspaces', section: 'Build', icon: Boxes },
@@ -39,20 +41,29 @@ export function isActive(item: NavItem, path: string): boolean {
   return firstSegment(item.href.slice(1)) === segment;
 }
 
-/** One nav link; on the collapsed rail it is icon-only, named by `aria-label` with a `title` tooltip. */
-function NavLink({ item, active, collapsed, onNavigate }: { item: NavItem; active: boolean; collapsed: boolean; onNavigate?: () => void }) {
+/** One nav link; on the collapsed rail it is icon-only, named by `aria-label` with a `title` tooltip. `badge` is the waiting count (Inbox only). */
+function NavLink({ item, active, collapsed, badge = 0, onNavigate }: { item: NavItem; active: boolean; collapsed: boolean; badge?: number; onNavigate?: () => void }) {
   const Icon = item.icon;
+  const badgeText = badge > 99 ? '99+' : String(badge);
   return (
     <a
       className={`nav-item${active ? ' active' : ''}`}
       href={item.href}
       aria-current={active ? 'page' : undefined}
-      aria-label={collapsed ? item.label : undefined}
+      aria-label={collapsed ? (badge > 0 ? `${item.label} (${badge} waiting)` : item.label) : undefined}
       title={collapsed ? item.label : undefined}
       onClick={onNavigate}
     >
       <Icon className="nav-icon" size={16} strokeWidth={1.75} aria-hidden="true" />
       <span className="nav-label">{item.label}</span>
+      {badge > 0 &&
+        (collapsed ? (
+          <span className="nav-badge-dot" aria-hidden="true" />
+        ) : (
+          <span className="nav-badge" aria-label={`${badge} waiting`}>
+            {badgeText}
+          </span>
+        ))}
     </a>
   );
 }
@@ -72,6 +83,7 @@ export function NavRail({
   onNavigate?: () => void;
 }) {
   const { path } = useRoute();
+  const inboxCount = useInboxCount();
   const rail = drawer === undefined && collapsed;
   return (
     <nav id="primary-nav" className="nav-rail" aria-label="Primary" data-drawer={drawer} data-collapsed={rail || undefined}>
@@ -85,7 +97,7 @@ export function NavRail({
           )}
           {NAV_ITEMS.filter((i) => i.section === section).map((item) => (
             <li key={item.id}>
-              <NavLink item={item} active={isActive(item, path)} collapsed={rail} onNavigate={onNavigate} />
+              <NavLink item={item} active={isActive(item, path)} collapsed={rail} badge={item.id === 'inbox' ? inboxCount : 0} onNavigate={onNavigate} />
             </li>
           ))}
           {section === 'Footer' && (
