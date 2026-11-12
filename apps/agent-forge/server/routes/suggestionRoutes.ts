@@ -1,5 +1,6 @@
 /**
- * Suggestion routes - `GET /agents/:id/suggestions` and
+ * Suggestion routes - `GET /agents/:id/suggestions`,
+ * `POST /agents/:id/suggestions/from-trace` and
  * `POST /agents/:id/suggestions/:sid/apply` · `/dismiss` (Contract C's
  * suggestion rows; the Suggestions tab's API).
  *
@@ -8,47 +9,64 @@
  * suggestions - `GET` filters portability analyses out and settling
  * routes answer them 404.
  *
- * Apply is compare-and-swap on the instructions: inside the per-agent
- * lock it reconciles an external edit (a hand-edited yaml is baselined
- * first), then lands the anchored `oldText` → `newText` rewrite only
- * when the instructions still hash to `expectedPromptHash` AND `oldText`
- * occurs exactly once - anything else marks the record `conflict`. A
- * landed apply writes one `kind: 'update', source: 'suggestion'`
- * version before the record goes `applied`.
+ * `from-trace` reserves a suggestion id and answers 202 while the
+ * `prompt_suggestion` pass (passes/promptSuggestion.ts) fetches the
+ * trace's friction digest and asks the pass model for one anchored
+ * instructions edit; the record appears when the pass finishes.
+ *
+ * Apply is compare-and-swap on the instructions: passes/promptSuggestion.ts's
+ * `applyPromptSuggestion` owns the checks - inside the per-agent lock it
+ * reconciles an external edit (a hand-edited yaml is baselined first),
+ * then lands the anchored `oldText` → `newText` rewrite only when the
+ * instructions still hash to `expectedPromptHash` AND `oldText` occurs
+ * exactly once - anything else marks the record `conflict`. A landed
+ * apply writes one `kind: 'update', source: 'suggestion'` version before
+ * the record goes `applied`.
  *
  * Every handler reads `repo`, `versions` and `suggestions` off
  * `workspaceOf(req)` (the workspace seam); the stores stay lock-free and
- * the writers serialize through `withAgentLock(id)`.
+ * the writers serialize through `withAgentLock(id)` inside
+ * `applyPromptSuggestion`. The Studio-global secrets/settings the pass
+ * model needs arrive as registration deps, like the portability routes.
  */
 import type { Express, Request, Response } from 'express';
-import { agentSpecV2Schema } from 'lousho';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
-import { flattenSpecIssues } from '../storage/agentRepo';
 import { withAgentLock } from '../storage/atomic';
-import { promptHash, SUGGESTION_ID_RE } from '../storage/suggestionStore';
+import { SUGGESTION_ID_RE } from '../storage/suggestionStore';
+import type { SecretsStore } from '../secretsStore';
+import type { SettingsStore } from '../settingsStore';
 import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceContext } from '../workspace/context';
+import {
+  applyPromptSuggestion,
+  enqueuePromptSuggestion,
+  PromptSuggestionError,
+  type PromptSuggestionDeps,
+} from '../passes/promptSuggestion';
 import type { PromptSuggestion } from '../../shared/wireTypes';
 
 /** The exact 409 message a settled suggestion gets (Contract C). */
 const NOT_OPEN_MESSAGE = 'This suggestion was already applied or dismissed.';
 
-/**
- * How often `needle` occurs in `haystack`, counted by repeated `indexOf`
- * (never regex - `oldText` may contain regex metacharacters). An empty
- * needle counts as 0, which fails the exactly-once check rather than
- * looping forever on `indexOf('', from) === from`.
- */
-function countOccurrences(haystack: string, needle: string): number {
-  if (needle === '') return 0;
-  let count = 0;
-  let from = 0;
-  for (;;) {
-    const at = haystack.indexOf(needle, from);
-    if (at === -1) return count;
-    count++;
-    from = at + needle.length;
-  }
+/** The Studio-global stores the suggestion routes need (per-workspace stores come from `workspaceOf(req)`). */
+export interface SuggestionRouteDeps {
+  secretsStore: SecretsStore;
+  settings: SettingsStore;
+}
+
+/** The pass deps one request's workspace context plus the Studio-global stores make. */
+function passDepsFor(ws: WorkspaceContext, globals: SuggestionRouteDeps): PromptSuggestionDeps {
+  return {
+    passRunner: ws.passes,
+    repo: ws.repo,
+    versions: ws.versions,
+    suggestions: ws.suggestions,
+    events: ws.events,
+    inbox: ws.inbox,
+    secretsStore: globals.secretsStore,
+    settings: globals.settings,
+    workspaceId: ws.ref.id,
+  };
 }
 
 /**
@@ -66,9 +84,10 @@ function paramSid(req: Request, res: Response): string | undefined {
 }
 
 /**
- * The open `prompt_edit` record `sid` names, or `undefined` once the
- * 404/409 was sent: a missing record (or a portability analysis, which
- * is not a suggestion) is a 404, a settled one a 409.
+ * The open `prompt_edit` record `sid` names for the dismiss route,
+ * `undefined` once the 404/409 was sent: a missing record (or a
+ * portability analysis, which is not a suggestion) is a 404, a settled
+ * one a 409.
  */
 async function openSuggestion(
   ws: WorkspaceContext,
@@ -88,12 +107,16 @@ async function openSuggestion(
   return suggestion;
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
- * Registers the suggestion routes. No deps: handlers read `repo`,
- * `versions` and `suggestions` off `workspaceOf(req)`, so a second
- * workspace is a second context, not a second registration.
+ * Registers the suggestion routes. Per-workspace stores come from
+ * `workspaceOf(req)`; `globals` carries the Studio-global secrets and
+ * settings stores the prompt-suggestion pass model resolves through.
  */
-export function registerSuggestionRoutes(app: Express): void {
+export function registerSuggestionRoutes(app: Express, globals: SuggestionRouteDeps): void {
   // The agent's prompt suggestions: open ones first, then newest
   // `createdAt` first. Portability analyses share the folder but are not
   // suggestions and never appear.
@@ -116,12 +139,36 @@ export function registerSuggestionRoutes(app: Express): void {
     })
   );
 
-  // Apply: the CAS-guarded instructions edit. `expectedPromptHash` must
-  // still match and `oldText` must occur exactly once (a hand edit is
-  // baselined first, so it shows up as a conflict, not a silent skip);
-  // the rewrite goes through the replacer-function form so `newText`'s
-  // `$&`/`$1` are inserted literally. Lands as a source:'suggestion'
-  // version, then the record goes `applied`.
+  // From-trace: reserve the id, answer 202, let the pass fetch the
+  // trace's friction digest and ask the model for one anchored edit.
+  // The record appears under `suggestions/<id>.json` when it finishes.
+  app.post(
+    '/agents/:id/suggestions/from-trace',
+    asyncRoute(async (req, res) => {
+      const ws = workspaceOf(req);
+      const id = paramId(req);
+      const body = req.body;
+      const traceId = isObject(body) && typeof body.traceId === 'string' ? body.traceId : undefined;
+      if (traceId === undefined || traceId === '') {
+        sendError(res, 400, "'traceId' must be a non-empty string", 'LOUSHO_BODY_INVALID');
+        return;
+      }
+      try {
+        const { suggestionId } = await enqueuePromptSuggestion(passDepsFor(ws, globals), id, traceId);
+        res.status(202).json({ suggestionId });
+      } catch (error) {
+        if (error instanceof PromptSuggestionError) {
+          sendError(res, error.status, error.message, error.code);
+          return;
+        }
+        throw error;
+      }
+    })
+  );
+
+  // Apply: the CAS-guarded instructions edit lives in
+  // passes/promptSuggestion.ts; the route maps its outcome onto the
+  // response (201 with the written version on success).
   app.post(
     '/agents/:id/suggestions/:sid/apply',
     asyncRoute(async (req, res) => {
@@ -129,16 +176,21 @@ export function registerSuggestionRoutes(app: Express): void {
       const id = paramId(req);
       const sid = paramSid(req, res);
       if (sid === undefined) return;
-      await withAgentLock(id, async () => {
-        const suggestion = await openSuggestion(ws, res, id, sid);
-        if (suggestion === undefined) return;
-        await ws.versions.reconcileExternalEdit(id);
-        const spec = await ws.repo.readSpec(id);
-        if (spec === undefined) {
-          sendError(res, 404, `No saved agent '${id}'`, 'LOUSHO_AGENT_NOT_FOUND');
+      const result = await applyPromptSuggestion(passDepsFor(ws, globals), id, sid);
+      switch (result.status) {
+        case 'applied':
+          res.status(201).json(result.version);
           return;
-        }
-        if (typeof spec.instructions !== 'string') {
+        case 'conflict':
+          sendError(res, 409, 'The instructions changed since this was suggested.', 'LOUSHO_SUGGESTION_CONFLICT');
+          return;
+        case 'not_found':
+          sendError(res, 404, `No suggestion '${sid}' for agent '${id}'`, 'LOUSHO_SUGGESTION_NOT_FOUND');
+          return;
+        case 'not_open':
+          sendError(res, 409, NOT_OPEN_MESSAGE, 'LOUSHO_SUGGESTION_NOT_OPEN');
+          return;
+        case 'unsupported':
           sendError(
             res,
             409,
@@ -146,38 +198,16 @@ export function registerSuggestionRoutes(app: Express): void {
             'LOUSHO_SUGGESTION_UNSUPPORTED'
           );
           return;
-        }
-        if (
-          promptHash(spec.instructions) !== suggestion.expectedPromptHash ||
-          countOccurrences(spec.instructions, suggestion.oldText) !== 1
-        ) {
-          await ws.suggestions.setStatus(id, sid, 'conflict');
-          sendError(res, 409, 'The instructions changed since this suggestion was made.', 'LOUSHO_SUGGESTION_CONFLICT');
-          return;
-        }
-        const next = { ...spec, instructions: spec.instructions.replace(suggestion.oldText, () => suggestion.newText) };
-        const validation = agentSpecV2Schema.safeParse(next);
-        if (!validation.success) {
-          const issues = flattenSpecIssues(validation.error.issues);
+        case 'invalid':
           sendError(
             res,
             400,
-            `Applying this suggestion would make the spec invalid: ${issues[0].path}: ${issues[0].message}`,
+            `Applying this suggestion would make the spec invalid: ${result.issues[0].path}: ${result.issues[0].message}`,
             'LOUSHO_SPEC_INVALID',
-            { issues }
+            { issues: result.issues }
           );
           return;
-        }
-        await ws.repo.writeSpec(id, next);
-        const item = await ws.versions.capture(id, {
-          kind: 'update',
-          source: 'suggestion',
-          requestText: `From run ${suggestion.sourceTraceId}: ${suggestion.optimizationClass}`,
-        });
-        await ws.suggestions.setStatus(id, sid, 'applied');
-        res.status(201).json(item);
-        ws.events.publish({ type: 'agent.changed', agentId: id, reason: 'version' });
-      });
+      }
     })
   );
 
@@ -193,7 +223,7 @@ export function registerSuggestionRoutes(app: Express): void {
       await withAgentLock(id, async () => {
         const suggestion = await openSuggestion(ws, res, id, sid);
         if (suggestion === undefined) return;
-        await ws.suggestions.setStatus(id, sid, 'dismissed');
+        await ws.suggestions.setStatus(id, sid, 'dismissed', { resolvedAt: new Date().toISOString() });
         res.status(204).end();
       });
     })

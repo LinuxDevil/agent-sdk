@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -14,6 +14,19 @@ import { AgentRepo } from '../storage/agentRepo';
 import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import { promptHash, SuggestionStore } from '../storage/suggestionStore';
 import type { PortabilityAnalysis, PromptSuggestion, StoredSuggestion } from '../../shared/wireTypes';
+import {
+  PassOutputError,
+  PassRefusedError,
+  PassSkippedError,
+  PassUnavailableError,
+  type PassContext,
+  type PassJob,
+  type PassResult,
+  type PassRunner,
+} from '../passes/passRunner';
+
+const callPassModel = vi.hoisted(() => vi.fn());
+vi.mock('../passes/passModel', () => ({ callPassModel }));
 
 const INSTRUCTIONS = 'Check the queues. Be helpful.';
 
@@ -42,6 +55,8 @@ const SUGGESTION: PromptSuggestion = {
   status: 'open',
   createdAt: '2026-02-03T04:05:06.000Z',
   updatedAt: '2026-02-03T04:05:06.000Z',
+  resolvedAt: null,
+  appliedVersion: null,
 };
 
 const SPEC_HASH = 'sha256:0123456789abcdef0123456789abcdef';
@@ -95,10 +110,44 @@ describe('suggestion routes', () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
+    callPassModel.mockReset();
     fs.rmSync(baseDir, { recursive: true, force: true });
   });
 
-  const app = () => createApp({ agentStore, runManager, baseDir });
+  const app = (over: Record<string, unknown> = {}) => createApp({ agentStore, runManager, baseDir, ...over });
+
+  /** A PassRunner fake that runs each enqueued job eagerly and reports its outcome. */
+  const eagerPassRunner = (): { passRunner: PassRunner; enqueue: Mock } => {
+    const runJob = async (job: PassJob<unknown>): Promise<PassResult<unknown>> => {
+      const ctx: PassContext = { attempt: 1, signal: new AbortController().signal, record: vi.fn() };
+      try {
+        return { ok: true, value: await job.run(ctx) };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (error instanceof PassUnavailableError) return { ok: false, outcome: 'unavailable', error: message };
+        if (error instanceof PassRefusedError) return { ok: false, outcome: 'refused', error: message };
+        if (error instanceof PassSkippedError) return { ok: false, outcome: 'skipped', error: message };
+        if (error instanceof PassOutputError) return { ok: false, outcome: 'failed', error: message };
+        return { ok: false, outcome: 'failed', error: message };
+      }
+    };
+    const enqueue = vi.fn(runJob);
+    return { passRunner: { enqueue } as unknown as PassRunner, enqueue };
+  };
+
+  const stubTrace = (status = 200, observations: unknown[] = []) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ trace_id: 'trace-1', observations, scores: [] }), {
+            status,
+            headers: { 'content-type': 'application/json' },
+          })
+      )
+    );
+  };
 
   /** Saves the agent through the real v1 PUT route (the file on disk is v2). */
   const saveAgent = async (spec: AgentSpec = V1_SPEC, id = 'ops') => {
@@ -282,6 +331,102 @@ describe('suggestion routes', () => {
     expect(apply.status).toBe(409);
     expect(apply.body.code).toBe('LOUSHO_SUGGESTION_NOT_OPEN');
     expect(await instructions()).toBe(INSTRUCTIONS);
+  });
+
+  it('POST from-trace answers 202, then the pass stores the suggestion record', async () => {
+    await saveAgent();
+    const { passRunner, enqueue } = eagerPassRunner();
+    stubTrace(200, [
+      {
+        obs_id: 'o1',
+        trace_id: 'trace-1',
+        session_id: null,
+        agent_id: 'ops',
+        parent_obs_id: null,
+        kind: 'tool',
+        name: 'fetch_page',
+        start: 0,
+        end: 1,
+        status: 'error',
+        input: '{}',
+        output: 'boom',
+        model: null,
+        usage_input_tokens: null,
+        usage_output_tokens: null,
+        usage_cached_tokens: null,
+        usage_reasoning_tokens: null,
+        cost_usd: null,
+        cost_partial: null,
+        usage_estimated: null,
+        truncated: false,
+        attrs: null,
+      },
+    ]);
+    callPassModel.mockResolvedValue({
+      oldText: 'Be helpful.',
+      newText: 'Always cite sources.',
+      confidence: 'high',
+      optimizationClass: 'Missing operational fact',
+      evidence: 'Calls #2 and #3 repeat #1.',
+      expectedSaving: '~800 tokens per run',
+      risk: 'low',
+      validationPlan: ['Re-run'],
+    });
+
+    const res = await request(app({ passRunner })).post('/agents/ops/suggestions/from-trace').send({ traceId: 'trace-1' });
+    expect(res.status).toBe(202);
+    expect(res.body.suggestionId).toMatch(/^sug-/);
+    expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'prompt_suggestion', key: 'ops:trace-1', agentId: 'ops' })
+    );
+
+    // The record appears once the pass settles.
+    await vi.waitFor(async () => {
+      expect(await store.get('ops', res.body.suggestionId)).toMatchObject({
+        kind: 'prompt_edit',
+        status: 'open',
+        sourceTraceId: 'trace-1',
+      });
+    });
+  });
+
+  it('POST from-trace answers 404/422/409/400 for its contract cases', async () => {
+    await saveAgent();
+    const { passRunner } = eagerPassRunner();
+    stubTrace();
+
+    const ghost = await request(app({ passRunner })).post('/agents/ghost/suggestions/from-trace').send({ traceId: 't' });
+    expect(ghost.status).toBe(404);
+    expect(ghost.body.code).toBe('LOUSHO_AGENT_NOT_FOUND');
+
+    const v2: AgentSpecV2 = { version: 2, name: 'ops', model: 'mock/mock-1', instructions: { file: 'prompt.md' } };
+    expect((await request(app()).put('/agents/fileops').send({ spec: v2 })).status).toBe(204);
+    const file = await request(app({ passRunner })).post('/agents/fileops/suggestions/from-trace').send({ traceId: 't' });
+    expect(file.status).toBe(422);
+    expect(file.body).toEqual({
+      error: 'Suggestions need inline instructions; this agent reads them from a file.',
+      code: 'LOUSHO_SUGGESTION_UNSUPPORTED',
+    });
+
+    stubTrace(404);
+    const missing = await request(app({ passRunner })).post('/agents/ops/suggestions/from-trace').send({ traceId: 'nope' });
+    expect(missing.status).toBe(404);
+    expect(missing.body.code).toBe('LOUSHO_TRACE_NOT_FOUND');
+
+    const bad = await request(app({ passRunner })).post('/agents/ops/suggestions/from-trace').send({});
+    expect(bad.status).toBe(400);
+    expect(bad.body.code).toBe('LOUSHO_BODY_INVALID');
+
+    // In flight: a pass that never settles blocks the same trace only.
+    const pending = { enqueue: vi.fn(() => new Promise<PassResult<unknown>>(() => undefined)) } as unknown as PassRunner;
+    stubTrace(200);
+    const first = await request(app({ passRunner: pending })).post('/agents/ops/suggestions/from-trace').send({ traceId: 'trace-1' });
+    expect(first.status).toBe(202);
+    const again = await request(app({ passRunner: pending })).post('/agents/ops/suggestions/from-trace').send({ traceId: 'trace-1' });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('LOUSHO_SUGGESTION_IN_FLIGHT');
+    const other = await request(app({ passRunner: pending })).post('/agents/ops/suggestions/from-trace').send({ traceId: 'trace-2' });
+    expect(other.status).toBe(202);
   });
 
   it('dismiss a missing or non-prompt_edit suggestion is 404; an invalid sid is 400', async () => {

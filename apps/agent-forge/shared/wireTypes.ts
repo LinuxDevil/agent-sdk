@@ -1005,6 +1005,18 @@ export interface SettleDraftRequest {
 export type SuggestionStatus = 'open' | 'applied' | 'dismissed' | 'conflict';
 
 /**
+ * The five friction classes a prompt suggestion may name (R05): the
+ * single smallest instructions change the pass judged worth a person's
+ * review, picked for the best ratio of waste removed to risk.
+ */
+export type OptimizationClass =
+  | 'Missing operational fact'
+  | 'Missing tool strategy'
+  | 'Ambiguous instruction'
+  | 'Misplaced guidance'
+  | 'Over-broad instruction';
+
+/**
  * One `.lousho/agents/<id>/suggestions/<id>.json` record the prompt
  * optimizer pass writes: an anchored `oldText` → `newText` edit of the
  * instructions. `oldText` occurs exactly once in the instructions and the
@@ -1025,7 +1037,7 @@ export interface PromptSuggestion {
   oldText: string;
   newText: string;
   confidence: 'high' | 'low';
-  optimizationClass: string;
+  optimizationClass: OptimizationClass;
   evidence: string;
   expectedSaving: string;
   risk: string;
@@ -1033,6 +1045,10 @@ export interface PromptSuggestion {
   status: SuggestionStatus;
   createdAt: string;
   updatedAt: string;
+  /** When the suggestion left `open` (`applied`/`dismissed`/`conflict`); `null` while open. */
+  resolvedAt: string | null;
+  /** The version a landed apply wrote; `null` until `applied`. */
+  appliedVersion: number | null;
 }
 
 /** Where in the spec a portability finding sits (L09a). */
