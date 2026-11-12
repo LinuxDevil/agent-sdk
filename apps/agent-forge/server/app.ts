@@ -39,6 +39,8 @@
  *   GET  /runs/:id/history           -> RunHistoryPayload
  *   POST /runs/:id/fork              -> body: ForkRunRequest; starts the fork, 202 ForkRunResponse
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
+ *   POST /agents/:id/rating          -> body: RatingRequest; 204 (ratings.ts, R04a)
+ *   POST /agents/:id/rating/:alertId/dataset -> 200 { dataset, exampleId } | 422 no captured input
  *   GET  /observe/**                 -> proxied to the `lousho observe` daemon's read API (observeProxy.ts)
  *   POST /observe/api/v1/scores      -> proxied too (the proxy's write allowlist: human feedback scores)
  *   POST /observe/api/v1/evaluators/:id/test -> a judge rule's dry run here, a code rule forwarded (judge.ts)
@@ -146,6 +148,7 @@ import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
 import { InboxService } from './inbox/inboxService';
 import { registerInboxRoutes } from './inbox/inboxRoutes';
+import { registerRatingRoutes } from './ratings';
 import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
@@ -1187,6 +1190,12 @@ export function createApp(options: CreateAppOptions): Express {
   // The inbox (inbox/inboxRoutes.ts, R02a): `/inbox`, `/inbox/count` and
   // alert dismiss - the service comes from workspaceOf(req).inbox.
   registerInboxRoutes(app);
+  // Human run ratings (ratings.ts, R04a): `/agents/:id/rating` writes the
+  // score to the observe daemon and may raise a low_rating alert; the
+  // `/rating/:alertId/dataset` action copies the trace into the agent's
+  // `<agentId>-regressions` dataset. Before the observe proxy so neither
+  // path is ever proxied.
+  registerRatingRoutes(app, { alerts });
   registerObserveProxy(app);
   registerStaticClient(app, staticDir);
 

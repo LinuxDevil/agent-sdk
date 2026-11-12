@@ -38,6 +38,7 @@ import type {
   PassSettings,
   PassSettingsPatch,
   PassSpendSummary,
+  RatingRequest,
   McpServerSpecV2,
   PatchAgentMetaRequest,
   PromptSuggestion,
@@ -337,11 +338,27 @@ class RuntimeClient implements AgentApi {
    * agent's published spec and answers the pinned version number. Idempotent:
    * pinning the already-published version is a no-op.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L14a); L14b's publish UI consumes it
   async publish(agentId: string, version?: number): Promise<{ publishedVersion: number }> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/publish`, {
       method: 'POST',
       body: JSON.stringify(version === undefined ? {} : { version }),
+    });
+  }
+
+  /** Records a 1-5 human rating on a run's trace (`POST /agents/:id/rating`, R04a). */
+  // fallow-ignore-next-line unused-class-member -- contract surface (R04a); R04b's rating UI consumes it
+  async rateRun(agentId: string, body: RatingRequest): Promise<void> {
+    await this.request(`/agents/${encodeURIComponent(agentId)}/rating`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Copies a low-rating alert's trace into the agent's `<agentId>-regressions` dataset (R04a). */
+  // fallow-ignore-next-line unused-class-member -- contract surface (R04a); R04b's dataset action consumes it
+  async addAlertToDataset(agentId: string, alertId: string): Promise<{ dataset: string; exampleId: string }> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/rating/${encodeURIComponent(alertId)}/dataset`, {
+      method: 'POST',
     });
   }
 
