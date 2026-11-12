@@ -214,6 +214,18 @@ class RuntimeClient implements AgentApi {
     return this.request('/agents', { method: 'POST', body: JSON.stringify(request) });
   }
 
+  /**
+   * `POST /agents { from: { copyOf } }` (L10): duplicates the agent -
+   * spec, labels and layout under `<id>-copy`, turned off - and answers
+   * the copy's `AgentRecord`.
+   */
+  async duplicateAgent(agentId: string): Promise<AgentRecord> {
+    return this.request('/agents', {
+      method: 'POST',
+      body: JSON.stringify({ from: { copyOf: agentId } }),
+    });
+  }
+
   /** Toggles `enabled` and/or stores the label set (`PATCH /agents/:id/meta`); answers the updated meta. */
   async patchAgentMeta(agentId: string, patch: PatchAgentMetaRequest): Promise<AgentMeta> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/meta`, {
