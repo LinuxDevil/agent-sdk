@@ -92,6 +92,9 @@ export const ERROR_CODES = {
   /** The approvals route got a body without `approved` or `answer` (`400`). */
   LOUSHO_APPROVAL_DECISION_INVALID: "Send a JSON body with 'approved' (true or false, and an optional 'note') or, for a question, 'answer'.",
   LOUSHO_APPROVAL_KIND_MISMATCH: "'answer' decides a question pause only; a tool-call pause takes 'approved' (a question also answers with 'approved' and the answer as 'note').",
+  /** `modelAutoApprover`'s reply carried no usable `{ safety, reason }` verdict. */
+  LOUSHO_AUTO_APPROVAL_INVALID:
+    'Check the auto approver\'s model and prompt: its reply must be a JSON object { "safety": <0..1>, "reason": "<text>" } (prose around it is fine).',
   LOUSHO_SESSION_FORBIDDEN: 'Use a session the route\'s authorizeSession lets this caller read, continue or decide approvals in.',
   /** A session route refused a cross-site POST or a `Host` outside `allowedHosts` (`403`). */
   LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).",

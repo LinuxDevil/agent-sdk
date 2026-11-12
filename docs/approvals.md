@@ -445,6 +445,38 @@ const trusted = createAgent({
 });
 ```
 
+### Model-decided approvals
+
+`createAutoApprove` wraps a cheap model as the `approve` callback: calls an
+`auto` permission rule matched get a 0–1 safety score, and a score at or
+above 0.8 (within 8 s) runs the tool unreviewed. Everything else — a lower
+score, a timeout, a model error, arguments too long to judge — defers to a
+human exactly like `'defer'`. It never denies a call on its own.
+
+```ts
+import { ask } from 'lousho/execution';
+import { createAgent } from 'lousho';
+import { createAutoApprove, modelAutoApprover } from 'lousho/execution';
+
+const agent = createAgent({
+  provider,
+  tools: [issueTool, emailTool],
+  permissions: [ask(['create_issue'])],
+  approve: createAutoApprove({
+    autoApprover: modelAutoApprover({ provider: cheapProvider }),
+    isAuto: (toolName) => toolName === 'create_issue',
+    // fallback: the agent's own approve, asked for non-auto and escalated calls
+    onDecision: (d) => console.log(d.toolName, d.outcome, d.cause),
+  }),
+});
+```
+
+`modelAutoApprover` asks the provider for `{"safety": <0..1>, "reason":
+"..."}` at temperature 0; `createAutoApprove` clips long arguments before
+they reach the model and reports every decision through `onDecision`. Pass a
+`fallback` approve callback to keep a second line of defense for escalated
+calls.
+
 ### Streaming the continued run
 
 `agent.approvals.streamResolve(decision, { signal })` and
