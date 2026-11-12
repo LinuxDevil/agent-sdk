@@ -3,7 +3,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { narrowPolicy, type EffectivePolicy, type WorkspacePolicy } from '../contracts/policy';
-import { checkPermission, type PermissionRule } from '../../execution/permissions';
+import { checkPermission, type PermissionDecisionEntry, type PermissionRule } from '../../execution/permissions';
+import { createAgent } from '../../createAgent';
+import { mockModel } from '../../testing';
 import { FlowExecutor } from '../../flows/FlowExecutor';
 import { MockLLMProvider } from '../../providers/mock';
 import { defineTool } from '../../tools/defineTool';
@@ -154,6 +156,19 @@ describe('agentPolicyOptions', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('the audit says which policy forced the ask', async () => {
+    const host: HostToolRegistry = { delete_post: { descriptor: { ...tool('delete_post'), needsApproval: true } }, publish: { descriptor: tool('publish') } };
+    const options = agentPolicyOptions(effective({ approvals: { require: ['publish'] } }), { agent: agent({ tools: ['delete_post', 'publish'], permissions: [{ tool: '*', action: 'allow' }] }) }, host);
+    const audit: PermissionDecisionEntry[] = [];
+    const model = mockModel([{ toolCalls: [{ name: 'delete_post', args: {} }, { name: 'publish', args: {} }] }]);
+    const run = createAgent({ provider: model, tools: options.tools, permissions: options.permissions, onPermissionDecision: (entry) => audit.push(entry) });
+    expect((await run.send('go')).finishReason).toBe('awaiting-approval');
+    expect(audit).toEqual([
+      expect.objectContaining({ toolName: 'delete_post', decision: 'ask', reason: expect.stringContaining("the tool's own needsApproval") }),
+      expect.objectContaining({ toolName: 'publish', decision: 'ask', reason: expect.stringContaining('approvals.require') }),
+    ]);
+  });
+
   it("an agent's approval always makes every call ask", async () => {
     const execute = vi.fn(async () => 'fetched');
     const host: HostToolRegistry = { web_fetch: { descriptor: tool('web_fetch', execute) } };
@@ -226,6 +241,17 @@ describe('pagePolicy', () => {
     const page = { capabilities: ['image.generate'], attachments: [attachment('maker', ['gen_image'])] };
     expect(() => pagePolicy(effective({}, { permissions: [{ id: 'no', tool: 'gen_*', action: 'deny' }] }), page, host)).toThrow(/capability-missing/);
     expect(() => pagePolicy(effective({ permissions: [{ id: 'ask', tool: 'gen_image', action: 'ask' }] }), page, host)).not.toThrow();
+  });
+
+  it('counts a tool by the first matching rule of each list, as the runtime decides it', async () => {
+    const host: HostToolRegistry = { gen_image: { descriptor: tool('gen_image'), capabilities: ['image.generate'] } };
+    const page = (permissions?: AgentOwned['permissions']) => ({ capabilities: ['image.generate'], attachments: [{ ...attachment('maker', ['gen_image']), agentOwned: agent({ tools: ['gen_image'], permissions }) }] });
+    const policy = effective({}, { permissions: [{ id: 'img', tool: 'gen_image', action: 'allow' }, { id: 'rest', tool: '*', action: 'deny' }] });
+    expect(() => pagePolicy(policy, page([{ tool: 'gen_image', action: 'allow' }]), host)).not.toThrow();
+    const { rules, warnings } = effectivePermissions(policy, [{ tool: 'gen_image', action: 'allow' }]);
+    expect(await decide(rules, 'gen_image')).toBe('allow');
+    expect(warnings).toEqual([]);
+    expect(() => pagePolicy(effective({}), page([{ tool: 'gen_image', action: 'deny' }]), host)).toThrow(/capability-missing/);
   });
 
   it('a capability never grants a tool', () => {

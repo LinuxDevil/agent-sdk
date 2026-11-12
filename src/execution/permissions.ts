@@ -207,38 +207,38 @@ export function allowInPlanMode<T extends object>(tool: T): T {
   return tool;
 }
 
-/** `needsApproval` policies whose 'ask' no permission rule or mode may turn into a run (see {@link enforceApproval}). */
-const enforcedApprovals = new WeakSet<object>();
+/** `needsApproval` policies whose 'ask' no permission rule or mode may turn into a run, with the audit reason (see {@link enforceApproval}). */
+const enforcedApprovals = new WeakMap<object, string>();
 
-/**
- * Marks a `needsApproval` policy as enforced: when it asks, the call waits for
- * an approver or a human whatever the permission rules (`allow`) or the
- * permission mode (`acceptEdits`) say. A deny from either still denies. Used
- * for an install receipt's `exec` / `needsApproval` items (docs/registry.md).
- */
-function enforceApproval<T extends object>(policy: T): T {
-  enforcedApprovals.add(policy);
+/** Marks a `needsApproval` policy as enforced: its ask waits for an approver whatever an `allow` rule or the mode says, and `reason` explains why in the audit. */
+function enforceApproval<T extends object>(policy: T, reason: string): T {
+  enforcedApprovals.set(policy, reason);
   return policy;
 }
 
 /** A tool's own `needsApproval`, marked by {@link enforceApproval} so no `allow` rule or mode lifts its ask. */
-export function keepOwnApproval(own: NonNullable<ToolDescriptor['needsApproval']>): NonNullable<ToolDescriptor['needsApproval']> {
-  return enforceApproval(async (args: unknown, ctx: ApprovalCheckContext): Promise<ApprovalOutcome> => (typeof own === 'function' ? own(args, ctx) : own));
+export function keepOwnApproval(own: NonNullable<ToolDescriptor['needsApproval']>, reason: string): NonNullable<ToolDescriptor['needsApproval']> {
+  return enforceApproval(async (args: unknown, ctx: ApprovalCheckContext): Promise<ApprovalOutcome> => (typeof own === 'function' ? own(args, ctx) : own), reason);
 }
 
 /** A `needsApproval` policy that always asks, marked by {@link enforceApproval}; the tool's own deny stays a deny. */
-export function alwaysAsk(own: ToolDescriptor['needsApproval']): NonNullable<ToolDescriptor['needsApproval']> {
+export function alwaysAsk(own: ToolDescriptor['needsApproval'], reason: string): NonNullable<ToolDescriptor['needsApproval']> {
   return enforceApproval(async (args: unknown, ctx: ApprovalCheckContext): Promise<ApprovalOutcome> => {
     const outcome = typeof own === 'function' ? await own(args, ctx) : own;
     if (outcome === 'deny' || (typeof outcome === 'object' && outcome !== null)) return outcome;
     return 'ask';
-  });
+  }, reason);
+}
+
+/** Why `tool`'s `needsApproval` is enforced, or undefined when {@link enforceApproval} did not mark it. */
+export function enforcedApprovalReason(tool: ToolDescriptor | undefined): string | undefined {
+  const policy = tool?.needsApproval;
+  return typeof policy === 'function' ? enforcedApprovals.get(policy) : undefined;
 }
 
 /** Whether `tool`'s `needsApproval` is marked by {@link enforceApproval}. */
 export function hasEnforcedApproval(tool: ToolDescriptor | undefined): boolean {
-  const policy = tool?.needsApproval;
-  return typeof policy === 'function' && enforcedApprovals.has(policy);
+  return enforcedApprovalReason(tool) !== undefined;
 }
 
 /**
@@ -375,7 +375,8 @@ export function unknownPermissionToolMessage({ index, tool, suggestion }: Unknow
   return `permissions[${index}] names the tool '${tool}', which no tool of the agent has, so the rule never applies.${suggestion ? ` Did you mean '${suggestion}'?` : ''}`;
 }
 
-function matchesTool(matcher: PermissionToolMatcher, toolName: string): boolean {
+/** Whether `matcher` names `toolName`, as a permission rule's `tool` matches a call. */
+export function matchesTool(matcher: PermissionToolMatcher, toolName: string): boolean {
   if (typeof matcher === 'string') return matcher === '*' || matcher === toolName;
   if (matcher instanceof RegExp) return toolName.search(matcher) !== -1;
   return matcher.some((name) => matchesTool(name, toolName));

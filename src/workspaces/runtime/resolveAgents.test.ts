@@ -308,7 +308,7 @@ describe('resolveAttachments', () => {
       const key = Object.keys(extra)[0];
       expect(() => readAgentOwned({ format: 'studio', dir: 'agents/helper', files: { 'spec.json': JSON.stringify({ ...studio, ...extra }) } })).toThrow(`'${key}' is not applied to a workspace agent`);
     }
-    for (const extra of [{ permissionMode: 'acceptEdits' }, { projectInstructions: true }]) {
+    for (const extra of [{ permissionMode: 'acceptEdits' }, { projectInstructions: true }, { approvalTtlMs: 60_000 }, { output: { type: 'object', properties: {} } }]) {
       const key = Object.keys(extra)[0];
       const files = { 'instructions.md': 'Write.', 'agent.json': JSON.stringify(extra) };
       expect(() => readAgentOwned({ format: 'dir', dir: 'agents/writer', files })).toThrow(`'${key}' is not applied to a workspace agent`);
