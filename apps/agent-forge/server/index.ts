@@ -251,8 +251,10 @@ export async function startStudioServer(
       passRunner.close();
       // Flush pending idle-version captures before the socket stops taking writes.
       await workspace.idleVersioner.flushAll();
-      // Stop the launch workspace's inbox recount subscriptions (R02a).
+      // Stop the launch workspace's inbox recount subscriptions (R02a)
+      // and its trigger host's run-status subscriptions (R08a).
       workspace.inbox.stop();
+      workspace.triggers.stop();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     },
   };
