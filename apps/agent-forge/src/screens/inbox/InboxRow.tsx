@@ -130,34 +130,71 @@ function QuestionActions({ item, disabled, expired, onAnswer }: { item: InboxIte
   );
 }
 
+/** The disabled-button title: expiry wins over the in-flight "Sending…". */
+function actionTitle(expired: boolean, disabled: boolean, expiredText = 'This request expired'): string | undefined {
+  if (expired) return expiredText;
+  return disabled ? 'Sending…' : undefined;
+}
+
+/** The approval row's Approve/Deny pair. */
+function ApprovalActions({ item, expired, disabled, onApprove }: { item: InboxItem & { kind: 'approval' }; expired: boolean; disabled: boolean; onApprove: RowProps['onApprove'] }) {
+  const title = actionTitle(expired, disabled);
+  return (
+    <>
+      <ActionButton
+        label="Approve"
+        className="btn btn-success btn-sm"
+        disabled={disabled || expired}
+        title={title}
+        onClick={() => onApprove(item, true)}
+      />
+      <ActionButton
+        label="Deny"
+        className="btn btn-secondary btn-sm"
+        disabled={disabled || expired}
+        title={title}
+        onClick={() => onApprove(item, false)}
+      />
+    </>
+  );
+}
+
+/** The alert row's actions: a low-rating alert also offers the regressions dataset. */
+function AlertActions({ item, disabled, onAddToDataset, onDismiss }: { item: InboxItem & { kind: 'alert' }; disabled: boolean; onAddToDataset: RowProps['onAddToDataset']; onDismiss: RowProps['onDismiss'] }) {
+  return (
+    <>
+      {item.alertKind === 'low_rating' && (
+        <ActionButton
+          label={`Add to dataset ${item.agentId}-regressions`}
+          className="btn btn-secondary btn-sm"
+          disabled={disabled}
+          title={actionTitle(false, disabled)}
+          onClick={() => onAddToDataset(item)}
+        />
+      )}
+      <a className="btn btn-secondary btn-sm" href={overviewHref(item)}>
+        Open agent
+      </a>
+      <ActionButton
+        label="Dismiss"
+        className="btn btn-ghost btn-sm"
+        disabled={disabled}
+        title={actionTitle(false, disabled)}
+        onClick={() => onDismiss(item)}
+      />
+    </>
+  );
+}
+
 /** The per-kind action cluster; a lookup keeps the row's branches flat. */
 function RowActions(props: RowProps) {
   const { item, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset } = props;
   const expired = isExpired(item, now);
   const disabled = acting;
-  const expiredTitle = 'This request expired';
-  const sendingTitle = 'Sending…';
 
   switch (item.kind) {
     case 'approval':
-      return (
-        <>
-          <ActionButton
-            label="Approve"
-            className="btn btn-success btn-sm"
-            disabled={disabled || expired}
-            title={expired ? expiredTitle : disabled ? sendingTitle : undefined}
-            onClick={() => onApprove(item, true)}
-          />
-          <ActionButton
-            label="Deny"
-            className="btn btn-secondary btn-sm"
-            disabled={disabled || expired}
-            title={expired ? expiredTitle : disabled ? sendingTitle : undefined}
-            onClick={() => onApprove(item, false)}
-          />
-        </>
-      );
+      return <ApprovalActions item={item} expired={expired} disabled={disabled} onApprove={onApprove} />;
     case 'question':
       return <QuestionActions item={item} disabled={disabled} expired={expired} onAnswer={onAnswer} />;
     case 'draft':
@@ -168,29 +205,7 @@ function RowActions(props: RowProps) {
         </a>
       );
     case 'alert':
-      return (
-        <>
-          {item.alertKind === 'low_rating' && (
-            <ActionButton
-              label={`Add to dataset ${item.agentId}-regressions`}
-              className="btn btn-secondary btn-sm"
-              disabled={disabled}
-              title={disabled ? sendingTitle : undefined}
-              onClick={() => onAddToDataset(item)}
-            />
-          )}
-          <a className="btn btn-secondary btn-sm" href={overviewHref(item)}>
-            Open agent
-          </a>
-          <ActionButton
-            label="Dismiss"
-            className="btn btn-ghost btn-sm"
-            disabled={disabled}
-            title={disabled ? sendingTitle : undefined}
-            onClick={() => onDismiss(item)}
-          />
-        </>
-      );
+      return <AlertActions item={item} disabled={disabled} onAddToDataset={onAddToDataset} onDismiss={onDismiss} />;
   }
 }
 
