@@ -5,9 +5,10 @@ import type { ToolDescriptor } from '../../types';
 import { SDKError } from '../../utils/sdkError';
 import type { PageStepLabels, StepKind } from '../contracts/execution';
 import type { PageExecutionLimits } from '../contracts/page';
-import { agentRunOptions, assembleInstructions } from './assemble';
+import { agentRunOptions, assembleInstructions, type AgentRunOptions, type AssembledInstructions } from './assemble';
 import type { PageAttachment, PageEngineSetup } from './engines/types';
 import { labelAttributes, labelsFor } from './labels';
+import type { ResolvedAttachment } from './resolveAgents';
 
 /** Options of {@link attachmentAgent}. */
 interface AttachmentAgentOptions {
@@ -56,20 +57,47 @@ function min(a: number | undefined, b: number | undefined): number | undefined {
   return b === undefined ? a : Math.min(a, b);
 }
 
+const LIMIT_PAIRS = [
+  ['maxSteps', 'maxTurns'],
+  ['maxDurationMs', 'maxDurationMs'],
+  ['maxCostUsd', 'maxCostUsd'],
+] as const;
+
 function tightened(own: RunLimits, page: PageExecutionLimits | undefined): RunLimits {
   const limits: RunLimits = { ...own };
-  const steps = min(own.maxSteps, page?.maxTurns);
-  const duration = min(own.maxDurationMs, page?.maxDurationMs);
-  const cost = min(own.maxCostUsd, page?.maxCostUsd);
-  if (steps !== undefined) limits.maxSteps = steps;
-  if (duration !== undefined) limits.maxDurationMs = duration;
-  if (cost !== undefined) limits.maxCostUsd = cost;
+  for (const [key, pageKey] of LIMIT_PAIRS) {
+    const value = min(own[key], page?.[pageKey]);
+    if (value !== undefined) limits[key] = value;
+  }
   return limits;
 }
 
 function modelSource(setup: PageEngineSetup, model: string | undefined): Pick<CreateAgentConfig, 'provider' | 'model'> {
   if (setup.host.provider) return { provider: setup.host.provider(model) };
   return model === undefined ? {} : { model };
+}
+
+function instructionsFor(setup: PageEngineSetup, resolved: ResolvedAttachment, engineFraming: string | undefined): AssembledInstructions {
+  return assembleInstructions({
+    agent: resolved.agentOwned,
+    agentDir: resolved.dir,
+    shared: setup.shared,
+    harness: setup.harness,
+    attachment: resolved.pageOwned,
+    page: { id: setup.page.id, name: setup.page.name },
+    ...(engineFraming !== undefined && { engineFraming }),
+  });
+}
+
+function spanAttributesFor(setup: PageEngineSetup, labels: PageStepLabels, resolved: ResolvedAttachment, harnessPartHash: string): Record<string, string | number> {
+  const agentRef = resolved.version === undefined ? {} : { agentRef: { version: resolved.version, sha256: resolved.sha256 } };
+  return labelAttributes(labels, { workspace: setup.workspace.manifest.id, harnessPartHash, ...agentRef });
+}
+
+function optionalConfig(setup: PageEngineSetup, run: AgentRunOptions, options: AttachmentAgentOptions): Pick<CreateAgentConfig, 'reasoning' | 'modelSettings' | 'output' | 'exporter'> {
+  return Object.fromEntries(
+    Object.entries({ reasoning: run.reasoning, modelSettings: run.modelSettings, output: options.output, exporter: setup.host.exporter }).filter(([, value]) => value !== undefined)
+  );
 }
 
 /** An attachment's agent and the step labels on its spans. */
@@ -85,21 +113,8 @@ export function attachmentAgent(setup: PageEngineSetup, alias: string, options: 
   const attachment = attachmentOf(setup, alias);
   const { resolved, policy } = attachment;
   const run = agentRunOptions(resolved, setup.harness);
-  const instructions = assembleInstructions({
-    agent: resolved.agentOwned,
-    agentDir: resolved.dir,
-    shared: setup.shared,
-    harness: setup.harness,
-    attachment: resolved.pageOwned,
-    page: { id: setup.page.id, name: setup.page.name },
-    ...(options.engineFraming !== undefined && { engineFraming: options.engineFraming }),
-  });
+  const instructions = instructionsFor(setup, resolved, options.engineFraming);
   const labels = labelsFor({ page: setup.page.id, harnessHash: setup.harness.hash, executionType: setup.page.execution.type, attachment: alias, ...options.step });
-  const spanAttributes = labelAttributes(labels, {
-    workspace: setup.workspace.manifest.id,
-    harnessPartHash: instructions.harnessPartHash,
-    ...(resolved.version !== undefined && { agentRef: { version: resolved.version, sha256: resolved.sha256 } }),
-  });
   const agent = createAgent({
     name: resolved.agentOwned.name,
     instructions: instructions.text,
@@ -107,11 +122,8 @@ export function attachmentAgent(setup: PageEngineSetup, alias: string, options: 
     tools: boundTools(setup, alias, attachment),
     permissions: policy.permissions,
     limits: tightened(run.limits, options.limits),
-    ...(run.reasoning !== undefined && { reasoning: run.reasoning }),
-    ...(run.modelSettings !== undefined && { modelSettings: run.modelSettings }),
-    ...(options.output !== undefined && { output: options.output }),
-    ...(setup.host.exporter !== undefined && { exporter: setup.host.exporter }),
-    spanAttributes,
+    ...optionalConfig(setup, run, options),
+    spanAttributes: spanAttributesFor(setup, labels, resolved, instructions.harnessPartHash),
   });
   return { agent, labels };
 }
