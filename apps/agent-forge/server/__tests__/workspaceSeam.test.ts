@@ -23,6 +23,7 @@ import { StudioEventBus } from '../events/eventBus';
 import { PassRunner } from '../passes/passRunner';
 import type { InboxService } from '../inbox/inboxService';
 import type { TriggerHost } from '../triggers/triggerHost';
+import type { ChannelTriggers } from '../triggers/channelTriggers';
 import type { CronTriggers } from '../triggers/cronTriggers';
 import type { WorkspaceContext } from '../workspace/context';
 
@@ -133,6 +134,7 @@ describe('workspace seam', () => {
       inbox: {} as InboxService,
       triggers: {} as TriggerHost,
       cron: {} as CronTriggers,
+      channels: {} as ChannelTriggers,
     };
     const app = createApp({ workspace, baseDir });
 

@@ -20,6 +20,7 @@ import { StudioEventBus } from '../events/eventBus';
 import { PassRunner } from '../passes/passRunner';
 import type { InboxService } from '../inbox/inboxService';
 import type { TriggerHost } from '../triggers/triggerHost';
+import type { ChannelTriggers } from '../triggers/channelTriggers';
 import type { CronTriggers } from '../triggers/cronTriggers';
 import type { WorkspaceContext } from '../workspace/context';
 import { workspaceRefFor } from '../workspace/workspaceId';
@@ -94,6 +95,7 @@ function appWith(
     inbox: {} as InboxService,
     triggers: host,
     cron: {} as CronTriggers,
+    channels: {} as ChannelTriggers,
   };
   const secrets = new SecretsStore(baseDir);
   secrets.setSecret('wh', SECRET);

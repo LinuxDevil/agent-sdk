@@ -17,6 +17,7 @@ import { PassRunner } from '../../passes/passRunner';
 import type { InboxService } from '../../inbox/inboxService';
 import type { TriggerHost } from '../../triggers/triggerHost';
 import type { CronTriggers } from '../../triggers/cronTriggers';
+import type { ChannelTriggers } from '../../triggers/channelTriggers';
 import { requestedWorkspaceId, workspaceMiddleware, workspaceOf } from '../middleware';
 
 const emptyStore: LegacyAgentStore = {
@@ -44,6 +45,7 @@ function ctx(id: string): WorkspaceContext {
     inbox: {} as InboxService,
     triggers: {} as TriggerHost,
     cron: {} as CronTriggers,
+    channels: {} as ChannelTriggers,
   };
 }
 

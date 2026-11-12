@@ -1288,3 +1288,13 @@ export const RATING_LABELS = ['Poor', 'Fair', 'Good', 'Great', 'Excellent'] as c
 
 /** Ratings at or below this value raise a `low_rating` inbox alert (R04a). */
 export const LOW_RATING_MAX = 2;
+
+/** `GET /agents/:id/triggers/status` row (R08b): one channel trigger's public URL and mount error. */
+export interface ChannelTriggerStatus {
+  triggerId: string;
+  channel: 'telegram' | 'slack' | 'github' | 'teams' | 'discord' | 'http';
+  /** Path (origin-relative) to paste into the platform's webhook settings. */
+  url: string;
+  /** Mount failure (`Channel <kind> needs <key>`, duplicate kind), `null` when served. */
+  error: string | null;
+}

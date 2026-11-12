@@ -37,6 +37,7 @@ import type {
   InboxItem,
   McpProbeRequest,
   McpProbeResponse,
+  ChannelTriggerStatus,
   PassSettings,
   PassSettingsPatch,
   PassSpendSummary,
@@ -203,6 +204,11 @@ class RuntimeClient implements AgentApi {
   /** The agent's readiness rows on their own (`GET /agents/:id/requirements`) - the SuccessCard lists the still-missing ones after enabling. */
   async getAgentRequirements(agentId: string): Promise<Requirement[]> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/requirements`, { method: 'GET' });
+  }
+
+  /** The agent's channel-trigger mount rows (`GET /agents/:id/triggers/status`, R08b) - URL + mount error per channel trigger. */
+  async channelTriggerStatus(agentId: string): Promise<ChannelTriggerStatus[]> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/triggers/status`, { method: 'GET' });
   }
 
   /** Writes `.lousho/agents/<id>.yaml` from a spec v2 working copy (`PUT /agents/:id` with a `{ spec }` body). */
