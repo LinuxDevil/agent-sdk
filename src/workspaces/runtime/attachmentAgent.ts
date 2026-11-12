@@ -106,6 +106,8 @@ export interface AttachmentAgent {
   agent: SimpleAgent;
   /** The labels its `invoke_agent` span carries; engines put the same labels on step events. */
   labels: PageStepLabels;
+  /** The agent's limits; pass them to `agent.session({ limits })` so they count across a session's turns. */
+  limits: RunLimits;
 }
 
 /** Builds the agent for one attachment of a page: assembled instructions, only the policy's tools (each bound by the host to its secrets, network and sandbox), the policy's permissions, the smallest limits, and the step's labels as span attributes. The only place the page runtime builds an agent. */
@@ -114,6 +116,7 @@ export function attachmentAgent(setup: PageEngineSetup, alias: string, options: 
   const { resolved, policy } = attachment;
   const run = agentRunOptions(resolved, setup.harness);
   const instructions = instructionsFor(setup, resolved, options.engineFraming);
+  const limits = tightened(run.limits, options.limits);
   const labels = labelsFor({ page: setup.page.id, harnessHash: setup.harness.hash, executionType: setup.page.execution.type, attachment: alias, ...options.step });
   const agent = createAgent({
     name: resolved.agentOwned.name,
@@ -121,9 +124,9 @@ export function attachmentAgent(setup: PageEngineSetup, alias: string, options: 
     ...modelSource(setup, run.model),
     tools: boundTools(setup, alias, attachment),
     permissions: policy.permissions,
-    limits: tightened(run.limits, options.limits),
+    limits,
     ...optionalConfig(setup, run, options),
     spanAttributes: spanAttributesFor(setup, labels, resolved, instructions.harnessPartHash),
   });
-  return { agent, labels };
+  return { agent, labels, limits };
 }
