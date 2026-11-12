@@ -34,6 +34,7 @@ import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
 import type { PassRunner } from '../passes/passRunner';
 import { attachVersionSummaries } from '../passes/versionSummary';
+import { attachDraftReviews } from '../passes/draftReview';
 
 /** Everything a per-agent route needs for one workspace. */
 export interface WorkspaceContext {
@@ -162,6 +163,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     ...(services.observe ? { observe: true as const } : {}),
   });
   const events = new StudioEventBus();
+  const drafts = new DraftStore(repo);
   // The version-summary pass (L04): every written version enqueues its
   // `version_summary` job on the app's one PassRunner; the returned
   // unsubscribe has no caller until W02a's context dispose().
@@ -173,12 +175,23 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     settings: services.settingsStore,
     workspaceId: ref.id,
   });
+  // The draft auto-review pass (L11a): every created/restated pending
+  // draft enqueues its `draft_review` job; same dispose() caveat as above.
+  attachDraftReviews({
+    drafts,
+    repo,
+    passRunner: services.passRunner,
+    events,
+    secretsStore: services.secretsStore,
+    settings: services.settingsStore,
+    workspaceId: ref.id,
+  });
   return {
     ref,
     repo,
     agentStore,
     versions,
-    drafts: new DraftStore(repo),
+    drafts,
     idleVersioner: createIdleVersioner(versions),
     suggestions,
     host,
