@@ -3686,6 +3686,10 @@ permissions:
 ```ts
 import { modelAutoApprover, specV2ToAgent } from 'lousho';
 
+declare const spec: import('lousho').AgentSpecV2;
+declare const baseDir: string;
+declare const cheapProvider: import('lousho').LLMProvider;
+
 const agent = await specV2ToAgent(spec, {
   baseDir,
   autoApprover: modelAutoApprover({ provider: cheapProvider }),
