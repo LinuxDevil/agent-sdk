@@ -16,7 +16,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Investigate\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n\n### From page\n\nInvestigate the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: report (required).\n\n### Resources\n\n- resources/conventions.md",
+      "text": "## Task environment: Investigate\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n### From page\n\nInvestigate the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: report (required).\n\n### Resources\n\n- resources/conventions.md",
       "provenance": [
         "workspace:audiences/engineers",
         "pages/investigate/harness/harness.json"
@@ -52,7 +52,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Fix\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n\n### From page\n\nFix the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: report (required).\n\n### Resources\n\n- resources/conventions.md",
+      "text": "## Task environment: Fix\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n### From page\n\nFix the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: report (required).\n\n### Resources\n\n- resources/conventions.md",
       "provenance": [
         "workspace:audiences/engineers",
         "pages/fix/harness/harness.json"
@@ -88,7 +88,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Review\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n\n### From page\n\nReview the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: review (required).\n\n### Resources\n\n- resources/conventions.md",
+      "text": "## Task environment: Review\n\n### From workspace:audiences/engineers\n\nAssume the reader knows the codebase; skip basics.\n\n### From page\n\nReview the change described in the input and report what you found.\n\n### Audience\n\nEngineers who maintain the codebase.\n\n### Output contract\n\nThe result has these fields: review (required).\n\n### Resources\n\n- resources/conventions.md",
       "provenance": [
         "workspace:audiences/engineers",
         "pages/review/harness/harness.json"

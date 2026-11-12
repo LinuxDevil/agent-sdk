@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { readBaseHarness, type HarnessLayer } from '../contracts/baseHarness';
 import { composeHarness, type EffectiveHarness } from '../contracts/compose';
 import { harnessSchema, type Harness } from '../contracts/harness';
-import { pageSchema } from '../contracts/page';
+import { pageSchema, type PageManifest } from '../contracts/page';
 import { inlineSchemas, joinPath, normalizeDir, subtree } from '../contracts/validateModel';
 import { workspaceManifestSchema } from '../contracts/workspace';
 import type { LoadedWorkspace } from './loadWorkspace';
@@ -35,12 +35,12 @@ function manifestOf(workspace: LoadedWorkspace): ReturnType<typeof workspaceMani
   return workspaceManifestSchema.parse(jsonOf(workspace.tree['workspace.json'], 'workspace.json'));
 }
 
-function pageHarnessPath(workspace: LoadedWorkspace, pageId: string): string {
+function pageHarnessInfo(workspace: LoadedWorkspace, pageId: string): { page: PageManifest; harnessPath: string } {
   const dir = `pages/${pageId}`;
   const pagePath = `${dir}/page.json`;
   if (!(pagePath in workspace.tree)) throw invalid(`the workspace has no page '${pageId}'`);
   const page = pageSchema.parse(jsonOf(workspace.tree[pagePath], pagePath));
-  return joinPath(joinPath(dir, page.harness.overrides ?? 'harness'), 'harness.json');
+  return { page, harnessPath: joinPath(joinPath(dir, page.harness.overrides ?? 'harness'), 'harness.json') };
 }
 
 /** The real `harness.json` paths of a page's workspace-base and page layers, for assemble's provenance labels. */
@@ -54,7 +54,7 @@ export interface HarnessFiles {
 /** Finds the `harness.json` files a page's layers come from, honouring `workspace.json` `harness` and the page's `harness.overrides`. */
 export function harnessFilesFor(workspace: LoadedWorkspace, pageId: string): HarnessFiles {
   const base = readBaseHarness(workspace.tree).layer ? joinPath(normalizeDir(manifestOf(workspace).harness ?? 'harness'), 'harness.json') : undefined;
-  return { ...(base !== undefined && { base }), page: pageHarnessPath(workspace, pageId) };
+  return { ...(base !== undefined && { base }), page: pageHarnessInfo(workspace, pageId).harnessPath };
 }
 
 function baseLayer(workspace: LoadedWorkspace): HarnessLayer | undefined {
@@ -67,9 +67,7 @@ function baseLayer(workspace: LoadedWorkspace): HarnessLayer | undefined {
 
 function pageLayer(workspace: LoadedWorkspace, pageId: string): HarnessLayer {
   const dir = `pages/${pageId}`;
-  const pagePath = `${dir}/page.json`;
-  const harnessPath = pageHarnessPath(workspace, pageId);
-  const page = pageSchema.parse(jsonOf(workspace.tree[pagePath], pagePath));
+  const { page, harnessPath } = pageHarnessInfo(workspace, pageId);
   const document = harnessPath in workspace.tree ? harnessSchema.parse(jsonOf(workspace.tree[harnessPath], harnessPath)) : EMPTY_HARNESS;
   return layerOf('page', subtree(workspace.tree, dir), { ...document, extends: page.harness.extends }, harnessPath);
 }

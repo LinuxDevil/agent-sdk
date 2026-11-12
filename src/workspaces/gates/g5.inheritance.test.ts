@@ -53,14 +53,15 @@ function pageInfos(workspace: LoadedWorkspace): MainPageInfo[] {
   });
 }
 
-function assembleMain(workspace: LoadedWorkspace, withHarness = true): ReturnType<typeof assembleMainInstructions> {
-  const harnessPath = 'main-agent/harness/main-harness.json';
+function assembleMain(workspace: LoadedWorkspace): ReturnType<typeof assembleMainInstructions> {
+  const dir = jsonAt<{ mainAgent: { harness?: string } | null }>(workspace, 'workspace.json').mainAgent?.harness?.replace(/^\.\//, '') ?? 'main-agent/harness';
+  const harnessPath = `${dir}/main-harness.json`;
   const harness = harnessPath in workspace.tree ? mainHarnessSchema.parse(jsonAt(workspace, harnessPath)) : undefined;
-  const texts = Object.fromEntries((harness?.instructions ?? []).map((file) => [`main-agent/harness/${file}`, workspace.tree[`main-agent/harness/${file}`] as string]));
+  const texts = Object.fromEntries((harness?.instructions ?? []).map((file) => [`${dir}/${file}`, workspace.tree[`${dir}/${file}`] as string]));
   return assembleMainInstructions({
     mainAgent: { instructions: workspace.tree['main-agent/instructions.md'] as string },
     shared: resolveSharedContext(workspace, { audience: 'main-agent' }),
-    ...(harness !== undefined && withHarness && { mainHarness: { harness, texts } }),
+    ...(harness !== undefined && { mainHarness: { harness, dir, texts } }),
     pages: pageInfos(workspace),
   });
 }
@@ -97,6 +98,9 @@ describe('G5 shared context gate', () => {
     const facebook = resolvePageHarness(overridden, 'facebook-videos', profileStoreFor(overridden));
     expect(facebook.constraints?.filter((item) => item.id === 'brand-voice')).toEqual([{ id: 'brand-voice', text: 'Facebook speaks plainly.' }]);
     expect(facebook.provenance['constraints["brand-voice"]']).toEqual(['page']);
+    const facebookPrompt = section(await assemblePage(overridden, 'facebook-videos'), 'harness');
+    expect(facebookPrompt).toContain('Facebook speaks plainly.');
+    expect(facebookPrompt).not.toContain('Follow the brand voice.');
     const instagram = resolvePageHarness(overridden, 'instagram-videos', profileStoreFor(overridden));
     expect(instagram.constraints?.find((item) => item.id === 'brand-voice')?.text).toBe('Follow the brand voice.');
   });
@@ -196,15 +200,24 @@ describe('G5 shared context gate', () => {
 
   it('a page-local skill does not leak to other pages', async () => {
     const skill = '---\nname: cite-sources\ndescription: Cite every claim\n---\nCite each claim.\n';
-    const workspace = await load({ ...fixtureFiles('marketing'), 'pages/content-research/agents/research-lead/skills/cite-sources/SKILL.md': skill });
-    const owners: string[] = [];
-    for (const pageId of pageIds(workspace)) {
+    const lead = jsonAt<Record<string, unknown>>(await load(fixtureFiles('marketing')), 'pages/content-research/agents/research-lead/agent.json');
+    const files = {
+      ...fixtureFiles('marketing'),
+      'pages/content-research/agents/research-lead/skills/cite-sources/SKILL.md': skill,
+      'pages/instagram-videos/agents/research-lead/agent.json': asJson(lead),
+      'pages/instagram-videos/agents/research-lead/instructions.md': 'Lead the research.\n',
+    };
+    const workspace = await load(edit(files, 'pages/instagram-videos/agents.json', (json) => void (json.agents as unknown[]).push({ as: 'lead', ref: 'local:research-lead' })));
+    const skillsOf = async (pageId: string, alias: string): Promise<string[]> => {
       const attachments = await resolveAttachments(workspace, pageId, { mode: 'default' });
-      if (attachments.some((item) => item.agentOwned.skills.includes('cite-sources'))) owners.push(pageId);
-      const shared = resolveSharedContext(workspace, { audience: { page: pageId } });
-      expect(shared.skills.map((item) => item.skill.name), pageId).not.toContain('cite-sources');
+      return (attachments.find((item) => item.alias === alias) as (typeof attachments)[number]).agentOwned.skills;
+    };
+    expect(await skillsOf('content-research', 'lead')).toContain('cite-sources');
+    expect(await skillsOf('instagram-videos', 'lead')).not.toContain('cite-sources');
+    expect(await skillsOf('instagram-videos', 'script')).not.toContain('cite-sources');
+    for (const pageId of pageIds(workspace)) {
+      expect(resolveSharedContext(workspace, { audience: { page: pageId } }).skills.map((item) => item.skill.name), pageId).not.toContain('cite-sources');
     }
-    expect(owners).toEqual(['content-research']);
     expect(resolveSharedContext(workspace, { audience: 'main-agent' }).skills.map((item) => item.skill.name)).not.toContain('cite-sources');
   });
 });

@@ -17,7 +17,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
       "provenance": [
         "harness/harness.json",
         "workspace:platforms/instagram",
@@ -57,7 +57,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
       "provenance": [
         "harness/harness.json",
         "workspace:platforms/instagram",
@@ -97,7 +97,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "text": "## Task environment: Instagram\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n\n### Platform\n\ninstagram\n- aspectRatio: 4:5\n- captionMaxChars: 2200\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 2200 characters.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
       "provenance": [
         "harness/harness.json",
         "workspace:platforms/instagram",
@@ -137,7 +137,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
       "provenance": [
         "harness/harness.json",
         "workspace:platforms/facebook",
@@ -177,7 +177,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
       "provenance": [
         "harness/harness.json",
         "workspace:platforms/facebook",
@@ -217,7 +217,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
+      "text": "## Task environment: Facebook\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/facebook\n\nMake the video understandable without sound.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake a Facebook video that teaches the topic in plain words.\n\n### Audience\n\nPeople who follow the brand and want a quick lesson.\n- tone: casual\n\n### Platform\n\nfacebook\n- aspectRatio: 16:9\n- captionMaxChars: 5000\n\n### Constraints\n\n- Follow the brand voice.\n- Keep captions under 5000 characters.\n- Teach one idea per video.\n\n### Output contract\n\nThe result has these fields: script (required).\nArtifacts:\n- video (video/mp4, required)\n\n### Resources\n\n- resources/channel-notes.md",
       "provenance": [
         "harness/harness.json",
         "workspace:platforms/facebook",
@@ -257,7 +257,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Content research\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nAnswer the question with findings a video can use, and list the sources.\n\n### Audience\n\nVideo makers who need facts they can cite.\n\n### Constraints\n\n- Follow the brand voice.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: findings (required), sources.\n\n### Resources\n\n- resources/research-notes.md",
+      "text": "## Task environment: Content research\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nAnswer the question with findings a video can use, and list the sources.\n\n### Audience\n\nVideo makers who need facts they can cite.\n\n### Constraints\n\n- Follow the brand voice.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: findings (required), sources.\n\n### Resources\n\n- resources/research-notes.md",
       "provenance": [
         "harness/harness.json",
         "workspace:content-types/educational",
@@ -296,7 +296,7 @@
     },
     {
       "id": "harness",
-      "text": "## Task environment: Content research\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nAnswer the question with findings a video can use, and list the sources.\n\n### Audience\n\nVideo makers who need facts they can cite.\n\n### Constraints\n\n- Follow the brand voice.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: findings (required), sources.\n\n### Resources\n\n- resources/research-notes.md",
+      "text": "## Task environment: Content research\n\n### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nAnswer the question with findings a video can use, and list the sources.\n\n### Audience\n\nVideo makers who need facts they can cite.\n\n### Constraints\n\n- Follow the brand voice.\n- Teach one idea per video.\n- Avoid jargon.\n\n### Output contract\n\nThe result has these fields: findings (required), sources.\n\n### Resources\n\n- resources/research-notes.md",
       "provenance": [
         "harness/harness.json",
         "workspace:content-types/educational",

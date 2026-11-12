@@ -7,6 +7,7 @@ import type { EffectiveHarness } from '../contracts/compose';
 import type { MainHarness } from '../contracts/mainHarness';
 import type { AgentOwned } from './agentDirView';
 import type { ResolvedAttachment } from './resolveAgents';
+import type { HarnessFiles } from './resolveHarness';
 import type { SharedContext, SharedResource } from './sharedContext';
 
 /** One section of an assembled prompt. */
@@ -71,7 +72,7 @@ export interface AssembleInstructionsInput {
   /** The page the agent runs on. */
   page: { id: string; name: string };
   /** The real harness.json paths for the provenance labels; defaults to `harness/harness.json` and `pages/<id>/harness/harness.json`. */
-  harnessFiles?: { base?: string; page?: string };
+  harnessFiles?: Partial<HarnessFiles>;
   /** The engine's own prompt text, section 5; empty for `single`. */
   engineFraming?: string;
 }
@@ -90,6 +91,8 @@ export interface MainPageInfo {
 export interface MainHarnessInput {
   /** The parsed `main-harness.json`. */
   harness: MainHarness;
+  /** The main-agent harness folder, from `workspace.json` `mainAgent.harness`; defaults to `main-agent/harness`. */
+  dir?: string;
   /** File text keyed by the full tree path (`main-agent/harness/<file>`), or by the name in `harness.instructions`; a listed file with no text is an error. */
   texts: Readonly<Record<string, string>>;
 }
@@ -187,7 +190,8 @@ function schemaSummary(schema: unknown): string {
 function outputsBlock(outputs: EffectiveHarness['outputs']): string {
   if (!outputs) return '';
   const lines = [...(outputs.schema === undefined ? [] : [schemaSummary(outputs.schema)])];
-  for (const artifact of outputs.artifacts ?? []) lines.push(`- ${artifact.name} (${artifact.mediaType}${artifact.required === true ? ', required' : ''})`);
+  const artifacts = (outputs.artifacts ?? []).map((artifact) => `- ${artifact.name} (${artifact.mediaType}${artifact.required === true ? ', required' : ''})`);
+  if (artifacts.length > 0) lines.push('Artifacts:', ...artifacts);
   return lines.length === 0 ? '' : join(['### Output contract', lines.join('\n')]);
 }
 
@@ -196,7 +200,7 @@ function resourcesBlock(context: EffectiveHarness['context']): string {
   return resources.length === 0 ? '' : join(['### Resources', resources.map((item) => `- ${item}`).join('\n')]);
 }
 
-function harnessPart(harness: EffectiveHarness, page: { id: string; name: string }, files: AssembleInstructionsInput['harnessFiles']): Part {
+function harnessPart(harness: EffectiveHarness, page: { id: string; name: string }, files: Partial<HarnessFiles> | undefined): Part {
   const text = join([
     `## Task environment: ${page.name}`,
     harness.instructions.trim(),
@@ -213,7 +217,7 @@ function instructionsFile(dir: string, source: InstructionsSource | undefined): 
   return source === undefined || source === 'instructions.md' ? `${dir}/instructions.md` : `${dir}/${source}#instructions`;
 }
 
-function layerFile(label: string, pageId: string, files: AssembleInstructionsInput['harnessFiles']): string {
+function layerFile(label: string, pageId: string, files: Partial<HarnessFiles> | undefined): string {
   if (label === 'workspace base') return files?.base ?? 'harness/harness.json';
   return label === 'page' ? (files?.page ?? `pages/${pageId}/harness/harness.json`) : label;
 }
@@ -269,18 +273,20 @@ function failureBlock(onPageFailure: MainHarness['onPageFailure']): string {
   return onPageFailure === undefined ? '' : join(['### When a page fails', `Policy: ${onPageFailure}.`]);
 }
 
-const MAIN_HARNESS_DIR = 'main-agent/harness';
+const DEFAULT_MAIN_HARNESS_DIR = 'main-agent/harness';
+
+const mainDir = (input: MainHarnessInput): string => input.dir?.replace(/\/+$/, '') ?? DEFAULT_MAIN_HARNESS_DIR;
 
 function proseText(input: MainHarnessInput, file: string): string {
-  const text = input.texts[`${MAIN_HARNESS_DIR}/${file}`] ?? input.texts[file];
-  if (text === undefined) throw new ValidationError(`main harness lists instruction '${file}', but no text was given for ${MAIN_HARNESS_DIR}/${file}`, undefined, 'LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING');
+  const text = input.texts[`${mainDir(input)}/${file}`] ?? input.texts[file];
+  if (text === undefined) throw new ValidationError(`main harness lists instruction '${file}', but no text was given for ${mainDir(input)}/${file}`, undefined, 'LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING');
   return text.trim();
 }
 
 function mainProse(input: MainHarnessInput | undefined): { text: string; files: string[] } {
   if (input === undefined) return { text: '', files: [] };
   const files = input.harness.instructions ?? [];
-  return { text: join(files.map((file) => proseText(input, file))), files: files.map((file) => `${MAIN_HARNESS_DIR}/${file}`) };
+  return { text: join(files.map((file) => proseText(input, file))), files: files.map((file) => `${mainDir(input)}/${file}`) };
 }
 
 function routingPart(input: AssembleMainInput): Part {
@@ -294,7 +300,8 @@ function routingPart(input: AssembleMainInput): Part {
     presentationBlock(harness?.presentation),
     failureBlock(harness?.onPageFailure),
   ]);
-  const provenance = harness === undefined ? ['default routing prompt'] : ['main-agent/harness/main-harness.json', ...prose.files];
+  const dir = input.mainHarness === undefined ? DEFAULT_MAIN_HARNESS_DIR : mainDir(input.mainHarness);
+  const provenance = harness === undefined ? ['default routing prompt'] : [`${dir}/main-harness.json`, ...prose.files];
   return { id: 'routing', text, provenance };
 }
 

@@ -228,10 +228,7 @@ export interface AssembleInstructionsInput {
     attachment: Attachment;
     engineFraming?: string;
     harness: EffectiveHarness;
-    harnessFiles?: {
-        base?: string;
-        page?: string;
-    };
+    harnessFiles?: Partial<HarnessFiles>;
     instructionsSource?: InstructionsSource;
     page: {
         id: string;
@@ -1066,6 +1063,7 @@ type MainHarnessField = 'routes' | 'clarify' | 'presentation' | 'limits' | 'onPa
 
 // @public
 export interface MainHarnessInput {
+    dir?: string;
     harness: MainHarness;
     texts: Readonly<Record<string, string>>;
 }
