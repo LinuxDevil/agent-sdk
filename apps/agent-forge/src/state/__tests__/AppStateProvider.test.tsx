@@ -24,7 +24,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../useAgentDocument', () => ({ useAgentDocument: () => mocks.doc }));
 vi.mock('../useAgentStream', () => ({
   useAgentStatuses: () => ({}),
-  useAgentStream: () => ({}),
+  // The real stream's chat/runStatus/feed setters - usePins reads
+  // `chat.messages` while rendering, so the mock must carry the shape.
+  useAgentStream: () => ({
+    chat: { sessionId: undefined, messages: [] },
+    runStatus: undefined,
+    setLogs: vi.fn(),
+    setSpans: vi.fn(),
+    setNodeStates: vi.fn(),
+  }),
 }));
 vi.mock('../useAgentControls', () => ({
   useRunControls: () => ({}),
