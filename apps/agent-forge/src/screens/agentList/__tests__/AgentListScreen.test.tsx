@@ -126,18 +126,40 @@ describe('AgentListScreen', () => {
     expect(host.querySelectorAll('article.agent-card')).toHaveLength(3);
   });
 
-  it('shows the empty state with three start options when there are no agents', async () => {
+  it('shows the empty state with four start options when there are no agents', async () => {
     api.listAgents.mockResolvedValue([]);
     const host = await mountAt();
     expect(host.textContent).toContain('No agents yet');
     expect(host.textContent).toContain('Pick a way to start.');
     const options = host.querySelectorAll('button.start-option');
-    expect(options).toHaveLength(3);
+    expect(options).toHaveLength(4);
     expect([...options].map((b) => b.querySelector('.start-option-title')?.textContent)).toEqual([
       'Blank agent',
       'Describe with AI',
       'From template',
+      'Import from file…',
     ]);
+  });
+
+  it('opens the import sheet from the empty state and from the New agent menu', async () => {
+    api.listAgents.mockResolvedValue([]);
+    const host = await mountAt();
+
+    const importOption = [...host.querySelectorAll<HTMLButtonElement>('button.start-option')].find(
+      (b) => b.querySelector('.start-option-title')?.textContent === 'Import from file…'
+    )!;
+    await act(async () => importOption.click());
+    await flush();
+    expect(document.querySelector('.sheet-title')?.textContent).toBe('Import an agent');
+    await act(async () => document.querySelector<HTMLButtonElement>('.sheet-close')!.click());
+    await flush();
+    expect(document.querySelector('.sheet')).toBeNull();
+
+    await act(async () => buttonNamed(host, 'New agent')!.click());
+    await flush();
+    await act(async () => menuItemNamed('Import from file…')!.click());
+    await flush();
+    expect(document.querySelector('.sheet-title')?.textContent).toBe('Import an agent');
   });
 
   it('shows the no-match state under a filter and Clear filters restores the URL and the cards', async () => {

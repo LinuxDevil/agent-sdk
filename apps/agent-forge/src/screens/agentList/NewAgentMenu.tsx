@@ -2,7 +2,8 @@
  * The "New agent" affordances of the agents list (A04): {@link NewAgentMenu}
  * is the header's primary menu button (Blank agent · Describe with AI · From
  * template · separator · Import from file…), and {@link StartOptions} is the
- * empty state's three large start buttons (import is menu-only). Both read
+ * empty state's four large start buttons - import included since L08b wired
+ * it to the import sheet. Both read
  * the same action table from `useNewAgentActions`; anything not runnable yet
  * stays visible with its reason as the title and, on the start buttons, as
  * screen-reader text after the hint.
@@ -95,18 +96,17 @@ function StartOption({ action }: { action: NewAgentAction }) {
 }
 
 /**
- * The empty state's "Ways to start" group: blank, describe and template as large buttons.
- * Takes the shared {@link NewAgentActions} state (only `actions` is read) so a create started
- * here disables the header menu's trigger too.
+ * The empty state's "Ways to start" group: all four start actions as large
+ * buttons, import included (L08b). Takes the shared {@link NewAgentActions}
+ * state (only `actions` is read) so a create started here disables the
+ * header menu's trigger too.
  */
 export function StartOptions({ actions }: NewAgentActions): JSX.Element {
   return (
     <div className="start-options" role="group" aria-label="Ways to start">
-      {actions
-        .filter((action) => action.kind !== 'import')
-        .map((action) => (
-          <StartOption key={action.kind} action={action} />
-        ))}
+      {actions.map((action) => (
+        <StartOption key={action.kind} action={action} />
+      ))}
     </div>
   );
 }

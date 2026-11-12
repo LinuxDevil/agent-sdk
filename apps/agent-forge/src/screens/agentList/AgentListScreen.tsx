@@ -6,7 +6,7 @@
  * overview tab; its switch toggles `meta.enabled` optimistically through
  * `useAgentList`.
  */
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Bot, SearchX } from 'lucide-react';
 import type { AgentListItem } from '../../../shared/wireTypes';
 import { labelFacetOptions } from '../../../shared/labels';
@@ -18,6 +18,7 @@ import { Skeleton } from '../../ui/Skeleton';
 import { facet } from '../listFilters';
 import { LoadErrorCard, LoadingGrid } from '../listStates';
 import { agentTabPath } from '../agents/agentTabs';
+import { ImportSheet } from '../agents/import/ImportSheet';
 import { AgentCard } from './AgentCard';
 import { filterAgents, useAgentListFilter, type AgentListFilter } from './agentListUrl';
 import { NewAgentMenu, StartOptions } from './NewAgentMenu';
@@ -26,6 +27,12 @@ import { useAgentList, type AgentListState } from './useAgentList';
 import './agentList.css';
 
 const plural = (n: number): string => (n === 1 ? 'agent' : 'agents');
+
+/** The visually-hidden count line: total when unfiltered, "X of Y" under a filter, nothing while loading. */
+function countTextFor(list: AgentListState, items: AgentListItem[], visible: AgentListItem[], filtered: boolean): string | null {
+  if (list.items === undefined) return null;
+  return filtered ? `${visible.length} of ${items.length} ${plural(items.length)}` : `${items.length} ${plural(items.length)}`;
+}
 
 /** One shimmer card standing in for an agent while the list loads. */
 function SkeletonCard() {
@@ -153,7 +160,8 @@ export function AgentListScreen() {
   // One instance shared by the header menu and the empty state's start buttons:
   // a second useNewAgentActions would track `creating` separately and let a
   // second blank create slip through while the first is in flight.
-  const newAgent = useNewAgentActions();
+  const [importOpen, setImportOpen] = useState(false);
+  const newAgent = useNewAgentActions(() => setImportOpen(true));
 
   const items = list.items ?? [];
   const visible = useMemo(() => filterAgents(items, filter), [items, filter]);
@@ -161,12 +169,7 @@ export function AgentListScreen() {
   const patch = useCallback((next: Partial<AgentListFilter>) => setFilter({ ...filter, ...next }), [filter, setFilter]);
   const facets = useAgentListFacets(items, filter, patch);
 
-  const countText =
-    list.items === undefined
-      ? null
-      : filtered
-        ? `${visible.length} of ${items.length} ${plural(items.length)}`
-        : `${items.length} ${plural(items.length)}`;
+  const countText = countTextFor(list, items, visible, filtered);
 
   const onOpen = useCallback((id: string) => navigate(agentTabPath(id, 'overview')), []);
   const onToggle = useCallback((id: string, enabled: boolean) => void list.setEnabled(id, enabled), [list]);
@@ -199,6 +202,7 @@ export function AgentListScreen() {
           onToggle={onToggle}
         />
       </div>
+      <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
     </>
   );
 }
