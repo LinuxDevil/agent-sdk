@@ -41,6 +41,33 @@ function defaultStorage(): Storage | undefined {
 /** The `CanvasLayout` a draft resolves to when neither the server nor the draft has one yet. */
 const EMPTY_LAYOUT: CanvasLayout = { schemaVersion: 1, nodes: {}, notes: [] };
 
+/** Nothing is published on a record the server never answered for. */
+const UNPUBLISHED: AgentRecord['publishState'] = { version: null, matchesWorkingCopy: false, publishedAt: null };
+
+/** The record `load` answers: the server copy with any unsent draft fields winning. */
+function mergedRecord(id: string, draft: Draft, record: AgentRecord | undefined): AgentRecord | undefined {
+  if (record === undefined && draft.spec === undefined) return undefined;
+  return {
+    id,
+    spec: draft.spec ?? (record as AgentRecord).spec,
+    meta: record?.meta ?? {
+      schemaVersion: 1,
+      enabled: false,
+      disabledAt: null,
+      disabledReason: null,
+      failureStreak: 0,
+      labels: [],
+      publishedVersion: null,
+      createdAt: '',
+      updatedAt: '',
+    },
+    layout: draft.layout ?? record?.layout ?? EMPTY_LAYOUT,
+    updatedAt: record?.updatedAt ?? '',
+    latestVersion: record?.latestVersion ?? null,
+    publishState: record?.publishState ?? UNPUBLISHED,
+  };
+}
+
 /**
  * The studio's `AgentStore`, backed by the server's
  * `GET/PUT/DELETE /agents` and `PUT /agents/:id/layout`
@@ -142,25 +169,7 @@ export class HttpAgentStore implements AgentStore {
     } catch {
       // Still offline - the draft stays cached and wins over the server copy.
     }
-    if (record === undefined && draft.spec === undefined) return undefined;
-    return {
-      id,
-      spec: draft.spec ?? (record as AgentRecord).spec,
-      meta: record?.meta ?? {
-        schemaVersion: 1,
-        enabled: false,
-        disabledAt: null,
-        disabledReason: null,
-        failureStreak: 0,
-        labels: [],
-        publishedVersion: null,
-        createdAt: '',
-        updatedAt: '',
-      },
-      layout: draft.layout ?? record?.layout ?? EMPTY_LAYOUT,
-      updatedAt: record?.updatedAt ?? '',
-      latestVersion: record?.latestVersion ?? null,
-    };
+    return mergedRecord(id, draft, record);
   }
 
   async save(id: string, spec: AgentSpecV2): Promise<void> {
