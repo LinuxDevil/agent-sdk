@@ -222,7 +222,7 @@ export async function gateToolCall(toolCall: ToolCall, ctx: ToolCallContext, hoo
       : hookedArgs;
     // Follow-up: an `allow` / `ask` rule replaces the tool's own ask, not its deny.
     const own = await checkNeedsApproval(toolCall, ctx, args);
-    // An enforced ask (an install receipt item or a workspace policy) is not replaced by an `allow` rule.
+    // An enforced ask (an install receipt's exec / needsApproval item) is not replaced by an `allow` rule.
     const enforcedReason = enforcedAsk(own, ctx, toolCall.function.name);
     const enforced = enforcedReason !== undefined;
     const { denied, ...gate } = own.rejection || (enforced && !ruled?.requiresApproval) ? own : (ruled ?? own);
