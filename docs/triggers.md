@@ -125,3 +125,29 @@ Around daylight-saving changes, a fixed-hour job whose time does not exist
 (spring forward, e.g. `30 2 * * *`) runs once at the first instant after the
 gap (03:00) instead of being skipped for the day, and a time that happens twice (fall back) fires once;
 an every-hour schedule keeps firing hourly.
+
+## Abort listeners
+
+`spec.abortListeners` cancels queued or running runs when a watched trigger's
+event matches. Each entry names a `webhook` or `channel` trigger, a `when`
+expression over the incoming event, a `match` expression pairing the trigger
+event with a run's own event, and a `scope` of `queued`, `running` or `both`:
+
+```yaml
+triggers:
+  - id: deploy-hook
+    type: webhook
+    path: /deploy
+    promptTemplate: Deploy {{body.ref}}.
+abortListeners:
+  - id: cancel-deploy
+    triggerId: deploy-hook
+    when: event.action == 'rollback'
+    match: run.event.pr == event.pr
+    scope: both
+```
+
+`when` and `match` use the same safe expression grammar as flow conditions
+(see [Flows](./flows.md#flow-expressions)); variable references are checked
+when the spec parses and unknown names resolve to `undefined` at runtime.
+At most 20 listeners are allowed per spec.

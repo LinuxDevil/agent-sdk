@@ -14,6 +14,18 @@ import { ZodError } from 'zod';
 import { ZodTypeAny } from 'zod';
 
 // @public
+type AbortListenerScope = 'queued' | 'running' | 'both';
+
+// @public
+interface AbortListenerSpec {
+    id: string;
+    match: string;
+    scope: AbortListenerScope;
+    triggerId: string;
+    when: string;
+}
+
+// @public
 export const AGENT_EVENT_SCHEMA_VERSION: 1;
 
 // @public
@@ -396,7 +408,7 @@ export const agentSpecTriggerSchema: SpecSchema<AgentSpecTrigger>;
 
 // @public
 export interface AgentSpecV2 {
-    abortListeners?: never;
+    abortListeners?: AbortListenerSpec[];
     approvalTtlMs?: number;
     askQuestion?: boolean;
     codeMode?: boolean | CodeModeOptions;

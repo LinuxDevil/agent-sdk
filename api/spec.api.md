@@ -7,6 +7,24 @@
 import { z } from 'zod';
 
 // @public
+export const abortListenerListSchema: z.ZodType<AbortListenerSpec[]>;
+
+// @public
+export type AbortListenerScope = 'queued' | 'running' | 'both';
+
+// @public
+export interface AbortListenerSpec {
+    id: string;
+    match: string;
+    scope: AbortListenerScope;
+    triggerId: string;
+    when: string;
+}
+
+// @public
+export const abortListenerSpecSchema: z.ZodType<AbortListenerSpec>;
+
+// @public
 export interface AgentFlow {
     agents?: FlowAgentDefinition[];
     code: string;
@@ -71,7 +89,7 @@ interface AgentSpecTrigger {
 
 // @public
 export interface AgentSpecV2 {
-    abortListeners?: never;
+    abortListeners?: AbortListenerSpec[];
     approvalTtlMs?: number;
     askQuestion?: boolean;
     codeMode?: boolean | CodeModeOptions;

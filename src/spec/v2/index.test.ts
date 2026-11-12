@@ -36,6 +36,8 @@ describe('lousho/spec (S23)', () => {
     expect(Object.keys(spec).sort()).toEqual([
       'SPEC_FIELD_DESCRIPTIONS',
       'TOOL_REF_KINDS',
+      'abortListenerListSchema',
+      'abortListenerSpecSchema',
       'agentSpecSchema',
       'agentSpecV2JsonSchema',
       'agentSpecV2Schema',

@@ -59,13 +59,13 @@ describe('schemaProblems', () => {
   });
 
   it('reports "not supported yet" placeholder sections as warnings', () => {
-    const problems = schemaProblems(specOf({ abortListeners: [{}] }), PATHS);
+    const problems = schemaProblems(specOf({ evals: { suites: [] } }), PATHS);
     expect(problems).toEqual([
       {
         nodeId: 'agent',
         severity: 'warning',
-        message: 'This setting is not supported yet: abortListeners',
-        fieldPath: 'abortListeners',
+        message: 'This setting is not supported yet: evals',
+        fieldPath: 'evals',
       },
     ]);
   });
