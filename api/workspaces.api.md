@@ -1005,6 +1005,23 @@ export type InstructionsSource = 'instructions.md' | 'agent.json' | 'agent.yaml'
 export function isTerminalStatus(status: PageRunStatus): boolean;
 
 // @public
+export function labelAttributes(labels: PageStepLabels, extras?: LabelExtras): Record<string, string | number>;
+
+// @public
+export interface LabelExtras {
+    agentRef?: {
+        version: string;
+        sha256: string;
+    };
+    harnessPartHash?: string;
+    workspace?: string;
+    workspaceRevision?: string;
+}
+
+// @public
+export function labelsFor(step: StepLabelInput): PageStepLabels;
+
+// @public
 export interface LoadedWorkspace {
     manifest: WorkspaceManifestView;
     problems: WorkspaceProblem[];
@@ -2126,6 +2143,14 @@ export const STEP_KINDS: readonly StepKind[];
 
 // @public
 export type StepKind = 'single' | 'workflow-step' | 'delegate' | 'goal-iteration';
+
+// @public
+export interface StepLabelInput extends PageRunLabels {
+    attachment: string;
+    parentStepIndex?: number;
+    stepIndex: number;
+    stepKind: StepKind;
+}
 
 // @public
 interface StepUsage {

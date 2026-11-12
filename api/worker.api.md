@@ -56,6 +56,7 @@ interface AgentConfig {
     prompt?: string;
     // (undocumented)
     settings?: AgentSettings;
+    spanAttributes?: Readonly<Record<string, string | number>>;
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }
@@ -1045,6 +1046,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     redactContent?: boolean | ((text: string) => string);
     retry?: WithRetryOptions | false;
     skills?: readonly Skill[];
+    spanAttributes?: Readonly<Record<string, string | number>>;
     store?: AgentStore;
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
