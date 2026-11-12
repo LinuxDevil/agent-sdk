@@ -386,6 +386,25 @@ export interface BlobPutOptions {
 }
 
 // @public
+interface Check<T> {
+    // (undocumented)
+    evaluate(value: T): CheckOutcome;
+}
+
+// @public
+export function checkNameOf(check: string): string;
+
+// @public
+interface CheckOutcome {
+    message?: string;
+    // (undocumented)
+    passed: boolean;
+    score: number;
+    // (undocumented)
+    threshold?: number;
+}
+
+// @public
 interface Checkpoint {
     agentFingerprint?: AgentFingerprint;
     // (undocumented)
@@ -445,6 +464,9 @@ type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
 
 // @public
 type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
+
+// @public
+export function checkRegistry(checks: Readonly<Record<string, Check<unknown>>>): WorkspaceCheckRegistry;
 
 // @public
 export function composeHarness(layers: readonly HarnessLayer[]): EffectiveHarness;
@@ -641,6 +663,15 @@ export interface EffectiveToolset {
 export function effectiveToolset(policy: EffectivePolicy, attachment: Pick<Attachment, 'tools'> | undefined, agentTools: readonly string[], registry: HostToolRegistry): EffectiveToolset;
 
 // @public
+export function engineFor(type: string, registry?: EngineRegistry): PageEngineFactory;
+
+// @public
+export type EngineRegistry = Readonly<Partial<Record<WorkType, PageEngineFactory>>>;
+
+// @public
+export const ENGINES: EngineRegistry;
+
+// @public
 const ERROR_CODES: {
     readonly LOUSHO_GENERIC_ERROR: "Read the message above; it names what failed.";
     readonly LOUSHO_CONFIG_INVALID: "Fix the option named in the message.";
@@ -762,6 +793,7 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
     readonly LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: "Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.";
     readonly LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.";
+    readonly LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.";
 };
 
 // @public
@@ -835,6 +867,59 @@ export interface FolderSourceOptions {
 
 // @public
 export function formatArtifactUri(parts: ArtifactUriParts): string;
+
+// @public
+interface GenerateOptions {
+    // (undocumented)
+    frequencyPenalty?: number;
+    hostedTools?: readonly HostedTool[];
+    // (undocumented)
+    maxTokens?: number;
+    // (undocumented)
+    messages: Message[];
+    model?: string;
+    // (undocumented)
+    presencePenalty?: number;
+    promptCaching?: PromptCachingOption;
+    reasoning?: ReasoningOption;
+    responseFormat?: {
+        type: 'json';
+        schema?: Record<string, unknown>;
+    };
+    // (undocumented)
+    seed?: number;
+    signal?: AbortSignal;
+    // (undocumented)
+    stop?: string[];
+    // (undocumented)
+    temperature?: number;
+    // (undocumented)
+    toolChoice?: 'auto' | 'required' | 'none' | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    };
+    // (undocumented)
+    tools?: ToolDefinition[];
+    // (undocumented)
+    topP?: number;
+}
+
+// @public
+interface GenerateResult {
+    // (undocumented)
+    finishReason: 'stop' | 'length' | 'tool_calls' | 'content_filter' | 'error' | 'other';
+    hostedToolCalls?: HostedToolCall[];
+    // (undocumented)
+    rawResponse?: unknown;
+    reasoning?: ReasoningBlock[];
+    servedBy?: ServedBy;
+    // (undocumented)
+    text: string;
+    toolCalls?: ToolCall[];
+    usage?: ProviderUsage;
+}
 
 // @public
 export interface GlobalAgent extends AgentFiles {
@@ -963,6 +1048,20 @@ interface HostedTool {
 }
 
 // @public
+interface HostedToolCall {
+    args: unknown;
+    // (undocumented)
+    id: string;
+    isError?: boolean;
+    name: string;
+    result?: unknown;
+    sources?: Array<{
+        url: string;
+        title?: string;
+    }>;
+}
+
+// @public
 type HostedToolType = 'web_search' | 'code_interpreter' | 'file_search';
 
 // @public
@@ -1003,6 +1102,18 @@ export type InstructionsSource = 'instructions.md' | 'agent.json' | 'agent.yaml'
 
 // @public
 export function isTerminalStatus(status: PageRunStatus): boolean;
+
+// @public
+interface LLMProvider {
+    readonly defaultModel?: string;
+    generate(options: GenerateOptions): Promise<GenerateResult>;
+    getModels(): Promise<string[]>;
+    readonly name: string;
+    stream(options: GenerateOptions): Promise<StreamResult>;
+    supportsHostedTool?(type: HostedToolType | 'custom'): boolean;
+    supportsStreaming(model: string): boolean;
+    supportsTools(model: string): boolean;
+}
 
 // @public
 export interface LoadedWorkspace {
@@ -1284,9 +1395,29 @@ export interface PageArtifactEvent {
 }
 
 // @public
+export interface PageAttachment {
+    policy: AgentPolicyOptions;
+    resolved: ResolvedAttachment;
+}
+
+// @public
 export interface PageEngine {
     run(input: PageInput, ctx: PageRunContext): Promise<PageResult>;
     type: WorkType;
+}
+
+// @public
+export type PageEngineFactory = (setup: PageEngineSetup) => PageEngine;
+
+// @public
+export interface PageEngineSetup {
+    attachments: Readonly<Record<string, PageAttachment>>;
+    harness: EffectiveHarness;
+    host: PageRuntimeHost;
+    page: PageManifest;
+    prior?: PageResult;
+    shared: SharedContext;
+    workspace: LoadedWorkspace;
 }
 
 // @public
@@ -1457,6 +1588,28 @@ export type PageRunLabels = Pick<PageStepLabels, 'page' | 'harnessHash' | 'execu
 export type PageRunStatus = 'ok' | 'failed' | 'timed-out' | 'cancelled' | 'needs-approval';
 
 // @public
+export interface PageRuntimeContext {
+    artifacts: ArtifactSink;
+    emit?: (event: PageRunEvent) => void;
+    engines?: EngineRegistry;
+    host: PageRuntimeHost;
+    mode?: LoadWorkspaceOptions['mode'];
+    prior?: PageResult;
+    runId: string;
+    signal?: AbortSignal;
+}
+
+// @public
+export interface PageRuntimeHost {
+    bindTool(descriptor: ToolDescriptor, scope: PageToolScope): ToolDescriptor;
+    ceiling: PolicyCeiling;
+    globalAgents?: GlobalAgentRegistry;
+    globalProfiles?: ProfileStore;
+    provider?: (model: string | undefined) => LLMProvider;
+    tools: HostToolRegistry;
+}
+
+// @public
 export const pageSchema: z.ZodType<PageManifest>;
 
 // @public
@@ -1479,6 +1632,20 @@ export interface PageStepLabels {
     parentStepIndex?: number;
     stepIndex: number;
     stepKind: StepKind;
+}
+
+// @public
+export interface PageToolScope {
+    attachment: string;
+    name: string;
+    network: {
+        allowHosts: string[];
+    };
+    page: string;
+    sandbox: {
+        required: boolean;
+    };
+    secrets: SecretRef[];
 }
 
 // @public
@@ -1629,6 +1796,9 @@ export function profileStoreFor(workspace: LoadedWorkspace, global?: ProfileStor
 export function projectAgentRegistry(root: string): GlobalAgentRegistry;
 
 // @public
+type PromptCachingOption = 'auto' | false;
+
+// @public
 export type ProseTarget = HarnessTarget | {
     kind: 'main';
 };
@@ -1662,6 +1832,17 @@ interface ReasoningBlock {
 
 // @public
 type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
+
+// @public
+type ReasoningOption = ReasoningEffort | ReasoningSettings;
+
+// @public
+interface ReasoningSettings {
+    budgetTokens?: number;
+    effort?: ReasoningEffort;
+    force?: boolean;
+    summary?: 'auto' | 'none';
+}
 
 // @public
 interface RemoveCriterionOp {
@@ -1704,6 +1885,9 @@ export interface ResolveAttachmentsOptions {
     globalRegistry?: GlobalAgentRegistry;
     mode: LoadWorkspaceOptions['mode'];
 }
+
+// @public
+export function resolveCheck(registry: WorkspaceCheckRegistry, check: string): Check<unknown> | undefined;
 
 // @public
 export interface ResolvedAttachment {
@@ -1781,6 +1965,9 @@ interface RunLimits {
     maxToolErrors?: number;
     onExceeded?: 'stop' | 'throw';
 }
+
+// @public
+export function runPage(workspace: LoadedWorkspace, input: PageInput, ctx: PageRuntimeContext): Promise<PageResult>;
 
 // @public
 export interface RunRecord extends WorkspaceScope {
@@ -1906,6 +2093,13 @@ type SecretRef = {
 };
 
 // @public
+interface ServedBy {
+    model?: string;
+    // (undocumented)
+    provider: string;
+}
+
+// @public
 interface SetAttachmentFieldOp {
     as: string;
     field: AttachmentField;
@@ -2022,6 +2216,9 @@ export interface SharedSkill {
     file: string;
     skill: Skill;
 }
+
+// @public
+export const singleEngine: PageEngineFactory;
 
 // @public
 interface Skill {
@@ -2144,6 +2341,47 @@ export interface StoredArtifact {
 }
 
 // @public
+interface StreamChunk {
+    // (undocumented)
+    error?: Error;
+    // (undocumented)
+    finishReason?: string;
+    hostedToolCall?: HostedToolCall;
+    reasoning?: Omit<ReasoningBlock, 'text'>;
+    // (undocumented)
+    textDelta?: string;
+    // (undocumented)
+    toolCall?: ToolCall;
+    // (undocumented)
+    toolResult?: {
+        toolCallId: string;
+        result: unknown;
+    };
+    // (undocumented)
+    type: StreamChunkType;
+    usage?: ProviderUsage;
+}
+
+// @public
+type StreamChunkType = 'text-delta' | 'reasoning-delta' | 'reasoning-end' | 'tool-call' | 'hosted-tool-call' | 'hosted-tool-result' | 'tool-result' | 'finish' | 'error';
+
+// @public
+interface StreamResult {
+    // (undocumented)
+    finishReason: Promise<string>;
+    // (undocumented)
+    fullStream: AsyncIterable<StreamChunk>;
+    servedBy?: ServedBy;
+    // (undocumented)
+    text: Promise<string>;
+    // (undocumented)
+    textStream: AsyncIterable<string>;
+    // (undocumented)
+    toolCalls: Promise<ToolCall[]>;
+    usage: Promise<ProviderUsage | undefined>;
+}
+
+// @public
 interface TextContentPart {
     // (undocumented)
     text: string;
@@ -2163,6 +2401,18 @@ interface ToolCall {
     };
     // (undocumented)
     id: string;
+    // (undocumented)
+    type: 'function';
+}
+
+// @public
+interface ToolDefinition {
+    // (undocumented)
+    function: {
+        name: string;
+        description: string;
+        parameters: Record<string, unknown> | StandardSchemaV1;
+    };
     // (undocumented)
     type: 'function';
 }
@@ -2413,6 +2663,11 @@ export interface WorkspaceCheckpointStore {
     list(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
     load(runId: string): Promise<Checkpoint | null>;
     save(runId: string, checkpoint: Checkpoint): Promise<void>;
+}
+
+// @public
+export interface WorkspaceCheckRegistry {
+    get(name: string): Check<unknown> | undefined;
 }
 
 // @public

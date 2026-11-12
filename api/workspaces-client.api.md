@@ -126,6 +126,9 @@ type AuthoringOp = CreateWorkspaceOp | SetWorkspaceFieldOp | CreatePageOp | Remo
 export function buildRoutePath(path: string, params: object): string;
 
 // @public
+export function checkPageInputs(schema: Record<string, unknown>, inputs: unknown): InputProblem[];
+
+// @public
 interface CreateAgentOp {
     description: string;
     instructions: string;
@@ -354,6 +357,12 @@ export interface HistoryEntryView {
     kind: string;
     revision: Revision;
     summary: string;
+}
+
+// @public
+export interface InputProblem {
+    message: string;
+    path: string;
 }
 
 // @public

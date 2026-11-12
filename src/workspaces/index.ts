@@ -36,5 +36,4 @@ export { assembleInstructions, assembleMainInstructions, agentRunOptions, type A
 export { effectiveToolset, effectivePermissions, agentPolicyOptions, pagePolicy, type HostTool, type HostToolRegistry, type EffectiveTool, type EffectiveToolset, type EffectivePermissions, type PolicyAgent, type PolicyAttachment, type AgentPolicyOptions, type PagePolicy } from './runtime/policy';
 export { runPage, type PageRuntimeContext } from './runtime/pageRuntime';
 export { ENGINES, engineFor, singleEngine, type EngineRegistry, type PageAttachment, type PageEngineFactory, type PageEngineSetup, type PageRuntimeHost, type PageToolScope } from './runtime/engines';
-export { attachmentAgent, type AttachmentAgentOptions } from './runtime/attachmentAgent';
 export { checkRegistry, checkNameOf, resolveCheck, type WorkspaceCheckRegistry } from './runtime/checks';

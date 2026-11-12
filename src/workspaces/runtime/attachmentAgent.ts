@@ -8,7 +8,7 @@ import { agentRunOptions, assembleInstructions } from './assemble';
 import type { PageAttachment, PageEngineSetup } from './engines/types';
 
 /** Options of {@link attachmentAgent}. */
-export interface AttachmentAgentOptions {
+interface AttachmentAgentOptions {
   /** The engine's own prompt text, section 5 of the assembled instructions. */
   engineFraming?: string;
   /** Structured output for the agent's final reply. */
