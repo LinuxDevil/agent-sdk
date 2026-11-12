@@ -23437,7 +23437,11 @@ abortListeners:
 `when` and `match` use the same safe expression grammar as flow conditions
 (see [Flows](https://github.com/LinuxDevil/lousho/blob/main/docs/flows.md#flow-expressions)); variable references are checked
 when the spec parses and unknown names resolve to `undefined` at runtime.
-At most 20 listeners are allowed per spec.
+At most 20 listeners are allowed per spec. Studio's trigger host evaluates
+them on every inbound webhook and channel event, before the event's own
+filter and dispatch, so the delivering run can never cancel itself; a
+cancelled run logs `Run cancelled by abort listener <id>` and its webhook
+response lists the cancelled run keys under `cancelled`.
 
 # Troubleshooting
 
