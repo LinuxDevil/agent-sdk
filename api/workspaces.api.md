@@ -78,6 +78,19 @@ export type AgentRef = {
 };
 
 // @public
+export interface AgentRunOptions {
+    limits: RunLimits;
+    model?: string;
+    modelSettings?: {
+        temperature: number;
+    };
+    reasoning?: ReasoningEffort;
+}
+
+// @public
+export function agentRunOptions(attachment: ResolvedAttachment, harness: EffectiveHarness): AgentRunOptions;
+
+// @public
 export function applyOps(tree: WorkspaceTree, ops: readonly unknown[], options: {
     validate: AuthoringValidator;
 }): ApplyOpsResult;
@@ -135,6 +148,61 @@ export interface ArtifactUriParts {
     runId: string;
     workspace: string;
 }
+
+// @public
+export interface AssembledInstructions {
+    explain(): ExplainedSection[];
+    harnessPart: string;
+    harnessPartHash: string;
+    hash: string;
+    sections: AssembledSection[];
+    text: string;
+}
+
+// @public
+export interface AssembledMainInstructions {
+    explain(): ExplainedSection[];
+    hash: string;
+    sections: AssembledSection[];
+    text: string;
+}
+
+// @public
+export interface AssembledSection {
+    id: string;
+    text: string;
+}
+
+// @public
+export function assembleInstructions(input: AssembleInstructionsInput): AssembledInstructions;
+
+// @public
+export interface AssembleInstructionsInput {
+    agent: AgentOwned;
+    agentDir?: string;
+    attachment: Attachment;
+    engineFraming?: string;
+    harness: EffectiveHarness;
+    instructionsSource?: InstructionsSource;
+    page: {
+        id: string;
+        name: string;
+    };
+    shared?: SharedContext;
+}
+
+// @public
+export interface AssembleMainInput {
+    mainAgent: Pick<AgentOwned, 'instructions'> & {
+        instructionsSource?: InstructionsSource;
+    };
+    mainHarness?: MainHarnessInput;
+    pages: readonly MainPageInfo[];
+    shared?: SharedContext;
+}
+
+// @public
+export function assembleMainInstructions(input: AssembleMainInput): AssembledMainInstructions;
 
 // @public
 interface AttachAgentOp {
@@ -601,6 +669,7 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: "Remove the NUL characters from the file the message names; a database workspace source stores text only.";
     readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
     readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
+    readonly LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: "Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.";
 };
 
 // @public
@@ -608,6 +677,11 @@ type ErrorCode = keyof typeof ERROR_CODES;
 
 // @public
 type ExecutionKey = 'single' | 'multiAgent' | 'workflow' | 'goal' | 'limits' | 'onFailure' | 'checkpoint';
+
+// @public
+export interface ExplainedSection extends AssembledSection {
+    provenance: string[];
+}
 
 // @public
 export function explainHarness(effective: EffectiveHarness): string;
@@ -805,6 +879,9 @@ export interface InheritanceRule {
 }
 
 // @public
+export type InstructionsSource = 'instructions.md' | 'agent.json' | 'agent.yaml' | 'agent.yml';
+
+// @public
 export function isTerminalStatus(status: PageRunStatus): boolean;
 
 // @public
@@ -855,6 +932,12 @@ export interface MainHarnessCrossCheck {
 type MainHarnessField = 'routes' | 'clarify' | 'presentation' | 'limits' | 'onPageFailure';
 
 // @public
+export interface MainHarnessInput {
+    harness: MainHarness;
+    texts: Readonly<Record<string, string>>;
+}
+
+// @public
 export interface MainHarnessLimits {
     maxConcurrentPages?: number;
 }
@@ -883,6 +966,13 @@ export interface MainHarnessRoute {
 
 // @public
 export const mainHarnessSchema: z.ZodType<MainHarness>;
+
+// @public
+export interface MainPageInfo {
+    description: string;
+    id: string;
+    name: string;
+}
 
 // @public
 export function memoryArtifactStore(options?: ArtifactStoreOptions): ArtifactStore;
@@ -1325,6 +1415,9 @@ interface ReasoningBlock {
     // (undocumented)
     text: string;
 }
+
+// @public
+type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high';
 
 // @public
 interface RemoveCriterionOp {

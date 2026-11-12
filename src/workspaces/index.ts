@@ -32,3 +32,4 @@ export { resolveAttachments, createAgentCache, type ResolvedAttachment, type Res
 export { sourceAgentRegistry, type GlobalAgent, type GlobalAgentRegistry } from './runtime/agentRegistry';
 export { projectAgentRegistry } from './source/projectAgentRegistry';
 export type { AgentOwned, AgentFiles } from './runtime/agentDirView';
+export { assembleInstructions, assembleMainInstructions, agentRunOptions, type AssembleInstructionsInput, type AssembleMainInput, type AssembledInstructions, type AssembledMainInstructions, type AssembledSection, type InstructionsSource, type ExplainedSection, type AgentRunOptions, type MainHarnessInput, type MainPageInfo } from './runtime/assemble';
