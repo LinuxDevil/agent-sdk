@@ -137,6 +137,8 @@ import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
+import { AlertStore } from './inbox/alertStore';
+import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { sdkRootDir } from './sdkRoot';
@@ -230,6 +232,13 @@ interface CreateAppBaseOptions {
   passRunner?: PassRunner;
   /** The spend log `passRunner` and `GET /settings/passes/spend` share. Defaults to `new SpendLog(studioPaths().spend)`. */
   spendLog?: SpendLog;
+  /**
+   * The Studio-global inbox alert store (L12, inbox/alertStore.ts) - the
+   * same instance `startStudioServer` hands every workspace's
+   * failure-streak pass and later tickets' inbox routes. Defaults to
+   * `new AlertStore(studioPaths().alerts)`.
+   */
+  alerts?: AlertStore;
 }
 
 /**
@@ -904,7 +913,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * legacy `{agentStore, runManager}` form instead of a ready-built
  * `workspace`: the launch folder's ref around those two stores.
  */
-function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunner): WorkspaceContext {
+function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunner, alerts: AlertStore): WorkspaceContext {
   let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
@@ -915,6 +924,20 @@ function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunn
   // `idleVersioner` is a test seam too: it swaps the context's idle-version
   // scheduler - the one `workspaceOf(req).idleVersioner` touches/cancels.
   if (options.idleVersioner !== undefined) workspace = { ...workspace, idleVersioner: options.idleVersioner };
+  // A caller-built `workspace` already carries its failure-streak attach
+  // (createWorkspaceContext); the legacy `{agentStore, runManager}` pair
+  // gets the same wiring here (L12), on the final - possibly
+  // test-overridden - event bus. Inert until a run passes `source:
+  // 'trigger'`.
+  if (options.workspace === undefined) {
+    attachFailureStreak({
+      runManager: options.runManager,
+      repo: workspace.repo,
+      alerts,
+      events: workspace.events,
+      workspaceId: workspace.ref.id,
+    });
+  }
   return workspace;
 }
 
@@ -967,7 +990,8 @@ export function createApp(options: CreateAppOptions): Express {
   const passRunner =
     options.passRunner ??
     new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
-  const workspace = defaultWorkspaceContext(options, passRunner);
+  const alerts = options.alerts ?? new AlertStore(paths.alerts);
+  const workspace = defaultWorkspaceContext(options, passRunner, alerts);
   // One resolver for the middleware below and the Author tools' per-call
   // workspace lookup (PLAN 19.3 - until W02a it resolves the launch
   // context whatever id comes in).

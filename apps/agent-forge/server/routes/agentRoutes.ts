@@ -46,6 +46,7 @@ import type {
 } from '../../shared/wireTypes';
 import { computeRequirements, requirementDeps } from '../author/requirements';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
+import { enabledPatch } from '../lifecycle/enabledState';
 import type { SecretsStore } from '../secretsStore';
 import { defaultMeta, InvalidSpecError } from '../storage/agentRepo';
 import { copyAgentId, slugAgentId, uniqueAgentId } from '../storage/agentIds';
@@ -101,6 +102,7 @@ async function toListItem(ws: WorkspaceContext, id: string): Promise<AgentListIt
     description: spec.description ?? '',
     model: spec.model,
     enabled: meta.enabled,
+    disabledReason: meta.disabledReason,
     labels: meta.labels,
     updatedAt: ws.repo.updatedAt(id),
     publishedVersion: meta.publishedVersion,
@@ -478,16 +480,11 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         const now = new Date().toISOString();
         const meta = await ws.repo.readMeta(id);
         const next: AgentMeta = { ...meta, updatedAt: now };
+        // enabledPatch (L12) is the single write path for `enabled`: a
+        // re-applied state is a no-op, so disabling an auto-disabled agent
+        // keeps `disabledReason: 'auto_failure_streak'`.
         if (parsed.enabled !== undefined) {
-          next.enabled = parsed.enabled;
-          if (parsed.enabled) {
-            next.disabledAt = null;
-            next.disabledReason = null;
-            next.failureStreak = 0;
-          } else {
-            next.disabledAt = now;
-            next.disabledReason = 'manual';
-          }
+          Object.assign(next, enabledPatch(meta, parsed.enabled, 'manual', now));
         }
         if (labels !== undefined) next.labels = labels;
         await ws.repo.writeMeta(id, next);

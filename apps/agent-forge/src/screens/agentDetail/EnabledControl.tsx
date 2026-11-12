@@ -32,6 +32,14 @@ export function EnabledControl({ record }: EnabledControlProps): JSX.Element {
   const [pending, setPending] = useState(false);
   const { meta } = record;
   const enabled = meta.enabled;
+  // L12: the wrapper's tooltip explains WHY the agent is off - an
+  // auto-disable after failed triggered runs reads differently from a
+  // manual switch-off.
+  const title = enabled
+    ? 'On. Triggers can start it.'
+    : meta.disabledReason === 'auto_failure_streak'
+      ? 'Turned off automatically after 5 failed triggered runs. Turn it on to try again.'
+      : "Turned off. Triggers won't start it.";
 
   const apply = async (next: boolean) => {
     if (pending) return;
@@ -54,6 +62,7 @@ export function EnabledControl({ record }: EnabledControlProps): JSX.Element {
     <div
       className={['enabled-control', enabled ? 'is-on' : undefined].filter(Boolean).join(' ')}
       data-pending={pending ? '' : undefined}
+      title={title}
       onClick={(event) => {
         // The switch handles its own click; everything else on the pill toggles.
         if ((event.target as HTMLElement).closest('.switch-wrap') !== null) return;
@@ -70,8 +79,10 @@ export function EnabledControl({ record }: EnabledControlProps): JSX.Element {
         label="Agent enabled"
         disabled={pending}
         onChange={(next) => void apply(next)}
-        title={enabled ? 'Turn off: triggers stop starting runs.' : 'Turn on: triggers start runs again.'}
       />
+      {!enabled && meta.disabledReason === 'auto_failure_streak' && (
+        <span className="status-pill pill-warning">Auto-off</span>
+      )}
     </div>
   );
 }

@@ -67,6 +67,22 @@ import type {
 } from '../shared/wireTypes';
 import { pinnedResultsHook } from './pins';
 
+/** Options for {@link RunManager.run}: what started the run plus this launch's tool pins (T04). */
+export interface RunOptions {
+  /**
+   * `'trigger'` for runs a trigger launched (R08a/R08c/R07 pass it); absent
+   * or `'manual'` for Run/chat starts. Carried on the status payload so the
+   * failure-streak pass (L12) counts triggered runs only.
+   */
+  source?: 'manual' | 'trigger';
+  /** The trigger that started the run, when `source` is `'trigger'`. */
+  triggerId?: string;
+  /** The trigger's raw event payload - accepted for the trigger tickets; not stored on the entry. */
+  triggerEvent?: unknown;
+  /** This launch's pinned tool results (T04 run-from-here); never stored, never sent on chat turns. */
+  pins?: ToolPin[];
+}
+
 interface RunEntry {
   status: RunStatus;
   /**
@@ -149,6 +165,13 @@ interface RunEntry {
    * resets it via the `steering: []` patch in startAgentRun/startFlowRun.
    */
   steering?: SteerInfo[];
+  /**
+   * What started the in-flight/last run (L12): set on launch from
+   * `RunOptions.source`, kept through approve()/resume of the same run,
+   * cleared by the next launch that passes no source (a manual run).
+   */
+  source?: 'manual' | 'trigger';
+  triggerId?: string;
 }
 
 export interface RunManagerOptions {
@@ -289,6 +312,8 @@ export class RunManager extends EventEmitter {
       traceId: entry.traceId,
       abortReason: entry.abortReason,
       steering: entry.steering,
+      source: entry.source,
+      triggerId: entry.triggerId,
       updatedAt: entry.updatedAt,
     };
   }
@@ -510,13 +535,13 @@ export class RunManager extends EventEmitter {
     agentId: string,
     input: string,
     spec?: AgentSpecV2,
-    options?: { pins?: ToolPin[] }
+    options?: RunOptions
   ): Promise<void> {
     const existing = this.entries.get(agentId);
     if (existing && existing.status === 'running') {
       throw new AlreadyRunningError(`Agent '${agentId}' is already running`);
     }
-    await this.launch(agentId, input, spec, { runInput: input, pins: options?.pins });
+    await this.launch(agentId, input, spec, { runInput: input, ...options });
   }
 
   /**
@@ -670,7 +695,7 @@ export class RunManager extends EventEmitter {
     agentId: string,
     input: AgentInput,
     spec?: AgentSpecV2,
-    options: { runInput?: string; pins?: ToolPin[] } = {}
+    options: { runInput?: string; source?: 'manual' | 'trigger'; triggerId?: string; triggerEvent?: unknown; pins?: ToolPin[] } = {}
   ): Promise<void> {
     const existing = this.entries.get(agentId);
     const resolvedSpec = await this.resolveLaunchSpec(agentId, spec, existing);
@@ -694,7 +719,7 @@ export class RunManager extends EventEmitter {
     input: AgentInput,
     resolvedSpec: AgentSpecV2,
     existing: RunEntry | undefined,
-    options: { runInput?: string; pins?: ToolPin[] }
+    options: { runInput?: string; source?: 'manual' | 'trigger'; triggerId?: string; pins?: ToolPin[] }
   ): Promise<void> {
     const sessionId = agentId;
     const debugSession = this.makeDebugSession(agentId);
@@ -740,6 +765,10 @@ export class RunManager extends EventEmitter {
         hostRunId: runId,
         kind: 'agent',
         steering: [],
+        // `undefined` on a manual/chat launch clears a previous trigger
+        // run's source (L12); a trigger launch stamps both fields.
+        source: options.source,
+        triggerId: options.triggerId,
       },
       existing
     );
@@ -825,7 +854,7 @@ export class RunManager extends EventEmitter {
     resolvedSpec: AgentSpecV2,
     legacySpec: import('lousho').AgentSpec,
     existing: RunEntry | undefined,
-    options: { runInput?: string }
+    options: { runInput?: string; source?: 'manual' | 'trigger'; triggerId?: string }
   ): Promise<void> {
     const { agent, provider, toolRegistry, sandbox } = buildAgentFromSpec(legacySpec, agentId, undefined, {
       secretsStore: this.opts.secretsStore,
@@ -855,6 +884,8 @@ export class RunManager extends EventEmitter {
         hostRunId: undefined,
         kind: 'flow',
         steering: [],
+        source: options.source,
+        triggerId: options.triggerId,
       },
       existing
     );
