@@ -193,6 +193,7 @@ export function agentRunSpanInit(
     name: `${GenAiOperation.INVOKE_AGENT} ${name}`,
     kind: 'internal',
     attributes: defined({
+      ...agent.spanAttributes,
       [GenAiAttr.OPERATION_NAME]: GenAiOperation.INVOKE_AGENT,
       [GenAiAttr.AGENT_NAME]: name,
       [SdkAttr.SUBAGENT_NAME]: subagent?.name,
@@ -200,7 +201,6 @@ export function agentRunSpanInit(
       [SdkAttr.TASK_ID]: subagent?.taskId,
       [GenAiAttr.AGENT_ID]: agent.id,
       [SdkAttr.HARNESS_REVISION]: agent.harnessRevision,
-      ...agent.spanAttributes,
       [GenAiAttr.PROVIDER_NAME]: provider?.name,
       [GenAiAttr.REQUEST_MODEL]: agent.settings?.model || provider?.defaultModel || undefined,
       [GenAiAttr.CONVERSATION_ID]: sessionId,

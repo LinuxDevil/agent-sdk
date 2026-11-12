@@ -56,6 +56,19 @@ describe('labelsFor', () => {
     expect(() => labelsFor({ ...base, executionType: 'single', stepKind: 'single', stepIndex: -1 })).toThrow(/stepIndex/);
   });
 
+  it('refuses a parentStepIndex that is not below stepIndex', () => {
+    const base = { page: 'p', attachment: 'a', harnessHash: 'h', executionType: 'multi-agent' as const, stepKind: 'delegate' as const };
+    expect(() => labelsFor({ ...base, stepIndex: 1, parentStepIndex: 1 })).toThrow(/parentStepIndex/);
+    expect(() => labelsFor({ ...base, stepIndex: 1, parentStepIndex: -1 })).toThrow(/parentStepIndex/);
+  });
+
+  it('spanAttributes cannot overwrite SDK-set attributes', async () => {
+    const attributes = await rootAttributes({ 'gen_ai.operation.name': 'evil', 'gen_ai.agent.name': 'evil', 'lousho.harness.revision': 'evil' });
+    expect(attributes['gen_ai.operation.name']).toBe('invoke_agent');
+    expect(attributes['gen_ai.agent.name']).toBe('a');
+    expect(attributes['lousho.harness.revision']).not.toBe('evil');
+  });
+
   it('keeps parentStepIndex only when given', () => {
     const base = { page: 'p', attachment: 'a', harnessHash: 'h', executionType: 'multi-agent' as const };
     expect(labelsFor({ ...base, stepKind: 'delegate', stepIndex: 1, parentStepIndex: 0 }).parentStepIndex).toBe(0);

@@ -31,13 +31,13 @@ export function labelsFor(step: StepLabelInput): PageStepLabels {
   const problems: string[] = [];
   if (!WORK_TYPE_STEP_KINDS[step.executionType].includes(step.stepKind)) problems.push(`a ${step.executionType} page does not emit ${step.stepKind} steps`);
   if (!Number.isInteger(step.stepIndex) || step.stepIndex < 0) problems.push('stepIndex must be a non-negative integer');
-  if (step.parentStepIndex !== undefined && (!Number.isInteger(step.parentStepIndex) || step.parentStepIndex < 0)) problems.push('parentStepIndex must be a non-negative integer');
+  if (step.parentStepIndex !== undefined && (!Number.isInteger(step.parentStepIndex) || step.parentStepIndex < 0 || step.parentStepIndex >= step.stepIndex)) problems.push('parentStepIndex must be a non-negative integer below stepIndex');
   if (problems.length > 0) throw new ValidationError(`invalid step labels: ${problems.join('; ')}`, { labels: problems }, 'LOUSHO_VALIDATION_FAILED');
   const { page, attachment, harnessHash, executionType, stepKind, stepIndex, parentStepIndex } = step;
   return { page, attachment, harnessHash, executionType, stepKind, stepIndex, ...(parentStepIndex !== undefined && { parentStepIndex }) };
 }
 
-/** The `lousho.*` span attributes for a step's labels, ready for `createAgent({ spanAttributes })`. */
+/** The `lousho.*` span attributes for a step's labels, ready for the `spanAttributes` option. */
 export function labelAttributes(labels: PageStepLabels, extras: LabelExtras = {}): Record<string, string | number> {
   const entries: [string, string | number | undefined][] = [
     [SdkAttr.WORKSPACE, extras.workspace],

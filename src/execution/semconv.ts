@@ -138,25 +138,25 @@ export const SdkAttr = {
   HARNESS_REVISION: 'lousho.harness.revision',
   /** On a sub-agent's `invoke_agent` span, 1 for a sub-agent of the top-level run, 2 for its sub-agent, and so on. */
   SUBAGENT_DEPTH: 'lousho.subagent.depth',
-  /** On every span of a workspace page run: the workspace id. */
+  /** On a page step's `invoke_agent` span: the workspace id. */
   WORKSPACE: 'lousho.workspace',
-  /** On every span of a workspace page run: the flat page id. */
+  /** On a page step's `invoke_agent` span: the flat page id. */
   PAGE: 'lousho.page',
-  /** On a step's spans: the attachment alias from `agents.json` that ran it. */
+  /** On a page step's `invoke_agent` span: the attachment alias from `agents.json` that ran it. */
   ATTACHMENT: 'lousho.attachment',
-  /** On every span of a workspace page run: the page's execution type. */
+  /** On a page step's `invoke_agent` span: the page's execution type. */
   EXECUTION_TYPE: 'lousho.execution_type',
-  /** On a step's spans: `single`, `workflow-step`, `delegate` or `goal-iteration`. */
+  /** On a page step's `invoke_agent` span: `single`, `workflow-step`, `delegate` or `goal-iteration`. */
   STEP_KIND: 'lousho.step.kind',
-  /** On a step's spans: the step's position in one sequence across the run, from 0. */
+  /** On a page step's `invoke_agent` span: the step's position in one sequence across the run, from 0. */
   STEP_INDEX: 'lousho.step.index',
-  /** On every span of a workspace page run: the composed harness hash. */
+  /** On a page step's `invoke_agent` span: the composed harness hash. */
   HARNESS_HASH: 'lousho.harness.hash',
-  /** On every span of a workspace page run: the hash of the harness part of the assembled prompt. */
+  /** On a page step's `invoke_agent` span: the hash of the harness part of the assembled prompt. */
   HARNESS_PART_HASH: 'lousho.harness.part_hash',
-  /** On the spans of an agent from a `global:` ref: the resolved version. */
+  /** On the `invoke_agent` span of an agent from a `global:` ref: the resolved version. */
   AGENT_REF_VERSION: 'lousho.agent.ref.version',
-  /** On the spans of an agent from a `global:` ref: the sha256 of the resolved agent. */
+  /** On the `invoke_agent` span of an agent from a `global:` ref: the sha256 of the resolved agent. */
   AGENT_REF_SHA256: 'lousho.agent.ref.sha256',
   /** Reserved for the workspace revision stamped on a run; not set yet. */
   WORKSPACE_REVISION: 'lousho.workspace.revision',
