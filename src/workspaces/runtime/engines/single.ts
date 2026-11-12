@@ -1,4 +1,3 @@
-import type { SimpleAgent } from '../../../createAgent';
 import type { ExecutionResult } from '../../../execution/AgentExecutor';
 import type { AgentSession } from '../../../session/AgentSession';
 import { outputFromSpec } from '../../../spec/v2/jsonSchemaAdapter';
@@ -73,19 +72,18 @@ function pageResult(result: ExecutionResult, ctx: PageRunContext, structured: bo
 export const singleEngine: PageEngineFactory = (setup) => {
   const alias = setup.page.execution.single?.agent ?? '';
   const schema = outputSchemaOf(setup);
-  const agent: SimpleAgent = attachmentAgent(setup, alias, {
+  const { agent, labels } = attachmentAgent(setup, alias, {
+    step: { stepKind: 'single', stepIndex: 0 },
     ...(schema !== undefined && { output: outputFromSpec({ jsonSchema: schema }) }),
     ...(setup.page.execution.limits !== undefined && { limits: setup.page.execution.limits }),
   });
   const sessions = new Map<string, AgentSession>();
-  let stepIndex = 0;
   const engine: PageEngine = {
     type: 'single',
     async run(input, ctx) {
       const continues = input.revise?.runId === ctx.runId && sessions.has(ctx.runId);
       const session = sessions.get(ctx.runId) ?? agent.session({ id: ctx.runId });
       sessions.set(ctx.runId, session);
-      const labels = { ...ctx.labels, attachment: alias, stepKind: 'single' as const, stepIndex: stepIndex++ };
       ctx.emit({ type: 'step', phase: 'start', ...labels });
       const result = await session.send(continues ? (input.revise?.instruction ?? '') : promptOf(input, setup), { signal: ctx.signal });
       ctx.emit({ type: 'step', phase: 'done', ...labels });

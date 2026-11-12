@@ -1,4 +1,5 @@
 import { createAgent, type SimpleAgent } from '../../createAgent';
+import { SdkAttr } from '../../execution/semconv';
 import type { ToolDescriptor } from '../../types';
 import { mainHarnessSchema, type MainHarness } from '../contracts/mainHarness';
 import { pageSchema } from '../contracts/page';
@@ -94,6 +95,8 @@ export function createMainAgent(workspace: LoadedWorkspace, options: MainAgentOp
     tools: { ...own, ...options.routerTools },
     permissions: policy.permissions,
     ...(owned.limits !== undefined && { limits: owned.limits }),
+    ...(host.exporter && { exporter: host.exporter }),
+    spanAttributes: { [SdkAttr.WORKSPACE]: manifest.id, [SdkAttr.WORKSPACE_REVISION]: workspace.revision },
     ...(shared && shared.memorySlots.length > 0 && { memory: shared.memorySlots.map((item) => item.slot) }),
   });
 }

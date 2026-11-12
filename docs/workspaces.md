@@ -515,7 +515,7 @@ An empty `task` becomes the page UI's `title`, else the page id. A page gets onl
 
 The `single` engine runs the page's one attachment in its own session, with structured output (the `output` mode of an AgentSpec) when the harness has an output schema. That mode also makes one repair call inside a turn when a reply does not parse.
 
-The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `globalAgents`, `globalProfiles` and `createMemory(file)`, which builds the slot for a `shared/memory/*.ts` file. `ctx.sharedRun` (a `createSharedContextRun()` object) makes every page of one workspace run, and the main agent, share the same shared memory instances.
+The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `exporter`, `globalAgents`, `globalProfiles` and `createMemory(file)`, which builds the slot for a `shared/memory/*.ts` file. `ctx.sharedRun` (a `createSharedContextRun()` object) makes every page of one workspace run, and the main agent, share the same shared memory instances. Every agent the runtime builds gets its step's labels from `labelsFor()` as `lousho.*` attributes on its `invoke_agent` span (`labelAttributes()`, with the workspace id, the harness part hash and a `global:` agent's version and sha256), and the engine puts the same labels on its `step` events.
 
 ### The main agent and the page router
 

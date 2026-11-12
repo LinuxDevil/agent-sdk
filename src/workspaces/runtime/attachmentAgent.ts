@@ -3,12 +3,24 @@ import type { RunLimits } from '../../execution/budget';
 import type { OutputSpec } from '../../execution/structuredOutput';
 import type { ToolDescriptor } from '../../types';
 import { SDKError } from '../../utils/sdkError';
+import type { PageStepLabels, StepKind } from '../contracts/execution';
 import type { PageExecutionLimits } from '../contracts/page';
-import { agentRunOptions, assembleInstructions } from './assemble';
+import { agentRunOptions, assembleInstructions, type AgentRunOptions, type AssembledInstructions } from './assemble';
 import type { PageAttachment, PageEngineSetup } from './engines/types';
+import { labelAttributes, labelsFor } from './labels';
+import type { ResolvedAttachment } from './resolveAgents';
 
 /** Options of {@link attachmentAgent}. */
 interface AttachmentAgentOptions {
+  /** The step the agent runs, labelled on its spans and on the engine's step events. */
+  step: {
+    /** What kind of step this is. */
+    stepKind: StepKind;
+    /** The step's position in the run, from 0. */
+    stepIndex: number;
+    /** The lead step a delegate runs under. */
+    parentStepIndex?: number;
+  };
   /** The engine's own prompt text, section 5 of the assembled instructions. */
   engineFraming?: string;
   /** Structured output for the agent's final reply. */
@@ -45,14 +57,18 @@ function min(a: number | undefined, b: number | undefined): number | undefined {
   return b === undefined ? a : Math.min(a, b);
 }
 
+const LIMIT_PAIRS = [
+  ['maxSteps', 'maxTurns'],
+  ['maxDurationMs', 'maxDurationMs'],
+  ['maxCostUsd', 'maxCostUsd'],
+] as const;
+
 function tightened(own: RunLimits, page: PageExecutionLimits | undefined): RunLimits {
   const limits: RunLimits = { ...own };
-  const steps = min(own.maxSteps, page?.maxTurns);
-  const duration = min(own.maxDurationMs, page?.maxDurationMs);
-  const cost = min(own.maxCostUsd, page?.maxCostUsd);
-  if (steps !== undefined) limits.maxSteps = steps;
-  if (duration !== undefined) limits.maxDurationMs = duration;
-  if (cost !== undefined) limits.maxCostUsd = cost;
+  for (const [key, pageKey] of LIMIT_PAIRS) {
+    const value = min(own[key], page?.[pageKey]);
+    if (value !== undefined) limits[key] = value;
+  }
   return limits;
 }
 
@@ -61,30 +77,57 @@ function modelSource(setup: PageEngineSetup, model: string | undefined): Pick<Cr
   return model === undefined ? {} : { model };
 }
 
-/** Builds the agent for one attachment of a page: assembled instructions, only the policy's tools (each bound by the host to its secrets, network and sandbox), the policy's permissions, and the smallest limits. The only place the page runtime builds an agent. */
-export function attachmentAgent(setup: PageEngineSetup, alias: string, options: AttachmentAgentOptions = {}): SimpleAgent {
-  const attachment = attachmentOf(setup, alias);
-  const { resolved, policy } = attachment;
-  const run = agentRunOptions(resolved, setup.harness);
-  const instructions = assembleInstructions({
+function instructionsFor(setup: PageEngineSetup, resolved: ResolvedAttachment, engineFraming: string | undefined): AssembledInstructions {
+  return assembleInstructions({
     agent: resolved.agentOwned,
     agentDir: resolved.dir,
     shared: setup.shared,
     harness: setup.harness,
     attachment: resolved.pageOwned,
     page: { id: setup.page.id, name: setup.page.name },
-    ...(options.engineFraming !== undefined && { engineFraming: options.engineFraming }),
+    ...(engineFraming !== undefined && { engineFraming }),
   });
-  return createAgent({
+}
+
+function spanAttributesFor(setup: PageEngineSetup, labels: PageStepLabels, resolved: ResolvedAttachment, harnessPartHash: string): Record<string, string | number> {
+  const agentRef = resolved.version === undefined ? {} : { agentRef: { version: resolved.version, sha256: resolved.sha256 } };
+  return labelAttributes(labels, { workspace: setup.workspace.manifest.id, harnessPartHash, ...agentRef });
+}
+
+function memoryOf(setup: PageEngineSetup): CreateAgentConfig['memory'] {
+  return setup.shared.memorySlots.length === 0 ? undefined : setup.shared.memorySlots.map((item) => item.slot);
+}
+
+function optionalConfig(setup: PageEngineSetup, run: AgentRunOptions, options: AttachmentAgentOptions): Pick<CreateAgentConfig, 'reasoning' | 'modelSettings' | 'output' | 'exporter' | 'memory'> {
+  return Object.fromEntries(
+    Object.entries({ reasoning: run.reasoning, modelSettings: run.modelSettings, output: options.output, exporter: setup.host.exporter, memory: memoryOf(setup) }).filter(([, value]) => value !== undefined)
+  );
+}
+
+/** An attachment's agent and the step labels on its spans. */
+export interface AttachmentAgent {
+  /** The agent. */
+  agent: SimpleAgent;
+  /** The labels its `invoke_agent` span carries; engines put the same labels on step events. */
+  labels: PageStepLabels;
+}
+
+/** Builds the agent for one attachment of a page: assembled instructions, only the policy's tools (each bound by the host to its secrets, network and sandbox), the policy's permissions, the smallest limits, and the step's labels as span attributes. The only place the page runtime builds an agent. */
+export function attachmentAgent(setup: PageEngineSetup, alias: string, options: AttachmentAgentOptions): AttachmentAgent {
+  const attachment = attachmentOf(setup, alias);
+  const { resolved, policy } = attachment;
+  const run = agentRunOptions(resolved, setup.harness);
+  const instructions = instructionsFor(setup, resolved, options.engineFraming);
+  const labels = labelsFor({ page: setup.page.id, harnessHash: setup.harness.hash, executionType: setup.page.execution.type, attachment: alias, ...options.step });
+  const agent = createAgent({
     name: resolved.agentOwned.name,
     instructions: instructions.text,
     ...modelSource(setup, run.model),
     tools: boundTools(setup, alias, attachment),
     permissions: policy.permissions,
     limits: tightened(run.limits, options.limits),
-    ...(run.reasoning !== undefined && { reasoning: run.reasoning }),
-    ...(run.modelSettings !== undefined && { modelSettings: run.modelSettings }),
-    ...(options.output !== undefined && { output: options.output }),
-    ...(setup.shared.memorySlots.length > 0 && { memory: setup.shared.memorySlots.map((item) => item.slot) }),
+    ...optionalConfig(setup, run, options),
+    spanAttributes: spanAttributesFor(setup, labels, resolved, instructions.harnessPartHash),
   });
+  return { agent, labels };
 }

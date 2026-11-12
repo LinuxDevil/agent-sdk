@@ -62,6 +62,7 @@ export interface AgentConfig {
     prompt?: string;
     // (undocumented)
     settings?: AgentSettings;
+    spanAttributes?: Readonly<Record<string, string | number>>;
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }
@@ -1563,6 +1564,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     redactContent?: boolean | ((text: string) => string);
     retry?: WithRetryOptions | false;
     skills?: readonly Skill[];
+    spanAttributes?: Readonly<Record<string, string | number>>;
     store?: AgentStore;
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
@@ -6186,6 +6188,17 @@ export const SdkAttr: {
     readonly SUBAGENT_NAME: "lousho.subagent.name";
     readonly HARNESS_REVISION: "lousho.harness.revision";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
+    readonly WORKSPACE: "lousho.workspace";
+    readonly PAGE: "lousho.page";
+    readonly ATTACHMENT: "lousho.attachment";
+    readonly EXECUTION_TYPE: "lousho.execution_type";
+    readonly STEP_KIND: "lousho.step.kind";
+    readonly STEP_INDEX: "lousho.step.index";
+    readonly HARNESS_HASH: "lousho.harness.hash";
+    readonly HARNESS_PART_HASH: "lousho.harness.part_hash";
+    readonly AGENT_REF_VERSION: "lousho.agent.ref.version";
+    readonly AGENT_REF_SHA256: "lousho.agent.ref.sha256";
+    readonly WORKSPACE_REVISION: "lousho.workspace.revision";
     readonly TASK_ID: "lousho.task.id";
     readonly GUARDRAIL_NAME: "lousho.guardrail.name";
     readonly GUARDRAIL_KIND: "lousho.guardrail.kind";

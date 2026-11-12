@@ -1105,6 +1105,23 @@ export type InstructionsSource = 'instructions.md' | 'agent.json' | 'agent.yaml'
 export function isTerminalStatus(status: PageRunStatus): boolean;
 
 // @public
+export function labelAttributes(labels: PageStepLabels, extras?: LabelExtras): Record<string, string | number>;
+
+// @public
+export interface LabelExtras {
+    agentRef?: {
+        version: string;
+        sha256: string;
+    };
+    harnessPartHash?: string;
+    workspace?: string;
+    workspaceRevision?: string;
+}
+
+// @public
+export function labelsFor(step: StepLabelInput): PageStepLabels;
+
+// @public
 interface LLMProvider {
     readonly defaultModel?: string;
     generate(options: GenerateOptions): Promise<GenerateResult>;
@@ -1620,6 +1637,7 @@ export interface PageRuntimeHost {
     bindTool(descriptor: ToolDescriptor, scope: PageToolScope): ToolDescriptor;
     ceiling: PolicyCeiling;
     createMemory?: (file: SharedMemoryFile) => MemorySlot;
+    exporter?: TraceExporter;
     globalAgents?: GlobalAgentRegistry;
     globalProfiles?: ProfileStore;
     provider?: (model: string | undefined) => LLMProvider;
@@ -2278,6 +2296,34 @@ export interface SourceWriteOptions {
 }
 
 // @public
+interface Span {
+    // (undocumented)
+    attributes: Record<string, unknown>;
+    // (undocumented)
+    endTime?: number;
+    id: string;
+    kind?: SpanKind;
+    // (undocumented)
+    name: string;
+    // (undocumented)
+    parentId?: string;
+    // (undocumented)
+    startTime: number;
+    status?: SpanStatus;
+}
+
+// @public
+type SpanKind = 'internal' | 'client';
+
+// @public
+interface SpanStatus {
+    // (undocumented)
+    code: 'ok' | 'error';
+    // (undocumented)
+    message?: string;
+}
+
+// @public
 export interface SqlClient extends SqlStatements {
     close(): Promise<void>;
     transaction<T>(work: (tx: SqlStatements) => Promise<T>): Promise<T>;
@@ -2340,6 +2386,14 @@ export const STEP_KINDS: readonly StepKind[];
 
 // @public
 export type StepKind = 'single' | 'workflow-step' | 'delegate' | 'goal-iteration';
+
+// @public
+export interface StepLabelInput extends PageRunLabels {
+    attachment: string;
+    parentStepIndex?: number;
+    stepIndex: number;
+    stepKind: StepKind;
+}
 
 // @public
 interface StepUsage {
@@ -2503,6 +2557,12 @@ interface ToolSandboxOptions {
 
 // @public
 type ToolsOption = ReadonlyArray<ToolArrayEntry> | Record<string, ToolDescriptor | HostedTool>;
+
+// @public
+interface TraceExporter {
+    onSpanEnd(span: Span): void;
+    onSpanStart(span: Span): void;
+}
 
 // @public
 export const UI_COMPONENTS: {

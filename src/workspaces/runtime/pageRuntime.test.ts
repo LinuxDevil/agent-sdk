@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { mockModel, type MockModel, type MockTurn } from '../../testing';
+import type { Span } from '../../execution/tracing';
 import { defineTool } from '../../tools/defineTool';
 import type { ToolDescriptor } from '../../types';
 import { readFixtureTree } from '../__fixtures__/readTree';
@@ -123,6 +124,19 @@ describe('runPage', () => {
     expect(events.map((event) => (event.type === 'step' ? `step.${event.phase}` : event.type))).toEqual(['started', 'step.start', 'step.done', 'finished']);
     const step = events.find((event) => event.type === 'step');
     expect(step).toMatchObject({ page: 'support-triage', attachment: 'agent', executionType: 'single', stepKind: 'single', stepIndex: 0 });
+  });
+
+  it('a single-engine run stamps its step labels on the invoke_agent span', async () => {
+    const workspace = await load();
+    const ended: Span[] = [];
+    const host = hostWith(mockModel(['{"ranking":"low"}']), { exporter: { onSpanStart: () => undefined, onSpanEnd: (span) => ended.push({ ...span }) } });
+    const events: PageRunEvent[] = [];
+    await runPage(workspace, triage({ report: 'x' }), context(host, 'run-16', { emit: (event) => events.push(event) }));
+    const invoke = ended.find((span) => span.attributes['gen_ai.operation.name'] === 'invoke_agent');
+    expect(invoke?.attributes).toMatchObject({ 'lousho.workspace': 'coding', 'lousho.page': 'support-triage', 'lousho.attachment': 'agent', 'lousho.execution_type': 'single', 'lousho.step.kind': 'single', 'lousho.step.index': 0 });
+    const step = events.find((event) => event.type === 'step');
+    expect(invoke?.attributes['lousho.harness.hash']).toBe(step && 'harnessHash' in step ? step.harnessHash : undefined);
+    expect(typeof invoke?.attributes['lousho.harness.part_hash']).toBe('string');
   });
 
   it('a required artifact the run did not produce is an invalid output', async () => {

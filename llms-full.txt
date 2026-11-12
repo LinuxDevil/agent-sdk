@@ -16270,6 +16270,17 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
 | `lousho.harness.revision` | The harness revision: a sha256 of the instructions and skills, the same id `harnessHash` gives and `lousho improve` records. Two agents with the same instructions and skills share it. Absent when the instructions are a function or come from the prompt registry. It covers `instructions` and `skills` only: `projectInstructions` (AGENTS.md), a per-send `instructions` addition and the tools are not part of it, and an `instructions/<family>.md` tail is, so such a run matches no saved revision. `lousho traces` shows its first 12 characters |
+| `lousho.workspace` | On a workspace page run: the workspace id |
+| `lousho.page` | On a workspace page run: the flat page id |
+| `lousho.attachment` | On a workspace page run: the attachment alias from `agents.json` that ran the step |
+| `lousho.execution_type` | On a workspace page run: the page's execution type (`single`, `multi-agent`, `workflow` or `goal-oriented`) |
+| `lousho.step.kind` | On a workspace page run: `single`, `workflow-step`, `delegate` or `goal-iteration`, the same on every engine |
+| `lousho.step.index` | On a workspace page run: the step's position in one sequence across the run, from 0 |
+| `lousho.harness.hash` | On a workspace page run: the composed harness hash, so two pages sharing an agent differ here |
+| `lousho.harness.part_hash` | On a workspace page run: the hash of the harness part of the assembled prompt |
+| `lousho.agent.ref.version` | On the run of an agent from a `global:` ref: the resolved version |
+| `lousho.agent.ref.sha256` | On the run of an agent from a `global:` ref: the sha256 of the resolved agent |
+| `lousho.workspace.revision` | Reserved for the workspace revision of a run; not set yet |
 
 #### Summing token usage over spans
 
@@ -25202,7 +25213,7 @@ An empty `task` becomes the page UI's `title`, else the page id. A page gets onl
 
 The `single` engine runs the page's one attachment in its own session, with structured output (the `output` mode of an AgentSpec) when the harness has an output schema. That mode also makes one repair call inside a turn when a reply does not parse.
 
-The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `globalAgents`, `globalProfiles` and `createMemory(file)`, which builds the slot for a `shared/memory/*.ts` file. `ctx.sharedRun` (a `createSharedContextRun()` object) makes every page of one workspace run, and the main agent, share the same shared memory instances.
+The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `exporter`, `globalAgents`, `globalProfiles` and `createMemory(file)`, which builds the slot for a `shared/memory/*.ts` file. `ctx.sharedRun` (a `createSharedContextRun()` object) makes every page of one workspace run, and the main agent, share the same shared memory instances. Every agent the runtime builds gets its step's labels from `labelsFor()` as `lousho.*` attributes on its `invoke_agent` span (`labelAttributes()`, with the workspace id, the harness part hash and a `global:` agent's version and sha256), and the engine puts the same labels on its `step` events.
 
 ### The main agent and the page router
 
