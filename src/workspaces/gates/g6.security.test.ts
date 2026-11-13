@@ -307,4 +307,51 @@ describe('G6: page config cannot bypass workspace security', () => {
     expect(allowed.calls).toHaveLength(0);
     await main.runtime.close();
   });
+
+  it('a runId that is already active is refused, and cancel still reaches the first run', async () => {
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const waiting: PageEngineFactory = () => ({
+      type: 'single',
+      async run(_input, ctx): Promise<PageResult> {
+        entered();
+        await new Promise<void>((resolve) => (ctx.signal.aborted ? resolve() : ctx.signal.addEventListener('abort', () => resolve(), { once: true })));
+        return { status: 'cancelled', artifacts: [], summary: 'stopped', usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }, runId: ctx.runId, error: { kind: 'cancelled', message: 'stopped' } };
+      },
+    });
+    const { runtime } = runtimeFor(files(), { engines: { single: waiting } });
+    const first = runtime.runPage('support-triage', TRIAGE, { runId: 'run-a' });
+    await started;
+    expect((await refusal((async () => runtime.runPage('support-triage', TRIAGE, { runId: 'run-a' }))())).code).toBe('LOUSHO_WORKSPACE_RUN_ACTIVE');
+    expect((await refusal((async () => collect(runtime.run('Again.', { threadId: 'thread-a', runId: 'run-a' })))())).code).toBe('LOUSHO_WORKSPACE_RUN_ACTIVE');
+    expect(runtime.cancel('run-a')).toBe(true);
+    expect((await first).status).toBe('cancelled');
+    await runtime.close();
+  });
+
+  it.each([
+    ['is granted secrets', { secrets: [{ env: 'READ_KEY' }] }],
+    ['is limited to network hosts', { network: { allowHosts: ['api.example.com'] } }],
+    ['must run sandboxed', { sandbox: { required: true } }],
+  ] satisfies [string, Partial<WorkspacePolicy>][])('with no bindTool, a tool that %s fails the run with LOUSHO_WORKSPACE_HOST_INVALID', async (need, grant) => {
+    const tools: HostToolRegistry = { read_file: { descriptor: tool('read_file'), secrets: [{ env: 'READ_KEY' }] } };
+    const policy: WorkspacePolicy = { ...CEILING, ...grant };
+    const model = mockModel([callTool('read_file'), RANKED]);
+    const { runtime } = runtimeFor(files({ 'shared/policies/policy.json': policy, ...toolFiles('agents/triager', 'read_file') }), { tools, policyCeiling: policy, bindTool: undefined }, model);
+    const error = await refusal(runtime.runPage('support-triage', TRIAGE));
+    expect(error.code).toBe('LOUSHO_WORKSPACE_HOST_INVALID');
+    expect(error.message).toContain(`tool 'read_file' on 'support-triage' ${need}, and the host gave no bindTool to enforce it`);
+    expect(model.calls).toHaveLength(0);
+    await runtime.close();
+  });
+
+  it('with no bindTool, a tool granted no secrets, hosts or sandbox runs', async () => {
+    const execute = vi.fn(async () => 'read');
+    const tools: HostToolRegistry = { read_file: { descriptor: tool('read_file', execute) } };
+    const model = mockModel([callTool('read_file'), RANKED]);
+    const { runtime } = runtimeFor(files({ 'shared/policies/policy.json': CEILING, ...toolFiles('agents/triager', 'read_file') }), { tools, bindTool: undefined }, model);
+    expect((await runtime.runPage('support-triage', TRIAGE)).status).toBe('ok');
+    expect(execute).toHaveBeenCalledTimes(1);
+    await runtime.close();
+  });
 });
