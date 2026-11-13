@@ -103,7 +103,7 @@ Find a code by area:
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
 | [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
-| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved), [`LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING`](#lousho_workspace_main_harness_text_missing), [`LOUSHO_WORKSPACE_CAPABILITY_MISSING`](#lousho_workspace_capability_missing) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, resolving page agents with `resolveAttachments()`, assembling prompts with `assembleMainInstructions()`, and applying the policy at page start with `pagePolicy()`. |
+| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved), [`LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING`](#lousho_workspace_main_harness_text_missing), [`LOUSHO_WORKSPACE_CAPABILITY_MISSING`](#lousho_workspace_capability_missing), [`LOUSHO_WORKSPACE_ENGINE_UNKNOWN`](#lousho_workspace_engine_unknown), [`LOUSHO_WORKSPACE_PAGE_UNKNOWN`](#lousho_workspace_page_unknown), [`LOUSHO_WORKSPACE_NO_MAIN_AGENT`](#lousho_workspace_no_main_agent), [`LOUSHO_WORKSPACE_HOST_INVALID`](#lousho_workspace_host_invalid), [`LOUSHO_WORKSPACE_RUNTIME_CLOSED`](#lousho_workspace_runtime_closed), [`LOUSHO_WORKSPACE_RUN_ACTIVE`](#lousho_workspace_run_active) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, resolving page agents with `resolveAttachments()`, assembling prompts with `assembleMainInstructions()`, applying the policy at page start with `pagePolicy()`, running a page with `runPage()`, and running a workspace session with `openWorkspaceSession()`, and running a workspace through `createWorkspaceRuntime()`. |
 
 ## Configuration
 
@@ -1475,6 +1475,73 @@ that the policy allows, or remove the capability from `capabilities.require`.
 
 **Example:** the harness requires `image.generate`, and the only tool that
 provides it is not in `shared/policies/policy.json` `tools.allow`.
+
+### LOUSHO_WORKSPACE_ENGINE_UNKNOWN
+
+**Means:** `runPage()` or `engineFor()` found no engine for the page's
+`execution.type` (`engine-unknown`). The runtime ships the `single` engine;
+each other execution type runs once its engine is in the registry.
+
+**Fix:** set `execution.type` in `page.json` to a type the runtime has an
+engine for, or pass an `engines` registry that has one.
+
+**Example:** a page with `execution.type: 'workflow'` on a runtime whose
+registry has only `single`.
+
+### LOUSHO_WORKSPACE_PAGE_UNKNOWN
+
+**Means:** `runPage()` was given a `pageId` that the loaded workspace does
+not list in `workspace.json` `pages`, or that has no `pages/<id>/page.json`
+(`page-unknown`).
+
+**Fix:** pass one of the workspace's page ids; the message lists them.
+
+**Example:** `runPage(workspace, { pageId: 'nope', task: '' }, ctx)` on a
+workspace whose pages are `fix` and `review`.
+
+### LOUSHO_WORKSPACE_NO_MAIN_AGENT
+
+**Means:** `WorkspaceSession.run()` got a message without a `pageId` on a
+workspace whose `workspace.json` sets `mainAgent` to `null` (`no-main-agent`).
+Without a main agent there is no router, so nothing can pick the page. The
+session returns a `WorkspaceRunError` with this code instead of throwing.
+
+**Fix:** pass `{ pageId }` to `run()`, or call `runPage()` directly; or give the
+workspace a main agent in `main-agent/`.
+
+**Example:** `session.run('Summarise today')` on the `ops-desk` workspace.
+
+### LOUSHO_WORKSPACE_HOST_INVALID
+
+**Means:** `createWorkspaceRuntime(source, host)` got a host that misses a
+dependency (the message names the field, such as `host.stores.threads`), or a
+`limits.maxConcurrentRuns` that is not a positive integer. At run time it also
+means a tool's scope grants secrets, limits it to network hosts or requires a
+sandbox, and the host gave no `bindTool` to enforce that.
+
+**Fix:** pass the named field; pass `bindTool` whenever the policy grants a
+tool secrets or hosts, or sets `sandbox.required`.
+
+**Example:** a host built without `stores.threads`.
+
+### LOUSHO_WORKSPACE_RUNTIME_CLOSED
+
+**Means:** `run()`, `runPage()` or `explain()` was called on a workspace
+runtime after its `close()`.
+
+**Fix:** create a new runtime with `createWorkspaceRuntime()`.
+
+**Example:** a request handled while the service shuts down.
+
+### LOUSHO_WORKSPACE_RUN_ACTIVE
+
+**Means:** `run()` or `runPage()` got a `runId` that a run of the same
+runtime is still using. The runtime refuses it, so `cancel()` and `close()`
+keep reaching the run that holds the id.
+
+**Fix:** pass a new run id, or leave `runId` out so the runtime makes one.
+
+**Example:** two requests that both pass `runId: 'job-1'` while the first runs.
 
 ## Auth
 

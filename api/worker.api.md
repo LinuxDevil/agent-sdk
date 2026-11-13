@@ -56,6 +56,7 @@ interface AgentConfig {
     prompt?: string;
     // (undocumented)
     settings?: AgentSettings;
+    spanAttributes?: Readonly<Record<string, string | number>>;
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }
@@ -1045,6 +1046,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     redactContent?: boolean | ((text: string) => string);
     retry?: WithRetryOptions | false;
     skills?: readonly Skill[];
+    spanAttributes?: Readonly<Record<string, string | number>>;
     store?: AgentStore;
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
@@ -1397,6 +1399,12 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
     readonly LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: "Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.";
     readonly LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.";
+    readonly LOUSHO_WORKSPACE_PAGE_UNKNOWN: "Pass a page id listed in workspace.json pages that has a pages/<id>/page.json.";
+    readonly LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.";
+    readonly LOUSHO_WORKSPACE_NO_MAIN_AGENT: "Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.";
+    readonly LOUSHO_WORKSPACE_HOST_INVALID: "Give the host the field the message names; pass bindTool when a policy grants a tool secrets or hosts, or requires a sandbox.";
+    readonly LOUSHO_WORKSPACE_RUN_ACTIVE: "Pass a run id that is not running, or leave runId out so the runtime makes one.";
+    readonly LOUSHO_WORKSPACE_RUNTIME_CLOSED: "Create a new runtime with createWorkspaceRuntime; a closed one takes no runs.";
 };
 
 // @public

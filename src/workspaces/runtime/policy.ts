@@ -208,6 +208,18 @@ function missingToolWarning(name: string): string {
   return `the agent's tool '${name}' (tools/${name}.*) has no host tool of that name; a tool file's name is its tool name, so the tool is left out`;
 }
 
+function removedToolWarnings(policy: EffectivePolicy, input: { attachment?: Pick<Attachment, 'tools'>; agent: PolicyAgent }, set: EffectiveToolset): string[] {
+  const kept = new Set(set.tools.map((entry) => entry.name));
+  const missing = new Set(set.missing);
+  return [...new Set(input.agent.tools)]
+    .filter((name) => !kept.has(name) && !missing.has(name))
+    .map((name) =>
+      anyCovers(policy.tools.allow, name)
+        ? `the agent's tool '${name}' is not in the attachment's tools.only, so the tool is left out`
+        : `the agent's tool '${name}' is not in the policy's tools.allow (the host ceiling narrowed by shared/policies/policy.json), so the tool is left out (R13)`
+    );
+}
+
 /** The `createAgent` options for one agent on a page (an attachment) or for the main agent (no attachment); no other path builds an agent's toolset. */
 export function agentPolicyOptions(policy: EffectivePolicy, input: { attachment?: Pick<Attachment, 'tools'>; agent: PolicyAgent }, registry: HostToolRegistry): AgentPolicyOptions {
   const set = effectiveToolset(withAgentApprovals(policy, input.agent.approvals), input.attachment, input.agent.tools, registry);
@@ -222,7 +234,7 @@ export function agentPolicyOptions(policy: EffectivePolicy, input: { attachment?
     secrets: Object.fromEntries(set.tools.filter((entry) => entry.secrets.length > 0).map((entry) => [entry.name, entry.secrets])),
     network: { allowHosts: tightenHosts(policy.network.allowHosts, input.agent.network?.allowHosts) },
     sandbox: { required: policy.sandbox.required || input.agent.sandbox?.required === true },
-    warnings: [...permissions.warnings, ...set.missing.map(missingToolWarning)],
+    warnings: [...permissions.warnings, ...set.missing.map(missingToolWarning), ...removedToolWarnings(policy, input, set)],
   };
 }
 

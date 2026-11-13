@@ -42,3 +42,4 @@ export type {
 } from './wireTypes';
 export { createFetchClient, formatRunEventFrame, readRunEvents, WorkspaceApiError, LAST_EVENT_ID_HEADER, type ApiClient, type FetchClientOptions, type HeadersSource, type RouteInput, type RunEventsRequest } from './apiClient';
 export { fixtureClient } from './__fixtures__/fixtureClient';
+export { checkPageInputs, type InputProblem } from './inputs';

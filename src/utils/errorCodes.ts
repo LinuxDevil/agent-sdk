@@ -177,6 +177,18 @@ export const ERROR_CODES = {
   LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: 'Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.',
   /** A page requires a capability no tool in its effective toolset provides (`capability-missing`). */
   LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.",
+  /** A page's execution type has no engine in the runtime's engine registry (`engine-unknown`). */
+  /** `runPage` was given a page id the workspace does not list (`page-unknown`). */
+  LOUSHO_WORKSPACE_PAGE_UNKNOWN: "Pass a page id listed in workspace.json pages that has a pages/<id>/page.json.",
+  LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.",
+  /** `workspace.run` without a `pageId` on a workspace whose `mainAgent` is `null` (`no-main-agent`). */
+  LOUSHO_WORKSPACE_NO_MAIN_AGENT: 'Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.',
+  /** `createWorkspaceRuntime` got a host that misses a dependency, or a tool's secrets, hosts or sandbox need a `bindTool` the host did not give. */
+  LOUSHO_WORKSPACE_HOST_INVALID: 'Give the host the field the message names; pass bindTool when a policy grants a tool secrets or hosts, or requires a sandbox.',
+  /** `run` or `runPage` got a `runId` that is already active in the runtime. */
+  LOUSHO_WORKSPACE_RUN_ACTIVE: 'Pass a run id that is not running, or leave runId out so the runtime makes one.',
+  /** A call on a workspace runtime after `close()`. */
+  LOUSHO_WORKSPACE_RUNTIME_CLOSED: 'Create a new runtime with createWorkspaceRuntime; a closed one takes no runs.',
 } as const;
 
 /** A stable error code, e.g. `'LOUSHO_CONFIG_MISSING_PROVIDER'`. */

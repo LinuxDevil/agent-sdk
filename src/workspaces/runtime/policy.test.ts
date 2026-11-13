@@ -217,6 +217,14 @@ describe('agentPolicyOptions', () => {
     const options = agentPolicyOptions(effective({}), { agent: agent({ tools: ['web'] }) }, registry(['web_fetch']));
     expect(options.warnings).toEqual([expect.stringContaining("'web'")]);
   });
+
+  it('warns about an agent tool the allowlist or tools.only leaves out, naming the rule', () => {
+    const options = agentPolicyOptions(effective({ tools: { allow: ['search_facts', 'render_video'] } }), { attachment: { tools: { only: ['search_facts'] } }, agent: agent({ tools: ['search_facts', 'render_video', 'shell'] }) }, registry(['search_facts', 'render_video', 'shell']));
+    expect(options.warnings).toEqual([
+      "the agent's tool 'render_video' is not in the attachment's tools.only, so the tool is left out",
+      "the agent's tool 'shell' is not in the policy's tools.allow (the host ceiling narrowed by shared/policies/policy.json), so the tool is left out (R13)",
+    ]);
+  });
 });
 
 describe('pagePolicy', () => {
@@ -273,11 +281,32 @@ describe('runtime toolsets', () => {
   it('no code path under src/workspaces/runtime builds a toolset without effectiveToolset', () => {
     const dir = fileURLToPath(new URL('.', import.meta.url));
     const builds = /\bcreateAgent\s*\(|new ToolRegistry\b|\.register(?:Many)?\s*\(|\btoolRegistry\s*[:=]|\bloadAgentDir\s*\(|\bcollectTools\s*\(/;
-    const sources = readdirSync(dir).filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts') && !file.endsWith('.test-d.ts'));
-    const building = sources.filter((file) => builds.test(readFileSync(`${dir}/${file}`, 'utf8')));
-    expect(building).toEqual(['policy.ts']);
+    const sources = readdirSync(dir, { recursive: true, encoding: 'utf8' }).filter((file) => file.endsWith('.ts') && !file.endsWith('.test.ts') && !file.endsWith('.test-d.ts'));
+    const building = sources.filter((file) => builds.test(readFileSync(`${dir}/${file}`, 'utf8'))).sort();
+    expect(building).toEqual(['attachmentAgent.ts', 'mainAgent.ts', 'policy.ts']);
     const policy = readFileSync(`${dir}/policy.ts`, 'utf8');
     const builder = policy.slice(policy.indexOf('export function agentPolicyOptions'));
     expect(builder.slice(0, builder.indexOf('\n}\n'))).toMatch(/effectiveToolset\(/);
+  });
+
+  it('the page runtime builds agents only from the policy options, with every tool bound by the host', () => {
+    const dir = fileURLToPath(new URL('.', import.meta.url));
+    const source = readFileSync(`${dir}/attachmentAgent.ts`, 'utf8');
+    expect(source.match(/\bcreateAgent\s*\(/g)).toHaveLength(1);
+    expect(source).toMatch(/tools: boundTools\(/);
+    expect(source).toMatch(/permissions: policy\.permissions/);
+    expect(source).toMatch(/Object\.entries\(policy\.tools\)/);
+    expect(source).toMatch(/host\.bindTool\(/);
+  });
+
+  it('the main agent gets only its host-bound policy tools and the router tools', () => {
+    const dir = fileURLToPath(new URL('.', import.meta.url));
+    const source = readFileSync(`${dir}/mainAgent.ts`, 'utf8');
+    expect(source.match(/\bcreateAgent\s*\(/g)).toHaveLength(1);
+    expect(source).toMatch(/agentPolicyOptions\(effectivePolicy\(/);
+    expect(source).toMatch(/Object\.entries\(policy\.tools\)/);
+    expect(source).toMatch(/host\.bindTool\(/);
+    expect(source).toMatch(/tools: \{ \.\.\.own, \.\.\.options\.routerTools \}/);
+    expect(source).toMatch(/permissions: policy\.permissions/);
   });
 });

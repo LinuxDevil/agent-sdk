@@ -36,6 +36,7 @@ const entry = {
     'cli/add': 'src/cli/add.ts',
     'cli/build': 'src/cli/build.ts',
     'cli/studio': 'src/cli/studio.ts',
+    'cli/workspace': 'src/cli/workspace.ts',
     'cli/mcp': 'src/cli/mcp.ts',
     'cli/doctor': 'src/cli/doctor.ts',
     'cli/eval': 'src/cli/eval.ts',
