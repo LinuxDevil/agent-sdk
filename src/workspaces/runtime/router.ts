@@ -13,6 +13,7 @@ import type { EngineRegistry, PageRuntimeHost } from './engines/types';
 import type { LoadedWorkspace, LoadWorkspaceOptions } from './loadWorkspace';
 import { createMainAgent, mainPages, readMainHarness, workspaceManifest } from './mainAgent';
 import { runPage, type PageRuntimeContext } from './pageRuntime';
+import { thenFinish } from './runEvents';
 import { profileStoreFor, resolvePageHarness } from './resolveHarness';
 import { createSharedContextRun, resolveSharedContext, type SharedContextRun } from './sharedContext';
 
@@ -293,13 +294,9 @@ function pageRouter(workspace: LoadedWorkspace, ctx: WorkspaceSessionContext & {
       const runId = newRunId();
       const prior = runs.find((record) => record.runId === input.revise?.runId)?.result;
       const pageSignal = ctx.pageRuns ? await ctx.pageRuns.start(runId, input.pageId, signal) : signal;
-      let result: PageResult | undefined;
-      try {
-        const parentRunId = ctx.parentRunId ?? ctx.sessionId;
-        result = await runPage(workspace, { ...input, ...(parentRunId !== undefined && { parentRunId }) }, pageContext(ctx, runId, pageSignal, prior));
-      } finally {
-        await ctx.pageRuns?.end(runId, result);
-      }
+      const parentRunId = ctx.parentRunId ?? ctx.sessionId;
+      const run = (): Promise<PageResult> => runPage(workspace, { ...input, ...(parentRunId !== undefined && { parentRunId }) }, pageContext(ctx, runId, pageSignal, prior));
+      const result = await thenFinish(run, async (done) => ctx.pageRuns?.end(runId, done));
       const record = recordOf(input, runId, result, retries);
       runs.push(record);
       track?.(record);

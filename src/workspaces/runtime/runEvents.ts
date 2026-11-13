@@ -8,18 +8,41 @@ export interface RunRecorder {
 }
 
 export function runRecorder(runId: string, events: WorkspaceRunEvents | undefined, listener: ((event: WireRunEvent) => void) | undefined): RunRecorder {
-  let next = 0;
-  let tail: Promise<void> = Promise.resolve();
-  const append = async (event: PageRunEvent): Promise<WireRunEvent> => (events ? events.append(runId, event) : { id: next++, runId, event });
+  const state: { next: number; tail: Promise<void>; failure?: { error: unknown } } = { next: 0, tail: Promise.resolve() };
+  const append = async (event: PageRunEvent): Promise<WireRunEvent> => (events ? events.append(runId, event) : { id: state.next++, runId, event });
+  const record = async (event: PageRunEvent): Promise<void> => {
+    if (state.failure) return;
+    const wire = await append(event);
+    listener?.(wire);
+  };
   return {
     emit(event) {
-      tail = tail.then(async () => {
-        const wire = await append(event);
-        listener?.(wire);
+      state.tail = state.tail.then(() => record(event)).catch((error: unknown) => {
+        state.failure ??= { error };
       });
     },
-    flush: () => tail,
+    async flush() {
+      await state.tail;
+      if (state.failure) throw state.failure.error;
+    },
   };
+}
+
+export function withCause(error: unknown, cause: unknown): unknown {
+  if (error instanceof Error && error.cause === undefined) Object.defineProperty(error, 'cause', { value: cause, configurable: true, writable: true });
+  return error;
+}
+
+export async function thenFinish<T>(work: () => Promise<T>, finish: (result: T | undefined) => Promise<void>): Promise<T> {
+  let result: T | undefined;
+  try {
+    result = await work();
+  } catch (error) {
+    await finish(undefined).catch((finishError: unknown) => withCause(error, finishError));
+    throw error;
+  }
+  await finish(result);
+  return result;
 }
 
 export interface EventChannel<T> {

@@ -11,7 +11,7 @@ import { loadWorkspace, type LoadedWorkspace } from './loadWorkspace';
 import { addUsage, EMPTY_USAGE, runPage } from './pageRuntime';
 import { explainHarness, profileStoreFor, resolvePageHarness } from './resolveHarness';
 import { limiter, openWorkspaceSession, resultText, type PageRunRecord, type WorkspaceSessionContext, type WorkspaceTurn } from './router';
-import { eventChannel, runRecorder, type EventChannel, type RunRecorder } from './runEvents';
+import { eventChannel, runRecorder, thenFinish, withCause, type EventChannel, type RunRecorder } from './runEvents';
 import { checkHost, pageHostOf, type WorkspaceHost } from './workspaceHost';
 
 /** The workspace run began, pinned to one revision. */
@@ -247,8 +247,12 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
 
   async function endRun(runId: string, status: PageRunStatus, recorder: RunRecorder | undefined): Promise<void> {
     active.delete(runId);
-    await recorder?.flush();
-    await stores.runs.finish(runId, status);
+    await thenFinish(
+      async () => recorder?.flush(),
+      async () => {
+        await stores.runs.finish(runId, status);
+      }
+    );
   }
 
   function failedStatus(signal: AbortSignal): PageRunStatus {
@@ -299,7 +303,7 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
       channel.push(finished);
     } catch (error) {
       recorder.emit({ type: 'finished', status: failedStatus(signal) });
-      await endRun(runId, failedStatus(signal), recorder);
+      await endRun(runId, failedStatus(signal), recorder).catch((finishError: unknown) => withCause(error, finishError));
       throw error;
     }
   }
@@ -317,9 +321,8 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
     const row = { pageId: input.pageId, revision: workspace.revision, ...(options.threadId !== undefined && { threadId: options.threadId }) };
     const recorder = await beginPage(runId, row, new Map(), options.onEvent);
     const prior = options.threadId === undefined ? undefined : thread(options.threadId).runs.find((record) => record.runId === input.revise?.runId)?.result;
-    let result: PageResult | undefined;
-    try {
-      result = await runPage(workspace, input, {
+    const run = (): Promise<PageResult> =>
+      runPage(workspace, input, {
         host: pageHost,
         runId,
         artifacts: artifactSink(stores.artifacts, { workspace: workspace.manifest.id, runId }),
@@ -329,9 +332,7 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
         ...(prior && { prior }),
         ...(checked.engines && { engines: checked.engines }),
       });
-    } finally {
-      await endRun(runId, result?.status ?? failedStatus(signal), recorder);
-    }
+    const result = await thenFinish(run, (done) => endRun(runId, done?.status ?? failedStatus(signal), recorder));
     if (options.threadId !== undefined) await notePage(options.threadId, { runId, pageId: input.pageId, task: input.task, ...(input.inputs !== undefined && { inputs: input.inputs }), ...(input.revise && { revises: input.revise.runId }), result });
     return result;
   }

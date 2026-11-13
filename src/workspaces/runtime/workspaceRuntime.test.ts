@@ -379,3 +379,26 @@ describe('the workspace runtime runs', () => {
     await runtime.close();
   }, 120_000);
 });
+
+describe('when a store write fails', () => {
+  it('a direct run keeps its own error and carries the failed finish as its cause', async () => {
+    const host = testHost('coding', {}, { engines: fakeEngines() });
+    host.stores.runs.finish = async () => Promise.reject(new Error('store down'));
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    const error = await runtime.runPage('no-such-page', triage(), { runId: 'lost' }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).not.toContain('store down');
+    expect(((error as Error).cause as Error).message).toBe('store down');
+    expect(runtime.cancel('lost')).toBe(false);
+    await runtime.close();
+  });
+
+  it('a failed event append is reported once, never unhandled, and the run row still ends', async () => {
+    const host = testHost('coding', {}, { engines: fakeEngines() });
+    host.stores.events = { append: async () => Promise.reject(new Error('log down')), read: async () => [] };
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    await expect(runtime.runPage('support-triage', triage(), { runId: 'logless' })).rejects.toThrow('log down');
+    expect((await host.stores.runs.get('logless'))?.status).toBe('ok');
+    await runtime.close();
+  });
+});
