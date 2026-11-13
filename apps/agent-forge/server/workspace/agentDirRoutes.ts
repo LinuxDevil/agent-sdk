@@ -13,10 +13,18 @@
 import { stat } from 'node:fs/promises';
 import type { Express, Request, Response } from 'express';
 import { agentDirToSpec, SDKError } from 'lousho';
-import type { CodeAgentSpecResponse } from '../../shared/wireTypes';
+import type { CodeAgentSpecResponse, WorkspaceScanResult } from '../../shared/wireTypes';
 import { asyncRoute, sendError } from '../http/routeUtils';
 import { workspaceOf } from './middleware';
-import { agentConfigFile, findAgentDirs, resolveAgentDir } from './agentDirs';
+import { agentConfigFile, resolveAgentDir } from './agentDirs';
+import type { CodeAgentCache } from './codeAgentScan';
+import type { WorkspaceRegistry } from './workspaceRegistry';
+
+/** What the routes need beyond `app`: the shared scan cache and the registry (for the entry's stored `agentDirs`). */
+export interface AgentDirRouteDeps {
+  codeAgents: CodeAgentCache;
+  registry: WorkspaceRegistry;
+}
 
 interface CacheEntry {
   mtimeMs: number;
@@ -66,11 +74,27 @@ function isEscapingPath(rel: string): boolean {
   );
 }
 
-export function registerAgentDirRoutes(app: Express): void {
+/**
+ * The request workspace's scan result, shared with `GET
+ * /workspaces/:ws/scan` and `GET /agents?ws=all` (W08a): the cached
+ * result when present, a fresh pattern scan otherwise. The registry
+ * entry supplies the stored `agentDirs`; `ctx.ref` is the fallback (it
+ * is the same object the registry handed the context builder).
+ */
+async function scanFor(
+  req: Request,
+  deps: AgentDirRouteDeps
+): Promise<WorkspaceScanResult> {
+  const ctx = workspaceOf(req);
+  const entry = (await deps.registry.get(ctx.ref.id)) ?? { ...ctx.ref };
+  return deps.codeAgents.get(entry.id) ?? deps.codeAgents.scan(entry);
+}
+
+export function registerAgentDirRoutes(app: Express, deps: AgentDirRouteDeps): void {
   app.get(
     '/workspace/agent-dirs',
     asyncRoute(async (req, res) => {
-      res.json(await findAgentDirs(workspaceOf(req).ref.root));
+      res.json((await scanFor(req, deps)).agents);
     })
   );
 
@@ -85,6 +109,14 @@ export function registerAgentDirRoutes(app: Express): void {
       }
       if (isEscapingPath(rel)) {
         sendError(res, 400, 'path must be a directory inside the workspace', 'LOUSHO_REQUEST_INVALID');
+        return;
+      }
+      // W08a: only directories the pattern scan listed are spec-readable -
+      // the canvas and the list can never disagree about what exists.
+      const scan = await scanFor(req, deps);
+      const listed = rel.split('\\').join('/');
+      if (!scan.agents.some((agent) => agent.path === listed)) {
+        res.status(404).json({ error: `No agent directory at '${rel}'` });
         return;
       }
       const abs = await resolveAgentDir(root, rel);

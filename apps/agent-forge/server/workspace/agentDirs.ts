@@ -29,7 +29,7 @@ export const AGENT_DIR_LIMIT = 200;
 const CONFIG_FILES = ['agent.ts', 'agent.mts', 'agent.js', 'agent.mjs', 'agent.cjs', 'agent.json', 'agent.yaml', 'agent.yml'] as const;
 const CODE_CONFIG = /\.(?:ts|mts|js|mjs|cjs)$/;
 
-interface DirentLike {
+export interface DirentLike {
   name: string;
   isDirectory(): boolean;
   isFile(): boolean;
@@ -46,8 +46,18 @@ function toPosix(rel: string): string {
   return rel.split(path.sep).join('/');
 }
 
-function skipped(name: string): boolean {
+/**
+ * Whether `name` is a directory the agent-dir scans never descend into:
+ * the {@link AGENT_DIR_SKIP} names plus dot-directories. Shared by the
+ * X06a breadth-first scan and the W08a pattern scan so both agree on
+ * what counts as skippable.
+ */
+export function agentDirSkipped(name: string): boolean {
   return AGENT_DIR_SKIP.includes(name) || name.startsWith('.');
+}
+
+function skipped(name: string): boolean {
+  return agentDirSkipped(name);
 }
 
 /** `readdir` that tolerates unreadable/vanished dirs by answering `undefined`. */
@@ -68,7 +78,12 @@ function childRel(rel: string, name: string): string {
   return rel === '.' ? name : `${rel}/${name}`;
 }
 
-function describeAgentDir(baseDir: string, abs: string, rel: string, configFile: string): CodeAgentDir {
+/**
+ * The `CodeAgentDir` row for one found agent directory - shared by the
+ * X06a breadth-first scan and the W08a pattern scan so `path`/`name`/
+ * `configKind` are computed identically.
+ */
+export function describeAgentDir(baseDir: string, abs: string, rel: string, configFile: string): CodeAgentDir {
   return {
     path: toPosix(rel),
     name: rel === '.' ? path.basename(baseDir) : path.basename(abs),

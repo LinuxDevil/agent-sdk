@@ -791,8 +791,45 @@ export interface ObservedAgentItem {
   errorRateToday: number;
 }
 
+/**
+ * The agent-directory glob patterns a workspace scan uses when it has no
+ * stored `agentDirs` (W08a): `*` matches exactly one directory name,
+ * segments are POSIX, a trailing `/` is optional. Stored per workspace by
+ * `POST /workspaces/:ws/scan`.
+ */
+export const DEFAULT_AGENT_DIRS = ['agents/*/', 'src/agents/*/'] as const;
+
+/**
+ * One code-defined agent in `GET /agents?ws=all` (W08a): an agent
+ * directory found by the workspace's pattern scan - `id` is the
+ * directory's POSIX path relative to the workspace root (the same key
+ * `#/code/:path` routes and `GET /workspace/agent-dirs` list by).
+ */
+export interface CodeAgentItem {
+  kind: 'code';
+  id: string;
+  name: string;
+  workspaceId: string;
+  /** The `agent.*` config file the scan found in the directory. */
+  configFile: string;
+  configKind: 'code' | 'data';
+}
+
 /** Every agent kind the aggregate `GET /agents?ws=all` can return. W08a adds `CodeAgentItem`. */
-export type AnyAgentItem = WorkspaceAgentItem | ObservedAgentItem;
+export type AnyAgentItem = WorkspaceAgentItem | ObservedAgentItem | CodeAgentItem;
+
+/**
+ * `GET`/`POST /workspaces/:ws/scan`'s response (W08a): the cached-or-fresh
+ * pattern scan of one workspace's agent directories.
+ */
+export interface WorkspaceScanResult {
+  workspaceId: string;
+  /** ISO timestamp of when this scan ran (a cache hit keeps the original). */
+  scannedAt: string;
+  /** The glob patterns the scan ran with (the workspace's stored `agentDirs`, else `DEFAULT_AGENT_DIRS`). */
+  patterns: string[];
+  agents: CodeAgentDir[];
+}
 
 /** `GET /agents?ws=all`'s response: every workspace's agents plus the workspaces that could not be read. */
 export interface AllAgentsResponse {

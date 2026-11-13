@@ -72,6 +72,7 @@ import type {
   WorkspaceInfo,
   WorkspaceList,
   WorkspaceListItem,
+  WorkspaceScanResult,
 } from '../../shared/wireTypes';
 import { ALL_WORKSPACES, WORKSPACE_HEADER, WORKSPACE_QUERY } from '../../shared/workspace';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
@@ -494,6 +495,29 @@ class RuntimeClient implements AgentApi {
   /** Removes `id` from the registry - the folder on disk is never touched; the launch workspace always 409s. */
   async removeWorkspace(id: string): Promise<void> {
     await this.request(`/workspaces/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  }
+
+  /**
+   * W08a: `id`'s cached code-agent scan (`GET /workspaces/:ws/scan`) -
+   * scans on first read, then serves the stored result. Sent through
+   * `forWorkspace(id)` so the workspace header matches the `:ws` path.
+   */
+  async workspaceScan(id: string): Promise<WorkspaceScanResult> {
+    return this.forWorkspace(id).request(`/workspaces/${encodeURIComponent(id)}/scan`, { method: 'GET' });
+  }
+
+  /**
+   * W08a: rescan `id`'s agent dirs (`POST /workspaces/:ws/scan`). When
+   * `agentDirs` is given (1-20 glob patterns), the server persists them
+   * on the workspace entry before scanning; omitted, the stored (or
+   * default) patterns run again.
+   */
+  async scanWorkspace(id: string, agentDirs?: string[]): Promise<WorkspaceScanResult> {
+    const body = agentDirs === undefined ? {} : { agentDirs };
+    return this.forWorkspace(id).request(`/workspaces/${encodeURIComponent(id)}/scan`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   }
 
   async run(

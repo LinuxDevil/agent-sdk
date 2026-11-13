@@ -502,6 +502,38 @@ describe('RuntimeClient workspace methods', () => {
     expect(path).toBe('/workspace/agent-dirs/spec?path=agents%2Fa%20b');
     expect(init.method).toBe('GET');
   });
+
+  it('workspaceScan GETs /workspaces/:id/scan bound to that workspace (W08a)', async () => {
+    const scan = { workspaceId: 'proj-abc123', scannedAt: '2026-01-01T00:00:00.000Z', patterns: ['agents/*/'], agents: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, scan));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.workspaceScan('proj-abc123')).resolves.toEqual(scan);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspaces/proj-abc123/scan');
+    expect(init.method).toBe('GET');
+    expect((init.headers as Headers).get('x-lousho-workspace')).toBe('proj-abc123');
+  });
+
+  it('scanWorkspace POSTs /workspaces/:id/scan with agentDirs when given (W08a)', async () => {
+    const scan = { workspaceId: 'proj-abc123', scannedAt: '2026-01-01T00:00:00.000Z', patterns: ['tools/*/'], agents: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, scan));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.scanWorkspace('proj-abc123', ['tools/*/'])).resolves.toEqual(scan);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspaces/proj-abc123/scan');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ agentDirs: ['tools/*/'] });
+    expect((init.headers as Headers).get('x-lousho-workspace')).toBe('proj-abc123');
+  });
+
+  it('scanWorkspace POSTs an empty body when agentDirs is omitted (W08a)', async () => {
+    const scan = { workspaceId: 'proj-abc123', scannedAt: '2026-01-01T00:00:00.000Z', patterns: ['agents/*/'], agents: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, scan));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.scanWorkspace('proj-abc123')).resolves.toEqual(scan);
+    const [, init] = lastCall(fetchMock);
+    expect(JSON.parse(String(init.body))).toEqual({});
+  });
 });
 
 describe('RuntimeClient template methods', () => {

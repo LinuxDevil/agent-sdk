@@ -106,6 +106,7 @@ import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
 import { configureStudioHome } from './workspace/studioPaths';
 import { workspaceRefFor } from './workspace/workspaceId';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
+import { CodeAgentCache } from './workspace/codeAgentScan';
 import { registerWorkspaceRegistryRoutes } from './workspace/workspaceRoutes';
 import { registerAgentDirRoutes } from './workspace/agentDirRoutes';
 import {
@@ -180,6 +181,8 @@ interface CreateAppBaseOptions {
   sessions?: AuthorSessionStore;
   /** The `/workspaces` routes' store. Defaults to `new WorkspaceRegistry(studioPaths().workspaces)` when omitted. */
   workspaceRegistry?: WorkspaceRegistry;
+  /** The app's one code-agent scan cache (W08a). Defaults to a fresh `CodeAgentCache`; tests inject one to count scans. */
+  codeAgentCache?: CodeAgentCache;
   /**
    * The resolver every request's workspace id (`x-lousho-workspace` or
    * `?ws=`) resolves through - `startStudioServer` passes its
@@ -1108,6 +1111,9 @@ export function createApp(options: CreateAppOptions): Express {
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
   const workspaceRegistry = options.workspaceRegistry ?? new WorkspaceRegistry(paths.workspaces);
+  // The app's one code-agent scan cache (W08a): shared by the scan
+  // routes, `/workspace/agent-dirs` and the aggregate agent list.
+  const codeAgentCache = options.codeAgentCache ?? new CodeAgentCache();
   // The app's one spend log and pass runner (passes/): Studio-global, so
   // they live next to the other studioPaths() stores rather than per
   // workspace. `passRunner` defaults to one over this `spendLog`.
@@ -1220,7 +1226,11 @@ export function createApp(options: CreateAppOptions): Express {
   // rest. Warm contexts come from `options.warm` (the manager's), so a
   // running agent still reports its live status; cold workspaces read
   // through a bare AgentRepo.
-  registerAllAgentsRoute(app, { registry: workspaceRegistry, warm: options.warm ?? (() => [workspace]) });
+  registerAllAgentsRoute(app, {
+    registry: workspaceRegistry,
+    warm: options.warm ?? (() => [workspace]),
+    codeAgents: codeAgentCache,
+  });
   // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).
@@ -1245,7 +1255,7 @@ export function createApp(options: CreateAppOptions): Express {
   registerWorkspaceRoute(app);
   // Code-agent discovery (X06a): agent dirs under the workspace root +
   // their data-config specs for the read-only canvas.
-  registerAgentDirRoutes(app);
+  registerAgentDirRoutes(app, { codeAgents: codeAgentCache, registry: workspaceRegistry });
   // The workspace registry's routes (`GET/POST /workspaces`,
   // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:
   // the launch workspace's id is this app's `defaultId` and the one entry
@@ -1257,6 +1267,7 @@ export function createApp(options: CreateAppOptions): Express {
     // WorkspaceManager - structural check, not instanceof, so a test's
     // plain resolver needs no `forget`.
     forget: forgetWorkspace(options.workspaces),
+    scanCache: codeAgentCache,
   });
   registerRunRoutes(app);
   registerChatRoutes(app);

@@ -25,7 +25,18 @@ import { workspaceIdFor, workspaceRefFor } from './workspaceId';
 // fallow-ignore-next-line unused-type -- part of the registry's file contract; used by readRefs/writeRefs inside this module
 export interface WorkspacesFile {
   schemaVersion: 1;
-  workspaces: WorkspaceRef[];
+  workspaces: WorkspaceEntry[];
+}
+
+/**
+ * A stored registry row: the wire `WorkspaceRef` plus server-only fields
+ * that never travel to the client. `agentDirs` (W08a) is the workspace's
+ * custom code-agent glob patterns - `POST /workspaces/:ws/scan` writes
+ * it, the scan routes and the aggregate agent list read it; absent means
+ * `DEFAULT_AGENT_DIRS`.
+ */
+export interface WorkspaceEntry extends WorkspaceRef {
+  agentDirs?: string[];
 }
 
 /** The in-process mutex key serializing every registry read-modify-write (the `workspaces:` prefix keeps it off the agent-id namespace). */
@@ -85,7 +96,7 @@ export class WorkspaceRegistry {
    * with one `console.warn` - a corrupt registry must not take down the
    * whole server, and the next write replaces it anyway.
    */
-  private async readRefs(): Promise<WorkspaceRef[]> {
+  private async readRefs(): Promise<WorkspaceEntry[]> {
     try {
       const stored = await readJsonFile<WorkspacesFile>(this.file);
       if (stored === undefined) return [];
@@ -97,18 +108,18 @@ export class WorkspaceRegistry {
     }
   }
 
-  private writeRefs(workspaces: WorkspaceRef[]): Promise<void> {
+  private writeRefs(workspaces: WorkspaceEntry[]): Promise<void> {
     const file: WorkspacesFile = { schemaVersion: 1, workspaces };
     return writeJsonAtomic(this.file, file);
   }
 
   /** Every registered workspace, in file order. */
-  list(): Promise<WorkspaceRef[]> {
+  list(): Promise<WorkspaceEntry[]> {
     return this.readRefs();
   }
 
-  /** The ref for `id`, or `undefined` when it isn't registered. */
-  async get(id: string): Promise<WorkspaceRef | undefined> {
+  /** The entry for `id`, or `undefined` when it isn't registered. */
+  async get(id: string): Promise<WorkspaceEntry | undefined> {
     return (await this.readRefs()).find((ref) => ref.id === id);
   }
 
@@ -117,7 +128,7 @@ export class WorkspaceRegistry {
    * `lastOpenedAt` - the launch-folder call on every Studio start, which
    * must never throw for an already-registered folder.
    */
-  ensure(root: string): Promise<WorkspaceRef> {
+  ensure(root: string): Promise<WorkspaceEntry> {
     return withAgentLock(REGISTRY_LOCK, async () => {
       const refs = await this.readRefs();
       const id = workspaceIdFor(root);
@@ -140,7 +151,7 @@ export class WorkspaceRegistry {
    * already registered. Throws {@link WorkspaceRootError} (400) or
    * {@link WorkspaceExistsError} (409) - the route maps them.
    */
-  async add(root: string): Promise<WorkspaceRef> {
+  async add(root: string): Promise<WorkspaceEntry> {
     const trimmed = typeof root === 'string' ? root.trim() : '';
     if (!trimmed || !path.isAbsolute(trimmed)) {
       throw new WorkspaceRootError(
@@ -187,6 +198,24 @@ export class WorkspaceRegistry {
       if (!ref) return;
       ref.lastOpenedAt = this.now().toISOString();
       await this.writeRefs(refs);
+    });
+  }
+
+  /**
+   * Stores `id`'s code-agent glob patterns (`agentDirs`, W08a) - the
+   * shape `POST /workspaces/:ws/scan` validated. `undefined` clears the
+   * field so the next scan falls back to `DEFAULT_AGENT_DIRS`. Returns
+   * the updated entry, `undefined` when `id` isn't registered.
+   */
+  setAgentDirs(id: string, patterns: string[] | undefined): Promise<WorkspaceEntry | undefined> {
+    return withAgentLock(REGISTRY_LOCK, async () => {
+      const refs = await this.readRefs();
+      const ref = refs.find((r) => r.id === id);
+      if (!ref) return undefined;
+      if (patterns === undefined) delete ref.agentDirs;
+      else ref.agentDirs = [...patterns];
+      await this.writeRefs(refs);
+      return ref;
     });
   }
 }
