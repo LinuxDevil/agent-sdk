@@ -92,7 +92,7 @@
               "onFailure": "return-to-main"
             }
           },
-          "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
+          "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
         },
         {
           "workspaceId": "marketing",
@@ -121,7 +121,7 @@
               }
             }
           },
-          "harnessHash": "35f78967456d5b6add9d1a30609b032f38daaeed6e039bc49a1c107825e1ddf5"
+          "harnessHash": "079f8f90217abe7b396d50debcf5b618271f5013ac010251dfda9da26e76d334"
         },
         {
           "workspaceId": "marketing",
@@ -153,7 +153,7 @@
               }
             }
           },
-          "harnessHash": "d29d34c2e7832eddf95e4459aae953d9c6238298816eb113f56eb53d8a7af1e6"
+          "harnessHash": "a72df8a2d4c7b7b6e66e7ce0499f3c0faddb293683b12338e9382410557b90dc"
         }
       ]
     },
@@ -197,7 +197,7 @@
             "onFailure": "return-to-main"
           }
         },
-        "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
+        "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
       },
       {
         "workspaceId": "marketing",
@@ -226,7 +226,7 @@
             }
           }
         },
-        "harnessHash": "35f78967456d5b6add9d1a30609b032f38daaeed6e039bc49a1c107825e1ddf5"
+        "harnessHash": "079f8f90217abe7b396d50debcf5b618271f5013ac010251dfda9da26e76d334"
       },
       {
         "workspaceId": "marketing",
@@ -258,7 +258,7 @@
             }
           }
         },
-        "harnessHash": "d29d34c2e7832eddf95e4459aae953d9c6238298816eb113f56eb53d8a7af1e6"
+        "harnessHash": "a72df8a2d4c7b7b6e66e7ce0499f3c0faddb293683b12338e9382410557b90dc"
       }
     ],
     "getPage": {
@@ -300,7 +300,7 @@
           "onFailure": "return-to-main"
         }
       },
-      "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
+      "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
     },
     "getEffectiveHarness": {
       "pageId": "instagram-videos",
@@ -313,7 +313,7 @@
           "workspace:audiences/general",
           "page"
         ],
-        "instructions": "### From workspace base\n\nWrite the way the brand speaks.\n\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.\n",
+        "instructions": "### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.",
         "audience": {
           "description": "People who follow the brand and want a quick lesson."
         },
@@ -477,7 +477,7 @@
             "workspace:platforms/instagram"
           ]
         },
-        "hash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
+        "hash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
       },
       "layers": [
         {
@@ -727,7 +727,7 @@
           "workspace:platforms/instagram"
         ]
       },
-      "hash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad"
+      "hash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
     },
     "getMainHarness": {
       "revision": "rev-7d6e6f2ce202",
@@ -1030,7 +1030,7 @@
         "event": {
           "type": "started",
           "page": "instagram-videos",
-          "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad",
+          "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6",
           "executionType": "workflow"
         }
       },
@@ -1042,7 +1042,7 @@
           "phase": "start",
           "page": "instagram-videos",
           "attachment": "script",
-          "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad",
+          "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6",
           "executionType": "workflow",
           "stepKind": "workflow-step",
           "stepIndex": 0
@@ -1079,7 +1079,7 @@
           "phase": "done",
           "page": "instagram-videos",
           "attachment": "script",
-          "harnessHash": "87f15b2cf0bf731f7a05fcbd82c26ec09ff19525533c660734cb75364b0c41ad",
+          "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6",
           "executionType": "workflow",
           "stepKind": "workflow-step",
           "stepIndex": 0
@@ -1124,7 +1124,7 @@
           "costUsd": 0.002
         },
         "runId": "run-0001",
-        "traceId": "trace-87f15b2c"
+        "traceId": "trace-2748b791"
       },
       "lastEventId": 5
     },
@@ -1158,7 +1158,7 @@
           "costUsd": 0.002
         },
         "runId": "run-0001",
-        "traceId": "trace-87f15b2c"
+        "traceId": "trace-2748b791"
       },
       "lastEventId": 5
     },
@@ -1192,13 +1192,13 @@
           "costUsd": 0.002
         },
         "runId": "run-0001",
-        "traceId": "trace-87f15b2c"
+        "traceId": "trace-2748b791"
       },
       "lastEventId": 5
     },
     "getRunTrace": {
       "runId": "run-0001",
-      "traceId": "trace-87f15b2c",
+      "traceId": "trace-2748b791",
       "spans": [
         {
           "spanId": "span-1",

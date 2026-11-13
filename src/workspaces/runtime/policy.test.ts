@@ -217,6 +217,14 @@ describe('agentPolicyOptions', () => {
     const options = agentPolicyOptions(effective({}), { agent: agent({ tools: ['web'] }) }, registry(['web_fetch']));
     expect(options.warnings).toEqual([expect.stringContaining("'web'")]);
   });
+
+  it('warns about an agent tool the allowlist or tools.only leaves out, naming the rule', () => {
+    const options = agentPolicyOptions(effective({ tools: { allow: ['search_facts', 'render_video'] } }), { attachment: { tools: { only: ['search_facts'] } }, agent: agent({ tools: ['search_facts', 'render_video', 'shell'] }) }, registry(['search_facts', 'render_video', 'shell']));
+    expect(options.warnings).toEqual([
+      "the agent's tool 'render_video' is not in the attachment's tools.only, so the tool is left out",
+      "the agent's tool 'shell' is not in the policy's tools.allow (the host ceiling narrowed by shared/policies/policy.json), so the tool is left out (R13)",
+    ]);
+  });
 });
 
 describe('pagePolicy', () => {

@@ -653,6 +653,9 @@ const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_PAGE_UNKNOWN: "Pass a page id listed in workspace.json pages that has a pages/<id>/page.json.";
     readonly LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.";
     readonly LOUSHO_WORKSPACE_NO_MAIN_AGENT: "Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.";
+    readonly LOUSHO_WORKSPACE_HOST_INVALID: "Give the host the field the message names; pass bindTool when a policy grants a tool secrets or hosts, or requires a sandbox.";
+    readonly LOUSHO_WORKSPACE_RUN_ACTIVE: "Pass a run id that is not running, or leave runId out so the runtime makes one.";
+    readonly LOUSHO_WORKSPACE_RUNTIME_CLOSED: "Create a new runtime with createWorkspaceRuntime; a closed one takes no runs.";
 };
 
 // @public

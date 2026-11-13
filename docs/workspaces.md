@@ -197,6 +197,8 @@ Then the provider wrapper applies. The effective provider is the page's `models.
 
 The schema checks only the name's format (lowercase letters, digits and dashes, starting with a letter). Whether the provider is registered on this host is a runtime check, since the host injects providers (R17).
 
+The host's `providers.resolve(model)` is the model allow-list. Every page agent and the main agent get their provider through it, so a host that must keep a workspace off some vendors or models throws there for any model it does not allow; the run then fails before any model call. The policy has no model list in v1 (G6).
+
 The improver is separate (R8): `improve.proposerModel` and any Determinator model are never wrapped by `models.provider`, and never go through `resolvePageModel`.
 
 ### harness.json (`lousho.harness/1`)
@@ -436,7 +438,7 @@ A workspace agent is read from its files and nothing in it is run, so settings i
 | Approvals | A tool in `approvals.require` asks for approval every time, in an agent run and in a workflow `toolCall` step, whatever an `allow` rule or the permission mode says. So does a Studio tool ref with `approval: 'always'`. A host tool's own `needsApproval` ask is kept the same way: an agent `allow` never lifts it. A deny still denies |
 | Capabilities | `pagePolicy()` fails page start with `LOUSHO_WORKSPACE_CAPABILITY_MISSING` (`capability-missing`) when `capabilities.require` names something no tool in the page's effective toolsets provides. A tool that a ceiling or workspace rule denies outright provides nothing. A capability never grants a tool |
 
-`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset. `attachmentAgent()` is the only place the page runtime builds a page agent, and `createMainAgent()` the only place it builds the main agent: it takes those options, passes every tool through the host's `bindTool(descriptor, scope)` with the tool's `secrets`, `network.allowHosts` and `sandbox.required`, and the host enforces them.
+`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset. `attachmentAgent()` is the only place the page runtime builds a page agent, and `createMainAgent()` the only place it builds the main agent: it takes those options, passes every tool through the host's `bindTool(descriptor, scope)` with the tool's `secrets`, `network.allowHosts` and `sandbox.required`, and the host enforces them. Under `createWorkspaceRuntime` a host without `bindTool` can run only tools whose scope grants no secrets, no hosts and no sandbox; any other tool fails the run with `LOUSHO_WORKSPACE_HOST_INVALID`, so nothing the policy narrows ever runs unenforced (see [The workspace runtime and its host](#the-workspace-runtime-and-its-host)).
 
 ```ts
 import { narrowPolicy, pagePolicy, type HostToolRegistry } from 'lousho/workspaces';
@@ -535,6 +537,25 @@ The main agent is built from `main-agent/` with the shared policy and its own to
 Each tool calls `runPage()` and returns the `summary`, the error and the artifact refs between `<untrusted>` and `</untrusted>`, after a line telling the main agent to treat it as data; any such tags in the page's text are stripped first. Because results land in the main agent's thread, a follow-up ("make a Facebook version") sees them, while the page sees only its own task and inputs.
 
 The runtime, not the prompt, enforces two main-harness settings. `limits.maxConcurrentPages` caps the page runs in flight at once, clamped to `workspace.json`'s `defaults.limits.maxConcurrentPages` (default 3). A page that ends `failed` or `timed-out` is never re-run automatically, except once when `onPageFailure` is `retry-once`; the retry's record names the run it retries in `retries`, and its tool result tells the main agent not to run the page again. Router tools exist only when there is a main agent, so one page whose harness cannot be resolved never blocks direct runs of the others. The main agent's model follows the same rules as a page agent's (its own default, then `defaults.model`), wrapped by `models.provider`.
+
+### The workspace runtime and its host
+
+`createWorkspaceRuntime(source, host)` is the one entry point for the service, the CLI, Forge and tests. It reads the workspace only through `source` and gets everything environmental from `host` (a `WorkspaceHost`); a missing field fails construction with `LOUSHO_WORKSPACE_HOST_INVALID` naming it, such as `host.stores.threads`.
+
+| Host field | What it gives the runtime |
+| --- | --- |
+| `tools` | The `HostToolRegistry`: each tool's descriptor, declared secrets and capabilities |
+| `policyCeiling` | The most the host allows; `shared/policies/policy.json` only narrows it |
+| `providers.resolve(model)` | The provider for each resolved model string; every model, the main agent's too, goes through it, so it is where a host refuses a model |
+| `secrets.resolve(ref)` | Secret values; each tool's binder gets a resolver that answers only the secrets granted to that tool |
+| `stores` | `artifacts`, `threads` (the main agent's transcripts), `runs` (rows stamped with the revision, `threadId` and the parent run), `checkpoints`, and optionally `events` (run event logs) |
+| `globals` | `agents` and `profiles` for `global:` refs |
+| `limits.maxConcurrentRuns` | Workspace and direct page runs executing at once; more wait their turn |
+| `bindTool(descriptor, scope, secrets)` | Enforces each tool's secrets, hosts and sandbox. Optional, but without it only tools whose scope grants no secrets, no hosts and no sandbox run |
+| `checks` | The check registry by name (D1). No runtime path runs criteria yet; the goal engine (P3.6) and check runs (P5.13) read it |
+| `createMemory`, `exporter`, `engines`, `newRunId` | Shared memory slots, spans, engines by type and run ids |
+
+`runtime.run(message, { threadId, pageId?, inputs?, signal?, runId? })` streams `started` (with the pinned revision), each page run's events as `page`, and `finished` with the status, the usage of the main agent plus every page, and each page's usage. `runtime.runPage(pageId, input, { signal?, runId?, threadId?, onEvent? })` runs a page directly; with `threadId` the run is noted in that thread, and the main agent can list and revise it only when it routes to that page. `cancel(runId)` aborts a workspace run, a page it started or a direct run; `explain(pageId)` gives the effective harness and its hash; `close()` aborts every run, waits for them and refuses new ones. Each run loads one revision and keeps it to the end, even when the source is written meanwhile. A `runId` that is already running is refused with `LOUSHO_WORKSPACE_RUN_ACTIVE`. The runtime keeps the page runs of its 256 most recently used threads in memory; the transcripts stay in `stores.threads`.
 
 ### Type switching
 
@@ -699,7 +720,7 @@ These are the rules the contracts enforce. The number is the rule's id in the pr
 
 ## The runtime pipeline (P1)
 
-The page runtime is built (`runPage`, above); the main agent and router are not built yet. The planned order, from a request to a reply, is: load the workspace from a source, resolve agents and harness layers, resolve shared context, apply policy under the host's limit, run the main agent (when there is one), route to a page, compose the page's harness, run the page's engine, validate the output against `outputs.schema`, and return a `PageResult` to the main agent. Everything the pipeline reads is defined on this page, and a new field lands in its schema, its JSON Schema and this page in the same change as its first reader.
+The page runtime (`runPage`), the main agent and router (`openWorkspaceSession`) and the workspace runtime (`createWorkspaceRuntime`) are built, above. The planned order, from a request to a reply, is: load the workspace from a source, resolve agents and harness layers, resolve shared context, apply policy under the host's limit, run the main agent (when there is one), route to a page, compose the page's harness, run the page's engine, validate the output against `outputs.schema`, and return a `PageResult` to the main agent. Everything the pipeline reads is defined on this page, and a new field lands in its schema, its JSON Schema and this page in the same change as its first reader.
 
 ## JSON Schema export
 

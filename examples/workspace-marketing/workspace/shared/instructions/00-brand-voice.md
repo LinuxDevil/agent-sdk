@@ -1,0 +1,1 @@
+Friendly, plain and confident.

@@ -38,7 +38,7 @@ export function readMainHarness(workspace: LoadedWorkspace, manifest: WorkspaceM
     const text = workspace.tree[joinPath(dir, name)];
     return text === undefined ? [] : [[name, textOf(text)]];
   }));
-  return { harness, texts };
+  return { harness, dir, texts };
 }
 
 export function mainPages(workspace: LoadedWorkspace, manifest: WorkspaceManifest): MainPageInfo[] {

@@ -1,16 +1,19 @@
 import { z } from 'zod';
 import { unmark } from '../../improve/evidence';
 import { jsonSchemaToStandardSchema } from '../../spec/v2/jsonSchemaAdapter';
+import type { SessionStore } from '../../session/sessionStore';
 import { defineTool } from '../../tools/defineTool';
 import type { ToolDescriptor } from '../../types';
 import { brandClass } from '../../utils/brand';
 import { SDKError } from '../../utils/sdkError';
-import type { ArtifactSink, PageInput, PageResult, PageRunEvent } from '../contracts/execution';
+import type { ArtifactSink, PageInput, PageResult, PageRunEvent, PageUsage } from '../contracts/execution';
 import { effectiveMaxConcurrentPages, type MainHarness } from '../contracts/mainHarness';
+import { usageOf } from './engines/single';
 import type { EngineRegistry, PageRuntimeHost } from './engines/types';
 import type { LoadedWorkspace, LoadWorkspaceOptions } from './loadWorkspace';
 import { createMainAgent, mainPages, readMainHarness, workspaceManifest } from './mainAgent';
 import { runPage, type PageRuntimeContext } from './pageRuntime';
+import { thenFinish } from './runEvents';
 import { profileStoreFor, resolvePageHarness } from './resolveHarness';
 import { createSharedContextRun, resolveSharedContext, type SharedContextRun } from './sharedContext';
 
@@ -45,6 +48,14 @@ export interface PageRunRecord {
   result: PageResult;
 }
 
+/** Hooks around every page run a session makes: the host records the run and may cancel it. */
+export interface PageRunHooks {
+  /** Called before the page starts; the signal it returns is the one the page runs under. */
+  start(runId: string, pageId: string, signal: AbortSignal | undefined): Promise<AbortSignal>;
+  /** Called once the page ended, with its result; `undefined` when `runPage` threw. */
+  end(runId: string, result: PageResult | undefined): Promise<void>;
+}
+
 /** What one workspace session needs: the host, where artifacts go, and how run ids are made. */
 export interface WorkspaceSessionContext {
   /** The host's tools, policy ceiling, providers and global resolution. */
@@ -53,7 +64,7 @@ export interface WorkspaceSessionContext {
   artifacts: (runId: string) => ArtifactSink;
   /** Makes a page run id; defaults to a random UUID. */
   newRunId?: () => string;
-  /** The main session's id, recorded as each page run's `parentRunId`. */
+  /** The main session's id: the thread the main agent's transcript is kept under. */
   sessionId?: string;
   /** Receives every page run's events with the run's id. */
   emit?: (runId: string, event: PageRunEvent) => void;
@@ -63,6 +74,14 @@ export interface WorkspaceSessionContext {
   mode?: LoadWorkspaceOptions['mode'];
   /** The workspace run whose shared memory instances the pages and the main agent share; one is made when absent. */
   sharedRun?: SharedContextRun;
+  /** The run every page run of this session records as its `parentRunId`; defaults to `sessionId`. */
+  parentRunId?: string;
+  /** Where the main agent's thread is kept under `sessionId`; in memory when absent. */
+  threads?: SessionStore;
+  /** Called around every page run. */
+  pageRuns?: PageRunHooks;
+  /** Page runs of earlier turns on the same thread; the main agent can list and revise those of pages it routes to. */
+  priorRuns?: readonly PageRunRecord[];
 }
 
 /** Options of {@link WorkspaceSession.run}. */
@@ -84,6 +103,8 @@ export type WorkspaceTurn =
       text: string;
       /** Why the main agent's turn ended. */
       finishReason: string;
+      /** What the main agent's own model calls used; the page runs report theirs in `runs`. */
+      usage: PageUsage;
       /** The page runs the main agent made in this turn. */
       runs: PageRunRecord[];
     }
@@ -108,9 +129,9 @@ export interface WorkspaceSession {
   runs(): readonly PageRunRecord[];
 }
 
-type Limiter = <T>(task: () => Promise<T>) => Promise<T>;
+export type Limiter = <T>(task: () => Promise<T>) => Promise<T>;
 
-function limiter(max: number): Limiter {
+export function limiter(max: number): Limiter {
   let active = 0;
   const waiting: (() => void)[] = [];
   const release = (): void => {
@@ -135,7 +156,7 @@ function errorLine(result: PageResult): string[] {
   return result.error ? [`error (${result.error.kind}): ${unmark(result.error.message)}`] : [];
 }
 
-function resultText(record: PageRunRecord): string {
+export function resultText(record: PageRunRecord): string {
   const { result } = record;
   return [
     `Page '${record.pageId}' run ${record.runId} ended ${result.status}.`,
@@ -184,8 +205,8 @@ function routedPages(workspace: LoadedWorkspace, harness: MainHarness | undefine
   return pages.filter((page) => routed.has(page.id));
 }
 
-function routedRuns(router: Router, pages: ReadonlySet<string>): RoutedRuns {
-  const list: PageRunRecord[] = [];
+function routedRuns(router: Router, pages: ReadonlySet<string>, prior: readonly PageRunRecord[]): RoutedRuns {
+  const list: PageRunRecord[] = prior.filter((record) => pages.has(record.pageId));
   return {
     list,
     pages,
@@ -203,7 +224,7 @@ async function revise(routed: RoutedRuns, runId: string, instruction: string, si
 function routerTools(workspace: LoadedWorkspace, ctx: WorkspaceSessionContext, router: Router): Record<string, ToolDescriptor> {
   const tools: Record<string, ToolDescriptor> = {};
   const pages = routedPages(workspace, router.harness);
-  const routed = routedRuns(router, new Set(pages.map((page) => page.id)));
+  const routed = routedRuns(router, new Set(pages.map((page) => page.id)), ctx.priorRuns ?? []);
   for (const page of pages) {
     const name = `run_page_${page.id}`;
     tools[name] = defineTool({
@@ -267,12 +288,15 @@ function pageRouter(workspace: LoadedWorkspace, ctx: WorkspaceSessionContext & {
   const harness = readMainHarness(workspace, manifest)?.harness;
   const gate = limiter(effectiveMaxConcurrentPages(manifest, harness));
   const newRunId = ctx.newRunId ?? (() => globalThis.crypto.randomUUID());
-  const runs: PageRunRecord[] = [];
+  const runs: PageRunRecord[] = [...(ctx.priorRuns ?? [])];
   const once = (input: PageInput, signal: AbortSignal | undefined, track: Track | undefined, retries?: string): Promise<PageRunRecord> =>
     gate(async () => {
       const runId = newRunId();
       const prior = runs.find((record) => record.runId === input.revise?.runId)?.result;
-      const result = await runPage(workspace, { ...input, ...(ctx.sessionId !== undefined && { parentRunId: ctx.sessionId }) }, pageContext(ctx, runId, signal, prior));
+      const pageSignal = ctx.pageRuns ? await ctx.pageRuns.start(runId, input.pageId, signal) : signal;
+      const parentRunId = ctx.parentRunId ?? ctx.sessionId;
+      const run = (): Promise<PageResult> => runPage(workspace, { ...input, ...(parentRunId !== undefined && { parentRunId }) }, pageContext(ctx, runId, pageSignal, prior));
+      const result = await thenFinish(run, async (done) => ctx.pageRuns?.end(runId, done));
       const record = recordOf(input, runId, result, retries);
       runs.push(record);
       track?.(record);
@@ -300,7 +324,7 @@ export function openWorkspaceSession(workspace: LoadedWorkspace, ctx: WorkspaceS
           host: ctx.host,
           routerTools: routerTools(workspace, ctx, router),
           shared: resolveSharedContext(workspace, { audience: 'main-agent', run: sharedRun, ...(ctx.host.createMemory && { createMemory: ctx.host.createMemory }) }),
-        }).session(ctx.sessionId === undefined ? {} : { id: ctx.sessionId });
+        }).session({ ...(ctx.sessionId !== undefined && { id: ctx.sessionId }), ...(ctx.threads && { store: ctx.threads }) });
   return {
     runs: () => [...router.runs],
     async run(message, options = {}) {
@@ -310,7 +334,7 @@ export function openWorkspaceSession(workspace: LoadedWorkspace, ctx: WorkspaceS
       if (!main) return { kind: 'error', error: new WorkspaceRunError() };
       const before = router.runs.length;
       const result = await main.send(message, options.signal ? { signal: options.signal } : {});
-      return { kind: 'main', text: result.text, finishReason: result.finishReason, runs: router.runs.slice(before) };
+      return { kind: 'main', text: result.text, finishReason: result.finishReason, usage: usageOf(result), runs: router.runs.slice(before) };
     },
   };
 }

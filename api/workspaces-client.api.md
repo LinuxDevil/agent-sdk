@@ -484,6 +484,7 @@ type PageField = 'name' | 'description' | 'domain' | 'improve' | 'platform' | 'd
 interface PageFinishedEvent {
     status: PageRunStatus;
     type: 'finished';
+    usage?: PageUsage;
 }
 
 // @public

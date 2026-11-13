@@ -7,6 +7,7 @@ import type { PageEngine, PageResult } from '../../contracts/execution';
 import type { PageManifest, WorkType } from '../../contracts/page';
 import type { PolicyCeiling } from '../../contracts/policy';
 import type { GlobalAgentRegistry } from '../agentRegistry';
+import type { WorkspaceCheckRegistry } from '../checks';
 import type { LoadedWorkspace } from '../loadWorkspace';
 import type { AgentPolicyOptions, HostToolRegistry } from '../policy';
 import type { ProfileStore } from '../profileStore';
@@ -54,6 +55,8 @@ export interface PageRuntimeHost {
   globalProfiles?: ProfileStore;
   /** Builds the slot for a `shared/memory/*.ts` file; the core never runs workspace code. */
   createMemory?: (file: SharedMemoryFile) => MemorySlot;
+  /** The host's programmatic checks by name, for criteria whose `check` names one; the goal engine (P3.6) and check runs (P5.13) read it, and a workspace check file is never imported. */
+  checks?: WorkspaceCheckRegistry;
 }
 
 /** One attachment of the page, resolved, with the policy applied. */
