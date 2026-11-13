@@ -7,7 +7,7 @@ Renders a Lousho page UI (`lousho.ui/1`) in any React 18 or later app. `<PageApp
 ## Use
 
 ```tsx
-import { createFetchClient } from 'lousho/workspaces/client';
+import { createFetchClient } from '@linuxdevil/lousho/workspaces/client';
 import { PageApp } from '@lousho/workspaces-react';
 import '@lousho/workspaces-react/styles.css';
 

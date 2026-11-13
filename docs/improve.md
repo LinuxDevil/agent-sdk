@@ -32,9 +32,9 @@ It's experimental: its results so far come from a small benchmark.
 For how this fits with recovering failed runs while the agent serves traffic, see [Self-healing and self-improvement](./self-healing.md).
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
-import { formatImproveResult, improveAgent, renderTranscript, type Harness } from 'lousho/improve';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
+import { formatImproveResult, improveAgent, renderTranscript, type Harness } from '@linuxdevil/lousho/improve';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const search = defineTool({
@@ -218,7 +218,7 @@ files.
 your own function, keep its `cached` field so the run is counted as cached.
 
 ```ts
-import { cachedProbe, improveAgent, type Harness, type ImproveOptions } from 'lousho/improve';
+import { cachedProbe, improveAgent, type Harness, type ImproveOptions } from '@linuxdevil/lousho/improve';
 
 declare const harness: Harness;
 declare const probe: ImproveOptions['probe'];
@@ -301,7 +301,7 @@ gate changes: it judges the harness, not the reasons.
 A `CaseCheck` returns `true`, `false`, `null` when it can't score the answer, or `{ passed, failure }`. Return `failure` on a failed answer to name the check it missed, as a custom `probe` does: each editor reads it in that run's record, after `Result: failed`, on one line with forged untrusted markers removed. A check must be synchronous; any other return value throws a `ConfigurationError`. Without it, a failed run whose answer looks right gives the editors nothing to fix. Name the real check; a wrong name is worse than none. A `failure` on a passed answer is dropped.
 
 ```ts
-import type { CaseCheck } from 'lousho/improve';
+import type { CaseCheck } from '@linuxdevil/lousho/improve';
 
 declare function failedTests(input: string, answer: string): string[];
 
@@ -316,7 +316,7 @@ const check: CaseCheck = (input, answer) => {
 With `retryWithDiagnosis`, [`agent.recover()`](./self-healing.md#recover-a-run-now) forks a run that kept failing into a `<id>.heal` session told why it failed. When that fork passes, you hold a pair on the same input: the failed run and a retry that passed. `casesFromRecoveries(db, filter)` finds those pairs in your local database and returns the failed runs as cases, each with a `recovery`: the retry's transcript, rendered with `renderTranscript`, the diagnosis it was given, and its final answer. A fork counts only when it carries the diagnosis and finished with no recorded error, no answer cut short and no low score. That isn't your check, so score each `recovery.answer` with your `CaseCheck` and keep only the ones that pass, then pass them on as `recoveries`:
 
 ```ts
-import { casesFromRecoveries, improveAgent, type CaseCheck, type Harness, type ImproveOptions, type SqlDatabase } from 'lousho/improve';
+import { casesFromRecoveries, improveAgent, type CaseCheck, type Harness, type ImproveOptions, type SqlDatabase } from '@linuxdevil/lousho/improve';
 
 declare const db: SqlDatabase;
 declare const harness: Harness;
@@ -351,7 +351,7 @@ A library keeps lessons from earlier attempts, so later editors can read them. E
 `libraryFiles(dir, domain)` returns up to 20 active lessons as files under `context/library/`, highest-voted first, then newest. Each file is labelled as data with the lesson between untrusted markers, and you pass them to `improveAgent` as `library`. Entries are checked again when read, so an entry file edited by hand that no longer passes is skipped. `voteEntry(dir, id, 'helped' | 'hurt')` counts an outcome, and retires a lesson for good once its hurt votes outnumber its helped votes by two. Votes are appended to `votes.jsonl` next to the entries, so votes cast at once aren't lost. `improveAgent` accepts only files shaped like `libraryFiles` output, named `context/library/<name>.md`.
 
 ```ts
-import { improveAgent, libraryFiles, libraryHome, type Harness, type ImproveOptions } from 'lousho/improve';
+import { improveAgent, libraryFiles, libraryHome, type Harness, type ImproveOptions } from '@linuxdevil/lousho/improve';
 
 declare const harness: Harness;
 declare const probe: ImproveOptions['probe'];
@@ -367,7 +367,7 @@ const result = await improveAgent({ harness, cases: ['stuck'], probe, editor: { 
 Once a cycle is decided, `reflect` turns it into at most one lesson. A cycle is decided when its edit was kept, rejected, or applied and then rolled back. A rejected or rolled-back edit teaches as much as a kept one. The reflection session reads four files and nothing else: the review card, the diff, the case verdicts and the outcome. It never sees a raw transcript, and the text that models wrote reaches it between untrusted markers. It replies with an `<experience>` block (cue, lesson, evidence, confidence) or `NO_ENTRY`, and the lesson goes through `addEntry` with the cycle's failed checks, so a refused lesson is reported and never stored. `reflect` never throws. A failure comes back as `error` for you to record, and `tokens` is what it spent, to count toward the cycle's budget, which `maxTokens` caps.
 
 ```ts
-import { libraryHome, reflect, voteOnOutcome, type ImproveResult } from 'lousho/improve';
+import { libraryHome, reflect, voteOnOutcome, type ImproveResult } from '@linuxdevil/lousho/improve';
 
 declare const result: ImproveResult;
 
@@ -391,7 +391,7 @@ The session never sees a held-out case's id: each held-out case appears as `held
 `settleCanary` reads the trial; call it yourself on a timer when you don't use the watcher. After `sessions` candidate sessions it promotes when the share of flagged sessions is 0 or at least 0.05 below the base's rate over its last 20 runs, and no failure class appeared that the base didn't have. It retires early once a promotion is ruled out, and when the directory changed, the loop is paused, the opt-in is removed or `monitor.giveUpDays` pass. A promote goes through `applyProposal`, which checks the proposal again. A canary started in auto mode is queued for a person instead when `improve.json` has since switched to manual. In manual mode, `startCanary` refuses without `approvedBy`, and a canary without an approver serves no one.
 
 ```ts
-import { loadImproveSettings, settleCanary, startCanary, type Harness, type ImproveResult, type SqlDatabase } from 'lousho/improve';
+import { loadImproveSettings, settleCanary, startCanary, type Harness, type ImproveResult, type SqlDatabase } from '@linuxdevil/lousho/improve';
 
 declare const db: SqlDatabase;
 declare const result: ImproveResult;
@@ -474,7 +474,7 @@ See [The monitor](#the-monitor).
 under a harness; `lousho improve` builds it for you.
 
 ```ts
-import { healOnce, loadImproveSettings, type CaseCheck, type HealOptions, type SqlDatabase } from 'lousho/improve';
+import { healOnce, loadImproveSettings, type CaseCheck, type HealOptions, type SqlDatabase } from '@linuxdevil/lousho/improve';
 
 declare const db: SqlDatabase;
 declare const check: CaseCheck;
@@ -596,7 +596,7 @@ tick as a [schedule](./schedules.md) for an agent that already uses
 `schedules/`:
 
 ```ts
-import { improveSchedule, loadImproveSettings, watchAgent, type CaseCheck, type HealOptions, type SqlDatabase } from 'lousho/improve';
+import { improveSchedule, loadImproveSettings, watchAgent, type CaseCheck, type HealOptions, type SqlDatabase } from '@linuxdevil/lousho/improve';
 
 declare const db: SqlDatabase;
 declare const check: CaseCheck;

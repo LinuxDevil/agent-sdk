@@ -12,7 +12,7 @@
  * (gate.ts) decides WHICH card may save - this module only performs the
  * write itself once a caller has resolved one.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type {
   AuthorToolFailure,
   ProposalOutput,

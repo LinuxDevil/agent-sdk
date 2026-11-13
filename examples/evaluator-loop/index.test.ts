@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createAgent, textOf } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, textOf } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { RUBRIC, runEvaluatorLoop } from './index';
 
 const PROMPT = 'Write a 3-sentence product description for HydraTrack.';

@@ -9,7 +9,7 @@
  * the tool's output ends up in a client `history.push`, so anything
  * else is `INVALID_INPUT`, not a navigation.
  */
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import { guardedToolCall, toolFailure } from './failure';
 import type { AuthorToolFactory } from './index';

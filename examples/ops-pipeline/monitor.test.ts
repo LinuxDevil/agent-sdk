@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleErrorSignal, buildMonitorPrompt, ErrorSignal, startMonitorServer } from './monitor';
-import { AgentExecutor } from 'lousho/executor';
-import { createMockProvider } from 'lousho';
+import { AgentExecutor } from '@linuxdevil/lousho/executor';
+import { createMockProvider } from '@linuxdevil/lousho';
 
 function makeSignal(overrides: Partial<ErrorSignal> = {}): ErrorSignal {
   return {

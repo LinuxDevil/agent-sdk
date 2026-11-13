@@ -27,7 +27,7 @@ import {
   type GenerateOptions,
   type LLMProvider,
   type ProviderUsage,
-} from 'lousho';
+} from '@linuxdevil/lousho';
 import type { LogEntry } from '../shared/wireTypes';
 import { resolveProviderForModel } from './buildAgent';
 import type { PassRecord } from './passes/passRunner';

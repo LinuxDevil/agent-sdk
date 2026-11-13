@@ -9,7 +9,7 @@
  * no steps left to redraft in) fails open: the review never hides a card
  * it could not judge.
  */
-import { createAgent, listBuiltinTools, listGuardrails, listTriggerTypes, type LLMProvider } from 'lousho';
+import { createAgent, listBuiltinTools, listGuardrails, listTriggerTypes, type LLMProvider } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import {
   DRAFT_REVIEW_DIMENSIONS,

@@ -3,12 +3,12 @@
  * Agent execution engine with streaming support
  */
 
-// The executor API moved to 'lousho/executor'. The
+// The executor API moved to '@linuxdevil/lousho/executor'. The
 // root keeps PropagatingToolError and the result types createAgent() uses.
 export { PropagatingToolError } from './propagatingToolError';
 export type { ExecutionResult, ExecutionFinishReason } from './AgentExecutor';
 export * from './errors';
-// StorageServiceApprovalStore moved to 'lousho/utils'.
+// StorageServiceApprovalStore moved to '@linuxdevil/lousho/utils'.
 export {
   ASK_QUESTION_TOOL_NAME,
   approvalExpired,
@@ -28,8 +28,8 @@ export {
   type SuspendedBackgroundTasks,
 } from './ApprovalGate';
 export { InMemoryApprovalStore } from './InMemoryApprovalStore';
-// The resume functions moved to 'lousho/executor'.
-// LocalStorageCheckpointStore moved to 'lousho/utils'.
+// The resume functions moved to '@linuxdevil/lousho/executor'.
+// LocalStorageCheckpointStore moved to '@linuxdevil/lousho/utils'.
 export {
   appendToRing,
   DEFAULT_CHECKPOINT_HISTORY_LIMIT,

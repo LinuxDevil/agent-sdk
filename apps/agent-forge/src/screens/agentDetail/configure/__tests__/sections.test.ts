@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { agentSpecV2JsonSchema, type AgentSpecV2 } from 'lousho/spec';
+import { agentSpecV2JsonSchema, type AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 import type { JsonSchema } from '../../../../ui/schemaForm/types';
 import {

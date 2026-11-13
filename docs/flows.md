@@ -6,8 +6,8 @@ Describe the graph with `FlowBuilder` and run it with the static
 `FlowExecutor.execute(flow, context, onEvent?)`.
 
 ```ts
-import { FlowBuilder, FlowExecutor, type EditorStep } from 'lousho/flows';
-import { resolveProvider, type AgentConfig } from 'lousho';
+import { FlowBuilder, FlowExecutor, type EditorStep } from '@linuxdevil/lousho/flows';
+import { resolveProvider, type AgentConfig } from '@linuxdevil/lousho';
 
 // A flow calls an LLMProvider directly (reads OPENAI_API_KEY).
 const provider = resolveProvider('openai/gpt-4o-mini');
@@ -109,7 +109,7 @@ its tool runs:
   never run unapproved.
 
 ```ts
-import { FlowExecutor, type AgentFlow } from 'lousho/flows';
+import { FlowExecutor, type AgentFlow } from '@linuxdevil/lousho/flows';
 
 declare const flow: AgentFlow;
 
@@ -134,7 +134,7 @@ set stays as before: `'{{missing}}'` is `''`, and `'$USD'` (no variable
 named `USD`) is the literal string `'$USD'`.
 
 ```ts
-import type { EditorStep } from 'lousho/flows';
+import type { EditorStep } from '@linuxdevil/lousho/flows';
 
 // With variables { count: 5, tags: ['a', 'b'] }, the tool gets { count: 5, tags: ['a', 'b'], note: 'count: 5' }.
 const step: EditorStep = {
@@ -156,7 +156,7 @@ once it is aborted, no further step starts and the flow fails with the signal's
 to the model request, and a `toolCall` hands it to the tool as `ctx.abortSignal`.
 
 ```ts
-import { FlowExecutor, type AgentFlow } from 'lousho/flows';
+import { FlowExecutor, type AgentFlow } from '@linuxdevil/lousho/flows';
 
 declare const flow: AgentFlow;
 
@@ -214,7 +214,7 @@ Invalid values (`maxAttempts` < 1 or not an integer, a negative `backoffMs`,
 a `timeoutMs` <= 0) fail the step with `LOUSHO_FLOW_INVALID`.
 
 ```ts
-import type { EditorStep } from 'lousho/flows';
+import type { EditorStep } from '@linuxdevil/lousho/flows';
 
 const fetchInvoice: EditorStep = {
   type: 'toolCall',
@@ -248,8 +248,8 @@ from the saved variables. `result.usage` and `result.steps` include the
 earlier attempts.
 
 ```ts
-import { FlowExecutor, type AgentFlow } from 'lousho/flows';
-import { memoryStore } from 'lousho';
+import { FlowExecutor, type AgentFlow } from '@linuxdevil/lousho/flows';
+import { memoryStore } from '@linuxdevil/lousho';
 
 declare const flow: AgentFlow;
 const checkpointStore = memoryStore().checkpoints;
@@ -318,8 +318,8 @@ are cancelled. Steps they completed are kept, and the rest run again on resume.
 To continue, pass the decision to `resume()`:
 
 ```ts
-import { FlowExecutor, type AgentFlow } from 'lousho/flows';
-import { memoryStore } from 'lousho';
+import { FlowExecutor, type AgentFlow } from '@linuxdevil/lousho/flows';
+import { memoryStore } from '@linuxdevil/lousho';
 
 declare const flow: AgentFlow;
 const checkpointStore = memoryStore().checkpoints;
@@ -366,7 +366,7 @@ asked, and the context's `approve` callback decides, exactly as for a
 node's `id`, or its place in the flow).
 
 ```ts
-import type { EditorStep } from 'lousho/flows';
+import type { EditorStep } from '@linuxdevil/lousho/flows';
 
 const steps: EditorStep = {
   type: 'sequence',
@@ -387,7 +387,7 @@ const steps: EditorStep = {
   the decision:
 
 ```ts no-run
-import { FlowExecutor, type AgentFlow } from 'lousho/flows';
+import { FlowExecutor, type AgentFlow } from '@linuxdevil/lousho/flows';
 
 declare const flow: AgentFlow;
 
@@ -411,8 +411,8 @@ An `agent` step calls a `createAgent()` agent registered in the context's
 guardrails and approvals — and the step stores its reply text:
 
 ```ts
-import { createAgent } from 'lousho';
-import { FlowExecutor, type AgentFlow } from 'lousho/flows';
+import { createAgent } from '@linuxdevil/lousho';
+import { FlowExecutor, type AgentFlow } from '@linuxdevil/lousho/flows';
 
 const writer = createAgent({ name: 'writer', model: 'openai/gpt-4o-mini', instructions: 'Draft a reply.' });
 
@@ -457,9 +457,9 @@ typed value rather than text:
 
 ```ts
 import { z } from 'zod';
-import { createAgent } from 'lousho';
-import { FlowExecutor, type AgentFlow } from 'lousho/flows';
-import { ToolRegistry } from 'lousho/tools';
+import { createAgent } from '@linuxdevil/lousho';
+import { FlowExecutor, type AgentFlow } from '@linuxdevil/lousho/flows';
+import { ToolRegistry } from '@linuxdevil/lousho/tools';
 
 const researcher = createAgent({ name: 'researcher', model: 'openai/gpt-4o-mini', instructions: 'Answer with three facts.' });
 

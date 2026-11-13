@@ -1,4 +1,4 @@
-import { defineTool, type DefinedTool } from 'lousho';
+import { defineTool, type DefinedTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import { codingAgent } from './codingAgent';
 

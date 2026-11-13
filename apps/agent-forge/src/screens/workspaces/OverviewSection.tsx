@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import workspaceJsonSchema from 'lousho/schemas/lousho.workspace.v1.json';
-import type { ProblemView } from 'lousho/workspaces/client';
+import workspaceJsonSchema from '@linuxdevil/lousho/schemas/lousho.workspace.v1.json';
+import type { ProblemView } from '@linuxdevil/lousho/workspaces/client';
 import { SchemaForm } from '../../ui/schemaForm/SchemaForm';
 import type { JsonSchema } from '../../ui/schemaForm/types';
 import { useWorkspace } from './WorkspaceContext';

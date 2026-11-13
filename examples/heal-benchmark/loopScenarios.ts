@@ -24,7 +24,7 @@ import {
   type Harness,
   type ImproveResult,
   type WatchTick,
-} from 'lousho/improve';
+} from '@linuxdevil/lousho/improve';
 import { codingAgent } from './codingAgent';
 import { noOpHarness, PLANTED_REGRESSION, plantedHarness } from './gates';
 import { FIX_RULE, harnessBytesHash, INJECTED, INJECTION, MIX, NEW_CLASS_RULE, openKit, passedTrace, passKOf, traffic, watchTicks, type Kit, type KitSetup, type LoopEnv } from './loopRuntime';

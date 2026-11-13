@@ -1,8 +1,8 @@
 /**
- * S23: `lousho/spec` must bundle for a browser consumer (Studio's Vite
+ * S23: `@linuxdevil/lousho/spec` must bundle for a browser consumer (Studio's Vite
  * build), so nothing in its import graph may import a `node:` path or
  * resolve to a module a browser bundler cannot reach. This guards the
- * barrel's graph the way `src/deploy/kv.test.ts` guards `lousho/kv`.
+ * barrel's graph the way `src/deploy/kv.test.ts` guards `@linuxdevil/lousho/kv`.
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { build, stop } from 'esbuild';
@@ -12,7 +12,7 @@ import * as spec from './index';
 // esbuild keeps a service process alive after build(); end it so it does not outlive this file.
 afterAll(() => stop());
 
-describe('lousho/spec (S23)', () => {
+describe('@linuxdevil/lousho/spec (S23)', () => {
   it('bundles for the browser platform with no node: import in its graph', async () => {
     const result = await build({
       entryPoints: [join(__dirname, 'index.ts')],
@@ -34,8 +34,17 @@ describe('lousho/spec (S23)', () => {
 
   it('exports the merged spec-v2 surface by name', () => {
     expect(Object.keys(spec).sort()).toEqual([
+      'CHANNEL_SECRET_KEYS',
+      'EXECUTABLE_TYPES',
+      'INTEGRATION_CREDENTIALS',
+      'MAX_APPROVAL_TTL_MS',
+      'MCP_SERVER_NAME',
+      'REWRITABLE_GUARDRAILS',
+      'SECRET_CREDENTIALS',
       'SPEC_FIELD_DESCRIPTIONS',
+      'SPEC_ID_PATTERN',
       'TOOL_REF_KINDS',
+      'UNSUPPORTED_PREFIX',
       'abortListenerListSchema',
       'abortListenerSpecSchema',
       'agentSpecSchema',
@@ -43,7 +52,9 @@ describe('lousho/spec (S23)', () => {
       'agentSpecV2Schema',
       'flowProblems',
       'flowSpecSchema',
+      'guardrailSidesOf',
       'isNodeIdExporter',
+      'isSafeRelativePath',
       'isSecretRef',
       'jsonSchemaToStandardSchema',
       'listGuardrails',

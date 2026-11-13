@@ -4,7 +4,7 @@ import * as path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TriggerSpec } from 'lousho/spec';
+import type { TriggerSpec } from '@linuxdevil/lousho/spec';
 
 import type { DispatchRequest, DispatchResult, TriggerHost } from '../triggers/triggerHost';
 import { CronTriggers, type CronState } from '../triggers/cronTriggers';

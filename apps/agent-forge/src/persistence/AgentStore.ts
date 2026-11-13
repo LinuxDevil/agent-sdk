@@ -1,4 +1,4 @@
-import type { AgentSpec, AgentSpecV2 } from 'lousho';
+import type { AgentSpec, AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AgentListItem, AgentRecord, CanvasLayout } from '../../shared/wireTypes';
 
 /**

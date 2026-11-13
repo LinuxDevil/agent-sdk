@@ -13,8 +13,8 @@
  *    registry): returns a fenced ```diff block diagnosing the demo's
  *    synthetic NullPointerException.
  */
-import { GenerateOptions, GenerateResult, LLMProvider, StreamResult } from 'lousho';
-import { textOf } from 'lousho';
+import { GenerateOptions, GenerateResult, LLMProvider, StreamResult } from '@linuxdevil/lousho';
+import { textOf } from '@linuxdevil/lousho';
 
 const DEMO_FIXER_DIFF_RESPONSE = [
   'Root cause: `order` is not null-checked before `charge()` is called.',

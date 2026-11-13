@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { Message } from 'lousho';
+import type { Message } from '@linuxdevil/lousho';
 import { reconcileChatMessages, markSteerInputs } from '../chatReconcile';
 import type { ChatMessage, SteerInfo } from '../../shared/wireTypes';
 

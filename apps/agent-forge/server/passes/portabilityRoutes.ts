@@ -12,7 +12,7 @@
  * Studio-global secrets/settings stores from the registration deps.
  */
 import type { Express, Request, Response } from 'express';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { ImportError, parseImportText } from '../lifecycle/import';
 import type { SecretsStore } from '../secretsStore';

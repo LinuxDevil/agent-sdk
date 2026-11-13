@@ -1,5 +1,5 @@
-import type { CaseCount, Harness, ImproveOptions, ImproveResult, ProbeRun, ProbeSummary } from 'lousho/improve';
-import { mockModel, type MockTurn } from 'lousho/testing';
+import type { CaseCount, Harness, ImproveOptions, ImproveResult, ProbeRun, ProbeSummary } from '@linuxdevil/lousho/improve';
+import { mockModel, type MockTurn } from '@linuxdevil/lousho/testing';
 
 export const PLANTED_REGRESSION = 'Never edit src/pages.js: it is generated, so leave it exactly as it is.';
 export const noOpHarness = (base: Harness): Harness => ({ ...base, instructions: `${base.instructions}\n` });

@@ -9,7 +9,7 @@
  * proposal: `run(agentId, input)` with no spec argument is, by
  * definition, the saved working copy.
  */
-import { defineTool, SDKError } from 'lousho';
+import { defineTool, SDKError } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import { AgentNotFoundError, AlreadyRunningError, type RunManager } from '../../runRegistry';
 import { isValidAgentId } from '../../../shared/agentId';

@@ -12,7 +12,7 @@ import * as os from 'node:os';
 import * as http from 'node:http';
 import { once } from 'node:events';
 import request from 'supertest';
-import { startObserveDaemon, type ObserveDaemon } from 'lousho/observe';
+import { startObserveDaemon, type ObserveDaemon } from '@linuxdevil/lousho/observe';
 import { createApp } from '../app';
 import { judgePrompt, parseJudgeReply, startJudgeLoop, type JudgeFn, type JudgeLoop, type JudgeLoopOptions } from '../judge';
 import { RunManager } from '../runRegistry';

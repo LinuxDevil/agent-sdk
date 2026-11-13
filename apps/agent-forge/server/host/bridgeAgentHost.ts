@@ -12,7 +12,7 @@
  * `HostReadOnlyError` except `catalog` (the in-process fallback) and
  * `dispose`.
  */
-import type { Message } from 'lousho';
+import type { Message } from '@linuxdevil/lousho';
 import { BridgeError, type BridgeClient } from './bridgeClient';
 import { providerEnv, secretsFor, toHostEvent } from './bridgeMapping';
 import type { WorkspaceSdk } from './workspaceSdk';

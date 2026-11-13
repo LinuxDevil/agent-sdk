@@ -39,9 +39,9 @@ import {
   type Channel,
   type ChannelsHandler,
   type SimpleAgent,
-} from 'lousho';
-import type { SecretRef, TriggerSpec } from 'lousho/spec';
-import { evaluateSafeExpression } from 'lousho/flows';
+} from '@linuxdevil/lousho';
+import type { SecretRef, TriggerSpec } from '@linuxdevil/lousho/spec';
+import { evaluateSafeExpression } from '@linuxdevil/lousho/flows';
 
 import type { ChannelTriggerStatus } from '../../shared/wireTypes';
 import type { AgentRepo } from '../storage/agentRepo';

@@ -18,7 +18,7 @@ OpenRouter use `openrouter/<vendor>/<model>` (e.g.
 `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 const simple = createAgent({ model: 'openai/gpt-4o', compaction: true });
 
@@ -84,7 +84,7 @@ listeners (`createAgent({ onEvent })`, `onAgentEvent`) or is streamed.
 a cheap summarizer model:
 
 ```ts
-import { createAgent, createCompactionHook, twoPhaseStrategy } from 'lousho';
+import { createAgent, createCompactionHook, twoPhaseStrategy } from '@linuxdevil/lousho';
 
 const agent = createAgent({
   provider,
@@ -157,7 +157,7 @@ model's loaded context length (`loaded_context_length` from
 prints the model's default).
 
 ```ts
-import { createAgent, registerModel } from 'lousho';
+import { createAgent, registerModel } from '@linuxdevil/lousho';
 
 // Either on the agent...
 const agent = createAgent({
@@ -183,8 +183,8 @@ Registering the hook in a `HookRegistry` is for code that calls the executor
 directly (see [the executor API](./executor-api.md)):
 
 ```ts
-import { AgentExecutor } from 'lousho/executor';
-import { HookRegistry, createCompactionHook, twoPhaseStrategy } from 'lousho';
+import { AgentExecutor } from '@linuxdevil/lousho/executor';
+import { HookRegistry, createCompactionHook, twoPhaseStrategy } from '@linuxdevil/lousho';
 
 const hooks = new HookRegistry();
 hooks.register(
@@ -270,7 +270,7 @@ message; a pinned tool result keeps its whole assistant turn. Pin what the
 agent must always see in full, such as the task statement or a key document:
 
 ```ts
-import { pinMessage, isPinned, type Message } from 'lousho';
+import { pinMessage, isPinned, type Message } from '@linuxdevil/lousho';
 
 const messages: Message[] = [
   { role: 'system', content: 'You are a research assistant.' },
@@ -288,7 +288,7 @@ of the conversation, and resolves to a new array (its input is not modified).
 Use it to shrink a stored transcript before you continue it:
 
 ```ts
-import { compactMessages, summarizeStrategy, type Message } from 'lousho';
+import { compactMessages, summarizeStrategy, type Message } from '@linuxdevil/lousho';
 
 declare const history: Message[];
 
@@ -322,8 +322,8 @@ durable turn is unfinished. Listeners added with `session.on()` get
 checkpoint and checkpoint history, and emits `context.cleared`.
 
 ```ts
-import { createAgent, twoPhaseStrategy } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, twoPhaseStrategy } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const agent = createAgent({ provider: mockModel(['ok']) });
 const session = agent.session({ compaction: { strategy: twoPhaseStrategy({ model: 'openai/gpt-4o-mini' }) } });
@@ -348,7 +348,7 @@ unchanged when there is nothing to do: the hook then leaves the run alone and
 does not call `onCompaction`.
 
 ```ts
-import { createCompactionHook, isPinned, type CompactionStrategy } from 'lousho';
+import { createCompactionHook, isPinned, type CompactionStrategy } from '@linuxdevil/lousho';
 
 // Keep the system prompt, pinned messages and the last 20 messages.
 const keepRecent: CompactionStrategy = {

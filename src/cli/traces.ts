@@ -274,7 +274,7 @@ function renderTraceTree(traceId: string, spans: Span[], options: { color: boole
 }
 
 function noTracesHint(dir: string): string {
-  return `No traces in ${dir}. Add exporter: fileTraceExporter() to createAgent() (import { fileTraceExporter } from 'lousho/traces'), or run lousho dev / chat with --traces.`;
+  return `No traces in ${dir}. Add exporter: fileTraceExporter() to createAgent() (import { fileTraceExporter } from '@linuxdevil/lousho/traces'), or run lousho dev / chat with --traces.`;
 }
 
 async function showList(args: TracesArgs, dir: string, deps: Required<TracesDeps>): Promise<number> {

@@ -14,7 +14,7 @@ prints a summary and writes JUnit and JSON reports.
 
 ```bash
 npm install --save-dev vitest
-npx lousho eval
+npx @linuxdevil/lousho eval
 ```
 
 ## Writing a trajectory eval
@@ -28,8 +28,8 @@ for the [judge evals](#judge-evals) below.
 ```ts no-run
 // refund.eval.ts
 import { z } from 'zod';
-import { createAgent, defineEval, defineTool, includes } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineEval, defineTool, includes } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const lookupOrder = defineTool({
   name: 'lookup_order',
@@ -111,7 +111,7 @@ it. Pass `{ subagent: 'researcher' }` to look at one sub-agent (and the
 sub-agents under it) only:
 
 ```ts
-import { createAgent, defineEval } from 'lousho';
+import { createAgent, defineEval } from '@linuxdevil/lousho';
 
 const researcher = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You research.', description: 'Finds sources' });
 const agent = createAgent({ model: 'openai/gpt-4o-mini', subagents: { researcher } });
@@ -141,7 +141,7 @@ case `n` times; the case passes when all `n` runs pass, or when at least
 `passAt: k` of them do:
 
 ```ts
-import { createAgent, defineEval } from 'lousho';
+import { createAgent, defineEval } from '@linuxdevil/lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You handle refunds.' });
 
@@ -167,8 +167,8 @@ any object; its `label` (or `name`, or its `input`) names it.
 
 ```ts no-run
 import { z } from 'zod';
-import { createAgent, defineEval, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineEval, defineTool } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const lookupOrder = defineTool({
   name: 'lookup_order',
@@ -220,7 +220,7 @@ curl -X POST "$LOUSHO_OBSERVE/api/v1/datasets/refunds/examples" -H 'content-type
 ```
 
 ```ts no-run
-import { createAgent, defineEval, includes } from 'lousho';
+import { createAgent, defineEval, includes } from '@linuxdevil/lousho';
 
 defineEval({
   name: 'refunds',
@@ -258,8 +258,8 @@ it.
 
 ```ts no-run
 // tone.judge.eval.ts: run with `lousho eval --judge`
-import { createAgent, defineEval, atLeast } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineEval, atLeast } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 defineEval({
   name: 'tone',
@@ -338,7 +338,7 @@ model. `--timeout ms` sets the limit for every case (`0` turns it off). With
 One eval can set its own limit, which wins over both:
 
 ```ts
-import { createAgent, defineEval } from 'lousho';
+import { createAgent, defineEval } from '@linuxdevil/lousho';
 
 defineEval({
   name: 'research report',
@@ -379,7 +379,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      - run: npx lousho eval --junit reports/evals.xml --json reports/evals.json
+      - run: npx @linuxdevil/lousho eval --junit reports/evals.xml --json reports/evals.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -420,9 +420,9 @@ between: it records each case once against the real provider through
 Your eval files do not change.
 
 ```bash
-npx lousho eval --record        # real provider: writes the cassettes, commit them
-npx lousho eval --replay        # every case from its cassette, no network, no key
-npx lousho eval --drift         # re-record and diff each case's trajectory
+npx @linuxdevil/lousho eval --record        # real provider: writes the cassettes, commit them
+npx @linuxdevil/lousho eval --replay        # every case from its cassette, no network, no key
+npx @linuxdevil/lousho eval --drift         # re-record and diff each case's trajectory
 ```
 
 - **`--record`** runs every case with its agent's real provider and writes one
@@ -475,7 +475,7 @@ a real judge only in `*.judge.eval.ts` files.
 How it works: the run loop sends every model call (`generate` or `stream`, from
 a plain run, a streamed run, a sub-agent or an approval resume) through one
 provider-interception seam, `setProviderInterceptor()` (exported from
-`lousho/testing`; `src/providers/interception.ts` in the
+`@linuxdevil/lousho/testing`; `src/providers/interception.ts` in the
 source). Nothing is installed by default, so the seam is
 free. While a case runs under one of these modes, `lousho eval` answers it with
 the provider wrapped by `recordReplay()` for that case's cassette. You can use
@@ -493,7 +493,7 @@ The same eval file that gates CI in-process can smoke-test a deployed agent (the
 URL and every case runs against the deployment instead of the in-process agent:
 
 ```bash
-npx lousho eval --url https://agent.example.com --token "$DEPLOY_TOKEN"   # or LOUSHO_EVAL_TOKEN
+npx @linuxdevil/lousho eval --url https://agent.example.com --token "$DEPLOY_TOKEN"   # or LOUSHO_EVAL_TOKEN
 ```
 
 Each case gets its own remote session (`POST /chat { sessionId, input }`, one
@@ -519,7 +519,7 @@ and tools the behaviour you want to check.
 In code, pass a `target` (this overrides `agent`; `--url` overrides both):
 
 ```ts
-import { defineEval, remoteTarget } from 'lousho';
+import { defineEval, remoteTarget } from '@linuxdevil/lousho';
 
 defineEval({
   name: 'deployed refund flow',

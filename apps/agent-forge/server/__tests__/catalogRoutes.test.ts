@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import express, { type Express } from 'express';
 import request from 'supertest';
-import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from 'lousho';
+import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from '@linuxdevil/lousho';
 import { registerCatalogRoutes } from '../routes/catalogRoutes';
 import { SecretsStore } from '../secretsStore';
 import { sdkRootDir } from '../sdkRoot';

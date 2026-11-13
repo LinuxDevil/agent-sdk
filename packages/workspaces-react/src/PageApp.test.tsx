@@ -1,7 +1,7 @@
 import axe from 'axe-core';
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { UI_COMPONENTS, type UiComponent } from 'lousho/workspaces';
+import { UI_COMPONENTS, type UiComponent } from '@linuxdevil/lousho/workspaces';
 import { PageApp } from './PageApp';
 import { runWith, withAudience, withUi } from './__tests__/clients';
 import { choose, flush, labelled, render } from './__tests__/render';

@@ -6,7 +6,7 @@
  * schema's own complaints (bad enums, patterns, missing required fields,
  * and the "not supported yet" placeholders, which become warnings).
  */
-import { agentSpecV2Schema, UNSUPPORTED_PREFIX } from 'lousho/spec';
+import { agentSpecV2Schema, UNSUPPORTED_PREFIX } from '@linuxdevil/lousho/spec';
 import type { AgentSpecV2 } from './specTypes';
 import type { Problem } from './types';
 

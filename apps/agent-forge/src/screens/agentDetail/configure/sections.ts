@@ -4,7 +4,7 @@
  * SchemaForm draws, and the dirty bookkeeping that compares the draft
  * against the saved spec section by section.
  */
-import type { AgentSpecV2 } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 import { stableStringify } from '../../../../shared/stableJson';
 import type { JsonSchema } from '../../../ui/schemaForm/types';

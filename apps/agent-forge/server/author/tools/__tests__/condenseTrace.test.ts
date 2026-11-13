@@ -2,8 +2,8 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { testToolContext } from 'lousho/testing';
-import type { ToolDescriptor } from 'lousho';
+import { testToolContext } from '@linuxdevil/lousho/testing';
+import type { ToolDescriptor } from '@linuxdevil/lousho';
 import { condenseTrace, TRACE_STEP_LIMIT, type GetTraceOutput } from '../condenseTrace';
 import { agentTraceDir } from '../../../traceStore';
 import { AgentRepo } from '../../../storage/agentRepo';

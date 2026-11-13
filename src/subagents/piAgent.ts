@@ -509,7 +509,7 @@ function settle(session: PiSession, gate: ReturnType<typeof makeGate>, ctx: PiRu
  *
  * @example
  * ```ts
- * import { piAgent } from 'lousho';
+ * import { piAgent } from '@linuxdevil/lousho';
  *
  * const lead = createAgent({
  *   model: 'openai/gpt-4o-mini',

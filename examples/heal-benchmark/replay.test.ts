@@ -2,8 +2,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cachedProbe, emptyLedger, improveAgent, probeCacheKey, type Harness, type ImproveOptions, type ProbeRun } from 'lousho/improve';
-import { mockModel, type MockTurn } from 'lousho/testing';
+import { cachedProbe, emptyLedger, improveAgent, probeCacheKey, type Harness, type ImproveOptions, type ProbeRun } from '@linuxdevil/lousho/improve';
+import { mockModel, type MockTurn } from '@linuxdevil/lousho/testing';
 import { assertRowModel, replayRow, type RecordedRow } from './replayRows';
 
 const BASE: Harness = { instructions: 'Fix the bug.', skills: {} };

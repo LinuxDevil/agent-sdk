@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AgentRepo } from '../../../storage/agentRepo';
 import type { VersionStore } from '../../../storage/versionStore';
 import type { WorkspaceContext } from '../../../workspace/context';

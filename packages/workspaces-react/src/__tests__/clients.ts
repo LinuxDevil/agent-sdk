@@ -1,4 +1,4 @@
-import { fixtureClient, type ApiClient, type HarnessView, type PageRunView, type PageUiView, type UiComponent, type UiContainer } from 'lousho/workspaces/client';
+import { fixtureClient, type ApiClient, type HarnessView, type PageRunView, type PageUiView, type UiComponent, type UiContainer } from '@linuxdevil/lousho/workspaces/client';
 import type { RunHandle } from '../context';
 
 type Call = (name: string, input: unknown) => Promise<unknown>;

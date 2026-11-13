@@ -1,4 +1,4 @@
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 import type { LegacyAgentStore, LegacyAgentStoreEntry } from './AgentStore';
 import { AgentRepo } from '../../server/storage/agentRepo';
 import { mergeLegacySave, toLegacySpec } from '../../server/storage/legacySpec';

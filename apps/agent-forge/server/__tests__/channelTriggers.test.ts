@@ -11,9 +11,9 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import express, { type Express } from 'express';
 import request from 'supertest';
-import { createAgent, type AgentSpecV2, type SimpleAgent } from 'lousho';
-import { mockModel } from 'lousho/testing';
-import type { SecretRef, TriggerSpec } from 'lousho/spec';
+import { createAgent, type AgentSpecV2, type SimpleAgent } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
+import type { SecretRef, TriggerSpec } from '@linuxdevil/lousho/spec';
 
 import { AgentRepo } from '../storage/agentRepo';
 import { DraftStore } from '../storage/draftStore';
@@ -31,7 +31,7 @@ import type { CronTriggers } from '../triggers/cronTriggers';
 import type { WorkspaceContext } from '../workspace/context';
 import type { WorkspaceHostSelector } from '../host/hostSelector';
 import { workspaceRefFor } from '../workspace/workspaceId';
-import { TriggerRegistry } from 'lousho/triggers';
+import { TriggerRegistry } from '@linuxdevil/lousho/triggers';
 import {
   CHANNEL_SECRET_KEYS,
   ChannelTriggers,

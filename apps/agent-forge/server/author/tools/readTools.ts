@@ -11,9 +11,9 @@
  * `AGENT_NOT_FOUND` of `getCurrentSpec` and the `UNAVAILABLE` catch-all
  * of `guardedToolCall`.
  */
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { McpServerSpecV2 } from '../../../shared/wireTypes';
 import type { WorkspaceContext } from '../../workspace/context';
 import { specHash } from '../../storage/specHash';

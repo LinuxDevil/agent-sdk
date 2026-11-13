@@ -1,4 +1,4 @@
-import { defineTool, type AgentHook, type DefinedTool, type Message } from 'lousho';
+import { defineTool, type AgentHook, type DefinedTool, type Message } from '@linuxdevil/lousho';
 import { codingAgent } from '../codingAgent.ts';
 
 type CodingProject = ReturnType<typeof codingAgent>;

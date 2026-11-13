@@ -1,5 +1,5 @@
 import { act, type ReactNode } from 'react';
-import { fixtureClient, WorkspaceApiError, type ApiClient, type JsonRouteName } from 'lousho/workspaces/client';
+import { fixtureClient, WorkspaceApiError, type ApiClient, type JsonRouteName } from '@linuxdevil/lousho/workspaces/client';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
 import { WorkspacesClientProvider } from '../workspacesClient';

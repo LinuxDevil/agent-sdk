@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { DraftView, ProblemView, WorkspaceDetail } from 'lousho/workspaces/client';
+import type { DraftView, ProblemView, WorkspaceDetail } from '@linuxdevil/lousho/workspaces/client';
 import type { OpsSender } from './useWorkspaceOps';
 
 export interface WorkspaceContextValue {

@@ -99,7 +99,7 @@ describe('routeAuth', () => {
   });
 });
 
-describe('lousho/auth', () => {
+describe('@linuxdevil/lousho/auth', () => {
   afterEach(() => stop());
 
   it('exports the helpers', () => {

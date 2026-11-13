@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 
 function token(): string {
   const value = process.env.GITHUB_TOKEN;

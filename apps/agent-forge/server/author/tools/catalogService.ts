@@ -6,7 +6,7 @@
  * (shared with the route's reader so the two never parse it
  * differently).
  */
-import { listModels } from 'lousho';
+import { listModels } from '@linuxdevil/lousho';
 import type { SecretsStore } from '../../secretsStore';
 import { loadStaticCatalog, withStoredKeyAvailability } from '../../routes/catalogRoutes';
 import type { CatalogService } from './index';

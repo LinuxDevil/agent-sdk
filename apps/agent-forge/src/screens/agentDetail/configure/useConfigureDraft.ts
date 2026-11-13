@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { agentSpecV2JsonSchema, type AgentSpecV2 } from 'lousho/spec';
+import { agentSpecV2JsonSchema, type AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 import type { AgentRecord } from '../../../../shared/wireTypes';
 import { RuntimeApiError, runtimeClient } from '../../../runtime/runtimeClient';

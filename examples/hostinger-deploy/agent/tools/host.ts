@@ -1,4 +1,4 @@
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import os from 'node:os';
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises';

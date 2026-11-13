@@ -1,4 +1,4 @@
-import { defineSchedule } from 'lousho';
+import { defineSchedule } from '@linuxdevil/lousho';
 
 export default defineSchedule({
   cron: '0 9 * * MON',

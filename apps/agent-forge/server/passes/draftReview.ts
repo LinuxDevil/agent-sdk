@@ -20,7 +20,7 @@
  * only the pass kind, key and outcome reach the runner's own records.
  */
 import { z } from 'zod';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { nodeIdList, toolKey } from '../../shared/nodeIds';
 import type {
   ChangeDraft,

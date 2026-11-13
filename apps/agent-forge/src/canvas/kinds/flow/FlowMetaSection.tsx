@@ -9,7 +9,7 @@ import { InspectorSection } from '../../../components/InspectorSection';
 import { Field } from '../../../ui/Field';
 import { Input, Textarea } from '../../../ui/controls';
 import { JsonField } from '../../fields/JsonField';
-import type { AgentFlow, FlowInputVariable } from 'lousho/flows';
+import type { AgentFlow, FlowInputVariable } from '@linuxdevil/lousho/flows';
 import type { KindFieldsProps } from '../index';
 import { FLOW_CODE_PATTERN } from './flowForm';
 import { FlowInputsEditor } from './FlowInputsEditor';

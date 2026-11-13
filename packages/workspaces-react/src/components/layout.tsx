@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
-import type { UiContainer, UiTabs } from 'lousho/workspaces/client';
+import type { UiContainer, UiTabs } from '@linuxdevil/lousho/workspaces/client';
 import type { RenderContext } from '../context';
 
 const CONTAINER_CLASS = { stack: 'lwr-stack', row: 'lwr-row', section: 'lwr-section', card: 'lwr-card' } as const;

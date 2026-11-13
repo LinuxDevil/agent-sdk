@@ -1,6 +1,6 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { cachedProbe, emptyLedger, improveAgent, type Harness, type ImproveLedger, type ImproveResult } from 'lousho/improve';
+import { cachedProbe, emptyLedger, improveAgent, type Harness, type ImproveLedger, type ImproveResult } from '@linuxdevil/lousho/improve';
 import { renderReport, trueFixAttempts, type Confirmation } from './armSummary';
 import { admitHoldout, armRow, armsFromResult, loggedProbe, noOpHarness, plantedHarness, scriptedEditor, type Arm, type ArmContext, type ArmRow, type LoggedRun } from './gates';
 import { benchmarkProbe, buildAgent } from './probe';

@@ -6,7 +6,7 @@ is runnable directly (see its own README for exact instructions); most use
 to try.
 
 The examples import the SDK by its package name and public subpaths
-(`lousho`, `lousho/testing`, ...), exactly as
+(`lousho`, `@linuxdevil/lousho/testing`, ...), exactly as
 your app would, so you can copy a file out as it is. Inside this repo the
 `paths` in `tsconfig.json` (and a resolver in `vitest.config.ts`) point those
 imports at `src/`, so nothing needs building first.

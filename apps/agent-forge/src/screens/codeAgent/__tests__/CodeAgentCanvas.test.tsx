@@ -35,7 +35,7 @@ vi.mock('../../../state/AppState', () => ({
   }),
 }));
 
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { specToGraph } from '../../../graph/v2/specToGraph';
 import type { Graph } from '../../../graph/v2/types';
 import { CodeAgentCanvas, CodeAgentInspector } from '../CodeAgentCanvas';

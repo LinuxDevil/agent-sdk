@@ -1,5 +1,5 @@
 /**
- * The public types of `lousho/svelte`.
+ * The public types of `@linuxdevil/lousho/svelte`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
@@ -7,7 +7,7 @@ import { createMockProvider } from '../providers/mock';
 import type { AgentInput } from '../providers/content';
 import { loushoAgent, loushoTodos, type TodoView, type AgentUIState, type LoushoAgentSource, type LoushoAgentStore } from './index';
 
-describe('lousho/svelte types', () => {
+describe('@linuxdevil/lousho/svelte types', () => {
   it('takes an in-process agent or a URL as the source', () => {
     const agent = createAgent({ provider: createMockProvider() });
     expectTypeOf({ agent, sessionId: 'chat-1' }).toMatchTypeOf<LoushoAgentSource>();

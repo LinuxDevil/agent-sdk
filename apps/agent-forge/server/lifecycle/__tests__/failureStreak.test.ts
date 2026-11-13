@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AgentRunStatusPayload, StudioEvent } from '../../../shared/wireTypes';
 import { AgentRepo } from '../../storage/agentRepo';
 import { StudioEventBus } from '../../events/eventBus';

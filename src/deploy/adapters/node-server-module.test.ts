@@ -12,7 +12,7 @@ import path from 'node:path';
 import { NodeServerAdapter, loadAgentSpecForDeploy } from './node-server';
 import { withBuildLock } from '../buildLock.testkit';
 
-const AGENT_TS = `import { createMockProvider, type CreateAgentConfig } from 'lousho';
+const AGENT_TS = `import { createMockProvider, type CreateAgentConfig } from '@linuxdevil/lousho';
 
 const instructions: string = 'You are a deployed agent module.';
 const config: CreateAgentConfig = { instructions, provider: createMockProvider({ name: 'mock', responses: ['module pong'] }) };

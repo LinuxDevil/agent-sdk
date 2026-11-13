@@ -7,9 +7,9 @@
  *
  * Run with: tsx examples/slack-notifier/index.ts
  */
-import { createAgent } from 'lousho';
-import { createMockProvider } from 'lousho';
-import { resolveProvider } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
+import { createMockProvider } from '@linuxdevil/lousho';
+import { resolveProvider } from '@linuxdevil/lousho';
 
 const provider = process.env.OPENAI_API_KEY
   ? resolveProvider('openai/gpt-4o-mini')

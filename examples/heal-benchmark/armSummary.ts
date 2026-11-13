@@ -1,5 +1,5 @@
 import type { Arm, ArmRow } from './gates';
-import type { ImproveLedger } from 'lousho/improve';
+import type { ImproveLedger } from '@linuxdevil/lousho/improve';
 import type { ReplayLine } from './replayRows';
 
 export interface Confirmation {

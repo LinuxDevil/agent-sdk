@@ -24,7 +24,7 @@ import {
   type BridgeParams,
   type BridgePush,
   type BridgeResults,
-} from 'lousho';
+} from '@linuxdevil/lousho';
 
 /** Lifecycle of the bridge child this client owns. */
 export type BridgeState = 'idle' | 'starting' | 'ready' | 'restarting' | 'failed' | 'unsupported' | 'stopped';

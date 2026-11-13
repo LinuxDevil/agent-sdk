@@ -52,7 +52,7 @@ const USAGE = [
 
 /**
  * Loads a command module from the ESM build (dist/cli/*.mjs). A user's tool
- * file (`tools/*.ts`) is an ES module, so its `import 'lousho'`
+ * file (`tools/*.ts`) is an ES module, so its `import '@linuxdevil/lousho'`
  * resolves to the ESM build: loading the CLI from the same build means the
  * agent directory and the tools it loads share one copy of the SDK.
  */

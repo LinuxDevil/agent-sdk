@@ -2,7 +2,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AutoApprovalDecision, AutoApprovalRequest } from 'lousho';
+import type { AutoApprovalDecision, AutoApprovalRequest } from '@linuxdevil/lousho';
 import { autoApprovalLogEntry, studioAutoApprover } from '../autoApproval';
 import { SpendLog } from '../passes/spendLog';
 import { SecretsStore } from '../secretsStore';

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hostStatus, listNotes, readNote, writeNote } from './host';
-import { testToolContext } from 'lousho/testing';
+import { testToolContext } from '@linuxdevil/lousho/testing';
 
 const ctx = testToolContext();
 

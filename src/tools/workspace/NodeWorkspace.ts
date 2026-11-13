@@ -110,7 +110,7 @@ function resolveRoot(root: string | undefined): string {
  *
  * @example
  * ```ts
- * import { NodeWorkspace, createFsTools, createShellTool } from 'lousho';
+ * import { NodeWorkspace, createFsTools, createShellTool } from '@linuxdevil/lousho';
  * const workspace = new NodeWorkspace({ root: '.' });
  * const tools = [...createFsTools(workspace), createShellTool(workspace)];
  * ```

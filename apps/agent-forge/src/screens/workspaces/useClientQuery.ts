@@ -1,6 +1,6 @@
 // fallow-ignore-file code-duplication -- intentionally the useAgentRecord load shape (ticket P2.5 step 3).
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { WorkspaceApiError, type ApiClient } from 'lousho/workspaces/client';
+import { WorkspaceApiError, type ApiClient } from '@linuxdevil/lousho/workspaces/client';
 import { useWorkspacesClient } from './workspacesClient';
 
 export interface QueryState<T> {

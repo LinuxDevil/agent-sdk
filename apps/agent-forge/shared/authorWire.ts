@@ -9,7 +9,7 @@
  * module instead of re-declaring them.
  */
 
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { Requirement, SpecChange } from './wireTypes';
 
 // The readiness row AA13's `computeRequirements` returns and the Author's

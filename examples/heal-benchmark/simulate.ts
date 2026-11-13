@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util';
-import { improveAgent, type Harness, type ImproveOptions } from 'lousho/improve';
+import { improveAgent, type Harness, type ImproveOptions } from '@linuxdevil/lousho/improve';
 import { armsFromResult, harnessKey, noOpHarness, plantedHarness, scriptedEditor, type Arm } from './gates';
 
 const { values } = parseArgs({

@@ -163,7 +163,7 @@ function summarize(entry: TraceFile, lines: TraceLine[]): TraceSummary | undefin
  *
  * @example
  * ```ts
- * import { listTraces } from 'lousho/traces';
+ * import { listTraces } from '@linuxdevil/lousho/traces';
  * const [latest] = await listTraces({ limit: 1 });
  * ```
  */
@@ -196,7 +196,7 @@ export function findTraces(idOrPrefix: string, options: { dir?: string } = {}): 
  *
  * @example
  * ```ts
- * import { readTrace } from 'lousho/traces';
+ * import { readTrace } from '@linuxdevil/lousho/traces';
  * const spans = await readTrace('k3f9');
  * ```
  */

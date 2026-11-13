@@ -22,7 +22,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Express } from 'express';
-import { loadSpecV2, type AgentSpecV2 } from 'lousho';
+import { loadSpecV2, type AgentSpecV2 } from '@linuxdevil/lousho';
 import type { RequirementKind, TemplateDetail, TemplateSummary } from '../../shared/wireTypes';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { sdkRootDir } from '../sdkRoot';

@@ -1,5 +1,5 @@
 import type { Key, ReactElement } from 'react';
-import type { ApiClient, ArtifactRef, PageApprovalEvent, PageProgressEvent, PageRunView, PageUi, RunViewStatus, UiComponent } from 'lousho/workspaces/client';
+import type { ApiClient, ArtifactRef, PageApprovalEvent, PageProgressEvent, PageRunView, PageUi, RunViewStatus, UiComponent } from '@linuxdevil/lousho/workspaces/client';
 
 /** Where a run started from the page UI stands: `idle` before the first run, `starting` until the service answers, then the service's status. */
 export type RunPhase = 'idle' | 'starting' | RunViewStatus;

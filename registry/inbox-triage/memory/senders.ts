@@ -12,7 +12,7 @@
  * INBOX_TRIAGE_HOME the mail store uses, under `memory/`.
  */
 import path from 'node:path';
-import { defineMemory, fileMemory, type MemoryProvider } from 'lousho';
+import { defineMemory, fileMemory, type MemoryProvider } from '@linuxdevil/lousho';
 import { home } from '../lib/mailstore.ts';
 
 const backing = (): MemoryProvider => fileMemory({ dir: path.join(home(), 'memory') });

@@ -34,7 +34,7 @@ npm create lousho my-agent -- --yes --provider anthropic --template tools
 
 Running a packed `.tgz` of this package on Windows: `npx C:\abs\path\create-lousho-<version>.tgz` silently does nothing (an npm quirk with absolute drive-letter paths). Use a relative path (`npx ./create-lousho-<version>.tgz my-agent`) or a `file:` spec (`npx file:C:/abs/path/create-lousho-<version>.tgz my-agent`).
 
-This package is a thin wrapper: it runs `lousho init` from the SDK, so `npx lousho init --help` lists every option.
+This package is a thin wrapper: it runs `lousho init` from the SDK, so `npx @linuxdevil/lousho init --help` lists every option.
 
 ## Links
 

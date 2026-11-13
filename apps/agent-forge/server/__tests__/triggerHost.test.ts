@@ -2,8 +2,8 @@ import { EventEmitter } from 'node:events';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { AgentSpecV2 } from 'lousho';
-import type { TriggerSpec } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
+import type { TriggerSpec } from '@linuxdevil/lousho/spec';
 
 import type { AgentRepo } from '../storage/agentRepo';
 import { AlreadyRunningError, type RunManager } from '../runRegistry';

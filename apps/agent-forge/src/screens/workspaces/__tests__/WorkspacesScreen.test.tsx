@@ -1,10 +1,10 @@
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { WorkspaceSummary } from 'lousho/workspaces/client';
+import type { WorkspaceSummary } from '@linuxdevil/lousho/workspaces/client';
 
 import { WorkspacesScreen } from '../WorkspacesScreen';
 import type { ScreenHeaderProps } from '../../../shell/ScreenHeader';
-import { WorkspaceApiError } from 'lousho/workspaces/client';
+import { WorkspaceApiError } from '@linuxdevil/lousho/workspaces/client';
 import { buttonByName, click, flush, renderWithClient, spyClient } from './workspaceTestKit';
 
 vi.mock('../../../shell/ScreenHeader', () => ({

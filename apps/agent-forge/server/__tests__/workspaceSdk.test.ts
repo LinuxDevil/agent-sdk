@@ -33,7 +33,7 @@ function installSdk(nodeModulesDir: string, name: string, options: { built?: boo
 
 describe('findWorkspaceSdk', () => {
   it('returns undefined for a folder with no SDK anywhere up the tree', () => {
-    // os.tmpdir() has no node_modules/@lousho or /lousho above it.
+    // os.tmpdir() has no node_modules/@linuxdevil or /lousho above it.
     expect(findWorkspaceSdk(dir)).toBeUndefined();
   });
 
@@ -41,8 +41,8 @@ describe('findWorkspaceSdk', () => {
     expect(findWorkspaceSdk(path.join(dir, 'nope'))).toBeUndefined();
   });
 
-  it('finds @lousho/build-ai-agent in the workspace root node_modules', () => {
-    const pkgDir = installSdk(path.join(dir, 'node_modules'), '@lousho/build-ai-agent', { built: true });
+  it('finds @linuxdevil/lousho in the workspace root node_modules', () => {
+    const pkgDir = installSdk(path.join(dir, 'node_modules'), '@linuxdevil/lousho', { built: true });
     const sdk = findWorkspaceSdk(dir);
     expect(sdk).toMatchObject({
       version: '1.2.3',
@@ -70,9 +70,9 @@ describe('findWorkspaceSdk', () => {
 
   it('prefers the scoped name over lousho at the same level', () => {
     installSdk(path.join(dir, 'node_modules'), 'lousho');
-    installSdk(path.join(dir, 'node_modules'), '@lousho/build-ai-agent');
+    installSdk(path.join(dir, 'node_modules'), '@linuxdevil/lousho');
     const sdk = findWorkspaceSdk(dir);
-    expect(sdk?.packageDir).toContain(`${path.sep}@lousho${path.sep}build-ai-agent`);
+    expect(sdk?.packageDir).toContain(`${path.sep}@linuxdevil${path.sep}lousho`);
   });
 
   it('classifies the SDK checkout itself as self, built only with dist/cli/bridge.mjs', () => {

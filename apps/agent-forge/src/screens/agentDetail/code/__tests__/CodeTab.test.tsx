@@ -2,7 +2,7 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRecord } from '../../../../../shared/wireTypes';
-import type { AgentSpecV2 } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 import { parseHash } from '../../../../router/router';
 import { render } from '../../../../ui/__tests__/render';
 import { ToastProvider } from '../../../../ui/Toast';
@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 
 // The Code tab calls the real SDK generators in the browser; here they are
 // stubbed so the assertions are about the tab, not the generators.
-vi.mock('lousho/spec', () => ({
+vi.mock('@linuxdevil/lousho/spec', () => ({
   specToCode: () => mocks.specToCode(),
   specToAgentDir: () => mocks.specToAgentDir(),
 }));

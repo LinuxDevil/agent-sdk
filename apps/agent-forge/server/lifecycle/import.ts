@@ -20,7 +20,7 @@
  */
 import type { Express, Request, Response } from 'express';
 import { parse as parseYaml } from 'yaml';
-import { agentSpecV2Schema, upgradeSpec, type AgentSpecV2 } from 'lousho';
+import { agentSpecV2Schema, upgradeSpec, type AgentSpecV2 } from '@linuxdevil/lousho';
 import { isValidAgentId } from '../../shared/agentId';
 import { LabelError, normalizeLabels } from '../../shared/labels';
 import type { AgentBundle, AgentMeta, AgentRecord, ImportMode, ImportPreview, ImportRequest } from '../../shared/wireTypes';

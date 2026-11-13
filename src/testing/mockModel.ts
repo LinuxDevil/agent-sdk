@@ -406,7 +406,7 @@ class ScriptedMockModel implements MockModel {
  *
  * @example
  * ```ts
- * import { mockModel } from 'lousho/testing';
+ * import { mockModel } from '@linuxdevil/lousho/testing';
  *
  * const model = mockModel([
  *   { toolCalls: [{ name: 'get_weather', args: { city: 'Paris' } }] },

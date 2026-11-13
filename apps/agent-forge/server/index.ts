@@ -6,6 +6,7 @@
  * for tests/embedding.
  */
 import { once } from 'node:events';
+import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -33,7 +34,8 @@ import { TemplateCatalog } from './templates/templateCatalog';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
-import { VERSION } from 'lousho';
+import { VERSION } from '@linuxdevil/lousho';
+import { sdkRootDir } from './sdkRoot';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -143,14 +145,16 @@ function resolveStaticDir(staticDir: string | false | undefined, moduleDir: stri
 }
 
 /**
- * The bundled SDK docs folder `searchDocs` reads: three levels above this
- * file's dir lands on the package root (server/ and dist-server/ are both
- * at apps/agent-forge/<x>, same resolution as the default staticDir).
- * `docs/*.md` ships in the package's `files`; a missing folder makes
+ * The bundled docs folder `searchDocs` reads. In the monorepo three levels
+ * above this file's dir lands on the repo root's `docs/`; in the packaged
+ * layout that path does not exist, so fall back to the SDK package's own
+ * `docs/` (which ships in its `files`). A missing folder makes
  * `searchDocs` answer UNAVAILABLE rather than fail.
  */
 function resolveDocsDir(moduleDir: string): string {
-  return path.join(moduleDir, '..', '..', '..', 'docs');
+  const repoDocs = path.join(moduleDir, '..', '..', '..', 'docs');
+  if (fs.existsSync(repoDocs)) return repoDocs;
+  return path.join(sdkRootDir(moduleDir), 'docs');
 }
 
 export async function startStudioServer(
@@ -330,6 +334,15 @@ export async function startStudioServer(
   };
 }
 
+/** SIGINT/SIGTERM → `handle.close()` (collector, bridges, socket) then exit 0. Shared by both entry points. */
+export function shutdownOnSignals(handle: Pick<StudioServerHandle, 'close'>): void {
+  const shutdown = () => {
+    void handle.close().finally(() => process.exit(0));
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
 // Allow `tsx server/index.ts` (or `node --import tsx server/index.ts`) to
 // boot the server directly, reading PORT/HOST/BASE_DIR from the
 // environment - this is how `lousho studio` (src/cli/studio.ts) launches it
@@ -337,16 +350,20 @@ export async function startStudioServer(
 // so this module runs as real ESM under tsx - there is no CJS `require`/
 // `module` to compare against, hence the `import.meta.url` check instead of
 // the usual `require.main === module` idiom.
+// The basename check matters in the packaged bundle: `cli.cjs` inlines this
+// module too, and without it `lousho-studio --help` would boot a second
+// server on 4750 (argv[1] is cli.cjs there, not an index.* entry).
 const isMainModule =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+  process.argv[1] !== undefined &&
+  /^index\.(cjs|mjs|js|ts)$/.test(path.basename(process.argv[1])) &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
 
 if (isMainModule) {
   const port = process.env.PORT ? Number(process.env.PORT) : undefined;
   const host = process.env.HOST;
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  // moduleDir is apps/agent-forge/server - the repo root (where `.lousho/`
-  // should live) is three levels up, unless BASE_DIR is set explicitly.
-  const baseDir = process.env.BASE_DIR ?? path.resolve(moduleDir, '..', '..', '..');
+  // The launch workspace defaults to the folder the command ran in, unless
+  // BASE_DIR is set explicitly.
+  const baseDir = process.env.BASE_DIR ?? process.cwd();
   // `src/cli/studio.ts` sets NO_STATIC=1 in dev mode (separate Vite dev
   // server process serves the UI there) and STATIC_DIR to override the
   // default `apps/agent-forge/dist` lookup in prod mode.
@@ -368,11 +385,7 @@ if (isMainModule) {
       }
       // `lousho studio` mints the token itself and prints this URL; only print it when launched directly.
       if (!process.env[STUDIO_TOKEN_ENV]) console.log(`[lousho studio] Agent Forge: ${handle.url}`);
-      const shutdown = () => {
-        void handle.close().finally(() => process.exit(0));
-      };
-      process.on('SIGINT', shutdown);
-      process.on('SIGTERM', shutdown);
+      shutdownOnSignals(handle);
     })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));

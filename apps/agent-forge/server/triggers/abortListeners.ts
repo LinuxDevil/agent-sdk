@@ -16,8 +16,8 @@
  * never blocks the dispatch. Event bodies are never logged (they may
  * carry secrets); only listener ids and expressions are.
  */
-import type { AgentSpecV2 } from 'lousho';
-import { evaluateSafeExpression, ExpressionError } from 'lousho/flows';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
+import { evaluateSafeExpression, ExpressionError } from '@linuxdevil/lousho/flows';
 
 import type { HostRun, TriggerHost } from './triggerHost';
 

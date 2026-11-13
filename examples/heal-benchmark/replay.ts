@@ -1,7 +1,7 @@
 import { appendFileSync, readFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { benchmarkProbe } from './probe';
-import { cachedProbe, emptyLedger, type ImproveLedger } from 'lousho/improve';
+import { cachedProbe, emptyLedger, type ImproveLedger } from '@linuxdevil/lousho/improve';
 import { assertRowModel, LABELS, replayRow, type RecordedRow, type ReplayLine } from './replayRows';
 
 const { values } = parseArgs({

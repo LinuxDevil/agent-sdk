@@ -17,8 +17,8 @@
     "noEmit": true,
     "types": ["node"],
     "paths": {
-      "lousho/workspaces": ["../../src/workspaces/index.ts"],
-      "lousho/workspaces/client": ["../../src/workspaces/client/index.ts"]
+      "@linuxdevil/lousho/workspaces": ["../../src/workspaces/index.ts"],
+      "@linuxdevil/lousho/workspaces/client": ["../../src/workspaces/client/index.ts"]
     }
   },
   "include": ["src/**/*", "../../typings/**/*.d.ts"],

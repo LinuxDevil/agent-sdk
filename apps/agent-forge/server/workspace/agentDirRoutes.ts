@@ -12,7 +12,7 @@
  */
 import { stat } from 'node:fs/promises';
 import type { Express, Request, Response } from 'express';
-import { agentDirToSpec, SDKError } from 'lousho';
+import { agentDirToSpec, SDKError } from '@linuxdevil/lousho';
 import type { CodeAgentSpecResponse, WorkspaceScanResult } from '../../shared/wireTypes';
 import { asyncRoute, sendError } from '../http/routeUtils';
 import { workspaceOf } from './middleware';

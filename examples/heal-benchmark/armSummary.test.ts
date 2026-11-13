@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bars, renderReport, trueFixAttempts } from './armSummary';
 import type { Arm, ArmRow } from './gates';
-import { emptyLedger } from 'lousho/improve';
+import { emptyLedger } from '@linuxdevil/lousho/improve';
 
 const row = (arm: Arm, attempt: number, accepted: boolean, passK: ArmRow['passK'] = {}): ArmRow => ({ attempt, arm, accepted, reason: 'r', model: 'm', date: 'd', passK });
 const many = (arm: Arm, accepted: readonly boolean[]) => accepted.map((value, attempt) => row(arm, attempt, value));

@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import { createFetchClient, type ApiClient } from 'lousho/workspaces/client';
+import { createFetchClient, type ApiClient } from '@linuxdevil/lousho/workspaces/client';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from '../../runtime/studioToken';
 
 // fallow-ignore-next-line unused-export -- contract surface: P2.21's password auth changes its headers; tests inject their own client.

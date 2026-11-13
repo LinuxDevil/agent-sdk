@@ -1,6 +1,6 @@
 import { ChevronRight, TriangleAlert } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
-import type { AgentSpecV2 } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 import type { ChannelTriggerStatus, TraceSummaryPayload } from '../../../shared/wireTypes';
 import { agentTabPath, BUILT_AGENT_TABS } from '../agents/agentTabs';

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { ConfigurationError, type AgentSpec } from 'lousho';
+import { ConfigurationError, type AgentSpec } from '@linuxdevil/lousho';
 import { buildAgentFromSpec, resolveProviderForModel } from './buildAgent';
 import { SecretsStore } from './secretsStore';
 

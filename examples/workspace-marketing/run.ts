@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { resolveProvider } from 'lousho';
-import { createWorkspaceRuntime, memorySource, type PageResult } from 'lousho/workspaces';
+import { resolveProvider } from '@linuxdevil/lousho';
+import { createWorkspaceRuntime, memorySource, type PageResult } from '@linuxdevil/lousho/workspaces';
 import { marketingHost, PAGES, readWorkspaceFiles, type PageId } from './host';
 
 const TOPIC = 'why the sky is blue';

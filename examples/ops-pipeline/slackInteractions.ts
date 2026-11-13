@@ -10,11 +10,11 @@
  * ApprovalGate, not a bypass or a reimplementation of it.
  */
 import * as http from 'node:http';
-import { resumeAfterApproval, ResumeExecuteOptions } from 'lousho/executor';
-import { ApprovalStore, ExecutionSnapshot, PendingApproval } from 'lousho';
-import { ExecutionResult } from 'lousho';
-import { LLMProvider } from 'lousho';
-import { ToolRegistry } from 'lousho/executor';
+import { resumeAfterApproval, ResumeExecuteOptions } from '@linuxdevil/lousho/executor';
+import { ApprovalStore, ExecutionSnapshot, PendingApproval } from '@linuxdevil/lousho';
+import { ExecutionResult } from '@linuxdevil/lousho';
+import { LLMProvider } from '@linuxdevil/lousho';
+import { ToolRegistry } from '@linuxdevil/lousho/executor';
 
 /** The subset of Slack's real block_actions interaction callback payload this route reads. */
 export interface SlackInteractionPayload {

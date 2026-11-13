@@ -15,7 +15,7 @@
  * token and listener vars are stripped so project code never sees them.
  */
 import type { WorkspaceRef } from '../../shared/workspace';
-import { BRIDGE_PROTOCOL_VERSION } from 'lousho';
+import { BRIDGE_PROTOCOL_VERSION } from '@linuxdevil/lousho';
 import { observeTarget } from '../observeProxy';
 import type { HostBanner, HostMode } from '../../shared/wireTypes';
 import { BridgeClient, BridgeError, type BridgeClientOptions, type BridgeState } from './bridgeClient';
@@ -55,7 +55,7 @@ export interface SelectHostDeps {
 
 const INFO_NO_SDK = (v: string): HostBanner => ({
   tone: 'info',
-  text: `This project has no @lousho/build-ai-agent installed. Runs use Studio's built-in SDK ${v}.`,
+  text: `This project has no @linuxdevil/lousho installed. Runs use Studio's built-in SDK ${v}.`,
 });
 const INFO_UNBUILT = (v: string): HostBanner => ({
   tone: 'info',
@@ -63,11 +63,11 @@ const INFO_UNBUILT = (v: string): HostBanner => ({
 });
 const WARNING_OLD_SDK = (): HostBanner => ({
   tone: 'warning',
-  text: `Update @lousho/build-ai-agent in this project to ${MIN_BRIDGE_SDK_VERSION} or later to edit agents here.`,
+  text: `Update @linuxdevil/lousho in this project to ${MIN_BRIDGE_SDK_VERSION} or later to edit agents here.`,
 });
 const WARNING_NEWER_SDK = (v: string): HostBanner => ({
   tone: 'warning',
-  text: `This project's @lousho/build-ai-agent ${v} is newer than this Studio understands. Update Studio to edit agents here.`,
+  text: `This project's @linuxdevil/lousho ${v} is newer than this Studio understands. Update Studio to edit agents here.`,
 });
 const DANGER_CRASHED = (): HostBanner => ({
   tone: 'danger',

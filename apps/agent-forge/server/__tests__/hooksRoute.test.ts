@@ -3,8 +3,8 @@ import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi, type Mock } from 'vitest';
 import type { Express } from 'express';
 import request from 'supertest';
-import { TriggerRegistry } from 'lousho/triggers';
-import type { TriggerSpec } from 'lousho/spec';
+import { TriggerRegistry } from '@linuxdevil/lousho/triggers';
+import type { TriggerSpec } from '@linuxdevil/lousho/spec';
 
 import { createApp } from '../app';
 import { SecretsStore } from '../secretsStore';

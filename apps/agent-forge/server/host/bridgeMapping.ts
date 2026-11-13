@@ -9,7 +9,7 @@
  * resolves them by name in the project, so Studio ships exactly the
  * names the spec mentions, nothing more.
  */
-import type { AgentSpecV2, BridgePush, BridgePushData } from 'lousho';
+import type { AgentSpecV2, BridgePush, BridgePushData } from '@linuxdevil/lousho';
 import type { HostEvent, HostRunResult } from './agentHost';
 import type { SecretsStore } from '../secretsStore';
 

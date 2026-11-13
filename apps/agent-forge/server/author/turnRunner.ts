@@ -20,7 +20,7 @@ import {
   type AgentEvent,
   type LLMProvider,
   type ToolDescriptor,
-} from 'lousho';
+} from '@linuxdevil/lousho';
 import type {
   AuthorAssistantMessage,
   AuthorFocus,

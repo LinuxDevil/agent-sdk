@@ -14,7 +14,7 @@
  * X05 the `published.yaml` write inside it.
  */
 import type { Express, Request, Response } from 'express';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AgentMeta, PublishState, VersionListItem } from '../../shared/wireTypes';
 import type { StudioEventBus } from '../events/eventBus';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';

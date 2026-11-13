@@ -9,7 +9,7 @@
  * `AuthorToolFailure` the tool hands back to the model), never a throw -
  * the review bouncing a draft is data, not an error.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AuthorToolFailure, Requirement, SpecChange } from '../../../shared/authorWire';
 import type { AuthorTurn } from '../turnRunner';
 import type { ProposalIdentity } from './turnState';

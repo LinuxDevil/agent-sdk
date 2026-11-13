@@ -1,4 +1,4 @@
-import { defineSchedule } from 'lousho';
+import { defineSchedule } from '@linuxdevil/lousho';
 
 /**
  * The kit's batch intake: every 15 minutes the agent sweeps the inbox for

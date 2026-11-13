@@ -1,6 +1,6 @@
 # Testing agents
 
-`lousho/testing` ships `mockModel`: a scripted, deterministic
+`@linuxdevil/lousho/testing` ships `mockModel`: a scripted, deterministic
 `LLMProvider` for unit tests. You write down what the model should say on each
 turn, run your agent, and then assert on exactly what the agent sent to the
 model. No network, no API keys, no flakiness.
@@ -14,8 +14,8 @@ npm install --save-dev vitest
 A bare string is shorthand for `{ text }`.
 
 ```ts
-import { createAgent } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const model = mockModel(['Hello! How can I help?']);
 const agent = createAgent({ instructions: 'You are friendly.', provider: model });
@@ -37,8 +37,8 @@ ids are generated deterministically (`call_1`, `call_2`, ...) unless you pass
 ```ts no-run
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
-import { createAgent, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 describe('weather agent', () => {
   it('calls get_weather and reports the result', async () => {
@@ -77,8 +77,8 @@ when the provider fails.
 
 ```ts no-verify
 import { it, expect } from 'vitest';
-import { createAgent } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 it('surfaces a provider failure', async () => {
   const model = mockModel([{ error: new Error('upstream 503') }]);
@@ -109,7 +109,7 @@ Pass a function to compute a turn from the request. It may be async and may
 return a string or any turn object.
 
 ```ts
-import { mockModel } from 'lousho/testing';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const model = mockModel([(req) => `You said: ${req.messages.at(-1)?.content}`]);
 const result = await model.generate({ messages: [{ role: 'user', content: 'ping' }] });
@@ -136,7 +136,7 @@ request and tells you to add a turn. To replay the final turn forever (handy for
 loop and step-limit tests), pass `{ onExhausted: 'repeat-last' }`:
 
 ```ts
-import { mockModel } from 'lousho/testing';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const looping = mockModel([{ toolCalls: [{ name: 'again' }] }], { onExhausted: 'repeat-last' });
 ```
@@ -161,8 +161,8 @@ OpenRouter use `openrouter/<vendor>/<model>` (e.g.
 `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent, resolveProvider } from 'lousho';
-import { recordReplay } from 'lousho/testing';
+import { createAgent, resolveProvider } from '@linuxdevil/lousho';
+import { recordReplay } from '@linuxdevil/lousho/testing';
 
 const provider = recordReplay(() => resolveProvider('openai/gpt-4o-mini'), {
   cassette: './__cassettes__/refund-flow.json',
@@ -210,7 +210,7 @@ If the change is intentional, re-record the cassette (run with LOUSHO_RECORD=1, 
 
 That hint assumes you wired `mode` to `LOUSHO_RECORD` as above. If you record
 some other way, pass `rerecordHint` with the command your project uses; under
-`lousho eval` the hint names `npx lousho eval --record` instead.
+`lousho eval` the hint names `npx @linuxdevil/lousho eval --record` instead.
 
 For parallel or unordered calls pass `match: 'request'`: each call finds the
 first unused entry with an identical request, in any order. Running out of
@@ -227,7 +227,7 @@ changing the schema itself still fails the match. For anything else, pass
 `normalize`:
 
 ```ts
-import { mockModel, recordReplay } from 'lousho/testing';
+import { mockModel, recordReplay } from '@linuxdevil/lousho/testing';
 
 const provider = recordReplay(mockModel(['ok']), {
   cassette: './__cassettes__/users.json',
@@ -277,7 +277,7 @@ the file. Pass `redact` to scrub them (it runs on every recorded string, in both
 requests and responses, and replay applies it when matching):
 
 ```ts
-import { mockModel, recordReplay } from 'lousho/testing';
+import { mockModel, recordReplay } from '@linuxdevil/lousho/testing';
 
 const provider = recordReplay(mockModel(['ok']), {
   cassette: './__cassettes__/support.json',

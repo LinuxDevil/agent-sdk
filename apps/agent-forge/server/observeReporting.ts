@@ -17,7 +17,7 @@ import {
   type ObserveExporterOptions,
   type Span,
   type TraceExporter,
-} from 'lousho/traces';
+} from '@linuxdevil/lousho/traces';
 import { observeTarget } from './observeProxy';
 import type { CollectorSource } from './collector';
 

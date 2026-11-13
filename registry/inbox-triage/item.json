@@ -6,5 +6,5 @@
     "filesystem": "write",
     "env": ["INBOX_TRIAGE_HOME", "INBOUND_TOKEN", "INBOX_TRIAGE_AUTO_APPROVE", "OPENROUTER_API_KEY"]
   },
-  "dependencies": ["lousho", "zod"]
+  "dependencies": ["@linuxdevil/lousho", "zod"]
 }

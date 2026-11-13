@@ -2,7 +2,7 @@ import { act, useCallback, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRecord } from '../../../../../shared/wireTypes';
-import type { AgentSpecV2 } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 import { render } from '../../../../ui/__tests__/render';
 import { ToastProvider } from '../../../../ui/Toast';
 

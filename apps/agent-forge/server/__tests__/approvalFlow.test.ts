@@ -18,8 +18,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { AgentExecutor, ToolRegistry, AgentBuilder, resumeAfterApproval } from 'lousho/executor';
-import { createMockProvider, type ToolDescriptor } from 'lousho';
+import { AgentExecutor, ToolRegistry, AgentBuilder, resumeAfterApproval } from '@linuxdevil/lousho/executor';
+import { createMockProvider, type ToolDescriptor } from '@linuxdevil/lousho';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
 

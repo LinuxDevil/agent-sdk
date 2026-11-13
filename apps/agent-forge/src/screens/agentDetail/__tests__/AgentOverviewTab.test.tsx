@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRecord, Requirement, TraceSummaryPayload } from '../../../../shared/wireTypes';
 import { render } from '../../../ui/__tests__/render';
-import type { AgentSpecV2 } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 const mocks = vi.hoisted(() => ({ listTraces: vi.fn(), channelTriggerStatus: vi.fn() }));
 

@@ -14,11 +14,11 @@
  * rather than being fixer-core itself.
  */
 import { z } from 'zod';
-import { AgentExecutor, ExecuteOptions } from 'lousho/executor';
-import { ExecutionResult } from 'lousho';
-import { AgentConfig, ToolDescriptor } from 'lousho';
-import { defineTool } from 'lousho';
-import { LLMProvider } from 'lousho';
+import { AgentExecutor, ExecuteOptions } from '@linuxdevil/lousho/executor';
+import { ExecutionResult } from '@linuxdevil/lousho';
+import { AgentConfig, ToolDescriptor } from '@linuxdevil/lousho';
+import { defineTool } from '@linuxdevil/lousho';
+import { LLMProvider } from '@linuxdevil/lousho';
 
 /**
  * A request to diagnose-and-fix an error, built from an ErrorSignal

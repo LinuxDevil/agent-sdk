@@ -2,8 +2,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "lousho/workspaces/client": ["../../dist/workspaces/client/index.d.mts"],
-      "lousho/workspaces": ["../../dist/workspaces/index.d.mts"]
+      "@linuxdevil/lousho/workspaces/client": ["../../dist/workspaces/client/index.d.mts"],
+      "@linuxdevil/lousho/workspaces": ["../../dist/workspaces/index.d.mts"]
     },
     "types": []
   },

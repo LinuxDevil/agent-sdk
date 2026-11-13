@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { mergeProposal, type ProposalOverlay } from '../graph/v2/proposal';
 import { HttpAgentStore } from '../persistence/HttpAgentStore';
 import { runtimeClient } from '../runtime/runtimeClient';

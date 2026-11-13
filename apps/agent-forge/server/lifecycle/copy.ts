@@ -10,7 +10,7 @@
  * the new id has no sidecar dir until this write.
  */
 import { randomUUID } from 'node:crypto';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 
 import { isValidAgentId } from '../../shared/agentId';
 import type { AgentMeta, AgentRecord, CanvasLayout } from '../../shared/wireTypes';

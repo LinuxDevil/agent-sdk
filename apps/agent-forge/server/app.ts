@@ -86,8 +86,8 @@ import {
   type AgentSpec,
   type AgentSpecV2,
   type ForkPatch,
-} from 'lousho';
-import type { connectMcp } from 'lousho/mcp';
+} from '@linuxdevil/lousho';
+import type { connectMcp } from '@linuxdevil/lousho/mcp';
 import type { LegacyAgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,

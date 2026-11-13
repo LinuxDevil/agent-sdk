@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { testToolContext } from 'lousho/testing';
+import { testToolContext } from '@linuxdevil/lousho/testing';
 import { AUTHOR_TOOL_FACTORIES, buildAuthorTools, type AuthorToolDeps } from '../index';
 import type { AuthorTurn } from '../../turnRunner';
 import type { AuthorToolFailure, RequestSecretOutput } from '../../../../shared/authorWire';

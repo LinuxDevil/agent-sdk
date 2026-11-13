@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AgentMeta, StudioEvent, VersionListItem } from '../../../shared/wireTypes';
 import { StudioEventBus } from '../../events/eventBus';
 import { AgentRepo } from '../../storage/agentRepo';

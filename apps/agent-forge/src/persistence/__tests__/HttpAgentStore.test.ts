@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { HttpAgentStore, type AgentApi } from '../HttpAgentStore';
 import type { AgentListItem, AgentMeta, AgentRecord, CanvasLayout } from '../../../shared/wireTypes';
 

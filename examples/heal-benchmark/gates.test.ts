@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { improveAgent, type Harness, type ImproveOptions, type ImproveResult, type ProbeRun, type ProbeSummary } from 'lousho/improve';
+import { improveAgent, type Harness, type ImproveOptions, type ImproveResult, type ProbeRun, type ProbeSummary } from '@linuxdevil/lousho/improve';
 import { codingAgent, FIXES } from './codingAgent';
 import { admitHoldout, armsFromResult, gateV1, harnessKey, loggedProbe, noOpHarness, passK, PLANTED_REGRESSION, plantedHarness, scriptedEditor, type LoggedRun } from './gates';
 

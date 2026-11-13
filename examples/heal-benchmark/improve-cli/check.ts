@@ -1,4 +1,4 @@
-import type { CaseCheck } from 'lousho/improve';
+import type { CaseCheck } from '@linuxdevil/lousho/improve';
 import { latestProjectRun } from './projectRuns.ts';
 
 const check: CaseCheck = (input) => {

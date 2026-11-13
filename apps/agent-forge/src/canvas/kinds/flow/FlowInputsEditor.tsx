@@ -8,7 +8,7 @@ import type { ChangeEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Field } from '../../../ui/Field';
 import { Checkbox, Input, Select } from '../../../ui/controls';
-import type { FlowInputType, FlowInputVariable } from 'lousho/flows';
+import type { FlowInputType, FlowInputVariable } from '@linuxdevil/lousho/flows';
 import './flow.css';
 
 const INPUT_TYPES: FlowInputType[] = ['shortText', 'url', 'longText', 'number', 'json', 'fileBase64'];

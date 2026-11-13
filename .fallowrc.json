@@ -15,7 +15,10 @@
     // The elkjs layout worker: only referenced through
     // `new Worker(new URL('./layout.worker.ts', import.meta.url))` in
     // apps/agent-forge/src/canvas/layout.ts (C17).
-    "apps/agent-forge/src/canvas/layout.worker.ts"
+    "apps/agent-forge/src/canvas/layout.worker.ts",
+    // The packaged Studio's `lousho-studio` bin and its pack-time SDK-range pin.
+    "apps/agent-forge/server/cli.ts",
+    "apps/agent-forge/scripts/pin-sdk-range.mjs"
   ],
   "ignorePatterns": [
     ".claude/**"
@@ -96,7 +99,7 @@
     "@ai-sdk/anthropic",
     "@ai-sdk/google",
     "@ai-sdk/openai",
-    "lousho",
+    "@linuxdevil/lousho",
     "ollama-ai-provider",
     "ollama-ai-provider-v2",
     "prompts"

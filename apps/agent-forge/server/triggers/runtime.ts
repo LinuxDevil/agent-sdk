@@ -8,8 +8,8 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import type { SimpleAgent, TraceExporter } from 'lousho';
-import { fanOutExporters, fileTraceExporter } from 'lousho/traces';
+import type { SimpleAgent, TraceExporter } from '@linuxdevil/lousho';
+import { fanOutExporters, fileTraceExporter } from '@linuxdevil/lousho/traces';
 
 import type { LogEntry } from '../../shared/wireTypes';
 import { buildRunnableAgent, type StudioRunDeps } from '../buildAgentV2';

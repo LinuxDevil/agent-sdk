@@ -15,8 +15,8 @@ take: `temperature` and `maxTokens` (`exporter`, `captureContent` and
 import {
   AgentBuilder,
   AgentExecutor,
-} from 'lousho/executor';
-import { createMockProvider } from 'lousho';
+} from '@linuxdevil/lousho/executor';
+import { createMockProvider } from '@linuxdevil/lousho';
 
 const agent = AgentBuilder.create()
   .setName('Customer Support Agent')
