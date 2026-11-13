@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - **Breaking:** the package is renamed from `lousho` to `@linuxdevil/lousho`. Update imports from `'lousho'` / `'lousho/…'` to `'@linuxdevil/lousho'` / `'@linuxdevil/lousho/…'` and dependencies from `"lousho"` to `"@linuxdevil/lousho"`. The `lousho` binary name is unchanged, so `npx @linuxdevil/lousho …` and `lousho …` commands keep working.
+- **Breaking:** Studio is now the separate package `@linuxdevil/studio`; the SDK tarball no longer contains `apps/agent-forge`. `lousho studio` finds an installed `@linuxdevil/studio` (local, next to the SDK, or global) and opens the current folder as a workspace, or prints `Studio is a separate install: npx @linuxdevil/studio` when it is missing. Inside the SDK checkout it keeps its dev/prod modes (`--prod`/`--dev`). Install Studio with `npm i -g @linuxdevil/studio` (or `npx @linuxdevil/studio`).
 - New `@linuxdevil/lousho/observe` subpath: `startObserveDaemon`, `probeHealth`, `isObserveDaemon`, `defaultDbPath`, `OBSERVE_DEFAULT_PORT` and the daemon option/retention defaults, so a host process (Studio) can run and probe the collector through public exports.
 - Install docs use the public npm packages again (`npm install @linuxdevil/lousho`, `npm create lousho`).
 - `@linuxdevil/lousho/improve` (experimental): `improveAgent()` proposes tested edits to an agent's instructions and skills, offline, gated against the current harness and held-out cases. It applies nothing. See [Improving an agent](docs/improve.md).
