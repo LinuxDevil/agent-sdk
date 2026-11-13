@@ -59,7 +59,9 @@ export function useAgentList(scope: AgentListScope): AgentListState {
       if (scope.kind === 'all') {
         const res = await runtimeClient.listAllAgentItems();
         if (seq !== requestSeq.current) return;
-        setItems(res.items);
+        // W07a adds observed items to the union; the card grid is
+        // workspace-only until W07b renders observed cards.
+        setItems(res.items.filter((item): item is WorkspaceAgentItem => item.kind === 'workspace'));
         setSkipped(res.skipped);
       } else {
         const list = await runtimeClient.forWorkspace(scope.workspaceId).listAgents();

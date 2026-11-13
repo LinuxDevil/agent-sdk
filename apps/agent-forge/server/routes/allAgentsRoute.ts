@@ -16,10 +16,12 @@
 import { statSync } from 'node:fs';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
-import type { AgentListItem, AllAgentsResponse, WorkspaceAgentItem } from '../../shared/wireTypes';
+import type { AgentListItem, AllAgentsResponse, AnyAgentItem } from '../../shared/wireTypes';
 import { sendError } from '../http/routeUtils';
 import { AgentRepo } from '../storage/agentRepo';
 import { buildAgentListItems } from './agentListItems';
+import { fetchDaemonAgents, toObservedItems, type WorkspaceMatch } from '../observed/observedAgents';
+import { observeProjectOf } from '../observed/observeProject';
 import { requestedWorkspaceId } from '../workspace/middleware';
 import type { WorkspaceContext } from '../workspace/context';
 import type { WorkspaceRegistry } from '../workspace/workspaceRegistry';
@@ -63,6 +65,9 @@ async function readWorkspace(ref: WorkspaceRef, warm: Map<string, WorkspaceConte
 export async function listAllAgents(deps: AllAgentsDeps): Promise<AllAgentsResponse> {
   const refs = await deps.registry.list();
   const warm = new Map(deps.warm().map((ctx) => [ctx.ref.id, ctx]));
+  // The daemon read runs in parallel with the workspace reads; `undefined`
+  // means unavailable (down/timeout/bad body) -> `observed: 'unavailable'`.
+  const observedRowsPromise = fetchDaemonAgents();
   const reads = await Promise.all(
     refs.map(async (ref) => ({
       ref,
@@ -70,23 +75,47 @@ export async function listAllAgents(deps: AllAgentsDeps): Promise<AllAgentsRespo
     }))
   );
 
+  const observedRows = await observedRowsPromise;
   const nameOf = new Map(refs.map((ref) => [ref.id, ref.name.toLowerCase()]));
-  const items: WorkspaceAgentItem[] = [];
+  const items: AnyAgentItem[] = [];
   const skipped: AllAgentsResponse['skipped'] = [];
+  // W07a: each successfully-read workspace also feeds the observed
+  // placement - its projects (id + package name) and the agent ids just
+  // listed (Studio's own daemon rows are filtered against them).
+  const matches: WorkspaceMatch[] = [];
   for (const { ref, read } of reads) {
     if (read.skipped !== undefined) {
       skipped.push(read.skipped);
       continue;
     }
     for (const item of read.items) items.push({ ...item, kind: 'workspace', workspaceId: ref.id });
+    matches.push({
+      id: ref.id,
+      projects: new Set([ref.id, observeProjectOf(ref.root)]),
+      agentIds: new Set(read.items.map((item) => item.id)),
+    });
   }
   items.sort((a, b) => {
+    if (a.kind !== 'workspace' || b.kind !== 'workspace') return 0;
     const byWs = (nameOf.get(a.workspaceId) ?? '').localeCompare(nameOf.get(b.workspaceId) ?? '');
     if (byWs !== 0) return byWs;
     const byName = a.name.toLowerCase().localeCompare(b.name.toLowerCase());
     return byName !== 0 ? byName : a.id.localeCompare(b.id);
   });
-  return { items, skipped };
+
+  // Observed agents (W07a): fetched in parallel with the workspace reads
+  // above would have been ideal; the daemon call is independent so it
+  // runs alongside `reads` via Promise.all at the call site instead -
+  // here we await it (it was kicked off before the reads resolved).
+  const observedItems = observedRows === undefined ? [] : toObservedItems(observedRows, matches);
+  const placed = observedItems.filter((item) => item.workspaceId !== null);
+  const elsewhere = observedItems.filter((item) => item.workspaceId === null);
+  placed.sort((a, b) => {
+    const byWs = (nameOf.get(a.workspaceId ?? '') ?? '').localeCompare(nameOf.get(b.workspaceId ?? '') ?? '');
+    if (byWs !== 0) return byWs;
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id);
+  });
+  return { items: [...items, ...placed, ...elsewhere], skipped, observed: observedRows === undefined ? 'unavailable' : 'ok' };
 }
 
 /**

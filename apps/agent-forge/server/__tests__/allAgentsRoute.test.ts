@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -207,5 +208,143 @@ describe('GET /agents?ws=all (cross-workspace aggregate)', () => {
     expect(Array.isArray(res.body)).toBe(true);
     const ids = (res.body as { id: string }[]).map((e) => e.id).sort();
     expect(ids).toEqual(['alpha', 'beta']);
+  });
+});
+
+describe('GET /agents?ws=all - observed agents (W07a)', () => {
+  let dir: string;
+  let launchDir: string;
+  let otherDir: string;
+  let registry: WorkspaceRegistry;
+  let launchRef: WorkspaceRef;
+  let otherRef: WorkspaceRef;
+  let services: WorkspaceServices;
+  let daemon: http.Server | undefined;
+  let daemonUrl: string;
+  const ENV_URL = 'LOUSHO_OBSERVE_URL';
+  let savedUrl: string | undefined;
+
+  const daemonRow = (over: Record<string, unknown>) => ({
+    agent_id: 'r1',
+    project: null,
+    name: 'agent',
+    version: '1.0.0',
+    first_seen: 1000,
+    last_heartbeat: 2000,
+    status: 'healthy',
+    hostname: 'h1',
+    pid: 1,
+    runs_today: 0,
+    error_rate_today: 0,
+    ...over,
+  });
+
+  async function startDaemon(rows: unknown[] | 'hang'): Promise<void> {
+    daemon = http.createServer((_req, res) => {
+      if (rows === 'hang') return; // never answers -> the 3 s timeout path is covered by unit tests; here just close
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ agents: rows }));
+    });
+    await new Promise<void>((resolve) => daemon!.listen(0, '127.0.0.1', resolve));
+    daemonUrl = `http://127.0.0.1:${(daemon!.address() as { port: number }).port}`;
+  }
+
+  function wire(): Express {
+    const launch = createWorkspaceContext(launchRef, services);
+    const manager = new WorkspaceManager({
+      registry,
+      launch,
+      build: (ref) => createWorkspaceContext(ref, services),
+      now: () => Date.parse('2026-01-01T00:00:00.000Z'),
+      sweepMs: 0,
+    });
+    return createApp({
+      workspace: launch,
+      workspaces: manager,
+      workspaceRegistry: registry,
+      warm: () => manager.warm(),
+      baseDir: launchDir,
+      studioHome: path.join(dir, 'studio-home'),
+      secretsStore: services.secretsStore,
+      settingsStore: services.settingsStore,
+      spendLog: services.spendLog,
+      passRunner: services.passRunner,
+      alerts: services.alerts,
+      access: { token: TOKEN },
+    });
+  }
+
+  beforeEach(async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-w07a-all-'));
+    launchDir = path.join(dir, 'launch');
+    otherDir = path.join(dir, 'other');
+    for (const root of [launchDir, otherDir]) fs.mkdirSync(root, { recursive: true });
+    const studioDir = path.join(dir, 'studio');
+    fs.mkdirSync(studioDir, { recursive: true });
+    const secretsStore = new SecretsStore(studioDir);
+    const settingsStore = new SettingsStore(studioDir);
+    const spendLog = new SpendLog(path.join(studioDir, 'spend.jsonl'));
+    const alerts = new AlertStore(path.join(studioDir, 'alerts.json'));
+    services = {
+      secretsStore,
+      settingsStore,
+      observe: false,
+      passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
+      spendLog,
+      alerts,
+    };
+    registry = new WorkspaceRegistry(path.join(studioDir, 'workspaces.json'));
+    launchRef = await registry.ensure(launchDir);
+    otherRef = await registry.ensure(otherDir);
+    const launchRepo = new AgentRepo(launchDir);
+    const otherRepo = new AgentRepo(otherDir);
+    await launchRepo.writeSpec('zeta', v2Spec('zeta'));
+    await otherRepo.writeSpec('alpha', v2Spec('alpha'));
+    await otherRepo.writeSpec('beta', v2Spec('beta'));
+    savedUrl = process.env[ENV_URL];
+  });
+
+  afterEach(async () => {
+    if (savedUrl === undefined) delete process.env[ENV_URL];
+    else process.env[ENV_URL] = savedUrl;
+    if (daemon) await new Promise((resolve) => daemon!.close(resolve));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('merges daemon rows: grouped under the matching workspace, the rest under Elsewhere; Studio rows dropped', async () => {
+    // `other` reports project = its workspace id (LOUSHO_OBSERVE_PROJECT=<id> case).
+    await startDaemon([
+      daemonRow({ agent_id: 'w1', name: 'billing-worker', project: otherRef.id, status: 'healthy' }),
+      daemonRow({ agent_id: 'w2', name: 'billing-worker', project: otherRef.id, status: 'stale', hostname: 'h2' }),
+      daemonRow({ agent_id: 'n1', name: 'nightly', project: 'ci' }),
+      daemonRow({ agent_id: 's1', name: 'alpha', project: otherRef.id }), // other's own agent id -> dropped
+      daemonRow({ agent_id: 'p1', name: 'playground', project: otherRef.id }), // never appears
+      daemonRow({ agent_id: 'e1', name: 'alpha-evals', project: otherRef.id }), // -evals of own agent -> dropped
+    ]);
+    process.env[ENV_URL] = daemonUrl;
+    const res = await authed(request(wire()).get('/agents').query({ ws: 'all' }));
+    expect(res.status).toBe(200);
+    expect(res.body.observed).toBe('ok');
+    const observed = (res.body.items as { kind: string; name?: string; workspaceId?: string | null; instances?: number; status?: string }[]).filter(
+      (i) => i.kind === 'observed'
+    );
+    expect(observed).toHaveLength(2);
+    const worker = observed.find((i) => i.name === 'billing-worker')!;
+    expect(worker.workspaceId).toBe(otherRef.id);
+    expect(worker.instances).toBe(2);
+    expect(worker.status).toBe('healthy');
+    const nightly = observed.find((i) => i.name === 'nightly')!;
+    expect(nightly.workspaceId).toBeNull();
+    // Workspace items still all present and first.
+    const workspaceItems = (res.body.items as { kind: string }[]).filter((i) => i.kind === 'workspace');
+    expect(workspaceItems).toHaveLength(3);
+  });
+
+  it('daemon down -> 200 with workspace items and observed: unavailable', async () => {
+    process.env[ENV_URL] = 'http://127.0.0.1:1'; // closed port
+    const res = await authed(request(wire()).get('/agents').query({ ws: 'all' }));
+    expect(res.status).toBe(200);
+    expect(res.body.observed).toBe('unavailable');
+    expect((res.body.items as { kind: string }[]).every((i) => i.kind === 'workspace')).toBe(true);
   });
 });

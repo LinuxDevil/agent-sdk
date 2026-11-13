@@ -743,14 +743,39 @@ export interface WorkspaceAgentItem extends AgentListItem {
   workspaceId: string;
 }
 
-/** Every agent kind the aggregate `GET /agents?ws=all` can return. */
-export type AnyAgentItem = WorkspaceAgentItem;
+/** An observed agent's rolled-up health (W07a): the best status across its daemon instances. */
+export type ObservedStatus = 'healthy' | 'stale' | 'down' | 'stopped';
+
+/**
+ * One observed agent in `GET /agents?ws=all` (W07a): a daemon-reported
+ * agent that is not one of Studio's own runs, grouped by project+name.
+ * `workspaceId` is the workspace whose project it matched, `null` for
+ * "Elsewhere".
+ */
+export interface ObservedAgentItem {
+  kind: 'observed';
+  /** The newest instance's daemon agent_id; the observed page route key (#/observed/:agentId). */
+  id: string;
+  name: string;
+  project: string | null;
+  workspaceId: string | null;
+  instances: number;
+  status: ObservedStatus;
+  lastSeenAt: string;
+  runsToday: number;
+  errorRateToday: number;
+}
+
+/** Every agent kind the aggregate `GET /agents?ws=all` can return. W08a adds `CodeAgentItem`. */
+export type AnyAgentItem = WorkspaceAgentItem | ObservedAgentItem;
 
 /** `GET /agents?ws=all`'s response: every workspace's agents plus the workspaces that could not be read. */
 export interface AllAgentsResponse {
   items: AnyAgentItem[];
   /** Workspaces that could not be read this time (folder missing, unreadable). */
   skipped: { workspaceId: string; reason: string }[];
+  /** 'ok' when the daemon answered; 'unavailable' when it did not (observed items then absent). */
+  observed: 'ok' | 'unavailable';
 }
 
 /**

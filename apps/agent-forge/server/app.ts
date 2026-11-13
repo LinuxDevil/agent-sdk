@@ -1211,8 +1211,8 @@ export function createApp(options: CreateAppOptions): Express {
   // import routes: `import` is a valid agent id. Per-agent stores come
   // from workspaceOf(req); secrets/settings are Studio-global deps.
   registerPortabilityRoutes(app, { secretsStore: secrets, settings });
-  // `GET /agents?ws=all` - the cross-workspace aggregate (routes/
-  // allAgentsRoute.ts). Registered BEFORE the single-workspace /agents
+  // `GET /agents?ws=all` -> AllAgentsResponse (workspace + observed agents,
+  // routes/allAgentsRoute.ts). Registered BEFORE the single-workspace /agents
   // routes: it answers only the ALL_WORKSPACES request and next()s the
   // rest. Warm contexts come from `options.warm` (the manager's), so a
   // running agent still reports its live status; cold workspaces read
