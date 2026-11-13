@@ -1,5 +1,5 @@
 /**
- * The public types of `lousho/react`.
+ * The public types of `@linuxdevil/lousho/react`.
  */
 import { describe, it, expectTypeOf } from 'vitest';
 import { createAgent } from '../createAgent';
@@ -24,7 +24,7 @@ import {
   type UseLoushoAgentResult,
 } from './index';
 
-describe('lousho/react types', () => {
+describe('@linuxdevil/lousho/react types', () => {
   it('accepts an in-process agent or a URL as the source', () => {
     const agent = createAgent({ provider: createMockProvider() });
     expectTypeOf({ agent }).toMatchTypeOf<LoushoAgentSource>();

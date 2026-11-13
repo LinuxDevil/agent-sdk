@@ -13,7 +13,7 @@ import { Statements } from './stores';
  *
  * @example
  * ```ts
- * import { SqliteStore, sqliteMemory } from 'lousho/sqlite';
+ * import { SqliteStore, sqliteMemory } from '@linuxdevil/lousho/sqlite';
  *
  * const store = new SqliteStore('./.lousho/agent.db');
  * const prefs = defineMemory({ name: 'prefs', scope: 'global', provider: sqliteMemory(store) });

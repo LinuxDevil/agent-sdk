@@ -14,7 +14,7 @@
  * is D17's catalog, `probeMcp` is D11's probe as a function, and
  * `docsDir` is the bundled SDK docs folder `searchDocs` reads.
  */
-import type { AgentSpecV2, ToolDescriptor } from 'lousho';
+import type { AgentSpecV2, ToolDescriptor } from '@linuxdevil/lousho';
 import type { Requirement } from '../../../shared/authorWire';
 import type {
   CatalogGuardrail,

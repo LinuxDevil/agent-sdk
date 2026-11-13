@@ -1,4 +1,4 @@
-import type { ApproveToolCall } from 'lousho';
+import type { ApproveToolCall } from '@linuxdevil/lousho';
 
 /**
  * The kit's approver (pointed at by `agent.json`'s `approve`): what reaches

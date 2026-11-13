@@ -44,7 +44,7 @@ describe('create-lousho wraps lousho init', () => {
 
     expect(output).toContain('Next steps:');
     expect(fs.readFileSync(path.join(dir, '.env.example'), 'utf8')).toContain('ANTHROPIC_API_KEY=');
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).dependencies['lousho']).toBe(
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')).dependencies['@linuxdevil/lousho']).toBe(
       'file:./sdk-0.0.0.tgz'
     );
   });

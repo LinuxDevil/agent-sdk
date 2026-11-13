@@ -23,7 +23,7 @@ function decode(bytes: unknown, dimensions: number): Float32Array {
  *
  * @example
  * ```ts
- * import { SqliteStore, sqliteVectorMemory } from 'lousho/sqlite';
+ * import { SqliteStore, sqliteVectorMemory } from '@linuxdevil/lousho/sqlite';
  *
  * const store = new SqliteStore('./.lousho/agent.db');
  * const facts = sqliteVectorMemory(store, { embedder: aiSdkEmbedder(openai.embedding('text-embedding-3-small')) });

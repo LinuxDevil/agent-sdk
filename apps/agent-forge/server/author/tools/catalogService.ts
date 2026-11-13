@@ -7,7 +7,7 @@
  * differently).
  */
 import * as path from 'node:path';
-import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from 'lousho';
+import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from '@linuxdevil/lousho';
 import { sdkRootDir } from '../../sdkRoot';
 import type { SecretsStore } from '../../secretsStore';
 import { readRegistryIndex, withStoredKeyAvailability } from '../../routes/catalogRoutes';

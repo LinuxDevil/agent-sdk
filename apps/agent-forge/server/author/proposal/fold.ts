@@ -12,7 +12,7 @@
  * returned here but ignored by the caller - folding is keyed on the spec
  * the card was built against, not on the card alone.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { ProposalOutput } from '../../../shared/authorWire';
 import { SPEC_FIELD_ORDER } from '../../../shared/specFields';
 import { stableStringify } from '../../../shared/stableJson';

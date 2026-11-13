@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { MemoryWorkspace } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { MemoryWorkspace } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { createCodingHarness, fakeExec, FIXTURE, instructionsFor, scriptedExplorer, scriptedLead } from './index';
 
 function memoryWorkspace(): MemoryWorkspace {

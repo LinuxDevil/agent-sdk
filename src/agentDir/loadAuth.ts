@@ -17,7 +17,7 @@ type AgentDirAccessRules = Pick<ChatRoutesAccess, 'authorizeSession' | 'authoriz
 /**
  * The route auth of an agent directory, from its `auth.{ts,js,mjs,cjs,mts}`
  * file, which default-exports an auth entry or an ordered list of them
- * (`jwt()`, `oidc()`, `basic()`, `apiToken()`, ... from `lousho/auth`),
+ * (`jwt()`, `oidc()`, `basic()`, `apiToken()`, ... from `@linuxdevil/lousho/auth`),
  * plus its optional named `authorizeSession` / `authorizeApproval` exports
  * (docs/auth.md). `undefined` when the directory has no such file.
  */

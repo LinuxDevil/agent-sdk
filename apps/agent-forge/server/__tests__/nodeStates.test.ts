@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { APPROVAL_WAIT_SPAN_NAME, SdkAttr, type Span } from 'lousho';
+import { APPROVAL_WAIT_SPAN_NAME, SdkAttr, type Span } from '@linuxdevil/lousho';
 import { nodeStateFor } from '../nodeStates';
 
 const NOW = new Date('2026-10-29T12:00:00.000Z');

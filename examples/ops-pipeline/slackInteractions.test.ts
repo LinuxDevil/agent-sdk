@@ -6,9 +6,9 @@ import {
   createInMemoryApprovalStore,
   SlackInteractionPayload,
 } from './slackInteractions';
-import { ApprovalStore, ExecutionSnapshot, PendingApproval } from 'lousho';
-import { ToolRegistry } from 'lousho/executor';
-import { createMockProvider } from 'lousho';
+import { ApprovalStore, ExecutionSnapshot, PendingApproval } from '@linuxdevil/lousho';
+import { ToolRegistry } from '@linuxdevil/lousho/executor';
+import { createMockProvider } from '@linuxdevil/lousho';
 
 describe('extractApprovalIdFromInteraction', () => {
   it('extracts the approvalId from a fix_it block_actions click', () => {

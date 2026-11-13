@@ -123,7 +123,7 @@ payload. Each event type is exported too (`TextDeltaEvent`, `ToolDoneEvent`,
 `RunDoneEvent`, ...), and `AgentEventOf<'tool.done'>` picks one by name.
 
 ```ts
-import { isAgentEvent, isToolEvent, type AgentEvent } from 'lousho';
+import { isAgentEvent, isToolEvent, type AgentEvent } from '@linuxdevil/lousho';
 
 function render(event: AgentEvent): string {
   switch (event.type) {

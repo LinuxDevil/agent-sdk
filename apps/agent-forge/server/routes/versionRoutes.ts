@@ -15,7 +15,7 @@
  * deps to close over.
  */
 import type { Express, Response } from 'express';
-import { agentSpecV2Schema } from 'lousho';
+import { agentSpecV2Schema } from '@linuxdevil/lousho';
 import { diffSpecs } from '../diff/specChange';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { withAgentLock } from '../storage/atomic';

@@ -8,6 +8,6 @@ export * from './dayName';
 export * from './http';
 export { webFetchTool, createWebFetchTool, type WebFetchToolOptions, type WebFetchResult } from './webFetch';
 // The credentialed integrations (email, jira, github, slack) moved to
-// 'lousho/integrations' (src/integrations/index.ts).
+// '@linuxdevil/lousho/integrations' (src/integrations/index.ts).
 export * from './todo';
 export { askQuestionTool, type AskQuestionInput, type AskQuestionResult } from './askQuestion';

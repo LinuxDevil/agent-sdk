@@ -7,5 +7,5 @@
     "env": ["GITHUB_TOKEN"],
     "needsApproval": true
   },
-  "dependencies": ["lousho", "zod"]
+  "dependencies": ["@linuxdevil/lousho", "zod"]
 }

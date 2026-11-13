@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AgentExecutor, ToolRegistry, AgentBuilder } from 'lousho/executor';
-import { NoopSandbox, createMockProvider } from 'lousho';
+import { AgentExecutor, ToolRegistry, AgentBuilder } from '@linuxdevil/lousho/executor';
+import { NoopSandbox, createMockProvider } from '@linuxdevil/lousho';
 import { compileHooksFromSpecPolicy, isSerializedHookList, type SerializedHook } from './compileHooks';
 
 describe('isSerializedHookList', () => {

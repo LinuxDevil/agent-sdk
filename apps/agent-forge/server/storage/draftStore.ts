@@ -18,7 +18,7 @@
 import { promises as fsPromises } from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type {
   ChangeDraft,
   DraftOrigin,

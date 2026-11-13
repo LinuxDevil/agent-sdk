@@ -36,7 +36,7 @@ export function never(): false {
  *
  * @example
  * ```ts
- * import { defineTool, once } from 'lousho';
+ * import { defineTool, once } from '@linuxdevil/lousho';
  * import { z } from 'zod';
  *
  * const deploy = defineTool({

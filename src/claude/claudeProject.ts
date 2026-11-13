@@ -7,7 +7,7 @@
  * duplicating anything into a Lousho-specific layout:
  *
  * ```ts
- * import { createAgent, claudeProject } from 'lousho';
+ * import { createAgent, claudeProject } from '@linuxdevil/lousho';
  *
  * const project = await claudeProject('./my-repo', { provider });
  * const agent = createAgent({ provider, ...project });

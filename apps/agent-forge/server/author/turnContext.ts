@@ -11,7 +11,7 @@
  * appear here: the summary names `mcpServers` keys and `SecretRef` refs,
  * never their payloads.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AuthorFocus } from '../../shared/authorWire';
 
 /** The first line of every turn-context block: tells the model the block is app data, not user text. */

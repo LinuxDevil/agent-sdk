@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mockModel } from 'lousho/testing';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { codingAgent, FIXES, runProjectTests } from './codingAgent';
 import { runBenchmark } from './run';
 

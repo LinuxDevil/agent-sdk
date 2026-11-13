@@ -15,7 +15,7 @@ import { toTsLiteral, tsObjectKey } from './tsLiteral';
 
 /** specToCode() options. */
 export interface SpecToCodeOptions {
-  /** Import specifier the SDK is imported from in the generated module. Default 'lousho'. */
+  /** Import specifier the SDK is imported from in the generated module. Default '@linuxdevil/lousho'. */
   packageName?: string;
 }
 
@@ -302,7 +302,7 @@ function specKeysTrailer(spec: AgentSpecV2): string[] | undefined {
  * (default 'lousho').
  */
 export function specToCode(spec: AgentSpecV2, options?: SpecToCodeOptions): string {
-  const packageName = options?.packageName ?? 'lousho';
+  const packageName = options?.packageName ?? '@linuxdevil/lousho';
   const ctx: RenderContext = { imports: new Set(), subagentsConst: needsHandoffResolver(spec) && spec.subagents !== undefined };
 
   const optionLines: string[] = [];

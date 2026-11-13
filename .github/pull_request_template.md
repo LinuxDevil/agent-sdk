@@ -31,7 +31,7 @@ What did you run, and what did it show? Name anything you couldn't verify, such 
 
 ## Release
 
-Merging publishes `lousho` and `create-lousho` to npm as `latest`, so everyone on a default install gets this change.
+Merging publishes `@linuxdevil/lousho` and `create-lousho` to npm as `latest`, so everyone on a default install gets this change.
 
 - [ ] This PR doesn't need a release, so I added the `norelease` label
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 import { graphToFlow } from '../graphToFlow';
 import { graphToSpec } from '../graphToSpec';
 import { specToGraph } from '../specToGraph';

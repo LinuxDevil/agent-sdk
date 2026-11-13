@@ -23,7 +23,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Express } from 'express';
-import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from 'lousho';
+import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from '@linuxdevil/lousho';
 import type {
   CatalogGuardrail,
   CatalogKit,

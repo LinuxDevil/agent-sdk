@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 import type { AgentStore, AgentStoreEntry } from '../persistence/AgentStore';
 import { graphToSpec } from '../graph/graphToSpec';
 import { specToGraph } from '../graph/specToGraph';

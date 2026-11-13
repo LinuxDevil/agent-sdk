@@ -24,7 +24,7 @@ Agent Forge ships inside `lousho` itself - there's no
 separate package to install:
 
 ```bash
-npm install lousho
+npm install @linuxdevil/lousho
 ```
 
 That's it. `lousho studio` (below) runs a pre-built copy of the app; you
@@ -37,7 +37,7 @@ Agent Forge itself), see [Dev mode](#dev-mode) below.
 ## Quickstart
 
 ```bash
-npx lousho studio
+npx @linuxdevil/lousho studio
 ```
 
 This starts one local server and prints its URL (default
@@ -63,10 +63,10 @@ actions** (`⋯`) menu.
 Useful flags:
 
 ```bash
-npx lousho studio --port 5000       # pick a different port
-npx lousho studio --host 0.0.0.0    # bind to all interfaces
-npx lousho studio --prod            # force production mode (see below)
-npx lousho studio --dev             # force dev mode (monorepo only)
+npx @linuxdevil/lousho studio --port 5000       # pick a different port
+npx @linuxdevil/lousho studio --host 0.0.0.0    # bind to all interfaces
+npx @linuxdevil/lousho studio --prod            # force production mode (see below)
+npx @linuxdevil/lousho studio --dev             # force dev mode (monorepo only)
 ```
 
 ### Access token
@@ -573,7 +573,7 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
    `.lousho/agents/<agent id>/traces/<day>/<trace id>.jsonl` under the
    directory `lousho studio` was started in (see
    [Local traces](observability.md#local-traces)):
-   `npx lousho traces --dir .lousho/agents/<agent id>/traces` shows the same
+   `npx @linuxdevil/lousho traces --dir .lousho/agents/<agent id>/traces` shows the same
    runs in the terminal, and deleting the agent's folder deletes its traces.
    The tab shows what the spans hold: model and tool names, token counts,
    cost, durations and error messages, and in the inspector's Input,
@@ -805,7 +805,7 @@ yet:
 git clone https://github.com/LinuxDevil/agent-sdk.git
 cd agent-sdk
 npm install
-npx lousho studio --dev   # or just `npx lousho studio` before building
+npx @linuxdevil/lousho studio --dev   # or just `npx @linuxdevil/lousho studio` before building
 ```
 
 This runs the API server straight from TypeScript (`tsx`) and a real Vite
@@ -817,7 +817,7 @@ is pinned to port 5173 and the API server accepts that origin. To build the prod
 ```bash
 npm run build:studio   # builds apps/agent-forge/dist (client) and
                         # apps/agent-forge/dist-server (bundled server)
-npx lousho studio       # now runs in production mode
+npx @linuxdevil/lousho studio       # now runs in production mode
 ```
 
 `npm run build:studio` also runs automatically as part of the root

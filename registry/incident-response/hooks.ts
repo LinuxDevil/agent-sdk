@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { AgentHook } from 'lousho';
+import type { AgentHook } from '@linuxdevil/lousho';
 
 /**
  * The kit's hooks (pointed at by `agent.json`'s `hooks`): the incident audit

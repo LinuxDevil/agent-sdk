@@ -1,4 +1,4 @@
-import type { AgentHook, Message } from 'lousho';
+import type { AgentHook, Message } from '@linuxdevil/lousho';
 
 /**
  * The kit's hooks (pointed at by `agent.json`'s `hooks`): a loop guard that

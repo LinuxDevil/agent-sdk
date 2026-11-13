@@ -3,7 +3,7 @@
 Installing the package also installs the `lousho` command. It scaffolds
 projects, checks your setup, runs an agent locally, serves it over MCP, runs
 evals, shows saved traces, builds a deployable artifact and launches the Agent Forge dashboard.
-Run it with `npx lousho <command>` inside a project that has the SDK installed.
+Run it with `npx @linuxdevil/lousho <command>` inside a project that has the SDK installed.
 
 | Command | What it does | Details |
 | ------- | ------------ | ------- |
@@ -80,11 +80,11 @@ To scaffold against an unreleased build of the SDK, pass `--sdk-path` (see
 ## `lousho dev`
 
 ```bash
-npx lousho dev agent.yaml                  # a spec file
-npx lousho dev ./my-agent                  # an agent directory
-npx lousho dev src/agent.ts                # a TypeScript (or JavaScript) module
-npx lousho dev agent.yaml --port 4000 --host 0.0.0.0
-npx lousho dev ./my-agent --no-schedules   # do not fire cron schedules or a spec's cron triggers
+npx @linuxdevil/lousho dev agent.yaml                  # a spec file
+npx @linuxdevil/lousho dev ./my-agent                  # an agent directory
+npx @linuxdevil/lousho dev src/agent.ts                # a TypeScript (or JavaScript) module
+npx @linuxdevil/lousho dev agent.yaml --port 4000 --host 0.0.0.0
+npx @linuxdevil/lousho dev ./my-agent --no-schedules   # do not fire cron schedules or a spec's cron triggers
 ```
 
 For an agent directory, `channels/` are mounted under `/channels` and
@@ -123,7 +123,7 @@ plus a free-text field. The same endpoints work from `curl` or your own page:
 
 `--traces` (or `--traces=<dir>`) writes every run to local trace files with
 `fileTraceExporter()`, in `.lousho/traces` unless you name a directory, so
-`npx lousho traces` shows what the agent did. It is off by default because the
+`npx @linuxdevil/lousho traces` shows what the agent did. It is off by default because the
 files hold prompt, tool argument and tool result content, and the flag prints
 the directory it writes to. It applies to spec files, agent directories and
 modules alike (a module's own `exporter` is replaced while the flag is set).
@@ -186,9 +186,9 @@ Directories and modules are your code and run with your permissions; only run
 ## `lousho chat`
 
 ```bash
-npx lousho chat agent.yaml                          # a spec file
-npx lousho chat ./my-agent --model openai/gpt-4o    # an agent directory, on another model
-npx lousho chat src/agent.ts --store sqlite:.lousho/chat.db --session support
+npx @linuxdevil/lousho chat agent.yaml                          # a spec file
+npx @linuxdevil/lousho chat ./my-agent --model openai/gpt-4o    # an agent directory, on another model
+npx @linuxdevil/lousho chat src/agent.ts --store sqlite:.lousho/chat.db --session support
 ```
 
 A terminal REPL: each line you type is one turn of a session. `<path>` is
@@ -247,9 +247,9 @@ scripted lines and a `mockModel` agent and no terminal.
 ## `lousho build`
 
 ```bash
-npx lousho build --target=node-server --agent=agent.yaml        # or docker / cloudflare-worker
-npx lousho build ./my-agent --target=node-server                # an agent directory (node-server, docker)
-npx lousho build src/agent.ts --target=node-server              # an agent module (node-server, docker)
+npx @linuxdevil/lousho build --target=node-server --agent=agent.yaml        # or docker / cloudflare-worker
+npx @linuxdevil/lousho build ./my-agent --target=node-server                # an agent directory (node-server, docker)
+npx @linuxdevil/lousho build src/agent.ts --target=node-server              # an agent module (node-server, docker)
 ```
 
 Writes the artifact to `--out` (default `.lousho/build/<target>`) and prints
@@ -260,8 +260,8 @@ Workers limits are in [Deployment](./deployment.md).
 ## `lousho studio`
 
 ```bash
-npx lousho studio            # prints http://127.0.0.1:4750/?token=<per-launch token>
-npx lousho studio --port 5000
+npx @linuxdevil/lousho studio            # prints http://127.0.0.1:4750/?token=<per-launch token>
+npx @linuxdevil/lousho studio --port 5000
 ```
 
 Starts one local server for the Agent Forge API and UI. Agents and run state
@@ -275,15 +275,15 @@ and the walkthrough.
 ## `lousho observe`
 
 ```bash
-npx lousho observe start                        # collector on http://127.0.0.1:7777
-npx lousho observe status                       # health + fleet counts
-npx lousho observe stop                         # <db>.pid + SIGTERM (checks the daemon serves --db)
-npx lousho observe rebuild-rollups              # recompute insight aggregates
-npx lousho observe prune --older-than 30d       # delete finished runs older than 30 days, then VACUUM
-npx lousho observe export --since 7d --out runs.jsonl # traces as JSONL, one per line
-npx lousho observe failures --since 7d          # recurring tool and model failures, by agent
-npx lousho observe failures --traces .lousho/traces --json # the same from trace files, no database
-npx lousho observe token create --project myapp # bearer key for non-loopback auth
+npx @linuxdevil/lousho observe start                        # collector on http://127.0.0.1:7777
+npx @linuxdevil/lousho observe status                       # health + fleet counts
+npx @linuxdevil/lousho observe stop                         # <db>.pid + SIGTERM (checks the daemon serves --db)
+npx @linuxdevil/lousho observe rebuild-rollups              # recompute insight aggregates
+npx @linuxdevil/lousho observe prune --older-than 30d       # delete finished runs older than 30 days, then VACUUM
+npx @linuxdevil/lousho observe export --since 7d --out runs.jsonl # traces as JSONL, one per line
+npx @linuxdevil/lousho observe failures --since 7d          # recurring tool and model failures, by agent
+npx @linuxdevil/lousho observe failures --traces .lousho/traces --json # the same from trace files, no database
+npx @linuxdevil/lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
 
 Runs the local collector every agent reports to when `LOUSHO_OBSERVE` is
@@ -334,11 +334,11 @@ no daemon needs to be running. See [Export](./observability.md#export).
 ## `lousho prompt`
 
 ```bash
-npx lousho prompt push prompt.md --name mira    # publishes a new version
-npx lousho prompt list
-npx lousho prompt get mira@latest
-npx lousho prompt label mira prod 3             # mira@prod -> 3 (was 2)
-npx lousho prompt get mira@prod
+npx @linuxdevil/lousho prompt push prompt.md --name mira    # publishes a new version
+npx @linuxdevil/lousho prompt list
+npx @linuxdevil/lousho prompt get mira@latest
+npx @linuxdevil/lousho prompt label mira prod 3             # mira@prod -> 3 (was 2)
+npx @linuxdevil/lousho prompt get mira@prod
 ```
 
 Publishes and reads prompt versions in the observe daemon's registry. Agents

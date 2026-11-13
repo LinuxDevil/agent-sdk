@@ -8,7 +8,7 @@
  * `examples/tracing/run-otel.ts` every time.
  *
  * This module is the ready-made version of that adapter: import
- * `createOtelTraceExporter()` from the `lousho/otel`
+ * `createOtelTraceExporter()` from the `@linuxdevil/lousho/otel`
  * subpath to translate this SDK's Span/TraceExporter shape into real
  * OpenTelemetry spans via `@opentelemetry/api`'s `trace.getTracer(...)`,
  * without pulling any OTel SDK/exporter backend into this package.
@@ -17,7 +17,7 @@
  * it is only required at runtime by consumers who import this subpath.
  * Importing `lousho` (or any other subpath) never loads
  * this module and never requires `@opentelemetry/api` to be installed.
- * If it isn't installed, importing `lousho/otel` throws a
+ * If it isn't installed, importing `@linuxdevil/lousho/otel` throws a
  * clear module-not-found error at that import site, not at package-import
  * time.
  */
@@ -135,7 +135,7 @@ const LEGACY_KEYS: ReadonlySet<string> = new Set(Object.values(LegacyAttr));
  *
  * @example
  * ```ts
- * import { createOtelTraceExporter } from 'lousho/otel';
+ * import { createOtelTraceExporter } from '@linuxdevil/lousho/otel';
  *
  * const exporter = createOtelTraceExporter({ tracerName: 'my-agent' });
  * await AgentExecutor.execute({ agent, input, provider, toolRegistry, exporter });

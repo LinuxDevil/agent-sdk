@@ -13,7 +13,7 @@
  * 'create' identity in {@link proposalTurnState} and returned - a failed
  * step leaves `proposed` untouched.
  */
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import type { ProposalOutput } from '../../../shared/authorWire';
 import { authorDraftSchema } from '../draft/schema';

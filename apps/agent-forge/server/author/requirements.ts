@@ -19,7 +19,7 @@
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { listBuiltinTools, listModels, type AgentSpecV2 } from 'lousho';
+import { listBuiltinTools, listModels, type AgentSpecV2 } from '@linuxdevil/lousho';
 import type { Requirement } from '../../shared/authorWire';
 import { isSecretProvider, PROVIDER_KEY_ENV, type SecretProvider, type SecretsStore } from '../secretsStore';
 

@@ -15,7 +15,7 @@
  * `turn.state['catalogFacts']`): the model may propose several drafts in
  * a turn and the catalogs cannot change mid-turn.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AuthorFailureCode, AuthorToolFailure } from '../../../shared/authorWire';
 import type { AuthorTurn } from '../turnRunner';
 import { toolFailure } from '../tools/failure';

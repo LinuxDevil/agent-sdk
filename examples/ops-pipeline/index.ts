@@ -28,10 +28,10 @@
 import * as http from 'node:http';
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ToolDescriptor } from 'lousho';
-import { ToolRegistry } from 'lousho/executor';
-import { verifySlackSignature } from 'lousho/triggers';
-import { LLMProvider } from 'lousho';
+import { ToolDescriptor } from '@linuxdevil/lousho';
+import { ToolRegistry } from '@linuxdevil/lousho/executor';
+import { verifySlackSignature } from '@linuxdevil/lousho/triggers';
+import { LLMProvider } from '@linuxdevil/lousho';
 import { startMonitorServer, MonitorServerHandle, StartMonitorServerOptions } from './monitor';
 import { createFixerTool, buildFixerAgent } from './fixer';
 import { handleFixerPatch } from './guardedPr';
@@ -43,13 +43,13 @@ import {
   readBody,
 } from './slackInteractions';
 import { closeServer, listenOn, sendJson, sendNotFound } from './httpHelpers';
-import { ApprovalStore } from 'lousho';
-import { ExecutionResult } from 'lousho';
-import { PatchCheck } from 'lousho';
+import { ApprovalStore } from '@linuxdevil/lousho';
+import { ExecutionResult } from '@linuxdevil/lousho';
+import { PatchCheck } from '@linuxdevil/lousho';
 import { createDemoProvider } from './demoProvider';
 import { createMockGithubTool } from './mocks/mockGithubTool';
 import { createMockSlackTool } from './mocks/mockSlackTool';
-import { textOf } from 'lousho';
+import { textOf } from '@linuxdevil/lousho';
 
 const DELEGATE_TOOL_NAME = 'delegate_to_fixer';
 const DEFAULT_CHANNEL = '#incidents';

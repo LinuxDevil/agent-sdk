@@ -4,7 +4,7 @@
 into a deployable artifact for one target platform:
 
 ```bash
-npx lousho build --target=<target> --agent=agent.yaml [--out=<dir>]
+npx @linuxdevil/lousho build --target=<target> --agent=agent.yaml [--out=<dir>]
 ```
 
 It runs the target's adapter through three steps - **scaffold** (write the
@@ -30,7 +30,7 @@ All three targets also take an [agent directory](./agent-directories.md)
 in place of a spec file (the path may be positional or `--agent`):
 
 ```bash
-npx lousho build ./my-agent --target=node-server
+npx @linuxdevil/lousho build ./my-agent --target=node-server
 node .lousho/build/node-server/dist/server.js
 ```
 
@@ -41,7 +41,7 @@ directory's [schedules](./schedules.md) when it listens, mounts its
 routes keep the bearer token), and logs `schedules: ...; channels: ...`.
 The directory's code files are pre-bundled with the build's tsup step into
 `dist/agent/**.js` (one ESM build sharing one copy of the SDK, so a `from
-'lousho'` import in a tool is the SDK the server runs), and
+'@linuxdevil/lousho'` import in a tool is the SDK the server runs), and
 only the files the server reads as data are copied: `instructions.md`,
 `instructions/`, `skills/`, a JSON/YAML config, and the same in each
 `subagents/<name>/`. Nothing else in the directory reaches `dist/`: not `.env`
@@ -62,7 +62,7 @@ only a Worker-safe part of `lousho`
 ([Cloudflare Workers](./cloudflare-workers.md#build-and-deploy) has the details):
 
 ```bash
-npx lousho build ./my-agent --target=cloudflare-worker
+npx @linuxdevil/lousho build ./my-agent --target=cloudflare-worker
 ```
 
 ## Agent modules
@@ -73,7 +73,7 @@ same file `lousho dev src/agent.ts` serves, and what the minimal and tools
 scaffolds have (their `npm run build` runs this):
 
 ```bash
-npx lousho build src/agent.ts --target=node-server
+npx @linuxdevil/lousho build src/agent.ts --target=node-server
 node .lousho/build/node-server/dist/server.js
 ```
 
@@ -291,7 +291,7 @@ signal handler: stop accepting, let the requests in flight finish, then call
 
 ```ts
 import { createServer } from 'node:http';
-import { createAgent, mountChannels } from 'lousho';
+import { createAgent, mountChannels } from '@linuxdevil/lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' });
 const handler = mountChannels(agent, []);

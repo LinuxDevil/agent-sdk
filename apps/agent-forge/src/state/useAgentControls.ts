@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 import { runtimeClient, RuntimeApiError } from '../runtime/runtimeClient';
 import type {
   AgentRunStatusPayload,

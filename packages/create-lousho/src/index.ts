@@ -13,7 +13,7 @@ import path from 'node:path';
 export function loushoBin(): string {
   // The package's "exports" map hides package.json, but the "." entry
   // (<root>/dist/index.js) is resolvable and bin/ is its sibling of dist/.
-  const entry = require.resolve('lousho');
+  const entry = require.resolve('@linuxdevil/lousho');
   return path.join(path.dirname(entry), '..', 'bin', 'lousho.js');
 }
 

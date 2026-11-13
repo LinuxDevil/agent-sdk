@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import { mockModel } from 'lousho/testing';
-import { defineTool } from 'lousho';
-import { ToolRegistry } from 'lousho/executor';
+import { mockModel } from '@linuxdevil/lousho/testing';
+import { defineTool } from '@linuxdevil/lousho';
+import { ToolRegistry } from '@linuxdevil/lousho/executor';
 import { codingTools, memoryWorkspace, runCodingAgent, triage } from './index';
 
 const decision = (route: string, confidence: number) =>

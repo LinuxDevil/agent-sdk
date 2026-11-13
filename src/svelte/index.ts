@@ -1,5 +1,5 @@
 /**
- * `lousho/svelte`: the `loushoAgent()` store, and the
+ * `@linuxdevil/lousho/svelte`: the `loushoAgent()` store, and the
  * framework-neutral reducer and stream parser it is built on.
  */
 

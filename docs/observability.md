@@ -19,14 +19,14 @@ mapping.
 Pass an `exporter` to `createAgent()`; every run of the agent (`send()`,
 `stream()`, session turns, `resume()` and runs continued by
 `agent.approvals.resolve()`) is traced, sub-agents included. To keep traces
-on disk and browse them with `npx lousho traces`, use `fileTraceExporter()`
+on disk and browse them with `npx @linuxdevil/lousho traces`, use `fileTraceExporter()`
 (see [Local traces](#local-traces)). The `vendor/` model prefix chooses the
 provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g.
 `openrouter/openai/gpt-4o-mini`).
 
 ```ts
-import { createAgent } from 'lousho';
-import { fileTraceExporter } from 'lousho/traces';
+import { createAgent } from '@linuxdevil/lousho';
+import { fileTraceExporter } from '@linuxdevil/lousho/traces';
 
 const agent = createAgent({
   model: 'openai/gpt-4o-mini',
@@ -44,8 +44,8 @@ reported once per exporter with `console.warn` and otherwise ignored.
 With the executor, pass the exporter to `AgentExecutor.execute()`:
 
 ```ts
-import { AgentExecutor } from 'lousho/executor';
-import { type TraceExporter } from 'lousho';
+import { AgentExecutor } from '@linuxdevil/lousho/executor';
+import { type TraceExporter } from '@linuxdevil/lousho';
 
 const exporter: TraceExporter = {
   onSpanStart: (span) => console.log('[start]', span.kind, span.name),
@@ -56,7 +56,7 @@ await AgentExecutor.execute({ agent, input, provider, toolRegistry, exporter });
 ```
 
 For real OpenTelemetry spans, import `createOtelTraceExporter()` from
-`lousho/otel` (needs the optional peer dependency
+`@linuxdevil/lousho/otel` (needs the optional peer dependency
 `@opentelemetry/api` and a registered `TracerProvider`). It carries span kind
 and error status over to OpenTelemetry. See `examples/tracing`
 (`npm run example:tracing:console`, `npm run example:tracing:otel`, which also prints metrics).
@@ -87,7 +87,7 @@ To put several runs in one trace, pass a span id of yours as `parentSpanId`;
 the run's `invoke_agent` span becomes its child, and its cost rolls up into it:
 
 ```ts
-import { withSpan, type SimpleAgent, type TraceExporter } from 'lousho';
+import { withSpan, type SimpleAgent, type TraceExporter } from '@linuxdevil/lousho';
 
 declare const exporter: TraceExporter;
 declare const planner: SimpleAgent;
@@ -242,7 +242,7 @@ duration metric, only the model and tool calls inside them.
 ```ts
 import { metrics } from '@opentelemetry/api';
 import { ConsoleMetricExporter, MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { createOtelTraceExporter } from 'lousho/otel';
+import { createOtelTraceExporter } from '@linuxdevil/lousho/otel';
 
 // Swap ConsoleMetricExporter for an OTLP exporter to reach any backend.
 metrics.setGlobalMeterProvider(
@@ -312,7 +312,7 @@ piece of plain text (before JSON encoding) and returns what to record; if it
 throws, that text is recorded as `[redacted]` and the run carries on:
 
 ```ts
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 createAgent({
   model: 'openai/gpt-4o-mini',
@@ -328,8 +328,8 @@ createAgent({
 With the executor, opt in per run:
 
 ```ts
-import { AgentExecutor } from 'lousho/executor';
-import { type TraceExporter } from 'lousho';
+import { AgentExecutor } from '@linuxdevil/lousho/executor';
+import { type TraceExporter } from '@linuxdevil/lousho';
 
 declare const exporter: TraceExporter;
 
@@ -385,13 +385,13 @@ governs only the `gen_ai.*` content attributes.
 
 ## Local traces
 
-`fileTraceExporter()` from `lousho/traces` writes each run to a
+`fileTraceExporter()` from `@linuxdevil/lousho/traces` writes each run to a
 file, and `lousho traces` shows the files in the terminal. No OpenTelemetry
 backend, no extra package.
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
-import { fileTraceExporter } from 'lousho/traces';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
+import { fileTraceExporter } from '@linuxdevil/lousho/traces';
 import { z } from 'zod';
 
 const getWeather = defineTool({
@@ -411,10 +411,10 @@ const agent = createAgent({
 Then, from the project directory:
 
 ```bash
-npx lousho traces                 # the 20 most recent runs, newest first
-npx lousho traces --limit 50 --json
-npx lousho traces 3f2a            # one run as a tree; a unique id prefix is enough
-npx lousho traces 3f2a --content  # also the captured messages and tool arguments
+npx @linuxdevil/lousho traces                 # the 20 most recent runs, newest first
+npx @linuxdevil/lousho traces --limit 50 --json
+npx @linuxdevil/lousho traces 3f2a            # one run as a tree; a unique id prefix is enough
+npx @linuxdevil/lousho traces 3f2a --content  # also the captured messages and tool arguments
 ```
 
 ```
@@ -497,7 +497,7 @@ check comes first.
 
 One SQLite file (default `~/.lousho/observe.db`, WAL mode) holds the fleet's
 observations, sessions, eval scores, prompt versions and shared context.
-`npx lousho studio` renders it (see [Agent Forge](./agent-forge.md#screens)):
+`npx @linuxdevil/lousho studio` renders it (see [Agent Forge](./agent-forge.md#screens)):
 Traces and Trace (trace trees with latency waterfalls), Threads, Monitoring
 (a live fleet monitor with heartbeat-derived status — a crashed agent's open
 sessions flip to `interrupted` — over per-agent charts of runs, p95 latency,

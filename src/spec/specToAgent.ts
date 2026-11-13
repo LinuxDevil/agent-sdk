@@ -46,7 +46,7 @@ export function resolveSpecTool(name: string): ToolDescriptor {
     throw new ConfigurationError(
       `specToAgent: tool '${name}' needs credentials: build it with ` +
         `create${name === 'github' ? 'GitHub' : 'Jira'}Tools(config) from ` +
-        `'lousho/integrations' and pass it to createAgent(); an AgentSpec has no ` +
+        `'@linuxdevil/lousho/integrations' and pass it to createAgent(); an AgentSpec has no ` +
         `field for credentials.`,
       'tools',
       'LOUSHO_TOOL_NEEDS_CREDENTIALS'

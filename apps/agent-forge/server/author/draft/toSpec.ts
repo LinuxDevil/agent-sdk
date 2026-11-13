@@ -10,8 +10,8 @@
  * Studio could not store. Catalog checks (is the model real, is the tool
  * known) and diffs are the propose tools' job, not this layer's.
  */
-import { agentSpecV2Schema } from 'lousho';
-import type { AgentSpecV2 } from 'lousho';
+import { agentSpecV2Schema } from '@linuxdevil/lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AuthorToolFailure } from '../../../shared/authorWire';
 import { toolFailure } from '../tools/failure';
 import type { AuthorDraft, AuthorPatch } from './schema';

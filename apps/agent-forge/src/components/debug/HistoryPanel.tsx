@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { TonePill, stepTone } from './TonePill';
-import type { TrajectoryStep } from 'lousho';
+import type { TrajectoryStep } from '@linuxdevil/lousho';
 import { useAppState } from '../../state/AppState';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { errorMessage } from '../errorMessage';

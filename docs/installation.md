@@ -9,7 +9,7 @@
 ## Install the package
 
 ```bash
-npm install lousho ai zod
+npm install @linuxdevil/lousho ai zod
 # or
 pnpm add lousho ai zod
 # or
@@ -42,7 +42,7 @@ that pairs with your `ai` major. Install the pair from one row:
 For example, on the current `ai` major:
 
 ```bash
-npm install lousho ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
+npm install @linuxdevil/lousho ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 ```
 
 **Ollama on `ai` 6/7 needs zod 4.** `ollama-ai-provider-v2` (the Ollama package
@@ -74,7 +74,7 @@ npm install @ai-sdk/openai@^0.0.42
 ```
 
 ```ts no-run
-import { MissingPeerDependencyError, resolveProvider } from 'lousho';
+import { MissingPeerDependencyError, resolveProvider } from '@linuxdevil/lousho';
 
 const provider = resolveProvider('openai/gpt-4o-mini'); // needs OPENAI_API_KEY; does not load the peer
 try {
@@ -96,9 +96,9 @@ the `lousho init` questions or code mode installs none of them:
 | --------------------------- | --------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `dockerode`                 | `^5.0.1`  | Docker sandboxing: `SubprocessSandbox` (and `lousho doctor`'s Docker ping)                    | `npm install dockerode@^5.0.1`                   |
 | `@modelcontextprotocol/sdk` | `^1.31.0` | MCP: `createAgent({ mcpServers })` / `connectMcp()`, `serveMcp()` and `lousho mcp`            | `npm install @modelcontextprotocol/sdk@^1.31.0`  |
-| `@opentelemetry/api`        | `^1.9.1`  | OpenTelemetry tracing: `createOtelTraceExporter()` from `lousho/otel`         | `npm install @opentelemetry/api@^1.9.1`          |
-| `react`                     | `^18`, `^19` | The React bindings (`lousho/react`)                                      | `npm install react`                              |
-| `vue`                       | `^3`      | The Vue bindings (`lousho/vue`)                                               | `npm install vue@^3`                             |
+| `@opentelemetry/api`        | `^1.9.1`  | OpenTelemetry tracing: `createOtelTraceExporter()` from `@linuxdevil/lousho/otel`         | `npm install @opentelemetry/api@^1.9.1`          |
+| `react`                     | `^18`, `^19` | The React bindings (`@linuxdevil/lousho/react`)                                      | `npm install react`                              |
+| `vue`                       | `^3`      | The Vue bindings (`@linuxdevil/lousho/vue`)                                               | `npm install vue@^3`                             |
 | `tsup`                      | `^8.0.0`  | `lousho build`, which bundles the agent for each target                                       | `npm install --save-dev tsup@^8.0.0`             |
 | `prompts`                   | `^2.4.2`  | The interactive questions of `lousho init` (`lousho init --yes` and flags need nothing)       | `npm install prompts@^2.4.2`                     |
 | `quickjs-emscripten`        | `^0.32.0` | [Code mode](./code-mode.md): `createAgent({ codeMode })` runs `run_code` scripts in its QuickJS isolate | `npm install quickjs-emscripten@^0.32.0` |
@@ -152,24 +152,24 @@ The entries `exports` declares, and what each one holds:
 | Import specifier | What it holds |
 | ---------------- | ------------- |
 | `lousho` | The root: `createAgent()`, `defineTool()`, `defineChannel()`, agents' public types, events, stores (`memoryStore()`, `fileStore()`), hooks, guardrails, sessions, skills, memory, sub-agents, evals, spec files, deployment types |
-| `lousho/executor` | The executor API (advanced - prefer `createAgent()`): `AgentExecutor`, `AgentBuilder`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()`, `ToolRegistry`, `globalToolRegistry` |
-| `lousho/tools` | The tools surface: `defineTool()`, `ToolRegistry`, the built-in tools, MCP/OpenAPI helpers |
-| `lousho/flows` | `FlowBuilder`, `FlowExecutor`, `validateFlow()` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) |
-| `lousho/integrations` | The credentialed third-party tools: `createJiraTools()`, `createGitHubTools()`, `createSlackTool()` / `slackTool`, `postSlackAlert()`, `createEmailTool()` and their types |
-| `lousho/utils` | `EncryptionUtils`, `sha256()`, `generatePassword()`, `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` and the validators (`validateWithSchema`, `isValidEmail`, ...) |
-| `lousho/mcp` | MCP client and server helpers: `connectMcp()`, `loadMcpTools()`, `serveMcp()` |
-| `lousho/types` | The public types without the runtime |
-| `lousho/testing` | `mockModel()`, `recordReplay()` and the offline-test helpers |
-| `lousho/otel` | `createOtelTraceExporter()` (needs the optional `@opentelemetry/api` peer) |
-| `lousho/hooks` | The hooks surface: `HookRegistry`, hook types |
-| `lousho/sqlite` | `SqliteStore` (sessions, checkpoints, approvals and tokens in one SQLite file; needs Node's `node:sqlite`) |
-| `lousho/auth` | Route auth: `routeAuth()`, `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` |
-| `lousho/kv` | `KVStore`, `KVCheckpointStore` for a hand-written Cloudflare Worker |
-| `lousho/traces` | `fileTraceExporter()`, `listTraces()`, `readTrace()` (what `lousho traces` reads) |
-| `lousho/triggers` | `TriggerAdapter`, `TriggerRegistry`, `verifySlackSignature`, `parseCronExpression` |
-| `lousho/react` | `useLoushoAgent()` and the React helpers (needs `react`) |
-| `lousho/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
-| `lousho/svelte` | `loushoAgent()` as a Svelte store |
+| `@linuxdevil/lousho/executor` | The executor API (advanced - prefer `createAgent()`): `AgentExecutor`, `AgentBuilder`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()`, `ToolRegistry`, `globalToolRegistry` |
+| `@linuxdevil/lousho/tools` | The tools surface: `defineTool()`, `ToolRegistry`, the built-in tools, MCP/OpenAPI helpers |
+| `@linuxdevil/lousho/flows` | `FlowBuilder`, `FlowExecutor`, `validateFlow()` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) |
+| `@linuxdevil/lousho/integrations` | The credentialed third-party tools: `createJiraTools()`, `createGitHubTools()`, `createSlackTool()` / `slackTool`, `postSlackAlert()`, `createEmailTool()` and their types |
+| `@linuxdevil/lousho/utils` | `EncryptionUtils`, `sha256()`, `generatePassword()`, `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` and the validators (`validateWithSchema`, `isValidEmail`, ...) |
+| `@linuxdevil/lousho/mcp` | MCP client and server helpers: `connectMcp()`, `loadMcpTools()`, `serveMcp()` |
+| `@linuxdevil/lousho/types` | The public types without the runtime |
+| `@linuxdevil/lousho/testing` | `mockModel()`, `recordReplay()` and the offline-test helpers |
+| `@linuxdevil/lousho/otel` | `createOtelTraceExporter()` (needs the optional `@opentelemetry/api` peer) |
+| `@linuxdevil/lousho/hooks` | The hooks surface: `HookRegistry`, hook types |
+| `@linuxdevil/lousho/sqlite` | `SqliteStore` (sessions, checkpoints, approvals and tokens in one SQLite file; needs Node's `node:sqlite`) |
+| `@linuxdevil/lousho/auth` | Route auth: `routeAuth()`, `jwt()`, `oidc()`, `basic()`, `apiToken()`, `anonymous()` |
+| `@linuxdevil/lousho/kv` | `KVStore`, `KVCheckpointStore` for a hand-written Cloudflare Worker |
+| `@linuxdevil/lousho/traces` | `fileTraceExporter()`, `listTraces()`, `readTrace()` (what `lousho traces` reads) |
+| `@linuxdevil/lousho/triggers` | `TriggerAdapter`, `TriggerRegistry`, `verifySlackSignature`, `parseCronExpression` |
+| `@linuxdevil/lousho/react` | `useLoushoAgent()` and the React helpers (needs `react`) |
+| `@linuxdevil/lousho/vue` | `useLoushoAgent()` as a Vue composable (needs `vue`) |
+| `@linuxdevil/lousho/svelte` | `loushoAgent()` as a Svelte store |
 
 ### TypeScript settings
 
@@ -239,8 +239,8 @@ one-line `CLAUDE.md` importing it) telling coding agents the project's files,
 scripts and conventions. It then installs the dependencies and runs `git init`.
 
 ```bash
-npm create lousho my-agent   # or: npx lousho init my-agent
-npx lousho init my-agent --yes --provider anthropic --template tools --no-install
+npm create lousho my-agent   # or: npx @linuxdevil/lousho init my-agent
+npx @linuxdevil/lousho init my-agent --yes --provider anthropic --template tools --no-install
 ```
 
 | Flag | Meaning |
@@ -265,7 +265,7 @@ an optional peer (see the table above): `npm install --save-dev tsup`.
 
 ## Troubleshooting: lousho doctor
 
-Run `npx lousho doctor` right after installing. It prints one line per check
+Run `npx @linuxdevil/lousho doctor` right after installing. It prints one line per check
 with a status (`ok`, `warn`, `FAIL`), what it found, and, for anything that is
 not ok, the command to run or the setting to change:
 

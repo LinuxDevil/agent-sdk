@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { sortKeysDeep } from '../../../shared/stableJson';
 import { specHash } from '../specHash';
 

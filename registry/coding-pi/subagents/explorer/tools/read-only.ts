@@ -6,7 +6,7 @@
  */
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createFsTools, NodeWorkspace } from 'lousho';
+import { createFsTools, NodeWorkspace } from '@linuxdevil/lousho';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const workspace = new NodeWorkspace({ root });

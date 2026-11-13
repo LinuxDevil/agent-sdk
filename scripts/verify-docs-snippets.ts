@@ -64,13 +64,13 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 /** Docs whose every snippet is type-checked AND executed against the packed tarball (stage B); see isRunnableByDefault. */
 const RUNNABLE_DOCS = [path.join(REPO_ROOT, 'docs', 'quick-start.md')];
 /** Ambient names (typed against the SDK where possible) that intentionally-partial snippets may use without defining. */
-const SDK = "import('lousho')";
+const SDK = "import('@linuxdevil/lousho')";
 const PLACEHOLDERS: Record<string, string> = {
   agent: `${SDK}.AgentConfig`,
   provider: `${SDK}.LLMProvider`,
-  registry: `import('lousho/executor').ToolRegistry`,
-  toolRegistry: `import('lousho/executor').ToolRegistry`,
-  storage: `import('lousho/utils').StorageService`,
+  registry: `import('@linuxdevil/lousho/executor').ToolRegistry`,
+  toolRegistry: `import('@linuxdevil/lousho/executor').ToolRegistry`,
+  storage: `import('@linuxdevil/lousho/utils').StorageService`,
   approvalStore: `${SDK}.ApprovalStore`,
   checkpointStore: `${SDK}.CheckpointStore`,
   mcpClient: "import('@modelcontextprotocol/sdk/client/index.js').Client",
@@ -172,7 +172,7 @@ function setUpProject(projectDir: string, skipBuild: boolean): void {
   // `@ai-sdk/*` peer on several majors: pin the pairing the repo
   // develops against (its devDependencies), not whatever the widest range resolves to.
   const dependencies: Record<string, string> = {
-    'lousho': `file:./${tarball}`,
+    '@linuxdevil/lousho': `file:./${tarball}`,
     ai: dev.ai,
     zod: peers.zod,
     '@ai-sdk/openai': dev['@ai-sdk/openai'],
@@ -387,7 +387,7 @@ function allDocFiles(): string[] {
 /** tsconfig `paths` mapping each package.json export's types entry (dist/*.d.ts) to its src/*.ts source. */
 function sourcePaths(): Record<string, string[]> {
   const pkg = readJson(path.join(REPO_ROOT, 'package.json'));
-  // `lousho/spec` builds dist/spec/ from src/spec/v2/index.ts: src/spec/index.ts
+  // `@linuxdevil/lousho/spec` builds dist/spec/ from src/spec/v2/index.ts: src/spec/index.ts
   // is already the v1 spec barrel, so the mechanical dist->src mapping misses it.
   const SOURCE_OVERRIDES: Record<string, string[]> = { [`${pkg.name}/spec`]: ['src/spec/v2/index.ts'] };
   const paths: Record<string, string[]> = {};

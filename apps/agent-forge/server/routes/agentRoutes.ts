@@ -32,7 +32,7 @@
  * later ticket can lift them verbatim.
  */
 import type { Express, Response } from 'express';
-import type { AgentSpec, AgentSpecV2 } from 'lousho';
+import type { AgentSpec, AgentSpecV2 } from '@linuxdevil/lousho';
 import { isValidAgentId } from '../../shared/agentId';
 import { labelsProblem, MAX_LABEL_LENGTH, MAX_LABELS, normalizeLabels } from '../../shared/labels';
 import type {

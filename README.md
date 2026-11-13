@@ -33,17 +33,17 @@ Put your API key in `.env` before `npm run dev`. `npm test` runs offline.
 To add it to an existing project:
 
 ```bash
-npm install lousho ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
+npm install @linuxdevil/lousho ai@^7.0.0 zod @ai-sdk/openai@^4.0.0
 ```
 
-See [Installation](https://lousho.com/installation#provider-packages) for other providers. `npx lousho doctor` checks your setup and prints a fix for anything missing.
+See [Installation](https://lousho.com/installation#provider-packages) for other providers. `npx @linuxdevil/lousho doctor` checks your setup and prints a fix for anything missing.
 
 ## Quickstart
 
 This file uses top-level `await`, so it must be an ES module (`.mts`, or `"type": "module"` in `package.json`). Set `OPENAI_API_KEY` to run it.
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const getWeather = defineTool({
@@ -63,7 +63,7 @@ const { text } = await agent.send('What should I wear in Lisbon today?');
 console.log(text);
 ```
 
-An agent can also be a folder, which you run with `npx lousho dev ./my-agent`:
+An agent can also be a folder, which you run with `npx @linuxdevil/lousho dev ./my-agent`:
 
 ```text
 my-agent/

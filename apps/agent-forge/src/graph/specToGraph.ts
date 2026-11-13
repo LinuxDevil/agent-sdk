@@ -1,4 +1,4 @@
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 import { hookNodeKey, type AgentGraphEdge, type AgentGraphNode, type AgentGraphSpec, type AgentNodeHookInstance } from './types';
 
 /** Shape `graphToSpec()` serializes each hook as, under `spec.policy.hooks`. */

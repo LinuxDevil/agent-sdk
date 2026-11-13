@@ -10,8 +10,8 @@
  * second runner would have its own turn slots and the one-running-turn-
  * per-session rule (and the DELETE 409) would stop holding.
  */
-import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes, type LLMProvider } from 'lousho';
-import type { connectMcp } from 'lousho/mcp';
+import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes, type LLMProvider } from '@linuxdevil/lousho';
+import type { connectMcp } from '@linuxdevil/lousho/mcp';
 import type { SettingsStore } from '../settingsStore';
 import type { SecretsStore } from '../secretsStore';
 import type { TemplateCatalog } from '../templates/templateCatalog';

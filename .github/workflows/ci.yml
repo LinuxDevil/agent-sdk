@@ -47,7 +47,7 @@ jobs:
       - run: npm run docs:llms:check
       # registry/dist is generated from registry/; fail if stale.
       - run: npm run registry:check
-      # Agent Forge imports the SDK as `lousho` via `file:../..`, i.e. the root dist/ built above.
+      # Agent Forge imports the SDK as `@linuxdevil/lousho` via `file:../..`, i.e. the root dist/ built above.
       - run: npm run typecheck --workspace apps/agent-forge
       - run: npm run typecheck:server --workspace apps/agent-forge
   zod4:

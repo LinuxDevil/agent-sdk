@@ -69,7 +69,7 @@ function packageJson(config: ProjectConfig): string {
     type: 'module',
     scripts: scripts(config),
     dependencies: sortKeys({
-      'lousho': config.sdkDependency,
+      '@linuxdevil/lousho': config.sdkDependency,
       zod: zodRange(peers.zod, config.provider),
       ...aiPackages(config.provider),
     }),
@@ -142,7 +142,7 @@ function toolNames(template: Template): string[] {
 function agentSource(config: ProjectConfig): string {
   const info = providerInfo(config.provider);
   const extra = config.template === 'tools' ? EXTRA_TOOLS : '';
-  return `import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';
+  return `import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 ${TIME_TOOL}${extra}
@@ -174,7 +174,7 @@ function indexSource(): string {
   return `import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { parseEnv } from 'node:util';
-import { SDKError } from 'lousho';
+import { SDKError } from '@linuxdevil/lousho';
 import { buildAgent } from './agent.js';
 
 // Load .env when there is one; variables already set in the environment win. The byte order mark
@@ -235,7 +235,7 @@ process.exit(0);
 
 function testSource(): string {
   return `import { describe, expect, it } from 'vitest';
-import { mockModel } from 'lousho/testing';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { buildAgent } from './agent.js';
 
 // mockModel scripts the model turn by turn: no network and no API key needed.
@@ -268,7 +268,7 @@ describe('agent', () => {
 function yamlTestSource(config: ProjectConfig): string {
   return `import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { loadSpec } from 'lousho';
+import { loadSpec } from '@linuxdevil/lousho';
 
 describe('agent.yaml', () => {
   it('is a valid agent spec', () => {
@@ -358,7 +358,7 @@ function agentsMd(config: ProjectConfig): string {
 - Give any tool with side effects \`needsApproval: true\` (or a predicate) so a human approves the call.
 - The model string is \`provider/model\`, here \`${config.provider}/${info.defaultModel}\`.
 - Replies are capped by \`modelSettings.maxTokens\` (4096) in \`src/agent.ts\`; raise it for longer answers.
-- Test offline with \`mockModel([...])\` from \`lousho/testing\`; never call a live model in tests.`;
+- Test offline with \`mockModel([...])\` from \`@linuxdevil/lousho/testing\`; never call a live model in tests.`;
   return `# ${config.name}
 
 An agent built with \`lousho\` (provider: ${config.provider}). Read this before changing code.

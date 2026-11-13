@@ -23,9 +23,9 @@
  */
 import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { createAgent, resolveProvider, type LLMProvider } from 'lousho';
-import { mockModel } from 'lousho/testing';
-import { type McpServerSpec } from 'lousho';
+import { createAgent, resolveProvider, type LLMProvider } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
+import { type McpServerSpec } from '@linuxdevil/lousho';
 
 export const LIVE_MODEL = 'openrouter/openai/gpt-4o-mini';
 

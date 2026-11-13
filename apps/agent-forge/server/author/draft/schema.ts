@@ -13,8 +13,8 @@
  * JSON Schema surfaces to the model.
  */
 import { z } from 'zod';
-import { agentSpecV2Schema } from 'lousho';
-import type { AgentSpecV2 } from 'lousho';
+import { agentSpecV2Schema } from '@linuxdevil/lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 
 /** The spec keys the Author never sets: `version` is forced to 2, `evals` and `flow` are not in v1 of the Author. */
 export const DRAFT_OMITTED_KEYS = ['version', 'evals', 'flow'] as const;

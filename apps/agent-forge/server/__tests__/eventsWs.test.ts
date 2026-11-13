@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
 import { WebSocket } from 'ws';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { startStudioServer, type StudioServerHandle } from '../index';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { createApp } from '../app';

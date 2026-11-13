@@ -11,9 +11,9 @@ and it can't change tools, permissions or limits.
 It's experimental: its results so far come from a small benchmark.
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
-import { improveAgent, renderTranscript, type Harness } from 'lousho/improve';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
+import { improveAgent, renderTranscript, type Harness } from '@linuxdevil/lousho/improve';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const search = defineTool({

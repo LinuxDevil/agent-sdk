@@ -1,11 +1,11 @@
 /**
- * W14: `lousho/observe` is the public surface Studio (and other hosts) use to
+ * W14: `@linuxdevil/lousho/observe` is the public surface Studio (and other hosts) use to
  * run and probe the collector — named re-exports of the daemon helpers only.
  */
 import { describe, expect, it } from 'vitest';
 import * as observe from './index';
 
-describe('lousho/observe', () => {
+describe('@linuxdevil/lousho/observe', () => {
   it('exports exactly the documented surface', () => {
     expect(Object.keys(observe).sort()).toEqual([
       'OBSERVE_DEFAULT_PORT',

@@ -23,8 +23,8 @@
  * spawns a command on this machine; the token gate is the guard).
  */
 import type { Express } from 'express';
-import { agentSpecV2Schema, resolveSecretRef, type McpServerSpec } from 'lousho';
-import { connectMcp, type McpConnections } from 'lousho/mcp';
+import { agentSpecV2Schema, resolveSecretRef, type McpServerSpec } from '@linuxdevil/lousho';
+import { connectMcp, type McpConnections } from '@linuxdevil/lousho/mcp';
 import type { McpProbeResponse, McpProbeTool, McpServerSpecV2 } from '../../shared/wireTypes';
 import { asyncRoute, sendError } from '../http/routeUtils';
 

@@ -1,6 +1,6 @@
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 import type { AgentGraphSpec } from '../../graph/types';
 
 const appState = vi.hoisted(() => ({

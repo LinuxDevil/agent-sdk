@@ -7,8 +7,8 @@ into `createAgent()`, so the same directory drives both harnesses. Nothing is
 copied or renamed; Lousho reads the files where they already are.
 
 ```ts no-run
-import { createAgent, claudeProject } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, claudeProject } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const provider = mockModel([{ text: 'ok' }]);
 
@@ -65,8 +65,8 @@ task-shaped notes, hooks can pause on `scratchpad` writes like any tool.
 ## Options
 
 ```ts no-run
-import { claudeProject } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { claudeProject } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const provider = mockModel([{ text: 'ok' }]);
 

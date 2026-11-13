@@ -1,4 +1,4 @@
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 import type { AgentStore, AgentStoreEntry } from './AgentStore';
 
 /** The slice of `RuntimeClient` this store needs (injectable for tests). */

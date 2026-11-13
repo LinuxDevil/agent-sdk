@@ -11,7 +11,7 @@
  * messages (button saves, secret cards) arrive as user text starting with
  * `[UI event]` so the model never mistakes them for its own tool calls.
  */
-import type { Message, ToolCall } from 'lousho';
+import type { Message, ToolCall } from '@linuxdevil/lousho';
 import type {
   AuthorAssistantMessage,
   AuthorMessage,

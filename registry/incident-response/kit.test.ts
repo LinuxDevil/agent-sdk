@@ -17,8 +17,8 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createAgent, loadAgentDir, resolveAgentDir } from 'lousho';
-import { mockModel, type MockModel } from 'lousho/testing';
+import { createAgent, loadAgentDir, resolveAgentDir } from '@linuxdevil/lousho';
+import { mockModel, type MockModel } from '@linuxdevil/lousho/testing';
 // static imports share the module instances the loader's dynamic import gets
 import { infra, resetInfra } from './tools/infra.js';
 import { resetTimeline, timeline } from './hooks.js';

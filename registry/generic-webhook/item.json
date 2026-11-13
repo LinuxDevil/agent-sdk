@@ -5,5 +5,5 @@
   "permissions": {
     "env": ["WEBHOOK_SECRET"]
   },
-  "dependencies": ["lousho"]
+  "dependencies": ["@linuxdevil/lousho"]
 }

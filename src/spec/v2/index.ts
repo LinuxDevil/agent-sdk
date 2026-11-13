@@ -1,5 +1,5 @@
 /**
- * The browser-safe spec layer of the SDK (`lousho/spec`): the AgentSpec v1
+ * The browser-safe spec layer of the SDK (`@linuxdevil/lousho/spec`): the AgentSpec v1
  * and v2 schemas, their hand-written types and the pure helpers Studio
  * needs in both its browser and server bundles — catalogs, the v1→v2
  * upgrader, the JSON Schema export, the `specToCode` generator, node-id and

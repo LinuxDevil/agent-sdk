@@ -1,9 +1,9 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import type { AgentSpec } from 'lousho';
-// `lousho/spec` is the SDK's browser-safe spec entry (schema, types and
+import type { AgentSpec } from '@linuxdevil/lousho';
+// `@linuxdevil/lousho/spec` is the SDK's browser-safe spec entry (schema, types and
 // pure helpers only, no Node-only deps), so this value import is safe in
 // the Vite/browser bundle where the package root is not.
-import { agentSpecSchema } from 'lousho/spec';
+import { agentSpecSchema } from '@linuxdevil/lousho/spec';
 
 export type ExportFormat = 'yaml' | 'json';
 

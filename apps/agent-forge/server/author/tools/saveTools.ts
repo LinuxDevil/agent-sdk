@@ -11,7 +11,7 @@
  * marks the identity in `proposalTurnState().saved` so a second save in
  * the same turn refuses `ALREADY_SAVED`.
  */
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import type { AuthorToolFailure } from '../../../shared/authorWire';
 import { resolveStoredProposal, saveBlockingError } from '../proposal/gate';

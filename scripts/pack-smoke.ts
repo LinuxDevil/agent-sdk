@@ -71,7 +71,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * raised to 940 (~10% headroom). The spec-v2 sections shipped since then
  * brought the count to 930; the templates/ folder (+18 starter-agent files)
  * takes it to 948. Entry budget raised to 1040 (~10% headroom).
- * The `lousho/spec` subpath (S23: dist/spec/{index.js,index.mjs,index.d.ts,
+ * The `@linuxdevil/lousho/spec` subpath (S23: dist/spec/{index.js,index.mjs,index.d.ts,
  * index.d.mts}) pushed the packed size to 5,276,320 bytes (~5.03 MiB);
  * packed budget raised to 5.5 MiB (~9% headroom).
  */

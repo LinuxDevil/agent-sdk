@@ -15,7 +15,7 @@
  * the stores themselves stay lock-free.
  */
 import type { Express, Response } from 'express';
-import { agentSpecV2Schema } from 'lousho';
+import { agentSpecV2Schema } from '@linuxdevil/lousho';
 import { computeChangedFields, SPEC_FIELD_ORDER } from '../../shared/specFields';
 import type {
   CreateDraftRequest,

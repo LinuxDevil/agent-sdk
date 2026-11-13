@@ -13,12 +13,10 @@ const REGISTRY = 'https://npm.pkg.github.com';
 const tag = process.env.NPM_TAG || 'alpha';
 const dry = process.argv.includes('--dry-run');
 
-const SDK = 'lousho';
 const targets = [
   { dir: '.', name: `${SCOPE}/lousho` },
   { dir: 'packages/create-lousho', name: `${SCOPE}/create-lousho` },
 ];
-const sdkVersion = JSON.parse(fs.readFileSync('package.json', 'utf8')).version;
 const run = (cmd, args, cwd) => execFileSync(cmd, args, { cwd, stdio: ['ignore', 'pipe', 'inherit'], shell: process.platform === 'win32' }).toString().trim();
 
 for (const t of targets) {
@@ -30,8 +28,8 @@ for (const t of targets) {
   const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
   pkg.name = t.name;
   pkg.publishConfig = { registry: REGISTRY, access: 'public' };
-  // The scaffolder resolves the SDK by its npm name; alias keeps that working.
-  if (pkg.dependencies?.[SDK]) pkg.dependencies[SDK] = `npm:${SCOPE}/lousho@^${sdkVersion}`;
+  // npm and GitHub Packages now use the same @linuxdevil/* names, so the
+  // SDK dependency range resolves to this registry's mirror as-is.
   fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
   fs.writeFileSync(path.join(pkgDir, '.npmrc'), `//npm.pkg.github.com/:_authToken=${process.env.NODE_AUTH_TOKEN}
 `);

@@ -1,4 +1,4 @@
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 import { specToGraph } from '../graph/specToGraph';
 import type { AgentGraphSpec } from '../graph/types';
 

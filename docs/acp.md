@@ -10,9 +10,9 @@ it, watch its tool calls and approve them from the editor's agent panel.
 ## The command
 
 ```bash
-npx lousho acp agent.yaml                          # a spec file
-npx lousho acp ./my-agent --model openai/gpt-4o    # an agent directory, on another model
-npx lousho acp src/agent.ts                        # a .ts/.js module (createAgent() options or an agent)
+npx @linuxdevil/lousho acp agent.yaml                          # a spec file
+npx @linuxdevil/lousho acp ./my-agent --model openai/gpt-4o    # an agent directory, on another model
+npx @linuxdevil/lousho acp src/agent.ts                        # a .ts/.js module (createAgent() options or an agent)
 ```
 
 ```text
@@ -118,7 +118,7 @@ It resolves once `input` ends, after aborting any running turn.
 
 ```ts
 import * as readline from 'node:readline';
-import { createAgent, serveAcp } from 'lousho';
+import { createAgent, serveAcp } from '@linuxdevil/lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You are a coding assistant.' });
 

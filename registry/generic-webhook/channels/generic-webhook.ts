@@ -1,4 +1,4 @@
-import { webhookChannel } from 'lousho';
+import { webhookChannel } from '@linuxdevil/lousho';
 
 // Verifies `x-signature-256: sha256=<hmac of the raw body>` against WEBHOOK_SECRET
 // (the format GitHub webhooks use). The channel refuses to load when the secret

@@ -1,4 +1,4 @@
-import type { AgentSpec, AgentSpecTrigger } from 'lousho';
+import type { AgentSpec, AgentSpecTrigger } from '@linuxdevil/lousho';
 import { hookNodeKey, type AgentGraphSpec } from './types';
 import { graphToFlow, hasRouterNode } from './graphToFlow';
 import { NON_APPROVAL_POLICY_KEYS } from './specToGraph';

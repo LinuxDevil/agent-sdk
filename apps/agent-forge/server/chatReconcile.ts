@@ -24,7 +24,7 @@
  * fresh ones for genuinely new messages.
  */
 import { randomUUID } from 'node:crypto';
-import { textOf, type Message } from 'lousho';
+import { textOf, type Message } from '@linuxdevil/lousho';
 import type { ChatMessage } from '../shared/wireTypes';
 
 /** The transcript keeps text only (content parts are flattened with `textOf()`). */

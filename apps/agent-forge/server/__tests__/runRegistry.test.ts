@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
-import { upgradeSpec, type AgentSpecV2 } from 'lousho';
+import { upgradeSpec, type AgentSpecV2 } from '@linuxdevil/lousho';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
 import { attachWebSocketServer } from '../wsServer';

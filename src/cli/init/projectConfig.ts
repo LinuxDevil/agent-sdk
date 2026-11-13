@@ -24,7 +24,7 @@ export interface ProjectConfig {
   provider: string;
   template: Template;
   packageManager: PackageManager;
-  /** `dependencies["lousho"]`: a range, or `file:./<tarball>`. */
+  /** `dependencies["@linuxdevil/lousho"]`: a range, or `file:./<tarball>`. */
   sdkDependency: string;
   sdk: SdkManifest;
   /** Telegram template only: --bot-* / --persona flag values baked into .env and the persona. */

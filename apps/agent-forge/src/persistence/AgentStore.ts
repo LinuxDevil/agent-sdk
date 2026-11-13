@@ -1,4 +1,4 @@
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 
 export interface AgentStoreEntry {
   id: string;

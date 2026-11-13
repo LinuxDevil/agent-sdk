@@ -12,7 +12,7 @@
  * Settings, and letting the Author store a second copy under a named
  * secret would silently shadow the Settings value.
  */
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import type { RequestSecretOutput } from '../../../shared/authorWire';
 import { guardedToolCall, toolFailure } from './failure';

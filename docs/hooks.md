@@ -9,8 +9,8 @@ Hooks are code you write, not policy and not a human decision: for rules that al
 Pass hooks to `createAgent({ hooks })`. This one logs every tool call and what it returned:
 
 ```ts
-import { createAgent, defineTool, type AgentHook } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool, type AgentHook } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const auditHook: AgentHook = {
@@ -81,8 +81,8 @@ that throws still rejects the run, as before. Sub-agents inherit the lead
 agent's hooks and their outcomes.
 
 ```ts
-import { createAgent, type AgentHook } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, type AgentHook } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const provider = mockModel(['Done.']);
 
@@ -124,8 +124,8 @@ getting anywhere. It's off unless you add it:
   `LOUSHO_RUN_NO_PROGRESS`, which `agent.recover()` won't retry.
 
 ```ts
-import { createAgent, createProgressGuard, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, createProgressGuard, defineTool } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const lookup = defineTool({
@@ -163,8 +163,8 @@ sees it as `outputCheckFailed` on the result and can fix the output. The check
 is your code, so make it independent of what the model wrote.
 
 ```ts
-import { createAgent, createOutputCheck, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, createOutputCheck, defineTool } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const files = new Map<string, string>();
@@ -194,8 +194,8 @@ await agent.send('Write the report');
 ### Deny a tool by name
 
 ```ts
-import { createAgent, defineTool, type AgentHook } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool, type AgentHook } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const shell = defineTool({
@@ -227,8 +227,8 @@ console.log(result.text);
 Return `{ input }` to run the tool with different arguments. They are validated against the tool's schema again.
 
 ```ts
-import { createAgent, defineTool, type AgentHook } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool, type AgentHook } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const search = defineTool({
@@ -261,8 +261,8 @@ await agent.send('Search for hooks');
 `postToolCall` receives the settled result and may return `{ result }` to replace what the model sees. The tool itself ran unchanged.
 
 ```ts
-import { createAgent, defineTool, type AgentHook } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool, type AgentHook } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const readLog = defineTool({
@@ -296,8 +296,8 @@ console.log(toolMessage?.role); // 'tool': its content is the redacted text
 `preGenerate` sees the live `ctx.messages` and `ctx.request`. Push a message to add context, or change a request field.
 
 ```ts
-import { createAgent, type AgentHook } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, type AgentHook } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const addDate: AgentHook = {
   name: 'add-date',
@@ -335,7 +335,7 @@ refused with a tool error instead of running. See [Approvals](./approvals.md) fo
 `createAgent({ hooks })` takes a plain array. Code that uses the executor API ([The executor API](./executor-api.md)) passes a `HookRegistry`: an ordered collection with `register`, `registerMany`, `get`, `has`, `list`, `unregister`, `clear` and `size()` — `size` is a method (`hooks.size()`), not a `Map`-style property. Registering a second hook with the same `name` replaces the first and logs a warning.
 
 ```ts
-import { HookRegistry, type AgentHook } from 'lousho/hooks';
+import { HookRegistry, type AgentHook } from '@linuxdevil/lousho/hooks';
 
 const redactPii: AgentHook = {
   name: 'redact-pii',
@@ -349,4 +349,4 @@ hooks.register(redactPii);
 console.log(hooks.list().map((hook) => hook.name)); // [ 'redact-pii' ]
 ```
 
-`HookRegistry`, `AgentHook` and the context types are available from the package root and from the `lousho/hooks` subpath. Hooks authored in the Agent Forge canvas editor are compiled into a `HookRegistry` and run sandboxed rather than in the host process: see [Agent Forge](./agent-forge.md#hooks).
+`HookRegistry`, `AgentHook` and the context types are available from the package root and from the `@linuxdevil/lousho/hooks` subpath. Hooks authored in the Agent Forge canvas editor are compiled into a `HookRegistry` and run sandboxed rather than in the host process: see [Agent Forge](./agent-forge.md#hooks).

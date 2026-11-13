@@ -77,3 +77,6 @@ snip.txt
 
 # npm auth token
 .npmrc
+
+# Studio pack-time SDK-range pin backup
+.package.json.prepack

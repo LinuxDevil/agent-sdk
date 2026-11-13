@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mockModel } from 'lousho/testing';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { AGENTS } from './agents';
 import { harnessVersion, runBenchmark, type BenchmarkRun } from './run';
 import { formatSummary, summarize } from './score';

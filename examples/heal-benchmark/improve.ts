@@ -1,8 +1,8 @@
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { createAgent, defineSkill, type AgentHook } from 'lousho';
-import { improveAgent, renderTranscript, type Harness, type ProbeRun } from 'lousho/improve';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineSkill, type AgentHook } from '@linuxdevil/lousho';
+import { improveAgent, renderTranscript, type Harness, type ProbeRun } from '@linuxdevil/lousho/improve';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { AGENTS, type BenchmarkAgent } from './agents';
 
 const { values } = parseArgs({
