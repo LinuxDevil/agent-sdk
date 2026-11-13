@@ -121,6 +121,26 @@ export { listModels, type ListModelsOptions, type ModelCapabilities, type ModelC
 export { listGuardrails, type GuardrailCatalogEntry } from './execution/guardrailCatalog';
 export { listTriggerTypes, type TriggerTypeInfo } from './spec/v2/triggerCatalog';
 
+// Studio's project bridge protocol (types + version constant only; the
+// `lousho bridge` command itself is not part of the library surface).
+export { BRIDGE_PROTOCOL_VERSION } from './bridge/protocol';
+export type {
+  BridgeMethod,
+  BridgeRequest,
+  BridgeResponse,
+  BridgeErrorInfo,
+  BridgePush,
+  BridgePushEvent,
+  BridgePushData,
+  BridgeParams,
+  BridgeResults,
+  BridgeHelloResult,
+  BridgeCatalog,
+  BridgeCompileResult,
+  BridgeRunStarted,
+  BridgeRunResult,
+} from './bridge/protocol';
+
 // Deployment adapter registry. Only the interface + registry are
 // exported here; the built-in adapters (node-server, cloudflare-worker,
 // docker) are wired up by the `lousho build` CLI (src/cli/build.ts).

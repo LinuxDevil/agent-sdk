@@ -33,6 +33,7 @@ const entry = {
     'cli/dev': 'src/cli/dev.ts',
     'cli/chat': 'src/cli/chat.ts',
     'cli/acp': 'src/cli/acp.ts',
+    'cli/bridge': 'src/cli/bridge.ts',
     'cli/add': 'src/cli/add.ts',
     'cli/build': 'src/cli/build.ts',
     'cli/studio': 'src/cli/studio.ts',
