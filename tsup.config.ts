@@ -29,6 +29,7 @@ const entry = {
     'utils/index': 'src/utils/index.ts',
     'types/index': 'src/types/index.ts',
     'spec/index': 'src/spec/v2/index.ts',
+    'observe/index': 'src/observe/index.ts',
     'testing/index': 'src/testing/index.ts',
     'cli/dev': 'src/cli/dev.ts',
     'cli/chat': 'src/cli/chat.ts',

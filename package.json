@@ -232,6 +232,16 @@
         "types": "./dist/svelte/index.d.ts",
         "default": "./dist/svelte/index.js"
       }
+    },
+    "./observe": {
+      "import": {
+        "types": "./dist/observe/index.d.mts",
+        "default": "./dist/observe/index.mjs"
+      },
+      "require": {
+        "types": "./dist/observe/index.d.ts",
+        "default": "./dist/observe/index.js"
+      }
     }
   },
   "typesVersions": {
@@ -295,6 +305,9 @@
       ],
       "svelte": [
         "dist/svelte/index.d.ts"
+      ],
+      "observe": [
+        "dist/observe/index.d.ts"
       ]
     }
   },

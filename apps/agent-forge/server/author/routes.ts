@@ -31,7 +31,6 @@ import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import type { SecretsStore } from '../secretsStore';
 import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceResolver } from '../workspace/context';
-import type { SecretsStore } from '../secretsStore';
 import { identityOfProposal, resolveStoredProposal } from './proposal/gate';
 import { agentGoneFailure, unknownProposalFailure } from './proposal/failures';
 import { requestTextFor, writeProposal } from './proposal/save';
@@ -201,14 +200,15 @@ export function registerAuthorRoutes(
   app: Express,
   deps: {
     sessions: AuthorSessionStore;
+    runner?: Pick<AuthorTurnRunner, 'running' | 'continueAfterUiEvent'>;
     /**
-     * The app's named-secrets store (D13): the `POST .../secret` card
-     * answer writes through its encrypted `setSecret` path. The value
-     * never enters the transcript, the WS stream or a log line - only
-     * the outcome is persisted.
+     * The app's secrets store: the `POST .../secret` card answer writes
+     * named secrets through its encrypted `setSecret` path (the value
+     * never enters the transcript, the WS stream or a log line - only the
+     * outcome is persisted), and `POST .../enable` reports the agent's
+     * `missingRequirements` count through it (AA13's `requirementDeps`).
      */
     secrets: SecretsStore;
-    runner?: Pick<AuthorTurnRunner, 'running' | 'continueAfterUiEvent'>;
     /**
      * The app's workspace resolver (PLAN §19.3): `POST .../save` and
      * `POST .../enable` resolve the stored `session.workspaceId` through
@@ -216,12 +216,6 @@ export function registerAuthorRoutes(
      * header.
      */
     workspaceResolver: WorkspaceResolver;
-    /**
-     * The Studio-global secrets store: `POST .../enable` reports the
-     * agent's `missingRequirements` count, which reads stored provider
-     * keys and named secrets through it (AA13's `requirementDeps`).
-     */
-    secrets: SecretsStore;
   }
 ): void {
   /**

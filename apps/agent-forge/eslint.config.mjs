@@ -4,12 +4,18 @@
 // consistent with `npm run lint` at the repo root, rather than inventing a
 // divergent lint setup for this one workspace.
 import tseslint from 'typescript-eslint';
+import { noSdkSource } from './eslintRules/noSdkSource.mjs';
 
 export default tseslint.config(
   {
     ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
   },
   ...tseslint.configs.recommended,
+  {
+    files: ['{src,server,shared,e2e}/**/*.{ts,tsx,mjs}'],
+    plugins: { lousho: { rules: { 'no-sdk-source': noSdkSource } } },
+    rules: { 'lousho/no-sdk-source': 'error' },
+  },
   {
     files: ['src/**/*.{ts,tsx}', 'server/**/*.ts'],
     rules: {

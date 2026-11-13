@@ -90,7 +90,13 @@ const DESCRIPTION_MAX_CHARS = 500;
  * required exactly where the spec requires them) and is `.describe()`d.
  */
 function draftFieldSchemas(): Record<string, z.ZodTypeAny> {
-  const specFields = specSchema.omit({ version: true, evals: true, flow: true }).shape;
+  // `.shape`, not `.omit`: agentSpecV2Schema is a ZodEffects at run time
+  // (its `.superRefine` flow check), which has no `.omit` - the SDK patches
+  // `.shape` back on, so filter it here instead.
+  const omitted: readonly string[] = DRAFT_OMITTED_KEYS;
+  const specFields = Object.fromEntries(
+    Object.entries(specSchema.shape).filter(([key]) => !omitted.includes(key))
+  );
   return Object.fromEntries(
     Object.entries(specFields).map(([key, field]) => {
       const schema =

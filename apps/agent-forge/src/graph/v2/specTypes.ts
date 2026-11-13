@@ -3,39 +3,39 @@
  * every `graph/v2` module imports spec types from here, so the SDK import
  * path (and any SDK renames) lives in exactly one file.
  *
- * The SDK's `lousho/spec` subpath only carries browser-safe exports, so the
- * spec v2 types come from the SDK source tree directly — the same deviation
- * `src/persistence/importExport.ts` already makes and documents.
+ * The `lousho/spec` subpath carries the spec v2 types Studio needs (the
+ * browser-safe `src/spec/v2` layer), so every import here is a public SDK
+ * export — no source-tree paths (PLAN §19.7, enforced by lint:imports).
  */
 
 /** The flow the run follows (from the published `lousho/flows` subpath). */
 export type { AgentFlow } from 'lousho/flows';
 
 /** The agent spec the canvas edits, plus its subagent union. */
-export type { AgentSpecV2, SubagentSpec } from '../../../../../src/spec/v2/types';
+export type { AgentSpecV2, SubagentSpec } from 'lousho/spec';
 /** One `spec.tools` entry. */
-export type { ToolRef } from '../../../../../src/spec/v2/tools';
+export type { ToolRef } from 'lousho/spec';
 /** A reference to an env var or a named Studio secret. */
-export type { SecretRef } from '../../../../../src/spec/v2/secrets';
+export type { SecretRef } from 'lousho/spec';
 /** One `spec.skills` entry. */
-export type { SkillRef } from '../../../../../src/spec/v2/skills';
+export type { SkillRef } from 'lousho/spec';
 /** One `spec.memory` entry. */
-export type { MemorySpec } from '../../../../../src/spec/v2/memory';
+export type { MemorySpec } from 'lousho/spec';
 /**
  * One `spec.mcpServers` value. The SDK names it `McpServerSpecV2`; the canvas
  * uses the shorter `McpServerSpec` everywhere, aliased once here.
  */
-export type { McpServerSpecV2 as McpServerSpec } from '../../../../../src/spec/v2/mcpServers';
+export type { McpServerSpecV2 as McpServerSpec } from 'lousho/spec';
 /** One `spec.handoffs` entry. */
-export type { HandoffSpec } from '../../../../../src/spec/v2/handoffs';
+export type { HandoffSpec } from 'lousho/spec';
 /** One `spec.guardrails` entry. */
-export type { GuardrailSpec } from '../../../../../src/spec/v2/guardrails';
+export type { GuardrailSpec } from 'lousho/spec';
 /** One `spec.permissions` entry. */
-export type { PermissionRuleSpec } from '../../../../../src/spec/v2/permissions';
+export type { PermissionRuleSpec } from 'lousho/spec';
 /** One `spec.hooks` entry. */
-export type { HookSpec } from '../../../../../src/spec/v2/hooks';
+export type { HookSpec } from 'lousho/spec';
 /** One `spec.triggers` entry. */
-export type { TriggerSpec } from '../../../../../src/spec/v2/triggers';
+export type { TriggerSpec } from 'lousho/spec';
 
 /**
  * One `spec.abortListeners` entry — a trigger-correlated abort rule. The SDK

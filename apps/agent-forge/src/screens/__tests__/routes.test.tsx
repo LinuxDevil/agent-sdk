@@ -28,6 +28,7 @@ import { Screens, screenFor, useScreen } from '../routes';
 import { ROUTES } from '../routeTable';
 import { EvalsTabs } from '../evals/EvalsTabs';
 import { Topbar } from '../../components/Topbar';
+import { ToastProvider } from '../../ui/Toast';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -38,7 +39,7 @@ function render(node: React.ReactElement) {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  act(() => root!.render(node));
+  act(() => root!.render(<ToastProvider>{node}</ToastProvider>));
 }
 
 function go(hash: string) {

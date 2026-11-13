@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- New `lousho/observe` subpath: `startObserveDaemon`, `probeHealth`, `isObserveDaemon`, `defaultDbPath`, `OBSERVE_DEFAULT_PORT` and the daemon option/retention defaults, so a host process (Studio) can run and probe the collector through public exports.
 - Install docs use the public npm packages again (`npm install lousho`, `npm create lousho`).
 - `lousho/improve` (experimental): `improveAgent()` proposes tested edits to an agent's instructions and skills, offline, gated against the current harness and held-out cases. It applies nothing. See [Improving an agent](docs/improve.md).
 - `agent.recover({ retryWithDiagnosis: true })` gives a run that reached `maxAttempts` one fork told why it failed, before quarantining it. `createOutputCheck()` is a new hook that runs your check after a tool succeeds and tells the model what it found. A fork no longer inherits `lastError` and `attempts` from its source.
