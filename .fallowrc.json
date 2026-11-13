@@ -15,7 +15,11 @@
     // The elkjs layout worker: only referenced through
     // `new Worker(new URL('./layout.worker.ts', import.meta.url))` in
     // apps/agent-forge/src/canvas/layout.ts (C17).
-    "apps/agent-forge/src/canvas/layout.worker.ts"
+    "apps/agent-forge/src/canvas/layout.worker.ts",
+    // The <forge-chat> widget bundle (X04b): vite.widget.config.ts's
+    // lib.entry is not visible to the import graph.
+    "apps/agent-forge/src/widget/entry.ts",
+    "apps/agent-forge/vite.widget.config.ts"
   ],
   "ignorePatterns": [
     ".claude/**"

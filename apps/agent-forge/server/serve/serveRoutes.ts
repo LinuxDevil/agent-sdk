@@ -21,6 +21,7 @@
  * version and rebuilt when the publish pointer moves; rotating the token
  * drops the cached handler so the old bearer dies immediately.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import { Router, type Express, type Request as ExpressRequest, type Response as ExpressResponse } from 'express';
 import {
@@ -69,6 +70,8 @@ export interface ServeDeps extends ServeBuildServices {
   buildAgent?: ServeAgentBuilder;
   /** The MCP server manager behind `/agents/:id/serve/mcp*` (X03); absent in tests that don't exercise it. */
   mcpServers?: McpServeManager;
+  /** Directory holding the built `forge-chat.js` widget bundle (X04b); `GET /serve/:id/widget.js` 404s `LOUSHO_WIDGET_MISSING` without it. */
+  widgetDir?: string;
 }
 
 interface CachedHandler {
@@ -106,6 +109,34 @@ function maskToken(token: string): string {
   return token.length <= 8 ? '…' : `${token.slice(0, 4)}…${token.slice(-4)}`;
 }
 
+/** The bearer an `Authorization: Bearer …` header carries, or `undefined`. */
+function bearerOf(req: ExpressRequest): string | undefined {
+  const header = req.headers.authorization;
+  return header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
+}
+
+/**
+ * The widget key (X04b) is narrower than the serve token: chat only, and
+ * only from an origin on the agent's allowedOrigins list. Answers the
+ * request itself on a scope/origin denial (`true`); on acceptance it
+ * rewrites the bearer to the full-access token - the bridge then runs as
+ * that caller - and returns `false` so routing continues.
+ */
+function applyWidgetKey(req: ExpressRequest, res: ExpressResponse, entry: ServeAgentEntry): boolean {
+  if (entry.widgetKey === null || bearerOf(req) !== entry.widgetKey) return false;
+  if (req.method !== 'POST' || req.path !== '/chat') {
+    sendError(res, 401, 'This key only works for the chat widget.', 'LOUSHO_WIDGET_KEY_SCOPE');
+    return true;
+  }
+  const origin = req.headers.origin;
+  if (origin === undefined || !entry.allowedOrigins.includes(origin.toLowerCase())) {
+    sendError(res, 403, 'This page is not allowed to use the widget. Add its origin in Serve settings.', 'LOUSHO_WIDGET_ORIGIN');
+    return true;
+  }
+  req.headers.authorization = `Bearer ${entry.token}`;
+  return false;
+}
+
 /** `GET /agents/:id/serve`'s body from the stored entry + the publish pointer. */
 async function statusOf(agentId: string, entry: ServeAgentEntry, workspace: WorkspaceContext): Promise<ServeStatus> {
   const published = await readPublishedSpec(agentId, { repo: workspace.repo, versions: workspace.versions });
@@ -115,6 +146,7 @@ async function statusOf(agentId: string, entry: ServeAgentEntry, workspace: Work
     allowedOrigins: entry.allowedOrigins,
     publishedVersion: published?.version ?? null,
     tokenMasked: maskToken(entry.token),
+    widgetKeyMasked: entry.widgetKey === null ? null : maskToken(entry.widgetKey),
     baseUrl: `/serve/${agentId}`,
   };
 }
@@ -193,6 +225,32 @@ export function createServeSurface(deps: ServeDeps): ServeSurface {
   }
 
   const router = Router();
+  // GET /serve/:id/widget.js (X04b) - the public widget bundle. No bearer:
+  // a plain <script src> sends no Authorization; only `enabled` gates it,
+  // and the file is the same for every agent.
+  router.get(
+    '/:agentId/widget.js',
+    asyncRoute(async (req: ExpressRequest, res: ExpressResponse) => {
+      const agentId = String(req.params.agentId);
+      if (!isValidAgentId(agentId)) {
+        sendError(res, 400, 'Invalid agent id', 'LOUSHO_AGENT_ID_INVALID');
+        return;
+      }
+      const entry = await deps.config.get(agentId);
+      if (!entry.enabled) {
+        sendError(res, 404, 'Not served', 'LOUSHO_NOT_SERVED');
+        return;
+      }
+      const file = deps.widgetDir === undefined ? undefined : path.join(deps.widgetDir, 'forge-chat.js');
+      if (file === undefined || !fs.existsSync(file)) {
+        sendError(res, 404, 'Widget not built. Run npm run build:studio.', 'LOUSHO_WIDGET_MISSING');
+        return;
+      }
+      res.set('Content-Type', 'application/javascript; charset=utf-8');
+      res.set('Cache-Control', 'public, max-age=300');
+      res.sendFile(file);
+    })
+  );
   router.use(
     '/:agentId',
     asyncRoute(async (req: ExpressRequest, res: ExpressResponse) => {
@@ -222,6 +280,7 @@ export function createServeSurface(deps: ServeDeps): ServeSurface {
         await sendFetchResponse(res, preflightResponse(origin ?? 'null'));
         return;
       }
+      if (applyWidgetKey(req, res, entry)) return;
       if (origin !== undefined && cors === undefined) {
         sendError(res, 403, 'Forbidden origin', 'LOUSHO_REQUEST_FORBIDDEN');
         return;
@@ -298,6 +357,22 @@ export function createServeSurface(deps: ServeDeps): ServeSurface {
           }
           const reveal: ServeTokenReveal = { token };
           res.json(reveal);
+        })
+      );
+      // The widget key (X04b): create-or-rotate returns the raw `fwk_` key
+      // once; DELETE revokes it. Neither touches the serve token.
+      app.post(
+        '/agents/:id/serve/widget-key',
+        asyncRoute(async (req, res) => {
+          const widgetKey = await deps.config.createWidgetKey(paramId(req));
+          res.json({ widgetKey });
+        })
+      );
+      app.delete(
+        '/agents/:id/serve/widget-key',
+        asyncRoute(async (req, res) => {
+          await deps.config.revokeWidgetKey(paramId(req));
+          res.status(204).end();
         })
       );
       // The MCP server lifecycle (X03): status, start, stop. The manager

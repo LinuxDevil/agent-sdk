@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   mcpStatus: vi.fn(),
   startMcp: vi.fn(),
   stopMcp: vi.fn(),
+  createWidgetKey: vi.fn(),
+  revokeWidgetKey: vi.fn(),
   eventHandlers: [] as Array<(event: StudioEvent) => void>,
   writeText: vi.fn(),
 }));
@@ -29,6 +31,8 @@ vi.mock('../../../runtime/runtimeClient', async (importOriginal) => {
       mcpStatus: mocks.mcpStatus,
       startMcp: mocks.startMcp,
       stopMcp: mocks.stopMcp,
+      createWidgetKey: mocks.createWidgetKey,
+      revokeWidgetKey: mocks.revokeWidgetKey,
     },
   };
 });
@@ -48,6 +52,7 @@ function status(overrides: Partial<ServeStatus> = {}): ServeStatus {
     allowedOrigins: ['http://localhost:3000'],
     publishedVersion: 3,
     tokenMasked: 'abcd…wxyz',
+    widgetKeyMasked: null,
     baseUrl: '/serve/support-bot',
     ...overrides,
   };
@@ -98,6 +103,8 @@ describe('ServeCard', () => {
       toolName: 'support_bot',
     });
     mocks.stopMcp.mockResolvedValue({ running: false, url: null, port: null, version: null, toolName: null });
+    mocks.createWidgetKey.mockResolvedValue({ widgetKey: 'fwk_test-key-1' });
+    mocks.revokeWidgetKey.mockResolvedValue(undefined);
     mocks.writeText.mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: mocks.writeText }, configurable: true });
   });
@@ -334,6 +341,79 @@ describe('ServeCard', () => {
       const start = button(host, 'Start MCP server');
       expect(start.disabled).toBe(true);
       expect(start.title).toBe('Publish a version first');
+    });
+  });
+
+  describe('Embed on a page (X04b)', () => {
+    it('is hidden while serving is disabled', async () => {
+      mocks.getServe.mockResolvedValue(status({ enabled: false }));
+      const host = renderCard();
+      await flush();
+      expect(host.textContent).not.toContain('Embed on a page');
+    });
+
+    it('creates a widget key and shows the placeholder snippet + note', async () => {
+      mocks.getServe
+        .mockResolvedValueOnce(status())
+        .mockResolvedValue(status({ widgetKeyMasked: 'fwk_…-key' }));
+      const host = renderCard();
+      await flush();
+      expect(host.textContent).toContain('Embed on a page');
+      await act(async () => {
+        button(host, 'Create widget key').click();
+      });
+      await flush();
+      expect(mocks.createWidgetKey).toHaveBeenCalledWith('support-bot');
+      const pre = host.querySelector('.serve-card-embed .serve-card-pre')!.textContent!;
+      expect(pre).toContain('/serve/support-bot/widget.js');
+      expect(pre).toContain('token="YOUR_WIDGET_KEY"');
+      expect(pre).toContain('endpoint="');
+      expect(pre).not.toContain('raw-token-1234');
+      expect(host.textContent).toContain('The widget key can only chat with this agent');
+    });
+
+    it('disables Create widget key with the reason while no origin is allowed', async () => {
+      mocks.getServe.mockResolvedValue(status({ allowedOrigins: [] }));
+      const host = renderCard();
+      await flush();
+      const create = button(host, 'Create widget key');
+      expect(create.disabled).toBe(true);
+      expect(create.title).toBe('Add an allowed origin first');
+    });
+
+    it('Copy with key stays disabled until a key exists, then copies the real key', async () => {
+      mocks.getServe
+        .mockResolvedValueOnce(status({ widgetKeyMasked: 'fwk_…-key' }))
+        .mockResolvedValue(status({ widgetKeyMasked: 'fwk_…-key' }));
+      const host = renderCard();
+      await flush();
+      const copyWithKey = button(host, 'Copy with key');
+      expect(copyWithKey.disabled).toBe(true);
+      await act(async () => {
+        button(host, 'Rotate key').click();
+      });
+      await flush();
+      expect(mocks.createWidgetKey).toHaveBeenCalledWith('support-bot');
+      expect(button(host, 'Copy with key').disabled).toBe(false);
+      await act(async () => {
+        button(host, 'Copy with key').click();
+      });
+      await flush();
+      expect(mocks.writeText).toHaveBeenCalledWith(expect.stringContaining('token="fwk_test-key-1"'));
+    });
+
+    it('revokes the key and returns to the create state', async () => {
+      mocks.getServe
+        .mockResolvedValueOnce(status({ widgetKeyMasked: 'fwk_…-key' }))
+        .mockResolvedValue(status({ widgetKeyMasked: null }));
+      const host = renderCard();
+      await flush();
+      await act(async () => {
+        button(host, 'Revoke').click();
+      });
+      await flush();
+      expect(mocks.revokeWidgetKey).toHaveBeenCalledWith('support-bot');
+      expect(button(host, 'Create widget key')).toBeDefined();
     });
   });
 });

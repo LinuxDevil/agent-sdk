@@ -205,6 +205,14 @@ interface CreateAppBaseOptions {
    */
   staticDir?: string;
   /**
+   * Directory holding the built `<forge-chat>` widget bundle
+   * (`forge-chat.js`, the output of `vite build -c vite.widget.config.ts`,
+   * normally `<staticDir>/widget`). `GET /serve/:id/widget.js` (X04b)
+   * serves it; defaults to `path.join(staticDir, 'widget')` when
+   * `staticDir` is set.
+   */
+  widgetDir?: string;
+  /**
    * The per-launch token (and extra allowed hosts) every API
    * request must present - see auth.ts. `startStudioServer()` always passes
    * one; omitting it (in-process tests only) skips the token check, while
@@ -1209,6 +1217,7 @@ export function createApp(options: CreateAppOptions): Express {
     spendLog,
     buildAgent: serveAgentBuilder,
     mcpServers,
+    widgetDir: options.widgetDir ?? (staticDir !== undefined ? path.join(staticDir, 'widget') : undefined),
   });
 
   const app = express();
