@@ -27,6 +27,7 @@ const CEILING: WorkspacePolicy = { permissions: [], tools: { allow: ['*'] }, sec
 const dirs: string[] = [];
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -86,6 +87,13 @@ function registry(...names: string[]): HostToolRegistry {
 const executeOf = (_tools: HostToolRegistry, name: string) => spies.get(name);
 
 const TRIAGE: Omit<PageInput, 'pageId'> = { task: 'Rank this report.', inputs: { report: 'The site is down.' } };
+
+const ALLOW_RULE = "is not in the policy's tools.allow (the host ceiling narrowed by shared/policies/policy.json), so the tool is left out (R13)";
+
+function warnings(): () => string[] {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+  return () => warn.mock.calls.map(([line]) => String(line));
+}
 
 const toolNames = (call: ModelCall | undefined): string[] => (call?.tools ?? []).map((entry) => entry.function.name).sort();
 
@@ -171,6 +179,7 @@ describe('G6: page config cannot bypass workspace security', () => {
   });
 
   it('3. a local agent tool outside the allowlist is removed, and a model call to it gets an unknown-tool error', async () => {
+    const warned = warnings();
     const tools = registry('read_file', 'deploy');
     const model = mockModel([callTool('deploy'), RANKED]);
     const { runtime } = runtimeFor(files(toolFiles('agents/triager', 'read_file', 'deploy')), { tools }, model);
@@ -178,6 +187,7 @@ describe('G6: page config cannot bypass workspace security', () => {
     expect(toolNames(model.calls[0])).toEqual(['read_file']);
     expect(toolMessages(model.calls[1])).toContain("Tool 'deploy' not found");
     expect(executeOf(tools, 'deploy')).not.toHaveBeenCalled();
+    expect(warned()).toContainEqual(`[lousho] runPage: page 'support-triage': agent: the agent's tool 'deploy' ${ALLOW_RULE}`);
     expect(result.status).toBe('ok');
     await runtime.close();
   });
@@ -212,6 +222,7 @@ describe('G6: page config cannot bypass workspace security', () => {
   });
 
   it('5. a global agent whose tools exceed the policy gets only the allowed ones', async () => {
+    const warned = warnings();
     const tools = registry('read_file', 'deploy', 'bash');
     const own = { 'agent.json': asText({ name: 'fact-checker', version: '1.2.0' }), 'instructions.md': 'Check the claims.\n', ...toolFiles('', 'read_file', 'deploy', 'bash') };
     const agent = { format: 'dir' as const, dir: 'global/fact-checker', name: 'fact-checker', version: '1.2.0', files: Object.fromEntries(Object.entries(own).map(([path, text]) => [path.replace(/^\//, ''), text])) };
@@ -224,6 +235,7 @@ describe('G6: page config cannot bypass workspace security', () => {
     expect(toolMessages(model.calls[2])).toContain("Tool 'deploy' not found");
     expect(executeOf(tools, 'bash')).not.toHaveBeenCalled();
     expect(executeOf(tools, 'deploy')).not.toHaveBeenCalled();
+    expect(warned()).toContainEqual(`[lousho] runPage: page 'support-triage': agent: the agent's tool 'deploy' ${ALLOW_RULE}`);
     expect(result.status).toBe('ok');
     await runtime.close();
   });
@@ -245,6 +257,7 @@ describe('G6: page config cannot bypass workspace security', () => {
   });
 
   it('6. a workspace policy that tries to widen the host ceiling is narrowed to it', async () => {
+    const warned = warnings();
     const tools: HostToolRegistry = { read_file: { descriptor: tool('read_file'), secrets: [{ env: 'READ_KEY' }, { env: 'ROOT_KEY' }] }, deploy: { descriptor: tool('deploy') } };
     const ceiling: WorkspacePolicy = { permissions: [], tools: { allow: ['read_file'] }, secrets: [{ env: 'READ_KEY' }], network: { allowHosts: ['api.example.com'] }, sandbox: { required: true } };
     const widened: WorkspacePolicy = { permissions: [{ id: 'all', tool: '*', action: 'allow' }], tools: { allow: ['*'] }, secrets: [{ env: 'READ_KEY' }, { env: 'ROOT_KEY' }], network: { allowHosts: ['*.example.com', 'evil.example.org'] }, sandbox: { required: false } };
@@ -260,6 +273,7 @@ describe('G6: page config cannot bypass workspace security', () => {
     expect(toolMessages(model.calls[1])).toContain("Tool 'deploy' not found");
     expect(scopes).toEqual([{ name: 'read_file', page: 'support-triage', attachment: 'agent', secrets: [{ env: 'READ_KEY' }], network: { allowHosts: ['api.example.com'] }, sandbox: { required: true } }]);
     expect(executeOf(tools, 'deploy')).not.toHaveBeenCalled();
+    expect(warned()).toContainEqual(`[lousho] runPage: page 'support-triage': agent: the agent's tool 'deploy' ${ALLOW_RULE}`);
     await runtime.close();
   });
 
