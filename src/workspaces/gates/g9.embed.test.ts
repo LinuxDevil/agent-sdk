@@ -23,7 +23,9 @@ import {
   sqliteWorkspaceSource,
   type ArtifactSink,
   type BlobClient,
+  sourceAgentRegistry,
   type EngineRegistry,
+  type GlobalAgentRegistry,
   type HostBackend,
   type PageEngineFactory,
   type PageResult,
@@ -47,9 +49,9 @@ const fsTrap = vi.hoisted(() => {
   const wrapAll = (module: string, target: Record<string, unknown>): Record<string, unknown> =>
     Object.fromEntries(Object.entries(target).map(([name, value]) => [name, isTrappable(name, value) ? thrower(module, name) : value]));
   const trap = (module: string, actual: Record<string, unknown>): Record<string, unknown> => {
-    const top = wrapAll(module, actual);
     const promises = actual.promises as Record<string, unknown> | undefined;
-    return { ...top, ...(promises && { promises: wrapAll(`${module}.promises`, promises) }), default: top };
+    const top = { ...wrapAll(module, actual), ...(promises && { promises: wrapAll(`${module}.promises`, promises) }) };
+    return { ...top, default: top };
   };
   return { calls, trap };
 });
@@ -59,15 +61,20 @@ vi.mock('fs', async (importOriginal) => fsTrap.trap('fs', await importOriginal()
 vi.mock('node:fs/promises', async (importOriginal) => fsTrap.trap('node:fs/promises', await importOriginal()));
 vi.mock('fs/promises', async (importOriginal) => fsTrap.trap('fs/promises', await importOriginal()));
 
+const FETCH_AT_LOAD = globalThis.fetch;
+const ENV_AT_LOAD = process.env;
+
 const realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '../../..');
 const MARKETING_DIR = join(REPO, 'examples/workspace-marketing/workspace');
 const OPS_DESK_DIR = join(REPO, 'src/workspaces/__fixtures__/ops-desk');
+const GLOBAL_AGENTS_DIR = join(REPO, 'src/workspaces/__fixtures__/global-agents');
 const MODEL = 'mock/mock-model';
 const PROJECT = 'g9-host';
 const SECRET = 'marketing-only-note-7f3a';
+const OPS_NOTE = 'ops-desk-only-note-41c9';
 const CEILING = { permissions: [], tools: { allow: ['*'] }, secrets: [] };
 const MEMORY_FILE = 'shared/memory/notes.ts';
 const MEMORY_SOURCE = "export default { description: 'Notes the workspace keeps between runs.' };\n";
@@ -92,12 +99,31 @@ function marketingFiles(): Record<string, string> {
 function opsDeskFiles(): Record<string, string> {
   const files = readTree(OPS_DESK_DIR);
   const page = JSON.parse(files['pages/reply-drafts/page.json']) as Record<string, unknown>;
-  const agents = JSON.parse(files['pages/reply-drafts/agents.json']) as { agents: { as: string }[] };
   return {
     ...files,
-    'pages/reply-drafts/page.json': asJson({ ...page, execution: { type: 'single', single: { agent: 'drafter' } } }),
-    'pages/reply-drafts/agents.json': asJson({ ...agents, agents: agents.agents.filter((agent) => agent.as === 'drafter') }),
+    'pages/reply-drafts/page.json': asJson({ ...page, execution: { type: 'single', single: { agent: 'checker' } } }),
     [MEMORY_FILE]: MEMORY_SOURCE,
+  };
+}
+
+function globalAgentFiles(): Record<string, string> {
+  return Object.fromEntries(Object.entries(readTree(GLOBAL_AGENTS_DIR)).map(([path, text]) => [`agents/${path}`, text]));
+}
+
+interface RecordingRegistry extends GlobalAgentRegistry {
+  resolved: string[];
+}
+
+function recordingRegistry(): RecordingRegistry {
+  const registry = sourceAgentRegistry(memorySource(globalAgentFiles()));
+  const resolved: string[] = [];
+  return {
+    resolved,
+    resolve: async (name, range) => {
+      const agent = await registry.resolve(name, range);
+      if (agent) resolved.push(`${agent.name}@${agent.version}`);
+      return agent;
+    },
   };
 }
 
@@ -134,9 +160,13 @@ function lastUserText(request: MockRequest): string {
   return typeof user?.content === 'string' ? user.content : '';
 }
 
+function opsDeskTurn(request: MockRequest): MockStaticTurn {
+  if (toolResults(request) === 0 && toolNames(request).includes('remember_notes')) return { toolCalls: [{ name: 'remember_notes', args: { text: OPS_NOTE } }] };
+  return JSON.stringify(OPS_DESK_OUTPUTS.find(([pattern]) => pattern.test(lastUserText(request)))?.[1] ?? {});
+}
+
 function opsDeskModel(): MockModel {
-  const turn = (request: MockRequest): MockStaticTurn => JSON.stringify(OPS_DESK_OUTPUTS.find(([pattern]) => pattern.test(lastUserText(request)))?.[1] ?? {});
-  return mockModel([turn], { onExhausted: 'repeat-last' });
+  return mockModel([opsDeskTurn], { onExhausted: 'repeat-last' });
 }
 
 const currentSink = new AsyncLocalStorage<ArtifactSink>();
@@ -173,11 +203,30 @@ interface SharedInfra {
   backend: HostBackend;
   blobs: BlobClient;
   memory: MemoryProvider;
+  agents: RecordingRegistry;
 }
 
 type EmbedHost = WorkspaceHost & { stores: WorkspaceStores & WorkspaceHost['stores'] };
 
-function embedHost(workspaceId: string, provider: LLMProvider, infra: SharedInfra): EmbedHost {
+type CreateMemory = NonNullable<WorkspaceHost['createMemory']>;
+
+interface HostOptions {
+  projectId?: string;
+  createMemory?: CreateMemory;
+  newRunId?: () => string;
+}
+
+const recall = { onSessionStart: true, query: 'none' } as const;
+
+function namespacedMemory(workspaceId: string, provider: MemoryProvider): CreateMemory {
+  return (file) => defineMemory({ name: file.name, description: 'Workspace notes.', scope: () => `workspace:${workspaceId}`, provider, recall });
+}
+
+function unnamespacedMemory(scope: 'global' | 'session', provider: MemoryProvider): CreateMemory {
+  return (file) => defineMemory({ name: file.name, description: 'Workspace notes.', scope, provider, recall });
+}
+
+function embedHost(workspaceId: string, provider: LLMProvider, infra: SharedInfra, options: HostOptions = {}): EmbedHost {
   const engines: EngineRegistry = Object.fromEntries(Object.entries(ENGINES).map(([type, factory]) => [type, withRunSink(factory)]));
   return {
     tools: {
@@ -193,9 +242,9 @@ function embedHost(workspaceId: string, provider: LLMProvider, infra: SharedInfr
       },
     },
     secrets: { resolve: async () => undefined },
-    stores: { ...createWorkspaceStores(infra.backend, { projectId: PROJECT, workspaceId }), artifacts: blobArtifactStore(infra.blobs) },
+    stores: { ...createWorkspaceStores(infra.backend, { projectId: options.projectId ?? PROJECT, workspaceId }), artifacts: blobArtifactStore(infra.blobs) },
     globals: {
-      agents: { resolve: async () => undefined },
+      agents: infra.agents,
       profiles: {
         get: (ref) => {
           throw new Error(`no global profile ${ref}`);
@@ -203,15 +252,27 @@ function embedHost(workspaceId: string, provider: LLMProvider, infra: SharedInfr
       },
     },
     bindTool: bindMock,
-    createMemory: (file) => defineMemory({ name: file.name, description: 'Workspace notes.', scope: () => `workspace:${workspaceId}`, provider: infra.memory, recall: { onSessionStart: true, query: 'none' } }),
+    createMemory: options.createMemory ?? namespacedMemory(workspaceId, infra.memory),
     engines,
+    ...(options.newRunId && { newRunId: options.newRunId }),
   };
 }
 
 interface Embedded {
   marketing: { runtime: WorkspaceRuntime; host: EmbedHost; model: MockModel };
   opsDesk: { runtime: WorkspaceRuntime; host: EmbedHost; model: MockModel };
+  infra: SharedInfra;
   close(): Promise<void>;
+}
+
+interface EmbedOptions {
+  memory?: (infra: SharedInfra, workspaceId: string) => CreateMemory;
+  countedRunIds?: boolean;
+}
+
+function counter(): () => string {
+  let next = 0;
+  return () => `run-${++next}`;
 }
 
 interface SourceKind {
@@ -243,18 +304,20 @@ const sqliteKind: SourceKind = {
   },
 };
 
-async function embed(kind: SourceKind): Promise<Embedded> {
+async function embed(kind: SourceKind, options: EmbedOptions = {}): Promise<Embedded> {
   const opened = await kind.open();
-  const infra: SharedInfra = { backend: opened.backend, blobs: memoryBlobClient(), memory: inMemoryMemory() };
+  const infra: SharedInfra = { backend: opened.backend, blobs: memoryBlobClient(), memory: inMemoryMemory(), agents: recordingRegistry() };
+  const memoryFor = (workspaceId: string): HostOptions => ({ ...(options.memory && { createMemory: options.memory(infra, workspaceId) }), ...(options.countedRunIds && { newRunId: counter() }) });
   const marketingModelInstance = marketingModel();
   const opsDeskModelInstance = opsDeskModel();
-  const marketingHost = embedHost('marketing', marketingModelInstance, infra);
-  const opsDeskHost = embedHost('ops-desk', opsDeskModelInstance, infra);
+  const marketingHost = embedHost('marketing', marketingModelInstance, infra, memoryFor('marketing'));
+  const opsDeskHost = embedHost('ops-desk', opsDeskModelInstance, infra, memoryFor('ops-desk'));
   const marketing = createWorkspaceRuntime(await opened.sources('marketing', marketingFiles()), marketingHost);
   const opsDesk = createWorkspaceRuntime(await opened.sources('ops-desk', opsDeskFiles()), opsDeskHost);
   return {
     marketing: { runtime: marketing, host: marketingHost, model: marketingModelInstance },
     opsDesk: { runtime: opsDesk, host: opsDeskHost, model: opsDeskModelInstance },
+    infra,
     close: async () => {
       await marketing.close();
       await opsDesk.close();
@@ -325,10 +388,11 @@ describe.each([memoryKind, sqliteKind])('G9 embed in a host with no filesystem (
   });
 
   it('ops-desk runs three pages with no main agent through runPage', async () => {
-    const { opsDesk } = await start();
+    const { opsDesk, infra } = await start();
     const results = await runOpsDesk(opsDesk.runtime, 'thread-1');
     expect(results.map((result) => result.status)).toEqual(['ok', 'ok', 'ok']);
     expect(results.map((result) => result.output)).toEqual([{ ticket: 'A ticket.' }, { digest: 'A digest.' }, { reply: 'A reply.' }]);
+    expect(infra.agents.resolved).toContain('fact-checker@1.0.0');
     const events = await collect(opsDesk.runtime.run('Route this.', { threadId: 'thread-2' }));
     expect(events.at(-1)).toMatchObject({ type: 'finished', status: 'failed' });
     expect(fsTrap.calls).toEqual([]);
@@ -345,31 +409,70 @@ describe.each([memoryKind, sqliteKind])('G9 embed in a host with no filesystem (
     expect(opsDeskThread).toContain('ticket-intake');
     expect(marketingThread).not.toContain('ticket-intake');
     expect(opsDeskThread).not.toContain('instagram-videos');
-    expect((await marketing.host.stores.runs.list()).every((run) => run.workspaceId === 'marketing')).toBe(true);
-    expect((await opsDesk.host.stores.runs.list()).every((run) => run.workspaceId === 'ops-desk')).toBe(true);
+    const marketingRuns = await marketing.host.stores.runs.list();
+    const opsDeskRuns = await opsDesk.host.stores.runs.list();
+    expect(marketingRuns.length).toBeGreaterThan(0);
+    expect(opsDeskRuns.length).toBeGreaterThan(0);
+    expect(marketingRuns.every((run) => run.workspaceId === 'marketing')).toBe(true);
+    expect(opsDeskRuns.every((run) => run.workspaceId === 'ops-desk')).toBe(true);
 
     const firstCallOfRerun = marketing.model.calls.length;
     const result = await marketing.runtime.runPage('instagram-videos', { task: 'Again.', inputs: { topic: 'tea' } });
     expect(JSON.stringify(marketing.model.calls[firstCallOfRerun])).toContain(SECRET);
+    expect(JSON.stringify(marketing.model.calls[firstCallOfRerun])).not.toContain(OPS_NOTE);
     const video = result.artifacts.find((ref) => ref.name === 'video');
     if (!video) throw new Error('no video artifact');
     expect(await marketing.host.stores.artifacts.get(video.uri, { workspace: 'marketing', runId: result.runId })).toBeDefined();
-    await expect(Promise.resolve().then(() => opsDesk.host.stores.artifacts.get(video.uri, { workspace: 'ops-desk', runId: result.runId }))).rejects.toThrow();
+    await expect(Promise.resolve().then(() => opsDesk.host.stores.artifacts.get(video.uri, { workspace: 'ops-desk', runId: result.runId }))).rejects.toMatchObject({ code: 'LOUSHO_ARTIFACT_FORBIDDEN' });
 
     expect(requestsText(opsDesk.model)).not.toContain(SECRET);
+    const firstOpsDeskRerun = opsDesk.model.calls.length;
     await runOpsDesk(opsDesk.runtime, 'after-marketing');
+    expect(JSON.stringify(opsDesk.model.calls[firstOpsDeskRerun])).toContain(OPS_NOTE);
     expect(requestsText(opsDesk.model)).not.toContain(SECRET);
     expect(fsTrap.calls).toEqual([]);
   });
 
   it('embedding leaves fetch and process.env untouched', async () => {
-    const fetchBefore = globalThis.fetch;
-    const envBefore = process.env;
     const { marketing, opsDesk } = await start();
     await collect(marketing.runtime.run('Make tea videos for both channels.', { threadId: 'thread-1' }));
     await runOpsDesk(opsDesk.runtime, 'thread-1');
-    expect(globalThis.fetch).toBe(fetchBefore);
-    expect(process.env).toBe(envBefore);
+    expect(globalThis.fetch).toBe(FETCH_AT_LOAD);
+    expect(process.env).toBe(ENV_AT_LOAD);
+  });
+
+  it.todo('runs the P0.11 multi-agent fixtures without a filesystem (P3.1)');
+});
+
+describe('G9 known leaks (P1.21)', () => {
+  async function leaksMarketingNote(scope: 'global' | 'session'): Promise<void> {
+    const embedded = await embed(memoryKind, { memory: (infra) => unnamespacedMemory(scope, infra.memory), countedRunIds: true });
+    opened.push(embedded);
+    await collect(embedded.marketing.runtime.run('Make tea videos for both channels.', { threadId: 'shared-thread' }));
+    await runOpsDesk(embedded.opsDesk.runtime, 'shared-thread');
+    expect(requestsText(embedded.marketing.model)).toContain(SECRET);
+    expect(requestsText(embedded.opsDesk.model)).not.toContain(SECRET);
+  }
+
+  it.fails("P1.21(d): one createMemory with scope 'global' shared by two workspaces leaks notes#global", () => leaksMarketingNote('global'));
+
+  it.fails("P1.21(d): one createMemory with scope 'session' shared by two workspaces leaks notes#session:<runId> when both hosts count run ids", () => leaksMarketingNote('session'));
+
+  it.fails('P1.21: two projects with the same workspace id and a host runId share artifact blob keys', async () => {
+    const opened = await memoryKind.open();
+    const infra: SharedInfra = { backend: opened.backend, blobs: memoryBlobClient(), memory: inMemoryMemory(), agents: recordingRegistry() };
+    const projectA = embedHost('marketing', marketingModel(), infra, { projectId: 'project-a', newRunId: () => 'host-run-1' });
+    const projectB = embedHost('marketing', marketingModel(), infra, { projectId: 'project-b', newRunId: () => 'host-run-1' });
+    const runtime = createWorkspaceRuntime(memorySource(marketingFiles()), projectA);
+    try {
+      const result = await runtime.runPage('instagram-videos', { task: 'A video.', inputs: { topic: 'tea' } });
+      const video = result.artifacts.find((ref) => ref.name === 'video');
+      if (!video) throw new Error('no video artifact');
+      expect(await projectB.stores.artifacts.get(video.uri, { workspace: 'marketing', runId: result.runId })).toBeUndefined();
+    } finally {
+      await runtime.close();
+      await opened.close();
+    }
   });
 });
 
@@ -420,9 +523,10 @@ const GREP_LIST: readonly [string, RegExp][] = [
   ['globalThis.fetch', /globalThis\.fetch\b/],
   ['registerHooks', /\bregisterHooks\b/],
   ['AsyncLocalStorage', /\bAsyncLocalStorage\b/],
-  ['module-level let/var', /^(?:let|var)\s/],
-  ['module-level mutable collection', /^const \w+ = new (?:Map|Set|WeakMap|WeakSet)\((?!\[)/],
+  ['module-level let/var', /^(?:export\s+)?(?:let|var)\s/],
+  ['module-level mutable collection', /^(?:export\s+)?const \w+(?::[^=]+)? = new (?:Map|Set|WeakMap|WeakSet|Array)\((?!\[)/],
   ['non-literal import()', /\bimport\(\s*[^'"`\s)]/],
+  ['dynamic fs or path import', /\bimport\(\s*['"](?:node:)?(?:fs|fs\/promises|path)['"]/],
 ];
 
 const GREP_ALLOWED: Readonly<Record<string, readonly string[]>> = {
