@@ -146,6 +146,20 @@ describe('createWorkspaceRuntime', () => {
     await runtime.close();
   });
 
+  it.each([
+    ['listed when the main agent routes to its page', {}, true],
+    ['hidden when the main agent does not route to its page', { 'main-agent/harness/main-harness.json': { schema: 'lousho.main-harness/1', routes: [{ page: 'fix', when: 'A bug needs fixing.' }] } }, false],
+  ])('a direct run noted in the thread is %s', async (_name, extra, listed) => {
+    const main = mockModel([{ toolCalls: [{ name: 'list_page_runs', args: {} }] }, 'Done.']);
+    const host = testHost('coding', { 'mock/mock-model': main }, { engines: fakeEngines() });
+    const runtime = createWorkspaceRuntime(memorySource(files('coding', extra)), host);
+    await runtime.runPage('support-triage', triage(), { threadId: 'thread-2', runId: 'direct-2' });
+    await collect(runtime.run('Which runs are there?', { threadId: 'thread-2' }));
+    const listing = main.calls[1].messages.filter((message) => message.role === 'tool').map((message) => String(message.content));
+    expect(listing.some((text) => text.includes('direct-2'))).toBe(listed);
+    await runtime.close();
+  });
+
   it('cancel aborts the running page', async () => {
     let entered!: () => void;
     const started = new Promise<void>((resolve) => (entered = resolve));

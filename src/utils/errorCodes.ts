@@ -178,6 +178,8 @@ export const ERROR_CODES = {
   /** A page requires a capability no tool in its effective toolset provides (`capability-missing`). */
   LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.",
   /** A page's execution type has no engine in the runtime's engine registry (`engine-unknown`). */
+  /** `runPage` was given a page id the workspace does not list (`page-unknown`). */
+  LOUSHO_WORKSPACE_PAGE_UNKNOWN: "Pass a page id listed in workspace.json pages that has a pages/<id>/page.json.",
   LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.",
   /** `workspace.run` without a `pageId` on a workspace whose `mainAgent` is `null` (`no-main-agent`). */
   LOUSHO_WORKSPACE_NO_MAIN_AGENT: 'Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.',
