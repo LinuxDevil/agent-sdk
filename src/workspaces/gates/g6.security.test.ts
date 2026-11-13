@@ -1,11 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { z } from 'zod';
 import { FlowExecutor } from '../../flows/FlowExecutor';
-import type { FlowSpec } from '../../flows/types';
-import type { GenerateOptions, LLMProvider } from '../../providers';
+import type { LLMProvider } from '../../providers';
 import { MockLLMProvider } from '../../providers/mock';
 import { mockModel, type MockTurn } from '../../testing';
 import { defineTool } from '../../tools/defineTool';
@@ -70,7 +69,11 @@ function testHost(workspaceId: string, providers: Record<string, LLMProvider>, e
 
 const tool = (name: string, execute = vi.fn(async () => `${name} ran`)) => defineTool({ name, description: `The ${name} tool`, input: z.object({ value: z.string().optional() }), execute });
 
-const spies = new Map<string, ReturnType<typeof vi.fn>>();
+type FlowSpec = Parameters<typeof FlowExecutor.execute>[0];
+
+type ModelCall = ReturnType<typeof mockModel>['calls'][number];
+
+const spies = new Map<string, Mock<[], Promise<string>>>();
 
 function registry(...names: string[]): HostToolRegistry {
   return Object.fromEntries(names.map((name) => {
@@ -84,9 +87,9 @@ const executeOf = (_tools: HostToolRegistry, name: string) => spies.get(name);
 
 const TRIAGE: Omit<PageInput, 'pageId'> = { task: 'Rank this report.', inputs: { report: 'The site is down.' } };
 
-const toolNames = (call: GenerateOptions | undefined): string[] => (call?.tools ?? []).map((entry) => entry.function.name).sort();
+const toolNames = (call: ModelCall | undefined): string[] => (call?.tools ?? []).map((entry) => entry.function.name).sort();
 
-const toolMessages = (call: GenerateOptions | undefined): string => (call?.messages ?? []).filter((message) => message.role === 'tool').map((message) => String(message.content)).join('\n');
+const toolMessages = (call: ModelCall | undefined): string => (call?.messages ?? []).filter((message) => message.role === 'tool').map((message) => String(message.content)).join('\n');
 
 const callTool = (name: string): MockTurn => ({ toolCalls: [{ name, args: {} }] });
 
@@ -210,8 +213,8 @@ describe('G6: page config cannot bypass workspace security', () => {
 
   it('5. a global agent whose tools exceed the policy gets only the allowed ones', async () => {
     const tools = registry('read_file', 'deploy', 'bash');
-    const agent = { format: 'dir' as const, dir: 'global/fact-checker', name: 'fact-checker', version: '1.2.0', files: { 'agent.json': asText({ name: 'fact-checker', version: '1.2.0' }), 'instructions.md': 'Check the claims.\n', ...toolFiles('', 'read_file', 'deploy', 'bash') } };
-    agent.files = Object.fromEntries(Object.entries(agent.files).map(([path, text]) => [path.replace(/^\//, ''), text]));
+    const own = { 'agent.json': asText({ name: 'fact-checker', version: '1.2.0' }), 'instructions.md': 'Check the claims.\n', ...toolFiles('', 'read_file', 'deploy', 'bash') };
+    const agent = { format: 'dir' as const, dir: 'global/fact-checker', name: 'fact-checker', version: '1.2.0', files: Object.fromEntries(Object.entries(own).map(([path, text]) => [path.replace(/^\//, ''), text])) };
     const agents = { schema: 'lousho.agents/1', agents: [{ as: 'agent', ref: 'global:fact-checker@^1.0.0', role: 'Ranks the report.' }] };
     const model = mockModel([callTool('bash'), callTool('deploy'), RANKED]);
     const { runtime } = runtimeFor(files({ 'pages/support-triage/agents.json': agents }), { tools, globals: { agents: { resolve: async () => agent }, profiles: { get: (ref) => { throw new Error(`no global profile ${ref}`); } } } }, model);
