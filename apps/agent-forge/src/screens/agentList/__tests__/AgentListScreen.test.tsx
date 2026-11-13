@@ -30,7 +30,7 @@ vi.mock('../../../workspace/WorkspacesProvider', () => ({
   }),
 }));
 
-import type { AgentListItem, AgentRecord, WorkspaceAgentItem, WorkspaceListItem } from '../../../../shared/wireTypes';
+import type { AgentListItem, AgentRecord, ObservedAgentItem, WorkspaceAgentItem, WorkspaceListItem } from '../../../../shared/wireTypes';
 import { AgentListScreen } from '../AgentListScreen';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
@@ -52,6 +52,20 @@ const wsItem = (over: Partial<WorkspaceAgentItem>): WorkspaceAgentItem => ({
   ...item({}),
   kind: 'workspace',
   workspaceId: 'alpha-1a2b3c',
+  ...over,
+});
+
+const obsItem = (over: Partial<ObservedAgentItem>): ObservedAgentItem => ({
+  kind: 'observed',
+  id: 'daemon-uuid-1',
+  name: 'billing-worker',
+  project: 'billing-svc',
+  workspaceId: 'alpha-1a2b3c',
+  instances: 2,
+  status: 'healthy',
+  lastSeenAt: '2026-10-29T11:58:00Z',
+  runsToday: 14,
+  errorRateToday: 0.02,
   ...over,
 });
 
@@ -123,7 +137,7 @@ beforeEach(() => {
   wsState.launchId = 'alpha-1a2b3c';
   wsState.activeId = undefined;
   api.listAgents.mockResolvedValue(AGENTS_A);
-  api.listAllAgentItems.mockResolvedValue({ items: ALL_ITEMS, skipped: [] });
+  api.listAllAgentItems.mockResolvedValue({ items: ALL_ITEMS, skipped: [], observed: 'ok' });
   api.patchAgentMeta.mockResolvedValue({});
   api.createAgentRecord.mockResolvedValue({ id: 'untitled-1' } as AgentRecord);
   // forWorkspace(id) answers a client-shaped object whose methods record
@@ -197,6 +211,7 @@ describe('AgentListScreen - all workspaces (#/agents)', () => {
     api.listAllAgentItems.mockResolvedValue({
       items: ALL_ITEMS,
       skipped: [{ workspaceId: 'beta-2b3c4d', reason: 'Folder not found' }],
+      observed: 'ok',
     });
     const host = await mountAt();
     const note = host.querySelector('.agent-list-skipped');
@@ -226,7 +241,7 @@ describe('AgentListScreen - all workspaces (#/agents)', () => {
   });
 
   it('shows the empty state when no workspace has agents', async () => {
-    api.listAllAgentItems.mockResolvedValue({ items: [], skipped: [] });
+    api.listAllAgentItems.mockResolvedValue({ items: [], skipped: [], observed: 'ok' });
     const host = await mountAt();
     expect(host.textContent).toContain('No agents yet');
     expect(host.querySelectorAll('button.start-option')).toHaveLength(4);
@@ -258,7 +273,9 @@ describe('AgentListScreen - one workspace (#/w/<ws>/agents)', () => {
     const host = await mountAt('#/w/beta-2b3c4d/agents');
     expect(api.forWorkspace).toHaveBeenCalledWith('beta-2b3c4d');
     expect(api.listAgents).toHaveBeenCalledWith('beta-2b3c4d');
-    expect(api.listAllAgentItems).not.toHaveBeenCalled();
+    // W07b: workspace mode also reads the aggregate - but only for the
+    // observed items placed in THIS workspace.
+    expect(api.listAllAgentItems).toHaveBeenCalledTimes(1);
     expect(host.querySelectorAll('article.agent-card')).toHaveLength(2);
     expect(host.querySelector('.agent-card-workspace')).toBeNull();
     expect(host.textContent).toContain('Agents in Beta. Open one to edit it, test it and ship it.');
@@ -282,5 +299,90 @@ describe('AgentListScreen - one workspace (#/w/<ws>/agents)', () => {
     await flush();
     expect(api.createAgentRecord).toHaveBeenCalledWith('beta-2b3c4d', { from: 'blank' });
     expect(window.location.hash).toBe('#/w/beta-2b3c4d/agents/untitled-1/canvas');
+  });
+});
+
+describe('AgentListScreen - observed agents (W07b)', () => {
+  const OBSERVED: ObservedAgentItem[] = [
+    obsItem({ id: 'obs-a1', name: 'billing-worker', workspaceId: 'alpha-1a2b3c' }),
+    obsItem({ id: 'obs-ci', name: 'nightly', project: 'ci', workspaceId: null, instances: 1, runsToday: 3 }),
+  ];
+  const payload = (items: unknown[] = [...ALL_ITEMS, ...OBSERVED], observed: 'ok' | 'unavailable' = 'ok') => ({
+    items,
+    skipped: [],
+    observed,
+  });
+
+  it('places a workspace-matched observed card after the workspace agents and an unmatched one under Elsewhere', async () => {
+    api.listAllAgentItems.mockResolvedValue(payload());
+    const host = await mountAt();
+    const cards = [...host.querySelectorAll('article.agent-card')];
+    // 3 workspace cards, then the placed observed card, then the Elsewhere one.
+    expect(cards).toHaveLength(5);
+    expect(cards[3].className).toContain('agent-card--observed');
+    expect(cards[3].textContent).toContain('billing-worker');
+    expect(cards[3].textContent).toContain('Alpha');
+    const elsewhere = host.querySelector('h2.agent-list-group');
+    expect(elsewhere?.textContent).toBe('Elsewhere');
+    expect(host.querySelector('.agent-list-group-hint')?.textContent).toContain('not in Studio');
+    const elsewhereGrid = [...host.querySelectorAll('ul.agent-grid')].at(-1)!;
+    expect(elsewhereGrid.textContent).toContain('nightly');
+    expect(elsewhereGrid.textContent).toContain('ci');
+  });
+
+  it('observed cards have no switch, link to #/observed/<id>, and announce "observed agent"', async () => {
+    api.listAllAgentItems.mockResolvedValue(payload());
+    const host = await mountAt();
+    const card = [...host.querySelectorAll('article.agent-card--observed')].find((c) => c.textContent?.includes('billing-worker'))!;
+    expect(card.querySelector('[role="switch"]')).toBeNull();
+    const link = card.querySelector<HTMLAnchorElement>('.agent-card-link')!;
+    expect(link.getAttribute('href')).toBe('#/observed/obs-a1');
+    expect(link.getAttribute('aria-label')).toBe('billing-worker, observed agent');
+    expect(card.textContent).toContain('2 instances');
+    expect(card.textContent).toContain('Observed');
+    expect(card.textContent).toContain('Healthy');
+    expect(card.textContent).toContain('14 runs today');
+  });
+
+  it('shows the collector note when observed is unavailable and still renders workspace agents', async () => {
+    api.listAllAgentItems.mockResolvedValue(payload(ALL_ITEMS, 'unavailable'));
+    const host = await mountAt();
+    const note = [...host.querySelectorAll('.agent-list-skipped')].find((n) => n.textContent?.includes('collector'));
+    expect(note?.textContent).toContain('The collector is not running, so agents deployed elsewhere are not shown.');
+    expect(host.querySelectorAll('article.agent-card')).toHaveLength(3);
+  });
+
+  it('search matches an observed card by project', async () => {
+    api.listAllAgentItems.mockResolvedValue(payload());
+    const host = await mountAt('#/agents?q=nightly');
+    // Only the Elsewhere card survives; the placed one and workspace agents are filtered out.
+    expect(host.querySelectorAll('article.agent-card--observed')).toHaveLength(1);
+    expect(host.textContent).toContain('nightly');
+  });
+
+  it('the Workspace filter hides Elsewhere and keeps matching placed cards', async () => {
+    api.listAllAgentItems.mockResolvedValue(payload());
+    const host = await mountAt('#/agents?workspace=alpha-1a2b3c');
+    const observed = [...host.querySelectorAll('article.agent-card--observed')];
+    expect(observed).toHaveLength(1);
+    expect(observed[0].textContent).toContain('billing-worker');
+    expect(host.querySelector('h2.agent-list-group')).toBeNull();
+  });
+
+  it('workspace mode shows only that workspace\'s observed items, with no workspace chip', async () => {
+    wsState.activeId = 'alpha-1a2b3c';
+    api.listAllAgentItems.mockResolvedValue(
+      payload([
+        obsItem({ id: 'obs-a1', name: 'billing-worker', workspaceId: 'alpha-1a2b3c' }),
+        obsItem({ id: 'obs-b1', name: 'other', workspaceId: 'beta-2b3c4d' }),
+        obsItem({ id: 'obs-x', name: 'nowhere', workspaceId: null }),
+      ])
+    );
+    const host = await mountAt('#/w/alpha-1a2b3c/agents');
+    const observed = [...host.querySelectorAll('article.agent-card--observed')];
+    expect(observed).toHaveLength(1);
+    expect(observed[0].textContent).toContain('billing-worker');
+    expect(observed[0].querySelector('.agent-card-workspace')).toBeNull();
+    expect(host.querySelector('h2.agent-list-group')).toBeNull();
   });
 });

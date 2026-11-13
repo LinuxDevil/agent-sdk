@@ -1,14 +1,15 @@
 /**
- * The `#/agents` list's data (A02, scoped per W06b): `GET /agents?ws=all`
- * in all-workspaces mode, `forWorkspace(id).listAgents()` mapped to
- * `WorkspaceAgentItem` in one-workspace mode. The card switch's
- * optimistic `PATCH /agents/:id/meta` goes through
- * `forWorkspace(item.workspaceId)` - ids repeat across workspaces, so
- * `pendingIds` keys are `<workspaceId>/<agentId>` and `setEnabled` takes
- * the whole item.
+ * The `#/agents` list's data (A02, scoped per W06b, observed per W07b):
+ * `GET /agents?ws=all` in all-workspaces mode, `forWorkspace(id).listAgents()`
+ * mapped to `WorkspaceAgentItem` in one-workspace mode - plus, in both
+ * modes, the aggregate route's observed items (workspace mode keeps only
+ * the ones placed in that workspace). The card switch's optimistic
+ * `PATCH /agents/:id/meta` goes through `forWorkspace(item.workspaceId)` -
+ * ids repeat across workspaces, so `pendingIds` keys are
+ * `<workspaceId>/<agentId>` and `setEnabled` takes the whole item.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentListItem, AllAgentsResponse, WorkspaceAgentItem } from '../../../shared/wireTypes';
+import type { AgentListItem, AllAgentsResponse, AnyAgentItem, WorkspaceAgentItem } from '../../../shared/wireTypes';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { useToast } from '../../ui/Toast';
 
@@ -17,9 +18,12 @@ export type AgentListScope = { kind: 'all' } | { kind: 'workspace'; workspaceId:
 
 /** What the list screen renders from. */
 export interface AgentListState {
-  items: WorkspaceAgentItem[] | undefined;
+  /** Workspace AND observed items (`AnyAgentItem`); the screen narrows by `kind`. */
+  items: AnyAgentItem[] | undefined;
   /** Workspaces the aggregate could not read (all mode only; empty otherwise). */
   skipped: AllAgentsResponse['skipped'];
+  /** Whether the collector answered ('ok') or not ('unavailable', W07a). */
+  observed: AllAgentsResponse['observed'];
   error: string | undefined;
   loading: boolean;
   refresh(): void;
@@ -31,7 +35,7 @@ export interface AgentListState {
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 /** The `<workspaceId>/<agentId>` pending key - agent ids repeat across workspaces. */
-export function pendingKey(item: { workspaceId: string; id: string }): string {
+export function pendingKey(item: { workspaceId: string | null; id: string }): string {
   return `${item.workspaceId}/${item.id}`;
 }
 
@@ -40,11 +44,17 @@ function toWorkspaceItems(workspaceId: string, items: AgentListItem[]): Workspac
   return items.map((item) => ({ ...item, kind: 'workspace' as const, workspaceId }));
 }
 
+/** The observed items the aggregate placed in `workspaceId` (workspace mode's share of W07b). */
+function observedInWorkspace(items: AnyAgentItem[], workspaceId: string): AnyAgentItem[] {
+  return items.filter((item) => item.kind === 'observed' && item.workspaceId === workspaceId);
+}
+
 /** Fetches the agent list for `scope` and owns the optimistic enable/disable toggle. */
 export function useAgentList(scope: AgentListScope): AgentListState {
   const toast = useToast();
-  const [items, setItems] = useState<WorkspaceAgentItem[] | undefined>(undefined);
+  const [items, setItems] = useState<AnyAgentItem[] | undefined>(undefined);
   const [skipped, setSkipped] = useState<AllAgentsResponse['skipped']>([]);
+  const [observed, setObserved] = useState<AllAgentsResponse['observed']>('ok');
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
@@ -59,15 +69,24 @@ export function useAgentList(scope: AgentListScope): AgentListState {
       if (scope.kind === 'all') {
         const res = await runtimeClient.listAllAgentItems();
         if (seq !== requestSeq.current) return;
-        // W07a adds observed items to the union; the card grid is
-        // workspace-only until W07b renders observed cards.
-        setItems(res.items.filter((item): item is WorkspaceAgentItem => item.kind === 'workspace'));
+        setItems(res.items);
         setSkipped(res.skipped);
+        setObserved(res.observed ?? 'ok');
       } else {
-        const list = await runtimeClient.forWorkspace(scope.workspaceId).listAgents();
+        // The workspace's own list is the required read; the aggregate is
+        // best-effort - only its observed items placed in THIS workspace are
+        // kept, and a failed aggregate must not take the list down with it.
+        const [list, aggregate] = await Promise.all([
+          runtimeClient.forWorkspace(scope.workspaceId).listAgents(),
+          runtimeClient.listAllAgentItems().catch(() => undefined),
+        ]);
         if (seq !== requestSeq.current) return;
-        setItems(toWorkspaceItems(scope.workspaceId, list));
+        setItems([
+          ...toWorkspaceItems(scope.workspaceId, list),
+          ...(aggregate === undefined ? [] : observedInWorkspace(aggregate.items, scope.workspaceId)),
+        ]);
         setSkipped([]);
+        setObserved(aggregate?.observed ?? 'ok');
       }
       setError(undefined);
     } catch (err) {
@@ -89,17 +108,17 @@ export function useAgentList(scope: AgentListScope): AgentListState {
   const setEnabled = useCallback(
     async (item: WorkspaceAgentItem, enabled: boolean) => {
       const key = pendingKey(item);
-      const target = itemsRef.current?.find((i) => pendingKey(i) === key);
+      const target = itemsRef.current?.find((i): i is WorkspaceAgentItem => i.kind === 'workspace' && pendingKey(i) === key);
       const name = target?.name ?? item.id;
       const was = target?.enabled;
-      setItems((prev) => prev?.map((i) => (pendingKey(i) === key ? { ...i, enabled } : i)));
+      setItems((prev) => prev?.map((i) => (i.kind === 'workspace' && pendingKey(i) === key ? { ...i, enabled } : i)));
       setPendingIds((prev) => new Set(prev).add(key));
       try {
         await runtimeClient.forWorkspace(item.workspaceId).patchAgentMeta(item.id, { enabled });
         toast.show({ message: `“${name}” is ${enabled ? 'on' : 'off'}`, tone: 'success' });
       } catch (err) {
         if (was !== undefined) {
-          setItems((prev) => prev?.map((i) => (pendingKey(i) === key ? { ...i, enabled: was } : i)));
+          setItems((prev) => prev?.map((i) => (i.kind === 'workspace' && pendingKey(i) === key ? { ...i, enabled: was } : i)));
         }
         toast.show({ message: messageOf(err), tone: 'error' });
       } finally {
@@ -113,5 +132,5 @@ export function useAgentList(scope: AgentListScope): AgentListState {
     [toast]
   );
 
-  return { items, skipped, error, loading, refresh, setEnabled, pendingIds };
+  return { items, skipped, observed, error, loading, refresh, setEnabled, pendingIds };
 }

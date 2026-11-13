@@ -4,6 +4,7 @@ export type ScreenId =
   | 'agentList'
   | 'inbox'
   | 'agentDetail'
+  | 'observedAgent'
   | 'templates'
   | 'playground'
   | 'traces'
@@ -42,6 +43,7 @@ export const ROUTES: readonly RouteEntry[] = [
   { pattern: '/w/:ws/agents/:id', screen: 'agents', example: '/w/e2e-000000/agents/e2e-agent' }, // → canvas
   { pattern: '/w/:ws/agents/:id/canvas', screen: 'agents', example: '/w/e2e-000000/agents/e2e-agent/canvas' },
   { pattern: '/w/:ws/agents/:id/:tab', screen: 'agentDetail', example: '/w/e2e-000000/agents/e2e-agent/overview' },
+  { pattern: '/observed/:agentId', screen: 'observedAgent', example: '/observed/e2e-observed' }, // read-only daemon agent (W07b)
   { pattern: '/inbox', screen: 'inbox', example: '/inbox' },
   { pattern: '/templates', screen: 'templates', example: '/templates' },
   { pattern: '/playground', screen: 'playground', example: '/playground' },
