@@ -9473,7 +9473,7 @@ Find a code by area:
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
 | [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
-| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved), [`LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING`](#lousho_workspace_main_harness_text_missing), [`LOUSHO_WORKSPACE_CAPABILITY_MISSING`](#lousho_workspace_capability_missing), [`LOUSHO_WORKSPACE_ENGINE_UNKNOWN`](#lousho_workspace_engine_unknown), [`LOUSHO_WORKSPACE_PAGE_UNKNOWN`](#lousho_workspace_page_unknown), [`LOUSHO_WORKSPACE_NO_MAIN_AGENT`](#lousho_workspace_no_main_agent), [`LOUSHO_WORKSPACE_HOST_INVALID`](#lousho_workspace_host_invalid), [`LOUSHO_WORKSPACE_RUNTIME_CLOSED`](#lousho_workspace_runtime_closed) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, resolving page agents with `resolveAttachments()`, assembling prompts with `assembleMainInstructions()`, applying the policy at page start with `pagePolicy()`, running a page with `runPage()`, and running a workspace session with `openWorkspaceSession()`, and running a workspace through `createWorkspaceRuntime()`. |
+| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved), [`LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING`](#lousho_workspace_main_harness_text_missing), [`LOUSHO_WORKSPACE_CAPABILITY_MISSING`](#lousho_workspace_capability_missing), [`LOUSHO_WORKSPACE_ENGINE_UNKNOWN`](#lousho_workspace_engine_unknown), [`LOUSHO_WORKSPACE_PAGE_UNKNOWN`](#lousho_workspace_page_unknown), [`LOUSHO_WORKSPACE_NO_MAIN_AGENT`](#lousho_workspace_no_main_agent), [`LOUSHO_WORKSPACE_HOST_INVALID`](#lousho_workspace_host_invalid), [`LOUSHO_WORKSPACE_RUNTIME_CLOSED`](#lousho_workspace_runtime_closed), [`LOUSHO_WORKSPACE_RUN_ACTIVE`](#lousho_workspace_run_active) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, resolving page agents with `resolveAttachments()`, assembling prompts with `assembleMainInstructions()`, applying the policy at page start with `pagePolicy()`, running a page with `runPage()`, and running a workspace session with `openWorkspaceSession()`, and running a workspace through `createWorkspaceRuntime()`. |
 
 ## Configuration
 
@@ -10886,11 +10886,11 @@ workspace a main agent in `main-agent/`.
 **Means:** `createWorkspaceRuntime(source, host)` got a host that misses a
 dependency (the message names the field, such as `host.stores.threads`), or a
 `limits.maxConcurrentRuns` that is not a positive integer. At run time it also
-means a tool's policy requires a sandbox and the host gave no `bindTool` to
-run it in one.
+means a tool's scope grants secrets, limits it to network hosts or requires a
+sandbox, and the host gave no `bindTool` to enforce that.
 
-**Fix:** pass the named field; pass `bindTool` when the ceiling or the
-workspace policy sets `sandbox.required`.
+**Fix:** pass the named field; pass `bindTool` whenever the policy grants a
+tool secrets or hosts, or sets `sandbox.required`.
 
 **Example:** a host built without `stores.threads`.
 
@@ -10902,6 +10902,16 @@ runtime after its `close()`.
 **Fix:** create a new runtime with `createWorkspaceRuntime()`.
 
 **Example:** a request handled while the service shuts down.
+
+### LOUSHO_WORKSPACE_RUN_ACTIVE
+
+**Means:** `run()` or `runPage()` got a `runId` that a run of the same
+runtime is still using. The runtime refuses it, so `cancel()` and `close()`
+keep reaching the run that holds the id.
+
+**Fix:** pass a new run id, or leave `runId` out so the runtime makes one.
+
+**Example:** two requests that both pass `runId: 'job-1'` while the first runs.
 
 ## Auth
 
@@ -25167,7 +25177,7 @@ A workspace agent is read from its files and nothing in it is run, so settings i
 | Approvals | A tool in `approvals.require` asks for approval every time, in an agent run and in a workflow `toolCall` step, whatever an `allow` rule or the permission mode says. So does a Studio tool ref with `approval: 'always'`. A host tool's own `needsApproval` ask is kept the same way: an agent `allow` never lifts it. A deny still denies |
 | Capabilities | `pagePolicy()` fails page start with `LOUSHO_WORKSPACE_CAPABILITY_MISSING` (`capability-missing`) when `capabilities.require` names something no tool in the page's effective toolsets provides. A tool that a ceiling or workspace rule denies outright provides nothing. A capability never grants a tool |
 
-`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset. `attachmentAgent()` is the only place the page runtime builds a page agent, and `createMainAgent()` the only place it builds the main agent: it takes those options, passes every tool through the host's `bindTool(descriptor, scope)` with the tool's `secrets`, `network.allowHosts` and `sandbox.required`, and the host enforces them.
+`agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset. `attachmentAgent()` is the only place the page runtime builds a page agent, and `createMainAgent()` the only place it builds the main agent: it takes those options, passes every tool through the host's `bindTool(descriptor, scope)` with the tool's `secrets`, `network.allowHosts` and `sandbox.required`, and the host enforces them. Under `createWorkspaceRuntime` a host without `bindTool` can run only tools whose scope grants no secrets, no hosts and no sandbox; any other tool fails the run with `LOUSHO_WORKSPACE_HOST_INVALID`, so nothing the policy narrows ever runs unenforced (see [The workspace runtime and its host](#the-workspace-runtime-and-its-host)).
 
 ```ts
 import { narrowPolicy, pagePolicy, type HostToolRegistry } from 'lousho/workspaces';
@@ -25266,6 +25276,25 @@ The main agent is built from `main-agent/` with the shared policy and its own to
 Each tool calls `runPage()` and returns the `summary`, the error and the artifact refs between `<untrusted>` and `</untrusted>`, after a line telling the main agent to treat it as data; any such tags in the page's text are stripped first. Because results land in the main agent's thread, a follow-up ("make a Facebook version") sees them, while the page sees only its own task and inputs.
 
 The runtime, not the prompt, enforces two main-harness settings. `limits.maxConcurrentPages` caps the page runs in flight at once, clamped to `workspace.json`'s `defaults.limits.maxConcurrentPages` (default 3). A page that ends `failed` or `timed-out` is never re-run automatically, except once when `onPageFailure` is `retry-once`; the retry's record names the run it retries in `retries`, and its tool result tells the main agent not to run the page again. Router tools exist only when there is a main agent, so one page whose harness cannot be resolved never blocks direct runs of the others. The main agent's model follows the same rules as a page agent's (its own default, then `defaults.model`), wrapped by `models.provider`.
+
+### The workspace runtime and its host
+
+`createWorkspaceRuntime(source, host)` is the one entry point for the service, the CLI, Forge and tests. It reads the workspace only through `source` and gets everything environmental from `host` (a `WorkspaceHost`); a missing field fails construction with `LOUSHO_WORKSPACE_HOST_INVALID` naming it, such as `host.stores.threads`.
+
+| Host field | What it gives the runtime |
+| --- | --- |
+| `tools` | The `HostToolRegistry`: each tool's descriptor, declared secrets and capabilities |
+| `policyCeiling` | The most the host allows; `shared/policies/policy.json` only narrows it |
+| `providers.resolve(model)` | The provider for each resolved model string; every model, the main agent's too, goes through it, so it is where a host refuses a model |
+| `secrets.resolve(ref)` | Secret values; each tool's binder gets a resolver that answers only the secrets granted to that tool |
+| `stores` | `artifacts`, `threads` (the main agent's transcripts), `runs` (rows stamped with the revision, `threadId` and the parent run), `checkpoints`, and optionally `events` (run event logs) |
+| `globals` | `agents` and `profiles` for `global:` refs |
+| `limits.maxConcurrentRuns` | Workspace and direct page runs executing at once; more wait their turn |
+| `bindTool(descriptor, scope, secrets)` | Enforces each tool's secrets, hosts and sandbox. Optional, but without it only tools whose scope grants no secrets, no hosts and no sandbox run |
+| `checks` | The check registry by name (D1). No runtime path runs criteria yet; the goal engine (P3.6) and check runs (P5.13) read it |
+| `createMemory`, `exporter`, `engines`, `newRunId` | Shared memory slots, spans, engines by type and run ids |
+
+`runtime.run(message, { threadId, pageId?, inputs?, signal?, runId? })` streams `started` (with the pinned revision), each page run's events as `page`, and `finished` with the status, the usage of the main agent plus every page, and each page's usage. `runtime.runPage(pageId, input, { signal?, runId?, threadId?, onEvent? })` runs a page directly; with `threadId` the run is noted in that thread, and the main agent can list and revise it only when it routes to that page. `cancel(runId)` aborts a workspace run, a page it started or a direct run; `explain(pageId)` gives the effective harness and its hash; `close()` aborts every run, waits for them and refuses new ones. Each run loads one revision and keeps it to the end, even when the source is written meanwhile. A `runId` that is already running is refused with `LOUSHO_WORKSPACE_RUN_ACTIVE`. The runtime keeps the page runs of its 256 most recently used threads in memory; the transcripts stay in `stores.threads`.
 
 ### Type switching
 
@@ -25430,7 +25459,7 @@ These are the rules the contracts enforce. The number is the rule's id in the pr
 
 ## The runtime pipeline (P1)
 
-The page runtime is built (`runPage`, above); the main agent and router are not built yet. The planned order, from a request to a reply, is: load the workspace from a source, resolve agents and harness layers, resolve shared context, apply policy under the host's limit, run the main agent (when there is one), route to a page, compose the page's harness, run the page's engine, validate the output against `outputs.schema`, and return a `PageResult` to the main agent. Everything the pipeline reads is defined on this page, and a new field lands in its schema, its JSON Schema and this page in the same change as its first reader.
+The page runtime (`runPage`), the main agent and router (`openWorkspaceSession`) and the workspace runtime (`createWorkspaceRuntime`) are built, above. The planned order, from a request to a reply, is: load the workspace from a source, resolve agents and harness layers, resolve shared context, apply policy under the host's limit, run the main agent (when there is one), route to a page, compose the page's harness, run the page's engine, validate the output against `outputs.schema`, and return a `PageResult` to the main agent. Everything the pipeline reads is defined on this page, and a new field lands in its schema, its JSON Schema and this page in the same change as its first reader.
 
 ## JSON Schema export
 

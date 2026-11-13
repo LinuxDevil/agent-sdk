@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import { fileStore } from '../../storage/fileStore';
-import { SqliteStore } from '../../storage/sqlite/SqliteStore';
 import { fileRunLedger } from './fileLedger';
 import { migrateHostTables, postgresSqlClient, sqliteClientOnly, sqliteSqlClient, type PgQueryable, type PostgresOptions, type SqlClient } from './sql';
 import { sqlCheckpointStore, sqlRunLedger, sqlSessionStore } from './sqlBackend';
@@ -12,22 +11,16 @@ export function fileHostBackend(dir: string): HostBackend {
   return parts;
 }
 
-/** One SQLite file: the existing `SqliteStore` for sessions and checkpoints, plus the run tables. For tests and Forge-only. Given a `sqliteSqlClient` instead of a path, it keeps everything in tables on that shared connection and leaves it open, so the stores and a `sqliteWorkspaceSource` on the same file use one connection. */
+/** One SQLite file holding the `ws_*` tables for threads, checkpoints, runs and events, the same layout as Postgres. For tests and Forge-only. Given a path it opens and owns one connection; given a `sqliteSqlClient` it uses that shared connection and leaves it open, so the stores and a `sqliteWorkspaceSource` on the same file use one connection. */
 export async function sqliteHostBackend(db: string | SqlClient): Promise<HostBackend> {
   if (typeof db !== 'string') return sqlHostBackend(sqliteClientOnly(db, 'sqliteHostBackend'), async () => undefined);
-  const path = db;
-  const agent = new SqliteStore(path);
-  const client = sqliteSqlClient(path);
-  await migrateHostTables(client);
-  const parts: BackendParts = {
-    agent,
-    ledger: sqlRunLedger(client),
-    async close() {
-      agent.close();
-      await client.close();
-    },
-  };
-  return parts;
+  const client = sqliteSqlClient(db);
+  try {
+    return await sqlHostBackend(client, () => client.close());
+  } catch (error) {
+    await client.close();
+    throw error;
+  }
 }
 
 async function sqlHostBackend(client: SqlClient, close: () => Promise<void>): Promise<HostBackend> {

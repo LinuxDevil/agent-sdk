@@ -267,8 +267,115 @@ describe('the workspace runtime host', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(values).toEqual(['value-of-GRANTED', undefined]);
     const unbound = pageHostOf(testHost('coding', {}));
-    expect(unbound.bindTool(descriptor, scope)).toBe(descriptor);
-    expect(() => unbound.bindTool(descriptor, { ...scope, sandbox: { required: true } })).toThrow(expect.objectContaining({ code: 'LOUSHO_WORKSPACE_HOST_INVALID' }));
+    const open: PageToolScope = { ...scope, secrets: [] };
+    expect(unbound.bindTool(descriptor, open)).toBe(descriptor);
+    for (const narrowed of [scope, { ...open, network: { allowHosts: ['api.example.com'] } }, { ...open, sandbox: { required: true } }]) {
+      expect(() => unbound.bindTool(descriptor, narrowed)).toThrow(expect.objectContaining({ code: 'LOUSHO_WORKSPACE_HOST_INVALID' }));
+    }
     expect(() => unbound.provider?.(undefined)).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_MISSING_PROVIDER' }));
   });
+});
+
+describe('the workspace runtime runs', () => {
+  it('refuses a runId that is already active, and cancel still reaches the first run', async () => {
+    const host = testHost('coding', {}, { engines: fakeEngines({ waitForAbort: true }) });
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    const first = runtime.runPage('support-triage', triage(), { runId: 'same' });
+    expect(() => runtime.runPage('support-triage', triage(), { runId: 'same' })).toThrow(expect.objectContaining({ code: 'LOUSHO_WORKSPACE_RUN_ACTIVE' }));
+    expect(() => runtime.run('again', { threadId: 'thread-a', runId: 'same' })).toThrow(expect.objectContaining({ code: 'LOUSHO_WORKSPACE_RUN_ACTIVE' }));
+    expect(runtime.cancel('same')).toBe(true);
+    expect((await first).status).toBe('cancelled');
+    await runtime.close();
+  });
+
+  it('a page run whose row cannot be written leaves nothing active', async () => {
+    const host = testHost('coding', { 'mock/mock-model': mockModel([]) }, { engines: fakeEngines() });
+    const start = host.stores.runs.start.bind(host.stores.runs);
+    host.stores.runs.start = async (run) => (run.pageId === '' ? start(run) : Promise.reject(new Error('disk full')));
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    await expect(collect(runtime.run('Rank it', { threadId: 'thread-f', runId: 'ws-f', pageId: 'support-triage', inputs: { report: 'Down.' } }))).rejects.toThrow('disk full');
+    expect(runtime.cancel('run-1')).toBe(false);
+    expect(runtime.cancel('ws-f')).toBe(false);
+    host.stores.runs.start = start;
+    expect((await runtime.runPage('support-triage', triage(), { runId: 'run-1' })).status).toBe('ok');
+    await runtime.close();
+  });
+
+  it('run rows carry the thread, and a nested page run names its workspace run as parent', async () => {
+    const host = testHost('coding', { 'mock/mock-model': mockModel([]) }, { engines: fakeEngines() });
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    const events = await collect(runtime.run('Rank it', { threadId: 'thread-r', runId: 'ws-r', pageId: 'support-triage', inputs: { report: 'Down.' } }));
+    const finished = events.at(-1);
+    const pageRunId = finished?.type === 'finished' ? finished.pages[0]?.runId : undefined;
+    expect(await host.stores.runs.get('ws-r')).toMatchObject({ pageId: '', threadId: 'thread-r' });
+    expect(await host.stores.runs.get(pageRunId ?? '')).toMatchObject({ pageId: 'support-triage', threadId: 'thread-r', parentRunId: 'ws-r' });
+    await runtime.runPage('support-triage', triage(), { runId: 'direct-r', threadId: 'thread-r' });
+    expect(await host.stores.runs.get('direct-r')).toMatchObject({ threadId: 'thread-r' });
+    expect((await host.stores.runs.get('direct-r'))?.parentRunId).toBeUndefined();
+    await runtime.close();
+  });
+
+  it('maxConcurrentRuns queues runs beyond the cap', async () => {
+    let release!: () => void;
+    const hold = new Promise<void>((resolve) => (release = resolve));
+    let entered = 0;
+    let firstIn!: () => void;
+    const firstStarted = new Promise<void>((resolve) => (firstIn = resolve));
+    const host = testHost('coding', {}, { limits: { maxConcurrentRuns: 1 }, engines: fakeEngines({ hold, entered: () => ((entered += 1), firstIn()) }) });
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    const first = runtime.runPage('support-triage', triage(), { runId: 'q-1' });
+    const second = runtime.runPage('support-triage', triage(), { runId: 'q-2' });
+    await firstStarted;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(entered).toBe(1);
+    expect(await host.stores.runs.get('q-2')).toBeUndefined();
+    release();
+    await Promise.all([first, second]);
+    expect(entered).toBe(2);
+    await runtime.close();
+  });
+
+  it('close aborts in-flight runs and waits for them', async () => {
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const host = testHost('coding', {}, { engines: fakeEngines({ waitForAbort: true, entered: () => entered() }) });
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    const running = runtime.runPage('support-triage', triage(), { runId: 'c-1' });
+    await started;
+    await runtime.close();
+    expect((await running).status).toBe('cancelled');
+    expect((await host.stores.runs.get('c-1'))?.status).toBe('cancelled');
+  });
+
+  it('cancel of a workspace run stops the page it started', async () => {
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => (entered = resolve));
+    const host = testHost('coding', { 'mock/mock-model': mockModel([]) }, { engines: fakeEngines({ waitForAbort: true, entered: () => entered() }) });
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    const events = collect(runtime.run('Rank it', { threadId: 'thread-c', runId: 'ws-c', pageId: 'support-triage', inputs: { report: 'Down.' } }));
+    await started;
+    expect(runtime.cancel('ws-c')).toBe(true);
+    const finished = (await events).at(-1);
+    expect(finished).toMatchObject({ type: 'finished', status: 'cancelled' });
+    const pageRunId = finished?.type === 'finished' ? finished.pages[0]?.runId : undefined;
+    expect((await host.stores.runs.get(pageRunId ?? ''))?.status).toBe('cancelled');
+    expect((await host.stores.runs.get('ws-c'))?.status).toBe('cancelled');
+    await runtime.close();
+  });
+
+  it('keeps the page runs of the most recent threads only, and an evicted thread starts without them', async () => {
+    const priors: (string | undefined)[] = [];
+    const factory = fakeEngines().single;
+    const engines: EngineRegistry = { single: (setup) => (priors.push(setup.prior?.runId), factory?.(setup) ?? ({} as never)) };
+    const host = testHost('coding', {}, { engines });
+    const runtime = createWorkspaceRuntime(memorySource(files('coding')), host);
+    await runtime.runPage('support-triage', triage(), { runId: 'kept-0', threadId: 'thread-0' });
+    await runtime.runPage('support-triage', { ...triage(), revise: { runId: 'kept-0', instruction: 'Shorter.' } }, { threadId: 'thread-0' });
+    expect(priors.at(-1)).toBe('kept-0');
+    for (let index = 1; index <= 256; index += 1) await runtime.runPage('support-triage', triage(), { threadId: `thread-${index}` });
+    await runtime.runPage('support-triage', { ...triage(), revise: { runId: 'kept-0', instruction: 'Shorter.' } }, { threadId: 'thread-0' });
+    expect(priors.at(-1)).toBeUndefined();
+    expect((await host.stores.threads.load('thread-0'))?.length).toBe(3);
+    await runtime.close();
+  }, 120_000);
 });
