@@ -61,6 +61,24 @@
 .serve-card-origins {
   min-height: 64px;
 }
+.serve-card-mcp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.serve-card-subhead {
+  margin: 0;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.serve-card-hint {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
 .serve-card-snippet {
   border: 1px solid var(--border);
   border-radius: var(--radius);

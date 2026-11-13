@@ -24,13 +24,14 @@
 import path from 'node:path';
 import { Router, type Express, type Request as ExpressRequest, type Response as ExpressResponse } from 'express';
 import {
+  ConfigurationError,
   createRouteHandler,
   FileSessionStore,
   type AgentSpecV2,
   type SimpleAgent,
 } from 'lousho';
 import { fileTraceExporter } from 'lousho/traces';
-import type { ServeAgentConfig, ServeStatus, ServeTokenReveal } from '../../shared/wireTypes';
+import type { McpServeStatus, ServeAgentConfig, ServeStatus, ServeTokenReveal } from '../../shared/wireTypes';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { isValidAgentId } from '../types';
 import type { SecretsStore } from '../secretsStore';
@@ -45,6 +46,7 @@ import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceContext } from '../workspace/context';
 import { ServeConfigInvalidError, type ServeConfigStore, type ServeAgentEntry } from './serveConfigStore';
 import { sendFetchResponse, toFetchRequest } from './fetchBridge';
+import { McpNotPublishedError, type McpServeManager } from './mcpServers';
 
 /** What the default agent builder needs beyond the workspace itself (all Studio-global stores). */
 export interface ServeBuildServices {
@@ -65,6 +67,8 @@ export interface ServeDeps extends ServeBuildServices {
   config: ServeConfigStore;
   /** Test seam - defaults to `buildRunnableAgent` + a `FileSessionStore` under `.lousho/agents/<id>/serve-sessions`. */
   buildAgent?: ServeAgentBuilder;
+  /** The MCP server manager behind `/agents/:id/serve/mcp*` (X03); absent in tests that don't exercise it. */
+  mcpServers?: McpServeManager;
 }
 
 interface CachedHandler {
@@ -284,10 +288,55 @@ export function createServeSurface(deps: ServeDeps): ServeSurface {
           // The cached handler still carries the OLD bearer - drop it so the
           // next request rebuilds with the new token.
           cache.delete(workspaceOf(req).ref.id, id);
+          // A running MCP server holds the old bearer too - restart it so
+          // the rotated token is the one it checks. A restart failure must
+          // not fail the rotation itself.
+          try {
+            await deps.mcpServers?.restart(id);
+          } catch (error) {
+            console.warn(`[serve] MCP restart after token rotation failed for ${id}: ${error instanceof Error ? error.message : String(error)}`);
+          }
           const reveal: ServeTokenReveal = { token };
           res.json(reveal);
         })
       );
+      // The MCP server lifecycle (X03): status, start, stop. The manager
+      // reads the same published spec + serve token the HTTP surface uses.
+      if (deps.mcpServers !== undefined) {
+        const mcp = deps.mcpServers;
+        const mcpStatus = (id: string): McpServeStatus => mcp.status(id);
+        app.get(
+          '/agents/:id/serve/mcp',
+          asyncRoute(async (req, res) => {
+            res.json(mcpStatus(paramId(req)));
+          })
+        );
+        app.post(
+          '/agents/:id/serve/mcp',
+          asyncRoute(async (req, res) => {
+            const id = paramId(req);
+            try {
+              res.json(await mcp.start(id));
+            } catch (error) {
+              if (error instanceof McpNotPublishedError) {
+                sendError(res, 409, 'Publish a version first', error.code);
+                return;
+              }
+              if (error instanceof ConfigurationError) {
+                sendError(res, 422, error.message, 'LOUSHO_MCP_PEER_MISSING');
+                return;
+              }
+              throw error;
+            }
+          })
+        );
+        app.delete(
+          '/agents/:id/serve/mcp',
+          asyncRoute(async (req, res) => {
+            res.json(await mcp.stop(paramId(req)));
+          })
+        );
+      }
     },
   };
 }
