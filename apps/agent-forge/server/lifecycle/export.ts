@@ -103,7 +103,7 @@ async function datasetExamples(name: string, deps: BundleDeps, warnings: string[
   }));
 }
 
-/** The distinct dataset names `spec.evals` gates on (the section is pending in spec v2; read defensively). */
+/** The distinct dataset names `spec.evals` gates on. */
 function evalDatasetNames(spec: AgentSpecV2): string[] {
   const evals = (spec as { evals?: unknown }).evals;
   if (!Array.isArray(evals)) return [];

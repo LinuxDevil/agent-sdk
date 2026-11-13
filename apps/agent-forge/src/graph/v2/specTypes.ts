@@ -63,42 +63,11 @@ export { EXECUTABLE_TYPES } from 'lousho/spec';
 export type { TriggerSpec, ChannelKind } from 'lousho/spec';
 export { CHANNEL_SECRET_KEYS } from 'lousho/spec';
 
-/**
- * One `spec.abortListeners` entry — a trigger-correlated abort rule. The SDK
- * has not shipped this section yet (`AgentSpecV2.abortListeners` is `never`),
- * so the canvas forward-declares the planned shape here; when the SDK type
- * lands this becomes a re-export like the others.
- */
-export interface AbortListenerSpec {
-  /** Stable id, used for the `abort:<id>` node id. */
-  id: string;
-  /** Which trigger's runs this listener can cancel. */
-  triggerId: string;
-  /** safeExpression over the incoming event, e.g. "event.action == 'closed'". */
-  when: string;
-  /** safeExpression correlating to the run's trigger event, e.g. "event.pr == run.event.pr". */
-  match: string;
-  /** Which runs may be cancelled. */
-  scope: 'queued' | 'running' | 'both';
-}
+/** One `spec.abortListeners` entry — the SDK's own type (R03a), re-exported like the trigger types. */
+export type { AbortListenerSpec } from '../../../../../src/spec/v2/abortListeners';
 
 /**
- * One `spec.evals` entry — a publish gate over an observe dataset. The SDK has
- * not shipped this section yet (`AgentSpecV2.evals` is `never`), so the canvas
- * forward-declares the planned shape here; when the SDK type lands this
- * becomes a re-export like the others.
+ * The `spec.evals` gate types (X01a): the SDK's own `evals` section, shared
+ * with the publish gate runner the same way the trigger/abort types are.
  */
-export interface EvalGateSpec {
-  /** Observe dataset name. */
-  dataset: string;
-  /** Gates that all must pass. */
-  gates: Array<
-    | { calledTool: string }
-    | { notCalledTool: string }
-    | { maxCostUsd: number }
-    | { maxSteps: number }
-    | { judge: { model: string; rubric: string; minScore: number } }
-  >;
-  /** Fraction of dataset rows that must pass, 0..1. */
-  minPassRate: number;
-}
+export type { EvalGateSpec } from '../../../../../src/spec/v2/evals';
