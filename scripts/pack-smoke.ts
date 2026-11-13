@@ -33,7 +33,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { IS_WIN, SDK_NAME, checkBin, checkModuleLoads, createReporter, listExports, mustRun as mustRunIn, run } from './smokeKit';
+import { IS_WIN, SDK_NAME, checkBin, checkModuleLoads, createReporter, dryRunPublish, listExports, mustRun as mustRunIn, run } from './smokeKit';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -155,21 +155,6 @@ function checkTarball(entry: PackEntry, tarball: string): void {
     if (!/\.(js|mjs|cjs|ts|mts|json|map|md|txt|yaml|yml)$/.test(f.path) && !f.path.startsWith('bin/')) continue;
     const text = fs.readFileSync(path.join(extracted, 'package', f.path), 'utf8');
     for (const re of SECRET_PATTERNS) if (re.test(text)) fail(`${f.path} matches secret pattern ${re}`);
-  }
-}
-
-function dryRunPublish(label: string, tarball: string, cwd: string): void {
-  // `--tag next`: the versions are prereleases and npm 11 refuses a prerelease without an explicit tag.
-  const res = run('npm', ['publish', tarball, '--dry-run', '--tag', 'next', '--access', 'public'], cwd);
-  const out = res.stdout + res.stderr;
-  // After a release the version in the repo is the one on npm until the next bump. The dry run
-  // then fails only on that; the tarball itself was accepted, which is what this step checks.
-  if (/cannot publish over the previously published versions/i.test(out)) {
-    log(`npm publish --dry-run ${label}: ok (this version is already on npm; bump it before the next release)`);
-  } else if (res.status !== 0 || /npm (error|ERR!)/.test(out)) {
-    fail(`npm publish --dry-run ${label} failed:\n${out}`);
-  } else {
-    log(`npm publish --dry-run ${label}: ok`);
   }
 }
 
@@ -320,8 +305,8 @@ function main(): void {
     const sdk = pack('(sdk)', REPO_ROOT, packDir);
     const creator = pack('(create-lousho)', path.join(REPO_ROOT, 'packages', 'create-lousho'), packDir);
     checkTarball(sdk.entry, sdk.tarball);
-    dryRunPublish('(sdk)', sdk.tarball, base);
-    dryRunPublish('(create-lousho)', creator.tarball, base);
+    dryRunPublish(rep, '(sdk)', sdk.tarball, base);
+    dryRunPublish(rep, '(create-lousho)', creator.tarball, base);
 
     const peers = (process.env.PACK_SMOKE_PEERS ?? DEFAULT_PEERS).split(/\s+/).filter(Boolean);
     const fileUrl = (p: string) => `file:${p.replace(/\\/g, '/')}`;

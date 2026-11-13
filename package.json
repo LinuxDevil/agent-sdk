@@ -394,6 +394,7 @@
     "example:openrouter": "tsx examples/openrouter/index.ts",
     "size-check": "tsx scripts/size-check.ts",
     "pack-smoke": "tsx scripts/pack-smoke.ts",
+    "pack-smoke:studio": "tsx scripts/pack-smoke-studio.ts",
     "registry:build": "tsx scripts/build-registry.ts",
     "registry:check": "tsx scripts/build-registry.ts --check",
     "registry-smoke": "tsx scripts/registrySmoke.ts",
