@@ -641,6 +641,27 @@ export interface AddWorkspaceRequest {
   root: string;
 }
 
+/** The global-state files a workspace's old project-level `.lousho/` can still hold (W03a's one-time import). */
+export type LegacyImportItem = 'settings' | 'secrets';
+
+/**
+ * `GET /workspaces/:ws/legacy-import`'s response: which old files the
+ * workspace's `.lousho/` still has that the Studio home lacks, and
+ * whether the offer was already handled (`null` while it still can be).
+ */
+export interface LegacyImportStatus {
+  workspaceId: string;
+  found: LegacyImportItem[];
+  handled: 'imported' | 'skipped' | null;
+}
+
+/** `POST /workspaces/:ws/legacy-import`'s response: how many entries were copied (existing home values are never overwritten). */
+export interface LegacyImportResult {
+  profiles: number;
+  providerKeys: number;
+  namedSecrets: number;
+}
+
 /** One `POST /playground/run` message (server/playground.ts; the Playground screen's editor rows). */
 export interface PlaygroundMessage {
   role: 'system' | 'user' | 'assistant';

@@ -31,6 +31,8 @@ const E2E_STUDIO_TOKEN = 'e2e-studio-token';
 const inheritedEnv = { ...process.env };
 delete inheritedEnv.LOUSHO_OBSERVE;
 const E2E_OBSERVE_URL = process.env.LOUSHO_STUDIO_E2E_OBSERVE_URL ?? 'http://127.0.0.1:1';
+/** W03a: the Studio home is ~/.lousho/studio by default - the e2e server gets its own temp home so CI never touches a real one. */
+const studioHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-forge-e2e-home-'));
 
 export default defineConfig({
   testDir: './e2e',
@@ -58,6 +60,7 @@ export default defineConfig({
       LOUSHO_STUDIO_COLLECTOR: '0',
       // No daemon here: keep the LLM-judge loop (server/judge.ts) from polling it.
       LOUSHO_STUDIO_JUDGE: '0',
+      LOUSHO_STUDIO_HOME: studioHome,
     },
     url: `http://127.0.0.1:${port}/health`,
     reuseExistingServer: false,

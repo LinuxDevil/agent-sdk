@@ -69,6 +69,8 @@ import type {
   TemplateSummary,
   ToolPin,
   TraceDetailPayload,
+  LegacyImportResult,
+  LegacyImportStatus,
   TraceSummaryPayload,
   HostStatus,
   VersionListItem,
@@ -541,6 +543,29 @@ class RuntimeClient implements AgentApi {
    */
   async restartHost(id: string): Promise<HostStatus> {
     return this.forWorkspace(id).request(`/workspaces/${encodeURIComponent(id)}/host/restart`, { method: 'POST' });
+  }
+
+  // -------------------------------------------------------------------
+  // `/workspaces/:ws/legacy-import` - the one-time old-settings/secrets
+  // import offer (W03a; server/workspace/legacyImport.ts).
+  // -------------------------------------------------------------------
+
+  /** Which old project-level files `ws` still offers to import, and whether the offer was handled. */
+  // fallow-ignore-next-line unused-class-member -- contract surface: the import-offer UI lands in a later wave; the route + client ship together here
+  async legacyImportStatus(ws: string): Promise<LegacyImportStatus> {
+    return this.request(`/workspaces/${encodeURIComponent(ws)}/legacy-import`, { method: 'GET' });
+  }
+
+  /** Copies the missing settings/secrets into the Studio home; 409s `LOUSHO_LEGACY_IMPORT_EMPTY` when there is nothing. */
+  // fallow-ignore-next-line unused-class-member -- contract surface: the import-offer UI lands in a later wave; the route + client ship together here
+  async importLegacy(ws: string): Promise<LegacyImportResult> {
+    return this.request(`/workspaces/${encodeURIComponent(ws)}/legacy-import`, { method: 'POST' });
+  }
+
+  /** Dismisses the import offer for `ws`. */
+  // fallow-ignore-next-line unused-class-member -- contract surface: the import-offer UI lands in a later wave; the route + client ship together here
+  async skipLegacyImport(ws: string): Promise<void> {
+    await this.request(`/workspaces/${encodeURIComponent(ws)}/legacy-import/skip`, { method: 'POST' });
   }
 
   async run(
