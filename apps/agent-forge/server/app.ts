@@ -177,6 +177,14 @@ interface CreateAppBaseOptions {
   /** The `/workspaces` routes' store. Defaults to `new WorkspaceRegistry(studioPaths().workspaces)` when omitted. */
   workspaceRegistry?: WorkspaceRegistry;
   /**
+   * The resolver every request's workspace id (`x-lousho-workspace` or
+   * `?ws=`) resolves through - `startStudioServer` passes its
+   * `WorkspaceManager`, which lazily builds and disposes contexts for
+   * every registry entry. Omitted, `createApp` wraps the launch context
+   * in `singleWorkspace`, so every id but the launch one 404s (tests).
+   */
+  workspaces?: WorkspaceResolver;
+  /**
    * The app's one AuthorTurnRunner (turns are in-flight memory, so tests
    * pass their own to control the provider seam); defaults to
    * `createAuthorRunner` (author/wiring.ts) over the same
@@ -1023,13 +1031,14 @@ function legacyWorkspaceContext(
     runManager: options.runManager,
     events,
   });
+  const idleVersioner = createIdleVersioner(versions);
   return {
     ref: workspaceRefFor(options.baseDir),
     repo,
     agentStore: options.agentStore,
     versions,
     drafts,
-    idleVersioner: createIdleVersioner(versions),
+    idleVersioner,
     suggestions,
     // The legacy pair's RunManager carries its own host; this one exists to
     // satisfy the context shape (nothing reads ws.host yet - catalog/steer
@@ -1049,7 +1058,34 @@ function legacyWorkspaceContext(
     inbox,
     triggers,
     cron,
+    // Idempotent stop of this context's background services - the same
+    // pieces `startStudioServer`'s `close()` stops for the launch one.
+    // (A caller's `inbox`/`idleVersioner` test seams replace the fields
+    // afterwards; dispose still stops the originals it built.)
+    dispose: async () => {
+      inbox.stop();
+      triggers.stop();
+      cron.stop();
+      await idleVersioner.flushAll();
+    },
   };
+}
+
+/**
+ * The `forget` callback `DELETE /workspaces/:ws` gets when the injected
+ * resolver is a `WorkspaceManager`: it drops the warm context for the
+ * removed id. Structural (`forget` in the object) rather than
+ * `instanceof`, so a test's plain `WorkspaceResolver` needs no `forget`.
+ */
+function forgetWorkspace(resolver: WorkspaceResolver | undefined): ((id: string) => Promise<void>) | undefined {
+  if (resolver === undefined) return undefined;
+  const candidate = resolver as WorkspaceResolver & { forget?: (id: string) => Promise<void> };
+  return typeof candidate.forget === 'function' ? (id) => candidate.forget!(id) : undefined;
+}
+
+/** The injected `WorkspaceManager` when `startStudioServer` provides one, `singleWorkspace` around the launch context otherwise. */
+function workspaceResolverFor(workspaces: WorkspaceResolver | undefined, launch: WorkspaceContext): WorkspaceResolver {
+  return workspaces ?? singleWorkspace(launch);
 }
 
 export function createApp(options: CreateAppOptions): Express {
@@ -1072,9 +1108,9 @@ export function createApp(options: CreateAppOptions): Express {
   const alerts = options.alerts ?? new AlertStore(paths.alerts);
   const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog });
   // One resolver for the middleware below and the Author tools' per-call
-  // workspace lookup (PLAN 19.3 - until W02a it resolves the launch
-  // context whatever id comes in).
-  const workspaceResolver: WorkspaceResolver = singleWorkspace(workspace);
+  // workspace lookup (PLAN 19.3): the injected `WorkspaceManager` when
+  // `startStudioServer` provides one, `singleWorkspace` otherwise.
+  const workspaceResolver: WorkspaceResolver = workspaceResolverFor(options.workspaces, workspace);
   // One catalog for both the `/templates` routes and the `POST /agents`
   // template branch - Studio-global state, not per-workspace.
   const templates = options.templateCatalog ?? new TemplateCatalog();
@@ -1134,8 +1170,10 @@ export function createApp(options: CreateAppOptions): Express {
   app.use(express.json({ limit: '2mb' }));
   // Resolve every request's workspace before the first route so handlers
   // read their per-workspace stores from workspaceOf(req), never a
-  // closed-over singleton. Studio serves exactly one workspace today -
-  // the launch folder - so this changes nothing user-visible.
+  // closed-over singleton. Requests pick a workspace via
+  // `x-lousho-workspace` or `?ws=`; the injected `WorkspaceManager`
+  // builds contexts lazily (W02a), `singleWorkspace` serves only the
+  // launch folder.
   app.use(workspaceMiddleware(workspaceResolver));
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
@@ -1192,7 +1230,14 @@ export function createApp(options: CreateAppOptions): Express {
   // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:
   // the launch workspace's id is this app's `defaultId` and the one entry
   // DELETE refuses (workspace/workspaceRoutes.ts).
-  registerWorkspaceRegistryRoutes(app, { registry: workspaceRegistry, launchId: workspace.ref.id });
+  registerWorkspaceRegistryRoutes(app, {
+    registry: workspaceRegistry,
+    launchId: workspace.ref.id,
+    // DELETE drops the warm context too, when the resolver is a
+    // WorkspaceManager - structural check, not instanceof, so a test's
+    // plain resolver needs no `forget`.
+    forget: forgetWorkspace(options.workspaces),
+  });
   registerRunRoutes(app);
   registerChatRoutes(app);
   registerDebugRoutes(app);

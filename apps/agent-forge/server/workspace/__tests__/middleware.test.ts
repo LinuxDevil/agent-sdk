@@ -44,6 +44,7 @@ function ctx(id: string): WorkspaceContext {
     inbox: {} as InboxService,
     triggers: {} as TriggerHost,
     cron: {} as CronTriggers,
+    dispose: async () => {},
   };
 }
 
