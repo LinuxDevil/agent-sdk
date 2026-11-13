@@ -734,6 +734,26 @@ export interface AgentListItem {
 }
 
 /**
+ * One `GET /agents?ws=all` row (W06a): a workspace agent's `AgentListItem`
+ * tagged with the workspace it came from. W07a adds `ObservedAgentItem`
+ * and W08a `CodeAgentItem` to the `AnyAgentItem` union.
+ */
+export interface WorkspaceAgentItem extends AgentListItem {
+  kind: 'workspace';
+  workspaceId: string;
+}
+
+/** Every agent kind the aggregate `GET /agents?ws=all` can return. */
+export type AnyAgentItem = WorkspaceAgentItem;
+
+/** `GET /agents?ws=all`'s response: every workspace's agents plus the workspaces that could not be read. */
+export interface AllAgentsResponse {
+  items: AnyAgentItem[];
+  /** Workspaces that could not be read this time (folder missing, unreadable). */
+  skipped: { workspaceId: string; reason: string }[];
+}
+
+/**
  * Where an agent's publish pointer (L14a) stands: the pinned version, whether
  * the working copy still hashes to that version's spec, and when it was
  * pinned. `version: null` means nothing is published.

@@ -27,16 +27,15 @@
  *
  * Per-workspace stores come from `workspaceOf(req)` (the workspace
  * seam); the only dep is the Studio-global TemplateCatalog the
- * `{ template }` create branch reads. `toListItem`/`lastRunOf`/
- * `countsOf`/`toRecord` take a `WorkspaceContext`, never `req`, so a
- * later ticket can lift them verbatim.
+ * `{ template }` create branch reads. The `AgentListItem[]` builder
+ * (`toListItem`/`lastRunOf`/`countsOf`, now `agentListItems.ts`) and
+ * `toRecord` take repo-level sources, never `req`, so the aggregate
+ * `?ws=all` route reuses them verbatim (W06a).
  */
 import type { Express, Response } from 'express';
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import { LabelError, MAX_LABEL_LENGTH, MAX_LABELS, normalizeLabels } from '../../shared/labels';
 import type {
-  AgentLastRun,
-  AgentListItem,
   AgentMeta,
   AgentRecord,
   CanvasLayout,
@@ -54,61 +53,12 @@ import { withAgentLock } from '../storage/atomic';
 import { mergeLegacySave } from '../storage/legacySpec';
 import { TEMPLATE_ID_RE, type TemplateCatalog } from '../templates/templateCatalog';
 import { parseCanvasLayout } from './layoutValidation';
-import { listAgentTraces } from '../traceStore';
+import { buildAgentListItems } from './agentListItems';
 import type { WorkspaceContext } from '../workspace/context';
 import { workspaceOf } from '../workspace/middleware';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** The `counts` an `AgentListItem` carries: section sizes read off the spec as data. */
-function countsOf(spec: AgentSpecV2): AgentListItem['counts'] {
-  return {
-    tools: spec.tools?.length ?? 0,
-    mcpServers: Object.keys(spec.mcpServers ?? {}).length,
-    subagents: Object.keys(spec.subagents ?? {}).length,
-    triggers: spec.triggers?.length ?? 0,
-  };
-}
-
-/**
- * The `lastRun` of an `AgentListItem`: the live status while a run is not
- * `idle`, else the newest persisted trace's outcome, else `undefined` when
- * the agent has never run.
- */
-async function lastRunOf(ws: WorkspaceContext, id: string): Promise<AgentLastRun | undefined> {
-  const live = ws.runs.status(id);
-  if (live.status !== 'idle') {
-    return { status: live.status, at: live.updatedAt, ...(live.traceId !== undefined && { traceId: live.traceId }) };
-  }
-  const [trace] = await listAgentTraces(ws.ref.root, id, 1);
-  if (trace === undefined) return undefined;
-  return {
-    status: trace.status === 'error' ? 'error' : 'done',
-    at: new Date(trace.startTime + trace.durationMs).toISOString(),
-    traceId: trace.traceId,
-  };
-}
-
-/** One agent's `AgentListItem`; `undefined` when the id has no spec (it can disappear mid-list). */
-async function toListItem(ws: WorkspaceContext, id: string): Promise<AgentListItem | undefined> {
-  const spec = await ws.repo.readSpec(id);
-  if (spec === undefined) return undefined;
-  const [meta, lastRun] = await Promise.all([ws.repo.readMeta(id), lastRunOf(ws, id)]);
-  return {
-    id,
-    name: spec.name,
-    description: spec.description ?? '',
-    model: spec.model,
-    enabled: meta.enabled,
-    disabledReason: meta.disabledReason,
-    labels: meta.labels,
-    updatedAt: ws.repo.updatedAt(id),
-    publishedVersion: meta.publishedVersion,
-    ...(lastRun !== undefined && { lastRun }),
-    counts: countsOf(spec),
-  };
 }
 
 /** One agent's `AgentRecord` - the shared assembler in ../agentRecord. */
@@ -276,17 +226,9 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         res.json(await ws.agentStore.list());
         return;
       }
-      const items = await Promise.all(
-        ws.repo.listIds().map(async (id) => {
-          try {
-            return await toListItem(ws, id);
-          } catch (error) {
-            console.warn(`[agent-forge] skipping unreadable agent spec '${id}': ${(error as Error).message}`);
-            return undefined;
-          }
-        })
+      res.json(
+        await buildAgentListItems({ repo: ws.repo, root: ws.ref.root, runStatus: (id) => ws.runs.status(id) })
       );
-      res.json(items.filter((item): item is AgentListItem => item !== undefined));
     })
   );
 

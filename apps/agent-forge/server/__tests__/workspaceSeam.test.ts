@@ -77,19 +77,26 @@ describe('workspace seam', () => {
     expect(res.body.workspace.id).toMatch(WORKSPACE_ID_RE);
   });
 
-  it('serves the default workspace for no id, its id, ?ws=all and the header', async () => {
+  it('serves the default workspace for no id, its id and the header', async () => {
     const app = createApp({ agentStore, runManager, baseDir });
     const id = workspaceIdFor(baseDir);
     for (const req of [
       request(app).get('/agents'),
       request(app).get(`/agents?ws=${id}`),
-      request(app).get('/agents?ws=all'),
       request(app).get('/agents').set('x-lousho-workspace', id),
     ]) {
       const res = await req;
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
     }
+  });
+
+  it('?ws=all answers the aggregate envelope, not the single-workspace array (W06a)', async () => {
+    const app = createApp({ agentStore, runManager, baseDir });
+    const res = await request(app).get('/agents?ws=all');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(Array.isArray(res.body.skipped)).toBe(true);
   });
 
   it('rejects an unknown workspace id 404 and a malformed one 400', async () => {

@@ -130,6 +130,7 @@ import { FileCheckpointStore } from './checkpointStore';
 import { FileApprovalStore } from './approvalStore';
 import { InProcessAgentHost } from './host/inProcessAgentHost';
 import { registerAgentRoutes } from './routes/agentRoutes';
+import { registerAllAgentsRoute } from './routes/allAgentsRoute';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
@@ -184,6 +185,12 @@ interface CreateAppBaseOptions {
    * in `singleWorkspace`, so every id but the launch one 404s (tests).
    */
   workspaces?: WorkspaceResolver;
+  /**
+   * The warm workspace contexts `GET /agents?ws=all` reads live run
+   * status through (W06a). `startStudioServer` passes
+   * `() => manager.warm()`; the default is the launch context alone.
+   */
+  warm?: () => WorkspaceContext[];
   /**
    * The app's one AuthorTurnRunner (turns are in-flight memory, so tests
    * pass their own to control the provider seam); defaults to
@@ -1204,6 +1211,13 @@ export function createApp(options: CreateAppOptions): Express {
   // import routes: `import` is a valid agent id. Per-agent stores come
   // from workspaceOf(req); secrets/settings are Studio-global deps.
   registerPortabilityRoutes(app, { secretsStore: secrets, settings });
+  // `GET /agents?ws=all` - the cross-workspace aggregate (routes/
+  // allAgentsRoute.ts). Registered BEFORE the single-workspace /agents
+  // routes: it answers only the ALL_WORKSPACES request and next()s the
+  // rest. Warm contexts come from `options.warm` (the manager's), so a
+  // running agent still reports its live status; cold workspaces read
+  // through a bare AgentRepo.
+  registerAllAgentsRoute(app, { registry: workspaceRegistry, warm: options.warm ?? (() => [workspace]) });
   // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).

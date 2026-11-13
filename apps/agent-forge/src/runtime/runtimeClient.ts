@@ -11,6 +11,7 @@ import type {
   AddWorkspaceRequest,
   AgentListItem,
   AgentMeta,
+  AllAgentsResponse,
   AgentRecord,
   AgentRunStatusPayload,
   CanvasLayout,
@@ -70,7 +71,7 @@ import type {
   WorkspaceList,
   WorkspaceListItem,
 } from '../../shared/wireTypes';
-import { WORKSPACE_HEADER, WORKSPACE_QUERY } from '../../shared/workspace';
+import { ALL_WORKSPACES, WORKSPACE_HEADER, WORKSPACE_QUERY } from '../../shared/workspace';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
 import { activeWorkspace } from '../workspace/activeWorkspace';
 import {
@@ -221,6 +222,16 @@ class RuntimeClient implements AgentApi {
   /** The saved agents in the studio's `.lousho/agents/` - one `AgentListItem` per spec (`GET /agents`). */
   async listAgents(): Promise<AgentListItem[]> {
     return this.request('/agents', { method: 'GET' });
+  }
+
+  /**
+   * Every registered workspace's agents in one `AllAgentsResponse`
+   * (`GET /agents?ws=all`, W06a): bound to `ALL_WORKSPACES` so the
+   * `x-lousho-workspace` header can't override the aggregate with the
+   * URL's workspace.
+   */
+  async listAllAgentItems(): Promise<AllAgentsResponse> {
+    return this.forWorkspace(ALL_WORKSPACES).request('/agents?ws=all', { method: 'GET' });
   }
 
   /** One saved agent's `AgentRecord` - spec v2 plus meta, layout and the latest version - or undefined on a 404. */
