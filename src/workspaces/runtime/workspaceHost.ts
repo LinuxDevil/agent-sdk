@@ -70,9 +70,9 @@ export interface WorkspaceHost {
     /** Workspace and direct page runs executing at once; more wait their turn. Default unlimited. */
     maxConcurrentRuns?: number;
   };
-  /** Binds each tool to its scope; without it a tool runs as the host built it, and a tool whose scope requires a sandbox fails the run. */
+  /** Enforces each tool's secrets, network hosts and sandbox; without it only tools whose scope grants no secrets, no hosts and no sandbox can run, and any other tool fails the run. */
   bindTool?: ToolBinder;
-  /** Programmatic checks by name, for criteria whose `check` names one. */
+  /** Programmatic checks by name, for criteria whose `check` names one; no runtime path runs criteria yet, the goal engine (P3.6) and check runs (P5.13) read it. */
   checks?: WorkspaceCheckRegistry;
   /** Builds the slot for a `shared/memory/*.ts` file; workspace code never runs. */
   createMemory?: (file: SharedMemoryFile) => MemorySlot;
@@ -125,8 +125,15 @@ function scopedSecrets(secrets: SecretResolver, scope: PageToolScope): SecretRes
   return { resolve: async (ref) => (granted.has(secretKey(ref)) ? secrets.resolve(ref) : undefined) };
 }
 
+function unenforced(scope: PageToolScope): string | undefined {
+  if (scope.sandbox.required) return 'must run sandboxed';
+  if (scope.secrets.length > 0) return 'is granted secrets';
+  return scope.network.allowHosts.length > 0 ? 'is limited to network hosts' : undefined;
+}
+
 function unboundTool(descriptor: ToolDescriptor, scope: PageToolScope): ToolDescriptor {
-  if (scope.sandbox.required) throw hostError(`tool '${scope.name}' on '${scope.page}' must run sandboxed, and the host gave no bindTool to sandbox it`);
+  const need = unenforced(scope);
+  if (need !== undefined) throw hostError(`tool '${scope.name}' on '${scope.page}' ${need}, and the host gave no bindTool to enforce it`);
   return descriptor;
 }
 

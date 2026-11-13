@@ -63,7 +63,7 @@ export interface WorkspaceSessionContext {
   artifacts: (runId: string) => ArtifactSink;
   /** Makes a page run id; defaults to a random UUID. */
   newRunId?: () => string;
-  /** The main session's id, recorded as each page run's `parentRunId`. */
+  /** The main session's id: the thread the main agent's transcript is kept under. */
   sessionId?: string;
   /** Receives every page run's events with the run's id. */
   emit?: (runId: string, event: PageRunEvent) => void;
@@ -73,6 +73,8 @@ export interface WorkspaceSessionContext {
   mode?: LoadWorkspaceOptions['mode'];
   /** The workspace run whose shared memory instances the pages and the main agent share; one is made when absent. */
   sharedRun?: SharedContextRun;
+  /** The run every page run of this session records as its `parentRunId`; defaults to `sessionId`. */
+  parentRunId?: string;
   /** Where the main agent's thread is kept under `sessionId`; in memory when absent. */
   threads?: SessionStore;
   /** Called around every page run. */
@@ -293,7 +295,8 @@ function pageRouter(workspace: LoadedWorkspace, ctx: WorkspaceSessionContext & {
       const pageSignal = ctx.pageRuns ? await ctx.pageRuns.start(runId, input.pageId, signal) : signal;
       let result: PageResult | undefined;
       try {
-        result = await runPage(workspace, { ...input, ...(ctx.sessionId !== undefined && { parentRunId: ctx.sessionId }) }, pageContext(ctx, runId, pageSignal, prior));
+        const parentRunId = ctx.parentRunId ?? ctx.sessionId;
+        result = await runPage(workspace, { ...input, ...(parentRunId !== undefined && { parentRunId }) }, pageContext(ctx, runId, pageSignal, prior));
       } finally {
         await ctx.pageRuns?.end(runId, result);
       }

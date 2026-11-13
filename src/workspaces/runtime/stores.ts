@@ -31,6 +31,10 @@ export interface RunRecord extends WorkspaceScope {
   startedAt: number;
   /** Epoch milliseconds when the run ended; absent while it runs or waits for approval. */
   endedAt?: number;
+  /** The workspace thread the run belongs to. */
+  threadId?: string;
+  /** The workspace run that started this page run. */
+  parentRunId?: string;
 }
 
 /** What `runs.start` needs. */
@@ -41,6 +45,10 @@ export interface StartRun {
   pageId: string;
   /** The workspace revision the run is pinned to. */
   revision: string;
+  /** The workspace thread the run belongs to. */
+  threadId?: string;
+  /** The workspace run that started this page run. */
+  parentRunId?: string;
 }
 
 export interface LedgerEvent {
@@ -186,7 +194,16 @@ function runView(ledger: RunLedger, scope: WorkspaceScope): WorkspaceRunStore {
   };
   return {
     async start(run) {
-      const record: RunRecord = { ...scope, runId: part(run.runId, 'run id'), pageId: run.pageId, revision: run.revision, status: 'running', startedAt: Date.now() };
+      const record: RunRecord = {
+        ...scope,
+        runId: part(run.runId, 'run id'),
+        pageId: run.pageId,
+        revision: run.revision,
+        status: 'running',
+        startedAt: Date.now(),
+        ...(run.threadId !== undefined && { threadId: run.threadId }),
+        ...(run.parentRunId !== undefined && { parentRunId: run.parentRunId }),
+      };
       await ledger.insertRun(record);
       return record;
     },
