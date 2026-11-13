@@ -24938,6 +24938,8 @@ Then the provider wrapper applies. The effective provider is the page's `models.
 
 The schema checks only the name's format (lowercase letters, digits and dashes, starting with a letter). Whether the provider is registered on this host is a runtime check, since the host injects providers (R17).
 
+The host's `providers.resolve(model)` is the model allow-list. Every page agent and the main agent get their provider through it, so a host that must keep a workspace off some vendors or models throws there for any model it does not allow; the run then fails before any model call. The policy has no model list in v1 (G6).
+
 The improver is separate (R8): `improve.proposerModel` and any Determinator model are never wrapped by `models.provider`, and never go through `resolvePageModel`.
 
 ### harness.json (`lousho.harness/1`)
