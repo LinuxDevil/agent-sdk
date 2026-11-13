@@ -55,6 +55,8 @@ interface WarmEntry {
 export class WorkspaceManager implements WorkspaceResolver {
   private readonly contexts = new Map<string, WarmEntry>();
   private readonly building = new Map<string, Promise<WorkspaceContext>>();
+  /** Open-socket holds per workspace id (W02b `retain`): sweep never disposes a held context. */
+  private readonly holds = new Map<string, number>();
   private readonly maxWarm: number;
   private readonly idleMs: number;
   private readonly now: () => number;
@@ -110,15 +112,20 @@ export class WorkspaceManager implements WorkspaceResolver {
 
   /**
    * Disposes idle and over-capacity contexts: first every non-launch
-   * context unused for `≥ idleMs` with no run in flight; then, while more
-   * than `maxWarm` are warm, the least recently used one whose
-   * `runs.hasActiveRun()` is false. Candidates with a run in flight are
-   * always kept - going over the cap beats killing a run.
+   * context unused for `≥ idleMs` with no run in flight and no open-socket
+   * hold; then, while more than `maxWarm` are warm, the least recently
+   * used one whose `runs.hasActiveRun()` is false and that isn't held.
+   * Candidates with a run in flight or a live socket are always kept -
+   * going over the cap beats killing a run or a stream.
    */
   async sweep(): Promise<void> {
     const now = this.now();
     const idle = [...this.contexts.entries()].filter(
-      ([id, entry]) => id !== this.defaultId() && entry.disposing === undefined && now - entry.lastUsedAt >= this.idleMs
+      ([id, entry]) =>
+        id !== this.defaultId() &&
+        entry.disposing === undefined &&
+        (this.holds.get(id) ?? 0) === 0 &&
+        now - entry.lastUsedAt >= this.idleMs
     );
     for (const [, entry] of idle) {
       if (!entry.ctx.runs.hasActiveRun()) await this.disposeEntry(entry);
@@ -133,17 +140,38 @@ export class WorkspaceManager implements WorkspaceResolver {
     }
   }
 
+  /**
+   * Increments `id`'s open-socket hold and returns the release: sweep
+   * skips held contexts until every release ran. Idempotent per call -
+   * the count never drops below zero and a second release is a no-op.
+   */
+  retain(id: string): () => void {
+    this.holds.set(id, (this.holds.get(id) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = (this.holds.get(id) ?? 1) - 1;
+      if (next <= 0) this.holds.delete(id);
+      else this.holds.set(id, next);
+    };
+  }
+
   /** Drops a removed workspace's warm context now (`DELETE /workspaces/:ws` calls it after `registry.remove`). */
   // fallow-ignore-next-line unused-class-member -- invoked structurally through app.ts's forgetWorkspace wiring
   async forget(id: string): Promise<void> {
     const entry = this.contexts.get(id);
     if (entry === undefined || id === this.defaultId()) return;
+    // The registry entry is gone for good: any stale hold must not
+    // protect a later rebuild of the same id.
+    this.holds.delete(id);
     await this.disposeEntry(entry);
   }
 
   /** Disposes every context, launch included (server close). */
   async close(): Promise<void> {
     if (this.sweepTimer !== undefined) clearInterval(this.sweepTimer);
+    this.holds.clear();
     const entries = [...this.contexts.entries()];
     this.contexts.clear();
     await Promise.all(entries.map(([, entry]) => this.disposeQuietly(entry.ctx)));
@@ -179,11 +207,17 @@ export class WorkspaceManager implements WorkspaceResolver {
     return stat?.isDirectory() === true;
   }
 
-  /** The least recently used non-launch context with no run in flight, or `undefined` when every candidate is busy. */
+  /** The least recently used non-launch context with no run in flight and no open-socket hold, or `undefined` when every candidate is busy. */
   private lruDisposable(): WarmEntry | undefined {
     let lru: WarmEntry | undefined;
     for (const [id, entry] of this.contexts) {
-      if (id === this.defaultId() || entry.disposing !== undefined || entry.ctx.runs.hasActiveRun()) continue;
+      if (
+        id === this.defaultId() ||
+        entry.disposing !== undefined ||
+        entry.ctx.runs.hasActiveRun() ||
+        (this.holds.get(id) ?? 0) > 0
+      )
+        continue;
       if (lru === undefined || entry.lastUsedAt < lru.lastUsedAt) lru = entry;
     }
     return lru;

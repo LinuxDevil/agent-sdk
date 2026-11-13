@@ -103,6 +103,13 @@ export interface StartStudioServerOptions {
    * own `createIdleVersioner(versions)` (storage/idleVersioner.ts).
    */
   idleVersioner?: IdleVersioner;
+  /**
+   * The Studio home directory (`configureStudioHome`'s argument - every
+   * Studio-global store derives its files from it). Defaults to
+   * `<baseDir>/.lousho`, where the launch folder's files already live;
+   * tests pass a temp dir so they never touch a real home (W02b).
+   */
+  studioHome?: string;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -146,7 +153,7 @@ export async function startStudioServer(
   // The Studio home keeps every file where it was (the launch folder's
   // `.lousho/`); moving it to `~/.lousho/studio` is a later change of this
   // one default - every store below already reads its paths from it.
-  configureStudioHome(path.join(baseDir, '.lousho'));
+  configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
   const paths = studioPaths();
   const secretsStore = new SecretsStore(paths);
   const settingsStore = new SettingsStore(paths);
@@ -235,8 +242,8 @@ export async function startStudioServer(
   // One upgrade listener for every WS endpoint: the shared Host/Origin/
   // token gate runs in the router, then the first registered route wins.
   const upgradeRouter = createUpgradeRouter(server, access);
-  attachWebSocketServer(upgradeRouter, workspace.runs);
-  attachEventsWebSocket(upgradeRouter, workspace.events);
+  attachWebSocketServer(upgradeRouter, workspaces);
+  attachEventsWebSocket(upgradeRouter, workspaces);
   upgradeRouter.register(
     AUTHOR_STREAM_PATH,
     createAuthorUpgradeHandler({ runner: authorRunner, sessions: authorSessions })
