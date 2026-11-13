@@ -111,7 +111,7 @@ import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, 
 import { pinsProblem } from './pins';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
-import { configureStudioHome } from './workspace/studioPaths';
+import { configureStudioHome, type StudioPaths } from './workspace/studioPaths';
 import { workspaceRefFor } from './workspace/workspaceId';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 import { CodeAgentCache } from './workspace/codeAgentScan';
@@ -1204,12 +1204,14 @@ function workspaceResolverFor(workspaces: WorkspaceResolver | undefined, launch:
   return workspaces ?? singleWorkspace(launch);
 }
 
-export function createApp(options: CreateAppOptions): Express {
-  const { baseDir, staticDir, access, playgroundObserve, judge } = options;
-  // The Studio home is process-wide and configured once, here, before any
-  // request is served; request handlers never call studioPaths() - the
-  // stores below close over the paths resolved now.
-  const paths = configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
+/**
+ * The app's Studio-global stores and services - everything that closes
+ * over `studioPaths()` or the launch folder rather than a request's
+ * workspace. Split out of `createApp` so the route wiring there stays a
+ * flat list of `register*` calls.
+ */
+function createStudioStores(options: CreateAppOptions, paths: StudioPaths) {
+  const { baseDir } = options;
   const secrets = options.secretsStore ?? new SecretsStore(paths);
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
@@ -1235,15 +1237,9 @@ export function createApp(options: CreateAppOptions): Express {
     spendLog,
     ...(options.serveAgentBuilder !== undefined ? { buildAgent: options.serveAgentBuilder } : {}),
   });
-  const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog }, secrets);
-  // One resolver for the middleware below and the Author tools' per-call
-  // workspace lookup (PLAN 19.3): the injected `WorkspaceManager` when
-  // `startStudioServer` provides one, `singleWorkspace` otherwise.
-  const workspaceResolver: WorkspaceResolver = workspaceResolverFor(options.workspaces, workspace);
   // One catalog for both the `/templates` routes and the `POST /agents`
   // template branch - Studio-global state, not per-workspace.
   const templates = options.templateCatalog ?? new TemplateCatalog();
-  const docsDir = options.docsDir ?? path.join(sdkRootDir(), 'docs');
   // One collector for the proxy, the reporters, the judge routes and
   // `/settings/collector`; `startStudioServer` passes its started one.
   const collector =
@@ -1257,18 +1253,70 @@ export function createApp(options: CreateAppOptions): Express {
   // eval harness runs): the same instance the `/assistant/stream`
   // upgrade handler and the DELETE route's BUSY check share, so tests
   // inject theirs through `options.authorRunner` rather than racing a
-  // second set of turn slots.
-  const authorRunner =
+  // second set of turn slots. Needs the workspace resolver, so it is
+  // built in createApp after the launch context exists.
+  return {
+    secrets,
+    settings,
+    sessions,
+    workspaceRegistry,
+    spendLog,
+    passRunner,
+    alerts,
+    serve,
+    templates,
+    probeDeps,
+    collector,
+    codeAgentCache,
+  };
+}
+
+function createAuthorRunner(
+  options: CreateAppOptions,
+  stores: Pick<ReturnType<typeof createStudioStores>, 'secrets' | 'settings' | 'sessions' | 'templates'>,
+  workspaceResolver: WorkspaceResolver,
+) {
+  const { sessions, settings, secrets, templates } = stores;
+  return (
     options.authorRunner ??
     createAuthorServices({
       sessions,
       settings,
       secrets,
       templates,
-      docsDir,
+      docsDir: options.docsDir ?? path.join(sdkRootDir(), 'docs'),
       workspaceResolver,
       ...(options.mcpConnect ? { mcpConnect: options.mcpConnect } : {}),
-    }).runner;
+    }).runner
+  );
+}
+
+export function createApp(options: CreateAppOptions): Express {
+  const { baseDir, staticDir, access, playgroundObserve, judge } = options;
+  // The Studio home is process-wide and configured once, here, before any
+  // request is served; request handlers never call studioPaths() - the
+  // stores below close over the paths resolved now.
+  const paths = configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
+  const {
+    secrets,
+    settings,
+    sessions,
+    workspaceRegistry,
+    spendLog,
+    passRunner,
+    alerts,
+    serve,
+    templates,
+    probeDeps,
+    collector,
+    codeAgentCache,
+  } = createStudioStores(options, paths);
+  const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog }, secrets);
+  // One resolver for the middleware below and the Author tools' per-call
+  // workspace lookup (PLAN 19.3): the injected `WorkspaceManager` when
+  // `startStudioServer` provides one, `singleWorkspace` otherwise.
+  const workspaceResolver: WorkspaceResolver = workspaceResolverFor(options.workspaces, workspace);
+  const authorRunner = createAuthorRunner(options, { secrets, settings, sessions, templates }, workspaceResolver);
 
   const app = express();
   // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`
