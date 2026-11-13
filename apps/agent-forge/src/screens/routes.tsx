@@ -12,6 +12,7 @@ import { AgentListScreen } from './agentList/AgentListScreen';
 import { InboxScreen } from './inbox/InboxScreen';
 import { AgentDetailRoute } from './agentDetail/AgentDetailRoute';
 import { ObservedAgentRoute } from './observed/ObservedAgentScreen';
+import { CodeAgentRoute } from './codeAgent/CodeAgentRoute';
 import { TemplatesScreen } from './templates/TemplatesScreen';
 import { agentRedirect } from './agents/agentTabs';
 import { useWorkspaces } from '../workspace/WorkspacesProvider';
@@ -82,6 +83,7 @@ function ScreenFrame({ children }: { children: ReactNode }) {
 const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   agentList: AgentListScreen,
   observedAgent: ObservedAgentRoute,
+  codeAgent: CodeAgentRoute,
   inbox: InboxScreen,
   templates: TemplatesScreen,
   traces: TracesScreen,

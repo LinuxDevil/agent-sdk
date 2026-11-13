@@ -93,6 +93,10 @@ describe('screenFor', () => {
     expect(screenFor('#/w/app-1a2b3c/agents/support-bot/canvas')).toBe('agents');
     expect(screenFor('#/w/app-1a2b3c/agents/support-bot/overview')).toBe('agentDetail');
     expect(screenFor('#/observed/3f6b2a1c-9d4e-4f5a-8b7c-1d2e3f4a5b6c')).toBe('observedAgent');
+    // Code agents (W08b): legacy '/code-agents/:path' redirects into the
+    // launch workspace; the workspace-scoped row is the real route.
+    expect(screenFor('#/code-agents/agents%2Fsupport')).toBe('codeAgent');
+    expect(screenFor('#/w/app-1a2b3c/code-agents/agents%2Fsupport')).toBe('codeAgent');
     expect(screenFor('#/inbox')).toBe('inbox');
     expect(screenFor('#/templates')).toBe('templates');
     expect(screenFor('#/templates?category=Support&template=pr-reviewer')).toBe('templates');
