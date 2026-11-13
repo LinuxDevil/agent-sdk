@@ -1,7 +1,10 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+import { defineTool } from '../tools/defineTool';
+import type { ApiClient } from '../workspaces/client/apiClient';
 import { mockModel } from '../testing';
 import { fixtureClient } from '../workspaces/client/__fixtures__/fixtureClient';
 import { cliHost } from './workspaceHostCli';
@@ -199,10 +202,51 @@ describe('lousho workspace --service, more', () => {
     const page = capture({ client: fixtureClient() });
     expect(await runWorkspace(['show', '--service', 'http://svc', '--workspace', 'marketing', '--page', 'instagram-videos'], page.io)).toBe(0);
     const validate = capture({ client: fixtureClient() });
-    expect([0, 1]).toContain(await runWorkspace(['validate', '--service', 'http://svc', '--workspace', 'marketing'], validate.io));
+    expect(await runWorkspace(['validate', '--service', 'http://svc', '--workspace', 'marketing'], validate.io)).toBe(0);
+    expect(validate.out()).toBe('');
     const run = capture({ client: fixtureClient() });
     await runWorkspace(['run', 'go', '--service', 'http://svc', '--workspace', 'marketing', '--page', 'instagram-videos'], run.io);
     expect(run.out()).toContain('finished');
   });
 });
 
+describe('lousho workspace --service problems', () => {
+  it('prints each problem with its code and exits 1 on an error', async () => {
+    const base = fixtureClient();
+    const client: ApiClient = {
+      ...base,
+      call: (async (name: string, input: never) =>
+        name === 'getProblems'
+          ? [{ severity: 'error', code: 'PRD001', file: 'workspace.json', path: 'pages', message: 'bad pages' }]
+          : (base.call as (n: string, i: never) => Promise<unknown>)(name, input)) as ApiClient['call'],
+    };
+    const run = capture({ client });
+    expect(await runWorkspace(['validate', '--service', 'http://svc', '--workspace', 'marketing'], run.io)).toBe(1);
+    expect(run.out()).toBe('error\tPRD001\tworkspace.json#pages\tbad pages\n');
+  });
+});
+
+describe('lousho workspace run with host tools', () => {
+  it('runs a page whose agent calls a host tool through the host module bindTool', async () => {
+    const dir = await created('blank');
+    fs.mkdirSync(path.join(dir, 'agents/helper/tools'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'agents/helper/tools/echo.ts'), 'export {};\n');
+    fs.mkdirSync(path.join(dir, 'shared/policies'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'shared/policies/policy.json'), JSON.stringify({ permissions: [], tools: { allow: ['echo'] }, secrets: [] }));
+    fs.writeFileSync(path.join(root, 'inputs.json'), JSON.stringify({ request: 'hi' }));
+    const execute = vi.fn(async () => 'echoed');
+    const bound: unknown[] = [];
+    const shared = globalThis as unknown as { __hostTools?: unknown; __bound?: unknown[] };
+    shared.__hostTools = { echo: { descriptor: defineTool({ name: 'echo', description: 'Echoes.', input: z.object({}), execute }) } };
+    shared.__bound = bound;
+    fs.writeFileSync(path.join(root, 'host.mjs'), 'export const tools = globalThis.__hostTools;\nexport const bindTool = (descriptor, scope) => (globalThis.__bound.push(scope), descriptor);\n');
+    const model = mockModel([{ toolCalls: [{ name: 'echo', args: {} }] }, '{"reply":"done"}']);
+    const run = capture({ providers: { resolve: () => model } });
+    const code = await runWorkspace(['run', '--source', dir, '--page', 'hello', '--inputs', 'inputs.json', '--host', 'host.mjs', '--model', 'mock/mock-model'], run.io);
+    expect(code).toBe(0);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(bound).toEqual([expect.objectContaining({ name: 'echo', page: 'hello' })]);
+    delete shared.__hostTools;
+    delete shared.__bound;
+  });
+});
