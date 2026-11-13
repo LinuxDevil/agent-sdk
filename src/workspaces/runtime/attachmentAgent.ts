@@ -9,6 +9,7 @@ import { agentRunOptions, assembleInstructions, type AgentRunOptions, type Assem
 import type { PageAttachment, PageEngineSetup } from './engines/types';
 import { labelAttributes, labelsFor } from './labels';
 import type { ResolvedAttachment } from './resolveAgents';
+import { harnessFilesFor } from './resolveHarness';
 
 /** Options of {@link attachmentAgent}. */
 interface AttachmentAgentOptions {
@@ -85,6 +86,7 @@ function instructionsFor(setup: PageEngineSetup, resolved: ResolvedAttachment, e
     harness: setup.harness,
     attachment: resolved.pageOwned,
     page: { id: setup.page.id, name: setup.page.name },
+    harnessFiles: harnessFilesFor(setup.workspace, setup.page.id),
     ...(engineFraming !== undefined && { engineFraming }),
   });
 }
@@ -94,9 +96,13 @@ function spanAttributesFor(setup: PageEngineSetup, labels: PageStepLabels, resol
   return labelAttributes(labels, { workspace: setup.workspace.manifest.id, harnessPartHash, ...agentRef });
 }
 
-function optionalConfig(setup: PageEngineSetup, run: AgentRunOptions, options: AttachmentAgentOptions): Pick<CreateAgentConfig, 'reasoning' | 'modelSettings' | 'output' | 'exporter'> {
+function memoryOf(setup: PageEngineSetup): CreateAgentConfig['memory'] {
+  return setup.shared.memorySlots.length === 0 ? undefined : setup.shared.memorySlots.map((item) => item.slot);
+}
+
+function optionalConfig(setup: PageEngineSetup, run: AgentRunOptions, options: AttachmentAgentOptions): Pick<CreateAgentConfig, 'reasoning' | 'modelSettings' | 'output' | 'exporter' | 'memory'> {
   return Object.fromEntries(
-    Object.entries({ reasoning: run.reasoning, modelSettings: run.modelSettings, output: options.output, exporter: setup.host.exporter }).filter(([, value]) => value !== undefined)
+    Object.entries({ reasoning: run.reasoning, modelSettings: run.modelSettings, output: options.output, exporter: setup.host.exporter, memory: memoryOf(setup) }).filter(([, value]) => value !== undefined)
   );
 }
 

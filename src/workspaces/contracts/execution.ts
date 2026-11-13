@@ -197,6 +197,8 @@ export interface PageFinishedEvent {
   type: 'finished';
   /** The result's status. */
   status: PageRunStatus;
+  /** What the run used; a workspace run's total includes its page runs. */
+  usage?: PageUsage;
 }
 
 /** Every event an engine emits, discriminated by `type`. */

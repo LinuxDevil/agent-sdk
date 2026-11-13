@@ -42,7 +42,7 @@ function parsedText(text: string): unknown {
   }
 }
 
-function usageOf(result: ExecutionResult): PageUsage {
+export function usageOf(result: ExecutionResult): PageUsage {
   const { usage } = result;
   return {
     inputTokens: usage.inputTokens,
@@ -59,6 +59,10 @@ const TIMED_OUT = { status: 'timed-out', kind: 'timeout' } as const;
 function endOf(result: ExecutionResult): { status: PageRunStatus; kind?: PageErrorKind } | undefined {
   if (result.budget?.limit === 'maxDurationMs' || result.abortReason?.name === 'TimeoutError') return TIMED_OUT;
   return FAILED[result.finishReason];
+}
+
+export function finishStatus(reason: string): PageRunStatus {
+  return FAILED[reason as ExecutionResult['finishReason']]?.status ?? 'ok';
 }
 
 function pageResult(result: ExecutionResult, ctx: PageRunContext, structured: boolean): PageResult {

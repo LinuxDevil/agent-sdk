@@ -14,7 +14,7 @@ import { pagePolicy } from './policy';
 import { jsonOf } from './profileStore';
 import { resolveAttachments } from './resolveAgents';
 import { profileStoreFor, resolvePageHarness } from './resolveHarness';
-import { resolveSharedContext } from './sharedContext';
+import { createSharedContextRun, resolveSharedContext, type SharedContextRun } from './sharedContext';
 
 /** What {@link runPage} needs besides the workspace and the input. */
 export interface PageRuntimeContext {
@@ -34,11 +34,13 @@ export interface PageRuntimeContext {
   engines?: EngineRegistry;
   /** The load mode for agent resolution (default `default`). */
   mode?: LoadWorkspaceOptions['mode'];
+  /** The workspace run this page belongs to, so its pages and the main agent share one set of shared memory instances. */
+  sharedRun?: SharedContextRun;
 }
 
 const EMPTY_POLICY: WorkspacePolicy = { permissions: [], tools: { allow: [] }, secrets: [] };
 
-const EMPTY_USAGE: PageUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+export const EMPTY_USAGE: PageUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
 
 function readPage(workspace: LoadedWorkspace, pageId: string): PageManifest {
   const path = `pages/${pageId}/page.json`;
@@ -49,7 +51,7 @@ function readPage(workspace: LoadedWorkspace, pageId: string): PageManifest {
   return pageSchema.parse(jsonOf(workspace.tree[path], path));
 }
 
-function effectivePolicy(workspace: LoadedWorkspace, host: PageRuntimeHost): EffectivePolicy {
+export function effectivePolicy(workspace: LoadedWorkspace, host: PageRuntimeHost): EffectivePolicy {
   const file = workspace.tree[SHARED_POLICY_FILE];
   const own = file === undefined ? EMPTY_POLICY : workspacePolicySchema.parse(jsonOf(file, SHARED_POLICY_FILE));
   return narrowPolicy(host.ceiling, own);
@@ -92,7 +94,7 @@ async function engineSetup(workspace: LoadedWorkspace, page: PageManifest, harne
     workspace,
     page,
     harness,
-    shared: resolveSharedContext(workspace, { audience: { page: page.id } }),
+    shared: resolveSharedContext(workspace, { audience: { page: page.id }, run: ctx.sharedRun ?? createSharedContextRun(), ...(host.createMemory && { createMemory: host.createMemory }) }),
     attachments,
     host,
     ...(ctx.prior && { prior: ctx.prior }),
@@ -128,7 +130,7 @@ function sum(a: number | undefined, b: number | undefined): number | undefined {
   return a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0);
 }
 
-function addUsage(a: PageUsage, b: PageUsage): PageUsage {
+export function addUsage(a: PageUsage, b: PageUsage): PageUsage {
   const costUsd = sum(a.costUsd, b.costUsd);
   const modelCalls = sum(a.modelCalls, b.modelCalls);
   const costPartial = a.costPartial === true || b.costPartial === true;
@@ -179,7 +181,7 @@ export async function runPage(workspace: LoadedWorkspace, input: PageInput, ctx:
   const inputSchema = schemaOf(harness.inputs?.schema);
   const invalid = inputSchema === undefined ? [] : checkPageInputs(inputSchema, input.inputs);
   if (invalid.length > 0) {
-    emit({ type: 'finished', status: 'failed' });
+    emit({ type: 'finished', status: 'failed', usage: EMPTY_USAGE });
     return failed(ctx.runId, 'invalid-input', `the inputs are invalid: ${describe(invalid)}`);
   }
   const factory = engineFor(page.execution.type, ctx.engines);
@@ -197,6 +199,6 @@ export async function runPage(workspace: LoadedWorkspace, input: PageInput, ctx:
   const pageInput: PageInput = { pageId: page.id, task: taskOf(workspace, page, input.task), ...(input.inputs !== undefined && { inputs: input.inputs }), ...(input.revise && { revise: input.revise }) };
   emit({ type: 'started', ...labels });
   const result = await runValidated({ engine, input: pageInput, ctx: runCtx, harness, stored }).catch((error: unknown) => failed(ctx.runId, 'engine', errorMessage(error), EMPTY_USAGE, [...stored.values()]));
-  emit({ type: 'finished', status: result.status });
+  emit({ type: 'finished', status: result.status, usage: result.usage });
   return result;
 }

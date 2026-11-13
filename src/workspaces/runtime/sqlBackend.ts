@@ -28,6 +28,8 @@ function toRecord(row: SqlRow): RunRecord {
     startedAt: Number(row.started_at),
   };
   if (row.ended_at !== null && row.ended_at !== undefined) record.endedAt = Number(row.ended_at);
+  if (row.thread_id !== null && row.thread_id !== undefined) record.threadId = String(row.thread_id);
+  if (row.parent_run_id !== null && row.parent_run_id !== undefined) record.parentRunId = String(row.parent_run_id);
   return record;
 }
 
@@ -36,8 +38,8 @@ export function sqlRunLedger(client: SqlClient): RunLedger {
     async insertRun(record) {
       try {
         await client.execute(
-          'INSERT INTO ws_runs (project_id, workspace_id, run_id, page_id, revision, status, started_at, ended_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [record.projectId, record.workspaceId, record.runId, record.pageId, record.revision, record.status, record.startedAt, record.endedAt ?? null]
+          'INSERT INTO ws_runs (project_id, workspace_id, run_id, page_id, revision, status, started_at, ended_at, thread_id, parent_run_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [record.projectId, record.workspaceId, record.runId, record.pageId, record.revision, record.status, record.startedAt, record.endedAt ?? null, record.threadId ?? null, record.parentRunId ?? null]
         );
       } catch (error) {
         if (isUniqueViolation(error)) throw new SDKError(`Run ${record.runId} already exists.`, 'LOUSHO_CONFIG_INVALID', { cause: error });
