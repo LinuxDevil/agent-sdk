@@ -218,40 +218,53 @@ function longestPaths(adj: Map<string, string[]>, specs: Map<string, AgentSpecV2
   };
 }
 
+type DfsFrame = { node: string; next: number };
+
 /** Iterative memoised longest-path lengths along `edges` (1 for a sink). */
 function longestFrom(edges: Map<string, string[]>, nodes: string[]): Map<string, number> {
   const memo = new Map<string, number>();
   for (const start of nodes) {
-    if (memo.has(start)) continue;
-    const stack: Array<{ node: string; next: number }> = [{ node: start, next: 0 }];
-    const inPath = new Set([start]);
-    while (stack.length > 0) {
-      const top = stack[stack.length - 1];
-      const successors = edges.get(top.node) ?? [];
-      const next = successors[top.next];
-      if (next !== undefined && !inPath.has(next)) {
-        top.next += 1;
-        if (!memo.has(next)) {
-          inPath.add(next);
-          stack.push({ node: next, next: 0 });
-        }
-        continue;
-      }
-      top.next += 1;
-      if (top.next > successors.length) {
-        // All successors resolved (or skipped as back edges): finish the node.
-        let best = 1;
-        for (const succ of successors) {
-          const len = memo.get(succ);
-          if (len !== undefined && len + 1 > best) best = len + 1;
-        }
-        memo.set(top.node, best);
-        inPath.delete(top.node);
-        stack.pop();
-      }
-    }
+    if (!memo.has(start)) resolveChain(start, edges, memo);
   }
   return memo;
+}
+
+/** Post-order DFS from `start`: resolves its longest chain into `memo`. */
+function resolveChain(start: string, edges: Map<string, string[]>, memo: Map<string, number>): void {
+  const stack: DfsFrame[] = [{ node: start, next: 0 }];
+  const inPath = new Set([start]);
+  while (stack.length > 0) step(stack, edges, memo, inPath);
+}
+
+/** One DFS step: descend into the next unresolved successor, or finish the top node. */
+function step(stack: DfsFrame[], edges: Map<string, string[]>, memo: Map<string, number>, inPath: Set<string>): void {
+  const top = stack[stack.length - 1];
+  const successors = edges.get(top.node) ?? [];
+  const next = successors[top.next];
+  if (next !== undefined && !inPath.has(next)) {
+    top.next += 1;
+    if (!memo.has(next)) {
+      inPath.add(next);
+      stack.push({ node: next, next: 0 });
+    }
+    return;
+  }
+  top.next += 1;
+  if (top.next <= successors.length) return;
+  // All successors resolved (or skipped as back edges): finish the node.
+  memo.set(top.node, chainLength(successors, memo));
+  inPath.delete(top.node);
+  stack.pop();
+}
+
+/** `1 +` the longest resolved successor chain (1 when none resolved). */
+function chainLength(successors: string[], memo: Map<string, number>): number {
+  let best = 1;
+  for (const succ of successors) {
+    const len = memo.get(succ);
+    if (len !== undefined && len + 1 > best) best = len + 1;
+  }
+  return best;
 }
 
 /** The neighbour continuing each node's longest chain, from the length table. */

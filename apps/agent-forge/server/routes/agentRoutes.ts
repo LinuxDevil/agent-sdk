@@ -105,6 +105,52 @@ function parseCreateBody(body: unknown): ParsedCreateBody | string {
   return "'from' must be 'blank', { template: string } or { copyOf: string }";
 }
 
+/** What a parsed `POST /agents` body resolves to: the record to answer, or the 404 to send. */
+type CreateOutcome =
+  | { kind: 'created'; record: AgentRecord; reason: 'save' | 'version' }
+  | { kind: 'missing'; status: 404; error: string; code: string };
+
+/**
+ * The three `from` shapes → record or missing-source 404: the POST
+ * /agents dispatch, kept out of the route handler for complexity.
+ */
+async function createOutcome(
+  ws: WorkspaceContext,
+  catalog: TemplateCatalog,
+  parsed: ParsedCreateBody
+): Promise<CreateOutcome> {
+  if (parsed.kind === 'template') {
+    const record = await createAgentFromTemplate(ws, catalog, parsed.template, parsed.name);
+    return record === undefined
+      ? { kind: 'missing', status: 404, error: `No template '${parsed.template}'`, code: 'LOUSHO_TEMPLATE_NOT_FOUND' }
+      : { kind: 'created', record, reason: 'save' };
+  }
+  if (parsed.kind === 'copy') {
+    const record = await copyAgent(ws, parsed.copyOf, parsed.name);
+    return record === undefined
+      ? { kind: 'missing', status: 404, error: `No agent '${parsed.copyOf}' to copy`, code: 'LOUSHO_AGENT_NOT_FOUND' }
+      : { kind: 'created', record, reason: 'version' };
+  }
+  return { kind: 'created', record: await createBlankAgent(ws, parsed.name), reason: 'save' };
+}
+
+/**
+ * Maps a spec-write failure (`writeSpec`'s chain/spec validation) to its
+ * 400 and answers `true`; anything else returns `false` for the caller
+ * to rethrow. Shared by POST /agents and PUT /agents/:id.
+ */
+function sendSpecWriteError(res: Response, error: unknown): boolean {
+  if (error instanceof ChainInvalidError) {
+    sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
+    return true;
+  }
+  if (error instanceof InvalidSpecError) {
+    sendError(res, 400, error.message, error.code, { issues: error.issues });
+    return true;
+  }
+  return false;
+}
+
 /**
  * The spec + meta (+ layout) write and the version-1 `create` capture a
  * new agent gets, all inside `withAgentLock(newId)` - then the same
@@ -251,39 +297,15 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
       }
       const ws = workspaceOf(req);
       try {
-        if (parsed.kind === 'template') {
-          const record = await createAgentFromTemplate(ws, deps.templates, parsed.template, parsed.name);
-          if (record === undefined) {
-            sendError(res, 404, `No template '${parsed.template}'`, 'LOUSHO_TEMPLATE_NOT_FOUND');
-            return;
-          }
-          res.status(201).json(record);
-          ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
+        const outcome = await createOutcome(ws, deps.templates, parsed);
+        if (outcome.kind === 'missing') {
+          sendError(res, outcome.status, outcome.error, outcome.code);
           return;
         }
-        if (parsed.kind === 'copy') {
-          const record = await copyAgent(ws, parsed.copyOf, parsed.name);
-          if (record === undefined) {
-            sendError(res, 404, `No agent '${parsed.copyOf}' to copy`, 'LOUSHO_AGENT_NOT_FOUND');
-            return;
-          }
-          res.status(201).json(record);
-          ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'version' });
-          return;
-        }
-        const record = await createBlankAgent(ws, parsed.name);
-        res.status(201).json(record);
-        ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
+        res.status(201).json(outcome.record);
+        ws.events.publish({ type: 'agent.changed', agentId: outcome.record.id, reason: outcome.reason });
       } catch (error) {
-        if (error instanceof ChainInvalidError) {
-          sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
-          return;
-        }
-        if (error instanceof InvalidSpecError) {
-          sendError(res, 400, error.message, error.code, { issues: error.issues });
-          return;
-        }
-        throw error;
+        if (!sendSpecWriteError(res, error)) throw error;
       }
     })
   );
@@ -356,15 +378,7 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
           await ws.repo.writeSpec(id, spec);
         });
       } catch (error) {
-        if (error instanceof ChainInvalidError) {
-          sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
-          return;
-        }
-        if (error instanceof InvalidSpecError) {
-          sendError(res, 400, error.message, error.code, { issues: error.issues });
-          return;
-        }
-        throw error;
+        if (!sendSpecWriteError(res, error)) throw error;
       }
       res.status(204).end();
       // A successful autosave (re)arms this agent's idle-version timer.
