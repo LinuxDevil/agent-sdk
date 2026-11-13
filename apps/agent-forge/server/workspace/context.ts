@@ -97,6 +97,8 @@ export interface WorkspaceServices {
   settingsStore: SettingsStore;
   /** Report runs to the observe daemon (`true` in the studio, `false` in embeddings/tests). */
   observe: boolean;
+  /** The Studio collector run reporting reads `url()`/`token()` from (collector.ts); absent falls back to env. */
+  collector?: import('../collector').CollectorSource;
 }
 
 /**
@@ -149,6 +151,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     settingsStore: services.settingsStore,
     // Builder runs report to the observe daemon, so "Open trace" resolves.
     ...(services.observe ? { observe: true as const } : {}),
+    ...(services.collector ? { collector: services.collector } : {}),
   });
   return {
     ref,

@@ -101,6 +101,8 @@ import {
 import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
 import { checkApiAccess, checkHostAndOrigin, type StudioAccessOptions } from './auth';
 import { registerObserveProxy } from './observeProxy';
+import { CollectorManager } from './collector';
+import { registerCollectorRoutes } from './routes/collectorRoutes';
 import { registerPlaygroundRoute, type PlaygroundOptions } from './playground';
 import { registerJudgeTestRoute, type JudgeFn } from './judge';
 import { asyncRoute, paramId, sendError } from './http/routeUtils';
@@ -179,6 +181,14 @@ interface CreateAppBaseOptions {
   judge?: JudgeFn;
   /** The `connectMcp` `POST /catalog/mcp/probe` uses (tests); default the SDK's own (routes/mcpProbe.ts). */
   mcpConnect?: typeof connectMcp;
+  /**
+   * The app's one CollectorManager (collector.ts) - the observe daemon the
+   * `/observe` proxy, run reporting, judge loop and `/settings/collector`
+   * routes all follow. `startStudioServer` builds and `start()`s one; a
+   * test that omits it gets an unstarted `autoStart: false` manager (env
+   * URL still applies, nothing is ever spawned).
+   */
+  collector?: CollectorManager;
   /**
    * The `StudioEventBus` the default workspace context publishes
    * `StudioEvent`s on - what `workspaceOf(req).events` answers and
@@ -848,6 +858,10 @@ export function createApp(options: CreateAppOptions): Express {
   // template branch - Studio-global state, not per-workspace.
   const templates = options.templateCatalog ?? new TemplateCatalog();
   const docsDir = options.docsDir ?? path.join(sdkRootDir(), 'docs');
+  // One collector for the proxy, the reporters, the judge routes and
+  // `/settings/collector`; `startStudioServer` passes its started one.
+  const collector =
+    options.collector ?? new CollectorManager({ settings, secrets, autoStart: false });
   const probeDeps = {
     resolveSecret: (name: string) => secrets.getSecret(name),
     ...(options.mcpConnect ? { connect: options.mcpConnect } : {}),
@@ -941,8 +955,15 @@ export function createApp(options: CreateAppOptions): Express {
   // keys, sharing the app's one store (routes/secretRoutes.ts).
   registerSecretRoutes(app, secrets);
   registerProfileRoutes(app, settings);
+  // The collector the whole app reports to and reads through (collector.ts).
+  registerCollectorRoutes(app, collector);
   registerDeployRoutes(app);
-  registerPlaygroundRoute(app, { secretsStore: secrets, baseDir, ...(playgroundObserve ? { observe: playgroundObserve } : {}) });
+  registerPlaygroundRoute(app, {
+    secretsStore: secrets,
+    baseDir,
+    collector,
+    ...(playgroundObserve ? { observe: playgroundObserve } : {}),
+  });
   // The SDK catalogs + registry index the pickers and the Author read
   // (routes/catalogRoutes.ts) - a Studio-global route family, mounted on
   // every workspace's app like the settings routes are.
@@ -966,8 +987,8 @@ export function createApp(options: CreateAppOptions): Express {
   // scores; bodies come from the express.json above) - before the SPA
   // fallback so a proxied GET never gets index.html.
   // Test-on-trace for judge rules runs here (the daemon has no provider keys); before the proxy.
-  registerJudgeTestRoute(app, { secretsStore: secrets, ...(judge ? { judge } : {}) });
-  registerObserveProxy(app);
+  registerJudgeTestRoute(app, { secretsStore: secrets, collector, ...(judge ? { judge } : {}) });
+  registerObserveProxy(app, collector);
   registerStaticClient(app, staticDir);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars

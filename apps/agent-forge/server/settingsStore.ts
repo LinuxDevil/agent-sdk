@@ -159,6 +159,21 @@ export class SettingsStore {
     return result;
   }
 
+  /** The stored collector URL (`null`/absent = this machine's own daemon); env `LOUSHO_OBSERVE_URL` still wins over it. */
+  getCollectorUrl(): string | null {
+    return this.load().collector?.url ?? null;
+  }
+
+  /**
+   * Stores `url` as `collector.url` (`null` = this machine), leaving the
+   * profiles and every other settings.json key untouched.
+   */
+  setCollectorUrl(url: string | null): void {
+    const data = this.load();
+    data.collector = { url };
+    this.save(data);
+  }
+
   /** The stored Author settings patch (`{}` when none); `readAuthorSettings` merges the defaults under it. */
   getAuthor(): Partial<AuthorSettings> {
     return this.load().author ?? {};

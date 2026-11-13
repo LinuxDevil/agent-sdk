@@ -155,6 +155,12 @@ export interface RunManagerOptions {
    * its own (the SDK's `LOUSHO_OBSERVE` one still applies).
    */
   observe?: true | Partial<ObserveExporterOptions>;
+  /**
+   * The Studio collector (collector.ts): run reporting reads its
+   * `url()`/`token()` per exporter, so a Settings → Collector change
+   * repoints new runs without a restart.
+   */
+  collector?: import('./collector').CollectorSource;
 }
 
 export class AgentNotFoundError extends Error {}
@@ -405,7 +411,12 @@ export class RunManager extends EventEmitter {
     if (!observe) return undefined;
     let reporting = this.reporting.get(agentId);
     if (!reporting) {
-      reporting = observeReporting({ agentName: agentId, baseDir: this.opts.baseDir, ...(observe === true ? {} : { overrides: observe }) });
+      reporting = observeReporting({
+        agentName: agentId,
+        baseDir: this.opts.baseDir,
+        ...(observe === true ? {} : { overrides: observe }),
+        ...(this.opts.collector ? { collector: this.opts.collector } : {}),
+      });
       this.reporting.set(agentId, reporting);
     }
     return reporting;
