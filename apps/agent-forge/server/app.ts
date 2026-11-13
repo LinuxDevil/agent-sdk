@@ -28,6 +28,8 @@
  *   POST /hooks/:agentId/<path>       -> webhook trigger fire (triggers/webhookRoute.ts, R08a);
  *                                        public - HMAC or loopback-only, no studio token
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
+ *   GET  /workspace/agent-dirs       -> CodeAgentDir[] - agent dirs found under the workspace root (workspace/agentDirRoutes.ts, X06a)
+ *   GET  /workspace/agent-dirs/spec  -> CodeAgentSpecResponse for ?path=<rel> (400 escape, 404 unlisted, 422 unreadable config)
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string, pins?: ToolPin[] }
@@ -105,6 +107,7 @@ import { configureStudioHome } from './workspace/studioPaths';
 import { workspaceRefFor } from './workspace/workspaceId';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 import { registerWorkspaceRegistryRoutes } from './workspace/workspaceRoutes';
+import { registerAgentDirRoutes } from './workspace/agentDirRoutes';
 import {
   DEFAULT_TRACE_LIMIT,
   MAX_TRACE_LIMIT,
@@ -1240,6 +1243,9 @@ export function createApp(options: CreateAppOptions): Express {
   // stores come from workspaceOf(req), the workspace seam).
   registerPublishRoutes(app);
   registerWorkspaceRoute(app);
+  // Code-agent discovery (X06a): agent dirs under the workspace root +
+  // their data-config specs for the read-only canvas.
+  registerAgentDirRoutes(app);
   // The workspace registry's routes (`GET/POST /workspaces`,
   // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:
   // the launch workspace's id is this app's `defaultId` and the one entry

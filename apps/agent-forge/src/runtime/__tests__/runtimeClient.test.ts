@@ -482,6 +482,26 @@ describe('RuntimeClient workspace methods', () => {
     expect(path).toBe('/workspaces/proj-abc123');
     expect(init.method).toBe('DELETE');
   });
+
+  it('listCodeAgents GETs /workspace/agent-dirs (X06a)', async () => {
+    const dirs = [{ path: 'agents/a', name: 'a', configFile: 'agent.yaml', configKind: 'data' as const }];
+    const fetchMock = vi.fn(async () => jsonResponse(200, dirs));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listCodeAgents()).resolves.toEqual(dirs);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspace/agent-dirs');
+    expect(init.method).toBe('GET');
+  });
+
+  it('loadCodeAgentSpec GETs /workspace/agent-dirs/spec with the path query-encoded', async () => {
+    const spec = { path: 'agents/a b', spec: { version: 2 }, warnings: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, spec));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.loadCodeAgentSpec('agents/a b')).resolves.toEqual(spec);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspace/agent-dirs/spec?path=agents%2Fa%20b');
+    expect(init.method).toBe('GET');
+  });
 });
 
 describe('RuntimeClient template methods', () => {

@@ -25,6 +25,8 @@ import type {
   ChatSessionMeta,
   ChatSessionRecord,
   ChatStatePayload,
+  CodeAgentDir,
+  CodeAgentSpecResponse,
   CreateAgentRequest,
   CreateDraftRequest,
   DebugStatePayload,
@@ -456,6 +458,16 @@ class RuntimeClient implements AgentApi {
   /** The workspace the studio serves (`baseDir` is its root; `workspace` is the full ref for addressing it by id). */
   async workspace(): Promise<WorkspaceInfo> {
     return this.request('/workspace', { method: 'GET' });
+  }
+
+  /** X06a: agent directories found under the workspace root (code + data configs). */
+  async listCodeAgents(): Promise<CodeAgentDir[]> {
+    return this.request('/workspace/agent-dirs', { method: 'GET' });
+  }
+
+  /** X06a: a listed agent directory read back as an AgentSpecV2 (422 on code/unreadable configs). */
+  async loadCodeAgentSpec(path: string): Promise<CodeAgentSpecResponse> {
+    return this.request(`/workspace/agent-dirs/spec?path=${encodeURIComponent(path)}`, { method: 'GET' });
   }
 
   // -------------------------------------------------------------------
