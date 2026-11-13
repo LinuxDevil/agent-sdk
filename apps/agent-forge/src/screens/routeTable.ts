@@ -50,7 +50,8 @@ export const ROUTES: readonly RouteEntry[] = [
   // The bare '/code-agents/:path' row is the pre-W08b link; it redirects.
   { pattern: '/code-agents/:path', screen: 'codeAgent', example: '/code-agents/agents%2Fsupport' },
   { pattern: '/w/:ws/code-agents/:path', screen: 'codeAgent', example: '/w/e2e-000000/code-agents/agents%2Fsupport' },
-  { pattern: '/inbox', screen: 'inbox', example: '/inbox' },
+  { pattern: '/inbox', screen: 'inbox', example: '/inbox' }, // every workspace (W09b)
+  { pattern: '/w/:ws/inbox', screen: 'inbox', example: '/w/e2e-000000/inbox' }, // one workspace's inbox
   { pattern: '/templates', screen: 'templates', example: '/templates' },
   { pattern: '/playground', screen: 'playground', example: '/playground' },
   { pattern: '/traces', screen: 'traces', example: '/traces' },

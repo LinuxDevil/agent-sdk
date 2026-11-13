@@ -404,6 +404,7 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Copies a low-rating alert's trace into the agent's `<agentId>-regressions` dataset (R04a). */
+  // fallow-ignore-next-line unused-class-member -- contract surface: called on forWorkspace()-bound clients, which the member graph can't see
   async addAlertToDataset(agentId: string, alertId: string): Promise<{ dataset: string; exampleId: string }> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/rating/${encodeURIComponent(alertId)}/dataset`, {
       method: 'POST',
@@ -450,6 +451,7 @@ class RuntimeClient implements AgentApi {
    * in flight for the trace, 422 when the agent's instructions live in a
    * file (`LOUSHO_SUGGESTION_UNSUPPORTED`).
    */
+  // fallow-ignore-next-line unused-class-member -- contract surface: called on forWorkspace()-bound clients, which the member graph can't see
   async suggestFromTrace(agentId: string, traceId: string): Promise<{ suggestionId: string }> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/suggestions/from-trace`, {
       method: 'POST',
@@ -585,6 +587,7 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Everything waiting on the user across this workspace's agents (R02a's `GET /inbox`). */
+  // fallow-ignore-next-line unused-class-member -- contract surface: called on forWorkspace()-bound clients, which the member graph can't see
   async listInbox(): Promise<InboxItem[]> {
     return this.request('/inbox', { method: 'GET' });
   }
@@ -600,6 +603,7 @@ class RuntimeClient implements AgentApi {
   }
 
   /** The inbox badge count (`GET /inbox/count`); also the `inbox.count` WS event's payload. */
+  // fallow-ignore-next-line unused-class-member -- contract surface: public client API kept beside allInboxCount; tests pin it
   async inboxCount(): Promise<InboxCount> {
     return this.request('/inbox/count', { method: 'GET' });
   }
@@ -611,6 +615,7 @@ class RuntimeClient implements AgentApi {
   }
 
   /** Dismisses an undismissed inbox alert (`POST /inbox/alerts/:id/dismiss`). */
+  // fallow-ignore-next-line unused-class-member -- contract surface: called on forWorkspace()-bound clients, which the member graph can't see
   async dismissAlert(alertId: string): Promise<void> {
     await this.request(`/inbox/alerts/${encodeURIComponent(alertId)}/dismiss`, { method: 'POST' });
   }
