@@ -12,6 +12,7 @@ import type {
   AgentListItem,
   AgentMeta,
   AllAgentsResponse,
+  AllEventsFrame,
   AgentRecord,
   AgentRunStatusPayload,
   CanvasLayout,
@@ -68,6 +69,7 @@ import type {
   TraceSummaryPayload,
   VersionListItem,
   VersionRecord,
+  WorkspaceInboxItem,
   WorkspaceInfo,
   WorkspaceList,
   WorkspaceListItem,
@@ -587,9 +589,25 @@ class RuntimeClient implements AgentApi {
     return this.request('/inbox', { method: 'GET' });
   }
 
+  /**
+   * Every workspace's inbox items in one list (`GET /inbox?ws=all`, W09a):
+   * bound to `ALL_WORKSPACES` like `listAllAgentItems` so the header can't
+   * override the aggregate. Item ids are unique only inside a workspace -
+   * key by `<workspaceId>/<id>`.
+   */
+  async listAllInbox(): Promise<WorkspaceInboxItem[]> {
+    return this.forWorkspace(ALL_WORKSPACES).request('/inbox?ws=all', { method: 'GET' });
+  }
+
   /** The inbox badge count (`GET /inbox/count`); also the `inbox.count` WS event's payload. */
   async inboxCount(): Promise<InboxCount> {
     return this.request('/inbox/count', { method: 'GET' });
+  }
+
+  /** The Studio-wide inbox total (`GET /inbox/count?ws=all`, W09a) - what the aggregate socket's `inbox.count` frame carries. */
+  async allInboxCount(): Promise<number> {
+    const body = await this.forWorkspace(ALL_WORKSPACES).request<InboxCount>('/inbox/count?ws=all', { method: 'GET' });
+    return body.count;
   }
 
   /** Dismisses an undismissed inbox alert (`POST /inbox/alerts/:id/dismiss`). */
@@ -1064,6 +1082,20 @@ class RuntimeClient implements AgentApi {
     connection?: StreamConnectionHandlers
   ): () => void {
     return this.subscribeJson('/events', onEvent, connection);
+  }
+
+  /**
+   * Subscribes to `WS /events?ws=all` (W09a): every workspace's
+   * `StudioEvent` tagged with its `workspaceId`, plus the Studio-wide
+   * `{ type: 'inbox.count', workspaceId: 'all' }` total. Bound to
+   * `ALL_WORKSPACES` so the socket's `?ws=` can't be overridden by the
+   * URL's workspace.
+   */
+  subscribeAllEvents(
+    onFrame: (frame: AllEventsFrame) => void,
+    connection?: StreamConnectionHandlers
+  ): () => void {
+    return this.forWorkspace(ALL_WORKSPACES).subscribeJson('/events', onFrame, connection);
   }
 }
 

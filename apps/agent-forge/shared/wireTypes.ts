@@ -593,6 +593,8 @@ export interface WorkspaceListItem extends WorkspaceRef {
   available: boolean;
   /** `.lousho/agents/*.yaml` count; 0 when unavailable. */
   agentCount: number;
+  /** The observe-daemon project this workspace's runs report under (`observeProjectOf(root)`, W09a). */
+  observeProject: string;
 }
 
 /**
@@ -1377,10 +1379,23 @@ export type InboxItem =
   | (InboxItemBase & { kind: 'suggestion'; suggestionId: string; confidence: 'high' | 'low' })
   | (InboxItemBase & { kind: 'alert'; alertId: string; alertKind: AlertKind; payload: Record<string, unknown> });
 
+/** `GET /inbox?ws=all`'s row (W09a): an `InboxItem` already names its workspace; the alias keeps the aggregate's wire type explicit. */
+export type WorkspaceInboxItem = InboxItem & { workspaceId: string };
+
 /** `GET /inbox/count`'s answer - also the `inbox.count` WS event's payload. */
 export interface InboxCount {
   count: number;
 }
+
+/**
+ * One frame on `WS /events?ws=all` (W09a): every workspace's `StudioEvent`
+ * tagged with its `workspaceId`, plus the Studio-wide inbox total as
+ * `{ type: 'inbox.count', count, workspaceId: 'all' }` - sent on connect
+ * and whenever the total changed.
+ */
+export type AllEventsFrame =
+  | (StudioEvent & { workspaceId: string })
+  | { type: 'inbox.count'; count: number; workspaceId: 'all' };
 
 /** `POST /agents/:id/rating`'s body (R04a): a 1-5 human score on the run's trace. */
 export interface RatingRequest {

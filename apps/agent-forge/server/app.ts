@@ -1309,8 +1309,13 @@ export function createApp(options: CreateAppOptions): Express {
   // proxy so `/settings/passes/spend` is never proxied.
   registerPassRoutes(app, { spendLog, settings });
   // The inbox (inbox/inboxRoutes.ts, R02a): `/inbox`, `/inbox/count` and
-  // alert dismiss - the service comes from workspaceOf(req).inbox.
-  registerInboxRoutes(app);
+  // alert dismiss - the service comes from workspaceOf(req).inbox; the
+  // `?ws=all` reads aggregate across the registry + warm contexts (W09a).
+  registerInboxRoutes(app, {
+    registry: workspaceRegistry,
+    warm: options.warm ?? (() => [workspace]),
+    alerts,
+  });
   // Webhook triggers (triggers/webhookRoute.ts, R08a): `POST
   // /hooks/:agentId/<path>` - the trigger host and repo come from
   // workspaceOf(req); named-secret resolution is Studio-global.

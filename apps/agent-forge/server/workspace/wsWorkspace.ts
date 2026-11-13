@@ -1,12 +1,13 @@
 /**
- * `?ws=` resolution for WebSocket upgrades (W02b).
+ * `?ws=` resolution for WebSocket upgrades (W02b, W09a).
  *
  * Browsers cannot set headers on a `WebSocket`, so the upgrade URL's
  * `?ws=<id>` query is the only way a stream names its workspace - the
  * `x-lousho-workspace` header has no WS equivalent. Missing `ws` means
  * the default (launch) workspace, exactly like an HTTP request with no
- * workspace id; `all` is rejected here because there is no aggregate
- * stream (W09a adds `GET /events?ws=all`-style multiplexing later).
+ * workspace id; `all` is rejected here unless the caller passes
+ * `allowAll` - `WS /events?ws=all` (W09a) is the one aggregate stream,
+ * `WS /agents/:id/stream` still refuses it.
  *
  * Validation mirrors `workspaceMiddleware`: a malformed id (or `?ws=`
  * given twice) is a 400 and a well-formed but unknown one a 404 - the
@@ -18,17 +19,23 @@ import { ALL_WORKSPACES, WORKSPACE_ID_RE, WORKSPACE_QUERY } from '../../shared/w
 import type { WorkspaceContext, WorkspaceResolver } from './context';
 
 export type WsWorkspaceResult =
-  | { ok: true; ctx: WorkspaceContext }
+  | { ok: true; ctx: WorkspaceContext; all?: false }
+  | { ok: true; all: true }
   | { ok: false; status: 400 | 404; error: string };
 
 const REASONS: Record<400 | 404, string> = { 400: 'Bad Request', 404: 'Not Found' };
 
 /**
  * The workspace a WS upgrade URL asks for. `undefined`/missing `ws` →
- * the resolver's default; `all` → 400 (no aggregate stream yet); a
- * malformed or repeated id → 400; an unknown one → 404.
+ * the resolver's default; `all` → `{ all: true }` when `allowAll` (the
+ * caller owns the aggregate attach), else 400; a malformed or repeated
+ * id → 400; an unknown one → 404.
  */
-export async function resolveWsWorkspace(url: URL, workspaces: WorkspaceResolver): Promise<WsWorkspaceResult> {
+export async function resolveWsWorkspace(
+  url: URL,
+  workspaces: WorkspaceResolver,
+  opts?: { allowAll?: boolean }
+): Promise<WsWorkspaceResult> {
   const values = url.searchParams.getAll(WORKSPACE_QUERY);
   if (values.length > 1) {
     return { ok: false, status: 400, error: 'Invalid workspace id' };
@@ -39,6 +46,7 @@ export async function resolveWsWorkspace(url: URL, workspaces: WorkspaceResolver
     return ctx === undefined ? { ok: false, status: 404, error: 'No workspace' } : { ok: true, ctx };
   }
   if (id === ALL_WORKSPACES) {
+    if (opts?.allowAll === true) return { ok: true, all: true };
     return { ok: false, status: 400, error: 'Aggregate workspace streams are not supported' };
   }
   if (!WORKSPACE_ID_RE.test(id)) {

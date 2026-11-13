@@ -17,6 +17,7 @@ const LIST: WorkspaceList = {
       isLaunch: true,
       available: true,
       agentCount: 1,
+      observeProject: 'default',
     },
     {
       id: 'proj-def456',
@@ -27,6 +28,7 @@ const LIST: WorkspaceList = {
       isLaunch: false,
       available: true,
       agentCount: 0,
+      observeProject: 'default',
     },
   ],
 };

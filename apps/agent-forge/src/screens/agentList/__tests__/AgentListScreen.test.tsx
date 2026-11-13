@@ -72,8 +72,8 @@ const obsItem = (over: Partial<ObservedAgentItem>): ObservedAgentItem => ({
 });
 
 const WSLIST: WorkspaceListItem[] = [
-  { id: 'alpha-1a2b3c', name: 'Alpha', root: '/tmp/alpha', addedAt: '', lastOpenedAt: '', isLaunch: true, available: true, agentCount: 0 },
-  { id: 'beta-2b3c4d', name: 'Beta', root: '/tmp/beta', addedAt: '', lastOpenedAt: '', isLaunch: false, available: true, agentCount: 0 },
+  { id: 'alpha-1a2b3c', name: 'Alpha', root: '/tmp/alpha', addedAt: '', lastOpenedAt: '', isLaunch: true, available: true, agentCount: 0, observeProject: 'default' },
+  { id: 'beta-2b3c4d', name: 'Beta', root: '/tmp/beta', addedAt: '', lastOpenedAt: '', isLaunch: false, available: true, agentCount: 0, observeProject: 'default' },
 ];
 
 const AGENTS_A: AgentListItem[] = [

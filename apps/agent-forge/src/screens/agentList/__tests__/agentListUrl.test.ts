@@ -27,6 +27,7 @@ const ws = (id: string, name: string): WorkspaceListItem => ({
   isLaunch: false,
   available: true,
   agentCount: 0,
+  observeProject: 'default',
 });
 
 describe('parseLabelsParam', () => {

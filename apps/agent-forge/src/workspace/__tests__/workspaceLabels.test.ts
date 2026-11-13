@@ -12,6 +12,7 @@ const ws = (id: string, name: string): WorkspaceListItem => ({
   isLaunch: false,
   available: true,
   agentCount: 0,
+  observeProject: 'default',
 });
 
 const LIST = [ws('app-1a2b3c', 'support-bot'), ws('proj-def456', 'billing')];
