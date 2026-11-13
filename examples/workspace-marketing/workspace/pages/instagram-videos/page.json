@@ -1,0 +1,19 @@
+{
+  "schema": "lousho.page/1",
+  "id": "instagram-videos",
+  "name": "Instagram",
+  "description": "Makes an Instagram video from a topic.",
+  "harness": {
+    "extends": [
+      "workspace:platforms/instagram",
+      "workspace:content-types/educational",
+      "workspace:audiences/general"
+    ]
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "script"
+    }
+  }
+}

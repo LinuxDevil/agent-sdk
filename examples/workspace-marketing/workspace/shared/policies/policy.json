@@ -1,0 +1,27 @@
+{
+  "permissions": [
+    {
+      "id": "no-shell",
+      "tool": "bash",
+      "action": "deny",
+      "reason": "Pages never run shell commands."
+    }
+  ],
+  "tools": {
+    "allow": [
+      "render_video",
+      "synthesize_voice",
+      "search_facts",
+      "publish_*"
+    ]
+  },
+  "secrets": [],
+  "approvals": {
+    "require": [
+      "publish_*"
+    ]
+  },
+  "sandbox": {
+    "required": true
+  }
+}
