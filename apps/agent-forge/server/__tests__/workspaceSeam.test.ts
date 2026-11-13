@@ -25,6 +25,7 @@ import type { InboxService } from '../inbox/inboxService';
 import type { TriggerHost } from '../triggers/triggerHost';
 import type { CronTriggers } from '../triggers/cronTriggers';
 import type { WorkspaceContext } from '../workspace/context';
+import type { WorkspaceHostSelector } from '../host/hostSelector';
 
 const SPEC: AgentSpec = {
   name: 'stub-agent',
@@ -126,6 +127,7 @@ describe('workspace seam', () => {
       idleVersioner: new IdleVersioner({ capture: async () => {} }),
       suggestions: new SuggestionStore(repo),
       host: newTestHost(baseDir),
+      hostSelector: {} as WorkspaceHostSelector,
       runs: { status } as unknown as RunManager,
       chatTriggers: new TriggerRegistry(),
       events: new StudioEventBus(),

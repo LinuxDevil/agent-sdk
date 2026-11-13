@@ -15,7 +15,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { parse as parseYaml } from 'yaml';
-import { agentSpecV2Schema, upgradeSpec, type LLMProvider } from 'lousho';
+import { agentSpecV2Schema, upgradeSpec, VERSION, type LLMProvider } from 'lousho';
+import { envCollector } from '../../server/host/hostSelector';
 import { mockModel, type MockRequest, type MockStaticTurn, type MockToolCall } from 'lousho/testing';
 import type { AuthorMessage, AuthorServerEvent } from '../../shared/authorWire';
 import { SecretsStore } from '../../server/secretsStore';
@@ -115,6 +116,11 @@ function createEvalServices(baseDir: string, opts: EvalHarnessOptions): EvalServ
     // Evals never trigger runs; the store exists only to satisfy the
     // context shape, under the same throwaway `.lousho` as the spend log.
     alerts: new AlertStore(globalPaths.alerts),
+    // Evals run in-process only; the collector/version exist for the
+    // host selector's shape (a bridge candidate would still spawn - eval
+    // baseDirs carry no SDK install, so selection lands in-process).
+    collector: envCollector,
+    studioVersion: VERSION,
   });
   const workspaceResolver = singleWorkspace(workspace);
   const services = createAuthorServices({

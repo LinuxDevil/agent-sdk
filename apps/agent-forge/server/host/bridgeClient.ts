@@ -103,7 +103,6 @@ const PUSH_BUFFER_TTL_MS = 5 * 60_000;
 const STDERR_RING = 200;
 
 /** A failed bridge call. `code` is the bridge's error code or a client code (`LOUSHO_BRIDGE_*`). */
-// fallow-ignore-next-line unused-export -- W11b maps host errors through this; only tests construct it today
 export class BridgeError extends Error {
   /** @param message Human-readable failure. @param code Stable `LOUSHO_*` code. @param details The bridge's `error.details`, when it sent any. */
   constructor(

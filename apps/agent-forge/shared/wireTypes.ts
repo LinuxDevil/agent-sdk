@@ -1288,3 +1288,18 @@ export const RATING_LABELS = ['Poor', 'Fair', 'Good', 'Great', 'Excellent'] as c
 
 /** Ratings at or below this value raise a `low_rating` inbox alert (R04a). */
 export const LOW_RATING_MAX = 2;
+
+/**
+ * How a workspace's `AgentHost` runs its agents (W11b): Studio's own SDK
+ * in-process, the project's installed SDK over `lousho bridge`, or
+ * read-only because the project's SDK cannot host runs at all.
+ */
+export type HostMode = 'in-process' | 'bridge' | 'read-only';
+
+/** A one-line status banner a host selection surfaces to the UI (W11c renders it). */
+export interface HostBanner {
+  tone: 'info' | 'warning' | 'danger';
+  text: string;
+  /** `'restart'` offers the client a restart action (a crashed bridge). */
+  action?: 'restart';
+}

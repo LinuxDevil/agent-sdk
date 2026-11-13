@@ -28,6 +28,7 @@ import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
 import { StudioEventBus } from '../events/eventBus';
 import { InProcessAgentHost } from '../host/inProcessAgentHost';
+import { WorkspaceHostSelector } from '../host/hostSelector';
 import type { AgentHost } from '../host/agentHost';
 import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
@@ -66,6 +67,12 @@ export interface WorkspaceContext {
   suggestions: SuggestionStore;
   /** The host this workspace's agent runs execute through (InProcessAgentHost on Studio's SDK; a bridge host when the project has its own). */
   host: AgentHost;
+  /**
+   * How `host` was chosen (host/hostSelector.ts, W11b): the synchronous
+   * disk decision plus the post-handshake mode/banner W11c surfaces.
+   * `host === hostSelector.host` always.
+   */
+  hostSelector: WorkspaceHostSelector;
   runs: RunManager;
   /** `'chat'` → `ChatTriggerAdapter(runs)`; `POST /agents/:id/message` goes through it (chatTriggerAdapter.ts). */
   chatTriggers: TriggerRegistry;
@@ -152,6 +159,10 @@ export interface WorkspaceServices {
   spendLog: SpendLog;
   /** The Studio-global inbox alert store (L12) every workspace's failure-streak pass writes to. */
   alerts: AlertStore;
+  /** Where bridge children report runs (W12's CollectorManager; env fallback until then). */
+  collector: () => { url: string; token?: string };
+  /** Studio's own SDK `VERSION`, for host-selection banners and `hello.client`. */
+  studioVersion: string;
 }
 
 /**
@@ -181,14 +192,27 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // checkpoints and approval pauses).
   const checkpointStore = new FileCheckpointStore(ref.root);
   const approvalStore = new FileApprovalStore(ref.root);
-  const host = new InProcessAgentHost({
-    baseDir: ref.root,
-    checkpointStore,
-    approvalStore,
+  // The host decision is synchronous-from-disk (W11b): a workspace with no
+  // usable project SDK gets Studio's in-process host; one with a built,
+  // new-enough SDK gets a BridgeAgentHost whose handshake finishes in the
+  // background below. `inProcess` is only invoked on rows 1-2 (and lazily
+  // for a read-only workspace's catalog fallback), so bridge workspaces
+  // never build the in-process host's run machinery.
+  const hostSelector = new WorkspaceHostSelector(ref, {
+    inProcess: () =>
+      new InProcessAgentHost({
+        baseDir: ref.root,
+        checkpointStore,
+        approvalStore,
+        secretsStore: services.secretsStore,
+        settings: services.settingsStore,
+        spend: services.spendLog,
+      }),
     secretsStore: services.secretsStore,
-    settings: services.settingsStore,
-    spend: services.spendLog,
+    collector: services.collector,
+    studioVersion: services.studioVersion,
   });
+  const host = hostSelector.host;
   const runs = new RunManager({
     baseDir: ref.root,
     checkpointStore,
@@ -205,8 +229,14 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     secretsStore: services.secretsStore,
     settingsStore: services.settingsStore,
     // Builder runs report to the observe daemon, so "Open trace" resolves.
-    ...(services.observe ? { observe: true as const } : {}),
+    // A bridge host reports through its own child (LOUSHO_OBSERVE_* env),
+    // so RunManager adds no second reporter for it.
+    ...(services.observe && hostSelector.reportsToObserve ? { observe: true as const } : {}),
   });
+  // Rows 3-7: kick the handshake now so the banner settles early; ready()
+  // never rejects (every outcome - bridge, read-only, crash - is a
+  // selection), the catch is belt-and-braces for a synchronous throw.
+  if (host.kind === 'bridge') void hostSelector.ready().catch(() => undefined);
   const events = new StudioEventBus();
   const drafts = new DraftStore(repo);
   // The version-summary pass (L04): every written version enqueues its
@@ -265,6 +295,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     idleVersioner,
     suggestions,
     host,
+    hostSelector,
     runs,
     chatTriggers: chatTriggersFor(runs),
     events,
@@ -279,6 +310,8 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
       inbox.stop();
       triggers.stop();
       cron.stop();
+      // Abort live runs and stop the bridge child (a no-op in-process).
+      await host.dispose();
       // Flush pending idle-version captures before the stores go quiet -
       // the same graceful stop `startStudioServer`'s `close()` performs.
       await idleVersioner.flushAll();

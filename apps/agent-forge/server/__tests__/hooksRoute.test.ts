@@ -11,6 +11,7 @@ import { SecretsStore } from '../secretsStore';
 import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { RunManager } from '../runRegistry';
 import type { AgentHost } from '../host/agentHost';
+import type { WorkspaceHostSelector } from '../host/hostSelector';
 import { AgentRepo } from '../storage/agentRepo';
 import { DraftStore } from '../storage/draftStore';
 import { SuggestionStore } from '../storage/suggestionStore';
@@ -87,6 +88,7 @@ function appWith(
     idleVersioner: new IdleVersioner({ capture: async () => {} }),
     suggestions: new SuggestionStore(repo),
     host: {} as AgentHost,
+    hostSelector: {} as WorkspaceHostSelector,
     runs: {} as RunManager,
     chatTriggers: new TriggerRegistry(),
     events: new StudioEventBus(),

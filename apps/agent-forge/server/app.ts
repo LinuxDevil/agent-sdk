@@ -79,6 +79,7 @@ import {
   agentSpecV2Schema,
   ConfigurationError,
   SDKError,
+  VERSION,
   type AgentSpec,
   type AgentSpecV2,
   type ForkPatch,
@@ -129,6 +130,7 @@ import { mergeLegacySave } from './storage/legacySpec';
 import { FileCheckpointStore } from './checkpointStore';
 import { FileApprovalStore } from './approvalStore';
 import { InProcessAgentHost } from './host/inProcessAgentHost';
+import { envCollector, WorkspaceHostSelector } from './host/hostSelector';
 import { registerAgentRoutes } from './routes/agentRoutes';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
@@ -962,9 +964,10 @@ function defaultWorkspaceContext(
   options: CreateAppOptions,
   passRunner: PassRunner,
   alerts: AlertStore,
-  autoApproval: { settings: SettingsStore; spendLog: SpendLog }
+  autoApproval: { settings: SettingsStore; spendLog: SpendLog },
+  secrets: SecretsStore
 ): WorkspaceContext {
-  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner, alerts, autoApproval);
+  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner, alerts, autoApproval, secrets);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
   if (options.eventBus !== undefined) workspace = { ...workspace, events: options.eventBus };
@@ -1003,9 +1006,11 @@ function legacyWorkspaceContext(
   options: CreateAppOptions & { workspace?: undefined },
   passRunner: PassRunner,
   alerts: AlertStore,
-  autoApproval: { settings: SettingsStore; spendLog: SpendLog }
+  autoApproval: { settings: SettingsStore; spendLog: SpendLog },
+  secrets: SecretsStore
 ): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
+  const ref = workspaceRefFor(options.baseDir);
   const versions = new VersionStore(repo);
   const drafts = new DraftStore(repo);
   const suggestions = new SuggestionStore(repo);
@@ -1020,7 +1025,7 @@ function legacyWorkspaceContext(
     suggestions,
     alerts,
     events,
-    workspaceId: workspaceRefFor(options.baseDir).id,
+    workspaceId: ref.id,
   });
   inbox.start();
   // The legacy pair gets the same trigger stack the real context builds
@@ -1032,25 +1037,34 @@ function legacyWorkspaceContext(
     events,
   });
   const idleVersioner = createIdleVersioner(versions);
+  // Same host selection a real context gets (W11b) - the legacy pair's
+  // RunManager carries its own host, so this only satisfies the context
+  // shape (nothing reads ws.host/ws.hostSelector on this path yet).
+  const inProcessHost = new InProcessAgentHost({
+    baseDir: options.baseDir,
+    checkpointStore: new FileCheckpointStore(options.baseDir),
+    approvalStore: new FileApprovalStore(options.baseDir),
+    secretsStore: options.secretsStore,
+    settings: autoApproval.settings,
+    spend: autoApproval.spendLog,
+  });
+  const hostSelector = new WorkspaceHostSelector(ref, {
+    inProcess: () => inProcessHost,
+    secretsStore: secrets,
+    collector: envCollector,
+    studioVersion: VERSION,
+  });
+  if (hostSelector.host.kind === 'bridge') void hostSelector.ready().catch(() => undefined);
   return {
-    ref: workspaceRefFor(options.baseDir),
+    ref,
     repo,
     agentStore: options.agentStore,
     versions,
     drafts,
     idleVersioner,
     suggestions,
-    // The legacy pair's RunManager carries its own host; this one exists to
-    // satisfy the context shape (nothing reads ws.host yet - catalog/steer
-    // routes are later tickets).
-    host: new InProcessAgentHost({
-      baseDir: options.baseDir,
-      checkpointStore: new FileCheckpointStore(options.baseDir),
-      approvalStore: new FileApprovalStore(options.baseDir),
-      secretsStore: options.secretsStore,
-      settings: autoApproval.settings,
-      spend: autoApproval.spendLog,
-    }),
+    host: hostSelector.host,
+    hostSelector,
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
     events,
@@ -1066,6 +1080,7 @@ function legacyWorkspaceContext(
       inbox.stop();
       triggers.stop();
       cron.stop();
+      await hostSelector.host.dispose();
       await idleVersioner.flushAll();
     },
   };
@@ -1106,7 +1121,7 @@ export function createApp(options: CreateAppOptions): Express {
     options.passRunner ??
     new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
   const alerts = options.alerts ?? new AlertStore(paths.alerts);
-  const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog });
+  const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog }, secrets);
   // One resolver for the middleware below and the Author tools' per-call
   // workspace lookup (PLAN 19.3): the injected `WorkspaceManager` when
   // `startStudioServer` provides one, `singleWorkspace` otherwise.
