@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { SDKError } from '../utils/sdkError';
 import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { cliHost } from './workspaceHostCli';
 import { describeEvent, remoteList, remoteRun, remoteShow, remoteValidate, type RemoteOutput } from './workspaceRemote';
@@ -48,6 +49,7 @@ const HELP = `lousho workspace - work with a workspace folder or a running works
 ${Object.values(USAGE).join('\n')}
 
 --source <dir> is the default (the current directory); --service <url> drives a running service instead (--token or LOUSHO_TOKEN authenticates).
+--model sets the default model for the run; a model set on a page or an agent wins.
 Exit codes: 0 success, 1 failure or an invalid workspace, 2 usage error.`;
 
 const SOURCE_OPTIONS = {
@@ -118,7 +120,7 @@ function runInit(values: Values, positionals: string[], io: WorkspaceIo, spec: C
   const name = str(values.name) ?? titleOf(path.basename(dir));
   const files = workspaceTemplateFiles(templateOf(str(values.template), spec), slug(path.basename(dir)), name);
   const existing = Object.keys(files).filter((file) => fs.existsSync(path.join(dir, file)));
-  if (existing.length > 0) throw new Error(`lousho workspace init: ${dir} already has ${existing.join(', ')}; nothing was written.`);
+  if (existing.length > 0) throw new SDKError(`lousho workspace init: ${dir} already has ${existing.join(', ')}; nothing was written.`, 'LOUSHO_REGISTRY_FILE_EXISTS');
   for (const [file, text] of Object.entries(files)) {
     fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true });
     fs.writeFileSync(path.join(dir, file), text);
@@ -201,8 +203,12 @@ function withModel(source: WorkspaceSource, model: string | undefined): Workspac
     read: async (file, options) => {
       const text = await source.read(file, options);
       if (file !== 'workspace.json' || text === undefined) return text;
-      const manifest = JSON.parse(text) as { defaults?: Record<string, unknown> };
-      return JSON.stringify({ ...manifest, defaults: { ...manifest.defaults, model } });
+      try {
+        const manifest = JSON.parse(text) as { defaults?: Record<string, unknown> };
+        return JSON.stringify({ ...manifest, defaults: { ...manifest.defaults, model } });
+      } catch {
+        return text;
+      }
     },
   };
 }
@@ -210,7 +216,7 @@ function withModel(source: WorkspaceSource, model: string | undefined): Workspac
 async function runLocalRun(dir: string, values: Values, message: string | undefined, io: WorkspaceIo): Promise<number> {
   const asJson = values.json === true;
   const page = str(values.page);
-  const host = await cliHost(dir, { providers: io.providers, project: str(values.project), hostModule: str(values.host) });
+  const host = await cliHost(dir, { cwd: io.cwd, providers: io.providers, project: str(values.project), hostModule: str(values.host) });
   const runtime = createWorkspaceRuntime(withModel(folderSource(dir), str(values.model)), host);
   const out = outputOf(io);
   try {
@@ -275,7 +281,12 @@ async function dispatch(sub: Subcommand, args: string[], io: WorkspaceIo): Promi
   const service = str(values.service);
   const source = str(values.source);
   if (service !== undefined && source !== undefined) throw usageError(spec, 'use --source or --service, not both.');
-  if (service !== undefined) return runRemote(sub, values, positionals[0], io, spec);
+  if (sub === 'run' && values.inputs !== undefined && values.page === undefined) throw usageError(spec, '--inputs needs --page.');
+  if (service !== undefined) {
+    const local = ['model', 'host', 'project'].find((flag) => values[flag] !== undefined);
+    if (local) throw usageError(spec, `--${local} applies to a local --source run, not to --service.`);
+    return runRemote(sub, values, positionals[0], io, spec);
+  }
   const dir = path.resolve(io.cwd ?? process.cwd(), source ?? '.');
   const asJson = values.json === true;
   if (sub === 'ls') return runLs(dir, asJson, io);

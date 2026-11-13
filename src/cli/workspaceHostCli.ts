@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { importModule } from '../agentDir/importModule';
 import type { Check } from '../evals/checks';
 import { resolveProvider } from '../providers';
 import { fileHostBackend } from '../workspaces/runtime/backends';
@@ -10,10 +10,11 @@ import { projectAgentRegistry } from '../workspaces/source/projectAgentRegistry'
 import { createWorkspaceStores } from '../workspaces/runtime/stores';
 import type { HostToolRegistry } from '../workspaces/runtime/policy';
 import type { PolicyCeiling } from '../workspaces/contracts/policy';
-import type { ProviderResolver, WorkspaceHost } from '../workspaces/runtime/workspaceHost';
+import type { ProviderResolver, ToolBinder, WorkspaceHost } from '../workspaces/runtime/workspaceHost';
 import { OUTPUT_CHECK_NAME } from './workspaceTemplates';
 
-export interface CliHostOptions {
+interface CliHostOptions {
+  cwd?: string;
   providers?: ProviderResolver;
   project?: string;
   hostModule?: string;
@@ -23,6 +24,7 @@ interface HostModule {
   tools?: HostToolRegistry;
   checks?: Record<string, Check<unknown>>;
   policyCeiling?: PolicyCeiling;
+  bindTool?: ToolBinder;
 }
 
 const CEILING: PolicyCeiling = { permissions: [], tools: { allow: ['*'] }, secrets: [] };
@@ -35,14 +37,14 @@ const outputPresent: Check<unknown> = {
   },
 };
 
-async function loadHostModule(file: string | undefined): Promise<HostModule> {
+async function loadHostModule(file: string | undefined, cwd: string): Promise<HostModule> {
   if (file === undefined) return {};
-  return (await import(pathToFileURL(path.resolve(file)).href)) as HostModule;
+  return (await importModule(path.resolve(cwd, file))) as HostModule;
 }
 
 export async function cliHost(dir: string, options: CliHostOptions = {}): Promise<WorkspaceHost> {
   const root = path.resolve(dir);
-  const mod = await loadHostModule(options.hostModule);
+  const mod = await loadHostModule(options.hostModule, options.cwd ?? process.cwd());
   const base = options.providers ?? { resolve: (ref: string) => resolveProvider(ref) };
   const stores = createWorkspaceStores(fileHostBackend(path.join(root, '.lousho', 'host')), { projectId: 'default', workspaceId: path.basename(root) });
   return {
@@ -55,6 +57,7 @@ export async function cliHost(dir: string, options: CliHostOptions = {}): Promis
       agents: options.project === undefined ? { resolve: async () => undefined } : projectAgentRegistry(path.resolve(options.project)),
       profiles: globalProfiles(() => undefined),
     },
+    ...(mod.bindTool && { bindTool: mod.bindTool }),
     checks: checkRegistry({ [OUTPUT_CHECK_NAME]: outputPresent, ...mod.checks }),
   };
 }

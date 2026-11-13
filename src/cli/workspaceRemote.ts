@@ -7,7 +7,7 @@ export interface RemoteOutput {
   json(value: unknown): void;
 }
 
-export interface RemoteRunOptions {
+interface RemoteRunOptions {
   workspace: string;
   page?: string;
   message: string;

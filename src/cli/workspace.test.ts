@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mockModel } from '../testing';
 import { fixtureClient } from '../workspaces/client/__fixtures__/fixtureClient';
+import { cliHost } from './workspaceHostCli';
 import { isWorkspaceCommand, runWorkspace, type WorkspaceIo } from './workspace';
 import { WORKSPACE_TEMPLATES } from './workspaceTemplates';
 
@@ -100,8 +101,10 @@ describe('lousho workspace run', () => {
 
   it('fails with a message when no model is set', async () => {
     const dir = await created('blank');
+    fs.writeFileSync(path.join(root, 'inputs.json'), JSON.stringify({ request: 'hi' }));
     const run = capture({ providers: { resolve: () => mockModel(['x']) } });
-    expect(await runWorkspace(['run', '--source', dir, '--page', 'hello'], run.io)).not.toBe(0);
+    expect(await runWorkspace(['run', '--source', dir, '--page', 'hello', '--inputs', 'inputs.json'], run.io)).not.toBe(0);
+    expect(run.out() + run.err()).toContain('has no model');
   });
 
   it('needs a message or a page', async () => {
@@ -135,3 +138,71 @@ describe('lousho workspace usage', () => {
     expect(await runWorkspace(['--help'], capture().io)).toBe(0);
   });
 });
+
+describe('lousho workspace run, more', () => {
+  it('runs the main agent on a message, prints its reply and exits 0', async () => {
+    const dir = await created('blank');
+    const run = capture({ providers: { resolve: () => mockModel(['hi from main'], { onExhausted: 'repeat-last' }) } });
+    expect(await runWorkspace(['run', 'say hi', '--source', dir, '--model', 'mock/mock-model'], run.io)).toBe(0);
+    expect(run.out()).toContain('hi from main');
+  });
+
+  it('lets a model set on an agent beat --model', async () => {
+    const dir = await created('blank');
+    const file = path.join(dir, 'agents/helper/agent.json');
+    fs.writeFileSync(file, JSON.stringify({ ...JSON.parse(fs.readFileSync(file, 'utf8')), model: 'mock/agent-model' }));
+    fs.writeFileSync(path.join(root, 'inputs.json'), JSON.stringify({ request: 'hi' }));
+    const asked: string[] = [];
+    const run = capture({ providers: { resolve: (ref) => (asked.push(ref), mockModel(['{"reply":"ok"}'], { onExhausted: 'repeat-last' })) } });
+    await runWorkspace(['run', '--source', dir, '--page', 'hello', '--inputs', 'inputs.json', '--model', 'mock/flag-model'], run.io);
+    expect(asked).toContain('mock/agent-model');
+    expect(asked).not.toContain('mock/flag-model');
+  });
+
+  it('leaves a malformed workspace.json to the loader', async () => {
+    const dir = await created('blank');
+    fs.writeFileSync(path.join(dir, 'workspace.json'), '{ nope');
+    const run = capture();
+    expect(await runWorkspace(['run', 'hi', '--source', dir, '--model', 'mock/mock-model'], run.io)).toBe(1);
+    expect(run.err()).toContain('PRD');
+  });
+
+  it('refuses flags that would be ignored', async () => {
+    const dir = await created('blank');
+    expect(await runWorkspace(['run', 'hi', '--service', 'http://svc', '--workspace', 'm', '--model', 'x/y'], capture({ client: fixtureClient() }).io)).toBe(2);
+    expect(await runWorkspace(['run', 'hi', '--source', dir, '--inputs', 'inputs.json'], capture().io)).toBe(2);
+  });
+});
+
+describe('lousho workspace --host', () => {
+  it('imports the host module and passes its ceiling and bindTool to the host', async () => {
+    const file = path.join(root, 'host.mjs');
+    fs.writeFileSync(file, "export const policyCeiling = { permissions: [], tools: { allow: ['only'] }, secrets: [] };\nexport const bindTool = (descriptor) => descriptor;\n");
+    const host = await cliHost(root, { cwd: root, hostModule: 'host.mjs' });
+    expect(host.policyCeiling.tools.allow).toEqual(['only']);
+    expect(typeof host.bindTool).toBe('function');
+  });
+
+  it('reports a host module that cannot be imported', async () => {
+    const dir = await created('blank');
+    const run = capture({ providers: { resolve: () => mockModel(['x']) } });
+    expect(await runWorkspace(['run', 'hi', '--source', dir, '--host', 'missing.mjs', '--model', 'mock/mock-model'], run.io)).toBe(1);
+    expect(run.err()).toContain('missing.mjs');
+  });
+});
+
+describe('lousho workspace --service, more', () => {
+  it('shows, validates and runs through the typed client', async () => {
+    const show = capture({ client: fixtureClient() });
+    expect(await runWorkspace(['show', '--service', 'http://svc', '--workspace', 'marketing'], show.io)).toBe(0);
+    expect(show.out()).toContain('marketing');
+    const page = capture({ client: fixtureClient() });
+    expect(await runWorkspace(['show', '--service', 'http://svc', '--workspace', 'marketing', '--page', 'instagram-videos'], page.io)).toBe(0);
+    const validate = capture({ client: fixtureClient() });
+    expect([0, 1]).toContain(await runWorkspace(['validate', '--service', 'http://svc', '--workspace', 'marketing'], validate.io));
+    const run = capture({ client: fixtureClient() });
+    await runWorkspace(['run', 'go', '--service', 'http://svc', '--workspace', 'marketing', '--page', 'instagram-videos'], run.io);
+    expect(run.out()).toContain('finished');
+  });
+});
+
