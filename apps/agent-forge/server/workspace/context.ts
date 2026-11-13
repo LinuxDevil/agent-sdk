@@ -85,28 +85,35 @@ export interface WorkspaceContext {
   /**
    * This workspace's inbox (inbox/inboxService.ts, R02a): the
    * approvals/questions/drafts/suggestions/alerts union `GET /inbox`
-   * lists and `inbox.count` counts. Built and `start()`ed here; `stop()`
-   * has no caller until a context dispose exists (same caveat as the
-   * pass attaches above - `startStudioServer`'s `close()` stops the
-   * launch context's).
+   * lists and `inbox.count` counts. Built and `start()`ed here;
+   * `stop()` runs on `dispose()` (and `startStudioServer`'s `close()` for
+   * the launch context).
    */
   inbox: InboxService;
   /**
    * This workspace's trigger host (triggers/triggerHost.ts, R08a): the
    * per-agent trigger queue webhook/channel/cron dispatches run through.
-   * Built and `start()`ed here like the inbox; `stop()` is called by
-   * `startStudioServer`'s `close()` for the launch context (same caveat
-   * as the pass attaches for non-launch contexts until W02a dispose).
+   * Built and `start()`ed here like the inbox; `stop()` runs on
+   * `dispose()` (and `startStudioServer`'s `close()` for the launch
+   * context).
    */
   triggers: TriggerHost;
   /**
    * This workspace's cron scheduler (triggers/cronTriggers.ts, R08c):
    * fires each agent's `cron` triggers through `triggers` on schedule.
    * Built and `start()`ed here; `stop()` is called by
-   * `startStudioServer`'s `close()` for the launch context (same caveat
-   * as `triggers` for non-launch contexts until W02a dispose).
+   * `startStudioServer`'s `close()` for the launch context and by
+   * `dispose()` for every context.
    */
   cron: CronTriggers;
+  /**
+   * Stops background work (the pass-attach subscriptions, the idle
+   * versioner's pending captures, the inbox's recount subscriptions, the
+   * trigger host and the cron scheduler) and closes nothing on disk.
+   * Idempotent - `WorkspaceManager` calls it once per disposal and
+   * `startStudioServer`'s `close()` may call the pieces again.
+   */
+  dispose(): Promise<void>;
 }
 
 /**
@@ -203,9 +210,8 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   const events = new StudioEventBus();
   const drafts = new DraftStore(repo);
   // The version-summary pass (L04): every written version enqueues its
-  // `version_summary` job on the app's one PassRunner; the returned
-  // unsubscribe has no caller until W02a's context dispose().
-  attachVersionSummaries({
+  // `version_summary` job on the app's one PassRunner.
+  const detachVersionSummaries = attachVersionSummaries({
     versions,
     passRunner: services.passRunner,
     events,
@@ -214,8 +220,8 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     workspaceId: ref.id,
   });
   // The draft auto-review pass (L11a): every created/restated pending
-  // draft enqueues its `draft_review` job; same dispose() caveat as above.
-  attachDraftReviews({
+  // draft enqueues its `draft_review` job.
+  const detachDraftReviews = attachDraftReviews({
     drafts,
     repo,
     passRunner: services.passRunner,
@@ -227,8 +233,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // The triggered-run failure streak (L12): five consecutive failed
   // 'trigger' runs auto-disable the agent and raise an inbox alert; the
   // AlertStore is Studio-global, everything else is this workspace's.
-  // Same dispose() caveat as the attaches above.
-  attachFailureStreak({ runManager: runs, repo, alerts: services.alerts, events, workspaceId: ref.id });
+  const detachFailureStreak = attachFailureStreak({ runManager: runs, repo, alerts: services.alerts, events, workspaceId: ref.id });
   // The inbox (R02a): one service per workspace over this context's own
   // stores plus the Studio-global alert list (filtered to ref.id). It
   // `start()`s its recount subscriptions here; `close()` stops the
@@ -248,13 +253,16 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // dispatches queue through this workspace's RunManager; trigger-phase
   // log lines land on the same run-log stream RunManager's entries use.
   const { triggers, cron } = createTriggerRuntime({ baseDir: ref.root, repo, runManager: runs, events });
+  const idleVersioner = createIdleVersioner(versions);
+  const detachPasses = [detachVersionSummaries, detachDraftReviews, detachFailureStreak];
+  let disposed = false;
   return {
     ref,
     repo,
     agentStore,
     versions,
     drafts,
-    idleVersioner: createIdleVersioner(versions),
+    idleVersioner,
     suggestions,
     host,
     runs,
@@ -264,5 +272,16 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     inbox,
     triggers,
     cron,
+    dispose: async () => {
+      if (disposed) return;
+      disposed = true;
+      for (const detach of detachPasses) detach();
+      inbox.stop();
+      triggers.stop();
+      cron.stop();
+      // Flush pending idle-version captures before the stores go quiet -
+      // the same graceful stop `startStudioServer`'s `close()` performs.
+      await idleVersioner.flushAll();
+    },
   };
 }

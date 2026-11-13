@@ -8,6 +8,7 @@ import { WebSocket } from 'ws';
 import { upgradeSpec, type AgentSpec, type AgentSpecV2 } from 'lousho';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
+import { deferred, resetSteerGate, setSteerGateScript } from './steerGate';
 import { attachWebSocketServer } from '../wsServer';
 import { createUpgradeRouter } from '../ws/upgradeRouter';
 import { FileCheckpointStore } from '../checkpointStore';
@@ -19,6 +20,14 @@ const SPEC: AgentSpecV2 = {
   model: 'mock/mock-1',
   instructions: 'You are a helpful agent.',
   tools: [{ builtin: 'current_date' }],
+};
+
+/** Parks its first model call on a test-released gate so the run stays 'running' while asserted. */
+const STEER_SPEC: AgentSpecV2 = {
+  version: 2,
+  name: 'steer-agent',
+  model: 'steergate/steer-1',
+  instructions: 'You are a test agent.',
 };
 
 function waitForStatus(
@@ -67,6 +76,22 @@ describe('RunManager', () => {
   it('reports idle status for an agent that has never run', () => {
     const status = runManager.status('nope');
     expect(status.status).toBe('idle');
+  });
+
+  it('hasActiveRun is false while idle and true while a run is in flight (W02a)', async () => {
+    resetSteerGate();
+    expect(runManager.hasActiveRun()).toBe(false);
+
+    const gate = deferred();
+    setSteerGateScript({ blockCalls: 1, mode: 'before-output', gate: gate.promise });
+    const running = runManager.run('agent-active', 'hi', STEER_SPEC);
+    await waitForStatus(runManager, 'agent-active', (s) => s.status === 'running');
+    expect(runManager.hasActiveRun()).toBe(true);
+
+    gate.resolve();
+    await running;
+    await waitForStatus(runManager, 'agent-active', (s) => s.status === 'done');
+    expect(runManager.hasActiveRun()).toBe(false);
   });
 
   it('runs an agent to completion and reports the result text', async () => {

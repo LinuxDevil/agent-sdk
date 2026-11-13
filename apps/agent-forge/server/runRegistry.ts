@@ -319,6 +319,14 @@ export class RunManager extends EventEmitter {
     };
   }
 
+  /** True while any agent's run is 'running' or 'paused' - `WorkspaceManager.sweep()` keeps a context warm on this. */
+  hasActiveRun(): boolean {
+    for (const entry of this.entries.values()) {
+      if (entry.status === 'running' || entry.status === 'paused') return true;
+    }
+    return false;
+  }
+
   private setEntry(agentId: string, patch: Partial<RunEntry>, base?: RunEntry): RunEntry {
     const prev =
       base ??
