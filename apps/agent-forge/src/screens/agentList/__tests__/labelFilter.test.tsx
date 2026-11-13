@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   listAgents: vi.fn(),
   patchAgentMeta: vi.fn(),
   createAgentRecord: vi.fn(),
+  listCodeAgents: vi.fn(),
 }));
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
 
@@ -77,6 +78,7 @@ beforeEach(() => {
   api.listAgents.mockResolvedValue(ITEMS);
   api.patchAgentMeta.mockResolvedValue({});
   api.createAgentRecord.mockResolvedValue({ id: 'untitled-1' } as AgentRecord);
+  api.listCodeAgents.mockResolvedValue([]);
   window.history.replaceState(null, '', '/#/agents');
 });
 

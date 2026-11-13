@@ -11,6 +11,7 @@ import { AgentsScreen } from './agents/AgentsScreen';
 import { AgentListScreen } from './agentList/AgentListScreen';
 import { InboxScreen } from './inbox/InboxScreen';
 import { AgentDetailRoute } from './agentDetail/AgentDetailRoute';
+import { CodeAgentRoute } from './codeAgent/CodeAgentRoute';
 import { TemplatesScreen } from './templates/TemplatesScreen';
 import { agentRedirect } from './agents/agentTabs';
 import { TraceScreen } from './traces/TraceScreen';
@@ -75,6 +76,7 @@ function ScreenFrame({ children }: { children: ReactNode }) {
 /** The screens that render with no props, by id (Agents and Settings are handled in `Screens`). */
 const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   agentList: AgentListScreen,
+  codeAgent: CodeAgentRoute,
   inbox: InboxScreen,
   templates: TemplatesScreen,
   traces: TracesScreen,

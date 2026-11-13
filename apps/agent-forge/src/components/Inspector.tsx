@@ -55,8 +55,8 @@ function breakpointKeyFor(node: GraphNode): string | undefined {
   return undefined;
 }
 
-/** The header: the node's kind icon tile, its view label as an overline, its title (truncated, full text in the tooltip) and an optional action. */
-function InspectorHead({ node, graph, action }: { node: GraphNode; graph: Graph; action?: ReactNode }) {
+/** The header: the node's kind icon tile, its view label as an overline, its title (truncated, full text in the tooltip) and an optional action. Exported for X06b's read-only code-agent inspector. */
+export function InspectorHead({ node, graph, action }: { node: GraphNode; graph: Graph; action?: ReactNode }) {
   const view = viewFor(node.kind);
   const { Icon } = view;
   return (

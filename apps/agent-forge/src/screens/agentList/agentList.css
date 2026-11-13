@@ -39,3 +39,75 @@
   gap: var(--space-2);
   min-width: 0;
 }
+
+/* ---------- "In your code" (X06b CodeAgentSection) ---------- */
+.agents-code-section {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+
+.agents-code-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.agents-code-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.agents-code-list {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.agents-code-row a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+}
+.agents-code-row a:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+.agents-code-row a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.agents-code-name {
+  font-weight: 600;
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-code-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agents-code-row .chip {
+  margin-left: auto;
+  flex: none;
+}

@@ -74,6 +74,8 @@ describe('screenFor', () => {
     expect(screenFor('#/agents/support-bot')).toBe('agents');
     expect(screenFor('#/agents/support-bot/canvas')).toBe('agents');
     expect(screenFor('#/agents/support-bot/overview')).toBe('agentDetail');
+    // X06b: the encoded dir path is one segment; it decodes back to 'agents/support'.
+    expect(screenFor('#/code-agents/agents%2Fsupport')).toBe('codeAgent');
     expect(screenFor('#/inbox')).toBe('inbox');
     expect(screenFor('#/templates')).toBe('templates');
     expect(screenFor('#/templates?category=Support&template=pr-reviewer')).toBe('templates');

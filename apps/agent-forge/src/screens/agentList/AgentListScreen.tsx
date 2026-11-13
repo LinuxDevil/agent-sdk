@@ -20,7 +20,9 @@ import { LoadErrorCard, LoadingGrid } from '../listStates';
 import { agentTabPath } from '../agents/agentTabs';
 import { ImportSheet } from '../agents/import/ImportSheet';
 import { AgentCard } from './AgentCard';
+import { CodeAgentSection } from './CodeAgentSection';
 import { filterAgents, useAgentListFilter, type AgentListFilter } from './agentListUrl';
+import { useCodeAgentDirs } from './useCodeAgentDirs';
 import { NewAgentMenu, StartOptions } from './NewAgentMenu';
 import { useNewAgentActions, type NewAgentActions } from './newAgent';
 import { useAgentList, type AgentListState } from './useAgentList';
@@ -156,6 +158,8 @@ function useAgentListFacets(
  */
 export function AgentListScreen() {
   const list = useAgentList();
+  // X06b: code-defined agent directories, shown as the "In your code" section (hidden when none).
+  const codeDirs = useCodeAgentDirs();
   const [filter, setFilter] = useAgentListFilter();
   // One instance shared by the header menu and the empty state's start buttons:
   // a second useNewAgentActions would track `creating` separately and let a
@@ -201,6 +205,7 @@ export function AgentListScreen() {
           onOpen={onOpen}
           onToggle={onToggle}
         />
+        <CodeAgentSection dirs={codeDirs} />
       </div>
       <ImportSheet open={importOpen} onClose={() => setImportOpen(false)} />
     </>

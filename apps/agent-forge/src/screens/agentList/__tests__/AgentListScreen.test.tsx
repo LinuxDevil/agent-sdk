@@ -8,6 +8,7 @@ const api = vi.hoisted(() => ({
   listAgents: vi.fn(),
   patchAgentMeta: vi.fn(),
   createAgentRecord: vi.fn(),
+  listCodeAgents: vi.fn(),
 }));
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
 
@@ -90,6 +91,7 @@ beforeEach(() => {
   api.listAgents.mockResolvedValue(ITEMS);
   api.patchAgentMeta.mockResolvedValue({});
   api.createAgentRecord.mockResolvedValue({ id: 'untitled-1' } as AgentRecord);
+  api.listCodeAgents.mockResolvedValue([]);
   window.history.replaceState(null, '', '/#/agents');
 });
 
@@ -238,6 +240,37 @@ describe('AgentListScreen', () => {
     await flush();
     expect(api.createAgentRecord).toHaveBeenCalledTimes(1);
     expect(window.location.hash).toBe('#/agents/untitled-1/canvas');
+  });
+
+  it('shows the "In your code" section only when the workspace has agent directories', async () => {
+    api.listCodeAgents.mockResolvedValue([
+      { path: 'agents/support', name: 'support', configFile: 'agent.ts', configKind: 'code' },
+      { path: 'tools/billing', name: 'billing', configFile: 'agent.yaml', configKind: 'data' },
+    ]);
+    const host = await mountAt();
+    const section = host.querySelector('.agents-code-section')!;
+    expect(section).not.toBeNull();
+    expect(section.querySelector('#agents-code-title')?.textContent).toBe('In your code');
+    const rows = [...section.querySelectorAll<HTMLAnchorElement>('.agents-code-row a')];
+    expect(rows.map((a) => a.getAttribute('href'))).toEqual([
+      '#/code-agents/agents%2Fsupport',
+      '#/code-agents/tools%2Fbilling',
+    ]);
+    expect(rows[0].textContent).toContain('support');
+    expect(rows[0].textContent).toContain('agents/support');
+    expect(rows[0].textContent).toContain('agent.ts');
+  });
+
+  it('hides the "In your code" section when the directory list is empty or fails', async () => {
+    const host = await mountAt();
+    expect(host.querySelector('.agents-code-section')).toBeNull();
+
+    api.listCodeAgents.mockRejectedValueOnce(new Error('scan failed'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const host2 = await mountAt();
+    expect(host2.querySelector('.agents-code-section')).toBeNull();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it('creates a blank agent from the New agent menu and opens its canvas', async () => {
