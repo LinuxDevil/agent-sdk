@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
-import type { AgentSpecV2 } from 'lousho';
+import { VERSION, type AgentSpecV2 } from 'lousho';
 import { createApp } from '../app';
 import type { Express } from 'express';
 import { createWorkspaceContext, type WorkspaceContext, type WorkspaceServices } from '../workspace/context';
@@ -96,6 +96,8 @@ describe('GET /agents?ws=all (cross-workspace aggregate)', () => {
       passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
       spendLog,
       alerts,
+      collector: () => ({ url: 'http://127.0.0.1:1' }),
+      studioVersion: VERSION,
     };
     registry = new WorkspaceRegistry(path.join(studioDir, 'workspaces.json'));
     launchRef = await registry.ensure(launchDir);
@@ -292,6 +294,8 @@ describe('GET /agents?ws=all - observed agents (W07a)', () => {
       passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
       spendLog,
       alerts,
+      collector: () => ({ url: 'http://127.0.0.1:1' }),
+      studioVersion: VERSION,
     };
     registry = new WorkspaceRegistry(path.join(studioDir, 'workspaces.json'));
     launchRef = await registry.ensure(launchDir);

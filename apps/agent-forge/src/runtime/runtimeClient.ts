@@ -67,6 +67,7 @@ import type {
   ToolPin,
   TraceDetailPayload,
   TraceSummaryPayload,
+  HostStatus,
   VersionListItem,
   VersionRecord,
   WorkspaceInboxItem,
@@ -516,6 +517,22 @@ class RuntimeClient implements AgentApi {
       method: 'POST',
       body: JSON.stringify(body),
     });
+  }
+
+  /**
+   * W11c: `id`'s host status (`GET /workspaces/:ws/host`) - which SDK runs
+   * its agents, the selection banner, and the bridge child's state.
+   */
+  async hostStatus(id: string): Promise<HostStatus> {
+    return this.forWorkspace(id).request(`/workspaces/${encodeURIComponent(id)}/host`, { method: 'GET' });
+  }
+
+  /**
+   * W11c: restart `id`'s project bridge (`POST /workspaces/:ws/host/restart`)
+   * - 202 with the settled status, or 409 `LOUSHO_HOST_NOT_BRIDGE`.
+   */
+  async restartHost(id: string): Promise<HostStatus> {
+    return this.forWorkspace(id).request(`/workspaces/${encodeURIComponent(id)}/host/restart`, { method: 'POST' });
   }
 
   async run(

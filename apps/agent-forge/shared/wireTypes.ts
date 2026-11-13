@@ -369,7 +369,8 @@ export type StudioEvent =
   | { type: 'version.summary'; agentId: string; version: number; summary: string }
   | { type: 'draft.changed'; agentId: string; draftId: string; status: ChangeDraft['status'] }
   | { type: 'suggestion.new'; agentId: string; suggestionId: string }
-  | { type: 'inbox.count'; count: number };
+  | { type: 'inbox.count'; count: number }
+  | { type: 'host.status'; payload: HostStatus };
 
 /** Masked provider key status. Never carries a real key. */
 export interface ProviderKeyStatus {
@@ -1424,4 +1425,25 @@ export interface HostBanner {
   text: string;
   /** `'restart'` offers the client a restart action (a crashed bridge). */
   action?: 'restart';
+}
+
+/** The bridge child's lifecycle as the host status reports it; in-process and read-only workspaces are always `'ready'`. */
+export type HostState = 'starting' | 'ready' | 'restarting' | 'failed';
+
+/**
+ * `GET /workspaces/:ws/host` (W11c): which SDK runs this workspace's agents,
+ * the banner explaining the selection, and the bridge child's state.
+ * `sdkVersion` is the SDK that runs the agents (the handshake's version on
+ * a bridge, Studio's own in-process); `null` when a read-only workspace's
+ * SDK never completed a hello. `recentStderr` appears only on a failed
+ * bridge (last 50 lines).
+ */
+export interface HostStatus {
+  workspaceId: string;
+  mode: HostMode;
+  state: HostState;
+  sdkVersion: string | null;
+  studioSdkVersion: string;
+  banner: HostBanner | null;
+  recentStderr?: string[];
 }

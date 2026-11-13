@@ -9,8 +9,14 @@
 //   garbage               answers hello, answers requests, and also prints
 //                         non-JSON noise lines.
 import { createInterface } from 'node:readline';
+import { existsSync } from 'node:fs';
 
 const mode = process.env.FAKE_BRIDGE_MODE ?? 'ok';
+// W11c: `FAKE_BRIDGE_SILENT_UNTIL=<file>` keeps the bridge silent until the
+// file exists - a restart test flips it on mid-run.
+const silentUntil = process.env.FAKE_BRIDGE_SILENT_UNTIL;
+const isSilent = () => mode === 'silent' || (silentUntil !== undefined && !existsSync(silentUntil));
+if (silentUntil !== undefined) process.stderr.write('fake bridge: silent until the gate file exists\n');
 const say = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
 
 if (mode === 'unknown-command') {
@@ -46,7 +52,7 @@ rl.on('line', (line) => {
     return;
   }
   const { id, method } = request;
-  if (mode === 'silent') return; // alive but never answers
+  if (isSilent()) return; // alive but never answers
   if (method === 'hello') {
     helloDone = true;
     say({ id, result: hello });

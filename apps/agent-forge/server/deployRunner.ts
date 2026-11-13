@@ -63,8 +63,15 @@ async function writeLegacyDeploySpec(baseDir: string, agentId: string): Promise<
   return filePath;
 }
 
-export async function runDeploy(baseDir: string, agentId: string, adapter: string): Promise<DeployResult> {
-  const cliEntry = path.join(baseDir, 'bin', 'lousho.js');
+export async function runDeploy(
+  baseDir: string,
+  agentId: string,
+  adapter: string,
+  // W11c: a bridge workspace deploys through ITS SDK's bin (the project's
+  // installed `lousho`), not `<workspace>/bin/lousho.js` - the route passes
+  // `hostSelector.current().sdk.binPath` on bridge mode.
+  cliEntry: string = path.join(baseDir, 'bin', 'lousho.js')
+): Promise<DeployResult> {
   const outDir = path.join(baseDir, '.lousho', 'build', adapter, agentId);
   const agentPath = await writeLegacyDeploySpec(baseDir, agentId);
   const args = ['build', `--target=${adapter}`, `--agent=${agentPath}`, `--out=${outDir}`];

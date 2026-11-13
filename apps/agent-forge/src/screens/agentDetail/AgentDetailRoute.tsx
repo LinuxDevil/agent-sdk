@@ -14,6 +14,8 @@ import { useAgentRecord } from './useAgentRecord';
 import { TAB_SCREENS } from './tabScreens';
 import { isAgentTab, agentListPath, type AgentTab } from '../agents/agentTabs';
 import { activeWorkspace } from '../../workspace/activeWorkspace';
+import { HostBanner } from '../../components/HostBanner';
+import { hostReadOnlyTitle, useHostStatus } from '../../state/useHostStatus';
 
 /**
  * `#/w/:ws/agents/:id/:tab` - the agent detail screen (A05, workspace-scoped
@@ -31,6 +33,10 @@ export function AgentDetailRoute() {
   const tabParam = route?.params.tab;
   const tab: AgentTab = tabParam !== undefined && isAgentTab(tabParam) ? tabParam : 'overview';
   const state = useAgentRecord(id);
+  // W11c: the workspace's host status - the banner under the header and
+  // the read-only title the Run/save controls disable with. Hooks run
+  // before the early returns below.
+  const host = useHostStatus(route?.params.ws ?? activeWorkspace());
 
   if (state.loading && state.record === undefined) {
     return (
@@ -91,7 +97,8 @@ export function AgentDetailRoute() {
   }
 
   const record = state.record;
-  const context: AgentDetailContextValue = { record, refresh: state.refresh, setRecord: state.setRecord };
+  const readOnlyTitle = hostReadOnlyTitle(host.status);
+  const context: AgentDetailContextValue = { record, refresh: state.refresh, setRecord: state.setRecord, readOnlyTitle };
   const TabScreen = TAB_SCREENS[tab];
   const content: ReactNode = TabScreen ? <TabScreen /> : null;
 
@@ -105,7 +112,9 @@ export function AgentDetailRoute() {
           labelsItem={<HeaderLabels record={record} />}
           notices={<AutoDisableNotice record={record} />}
           menu={<AgentActionsMenu record={record} />}
+          readOnlyTitle={readOnlyTitle}
         />
+        <HostBanner status={host.status} restarting={host.restarting} restartError={host.restartError} onRestart={() => void host.restart()} />
         <main className="screen-main" id="agent-tab-panel">
           {content}
         </main>

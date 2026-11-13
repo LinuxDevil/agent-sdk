@@ -195,21 +195,22 @@ export class WorkspaceHostSelector {
     try {
       const hello = useRestart ? await client.restart() : await client.start();
       // Rows 4-5: a hello that cannot serve v2 specs or protocol 1 is read-only.
+      // The handshake's version is the SDK that answered - record it over the disk read.
       if (!hello.specVersions.includes(2)) {
         await client.stop();
-        return this.settle({ mode: 'read-only', banner: WARNING_OLD_SDK() });
+        return this.settle({ mode: 'read-only', banner: WARNING_OLD_SDK(), sdkVersion: hello.sdkVersion });
       }
       if (hello.protocol !== BRIDGE_PROTOCOL_VERSION) {
         await client.stop();
-        return this.settle({ mode: 'read-only', banner: WARNING_NEWER_SDK(hello.sdkVersion) });
+        return this.settle({ mode: 'read-only', banner: WARNING_NEWER_SDK(hello.sdkVersion), sdkVersion: hello.sdkVersion });
       }
       // Row 6.
       return this.settle({ mode: 'bridge', banner: null, sdkVersion: hello.sdkVersion });
     } catch (error) {
       if (error instanceof BridgeError && error.code === 'LOUSHO_BRIDGE_UNSUPPORTED') {
-        // Row 3.
+        // Row 3: no hello ever answered - the SDK version is unknown.
         await client.stop();
-        return this.settle({ mode: 'read-only', banner: WARNING_OLD_SDK() });
+        return this.settle({ mode: 'read-only', banner: WARNING_OLD_SDK(), sdkVersion: null });
       }
       // Row 7: transport-level failure - the host stays 'bridge' with a restart banner.
       return this.settle({ mode: 'bridge', banner: DANGER_CRASHED() });

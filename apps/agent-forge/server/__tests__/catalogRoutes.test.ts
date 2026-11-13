@@ -8,21 +8,33 @@ import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from '
 import { registerCatalogRoutes } from '../routes/catalogRoutes';
 import { SecretsStore } from '../secretsStore';
 import { sdkRootDir } from '../sdkRoot';
+import { createWorkspaceContext, singleWorkspace, type WorkspaceContext, type WorkspaceServices } from '../workspace/context';
+import { workspaceMiddleware } from '../workspace/middleware';
+import { workspaceRefFor } from '../workspace/workspaceId';
+import { SettingsStore } from '../settingsStore';
+import { SpendLog } from '../passes/spendLog';
+import { AlertStore } from '../inbox/alertStore';
+import { PassRunner } from '../passes/passRunner';
 
 /**
  * The catalog routes expose the SDK's catalogs (S06 tools, S07 models,
  * S11 guardrails, S22a trigger types) plus the registry index's skills and
  * kits, so the canvas pickers and the Author read the real lists instead of
- * hard-coding names. `registerCatalogRoutes` mounts on a bare Express app
- * here; the token gate that also covers `/catalog/**` is tokenGate.test.ts's.
+ * hard-coding names. W11c reads models/tools/guardrails/triggers through
+ * the request workspace's `AgentHost`, so the bare app mounts the real
+ * workspace middleware over an in-process context (Studio's own catalog -
+ * identical lists); the token gate that also covers `/catalog/**` is
+ * tokenGate.test.ts's.
  */
 describe('catalog routes', () => {
   let baseDir: string;
   let secrets: SecretsStore;
+  let ctx: WorkspaceContext;
   let app: Express;
 
   function mount(registryIndexPath?: string): Express {
     const mounted = express();
+    mounted.use(workspaceMiddleware(singleWorkspace(ctx)));
     registerCatalogRoutes(mounted, { secretsStore: secrets, ...(registryIndexPath ? { registryIndexPath } : {}) });
     return mounted;
   }
@@ -30,6 +42,20 @@ describe('catalog routes', () => {
   beforeAll(() => {
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-catalog-'));
     secrets = new SecretsStore(baseDir);
+    const studioDir = path.join(baseDir, '.lousho');
+    fs.mkdirSync(studioDir, { recursive: true });
+    const spendLog = new SpendLog(path.join(studioDir, 'spend.jsonl'));
+    const services: WorkspaceServices = {
+      secretsStore: secrets,
+      settingsStore: new SettingsStore(studioDir),
+      observe: false,
+      passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
+      spendLog,
+      alerts: new AlertStore(path.join(studioDir, 'alerts.json')),
+      collector: () => ({ url: 'http://127.0.0.1:1' }),
+      studioVersion: 'test',
+    };
+    ctx = createWorkspaceContext(workspaceRefFor(baseDir), services);
     app = mount();
   });
 
