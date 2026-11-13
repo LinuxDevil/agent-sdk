@@ -113,6 +113,16 @@ describe.each(BACKENDS)('the store contract on %s', (_name, make) => {
     expect(await stores.runs.list(['ok'])).toEqual([done]);
   });
 
+  it('keeps the thread and the parent run of a run row', async () => {
+    const stores = createWorkspaceStores(await backend(), A);
+    await stores.runs.start({ runId: 'ws-1', pageId: '', revision: 'r1', threadId: 'thread-1' });
+    await stores.runs.start({ runId: 'page-1', pageId: 'post', revision: 'r1', threadId: 'thread-1', parentRunId: 'ws-1' });
+    await stores.runs.finish('page-1', 'ok');
+    expect(await stores.runs.get('ws-1')).toMatchObject({ threadId: 'thread-1' });
+    expect((await stores.runs.get('ws-1'))?.parentRunId).toBeUndefined();
+    expect(await stores.runs.get('page-1')).toMatchObject({ threadId: 'thread-1', parentRunId: 'ws-1', status: 'ok' });
+  });
+
   it('a run row survives a restart and is marked interrupted', async () => {
     const dir = scratch();
     const first = await make(dir);
