@@ -4,6 +4,7 @@ import { useAppState } from '../state/AppState';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { DeployResult, ProviderKeyStatus, SettingsFile, SettingsProfile } from '../../shared/wireTypes';
 import { errorMessage } from './errorMessage';
+import { useToast } from '../ui/Toast';
 import { AgentAuthorSection, AppearanceSection, ShortcutsSection } from './SettingsAppSections';
 import { CollectorCard } from './settings/CollectorCard';
 import { PassesSection } from './PassesSection';
@@ -106,10 +107,13 @@ function useSettingsProfiles(setDeployAdapter: (adapter: string) => void, deploy
 }
 
 function useDeploy(deployAdapter: string) {
-  const { agentId } = useAppState();
+  const { agentId, agents } = useAppState();
+  const toast = useToast();
   const [deployAdapters, setDeployAdapters] = useState<string[]>([]);
   const [deploying, setDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | undefined>(undefined);
+  // X05: deploy builds the published version - `null` until one is pinned.
+  const publishedVersion = agents?.find((a) => a.id === agentId)?.publishedVersion ?? null;
 
   useEffect(() => {
     runtimeClient
@@ -124,12 +128,15 @@ function useDeploy(deployAdapter: string) {
     try {
       const result = await runtimeClient.deployAgent(agentId, deployAdapter);
       setDeployResult(result);
+    } catch (error) {
+      // A 409 (published pointer moved between render and click) lands here.
+      toast.show({ message: errorMessage(error), tone: 'error' });
     } finally {
       setDeploying(false);
     }
   }
 
-  return { deployAdapters, deploying, deployResult, deploy };
+  return { deployAdapters, deploying, deployResult, deploy, publishedVersion };
 }
 
 interface ProviderKeyFieldProps {
@@ -346,12 +353,15 @@ function ProfileSection({ profiles }: ProfileSectionProps) {
   );
 }
 
-function DeployResultView({ result }: { result: DeployResult }) {
+function DeployResultView({ result, adapter }: { result: DeployResult; adapter: string }) {
+  const headline =
+    result.exitCode === 0
+      ? `Deployed v${result.version} to ${adapter}`
+      : `Build of v${result.version} failed (exit ${result.exitCode})`;
   return (
     <div className="deploy-result">
-      <div className="hint">
-        {result.exitCode === 0 ? 'Build succeeded' : `Build failed (exit ${result.exitCode})`} — {result.command}
-      </div>
+      <div className="hint">{headline}</div>
+      <div className="hint">{result.command}</div>
       <pre className="deploy-log">
         {result.stdout}
         {result.stderr}
@@ -366,9 +376,10 @@ interface DeploySectionProps {
 }
 
 function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
-  const { deployAdapters, deploying, deployResult, deploy } = useDeploy(deployAdapter);
+  const { deployAdapters, deploying, deployResult, deploy, publishedVersion } = useDeploy(deployAdapter);
+  const unpublished = publishedVersion === null;
   return (
-    <SettingsCard Icon={Rocket} title="Deploy target" description="Build this agent's saved spec with a deploy adapter.">
+    <SettingsCard Icon={Rocket} title="Deploy target" description="Build the published version with a deploy adapter.">
       <div className="field">
         <label>Adapter</label>
         <select className="select" aria-label="Deploy adapter" value={deployAdapter} onChange={(e) => onAdapterChange(e.target.value)}>
@@ -379,10 +390,16 @@ function DeploySection({ deployAdapter, onAdapterChange }: DeploySectionProps) {
           ))}
         </select>
       </div>
-      <button className="btn btn-success" onClick={() => void deploy()} disabled={deploying}>
-        {deploying ? 'Deploying…' : 'Deploy this agent'}
+      <button
+        className="btn btn-success"
+        onClick={() => void deploy()}
+        disabled={deploying || unpublished}
+        title={unpublished ? 'Publish a version first' : undefined}
+      >
+        {deploying ? 'Deploying…' : unpublished ? 'Deploy this agent' : `Deploy v${publishedVersion}`}
       </button>
-      {deployResult && <DeployResultView result={deployResult} />}
+      {unpublished && <div className="hint">Deploy builds the published version. Publish one from the Versions tab.</div>}
+      {deployResult && <DeployResultView result={deployResult} adapter={deployAdapter} />}
     </SettingsCard>
   );
 }

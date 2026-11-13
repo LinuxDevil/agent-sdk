@@ -8,15 +8,30 @@ import { toggleTheme } from '../../shell/theme';
 import type { ProviderKeyStatus } from '../../../shared/wireTypes';
 
 const keys = vi.hoisted(() => ({ list: [] as ProviderKeyStatus[] }));
+const deploy = vi.hoisted(() => ({
+  agents: [] as Array<{ id: string; publishedVersion: number | null }>,
+  result: undefined as import('../../../shared/wireTypes').DeployResult | undefined,
+  error: undefined as Error | undefined,
+  calls: [] as Array<{ agentId: string; adapter: string }>,
+}));
+const toast = vi.hoisted(() => ({ show: vi.fn() }));
 
 vi.mock('../../state/AppState', () => ({
-  useAppState: () => ({ agentId: 'a1', refreshActiveProfile: async () => undefined }),
+  useAppState: () => ({ agentId: 'a1', agents: deploy.agents, refreshActiveProfile: async () => undefined }),
+}));
+vi.mock('../../ui/Toast', () => ({
+  useToast: () => ({ show: toast.show }),
 }));
 vi.mock('../../runtime/runtimeClient', () => ({
   runtimeClient: {
     listProviderKeys: async () => keys.list,
     listSettingsProfiles: async () => ({ activeProfileId: 'local', profiles: [] }),
     listDeployAdapters: async () => ['node-server'],
+    deployAgent: async (agentId: string, adapter: string) => {
+      deploy.calls.push({ agentId, adapter });
+      if (deploy.error) throw deploy.error;
+      return deploy.result;
+    },
     getAuthorSettings: async () => ({
       model: 'anthropic/claude-sonnet-5-5',
       reviewModel: 'anthropic/claude-haiku-5-5',
@@ -75,6 +90,11 @@ const button = (scope: Element, text: string) =>
 
 beforeEach(() => {
   keys.list = [];
+  deploy.agents = [{ id: 'a1', publishedVersion: null }];
+  deploy.result = undefined;
+  deploy.error = undefined;
+  deploy.calls = [];
+  toast.show.mockClear();
   installMemoryStorage();
 });
 afterEach(() => {
@@ -155,6 +175,49 @@ describe('SettingsPanel', () => {
     expect(window.localStorage.getItem('forge.density')).toBeNull();
     expect(group.querySelector('[aria-pressed="true"]')).toBeNull();
     expect(host.textContent).toContain("Tables use each screen's default until you pick one.");
+  });
+
+  it('disables Deploy with guidance while the agent has no published version', async () => {
+    const host = await mount();
+    const deployButton = button(host, 'Deploy this agent');
+    expect(deployButton.disabled).toBe(true);
+    expect(deployButton.title).toBe('Publish a version first');
+    expect(host.textContent).toContain('Deploy builds the published version. Publish one from the Versions tab.');
+  });
+
+  it('labels the button Deploy v<n>, runs the build and shows the published version in the result', async () => {
+    deploy.agents = [{ id: 'a1', publishedVersion: 2 }];
+    deploy.result = { exitCode: 0, stdout: 'ok\n', stderr: '', command: 'node bin/lousho.js build', version: 2 };
+    const host = await mount();
+    const deployButton = button(host, 'Deploy v2');
+    expect(deployButton.disabled).toBe(false);
+    await act(async () => {
+      deployButton.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(deploy.calls).toEqual([{ agentId: 'a1', adapter: 'node-server' }]);
+    expect(host.textContent).toContain('Deployed v2 to node-server');
+  });
+
+  it('shows the failed-build headline and toasts the server message on a deploy error', async () => {
+    deploy.agents = [{ id: 'a1', publishedVersion: 3 }];
+    deploy.result = { exitCode: 1, stdout: '', stderr: 'boom', command: 'node bin/lousho.js build', version: 3 };
+    const host = await mount();
+    await act(async () => {
+      button(host, 'Deploy v3').click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(host.textContent).toContain('Build of v3 failed (exit 1)');
+
+    deploy.error = new Error('Publish a version before deploying');
+    await act(async () => {
+      button(host, 'Deploy v3').click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(toast.show).toHaveBeenCalledWith({ message: 'Publish a version before deploying', tone: 'error' });
   });
 
   it('the collector card reports an unreachable daemon and lists every shortcut', async () => {

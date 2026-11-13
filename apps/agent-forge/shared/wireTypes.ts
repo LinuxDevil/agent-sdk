@@ -533,6 +533,8 @@ export interface DeployResult {
   stdout: string;
   stderr: string;
   command: string;
+  /** The published version `lousho build` ran against (X05). */
+  version: number;
 }
 
 /**
