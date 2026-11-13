@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { RuntimeClient, RuntimeApiError } from '../runtimeClient';
+import { setLaunchWorkspace } from '../../workspace/activeWorkspace';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -556,5 +557,84 @@ describe('RuntimeClient author settings methods', () => {
       status: 400,
       code: 'INVALID_INPUT',
     });
+  });
+});
+
+describe('RuntimeClient workspace targeting (W04a)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.location.hash = '';
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+
+  /** The workspace header of the last fetch call. */
+  function lastWorkspaceHeader(fetchMock: { mock: { calls: unknown[][] } }): string | null {
+    const init = fetchMock.mock.calls.at(-1)?.[1] as RequestInit | undefined;
+    return new Headers(init?.headers).get('x-lousho-workspace');
+  }
+
+  /** Records every WebSocket url the client opens. */
+  class WsStub {
+    static urls: string[] = [];
+    readyState = 0;
+    constructor(url: string) {
+      WsStub.urls.push(url);
+    }
+    addEventListener(): void {}
+    close(): void {}
+  }
+
+  it('omits x-lousho-workspace before any workspace is known (no launch id, plain hash)', async () => {
+    // First in the file: no setLaunchWorkspace call has happened yet.
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.listAgents();
+    expect(lastWorkspaceHeader(fetchMock)).toBeNull();
+  });
+
+  it('sends the launch id once setLaunchWorkspace ran', async () => {
+    setLaunchWorkspace('launch-abc123');
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.listAgents();
+    expect(lastWorkspaceHeader(fetchMock)).toBe('launch-abc123');
+  });
+
+  it('prefers the #/w/<id>/… hash over the launch id', async () => {
+    window.location.hash = '#/w/proj-def456/agents';
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.listAgents();
+    expect(lastWorkspaceHeader(fetchMock)).toBe('proj-def456');
+  });
+
+  it('forWorkspace(id) pins the header regardless of the URL', async () => {
+    window.location.hash = '#/w/proj-def456/agents';
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.forWorkspace('other-fff000').listAgents();
+    expect(lastWorkspaceHeader(fetchMock)).toBe('other-fff000');
+  });
+
+  it('subscribe and subscribeEvents put ws=<id> next to token in the socket URL', () => {
+    WsStub.urls = [];
+    vi.stubGlobal('WebSocket', WsStub);
+    window.location.hash = '#/w/proj-def456/agents';
+    client.subscribe('a1', () => {});
+    client.subscribeEvents(() => {});
+    expect(WsStub.urls[0]).toContain('/agents/a1/stream?');
+    expect(WsStub.urls[0]).toContain('token=t');
+    expect(WsStub.urls[0]).toContain('ws=proj-def456');
+    expect(WsStub.urls[1]).toContain('/events?');
+    expect(WsStub.urls[1]).toContain('ws=proj-def456');
+  });
+
+  it('forWorkspace sockets carry their own ws= even on a plain hash', () => {
+    WsStub.urls = [];
+    vi.stubGlobal('WebSocket', WsStub);
+    window.location.hash = '';
+    client.forWorkspace('other-fff000').subscribeEvents(() => {});
+    expect(WsStub.urls[0]).toContain('ws=other-fff000');
   });
 });
