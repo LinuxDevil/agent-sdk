@@ -161,8 +161,8 @@ const matcherNames = (matcher: PermissionToolMatcher): string[] => {
 };
 
 function policyLists(policy: EffectivePolicy, agentPerms: readonly AgentPermission[] = []): PermissionRule[][] {
-  const agent = permissionsFromSpec(agentPerms.map((rule, index) => ({ ...rule, id: `agent-${index}` })));
-  return [permissionsFromSpec(policy.permissions.ceiling), permissionsFromSpec(policy.permissions.workspace), agent];
+  const agent = permissionsFromSpec(agentPerms.map((rule, index) => ({ ...rule, id: `agent-${index}` }))).rules;
+  return [permissionsFromSpec(policy.permissions.ceiling).rules, permissionsFromSpec(policy.permissions.workspace).rules, agent];
 }
 
 function decidedOutright(lists: readonly (readonly PermissionRule[])[], name: string, actions: readonly PermissionRule['action'][]): boolean {
