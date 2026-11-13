@@ -556,6 +556,31 @@ export interface WorkspaceInfo {
 }
 
 /**
+ * One row of `GET /workspace/agent-dirs` (X06a): an agent directory found
+ * under the workspace root - a folder holding an `agent.*` config file.
+ * `path` is relative to the workspace root, POSIX separators, `'.'` for
+ * the root itself; `configKind` says whether the config is data
+ * (`agent.json`/`.yaml`, spec-readable) or code (`agent.ts`/`.js`, listed
+ * but refused by `agentDirToSpec`).
+ */
+export interface CodeAgentDir {
+  path: string;
+  /** Directory basename (`'.'` path → the workspace folder's own name). */
+  name: string;
+  /** The config file found, e.g. 'agent.ts'. */
+  configFile: string;
+  configKind: 'code' | 'data';
+}
+
+/** `GET /workspace/agent-dirs/spec?path=<rel>`'s response (X06a). */
+export interface CodeAgentSpecResponse {
+  path: string;
+  spec: AgentSpecV2;
+  /** What `agentDirToSpec` left out of the spec, as `field: reason` strings. */
+  warnings: string[];
+}
+
+/**
  * One row of `GET /workspaces`: the registry's `WorkspaceRef` plus the
  * per-request facts the route computes (`isLaunch` is a per-process fact,
  * `available`/`agentCount` come from the folder's current state - none of
