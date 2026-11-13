@@ -13,8 +13,8 @@
  * with that workspace's header.
  */
 import { useCallback, useMemo, useState } from 'react';
-import { Bot, SearchX } from 'lucide-react';
-import type { ObservedAgentItem, WorkspaceAgentItem } from '../../../shared/wireTypes';
+import { Bot, RefreshCw, SearchX } from 'lucide-react';
+import type { CodeAgentItem, ObservedAgentItem, WorkspaceAgentItem } from '../../../shared/wireTypes';
 import { labelFacetOptions } from '../../../shared/labels';
 import { matchRoute, navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
@@ -29,8 +29,9 @@ import { LoadErrorCard, LoadingGrid } from '../listStates';
 import { agentTabPath } from '../agents/agentTabs';
 import { ImportSheet } from '../agents/import/ImportSheet';
 import { AgentCard } from './AgentCard';
+import { CodeAgentCard } from './CodeAgentCard';
 import { ObservedAgentCard } from './ObservedAgentCard';
-import { filterAgents, filterObserved, useAgentListFilter, workspaceOptions, type AgentListFilter } from './agentListUrl';
+import { filterAgents, filterCode, filterObserved, useAgentListFilter, workspaceOptions, type AgentListFilter } from './agentListUrl';
 import { NewAgentMenu, StartOptions } from './NewAgentMenu';
 import { useNewAgentActions, type NewAgentActions } from './newAgent';
 import { pendingKey, useAgentList, type AgentListScope, type AgentListState } from './useAgentList';
@@ -67,10 +68,11 @@ function SkeletonCard() {
   );
 }
 
-/** The loaded grid: one AgentCard per visible workspace item, then the observed items placed in a workspace (W07b), keyed `<workspaceId>/<id>` / `observed/<id>` (ids repeat across workspaces and daemons). */
+/** The loaded grid: one AgentCard per visible workspace item, then the observed items placed in a workspace (W07b), then the code agents (W08b) - keyed `<workspaceId>/<id>` / `observed/<id>` / `code/<workspaceId>/<path>` (ids repeat across workspaces and daemons). */
 function AgentGrid({
   items,
   observed,
+  code,
   pendingIds,
   allMode,
   workspaceNameOf,
@@ -80,6 +82,7 @@ function AgentGrid({
 }: {
   items: WorkspaceAgentItem[];
   observed: ObservedAgentItem[];
+  code: CodeAgentItem[];
   pendingIds: ReadonlySet<string>;
   allMode: boolean;
   workspaceNameOf(id: string): string | undefined;
@@ -108,6 +111,13 @@ function AgentGrid({
           workspaceName={allMode && item.workspaceId !== null ? workspaceNameOf(item.workspaceId) : undefined}
         />
       ))}
+      {code.map((item) => (
+        <CodeAgentCard
+          key={`code/${item.workspaceId}/${item.id}`}
+          agent={item}
+          workspaceName={allMode ? workspaceNameOf(item.workspaceId) : undefined}
+        />
+      ))}
     </ul>
   );
 }
@@ -120,6 +130,8 @@ interface ListBodyProps {
   observedPlaced: ObservedAgentItem[];
   /** Observed items under "Elsewhere" (all-workspaces mode only; empty in workspace mode). */
   observedElsewhere: ObservedAgentItem[];
+  /** Code agents in the grid (W08b), after the workspace's own and observed agents. */
+  code: CodeAgentItem[];
   allMode: boolean;
   workspaceNameOf(id: string): string | undefined;
   workspaceRootOf(id: string): string | undefined;
@@ -148,6 +160,7 @@ function AgentListBody({
   visible,
   observedPlaced,
   observedElsewhere,
+  code,
   allMode,
   workspaceNameOf,
   workspaceRootOf,
@@ -162,7 +175,8 @@ function AgentListBody({
   if (list.items === undefined) {
     return <LoadingGrid className="agent-grid" label="Agents" status="Loading agents" skeleton={SkeletonCard} />;
   }
-  if (items.length === 0 && observedPlaced.length + observedElsewhere.length === 0) {
+  const restCount = observedPlaced.length + observedElsewhere.length + code.length;
+  if (items.length === 0 && restCount === 0) {
     return (
       <EmptyState
         icon={Bot}
@@ -172,7 +186,7 @@ function AgentListBody({
       />
     );
   }
-  if (visible.length === 0 && observedPlaced.length + observedElsewhere.length === 0) {
+  if (visible.length === 0 && restCount === 0) {
     return (
       <EmptyState
         icon={SearchX}
@@ -191,6 +205,7 @@ function AgentListBody({
       <AgentGrid
         items={visible}
         observed={observedPlaced}
+        code={code}
         pendingIds={list.pendingIds}
         allMode={allMode}
         workspaceNameOf={workspaceNameOf}
@@ -288,6 +303,7 @@ export function AgentListScreen() {
   // workspace-placed group and "Elsewhere".
   const items = useMemo(() => allItems.filter((item): item is WorkspaceAgentItem => item.kind === 'workspace'), [allItems]);
   const observedItems = useMemo(() => allItems.filter((item): item is ObservedAgentItem => item.kind === 'observed'), [allItems]);
+  const codeItems = useMemo(() => allItems.filter((item): item is CodeAgentItem => item.kind === 'code'), [allItems]);
   // The `workspace` query key only applies in all-workspaces mode.
   const effectiveFilter = useMemo<AgentListFilter>(
     () => (allMode ? filter : { ...filter, workspaces: [] }),
@@ -295,6 +311,7 @@ export function AgentListScreen() {
   );
   const visible = useMemo(() => filterAgents(items, effectiveFilter), [items, effectiveFilter]);
   const visibleObserved = useMemo(() => filterObserved(observedItems, effectiveFilter), [observedItems, effectiveFilter]);
+  const visibleCode = useMemo(() => filterCode(codeItems, effectiveFilter), [codeItems, effectiveFilter]);
   const observedElsewhere = visibleObserved.filter((item) => item.workspaceId === null);
   const observedPlaced = visibleObserved.filter((item) => item.workspaceId !== null);
   const filtered =
@@ -318,10 +335,35 @@ export function AgentListScreen() {
   const onOpen = useCallback((item: WorkspaceAgentItem) => navigate(agentTabPath(item.id, 'overview', item.workspaceId)), []);
   const onToggle = useCallback((item: WorkspaceAgentItem, enabled: boolean) => void list.setEnabled(item, enabled), [list]);
   const onClearFilters = useCallback(() => setFilter({ q: '', labels: [], enabled: undefined, workspaces: [] }), [setFilter]);
+  // W08b: workspace mode's "Rescan code" re-runs the workspace's pattern
+  // scan; all mode needs no action (the aggregate already carries the
+  // cached scan results).
+  const onRescanCode = useCallback(() => {
+    if (scope.kind === 'workspace') void list.rescanCode(workspaceLabel(scope.workspaceId, workspaces));
+  }, [scope, list, workspaces]);
 
   return (
     <>
-      <ScreenHeader title="Agents" description={description} actions={<NewAgentMenu {...newAgent} />} />
+      <ScreenHeader
+        title="Agents"
+        description={description}
+        actions={
+          <>
+            {scope.kind === 'workspace' && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={onRescanCode}
+                disabled={list.scanningCode}
+              >
+                <RefreshCw size={14} aria-hidden="true" />
+                {list.scanningCode ? 'Scanning…' : 'Rescan code'}
+              </button>
+            )}
+            <NewAgentMenu {...newAgent} />
+          </>
+        }
+      />
       <div className="agent-list-screen">
         <FilterBar
           search={{ value: filter.q, onChange: (q) => patch({ q }), placeholder: 'Search agents' }}
@@ -344,6 +386,7 @@ export function AgentListScreen() {
           visible={visible}
           observedPlaced={observedPlaced}
           observedElsewhere={observedElsewhere}
+          code={visibleCode}
           allMode={allMode}
           workspaceNameOf={wsNameOf}
           workspaceRootOf={wsRootOf}

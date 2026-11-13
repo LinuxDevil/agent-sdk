@@ -35,6 +35,7 @@ vi.mock('../../../state/AppState', () => ({
 const api = vi.hoisted(() => ({
   loadCodeAgentSpec: vi.fn(),
   importAgent: vi.fn(),
+  forWorkspace: vi.fn(),
 }));
 vi.mock('../../../runtime/runtimeClient', async (importActual) => {
   const actual = await importActual<typeof import('../../../runtime/runtimeClient')>();
@@ -63,6 +64,8 @@ const SPEC: AgentSpecV2 = {
   tools: [{ builtin: 'http' }],
 } as AgentSpecV2;
 
+const WS = 'beta-2b3c4d';
+
 async function flush() {
   for (let i = 0; i < 6; i++) {
     await act(async () => {
@@ -71,12 +74,12 @@ async function flush() {
   }
 }
 
-function mount(path = 'agents/support') {
+function mount(path = 'agents/support', workspaceId = WS) {
   window.history.replaceState(null, '', '/#/agents');
   return render(
     <ReactFlowProvider>
       <ToastProvider>
-        <CodeAgentScreen path={path} />
+        <CodeAgentScreen workspaceId={workspaceId} path={path} />
       </ToastProvider>
     </ReactFlowProvider>
   );
@@ -88,14 +91,21 @@ const buttonNamed = (host: HTMLElement, name: string) =>
 beforeEach(() => {
   vi.clearAllMocks();
   window.history.replaceState(null, '', '/#/agents');
+  // Every screen call goes through forWorkspace(ws): the scoped client
+  // answers the spec load and the import.
+  api.forWorkspace.mockImplementation(() => ({
+    loadCodeAgentSpec: api.loadCodeAgentSpec,
+    importAgent: api.importAgent,
+  }));
 });
 
 describe('CodeAgentScreen', () => {
-  it('loads the spec and renders the banner, header and canvas nodes', async () => {
+  it('loads the spec through forWorkspace(ws) and renders the banner, header and canvas nodes', async () => {
     api.loadCodeAgentSpec.mockResolvedValue({ path: 'agents/support', spec: SPEC, warnings: [] });
     const host = mount();
     await flush();
 
+    expect(api.forWorkspace).toHaveBeenCalledWith(WS);
     expect(api.loadCodeAgentSpec).toHaveBeenCalledWith('agents/support');
     expect(host.querySelector('.page-header')?.textContent).toContain('Support bot');
     expect(host.querySelector('.page-header')?.textContent).toContain('Answers billing questions.');
@@ -110,6 +120,18 @@ describe('CodeAgentScreen', () => {
     expect(host.querySelector('.code-agent-warnings')).toBeNull();
   });
 
+  it('breadcrumbs link back to the workspace\'s agent list and show the workspace chip', async () => {
+    api.loadCodeAgentSpec.mockResolvedValue({ path: 'agents/support', spec: SPEC, warnings: [] });
+    const host = mount();
+    await flush();
+
+    const crumbs = [...host.querySelectorAll('.page-header a, .breadcrumbs a, nav a')];
+    const agentsLink = crumbs.find((a) => a.textContent === 'Agents');
+    expect(agentsLink?.getAttribute('href')).toBe(`#/w/${WS}/agents`);
+    // No workspace list is loaded in this test, so the chip falls back to the id.
+    expect(host.querySelector('.page-header .chip')?.textContent).toContain(WS);
+  });
+
   it('lists the load warnings only when there are some', async () => {
     api.loadCodeAgentSpec.mockResolvedValue({
       path: 'agents/support',
@@ -122,14 +144,14 @@ describe('CodeAgentScreen', () => {
     expect(items).toEqual(['tools[0]: unknown field dropped']);
   });
 
-  it('shows the not-found state on a 404', async () => {
+  it('shows the not-found state on a 404, with a back link into the workspace', async () => {
     api.loadCodeAgentSpec.mockRejectedValue(new RuntimeApiError('Agent directory not found', 404));
     const host = mount('agents/gone');
     await flush();
     expect(host.textContent).toContain('Agent directory not found');
     expect(host.textContent).toContain('It may have been moved or deleted.');
     const back = host.querySelector<HTMLAnchorElement>('.empty-state-action a');
-    expect(back?.getAttribute('href')).toBe('#/agents');
+    expect(back?.getAttribute('href')).toBe(`#/w/${WS}/agents`);
     expect(back?.textContent).toBe('Back to agents');
   });
 
@@ -143,7 +165,7 @@ describe('CodeAgentScreen', () => {
     expect(host.textContent).toContain('agent.ts is a code config and cannot be read as a spec');
   });
 
-  it('copies the spec into Studio and opens the new agent canvas', async () => {
+  it('copies the spec into the SAME workspace and opens its canvas there', async () => {
     api.loadCodeAgentSpec.mockResolvedValue({ path: 'agents/support', spec: SPEC, warnings: [] });
     api.importAgent.mockResolvedValue({ id: 'support-bot-copy' } as AgentRecord);
     const host = mount();
@@ -152,11 +174,12 @@ describe('CodeAgentScreen', () => {
     await act(async () => buttonNamed(host, 'Copy into Studio')!.click());
     await flush();
 
+    expect(api.forWorkspace).toHaveBeenCalledWith(WS);
     expect(api.importAgent).toHaveBeenCalledTimes(1);
     const request = api.importAgent.mock.calls[0][0] as { text: string; mode: string };
     expect(request.mode).toBe('new');
     expect(request.text).toContain('Support bot');
-    expect(window.location.hash).toBe('#/agents/support-bot-copy/canvas');
+    expect(window.location.hash).toBe(`#/w/${WS}/agents/support-bot-copy/canvas`);
     const toast = [...host.querySelectorAll('.toast-message')].map((el) => el.textContent);
     expect(toast).toContain('Copied as support-bot-copy. Changes in Studio do not touch the files.');
   });

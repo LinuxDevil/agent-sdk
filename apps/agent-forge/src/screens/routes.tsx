@@ -12,9 +12,10 @@ import { AgentListScreen } from './agentList/AgentListScreen';
 import { InboxScreen } from './inbox/InboxScreen';
 import { AgentDetailRoute } from './agentDetail/AgentDetailRoute';
 import { ObservedAgentRoute } from './observed/ObservedAgentScreen';
-import { CodeAgentRoute } from './codeAgent/CodeAgentRoute';
+import { CodeAgentRoute } from './codeAgent/CodeAgentScreen';
 import { TemplatesScreen } from './templates/TemplatesScreen';
 import { agentRedirect } from './agents/agentTabs';
+import { codeAgentRedirect } from './codeAgent/codeAgentRoute';
 import { useWorkspaces } from '../workspace/WorkspacesProvider';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
@@ -49,12 +50,18 @@ export function useScreen(): ScreenId {
   // GET /workspaces answers (launchId undefined) agentRedirect returns
   // null and the builder shows meanwhile, exactly as before W04b.
   const { launchId } = useWorkspaces();
-  const redirect = agentRedirect(window.location.hash, launchId);
+  // Legacy '/agents/:id…' and '/code-agents/:path' URLs redirect into the
+  // launch workspace; until GET /workspaces answers (launchId undefined)
+  // the redirects return null and the target screen shows meanwhile.
+  const redirect = agentRedirect(window.location.hash, launchId) ?? codeAgentRedirect(window.location.hash, launchId);
   useEffect(() => {
     if (redirect !== null) navigate(redirect, { replace: true });
     else if (screen === null) navigate('/agents', { replace: true });
   }, [redirect, screen]);
-  if (redirect !== null) return 'agents';
+  // The pre-redirect screen shows meanwhile: the builder for legacy
+  // '/agents/:id…' links, the code-agent screen (which falls back to the
+  // launch workspace) for legacy '/code-agents/:path' links.
+  if (redirect !== null) return screen ?? 'agents';
   return screen ?? 'agentList';
 }
 

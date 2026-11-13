@@ -317,6 +317,11 @@ export function lastSelectionChange(changes: NodeChange[]): { id: string; select
   return selectChange && selectChange.type === 'select' ? selectChange : undefined;
 }
 
+/** Ids of the React Flow nodes currently `hidden` (inside collapsed groups) - `toRfEdges`' `hiddenNodeIds` argument. */
+export function hiddenRfNodeIds(nodes: readonly { id: string; hidden?: boolean }[]): Set<string> {
+  return new Set(nodes.filter((n) => n.hidden).map((n) => n.id));
+}
+
 /** Auto-clearing "connection rejected" banner message. */
 function useConnectError() {
   const [connectError, setConnectError] = useState<string | undefined>(undefined);
@@ -1121,7 +1126,7 @@ function useCanvasElements() {
   // Edges derive from the DISPLAY graph so proposal nodes are wired in;
   // `includeRemoved` keeps a removed node's edges drawn (faded) too.
   const edges = useMemo(() => {
-    const hiddenNodeIds = new Set(nodes.filter((n) => n.hidden).map((n) => n.id));
+    const hiddenNodeIds = hiddenRfNodeIds(nodes);
     const proposed = new Map(
       displayGraph.nodes.filter((n) => n.proposed !== undefined).map((n) => [n.id, n.proposed] as const)
     );

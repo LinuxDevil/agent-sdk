@@ -9,7 +9,7 @@
  * `<workspaceId>/<agentId>` and `setEnabled` takes the whole item.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AgentListItem, AllAgentsResponse, AnyAgentItem, WorkspaceAgentItem } from '../../../shared/wireTypes';
+import type { AgentListItem, AllAgentsResponse, AnyAgentItem, CodeAgentDir, CodeAgentItem, WorkspaceAgentItem } from '../../../shared/wireTypes';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { useToast } from '../../ui/Toast';
 
@@ -30,6 +30,15 @@ export interface AgentListState {
   setEnabled(item: WorkspaceAgentItem, enabled: boolean): Promise<void>;
   /** `<workspaceId>/<agentId>` keys with a `PATCH /meta` in flight - their card switch stays disabled. */
   pendingIds: ReadonlySet<string>;
+  /** Workspace mode only: true while a `Rescan code` POST is in flight. */
+  scanningCode: boolean;
+  /**
+   * Workspace mode only (W08b): `POST /workspaces/:ws/scan`, then the
+   * result's dirs replace this workspace's code items in `items` (same
+   * dedupe as the load). `workspaceName` is the display name for the
+   * success toast. No-op in all-workspaces mode.
+   */
+  rescanCode(workspaceName: string): Promise<void>;
 }
 
 const messageOf = (error: unknown): string => (error instanceof Error ? error.message : String(error));
@@ -49,6 +58,24 @@ function observedInWorkspace(items: AnyAgentItem[], workspaceId: string): AnyAge
   return items.filter((item) => item.kind === 'observed' && item.workspaceId === workspaceId);
 }
 
+/**
+ * Scan dirs as `CodeAgentItem`s (W08b): `id` is the dir's workspace-relative
+ * path (the `#/w/<ws>/code-agents/<path>` key), and a dir whose `name`
+ * equals a Studio agent id is omitted - the Studio copy wins (W08a's rule).
+ */
+function toCodeAgentItems(workspaceId: string, dirs: CodeAgentDir[], agentIds: ReadonlySet<string>): CodeAgentItem[] {
+  return dirs
+    .filter((dir) => !agentIds.has(dir.name))
+    .map((dir) => ({
+      kind: 'code' as const,
+      id: dir.path,
+      name: dir.name,
+      workspaceId,
+      configFile: dir.configFile,
+      configKind: dir.configKind,
+    }));
+}
+
 /** Fetches the agent list for `scope` and owns the optimistic enable/disable toggle. */
 export function useAgentList(scope: AgentListScope): AgentListState {
   const toast = useToast();
@@ -58,6 +85,7 @@ export function useAgentList(scope: AgentListScope): AgentListState {
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [pendingIds, setPendingIds] = useState<ReadonlySet<string>>(new Set());
+  const [scanningCode, setScanningCode] = useState(false);
   // Guards against an out-of-order response winning (refresh racing the mount fetch, or a scope change).
   const requestSeq = useRef(0);
   const itemsRef = useRef(items);
@@ -73,17 +101,20 @@ export function useAgentList(scope: AgentListScope): AgentListState {
         setSkipped(res.skipped);
         setObserved(res.observed ?? 'ok');
       } else {
-        // The workspace's own list is the required read; the aggregate is
-        // best-effort - only its observed items placed in THIS workspace are
-        // kept, and a failed aggregate must not take the list down with it.
-        const [list, aggregate] = await Promise.all([
+        // The workspace's own list is the required read; the aggregate and
+        // the code-agent scan (W08b) are best-effort - the aggregate only
+        // contributes its observed items placed in THIS workspace, and a
+        // failed read must not take the list down with it.
+        const [list, aggregate, scan] = await Promise.all([
           runtimeClient.forWorkspace(scope.workspaceId).listAgents(),
           runtimeClient.listAllAgentItems().catch(() => undefined),
+          runtimeClient.workspaceScan(scope.workspaceId).catch(() => undefined),
         ]);
         if (seq !== requestSeq.current) return;
         setItems([
           ...toWorkspaceItems(scope.workspaceId, list),
           ...(aggregate === undefined ? [] : observedInWorkspace(aggregate.items, scope.workspaceId)),
+          ...toCodeAgentItems(scope.workspaceId, scan?.agents ?? [], new Set(list.map((item) => item.id))),
         ]);
         setSkipped([]);
         setObserved(aggregate?.observed ?? 'ok');
@@ -104,6 +135,33 @@ export function useAgentList(scope: AgentListScope): AgentListState {
   const refresh = useCallback(() => {
     void load();
   }, [load]);
+
+  const rescanCode = useCallback(
+    async (workspaceName: string) => {
+      if (scope.kind !== 'workspace') return;
+      setScanningCode(true);
+      try {
+        const result = await runtimeClient.scanWorkspace(scope.workspaceId);
+        const agentIds = new Set(
+          (itemsRef.current ?? [])
+            .filter((item): item is WorkspaceAgentItem => item.kind === 'workspace' && item.workspaceId === scope.workspaceId)
+            .map((item) => item.id)
+        );
+        const codeItems = toCodeAgentItems(scope.workspaceId, result.agents, agentIds);
+        setItems((prev) => [...(prev ?? []).filter((item) => item.kind !== 'code'), ...codeItems]);
+        const n = codeItems.length;
+        toast.show({
+          message: `Found ${n} code agent${n === 1 ? '' : 's'} in ${workspaceName}.`,
+          tone: 'success',
+        });
+      } catch (err) {
+        toast.show({ message: messageOf(err), tone: 'error' });
+      } finally {
+        setScanningCode(false);
+      }
+    },
+    [scope, toast]
+  );
 
   const setEnabled = useCallback(
     async (item: WorkspaceAgentItem, enabled: boolean) => {
@@ -132,5 +190,5 @@ export function useAgentList(scope: AgentListScope): AgentListState {
     [toast]
   );
 
-  return { items, skipped, observed, error, loading, refresh, setEnabled, pendingIds };
+  return { items, skipped, observed, error, loading, refresh, setEnabled, pendingIds, scanningCode, rescanCode };
 }

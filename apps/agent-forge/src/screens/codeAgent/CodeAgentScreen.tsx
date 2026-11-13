@@ -1,20 +1,25 @@
 /**
- * X06b: `#/code-agents/:path` - one code-defined agent directory (found by
- * X06a's `GET /workspace/agent-dirs`) shown on the canvas read-only, with a
- * banner naming the directory and a "Copy into Studio" action that imports
- * the spec as a new Studio agent (L08a's `POST /agents/import`). The files
- * are never touched: edits happen in the files or in the Studio copy.
+ * `#/w/:ws/code-agents/:path` - one code-defined agent directory in one
+ * workspace (W08b; X06b built the launch-folder-only version) shown on the
+ * canvas read-only, with a banner naming the directory and a "Copy into
+ * Studio" action that imports the spec as a new Studio agent IN THAT
+ * WORKSPACE (L08a's `POST /agents/import` through `forWorkspace(ws)`).
+ * The files are never touched: edits happen in the files or in the
+ * Studio copy.
  */
-import { useEffect, useState } from 'react';
-import { Info } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Folder, Info } from 'lucide-react';
 import type { AgentSpecV2 } from 'lousho';
 import { stringify } from 'yaml';
 import type { Graph } from '../../graph/v2/types';
 import { specToGraph } from '../../graph/v2/specToGraph';
 import { autoLayout } from '../../canvas/layout';
 import { runtimeClient, RuntimeApiError } from '../../runtime/runtimeClient';
-import { agentTabPath } from '../agents/agentTabs';
-import { navigate } from '../../router/router';
+import { agentListPath, agentTabPath } from '../agents/agentTabs';
+import { navigate, matchRoute } from '../../router/router';
+import { useRoute } from '../../router/useRoute';
+import { useWorkspacesMaybe } from '../../workspace/WorkspacesProvider';
+import { workspaceLabel } from '../../workspace/workspaceLabels';
 import { ScreenHeader } from '../../shell/ScreenHeader';
 import { EmptyState } from '../../ui/EmptyState';
 import { Skeleton } from '../../ui/Skeleton';
@@ -45,15 +50,15 @@ function errorState(error: unknown): LoadState {
   return { kind: 'error', message };
 }
 
-/** Loads the directory's spec and lays its graph out; a new `path` restarts the load. */
-function useCodeAgentSpec(path: string): LoadState {
+/** Loads the directory's spec and lays its graph out; a new `path`/`workspaceId` restarts the load. */
+function useCodeAgentSpec(workspaceId: string, path: string): LoadState {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   useEffect(() => {
     let cancelled = false;
     setState({ kind: 'loading' });
     void (async () => {
       try {
-        const { spec, warnings } = await runtimeClient.loadCodeAgentSpec(path);
+        const { spec, warnings } = await runtimeClient.forWorkspace(workspaceId).loadCodeAgentSpec(path);
         const graph = await graphFor(spec);
         if (!cancelled) setState({ kind: 'ready', spec, warnings, graph });
       } catch (error) {
@@ -63,24 +68,24 @@ function useCodeAgentSpec(path: string): LoadState {
     return () => {
       cancelled = true;
     };
-  }, [path]);
+  }, [workspaceId, path]);
   return state;
 }
 
-/** "Copy into Studio": the spec as YAML through `POST /agents/import` (mode `new`), then open its canvas. */
-function useCopyIntoStudio(spec: AgentSpecV2 | undefined) {
+/** "Copy into Studio": the spec as YAML through `POST /agents/import` (mode `new`) in `workspaceId`, then open its canvas there. */
+function useCopyIntoStudio(spec: AgentSpecV2 | undefined, workspaceId: string) {
   const toast = useToast();
   const [copying, setCopying] = useState(false);
   const copy = async () => {
     if (spec === undefined || copying) return;
     setCopying(true);
     try {
-      const record = await runtimeClient.importAgent({ text: stringify(spec), mode: 'new' });
+      const record = await runtimeClient.forWorkspace(workspaceId).importAgent({ text: stringify(spec), mode: 'new' });
       toast.show({
         message: `Copied as ${record.id}. Changes in Studio do not touch the files.`,
         tone: 'success',
       });
-      navigate(agentTabPath(record.id, 'canvas'));
+      navigate(agentTabPath(record.id, 'canvas', workspaceId));
     } catch (error) {
       toast.show({
         message: error instanceof Error ? error.message : 'The agent could not be copied.',
@@ -104,13 +109,13 @@ function LoadingBody() {
   );
 }
 
-function NotFoundBody() {
+function NotFoundBody({ workspaceId }: { workspaceId: string }) {
   return (
     <EmptyState
       title="Agent directory not found"
       hint="It may have been moved or deleted."
       action={
-        <a className="btn btn-secondary btn-sm" href="#/agents">
+        <a className="btn btn-secondary btn-sm" href={`#${agentListPath(workspaceId)}`}>
           Back to agents
         </a>
       }
@@ -145,9 +150,29 @@ function ReadyBody({ state, path }: { state: Extract<LoadState, { kind: 'ready' 
   );
 }
 
-export function CodeAgentScreen({ path }: { path: string }) {
-  const state = useCodeAgentSpec(path);
-  const { copying, copy } = useCopyIntoStudio(state.kind === 'ready' ? state.spec : undefined);
+/**
+ * `#/w/:ws/code-agents/:path` (and the legacy `#/code-agents/:path`,
+ * redirected by `useScreen`'s `codeAgentRedirect`) - reads `:ws`/`:path`
+ * off the hash; the `:path` segment is the `CodeAgentItem.id` encoded
+ * with `encodeURIComponent` (`agents%2Fsupport` is one segment), which
+ * `matchRoute` decodes back to `agents/support`. While a legacy URL waits
+ * on `GET /workspaces`, `ws` falls back to `launchId`.
+ */
+export function CodeAgentRoute() {
+  const { path } = useRoute();
+  const launchId = useWorkspacesMaybe()?.launchId;
+  const route = matchRoute(`#${path}`, ['/w/:ws/code-agents/:path', '/code-agents/:path']);
+  const agentPath = route?.params.path ?? '';
+  const ws = route?.params.ws ?? launchId;
+  if (ws === undefined) return null;
+  return <CodeAgentScreen key={`${ws}/${agentPath}`} workspaceId={ws} path={agentPath} />;
+}
+
+export function CodeAgentScreen({ workspaceId, path }: { workspaceId: string; path: string }) {
+  const state = useCodeAgentSpec(workspaceId, path);
+  const { copying, copy } = useCopyIntoStudio(state.kind === 'ready' ? state.spec : undefined, workspaceId);
+  const workspaces = useWorkspacesMaybe()?.list;
+  const workspaceName = useMemo(() => workspaceLabel(workspaceId, workspaces), [workspaceId, workspaces]);
   // Until the spec loads, the header names the directory's last segment.
   const fallbackName = path === '.' ? path : (path.split('/').pop() ?? path);
   const title = state.kind === 'ready' ? state.spec.name : fallbackName;
@@ -158,7 +183,13 @@ export function CodeAgentScreen({ path }: { path: string }) {
       <ScreenHeader
         title={state.kind === 'loading' ? <Skeleton width={160} height={18} /> : title}
         description={description}
-        breadcrumbs={[{ label: 'Agents', href: '#/agents' }, { label: title }]}
+        breadcrumbs={[{ label: 'Agents', href: `#${agentListPath(workspaceId)}` }, { label: title }]}
+        status={
+          <span className="chip" title={workspaceId}>
+            <Folder size={16} aria-hidden="true" />
+            {workspaceName}
+          </span>
+        }
         actions={
           state.kind === 'ready' ? (
             <button
@@ -174,7 +205,7 @@ export function CodeAgentScreen({ path }: { path: string }) {
       />
       <div className="code-agent-screen">
         {state.kind === 'loading' && <LoadingBody />}
-        {state.kind === 'not-found' && <NotFoundBody />}
+        {state.kind === 'not-found' && <NotFoundBody workspaceId={workspaceId} />}
         {state.kind === 'error' && <ErrorBody message={state.message} />}
         {state.kind === 'ready' && <ReadyBody state={state} path={path} />}
       </div>

@@ -7,7 +7,7 @@
  * its tests share; label rules come from `shared/labels.ts`.
  */
 import { useCallback } from 'react';
-import type { ObservedAgentItem, WorkspaceAgentItem, WorkspaceListItem } from '../../../shared/wireTypes';
+import type { CodeAgentItem, ObservedAgentItem, WorkspaceAgentItem, WorkspaceListItem } from '../../../shared/wireTypes';
 import { workspaceLabel } from '../../workspace/workspaceLabels';
 import { matchesLabels, normalizeLabels } from '../../../shared/labels';
 import { navigate, parseHash } from '../../router/router';
@@ -139,6 +139,24 @@ export function filterObserved(items: ObservedAgentItem[], filter: AgentListFilt
       if (!haystack.includes(q)) return false;
     }
     if (filter.workspaces.length > 0 && (item.workspaceId === null || !filter.workspaces.includes(item.workspaceId))) return false;
+    return true;
+  });
+}
+
+/**
+ * The code-agent items the current filter keeps (W08b): like observed
+ * items, labels and the on/off facet don't apply (a code agent has
+ * neither), so only `q` (name, path or config file) and the Workspace
+ * facet narrow them. Order is the caller's (the aggregate's / scan's).
+ */
+export function filterCode(items: CodeAgentItem[], filter: AgentListFilter): CodeAgentItem[] {
+  const q = filter.q.trim().toLowerCase();
+  return items.filter((item) => {
+    if (q !== '') {
+      const haystack = `${item.name}\n${item.id}\n${item.configFile}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    if (filter.workspaces.length > 0 && !filter.workspaces.includes(item.workspaceId)) return false;
     return true;
   });
 }

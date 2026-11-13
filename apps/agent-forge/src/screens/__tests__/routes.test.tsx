@@ -173,6 +173,27 @@ describe('useScreen', () => {
     }
   });
 
+  it('redirects the legacy #/code-agents/:path URL into the launch workspace, keeping ?token=', () => {
+    window.history.replaceState(null, '', '/?token=secret#/code-agents/agents%2Fsupport');
+    const before = window.history.length;
+    const seen = probe();
+    expect(window.location.hash).toBe('#/w/launch-abc123/code-agents/agents%2Fsupport');
+    expect(window.location.search).toBe('?token=secret');
+    expect(window.history.length).toBe(before);
+    expect(seen.every((s) => s === 'codeAgent')).toBe(true);
+  });
+
+  it('waits on a legacy #/code-agents/:path URL until the launch workspace is known', () => {
+    workspaces.launchId = undefined;
+    try {
+      window.history.replaceState(null, '', '/#/code-agents/agents%2Fsupport');
+      probe();
+      expect(window.location.hash).toBe('#/code-agents/agents%2Fsupport');
+    } finally {
+      workspaces.launchId = 'launch-abc123';
+    }
+  });
+
   it('redirects #/w/<bad>/agents back to the all-workspaces list', () => {
     window.history.replaceState(null, '', '/?token=secret#/w/NOT!/agents');
     probe();

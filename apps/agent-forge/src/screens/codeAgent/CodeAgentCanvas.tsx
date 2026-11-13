@@ -19,7 +19,7 @@ import {
   type NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Maximize, MousePointerClick } from 'lucide-react';
+import { Maximize } from 'lucide-react';
 import {
   EDGE_TYPES,
   FIT_VIEW_OPTIONS,
@@ -27,6 +27,7 @@ import {
   ToolbarButton,
   allVisibleMeasured,
   applyDimensionChanges,
+  hiddenRfNodeIds,
   lastSelectionChange,
   toRfEdges,
   toRfNodes,
@@ -37,7 +38,7 @@ import { useFitOnLoad } from '../../canvas/canvasResets';
 import { deriveEdges } from '../../graph/v2/edges';
 import type { Graph, GraphNode, NodeKind } from '../../graph/v2/types';
 import { viewFor, type KindFieldsProps } from '../../canvas/kinds';
-import { InspectorHead } from '../../components/Inspector';
+import { EmptyInspector, InspectorHead } from '../../components/Inspector';
 import { InspectorSection } from '../../components/InspectorSection';
 
 /** The MiniMap (bottom-right) and zoom/fit Controls (bottom-left), themed by agents.css like the builder's. */
@@ -88,22 +89,10 @@ export function CodeAgentInspector({ graph, node }: { graph: Graph; node: GraphN
   );
 }
 
+/** The empty state: the shared inspector chrome with the read-only hint. */
 function EmptyCodeAgentInspector() {
   return (
-    <aside className="inspector" id="studio-inspector" aria-label="Inspector">
-      <div className="inspector-head">
-        <div className="inspector-head-text">
-          <div className="k overline">Inspector</div>
-        </div>
-      </div>
-      <div className="inspector-body inspector-empty">
-        <span className="inspector-empty-icon" aria-hidden="true">
-          <MousePointerClick size={20} strokeWidth={1.75} />
-        </span>
-        <div className="inspector-empty-title">No node selected</div>
-        <div className="hint">Select a node on the canvas to view its configuration. This agent is defined in code and is read-only.</div>
-      </div>
-    </aside>
+    <EmptyInspector hint="Select a node on the canvas to view its configuration. This agent is defined in code and is read-only." />
   );
 }
 
@@ -133,8 +122,7 @@ export function CodeAgentCanvas({ graph, agentKey }: { graph: Graph; agentKey: s
   );
 
   const edges = useMemo(() => {
-    const hiddenNodeIds = new Set(nodes.filter((n) => n.hidden).map((n) => n.id));
-    return toRfEdges(deriveEdges(graph), {}, undefined, hiddenNodeIds);
+    return toRfEdges(deriveEdges(graph), {}, undefined, hiddenRfNodeIds(nodes));
   }, [graph, nodes]);
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
