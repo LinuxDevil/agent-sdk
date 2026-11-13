@@ -54,15 +54,22 @@ export function usageOf(result: ExecutionResult): PageUsage {
   };
 }
 
+const TIMED_OUT = { status: 'timed-out', kind: 'timeout' } as const;
+
+function endOf(result: ExecutionResult): { status: PageRunStatus; kind?: PageErrorKind } | undefined {
+  if (result.budget?.limit === 'maxDurationMs' || result.abortReason?.name === 'TimeoutError') return TIMED_OUT;
+  return FAILED[result.finishReason];
+}
+
 export function finishStatus(reason: string): PageRunStatus {
   return FAILED[reason as ExecutionResult['finishReason']]?.status ?? 'ok';
 }
 
 function pageResult(result: ExecutionResult, ctx: PageRunContext, structured: boolean): PageResult {
-  const failed = FAILED[result.finishReason];
+  const failed = endOf(result);
   const output = structured ? (result.object ?? parsedText(result.text)) : result.text;
   return {
-    status: finishStatus(result.finishReason),
+    status: failed?.status ?? 'ok',
     ...(output !== undefined && { output }),
     artifacts: [],
     summary: result.text,
@@ -72,11 +79,11 @@ function pageResult(result: ExecutionResult, ctx: PageRunContext, structured: bo
   };
 }
 
-/** The `single` engine: one attachment runs the page in its own session, with structured output when the harness has an output schema. A revise of the same run continues that session; any other input starts it. */
+/** The `single` engine: one attachment runs the page in its own session, whose limits count across every turn including a repair, with structured output when the harness has an output schema. A revise of the same run continues that session; any other input starts it. */
 export const singleEngine: PageEngineFactory = (setup) => {
   const alias = setup.page.execution.single?.agent ?? '';
   const schema = outputSchemaOf(setup);
-  const { agent, labels } = attachmentAgent(setup, alias, {
+  const { agent, labels, limits } = attachmentAgent(setup, alias, {
     step: { stepKind: 'single', stepIndex: 0 },
     ...(schema !== undefined && { output: outputFromSpec({ jsonSchema: schema }) }),
     ...(setup.page.execution.limits !== undefined && { limits: setup.page.execution.limits }),
@@ -86,7 +93,7 @@ export const singleEngine: PageEngineFactory = (setup) => {
     type: 'single',
     async run(input, ctx) {
       const continues = input.revise?.runId === ctx.runId && sessions.has(ctx.runId);
-      const session = sessions.get(ctx.runId) ?? agent.session({ id: ctx.runId });
+      const session = sessions.get(ctx.runId) ?? agent.session({ id: ctx.runId, limits });
       sessions.set(ctx.runId, session);
       ctx.emit({ type: 'step', phase: 'start', ...labels });
       const result = await session.send(continues ? (input.revise?.instruction ?? '') : promptOf(input, setup), { signal: ctx.signal });

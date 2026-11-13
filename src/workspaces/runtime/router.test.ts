@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { defineMemory, type MemorySlot } from '../../memory/defineMemory';
+import { inMemoryMemory } from '../../memory/providers';
 import { mockModel, type MockModel, type MockTurn } from '../../testing';
 import { readFixtureTree } from '../__fixtures__/readTree';
 import type { PageEngine, PageInput, PageResult } from '../contracts/execution';
@@ -7,7 +9,9 @@ import { memorySource } from '../source/memorySource';
 import { artifactSink, memoryArtifactStore } from './artifacts';
 import type { EngineRegistry, PageEngineFactory, PageRuntimeHost } from './engines/types';
 import { loadWorkspace, type LoadedWorkspace } from './loadWorkspace';
+import { runPage } from './pageRuntime';
 import { openWorkspaceSession, WorkspaceRunError, type WorkspaceSessionContext } from './router';
+import type { SharedMemoryFile } from './sharedContext';
 
 const CEILING: WorkspacePolicy = { permissions: [], tools: { allow: ['*'] }, secrets: [] };
 
@@ -54,9 +58,11 @@ function sampleOutput(schema: unknown): Record<string, unknown> {
 
 const newSeen = (): Seen => ({ inputs: [], prior: [], active: 0, peak: 0 });
 
+const hostFor = (model: MockModel): PageRuntimeHost => ({ tools: {}, ceiling: CEILING, bindTool: (descriptor) => descriptor, provider: () => model });
+
 function session(workspace: LoadedWorkspace, model: MockModel, engines: EngineRegistry, extra: Partial<WorkspaceSessionContext> = {}) {
   let next = 0;
-  const host: PageRuntimeHost = { tools: {}, ceiling: CEILING, bindTool: (descriptor) => descriptor, provider: () => model };
+  const host = hostFor(model);
   const store = memoryArtifactStore();
   return openWorkspaceSession(workspace, { host, engines, artifacts: (runId) => artifactSink(store, { workspace: workspace.manifest.id, runId }), newRunId: () => `run-${++next}`, sessionId: 'main-1', ...extra });
 }
@@ -113,6 +119,13 @@ describe('the main agent and the page router', () => {
     expect(turn).toMatchObject({ kind: 'page', record: { pageId: 'daily-digest', runId: 'run-1', result: { status: 'ok', summary: 'made daily-digest' } } });
     expect(seen.inputs).toEqual([{ pageId: 'daily-digest', task: 'Summarise today', inputs: { notes: 'Two outages.' } }]);
     expect(model.calls).toHaveLength(0);
+  });
+
+  it('run with an unknown pageId rejects with the page runtime page-unknown error', async () => {
+    const workspace = await load('ops-desk');
+    const seen = newSeen();
+    await expect(session(workspace, mockModel([]), fakeEngines(seen)).run('Summarise today', { pageId: 'nope' })).rejects.toMatchObject({ code: 'LOUSHO_WORKSPACE_PAGE_UNKNOWN' });
+    expect(seen.inputs).toHaveLength(0);
   });
 
   it('with mainAgent null, run without pageId returns no-main-agent', async () => {
@@ -180,5 +193,74 @@ describe('the main agent and the page router', () => {
     await chat.run('instagram');
     expect(retries.inputs).toHaveLength(2);
     expect(chat.runs().map((run) => run.retries)).toEqual([undefined, 'run-1']);
+  });
+
+  it('the tool result of an automatic retry tells the main agent not to run the page again', async () => {
+    const failing = (): Partial<PageResult> => ({ status: 'failed', error: { kind: 'engine', message: 'boom' } });
+    const harness = readFixtureTree('marketing')['main-agent/harness/main-harness.json'] as Record<string, unknown>;
+    const once = mockModel([routeTo('instagram-videos', 'A video', { topic: 'tea' }), 'Failed.']);
+    await session(await load('marketing'), once, fakeEngines(newSeen(), failing)).run('instagram');
+    expect(toolTexts(once, 1)[0]).not.toContain('automatic retry');
+    const retrying = await load('marketing', { 'main-agent/harness/main-harness.json': { ...harness, onPageFailure: 'retry-once' } });
+    const twice = mockModel([routeTo('instagram-videos', 'A video', { topic: 'tea' }), 'Failed twice.']);
+    await session(retrying, twice, fakeEngines(newSeen(), failing)).run('instagram');
+    const [text] = toolTexts(twice, 1);
+    expect(text.startsWith("Page 'instagram-videos' run run-2 ended failed.\nThis was the automatic retry of run run-1; do not run it again.\n")).toBe(true);
+  });
+
+  it('direct page runs are not listed or revisable by the main agent', async () => {
+    const workspace = await load('marketing');
+    const model = mockModel([{ toolCalls: [{ name: 'list_page_runs', args: {} }, { name: 'revise_page_run', args: { runId: 'run-1', instruction: 'Punchier.' } }] }, 'Nothing to revise.']);
+    const seen = newSeen();
+    const chat = session(workspace, model, fakeEngines(seen));
+    await chat.run('A video about tea', { pageId: 'instagram-videos', inputs: { topic: 'tea' } });
+    await chat.run('make run-1 punchier');
+    const [listed, revised] = toolTexts(model, 1);
+    expect(listed).toEqual([]);
+    expect(revised).toMatch(/^There is no page run 'run-1'/);
+    expect(seen.inputs).toHaveLength(1);
+    expect(chat.runs().map((run) => run.runId)).toEqual(['run-1']);
+  });
+
+  it('shared memory is built once per file across a routed page and the main agent', async () => {
+    const workspace = await load('marketing', { 'shared/memory/notes.ts': 'export default {}' });
+    const built: string[] = [];
+    const createMemory = (file: SharedMemoryFile): MemorySlot => {
+      built.push(file.file);
+      return defineMemory({ name: file.name, scope: 'global', provider: inMemoryMemory() });
+    };
+    const model = mockModel([routeTo('instagram-videos', 'A video', { topic: 'tea' }), routeTo('facebook-videos', 'A video', { topic: 'tea' }), 'Both done.']);
+    await session(workspace, model, fakeEngines(newSeen()), { host: { ...hostFor(model), createMemory } }).run('instagram then facebook');
+    expect(built).toEqual(['shared/memory/notes.ts']);
+  });
+
+  it('runPage on its own works with shared memory and no sharedRun', async () => {
+    const workspace = await load('marketing', { 'shared/memory/notes.ts': 'export default {}' });
+    const createMemory = (file: SharedMemoryFile): MemorySlot => defineMemory({ name: file.name, scope: 'global', provider: inMemoryMemory() });
+    const host = { ...hostFor(mockModel([])), createMemory };
+    const result = await runPage(workspace, { pageId: 'instagram-videos', task: 'A video', inputs: { topic: 'tea' } }, { host, runId: 'solo', artifacts: artifactSink(memoryArtifactStore(), { workspace: 'marketing', runId: 'solo' }), engines: fakeEngines(newSeen()) });
+    expect(result.status).toBe('ok');
+  });
+
+  it('with mainAgent null, an unresolvable page harness does not block direct runs of other pages', async () => {
+    const tree = files('marketing');
+    const pageFile = 'pages/instagram-videos/page.json';
+    const edited: Record<string, string> = Object.fromEntries(Object.entries(tree).filter(([path]) => !path.startsWith('main-agent/')));
+    edited['workspace.json'] = JSON.stringify({ ...(JSON.parse(tree['workspace.json']) as Record<string, unknown>), mainAgent: null });
+    edited[pageFile] = tree[pageFile].replace('workspace:audiences/general', 'global:audiences/general@^1.0.0');
+    const general = tree['harness-profiles/audiences/general/harness.json'];
+    const workspace = await loadWorkspace(memorySource(edited), { mode: 'default', resolveGlobal: (ref) => (ref.startsWith('global:audiences/general') ? { 'harness.json': JSON.parse(general) as unknown } : undefined) });
+    const seen = newSeen();
+    const turn = await session(workspace, mockModel([]), fakeEngines(seen)).run('A video', { pageId: 'facebook-videos', inputs: { topic: 'tea' } });
+    expect(turn).toMatchObject({ kind: 'page', record: { pageId: 'facebook-videos', result: { status: 'ok' } } });
+  });
+
+  it('the main agent model goes through models.provider like page models', async () => {
+    const manifest = readFixtureTree('marketing')['workspace.json'] as Record<string, unknown>;
+    const workspace = await load('marketing', { 'workspace.json': { ...manifest, models: { provider: 'pi' } } });
+    const model = mockModel(['Hello.']);
+    const asked: (string | undefined)[] = [];
+    await session(workspace, model, fakeEngines(newSeen()), { host: { ...hostFor(model), provider: (spec) => (asked.push(spec), model) } }).run('hi');
+    expect(asked).toEqual(['pi/mock/mock-model']);
   });
 });

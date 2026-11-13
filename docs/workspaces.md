@@ -505,15 +505,15 @@ Every engine emits the same labels, and attribution reads only these, never the 
 
 `runPage(workspace, input, ctx)` runs one page of a loaded workspace:
 
-1. It validates `input.inputs` against the effective `inputs.schema` with `checkPageInputs`, the same check the page UI runs in the browser (`lousho/workspaces/client`). On a problem it returns `failed` with `error.kind: 'invalid-input'` and every field path (`inputs.report: ...`) before any model call.
+1. It throws `LOUSHO_WORKSPACE_PAGE_UNKNOWN` for a page id the workspace does not list. It validates `input.inputs` against the effective `inputs.schema` with `checkPageInputs`, the same check the page UI runs in the browser (`lousho/workspaces/client`). On a problem it returns `failed` with `error.kind: 'invalid-input'` and every field path (`inputs.report: ...`) before any model call.
 2. It picks the engine for `execution.type` from `ctx.engines`, by default `ENGINES`. `engineFor(type)` throws `LOUSHO_WORKSPACE_ENGINE_UNKNOWN` when the registry has none; `ENGINES` has `single` today.
-3. It resolves the attachments, applies the policy with `pagePolicy()`, and runs the engine with the run id as its session id, `ctx.signal`, and the page's `execution.limits`.
+3. It resolves the attachments, applies the policy with `pagePolicy()` (each warning prints as a `[lousho] runPage:` console warning), and runs the engine with the run id as its session id, `ctx.signal`, and the page's `execution.limits`.
 4. It validates `output` against `outputs.schema` and checks that every artifact marked `required` was stored.
 5. On an invalid output it gives the engine one repair turn, a revise of the same run whose instruction starts `your output failed:`, then returns `failed` with `invalid-output`.
 
 An empty `task` becomes the page UI's `title`, else the page id. A page gets only the task, its inputs and, for a revise, the earlier run's `PageResult` (`ctx.prior`). It never sees the main agent's conversation or another page's transcript.
 
-The `single` engine runs the page's one attachment in its own session, with structured output (the `output` mode of an AgentSpec) when the harness has an output schema. That mode also makes one repair call inside a turn when a reply does not parse.
+The `single` engine runs the page's one attachment in its own session, with structured output (the `output` mode of an AgentSpec) when the harness has an output schema. That mode also makes one repair call inside a turn when a reply does not parse or does not match the output schema, so the runtime's repair turn comes after it. The session carries the page's limits, so turns, cost and duration count across both turns, and running out of `maxDurationMs` ends the run `timed-out` with `error.kind: 'timeout'`.
 
 The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy `ceiling`, `bindTool`, and optionally `provider(model)`, `exporter`, `globalAgents`, `globalProfiles` and `createMemory(file)`, which builds the slot for a `shared/memory/*.ts` file. `ctx.sharedRun` (a `createSharedContextRun()` object) makes every page of one workspace run, and the main agent, share the same shared memory instances. Every agent the runtime builds gets its step's labels from `labelsFor()` as `lousho.*` attributes on its `invoke_agent` span (`labelAttributes()`, with the workspace id, the harness part hash and a `global:` agent's version and sha256), and the engine puts the same labels on its `step` events.
 
@@ -529,12 +529,12 @@ The host injects a `PageRuntimeHost`: `tools` (a `HostToolRegistry`), the policy
 The main agent is built from `main-agent/` with the shared policy and its own tools, plus the shared context when `inheritsShared` is true. Its prompt is `assembleMainInstructions()` over `main-agent/` and, when present, the main-agent harness. It gets these router tools:
 
 - `run_page_<id>` for each page, described by `page.description`, with parameters `{ task, inputs? }` where `inputs` is the page's effective `inputs.schema`. When the main harness lists `routes`, only those pages get a tool.
-- `revise_page_run({ runId, instruction })`: runs the page again with the earlier `PageResult` as `prior`.
-- `list_page_runs()`: the session's runs, with `runId`, `pageId`, `status` and `revises`.
+- `revise_page_run({ runId, instruction })`: runs the page again with the earlier `PageResult` as `prior`. Only runs the main agent made through its router tools can be revised, and only for pages it may route to.
+- `list_page_runs()`: the runs the main agent made, with `runId`, `pageId`, `status` and `revises`. Direct runs (`run(message, { pageId })`) are not listed.
 
 Each tool calls `runPage()` and returns the `summary`, the error and the artifact refs between `<untrusted>` and `</untrusted>`, after a line telling the main agent to treat it as data; any such tags in the page's text are stripped first. Because results land in the main agent's thread, a follow-up ("make a Facebook version") sees them, while the page sees only its own task and inputs.
 
-The runtime, not the prompt, enforces two main-harness settings. `limits.maxConcurrentPages` caps the page runs in flight at once, clamped to `workspace.json`'s `defaults.limits.maxConcurrentPages` (default 3). A page that ends `failed` or `timed-out` is never re-run automatically, except once when `onPageFailure` is `retry-once`; the retry's record names the run it retries in `retries`.
+The runtime, not the prompt, enforces two main-harness settings. `limits.maxConcurrentPages` caps the page runs in flight at once, clamped to `workspace.json`'s `defaults.limits.maxConcurrentPages` (default 3). A page that ends `failed` or `timed-out` is never re-run automatically, except once when `onPageFailure` is `retry-once`; the retry's record names the run it retries in `retries`, and its tool result tells the main agent not to run the page again. Router tools exist only when there is a main agent, so one page whose harness cannot be resolved never blocks direct runs of the others. The main agent's model follows the same rules as a page agent's (its own default, then `defaults.model`), wrapped by `models.provider`.
 
 ### Type switching
 

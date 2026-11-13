@@ -4,7 +4,8 @@ import type { ToolDescriptor } from '../../types';
 import { mainHarnessSchema, type MainHarness } from '../contracts/mainHarness';
 import { pageSchema } from '../contracts/page';
 import { joinPath, normalizeDir } from '../contracts/validateModel';
-import { DEFAULT_MAX_CONCURRENT_PAGES, workspaceManifestSchema, type WorkspaceManifest } from '../contracts/workspace';
+import { workspaceManifestSchema, type WorkspaceManifest } from '../contracts/workspace';
+import { resolvePageModel } from '../contracts/models';
 import { readAgentOwned } from './agentDirView';
 import { assembleMainInstructions, type MainHarnessInput, type MainPageInfo } from './assemble';
 import type { PageRuntimeHost } from './engines/types';
@@ -38,11 +39,6 @@ export function readMainHarness(workspace: LoadedWorkspace, manifest: WorkspaceM
     return text === undefined ? [] : [[name, textOf(text)]];
   }));
   return { harness, dir, texts };
-}
-
-export function maxConcurrentPages(manifest: WorkspaceManifest, harness: MainHarness | undefined): number {
-  const allowed = manifest.defaults?.limits?.maxConcurrentPages ?? DEFAULT_MAX_CONCURRENT_PAGES;
-  return Math.min(allowed, harness?.limits?.maxConcurrentPages ?? allowed);
 }
 
 export function mainPages(workspace: LoadedWorkspace, manifest: WorkspaceManifest): MainPageInfo[] {
@@ -87,7 +83,11 @@ export function createMainAgent(workspace: LoadedWorkspace, options: MainAgentOp
       host.bindTool(descriptor, { name, page: MAIN_DIR, attachment: MAIN_DIR, secrets: policy.secrets[name] ?? [], network: { allowHosts: [...policy.network.allowHosts] }, sandbox: { required: policy.sandbox.required } }),
     ])
   );
-  const model = owned.defaultModel ?? manifest.defaults?.model;
+  const { model } = resolvePageModel({
+    ...(owned.defaultModel !== undefined && { agentDefault: owned.defaultModel }),
+    ...(manifest.defaults?.model !== undefined && { workspaceDefault: manifest.defaults.model }),
+    ...(manifest.models?.provider !== undefined && { workspaceProvider: manifest.models.provider }),
+  });
   return createAgent({
     name: owned.name,
     instructions: instructions.text,
