@@ -4,6 +4,7 @@
  * line), and optional `details` the response carries verbatim.
  */
 import { SDKError } from '../execution/errors';
+import type { BridgeErrorInfo } from './protocol';
 
 /** An error `serveBridge` answers as `{ id, error: { code, message, details? } }`. */
 export class BridgeError extends SDKError {
@@ -15,4 +16,17 @@ export class BridgeError extends SDKError {
     this.name = 'BridgeError';
     this.details = details;
   }
+}
+
+/**
+ * Maps a thrown error to the wire `error`/`run.failed` shape: an
+ * `SDKError`'s code and message pass through (with `details` when it has
+ * them); anything else is `LOUSHO_BRIDGE_INTERNAL`.
+ */
+export function toBridgeErrorInfo(error: unknown): BridgeErrorInfo {
+  if (error instanceof SDKError) {
+    const details = (error as { details?: unknown }).details;
+    return { code: error.code, message: error.message, ...(details !== undefined && { details }) };
+  }
+  return { code: 'LOUSHO_BRIDGE_INTERNAL', message: error instanceof Error ? error.message : String(error) };
 }

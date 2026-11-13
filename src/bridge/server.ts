@@ -18,14 +18,14 @@ import { listBuiltinTools } from '../tools/catalog';
 import { listModels } from '../models/catalog';
 import { listGuardrails } from '../execution/guardrailCatalog';
 import { listTriggerTypes } from '../spec/v2/triggerCatalog';
-import { SDKError } from '../execution/errors';
 import { parseAgentSpecV2 } from '../spec/v2/parse';
 import { compileSpec } from '../spec/v2/specToAgent';
 import { VERSION } from '../version';
 import { withConsoleOnStderr } from '../utils/consoleOnStderr';
-import { BridgeError } from './bridgeError';
+import { BridgeError, toBridgeErrorInfo } from './bridgeError';
 import { parseParams } from './params';
-import { BRIDGE_PROTOCOL_VERSION, MAX_LINE_BYTES, type BridgeCatalog, type BridgeMethod, type BridgeParams, type BridgeResponse } from './protocol';
+import { BRIDGE_PROTOCOL_VERSION, MAX_LINE_BYTES, type BridgeCatalog, type BridgeMethod, type BridgeParams, type BridgeResponse, type BridgeRunStarted } from './protocol';
+import { BridgeRuns } from './runs';
 import { applyEnv, bridgeSpecHost } from './specHost';
 import { toWireJson } from './wireJson';
 
@@ -55,11 +55,12 @@ const TOO_LARGE = 'Message is larger than 8 MiB.';
 
 const errorInfo = (code: string, message: string, details?: unknown) => ({ code, message, ...(details !== undefined && { details }) });
 
-/** What the implemented handlers share: the project root and the memoized catalog. */
+/** What the implemented handlers share: the project root, the memoized catalog and the run registry. */
 interface HandlerContext {
   root: string;
   catalog(): BridgeCatalog;
   catalogHash(): string;
+  runs: BridgeRuns;
 }
 
 type Handler = (params: unknown, ctx: HandlerContext) => Promise<unknown>;
@@ -94,21 +95,19 @@ const HANDLERS: Record<BridgeMethod, Handler | undefined> = {
     };
   },
   shutdown: async () => ({ ok: true }),
-  run: undefined,
-  chat: undefined,
-  steer: undefined,
-  abort: undefined,
-  resolveApproval: undefined,
-  answerQuestion: undefined,
+  run: async (params, ctx) => ctx.runs.start('run', params as BridgeParams['run']),
+  chat: async (params, ctx) => ctx.runs.start('chat', params as BridgeParams['chat']),
+  steer: async (params, ctx) => ctx.runs.steer(params as BridgeParams['steer']),
+  abort: (params, ctx) => ctx.runs.abort(params as BridgeParams['abort']),
+  resolveApproval: (params, ctx) => ctx.runs.resolveApproval(params as BridgeParams['resolveApproval']),
+  answerQuestion: (params, ctx) => ctx.runs.answerQuestion(params as BridgeParams['answerQuestion']),
 };
 
-/** Maps a thrown handler error to the wire `error` object: SDKError codes pass through with their message. */
-function toErrorInfo(error: unknown): { code: string; message: string; details?: unknown } {
-  if (error instanceof SDKError) {
-    const details = (error as { details?: unknown }).details;
-    return errorInfo(error.code, error.message, details);
-  }
-  return errorInfo('LOUSHO_BRIDGE_INTERNAL', error instanceof Error ? error.message : String(error));
+/** The `runId` a just-answered `run`/`chat`/`resolveApproval`/`answerQuestion` response belongs to, for `markReady`. */
+function respondedRunId(method: BridgeMethod, params: unknown, result: unknown): string | undefined {
+  if (method === 'run' || method === 'chat') return (result as BridgeRunStarted).runId;
+  if (method === 'resolveApproval' || method === 'answerQuestion') return (params as { runId: string }).runId;
+  return undefined;
 }
 
 const BAD_REQUEST_MESSAGE = "A request needs a numeric 'id' and a 'method'.";
@@ -191,8 +190,6 @@ async function serve(io: Required<BridgeIo>): Promise<number> {
   const catalogHash = (): string =>
     (hashCache ??= createHash('sha256').update(JSON.stringify(catalog())).digest('hex').slice(0, 16));
 
-  const ctx: HandlerContext = { root: io.root, catalog, catalogHash };
-
   const send = (message: BridgeResponse | { event: string; runId: string; data: unknown }): void => {
     let line = toWireJson(message);
     if (Buffer.byteLength(line, 'utf8') > MAX_LINE_BYTES) {
@@ -204,6 +201,11 @@ async function serve(io: Required<BridgeIo>): Promise<number> {
   const respond = (id: number, result: unknown): void => send({ id, result });
   const respondError = (id: number | null, error: { code: string; message: string; details?: unknown }): void =>
     send({ id, error });
+
+  // W10b: the run registry pushes through `send`; `abortAll` is the shutdown hook.
+  const runs = new BridgeRuns(io.root, send);
+  onShutdown(() => runs.abortAll('shutdown'));
+  const ctx: HandlerContext = { root: io.root, catalog, catalogHash, runs };
 
   const beginShutdown = (): void => {
     if (shuttingDown) return;
@@ -230,10 +232,13 @@ async function serve(io: Required<BridgeIo>): Promise<number> {
     try {
       const result = await HANDLERS[method]!(parseParams(method, parsed.params), ctx);
       respond(parsed.id, result);
+      // The response line is on stdout now: release the run's queued pushes.
+      const runId = respondedRunId(method, parsed.params, result);
+      if (runId !== undefined) runs.markReady(runId);
       if (method === 'hello') helloDone = true;
       if (method === 'shutdown') beginShutdown();
     } catch (error) {
-      respondError(parsed.id, toErrorInfo(error));
+      respondError(parsed.id, toBridgeErrorInfo(error));
     }
   };
 
