@@ -1899,6 +1899,7 @@ The left navigation lists every screen, grouped:
 | --- | --- | --- |
 | Build | **Agents** | The builder: canvas, Inspector, bottom drawer. The build toolbar (Run, Stop, Debug, Import, Export, Save, model badge) shows only here. |
 | Build | **Playground** | Try messages against a model without editing an agent. |
+| Build | **Workspaces** | Workspaces in this project: their pages, problems, drafts and revisions. |
 | Observe | **Traces** | Every run the observe daemon holds, filtered and sorted; a row opens the trace. |
 | Observe | **Threads** | Sessions (conversations): one row per session, one turn per run. |
 | Observe | **Monitoring** | The fleet's health and charts over a time window. |
@@ -1942,6 +1943,8 @@ unknown hash goes to `#/agents` (the `?token=` stays).
 | `#/prompts` | Prompt registry | |
 | `#/prompts/<name>`, `#/prompts/<name>@<version or label>` | One prompt (latest version by default) | `diff=<a>,<b>` |
 | `#/hub`, `#/hub/<namespace>` | Context Hub | `agent` (the "Viewing as" agent), `scope` (`private`, `fleet`) |
+| `#/workspaces` | Workspaces list | `q` (filters name, id, domain) |
+| `#/workspaces/<id>`, `#/workspaces/<id>/<section>` | One workspace; section is `overview`, `main-agent`, `pages`, `agents`, `runs`, `improve` or `revisions` | |
 | `#/settings` | Settings | |
 
 A time range picked from a preset other than the default is written as
@@ -2049,6 +2052,24 @@ run's trace. Both read the observe daemon: when it is down, the Playground
 says so and keeps an empty editor, and runs still work. Runs go through the
 [playground run endpoint](#playground-run-endpoint) and report as agent
 `playground`.
+
+### Workspaces
+
+`#/workspaces` lists the workspaces the typed workspaces API knows: name and
+domain, page count, a `Valid`/`Invalid (n)` badge from the workspace's
+problems, the live revision and a last-run column (filled in by a later
+ticket). `#/workspaces/<id>` opens one workspace with a header that carries
+the live revision, the problems badge, an **Draft open** badge while a draft
+exists, and disabled **Run**/**Chat** actions; a left nav switches between
+the `overview`, `main-agent`, `pages`, `agents`, `runs`, `improve` and
+`revisions` sections, the ones not built yet naming their ticket. Every edit
+is a typed authoring operation sent through `ApiClient.call('applyOps', …)`
+into a draft with `expectedRevision`; the draft is applied or discarded
+later. When the live revision moved under an open screen the operation gets a
+409, the latest revision reloads and a toast says "This workspace changed
+since you opened it." The screens call only the workspaces API
+(`/api/workspaces`, mounted by a later ticket), through an injected
+`ApiClient`, so they run on fixtures today and move to the Next.js app later.
 
 ### Traces
 
@@ -2749,7 +2770,7 @@ with `LOUSHO_SPEC_UNSUPPORTED` naming the field.
 | [`hooks`](https://github.com/LinuxDevil/lousho/blob/main/docs/hooks.md) | `HookSpec[]` | Code that runs before or after tool calls and model calls. |
 | [`output`](https://github.com/LinuxDevil/lousho/blob/main/docs/structured-output.md) | `{ jsonSchema }` | A JSON Schema the final answer must match. |
 | [`triggers`](https://github.com/LinuxDevil/lousho/blob/main/docs/schedules.md) | `TriggerSpec[]` | What starts a run: chat, a schedule, a webhook, a channel or another agent finishing. |
-| `abortListeners` | not supported yet | Events that cancel a queued or running run. |
+| [`abortListeners`](https://github.com/LinuxDevil/lousho/blob/main/docs/triggers.md#abort-listeners) | `AbortListenerSpec[]` | Events that cancel a queued or running run. |
 | [`flow`](https://github.com/LinuxDevil/lousho/blob/main/docs/flows.md) | `AgentFlow` | An optional step-by-step workflow the agent runs instead of a single chat turn. |
 | `evals` | not supported yet | Datasets and pass gates checked before the agent is published. |
 
@@ -3615,6 +3636,69 @@ const trusted = createAgent({
   approve: ({ toolName, args }) => toolName !== 'send_email' || String(args.to).endsWith('@example.com'),
 });
 ```
+
+### Model-decided approvals
+
+`createAutoApprove` wraps a cheap model as the `approve` callback: calls an
+`auto` permission rule matched get a 0–1 safety score, and a score at or
+above 0.8 (within 8 s) runs the tool unreviewed. Everything else — a lower
+score, a timeout, a model error, arguments too long to judge — defers to a
+human exactly like `'defer'`. It never denies a call on its own.
+
+```ts
+import { ask, createAgent, createAutoApprove, modelAutoApprover } from 'lousho';
+
+declare const issueTool: any;
+declare const cheapProvider: import('lousho').LLMProvider;
+
+const agent = createAgent({
+  provider,
+  tools: [issueTool, emailTool],
+  permissions: [ask(['create_issue'])],
+  approve: createAutoApprove({
+    autoApprover: modelAutoApprover({ provider: cheapProvider }),
+    isAuto: (toolName) => toolName === 'create_issue',
+    // fallback: the agent's own approve, asked for non-auto and escalated calls
+    onDecision: (d) => console.log(d.toolName, d.outcome, d.cause),
+  }),
+});
+```
+
+`modelAutoApprover` asks the provider for `{"safety": <0..1>, "reason":
+"..."}` at temperature 0; `createAutoApprove` clips long arguments before
+they reach the model and reports every decision through `onDecision`. Pass a
+`fallback` approve callback to keep a second line of defense for escalated
+calls.
+
+An AgentSpec v2 wires the same machinery from a permission rule: `action:
+'auto'` compiles to `ask`, and a host that supplies `autoApprover` (and
+optionally `onAutoApproval`) gets the model-scored callback for exactly
+those rules — first match still wins, so an `allow` listed before an `auto`
+rule means the model is never consulted.
+
+```yaml
+permissions:
+  - id: p1
+    tool: github_create_issue
+    action: auto
+```
+
+```ts
+import { modelAutoApprover, specV2ToAgent } from 'lousho';
+
+declare const spec: import('lousho').AgentSpecV2;
+declare const baseDir: string;
+declare const cheapProvider: import('lousho').LLMProvider;
+
+const agent = await specV2ToAgent(spec, {
+  baseDir,
+  autoApprover: modelAutoApprover({ provider: cheapProvider }),
+  onAutoApproval: (d) => console.log(d.toolName, d.outcome, d.cause),
+});
+```
+
+With no `autoApprover` on the host, `action: 'auto'` behaves exactly like
+`ask`.
 
 ### Streaming the continued run
 
@@ -9462,7 +9546,7 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format), [`LOUSHO_SPEC_UNSUPPORTED`](#lousho_spec_unsupported), [`LOUSHO_SPEC_SECRET_MISSING`](#lousho_spec_secret_missing) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed), [`LOUSHO_MCP_CALL_FAILED`](#lousho_mcp_call_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start or a call to one failed. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_DECISION_INVALID`](#lousho_approval_decision_invalid), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated), [`LOUSHO_RUN_NO_PROGRESS`](#lousho_run_no_progress) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_DECISION_INVALID`](#lousho_approval_decision_invalid), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_AUTO_APPROVAL_INVALID`](#lousho_auto_approval_invalid), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated), [`LOUSHO_RUN_NO_PROGRESS`](#lousho_run_no_progress) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
@@ -9935,6 +10019,19 @@ pending pause's `approvalKind`.
 
 **Example:** posting `{ "approved": true }` to a pause that waits for the
 model's `ask_question` answer.
+
+### LOUSHO_AUTO_APPROVAL_INVALID
+
+**Means:** `modelAutoApprover` (the model-scored approver behind
+`createAutoApprove`) could not read a verdict from the model's reply: no JSON
+object, a `safety` that is not a number in [0, 1], or no `reason` string.
+
+**Fix:** check the auto approver's model and prompt — its reply must be a
+JSON object `{ "safety": <0..1>, "reason": "<text>" }`; prose around it is
+fine. See [Approvals](https://github.com/LinuxDevil/lousho/blob/main/docs/approvals.md#model-decided-approvals).
+
+**Example:** `createAutoApprove({ autoApprover: modelAutoApprover({ provider }), isAuto })`
+with a model that answers `"safe"` instead of the JSON verdict.
 
 ### LOUSHO_SESSION_FORBIDDEN
 
@@ -23409,6 +23506,32 @@ Around daylight-saving changes, a fixed-hour job whose time does not exist
 gap (03:00) instead of being skipped for the day, and a time that happens twice (fall back) fires once;
 an every-hour schedule keeps firing hourly.
 
+## Abort listeners
+
+`spec.abortListeners` cancels queued or running runs when a watched trigger's
+event matches. Each entry names a `webhook` or `channel` trigger, a `when`
+expression over the incoming event, a `match` expression pairing the trigger
+event with a run's own event, and a `scope` of `queued`, `running` or `both`:
+
+```yaml
+triggers:
+  - id: deploy-hook
+    type: webhook
+    path: /deploy
+    promptTemplate: Deploy {{body.ref}}.
+abortListeners:
+  - id: cancel-deploy
+    triggerId: deploy-hook
+    when: event.action == 'rollback'
+    match: run.event.pr == event.pr
+    scope: both
+```
+
+`when` and `match` use the same safe expression grammar as flow conditions
+(see [Flows](https://github.com/LinuxDevil/lousho/blob/main/docs/flows.md#flow-expressions)); variable references are checked
+when the spec parses and unknown names resolve to `undefined` at runtime.
+At most 20 listeners are allowed per spec.
+
 # Troubleshooting
 
 Source: docs/troubleshooting.md
@@ -24923,6 +25046,26 @@ Page paths may not start with `pages/` (nested pages, PRD009).
 
 The block named by `type` is required. The other blocks are validated but not run, so a page keeps its other configurations when its type changes (see [type switching](#type-switching)). Aliases are names from `agents.json`, never refs.
 
+### goal.json (`lousho.goal/1`)
+
+The goal file of a goal-oriented page, named by `page.json` `execution.goal.goal` (`./goal.json`).
+
+| Field | Type and default |
+| --- | --- |
+| `goal` | The goal, in words; required, non-empty |
+| `checks` | Required, at least one `{ criterion }`; `criterion` names an id in the page's effective `evaluation.criteria`, and at least one named criterion must have an executable `check` (R19, PRD033) |
+| `stop.maxIterations` | Required integer, 1 to 50 (A12) |
+| `stop.maxCostUsd` | Required, US dollars (F5.3) |
+| `stop.maxDurationMs` | Optional integer |
+| `stop.onStall` | `stop` (default) or `continue` |
+| `stop.stallAfter` | Integer, default 2 |
+
+`goal.json` is structure: improvement never edits it (R10); people change it with the `write_goal` operation. The goal page's `lead` and `delegates` are in `page.json` `execution.goal`, so every attachment stays usable under every type.
+
+**How the loop stops.** The loop runs one turn per iteration in one session. It stops when the check passes, or at `maxIterations`, `maxDurationMs` or `maxCostUsd`, whichever comes first. The run's spend cap (P5.30) and the page's limits apply on top, the lower value of each winning. A stall — `stallAfter` iterations in a row without a better check score — stops the loop as `stalled` unless `onStall` is `continue`. Every iteration is a `goal-iteration` step, so a failure is attributed to the iteration it happened in.
+
+**Checkpoints and resume.** Given a `runId` and a checkpoint store, `runGoal` saves the loop's progress — the finished iterations, spend, elapsed time and stall count — as a checkpoint under the page run id after every iteration, and again with status `finished` at the end. `resumeGoal` reads that checkpoint and continues at the next iteration with the spend so far, so the limits count the whole run; a finished run returns its saved result and runs nothing. The turn that was running when the process died is not resumed mid-turn: it is run again from its start as the next iteration, its partial spend lost as for any crashed turn.
+
 ### Model precedence and `models.provider`
 
 `resolvePageModel` (exported from `lousho/workspaces`) picks the model a page's agent runs with. The first level that sets a model wins:
@@ -25360,11 +25503,21 @@ console.log(problems);
 
 No catalog component binds an array input; only `schemaForm` on the parent can.
 
+### The default UI
+
+A page with no `ui/page.ui.json` gets `defaultPageUi(effective, type)`: a `schemaForm` bound to `inputs` (when the harness has an input schema), a row with `runButton` and `cancelButton`, `runStatus`, `progress`, one view per output field (`markdown` for a string, `table` for an array, `text` for a number, integer or boolean, `json` for anything else, or one `json` view of `outputs` when the schema is a path, has a `$ref` or lists no fields), and an `artifactGallery` when `outputs.artifacts` is not empty. It is the same for every execution type, so switching a page's type never changes its UI, and it always passes `validateUiBindings`. `reset_page_ui` deletes the file so this default applies again; services and the CLI build it on read, from the page's effective harness. `reviseBox` and `versionList` are not in it.
+
+### Rendering a page UI
+
+`@lousho/workspaces-react` (`packages/workspaces-react`) renders a page UI in any React 18 or later app: `PageApp` takes an `ApiClient`, a workspace id and a page id, loads the UI spec and the effective input schema through the client, and draws the catalog. It never takes a URL, so a host binds the client to its own server-side proxy. Every label, title, placeholder and piece of model output is drawn as a text node; the schema blocklist above is defence in depth. Hosts theme it with the `--lousho-ui-*` CSS variables listed in the package README.
+
 ## Authoring operations
 
 Chat and forms edit a workspace through one closed set of typed operations, not raw files. `applyOps(tree, ops, { validate })` is pure: it applies the operations in order to a tree, writes only known files at their default paths (never `shared/policies/**`), and runs `validate` on the result. With any problem it returns the original tree and every problem, each naming its operation index. `validate` is required so callers pass `validateWorkspace`.
 
-The operations are: `create_workspace`, `set_workspace_field`, `create_page`, `remove_page`, `reorder_pages`, `set_page_field`, `set_harness_field`, `write_harness_prose`, `add_extends`, `remove_extends`, `set_base_harness_field`, `set_main_harness_field`, `add_criterion`, `remove_criterion`, `create_agent`, `write_agent_prose`, `attach_agent`, `detach_agent`, `set_attachment_field`, `set_execution_type`, `set_execution_config`, `write_workflow`, `write_goal`, `write_page_ui`, `reset_page_ui` and `write_shared_instruction`. `AUTHORING_OP_NAMES` lists them. Policy, secrets, the tool catalog and global agents are not in the set. Each operation validates against the file's own schema, so a forbidden key is refused here as well.
+The operations are: `create_workspace`, `set_workspace_field`, `create_page`, `remove_page`, `reorder_pages`, `set_page_field`, `set_harness_field`, `write_harness_prose`, `add_extends`, `remove_extends`, `set_base_harness_field`, `set_main_harness_field`, `add_criterion`, `remove_criterion`, `create_agent`, `write_agent_prose`, `attach_agent`, `detach_agent`, `set_attachment_field`, `set_execution_type`, `set_execution_config`, `write_workflow`, `write_goal`, `write_page_ui`, `reset_page_ui`, `write_shared_instruction`, `set_profile`, `delete_profile`, `set_resource`, `delete_resource` and `set_main_model`. `AUTHORING_OP_NAMES` lists them. Policy, secrets, the tool catalog and global agents are not in the set. Each operation validates against the file's own schema, so a forbidden key is refused here as well.
+
+`set_profile` writes a workspace harness profile (`harness-profiles/<path>/harness.json` and its prose) from a `workspace:<path>` ref. `delete_profile` removes the profile's folder. `set_resource` and `delete_resource` write and remove a text resource (`.md` or `.txt`) of a page or of the base harness; list it in the harness's `context.resources` with `set_harness_field`. `set_main_model` sets the main agent's model. Check scripts, tools, workspace workflows, brand files and the policy have no operation: a criterion's `check` may name a host-registry check by name.
 
 ```ts
 import { applyOps, validateWorkspace } from 'lousho/workspaces';
@@ -25441,6 +25594,7 @@ This prints PRD022, because `summarize` is listed but has no folder.
 | PRD030 | error | A workflow or goal file is missing or invalid |
 | PRD031 | warning | A main-harness limit was clamped to the workspace's |
 | PRD032 | error | A file a page harness or profile lists as prose, or any harness layer lists as a check script, resource or schema, is missing |
+| PRD033 | error | A goal names only rubric-only criteria; at least one needs an executable check (R19) |
 
 A refused tree is reported once: when a manifest is unreadable or its folders overlap, the cross-file checks do not run.
 
@@ -25471,6 +25625,7 @@ The structure of each file is exported as JSON Schema (draft 7) in the repositor
 | --- | --- |
 | `lousho.workspace.v1.json` | `workspace.json` |
 | `lousho.page.v1.json` | `page.json` |
+| `lousho.goal.v1.json` | `goal.json` |
 | `lousho.harness.v1.json` | `harness.json` (page, base harness or profile) |
 | `lousho.main-harness.v1.json` | `main-harness.json` |
 | `lousho.agents.v1.json` | `agents.json` |

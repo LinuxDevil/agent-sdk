@@ -87,7 +87,7 @@ export function CronForm({ item, patch }: TriggerSubFormProps<Extract<TriggerSpe
         id="node-trigger-shared-session"
         label="One shared session"
         inline
-        hint="Every run continues the same conversation."
+        hint="Shared session is used by `lousho dev` only."
       >
         <Switch
           checked={item.sharedSession ?? false}

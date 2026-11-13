@@ -22,6 +22,11 @@
  *   GET  /agents/:id/suggestions      -> PromptSuggestion[] - open first, then newest (routes/suggestionRoutes.ts)
  *   POST /agents/:id/suggestions/:sid/apply -> hash-guarded instructions edit, 201 VersionListItem | 404/409
  *   POST /agents/:id/suggestions/:sid/dismiss -> 204 | 404/409
+ *   GET  /inbox                      -> InboxItem[] - approvals, questions, drafts, suggestions, alerts (inbox/inboxRoutes.ts)
+ *   GET  /inbox/count                -> InboxCount
+ *   POST /inbox/alerts/:alertId/dismiss -> 204 | 404
+ *   POST /hooks/:agentId/<path>       -> webhook trigger fire (triggers/webhookRoute.ts, R08a);
+ *                                        public - HMAC or loopback-only, no studio token
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
@@ -36,6 +41,8 @@
  *   GET  /runs/:id/history           -> RunHistoryPayload
  *   POST /runs/:id/fork              -> body: ForkRunRequest; starts the fork, 202 ForkRunResponse
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
+ *   POST /agents/:id/rating          -> body: RatingRequest; 204 (ratings.ts, R04a)
+ *   POST /agents/:id/rating/:alertId/dataset -> 200 { dataset, exampleId } | 422 no captured input
  *   GET  /observe/**                 -> proxied to the `lousho observe` daemon's read API (observeProxy.ts)
  *   POST /observe/api/v1/scores      -> proxied too (the proxy's write allowlist: human feedback scores)
  *   POST /observe/api/v1/evaluators/:id/test -> a judge rule's dry run here, a code rule forwarded (judge.ts)
@@ -141,6 +148,11 @@ import { registerPublishRoutes } from './lifecycle/publish';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
+import { InboxService } from './inbox/inboxService';
+import { registerInboxRoutes } from './inbox/inboxRoutes';
+import { registerWebhookRoutes } from './triggers/webhookRoute';
+import { createTriggerRuntime } from './triggers/runtime';
+import { registerRatingRoutes } from './ratings';
 import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
@@ -242,6 +254,13 @@ interface CreateAppBaseOptions {
    * `new AlertStore(studioPaths().alerts)`.
    */
   alerts?: AlertStore;
+  /**
+   * The default workspace context's `InboxService` (R02a) - a test seam,
+   * like `eventBus`: inject a stub to answer `/inbox*` without building
+   * the real stores. Defaults to the context's own (built by
+   * `createWorkspaceContext`/`legacyWorkspaceContext`).
+   */
+  inbox?: InboxService;
 }
 
 /**
@@ -274,6 +293,7 @@ const API_PREFIXES = [
   '/assistant',
   '/templates',
   '/events',
+  '/inbox',
 ];
 
 /** The only methods served without the token, and only off the API (`/health`, the static client). */
@@ -314,6 +334,20 @@ function isApiPath(pathname: string): boolean {
  */
 function needsToken(req: Request): boolean {
   return !PUBLIC_METHODS.has(req.method) || isApiPath(req.path);
+}
+
+/**
+ * `POST /hooks/**` is the public webhook surface (R08a): external callers
+ * carry no studio token and may come from non-loopback hosts, so the
+ * global Host/Origin + token gate must not touch it - the webhook route
+ * applies its own rule (HMAC signature, or loopback-only when the
+ * trigger has no secret). `gatePath` normalizes the same way the token
+ * gate compares, so encoded/case-folded spellings can't slip past.
+ */
+function isWebhookPost(req: Request): boolean {
+  if (req.method !== 'POST') return false;
+  const normalised = gatePath(req.path);
+  return normalised !== undefined && normalised.startsWith('/hooks/');
 }
 
 type ErrorClass = new (...args: never[]) => Error;
@@ -905,7 +939,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events|\/inbox|\/hooks).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -916,8 +950,13 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * legacy `{agentStore, runManager}` form instead of a ready-built
  * `workspace`: the launch folder's ref around those two stores.
  */
-function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunner, alerts: AlertStore): WorkspaceContext {
-  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner);
+function defaultWorkspaceContext(
+  options: CreateAppOptions,
+  passRunner: PassRunner,
+  alerts: AlertStore,
+  autoApproval: { settings: SettingsStore; spendLog: SpendLog }
+): WorkspaceContext {
+  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner, alerts, autoApproval);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
   if (options.eventBus !== undefined) workspace = { ...workspace, events: options.eventBus };
@@ -927,6 +966,9 @@ function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunn
   // `idleVersioner` is a test seam too: it swaps the context's idle-version
   // scheduler - the one `workspaceOf(req).idleVersioner` touches/cancels.
   if (options.idleVersioner !== undefined) workspace = { ...workspace, idleVersioner: options.idleVersioner };
+  // `inbox` is a test seam too (R02a): it swaps the context's InboxService
+  // - the one `/inbox*` handlers read through workspaceOf(req).
+  if (options.inbox !== undefined) workspace = { ...workspace, inbox: options.inbox };
   // A caller-built `workspace` already carries its failure-streak attach
   // (createWorkspaceContext); the legacy `{agentStore, runManager}` pair
   // gets the same wiring here (L12), on the final - possibly
@@ -949,17 +991,46 @@ function defaultWorkspaceContext(options: CreateAppOptions, passRunner: PassRunn
  * `{agentStore, runManager}` pair instead of a ready-built `workspace`:
  * the launch folder's ref around those two stores.
  */
-function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefined }, passRunner: PassRunner): WorkspaceContext {
+function legacyWorkspaceContext(
+  options: CreateAppOptions & { workspace?: undefined },
+  passRunner: PassRunner,
+  alerts: AlertStore,
+  autoApproval: { settings: SettingsStore; spendLog: SpendLog }
+): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
   const versions = new VersionStore(repo);
+  const drafts = new DraftStore(repo);
+  const suggestions = new SuggestionStore(repo);
+  const events = new StudioEventBus();
+  // The legacy pair's approval store is only read through `peek` by the
+  // inbox, so a second instance over the same directory is consistent.
+  const inbox = new InboxService({
+    repo,
+    runManager: options.runManager,
+    approvalStore: new FileApprovalStore(options.baseDir),
+    drafts,
+    suggestions,
+    alerts,
+    events,
+    workspaceId: workspaceRefFor(options.baseDir).id,
+  });
+  inbox.start();
+  // The legacy pair gets the same trigger stack the real context builds
+  // (R08a host + R08c cron) - webhook routes read it through workspaceOf(req).
+  const { triggers, cron } = createTriggerRuntime({
+    baseDir: options.baseDir,
+    repo,
+    runManager: options.runManager,
+    events,
+  });
   return {
     ref: workspaceRefFor(options.baseDir),
     repo,
     agentStore: options.agentStore,
     versions,
-    drafts: new DraftStore(repo),
+    drafts,
     idleVersioner: createIdleVersioner(versions),
-    suggestions: new SuggestionStore(repo),
+    suggestions,
     // The legacy pair's RunManager carries its own host; this one exists to
     // satisfy the context shape (nothing reads ws.host yet - catalog/steer
     // routes are later tickets).
@@ -968,11 +1039,16 @@ function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefi
       checkpointStore: new FileCheckpointStore(options.baseDir),
       approvalStore: new FileApprovalStore(options.baseDir),
       secretsStore: options.secretsStore,
+      settings: autoApproval.settings,
+      spend: autoApproval.spendLog,
     }),
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
-    events: new StudioEventBus(),
+    events,
     passes: passRunner,
+    inbox,
+    triggers,
+    cron,
   };
 }
 
@@ -994,7 +1070,7 @@ export function createApp(options: CreateAppOptions): Express {
     options.passRunner ??
     new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
   const alerts = options.alerts ?? new AlertStore(paths.alerts);
-  const workspace = defaultWorkspaceContext(options, passRunner, alerts);
+  const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog });
   // One resolver for the middleware below and the Author tools' per-call
   // workspace lookup (PLAN 19.3 - until W02a it resolves the launch
   // context whatever id comes in).
@@ -1035,6 +1111,11 @@ export function createApp(options: CreateAppOptions): Express {
   // loopback Host and carry no foreign Origin; everything except a GET/HEAD of
   // `/health` or the static client also needs the token (see needsToken()).
   app.use((req, res, next) => {
+    // Webhook posts skip the whole gate - the route does its own auth.
+    if (isWebhookPost(req)) {
+      next();
+      return;
+    }
     const decision = access
       ? needsToken(req)
         ? checkApiAccess(req, access)
@@ -1046,6 +1127,10 @@ export function createApp(options: CreateAppOptions): Express {
     }
     next();
   });
+  // Raw bytes for `/hooks/**` BEFORE the JSON parser: webhook HMACs sign
+  // the exact body, and `express.raw` sets `req._body` so the JSON parser
+  // below leaves it alone. Every other route keeps `express.json`.
+  app.use('/hooks', express.raw({ type: () => true, limit: '1mb' }));
   app.use(express.json({ limit: '2mb' }));
   // Resolve every request's workspace before the first route so handlers
   // read their per-workspace stores from workspaceOf(req), never a
@@ -1095,7 +1180,7 @@ export function createApp(options: CreateAppOptions): Express {
   // Prompt suggestions: list, CAS-guarded apply and dismiss (server/
   // routes/suggestionRoutes.ts - stores come from workspaceOf(req), the
   // workspace seam, like drafts and versions).
-  registerSuggestionRoutes(app);
+  registerSuggestionRoutes(app, { secretsStore: secrets, settings });
   // Agent export: `GET /agents/:id/export?format=yaml|bundle` (lifecycle/
   // export.ts - the repo comes from workspaceOf(req), the workspace seam).
   registerExportRoutes(app);
@@ -1147,6 +1232,19 @@ export function createApp(options: CreateAppOptions): Express {
   // The pass spend summary (passes/passRoutes.ts) - before the observe
   // proxy so `/settings/passes/spend` is never proxied.
   registerPassRoutes(app, { spendLog, settings });
+  // The inbox (inbox/inboxRoutes.ts, R02a): `/inbox`, `/inbox/count` and
+  // alert dismiss - the service comes from workspaceOf(req).inbox.
+  registerInboxRoutes(app);
+  // Webhook triggers (triggers/webhookRoute.ts, R08a): `POST
+  // /hooks/:agentId/<path>` - the trigger host and repo come from
+  // workspaceOf(req); named-secret resolution is Studio-global.
+  registerWebhookRoutes(app, { resolveSecret: (name) => secrets.getSecret(name) });
+  // Human run ratings (ratings.ts, R04a): `/agents/:id/rating` writes the
+  // score to the observe daemon and may raise a low_rating alert; the
+  // `/rating/:alertId/dataset` action copies the trace into the agent's
+  // `<agentId>-regressions` dataset. Before the observe proxy so neither
+  // path is ever proxied.
+  registerRatingRoutes(app, { alerts });
   registerObserveProxy(app);
   registerStaticClient(app, staticDir);
 

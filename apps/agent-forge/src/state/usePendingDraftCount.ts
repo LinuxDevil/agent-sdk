@@ -1,63 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-
 import { runtimeClient } from '../runtime/runtimeClient';
-import { useStudioEvents } from './useStudioEvents';
-import type { StudioEvent } from '../../shared/wireTypes';
-
-/** `agent.changed` reasons that can create or remove the agent's pending draft. */
-const AGENT_CHANGED_REASONS = new Set<Extract<StudioEvent, { type: 'agent.changed' }>['reason']>([
-  'version',
-  'restore',
-  'save',
-]);
+import { useDraftRefreshEvents } from './useDraftRefreshEvents';
+import { useFetchedResource } from './useFetchedResource';
 
 /**
  * The Suggestions tab badge (L11b): `1` while the agent has a pending
  * `ChangeDraft`, `0` otherwise - `undefined` `agentId` (an unsaved
  * agent) reads as `0` without a request. Refreshed by the shared
  * `/events` socket on `draft.changed` and on spec-moving `agent.changed`
- * reasons; a request counter drops stale responses.
+ * reasons; the fetch/guard skeleton is `useFetchedResource`, and a
+ * failed read counts as no draft (the badge errs toward quiet).
  */
 export function usePendingDraftCount(agentId: string | undefined): number {
-  const [count, setCount] = useState(0);
-  const requestRef = useRef(0);
-
-  const refresh = useCallback(async () => {
-    if (agentId === undefined) {
-      setCount(0);
-      return;
-    }
-    const request = ++requestRef.current;
-    try {
-      const draft = await runtimeClient.getDraft(agentId);
-      if (request !== requestRef.current) return;
-      setCount(draft === undefined ? 0 : 1);
-    } catch {
-      if (request === requestRef.current) setCount(0);
-    }
-  }, [agentId]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useStudioEvents(
-    useCallback(
-      (event: StudioEvent) => {
-        if (agentId === undefined) return;
-        if (event.type === 'draft.changed') {
-          if (event.agentId === agentId) void refresh();
-        } else if (
-          event.type === 'agent.changed' &&
-          event.agentId === agentId &&
-          AGENT_CHANGED_REASONS.has(event.reason)
-        ) {
-          void refresh();
-        }
-      },
-      [agentId, refresh],
-    ),
-  );
-
-  return count;
+  const { value, refresh } = useFetchedResource<number>({
+    key: agentId,
+    // The count has no error surface: a failed read shows as 0 like the
+    // original catch-all did, so swallow it inside the fetcher.
+    fetch: async (id) => {
+      try {
+        return (await runtimeClient.getDraft(id)) === undefined ? 0 : 1;
+      } catch {
+        return 0;
+      }
+    },
+  });
+  useDraftRefreshEvents(agentId, refresh);
+  return value ?? 0;
 }

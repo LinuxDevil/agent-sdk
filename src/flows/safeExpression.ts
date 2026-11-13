@@ -31,7 +31,7 @@ export class ExpressionError extends Error {
   constructor(
     readonly expression: string,
     readonly position: number,
-    reason: string
+    readonly reason: string
   ) {
     super(`Invalid expression "${expression}" at position ${position}: ${reason}. ${SUPPORTED_SUMMARY}`);
     this.name = 'ExpressionError';

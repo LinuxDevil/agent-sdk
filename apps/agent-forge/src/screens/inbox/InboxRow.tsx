@@ -1,0 +1,254 @@
+import { useState, type ReactNode } from 'react';
+import { Sparkles, type LucideIcon } from 'lucide-react';
+
+import { fmtAge } from '../../observe/format';
+import { AgentTile } from '../../ui/AgentTile';
+import type { InboxItem } from '../../../shared/wireTypes';
+
+/** An approval/question deadline has passed (or is missing a parseable `expiresAt`). */
+function isExpired(item: InboxItem, now: number): boolean {
+  if (item.kind !== 'approval' && item.kind !== 'question') return false;
+  if (item.expiresAt === null) return false;
+  const at = Date.parse(item.expiresAt);
+  return Number.isNaN(at) || at <= now;
+}
+
+/** `Expires in m:ss` for a deadline `ms` away; `null` when there is none or it passed. */
+function expiresLabel(expiresAt: string | null, now: number): string | null {
+  if (expiresAt === null) return null;
+  const at = Date.parse(expiresAt);
+  if (Number.isNaN(at)) return null;
+  const left = at - now;
+  if (left <= 0) return 'Expired';
+  const total = Math.ceil(left / 1000);
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `Expires in ${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+interface RowProps extends InboxActionHandlers {
+  item: InboxItem;
+  /** The row's action is in flight: its buttons disable with a "Sending…" title. */
+  acting: boolean;
+  /** The screen's shared clock (ms epoch), ticking once a second. */
+  now: number;
+}
+
+/** The callbacks every inbox row offers, shared by the row and its group wrapper. */
+export interface InboxActionHandlers {
+  onApprove: (item: InboxItem & { kind: 'approval' }, approved: boolean) => void;
+  onAnswer: (item: InboxItem & { kind: 'question' }, answer: string) => void;
+  onDismiss: (item: InboxItem & { kind: 'alert' }) => void;
+  onAddToDataset: (item: InboxItem & { kind: 'alert' }) => void;
+  onSuggestFix: (item: InboxItem & { kind: 'alert' }) => void;
+}
+
+const agentHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/canvas`;
+const suggestionsHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/suggestions`;
+const overviewHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/overview`;
+
+function Meta({ item, now }: { item: InboxItem; now: number }) {
+  const deadline = item.kind === 'approval' || item.kind === 'question' ? expiresLabel(item.expiresAt, now) : null;
+  const soon = item.kind === 'approval' || item.kind === 'question'
+    ? item.expiresAt !== null && Date.parse(item.expiresAt) - now < 60_000 && Date.parse(item.expiresAt) > now
+    : false;
+  return (
+    <p className="inbox-row-meta">
+      <a href={agentHref(item)}>{item.agentName}</a>
+      {' · '}
+      {fmtAge(now - Date.parse(item.at))}
+      {deadline !== null && (
+        <>
+          {' · '}
+          <span className={soon ? 'inbox-deadline inbox-deadline-soon' : 'inbox-deadline'}>{deadline}</span>
+        </>
+      )}
+    </p>
+  );
+}
+
+function ActionButton({
+  label,
+  className,
+  disabled,
+  title,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  className: string;
+  disabled: boolean;
+  title?: string;
+  icon?: LucideIcon;
+  onClick: () => void;
+}) {
+  return (
+    <button type="button" className={className} disabled={disabled} title={title} onClick={onClick}>
+      {Icon !== undefined && <Icon size={14} strokeWidth={1.75} aria-hidden="true" />}
+      {label}
+    </button>
+  );
+}
+
+/** The question row's answer controls: option buttons, or a free-text box + Send. */
+function QuestionActions({ item, disabled, expired, onAnswer }: { item: InboxItem & { kind: 'question' }; disabled: boolean; expired: boolean; onAnswer: RowProps['onAnswer'] }) {
+  const [text, setText] = useState('');
+  const send = (answer: string) => {
+    if (answer.trim() !== '') onAnswer(item, answer);
+  };
+  const freeText = item.allowFreeText || item.options.length === 0;
+  return (
+    <>
+      {item.options.map((option) => (
+        <ActionButton
+          key={option}
+          label={option}
+          className="btn btn-secondary btn-sm"
+          disabled={disabled || expired}
+          title={expired ? 'This request expired' : disabled ? 'Sending…' : undefined}
+          onClick={() => send(option)}
+        />
+      ))}
+      {freeText && (
+        <span className="inbox-answer-group">
+          <input
+            className="input inbox-answer"
+            aria-label="Your answer"
+            value={text}
+            disabled={disabled || expired}
+            title={expired ? 'This request expired' : undefined}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') send(text);
+            }}
+          />
+          <ActionButton
+            label="Send"
+            className="btn btn-secondary btn-sm"
+            disabled={disabled || expired || text.trim() === ''}
+            title={expired ? 'This request expired' : disabled ? 'Sending…' : undefined}
+            onClick={() => send(text)}
+          />
+        </span>
+      )}
+    </>
+  );
+}
+
+/** The disabled-button title: expiry wins over the in-flight "Sending…". */
+function actionTitle(expired: boolean, disabled: boolean, expiredText = 'This request expired'): string | undefined {
+  if (expired) return expiredText;
+  return disabled ? 'Sending…' : undefined;
+}
+
+/** The approval row's Approve/Deny pair. */
+function ApprovalActions({ item, expired, disabled, onApprove }: { item: InboxItem & { kind: 'approval' }; expired: boolean; disabled: boolean; onApprove: RowProps['onApprove'] }) {
+  const title = actionTitle(expired, disabled);
+  return (
+    <>
+      <ActionButton
+        label="Approve"
+        className="btn btn-success btn-sm"
+        disabled={disabled || expired}
+        title={title}
+        onClick={() => onApprove(item, true)}
+      />
+      <ActionButton
+        label="Deny"
+        className="btn btn-secondary btn-sm"
+        disabled={disabled || expired}
+        title={title}
+        onClick={() => onApprove(item, false)}
+      />
+    </>
+  );
+}
+
+/** The alert row's actions: a low-rating alert also offers the regressions dataset and "Suggest a fix". */
+function AlertActions({ item, disabled, onAddToDataset, onDismiss, onSuggestFix }: { item: InboxItem & { kind: 'alert' }; disabled: boolean; onAddToDataset: RowProps['onAddToDataset']; onDismiss: RowProps['onDismiss']; onSuggestFix: RowProps['onSuggestFix'] }) {
+  const traceId = item.alertKind === 'low_rating' ? item.payload.traceId : undefined;
+  return (
+    <>
+      {item.alertKind === 'low_rating' && (
+        <>
+          {typeof traceId === 'string' && traceId !== '' && (
+            <ActionButton
+              label="Suggest a fix"
+              className="btn btn-secondary btn-sm"
+              disabled={disabled}
+              title={actionTitle(false, disabled)}
+              icon={Sparkles}
+              onClick={() => onSuggestFix(item)}
+            />
+          )}
+          <ActionButton
+            label={`Add to dataset ${item.agentId}-regressions`}
+            className="btn btn-secondary btn-sm"
+            disabled={disabled}
+            title={actionTitle(false, disabled)}
+            onClick={() => onAddToDataset(item)}
+          />
+        </>
+      )}
+      <a className="btn btn-secondary btn-sm" href={overviewHref(item)}>
+        Open agent
+      </a>
+      <ActionButton
+        label="Dismiss"
+        className="btn btn-ghost btn-sm"
+        disabled={disabled}
+        title={actionTitle(false, disabled)}
+        onClick={() => onDismiss(item)}
+      />
+    </>
+  );
+}
+
+/** The per-kind action cluster; a lookup keeps the row's branches flat. */
+function RowActions(props: RowProps) {
+  const { item, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix } = props;
+  const expired = isExpired(item, now);
+  const disabled = acting;
+
+  switch (item.kind) {
+    case 'approval':
+      return <ApprovalActions item={item} expired={expired} disabled={disabled} onApprove={onApprove} />;
+    case 'question':
+      return <QuestionActions item={item} disabled={disabled} expired={expired} onAnswer={onAnswer} />;
+    case 'draft':
+    case 'suggestion':
+      return (
+        <a className="btn btn-secondary btn-sm" href={suggestionsHref(item)}>
+          Review
+        </a>
+      );
+    case 'alert':
+      return (
+        <AlertActions
+          item={item}
+          disabled={disabled}
+          onAddToDataset={onAddToDataset}
+          onDismiss={onDismiss}
+          onSuggestFix={onSuggestFix}
+        />
+      );
+  }
+}
+
+/** One inbox row: the agent tile, title/detail/meta, and the kind's actions. */
+export function InboxRow(props: RowProps): ReactNode {
+  const { item } = props;
+  return (
+    <li className="inbox-row" data-kind={item.kind}>
+      <AgentTile id={item.agentId} size="sm" />
+      <div className="inbox-row-main">
+        <p className="inbox-row-title">{item.title}</p>
+        {item.detail !== null && <p className="inbox-row-detail">{item.detail}</p>}
+        <Meta item={item} now={props.now} />
+      </div>
+      <div className="inbox-row-actions">
+        <RowActions {...props} />
+      </div>
+    </li>
+  );
+}

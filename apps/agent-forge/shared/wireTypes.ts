@@ -1005,6 +1005,18 @@ export interface SettleDraftRequest {
 export type SuggestionStatus = 'open' | 'applied' | 'dismissed' | 'conflict';
 
 /**
+ * The five friction classes a prompt suggestion may name (R05): the
+ * single smallest instructions change the pass judged worth a person's
+ * review, picked for the best ratio of waste removed to risk.
+ */
+export type OptimizationClass =
+  | 'Missing operational fact'
+  | 'Missing tool strategy'
+  | 'Ambiguous instruction'
+  | 'Misplaced guidance'
+  | 'Over-broad instruction';
+
+/**
  * One `.lousho/agents/<id>/suggestions/<id>.json` record the prompt
  * optimizer pass writes: an anchored `oldText` → `newText` edit of the
  * instructions. `oldText` occurs exactly once in the instructions and the
@@ -1025,7 +1037,7 @@ export interface PromptSuggestion {
   oldText: string;
   newText: string;
   confidence: 'high' | 'low';
-  optimizationClass: string;
+  optimizationClass: OptimizationClass;
   evidence: string;
   expectedSaving: string;
   risk: string;
@@ -1033,6 +1045,10 @@ export interface PromptSuggestion {
   status: SuggestionStatus;
   createdAt: string;
   updatedAt: string;
+  /** When the suggestion left `open` (`applied`/`dismissed`/`conflict`); `null` while open. */
+  resolvedAt: string | null;
+  /** The version a landed apply wrote; `null` until `applied`. */
+  appliedVersion: number | null;
 }
 
 /** Where in the spec a portability finding sits (L09a). */
@@ -1217,3 +1233,58 @@ export interface ImportPreview {
   prompts: Array<{ name: string; version: number }>;
   warnings: string[];
 }
+
+/**
+ * The inbox alert kinds (L12 producers; R04a adds `low_rating` writes).
+ * Declared here - not in server/inbox/alertStore.ts - because the inbox
+ * wire items below carry it and wireTypes must stay isomorphic.
+ */
+export type AlertKind = 'auto_disabled' | 'publish_failed' | 'low_rating';
+
+/** What waits on the user in the Inbox (R02a): a tool approval, an `ask_question`, a pending draft, an open prompt suggestion or an alert. */
+export type InboxItemKind = 'approval' | 'question' | 'draft' | 'suggestion' | 'alert';
+
+export interface InboxItemBase {
+  /** Stable id: `<kind>:<agentId>:<ref>` - approval/question `<approvalId>`, draft `<draftId>`, suggestion `<suggestionId>`, alert `<alertId>`. */
+  id: string;
+  kind: InboxItemKind;
+  agentId: string;
+  /** The workspace the item belongs to (`WorkspaceRef.id`); `?ws=all` merges items across workspaces (W09a). */
+  workspaceId: string;
+  agentName: string;
+  title: string;
+  detail: string | null;
+  /** ISO instant it started waiting. */
+  at: string;
+}
+
+/**
+ * One row of `GET /inbox` (PLAN §10): everything across this workspace's
+ * agents that needs a human. Sorted by `expiresAt` ascending (soonest
+ * deadline first, items without one last), then `at` descending.
+ */
+export type InboxItem =
+  | (InboxItemBase & { kind: 'approval'; approvalId: string; toolName: string; args: Record<string, unknown>; expiresAt: string | null })
+  | (InboxItemBase & { kind: 'question'; approvalId: string; question: string; options: string[]; allowFreeText: boolean; expiresAt: string | null })
+  | (InboxItemBase & { kind: 'draft'; draftId: string; origin: DraftOrigin; gated: boolean })
+  | (InboxItemBase & { kind: 'suggestion'; suggestionId: string; confidence: 'high' | 'low' })
+  | (InboxItemBase & { kind: 'alert'; alertId: string; alertKind: AlertKind; payload: Record<string, unknown> });
+
+/** `GET /inbox/count`'s answer - also the `inbox.count` WS event's payload. */
+export interface InboxCount {
+  count: number;
+}
+
+/** `POST /agents/:id/rating`'s body (R04a): a 1-5 human score on the run's trace. */
+export interface RatingRequest {
+  traceId: string;
+  value: 1 | 2 | 3 | 4 | 5;
+  /** Optional rationale, at most 2000 chars; the low-rating alert keeps its first 280. */
+  comment?: string;
+}
+
+/** Human-score labels, indexed by `value - 1`. */
+export const RATING_LABELS = ['Poor', 'Fair', 'Good', 'Great', 'Excellent'] as const;
+
+/** Ratings at or below this value raise a `low_rating` inbox alert (R04a). */
+export const LOW_RATING_MAX = 2;

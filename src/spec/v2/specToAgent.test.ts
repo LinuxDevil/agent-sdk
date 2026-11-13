@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createAgent, type SimpleAgent } from '../../createAgent';
+import type { AutoApprovalRequest, AutoApprover } from '../../execution/autoApproval';
 import type { TraceExporter } from '../../execution/tracing';
 import { LLMProviderRegistry } from '../../providers/llm';
 import { createMockProvider } from '../../providers/mock';
@@ -391,6 +392,81 @@ describe('compileSpec permissions section', () => {
     );
     expect(config.permissions).toHaveLength(1);
     expect(config.permissions?.[0]).toMatchObject({ action: 'ask', reason: 'Network calls need review.' });
+  });
+});
+
+describe('compileSpec permissions section - auto approval', () => {
+  const autoSpec = () =>
+    spec({
+      name: 'issue-bot',
+      description: 'Files GitHub issues.',
+      permissions: [
+        { id: 'p1', tool: 'github_*', action: 'auto' },
+        { id: 'p2', tool: 'shell', action: 'ask' },
+      ],
+    });
+
+  const pending = (toolName: string, args: Record<string, unknown> = {}) =>
+    ({ id: 'ap1', toolCallId: 'tc1', toolName, args, createdAt: new Date().toISOString() }) as const;
+
+  it("compiles an 'auto' rule to 'ask' and leaves approve unset without a host approver", async () => {
+    const { config } = await compileSpec(autoSpec(), host());
+    expect(config.permissions?.map((rule) => rule.action)).toEqual(['ask', 'ask']);
+    expect(config.approve).toBeUndefined();
+  });
+
+  const approver =
+    (safety: number, reason: string): AutoApprover =>
+    async (_req: AutoApprovalRequest, _signal: AbortSignal) => ({ safety, reason });
+
+  it('uses the host approver for auto-rule calls and reports the decision', async () => {
+    const autoApprover = vi.fn(approver(0.95, 'Routine issue write.'));
+    const onAutoApproval = vi.fn();
+    const { config } = await compileSpec(autoSpec(), host({ autoApprover, onAutoApproval }));
+    expect(config.approve).toBeDefined();
+
+    const verdict = await config.approve!(pending('github_create_issue', { title: 'Bug' }));
+    expect(verdict).toBe(true);
+    expect(autoApprover).toHaveBeenCalledTimes(1);
+    expect(autoApprover.mock.calls[0][0]).toMatchObject({
+      toolName: 'github_create_issue',
+      agentName: 'issue-bot',
+      agentDescription: 'Files GitHub issues.',
+    });
+    expect(onAutoApproval).toHaveBeenCalledWith(
+      expect.objectContaining({ toolName: 'github_create_issue', outcome: 'approved', safety: 0.95 })
+    );
+  });
+
+  it('defers non-auto calls to the host approve callback without asking the model', async () => {
+    const autoApprover = vi.fn(approver(0.99, 'Sure.'));
+    const hostApprove = vi.fn(async () => 'defer' as const);
+    const { config } = await compileSpec(autoSpec(), host({ autoApprover, approve: hostApprove }));
+
+    const verdict = await config.approve!(pending('shell', { command: 'ls' }));
+    expect(verdict).toBe('defer');
+    expect(autoApprover).not.toHaveBeenCalled();
+    expect(hostApprove).toHaveBeenCalledTimes(1);
+  });
+
+  it('escalates a low score to the host approve callback', async () => {
+    const autoApprover = vi.fn(approver(0.1, 'Deletes look risky.'));
+    const hostApprove = vi.fn(async () => true);
+    const { config } = await compileSpec(autoSpec(), host({ autoApprover, approve: hostApprove }));
+
+    const verdict = await config.approve!(pending('github_delete_repo', {}));
+    expect(verdict).toBe(true);
+    expect(hostApprove).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves auto rules as plain ask rules when the spec has no auto rule, even with an approver', async () => {
+    const autoApprover = vi.fn(approver(1, 'x'));
+    const { config } = await compileSpec(
+      spec({ permissions: [{ id: 'p1', tool: 'shell', action: 'ask' }] }),
+      host({ autoApprover })
+    );
+    expect(config.approve).toBeUndefined();
+    expect(autoApprover).not.toHaveBeenCalled();
   });
 });
 

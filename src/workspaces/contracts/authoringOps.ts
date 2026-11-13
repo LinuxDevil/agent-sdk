@@ -345,6 +345,56 @@ export interface WriteSharedInstructionOp {
   text: string;
 }
 
+/** Writes a workspace harness profile: `harness-profiles/<path>/harness.json` and the prose files given; other files in that folder stay. */
+export interface SetProfileOp {
+  /** Operation name. */
+  op: 'set_profile';
+  /** The profile ref, `workspace:<path>`, such as `workspace:platforms/instagram`. */
+  ref: string;
+  /** The profile document, validated and scanned for forbidden keys by the harness profile schema (`id` and `version` required). */
+  profile: Record<string, unknown>;
+  /** Prose files by file name, such as `{ 'platform.md': '…' }`, written next to `harness.json`. */
+  prose?: Record<string, string>;
+}
+
+/** Deletes a workspace harness profile folder. */
+export interface DeleteProfileOp {
+  /** Operation name. */
+  op: 'delete_profile';
+  /** The profile ref, `workspace:<path>`. */
+  ref: string;
+}
+
+/** Writes one text resource of a page (`pages/<p>/resources/<file>`) or of the base harness (`harness/resources/<file>`); list it in the harness `context.resources` with `set_harness_field` or `set_base_harness_field`. */
+export interface SetResourceOp {
+  /** Operation name. */
+  op: 'set_resource';
+  /** Whose resource it is. */
+  target: HarnessTarget;
+  /** A `.md` or `.txt` file name with no folder. */
+  file: string;
+  /** The text. */
+  text: string;
+}
+
+/** Deletes one text resource of a page or of the base harness. */
+export interface DeleteResourceOp {
+  /** Operation name. */
+  op: 'delete_resource';
+  /** Whose resource it is. */
+  target: HarnessTarget;
+  /** A `.md` or `.txt` file name with no folder. */
+  file: string;
+}
+
+/** Sets or, with no value, removes the main agent's model in `main-agent/agent.json`. */
+export interface SetMainModelOp {
+  /** Operation name. */
+  op: 'set_main_model';
+  /** Model as `provider/model`; omit to remove it. */
+  model?: string;
+}
+
 /** One typed authoring operation; the closed set that chat and the forms both send. Policy, secrets, the tool catalog and global agents are not in it. */
 export type AuthoringOp =
   | CreateWorkspaceOp
@@ -372,7 +422,12 @@ export type AuthoringOp =
   | WriteGoalOp
   | WritePageUiOp
   | ResetPageUiOp
-  | WriteSharedInstructionOp;
+  | WriteSharedInstructionOp
+  | SetProfileOp
+  | DeleteProfileOp
+  | SetResourceOp
+  | DeleteResourceOp
+  | SetMainModelOp;
 
 /** One problem an operation batch found. */
 export interface AuthoringProblem {
@@ -418,6 +473,9 @@ const document = z.custom<Record<string, unknown>>((candidate) => typeof candida
 const manifest = workspaceManifestObjectSchema.shape;
 const page = pageObjectSchema.shape;
 
+const profileRef = z.string().regex(/^workspace:[a-z0-9][a-z0-9-]*(?:\/[a-z0-9][a-z0-9-]*)*$/, 'must be a workspace profile ref, workspace:<path>');
+const resourceName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|txt)$/, 'must be a .md or .txt file name with no folder');
+
 const harnessTarget = z.discriminatedUnion('kind', [z.object({ kind: z.literal('page'), page: id }).strict(), z.object({ kind: z.literal('base') }).strict()]);
 const proseTarget = z.discriminatedUnion('kind', [z.object({ kind: z.literal('page'), page: id }).strict(), z.object({ kind: z.literal('base') }).strict(), z.object({ kind: z.literal('main') }).strict()]);
 
@@ -452,6 +510,11 @@ export const authoringOpObjectSchema = z.discriminatedUnion('op', [
   op('write_page_ui', { page: id, ui: document }),
   op('reset_page_ui', { page: id }),
   op('write_shared_instruction', { file: fileName, text }),
+  op('set_profile', { ref: profileRef, profile: document, prose: z.record(fileName, text).optional() }),
+  op('delete_profile', { ref: profileRef }),
+  op('set_resource', { target: harnessTarget, file: resourceName, text }),
+  op('delete_resource', { target: harnessTarget, file: resourceName }),
+  op('set_main_model', { model: modelIdSchema.optional() }),
 ]);
 
 /** Zod schema for one {@link AuthoringOp}: a union on `op` whose payloads reuse the workspace, page, harness and attachment schemas; free-form values are checked against their file's schema, forbidden-key scan included, when the operation is applied; goal and UI documents are scanned for the R13 keys. */

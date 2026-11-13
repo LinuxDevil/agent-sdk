@@ -37,6 +37,7 @@ export default defineConfig({
       '/settings': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
       // The SDK catalogs + registry index (models, tools, guardrails, triggers, skills, kits).
       '/catalog': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
+      '/api/workspaces': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
       // The workspace registry routes (GET/POST /workspaces, DELETE /workspaces/:ws).
       '/workspaces': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
       // The Agent Author's session routes (and its WS stream once it lands under the same prefix).
@@ -53,6 +54,8 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // The inbox (R02a): approvals/questions/drafts/suggestions/alerts + count + alert dismiss.
+      '/inbox': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
     },
   },
   test: {

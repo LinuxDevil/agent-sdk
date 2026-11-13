@@ -115,7 +115,13 @@ function writeScalars(spec: DirSpec, out: DirOut): void {
 function writePermissions(spec: DirSpec, out: DirOut): void {
   if (spec.permissions === undefined) return;
   // A directory rule is the same object minus the canvas `id` (reading assigns 'p1', 'p2', ...).
-  out.config.permissions = spec.permissions.map(({ id: _id, ...rule }: PermissionRuleSpec) => rule);
+  // 'auto' has no directory form - a directory cannot carry the approve callback the model scoring needs -
+  // so it degrades to 'ask' and the loss is reported like every other dropped field.
+  out.config.permissions = spec.permissions.map(({ id: _id, ...rule }: PermissionRuleSpec, index) => {
+    if (rule.action !== 'auto') return rule;
+    dropField(out, `permissions.${index}.action`, "agent directories cannot express 'auto' approvals; written as 'ask'");
+    return { ...rule, action: 'ask' as const };
+  });
 }
 
 function writeHooks(spec: DirSpec, out: DirOut): void {

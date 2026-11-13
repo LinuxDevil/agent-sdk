@@ -188,3 +188,91 @@ export const MARKETING_BUILD_OPS: readonly AuthoringOp[] = [
 export const NOT_WRITABLE: readonly RegExp[] = [/^shared\/(brand|policies)\//, /^harness-profiles\//, /^workflows\//, /\/tools\/[^/]+\.ts$/, /\/checks\/[^/]+\.ts$/, /\/resources\/[^/]+\.md$/];
 
 export const normal = (value: unknown): unknown => (typeof value === 'string' ? value.trimEnd() : value);
+
+const CHECK_NAMES: Readonly<Record<string, string>> = {
+  'harness/checks/script-present.ts': 'script-present',
+  'harness/checks/findings-present.ts': 'findings-present',
+  'checks/brand-voice-applied.ts': 'brand-voice-applied',
+};
+
+function fromBlank(operation: AuthoringOp): AuthoringOp {
+  if (operation.op === 'add_criterion' && operation.criterion.check !== undefined && operation.criterion.check in CHECK_NAMES) {
+    return { ...operation, criterion: { ...operation.criterion, check: CHECK_NAMES[operation.criterion.check] } };
+  }
+  if (operation.op === 'create_page' && operation.page === 'instagram-videos') {
+    return { ...operation, execution: { ...operation.execution, workflow: { workflow: './workflow.json' } } };
+  }
+  return operation;
+}
+
+const platform = (id: string, aspectRatio: string, captionMaxChars: number, prose: string): AuthoringOp => ({
+  op: 'set_profile',
+  ref: `workspace:platforms/${id}`,
+  profile: {
+    schema: 'lousho.harness/1',
+    id,
+    version: '1.0.0',
+    instructions: ['platform.md'],
+    platform: { id, requirements: { aspectRatio, captionMaxChars } },
+    constraints: [{ id: `${id}-caption-length`, text: `Keep captions under ${captionMaxChars} characters.` }],
+  },
+  prose: { 'platform.md': prose },
+});
+
+const PROFILE_OPS: AuthoringOp[] = [
+  {
+    op: 'set_profile',
+    ref: 'workspace:audiences/general',
+    profile: { schema: 'lousho.harness/1', id: 'general', version: '1.0.0', audience: { description: 'A general audience with no prior knowledge.' }, constraints: [{ id: 'no-jargon', text: 'Avoid jargon.' }] },
+  },
+  {
+    op: 'set_profile',
+    ref: 'workspace:audiences/young-adults',
+    profile: { schema: 'lousho.harness/1', id: 'young-adults', version: '1.0.0', audience: { description: 'Adults aged 18 to 30 who watch on mobile.', traits: { tone: 'casual' } } },
+  },
+  {
+    op: 'set_profile',
+    ref: 'workspace:content-types/educational',
+    profile: {
+      schema: 'lousho.harness/1',
+      id: 'educational',
+      version: '1.0.0',
+      instructions: ['teach.md'],
+      constraints: [{ id: 'one-idea', text: 'Teach one idea per video.' }],
+      evaluation: { criteria: [{ id: 'teaches-one-idea', description: 'The video teaches exactly one idea.', rubric: 'One idea, explained simply with one example.' }] },
+    },
+    prose: { 'teach.md': 'Explain one idea with one example.' },
+  },
+  platform('facebook', '16:9', 5000, 'Make the video understandable without sound.'),
+  platform('instagram', '4:5', 2200, 'Lead with a hook in the first second.'),
+  platform('tiktok', '9:16', 2200, 'Use a trend only when it fits the topic.'),
+];
+
+const RESOURCE_OPS: AuthoringOp[] = [
+  { op: 'set_resource', target: { kind: 'page', page: 'instagram-videos' }, file: 'channel-notes.md', text: 'Notes on what works on Instagram: short hooks, captions that add to the video.' },
+  { op: 'set_resource', target: { kind: 'page', page: 'facebook-videos' }, file: 'channel-notes.md', text: 'Notes on what works on Facebook: short hooks, captions that add to the video.' },
+  { op: 'set_resource', target: { kind: 'page', page: 'content-research' }, file: 'research-notes.md', text: 'Prefer primary sources and keep each finding to one sentence.' },
+];
+
+const VIDEO_PRODUCTION = {
+  code: 'video-production',
+  name: 'Video production',
+  flow: {
+    type: 'sequence',
+    id: 'build',
+    steps: [
+      { type: 'agent', id: 'write-script', agent: 'script' },
+      { type: 'agent', id: 'make-video', agent: 'video' },
+      { type: 'agent', id: 'make-voice', agent: 'voice' },
+      { type: 'end', id: 'done' },
+    ],
+  },
+};
+
+/** The Marketing workspace built from an empty tree: `MARKETING_BUILD_OPS` with bare check names and a page-local Instagram workflow, plus the six profiles, three resources and the workflow file; validates with 0 problems. */
+export const MARKETING_FROM_BLANK_OPS: readonly AuthoringOp[] = [
+  ...MARKETING_BUILD_OPS.map(fromBlank),
+  ...PROFILE_OPS,
+  ...RESOURCE_OPS,
+  { op: 'write_workflow', page: 'instagram-videos', workflow: VIDEO_PRODUCTION },
+];

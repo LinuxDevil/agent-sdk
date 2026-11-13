@@ -57,14 +57,16 @@ afterEach(() => {
 });
 
 describe('AppShell', () => {
-  it('renders the 10 nav items in order and the screen', () => {
+  it('renders the 12 nav items in order and the screen', () => {
     stubNarrow(false);
     render();
     const links = [...nav().querySelectorAll('a')];
     expect(links.map((a) => a.textContent)).toEqual([
       'Agents',
+      'Inbox',
       'Templates',
       'Playground',
+      'Workspaces',
       'Traces',
       'Threads',
       'Monitoring',
@@ -75,8 +77,10 @@ describe('AppShell', () => {
     ]);
     expect(NAV_ITEMS.map((i) => i.href)).toEqual([
       '#/agents',
+      '#/inbox',
       '#/templates',
       '#/playground',
+      '#/workspaces',
       '#/traces',
       '#/threads',
       '#/monitoring',

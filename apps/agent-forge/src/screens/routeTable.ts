@@ -2,6 +2,7 @@
 export type ScreenId =
   | 'agents'
   | 'agentList'
+  | 'inbox'
   | 'agentDetail'
   | 'templates'
   | 'playground'
@@ -15,6 +16,8 @@ export type ScreenId =
   | 'evaluators'
   | 'prompts'
   | 'hub'
+  | 'workspaces'
+  | 'workspace'
   | 'settings';
 
 /** One hash route: its pattern, the screen it shows, and a concrete path that exercises it. */
@@ -35,6 +38,7 @@ export const ROUTES: readonly RouteEntry[] = [
   // Keep '/agents/:id/canvas' above '/agents/:id/:tab': 'canvas' is a tab name too.
   { pattern: '/agents/:id/canvas', screen: 'agents', example: '/agents/e2e-agent/canvas' },
   { pattern: '/agents/:id/:tab', screen: 'agentDetail', example: '/agents/e2e-agent/overview' },
+  { pattern: '/inbox', screen: 'inbox', example: '/inbox' },
   { pattern: '/templates', screen: 'templates', example: '/templates' },
   { pattern: '/playground', screen: 'playground', example: '/playground' },
   { pattern: '/traces', screen: 'traces', example: '/traces' },
@@ -53,5 +57,8 @@ export const ROUTES: readonly RouteEntry[] = [
   { pattern: '/prompts/:name', screen: 'prompts', example: '/prompts/e2e-prompt' },
   { pattern: '/hub', screen: 'hub', example: '/hub' },
   { pattern: '/hub/:namespace', screen: 'hub', example: '/hub/e2e-namespace' },
+  { pattern: '/workspaces', screen: 'workspaces', example: '/workspaces' },
+  { pattern: '/workspaces/:id', screen: 'workspace', example: '/workspaces/e2e-workspace' },
+  { pattern: '/workspaces/:id/:section', screen: 'workspace', example: '/workspaces/e2e-workspace/pages' },
   { pattern: '/settings', screen: 'settings', example: '/settings' },
 ];

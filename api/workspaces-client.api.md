@@ -71,7 +71,7 @@ export interface ArtifactParams extends RunParams {
 }
 
 // @public
-interface ArtifactRef {
+export interface ArtifactRef {
     bytes: number;
     mediaType: string;
     name: string;
@@ -120,7 +120,7 @@ export interface AttachmentView {
 }
 
 // @public
-type AuthoringOp = CreateWorkspaceOp | SetWorkspaceFieldOp | CreatePageOp | RemovePageOp | ReorderPagesOp | SetPageFieldOp | SetHarnessFieldOp | WriteHarnessProseOp | AddExtendsOp | RemoveExtendsOp | SetBaseHarnessFieldOp | SetMainHarnessFieldOp | AddCriterionOp | RemoveCriterionOp | CreateAgentOp | WriteAgentProseOp | AttachAgentOp | DetachAgentOp | SetAttachmentFieldOp | SetExecutionTypeOp | SetExecutionConfigOp | WriteWorkflowOp | WriteGoalOp | WritePageUiOp | ResetPageUiOp | WriteSharedInstructionOp;
+type AuthoringOp = CreateWorkspaceOp | SetWorkspaceFieldOp | CreatePageOp | RemovePageOp | ReorderPagesOp | SetPageFieldOp | SetHarnessFieldOp | WriteHarnessProseOp | AddExtendsOp | RemoveExtendsOp | SetBaseHarnessFieldOp | SetMainHarnessFieldOp | AddCriterionOp | RemoveCriterionOp | CreateAgentOp | WriteAgentProseOp | AttachAgentOp | DetachAgentOp | SetAttachmentFieldOp | SetExecutionTypeOp | SetExecutionConfigOp | WriteWorkflowOp | WriteGoalOp | WritePageUiOp | ResetPageUiOp | WriteSharedInstructionOp | SetProfileOp | DeleteProfileOp | SetResourceOp | DeleteResourceOp | SetMainModelOp;
 
 // @public
 export function buildRoutePath(path: string, params: object): string;
@@ -162,6 +162,19 @@ interface CreateWorkspaceOp {
     name: string;
     op: 'create_workspace';
     version?: string;
+}
+
+// @public
+interface DeleteProfileOp {
+    op: 'delete_profile';
+    ref: string;
+}
+
+// @public
+interface DeleteResourceOp {
+    file: string;
+    op: 'delete_resource';
+    target: HarnessTarget;
 }
 
 // @public
@@ -233,6 +246,14 @@ interface EffectiveHarness {
     runtime?: Harness['runtime'];
     sources: string[];
 }
+
+// @public
+interface EvaluateOptions {
+    readonly bindPlaceholders?: boolean;
+}
+
+// @public
+export function evaluateSafeExpression(expression: string, scope: Scope, options?: EvaluateOptions): unknown;
 
 // @public
 type ExecutionKey = 'single' | 'multiAgent' | 'workflow' | 'goal' | 'limits' | 'onFailure' | 'checkpoint';
@@ -422,7 +443,7 @@ export interface MainHarnessView {
 export type NoParams = Record<never, never>;
 
 // @public
-interface PageApprovalEvent {
+export interface PageApprovalEvent {
     approvalId: string;
     expiresAt?: string;
     kind: ApprovalKind;
@@ -430,7 +451,7 @@ interface PageApprovalEvent {
 }
 
 // @public
-interface PageArtifactEvent {
+export interface PageArtifactEvent {
     artifact: ArtifactRef;
     type: 'artifact';
 }
@@ -481,14 +502,14 @@ interface PageExecutionLimits {
 type PageField = 'name' | 'description' | 'domain' | 'improve' | 'platform' | 'defaults' | 'runtime';
 
 // @public
-interface PageFinishedEvent {
+export interface PageFinishedEvent {
     status: PageRunStatus;
     type: 'finished';
     usage?: PageUsage;
 }
 
 // @public
-interface PageInput {
+export interface PageInput {
     inputs?: unknown;
     pageId: string;
     parentRunId?: string;
@@ -537,14 +558,14 @@ export interface PageParams extends WorkspaceParams {
 }
 
 // @public
-interface PageProgressEvent {
+export interface PageProgressEvent {
     fraction?: number;
     message: string;
     type: 'progress';
 }
 
 // @public
-interface PageResult {
+export interface PageResult {
     artifacts: ArtifactRef[];
     checkpointId?: string;
     error?: {
@@ -560,13 +581,13 @@ interface PageResult {
 }
 
 // @public
-type PageRunEvent = PageStartedEvent | PageStepEvent | PageArtifactEvent | PageApprovalEvent | PageProgressEvent | PageFinishedEvent;
+export type PageRunEvent = PageStartedEvent | PageStepEvent | PageArtifactEvent | PageApprovalEvent | PageProgressEvent | PageFinishedEvent;
 
 // @public
 type PageRunLabels = Pick<PageStepLabels, 'page' | 'harnessHash' | 'executionType'>;
 
 // @public
-type PageRunStatus = 'ok' | 'failed' | 'timed-out' | 'cancelled' | 'needs-approval';
+export type PageRunStatus = 'ok' | 'failed' | 'timed-out' | 'cancelled' | 'needs-approval';
 
 // @public
 export interface PageRunView {
@@ -582,12 +603,12 @@ export interface PageRunView {
 }
 
 // @public
-interface PageStartedEvent extends PageRunLabels {
+export interface PageStartedEvent extends PageRunLabels {
     type: 'started';
 }
 
 // @public
-interface PageStepEvent extends PageStepLabels {
+export interface PageStepEvent extends PageStepLabels {
     phase: 'start' | 'done';
     type: 'step';
 }
@@ -604,7 +625,7 @@ interface PageStepLabels {
 }
 
 // @public
-interface PageUi {
+export interface PageUi {
     layout: UiComponent;
     schema: 'lousho.ui/1';
     title?: string;
@@ -777,6 +798,9 @@ export interface RunTraceView {
 // @public
 export type RunViewStatus = PageRunStatus | 'queued' | 'running' | 'interrupted';
 
+// @public (undocumented)
+type Scope = Record<string, unknown>;
+
 // @public
 type SecretRef = {
     env: string;
@@ -831,6 +855,12 @@ interface SetMainHarnessFieldOp {
 }
 
 // @public
+interface SetMainModelOp {
+    model?: string;
+    op: 'set_main_model';
+}
+
+// @public
 interface SetPageFieldOp {
     field: PageField;
     op: 'set_page_field';
@@ -841,6 +871,22 @@ interface SetPageFieldOp {
 // @public
 export interface SetPolicyBody extends WriteBody {
     policy: WorkspacePolicy;
+}
+
+// @public
+interface SetProfileOp {
+    op: 'set_profile';
+    profile: Record<string, unknown>;
+    prose?: Record<string, string>;
+    ref: string;
+}
+
+// @public
+interface SetResourceOp {
+    file: string;
+    op: 'set_resource';
+    target: HarnessTarget;
+    text: string;
 }
 
 // @public
@@ -873,49 +919,62 @@ export interface StartWorkspaceRunBody {
 type StepKind = 'single' | 'workflow-step' | 'delegate' | 'goal-iteration';
 
 // @public
-interface UiArtifactView extends UiComponentBase {
+const UI_COMPONENTS: {
+    readonly layout: readonly ["stack", "row", "tabs", "section", "card"];
+    readonly inputs: readonly ["text", "textarea", "number", "select", "radio", "toggle", "slider", "file", "schemaForm"];
+    readonly actions: readonly ["runButton", "cancelButton", "reviseBox"];
+    readonly outputs: readonly ["text", "markdown", "json", "table", "artifact", "artifactGallery"];
+    readonly status: readonly ["runStatus", "progress", "traceLink"];
+    readonly revisions: readonly ["versionList", "compare"];
+};
+
+// @public
+export interface UiArtifactView extends UiComponentBase {
     artifact: string;
     type: 'artifact';
 }
 
 // @public
-interface UiChoiceField extends UiComponentBase {
+export interface UiChoiceField extends UiComponentBase {
     bind: string;
     options?: UiOption[];
     type: 'select' | 'radio';
 }
 
 // @public
-type UiComponent = UiContainer | UiTabs | UiText | UiInputField | UiNumberField | UiChoiceField | UiFileField | UiOutputField | UiArtifactView | UiRunWidget;
+export type UiComponent = UiContainer | UiTabs | UiText | UiInputField | UiNumberField | UiChoiceField | UiFileField | UiOutputField | UiArtifactView | UiRunWidget;
 
 // @public
-interface UiComponentBase {
+export interface UiComponentBase {
     label?: string;
     visibleWhen?: string;
 }
 
 // @public
-interface UiContainer extends UiComponentBase {
+export type UiComponentType = (typeof UI_COMPONENTS)[keyof typeof UI_COMPONENTS][number];
+
+// @public
+export interface UiContainer extends UiComponentBase {
     children: UiComponent[];
     type: 'stack' | 'row' | 'section' | 'card';
 }
 
 // @public
-interface UiFileField extends UiComponentBase {
+export interface UiFileField extends UiComponentBase {
     accept?: string[];
     bind: string;
     type: 'file';
 }
 
 // @public
-interface UiInputField extends UiComponentBase {
+export interface UiInputField extends UiComponentBase {
     bind: string;
     placeholder?: string;
     type: 'textarea' | 'toggle' | 'schemaForm';
 }
 
 // @public
-interface UiNumberField extends UiComponentBase {
+export interface UiNumberField extends UiComponentBase {
     bind: string;
     max?: number;
     min?: number;
@@ -924,36 +983,36 @@ interface UiNumberField extends UiComponentBase {
 }
 
 // @public
-interface UiOption {
+export interface UiOption {
     label?: string;
     value: string | number | boolean;
 }
 
 // @public
-interface UiOutputField extends UiComponentBase {
+export interface UiOutputField extends UiComponentBase {
     source: string;
     type: 'markdown' | 'json' | 'table';
 }
 
 // @public
-interface UiRunWidget extends UiComponentBase {
+export interface UiRunWidget extends UiComponentBase {
     type: 'runButton' | 'cancelButton' | 'reviseBox' | 'artifactGallery' | 'runStatus' | 'progress' | 'traceLink' | 'versionList' | 'compare';
 }
 
 // @public
-interface UiTab {
+export interface UiTab {
     children: UiComponent[];
     label: string;
 }
 
 // @public
-interface UiTabs extends UiComponentBase {
+export interface UiTabs extends UiComponentBase {
     tabs: UiTab[];
     type: 'tabs';
 }
 
 // @public
-interface UiText extends UiComponentBase {
+export interface UiText extends UiComponentBase {
     bind?: string;
     placeholder?: string;
     source?: string;
@@ -1089,7 +1148,7 @@ interface WorkspaceProblem {
 }
 
 // @public
-type WorkspaceProblemCode = 'PRD001' | 'PRD002' | 'PRD003' | 'PRD004' | 'PRD005' | 'PRD006' | 'PRD007' | 'PRD008' | 'PRD009' | 'PRD010' | 'PRD011' | 'PRD012' | 'PRD013' | 'PRD014' | 'PRD015' | 'PRD016' | 'PRD017' | 'PRD018' | 'PRD019' | 'PRD020' | 'PRD021' | 'PRD022' | 'PRD023' | 'PRD024' | 'PRD025' | 'PRD026' | 'PRD027' | 'PRD028' | 'PRD029' | 'PRD030' | 'PRD031' | 'PRD032';
+type WorkspaceProblemCode = 'PRD001' | 'PRD002' | 'PRD003' | 'PRD004' | 'PRD005' | 'PRD006' | 'PRD007' | 'PRD008' | 'PRD009' | 'PRD010' | 'PRD011' | 'PRD012' | 'PRD013' | 'PRD014' | 'PRD015' | 'PRD016' | 'PRD017' | 'PRD018' | 'PRD019' | 'PRD020' | 'PRD021' | 'PRD022' | 'PRD023' | 'PRD024' | 'PRD025' | 'PRD026' | 'PRD027' | 'PRD028' | 'PRD029' | 'PRD030' | 'PRD031' | 'PRD032' | 'PRD033';
 
 // @public
 type WorkspaceProblemSeverity = 'error' | 'warning' | 'info';

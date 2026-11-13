@@ -33,10 +33,15 @@ import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
 import type { PassRunner } from '../passes/passRunner';
+import type { SpendLog } from '../passes/spendLog';
 import type { AlertStore } from '../inbox/alertStore';
+import { InboxService } from '../inbox/inboxService';
 import { attachFailureStreak } from '../lifecycle/failureStreak';
 import { attachVersionSummaries } from '../passes/versionSummary';
 import { attachDraftReviews } from '../passes/draftReview';
+import { createTriggerRuntime } from '../triggers/runtime';
+import type { CronTriggers } from '../triggers/cronTriggers';
+import type { TriggerHost } from '../triggers/triggerHost';
 
 /** Everything a per-agent route needs for one workspace. */
 export interface WorkspaceContext {
@@ -77,6 +82,31 @@ export interface WorkspaceContext {
    * apply app-wide.
    */
   passes: PassRunner;
+  /**
+   * This workspace's inbox (inbox/inboxService.ts, R02a): the
+   * approvals/questions/drafts/suggestions/alerts union `GET /inbox`
+   * lists and `inbox.count` counts. Built and `start()`ed here; `stop()`
+   * has no caller until a context dispose exists (same caveat as the
+   * pass attaches above - `startStudioServer`'s `close()` stops the
+   * launch context's).
+   */
+  inbox: InboxService;
+  /**
+   * This workspace's trigger host (triggers/triggerHost.ts, R08a): the
+   * per-agent trigger queue webhook/channel/cron dispatches run through.
+   * Built and `start()`ed here like the inbox; `stop()` is called by
+   * `startStudioServer`'s `close()` for the launch context (same caveat
+   * as the pass attaches for non-launch contexts until W02a dispose).
+   */
+  triggers: TriggerHost;
+  /**
+   * This workspace's cron scheduler (triggers/cronTriggers.ts, R08c):
+   * fires each agent's `cron` triggers through `triggers` on schedule.
+   * Built and `start()`ed here; `stop()` is called by
+   * `startStudioServer`'s `close()` for the launch context (same caveat
+   * as `triggers` for non-launch contexts until W02a dispose).
+   */
+  cron: CronTriggers;
 }
 
 /**
@@ -111,6 +141,8 @@ export interface WorkspaceServices {
   observe: boolean;
   /** The app's one PassRunner, stamped onto every context this builds. */
   passRunner: PassRunner;
+  /** The app's one spend log (R01b): auto-approval decisions append `auto_approval` records to it directly, off the PassRunner. */
+  spendLog: SpendLog;
   /** The Studio-global inbox alert store (L12) every workspace's failure-streak pass writes to. */
   alerts: AlertStore;
 }
@@ -147,6 +179,8 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     checkpointStore,
     approvalStore,
     secretsStore: services.secretsStore,
+    settings: services.settingsStore,
+    spend: services.spendLog,
   });
   const runs = new RunManager({
     baseDir: ref.root,
@@ -195,6 +229,25 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // AlertStore is Studio-global, everything else is this workspace's.
   // Same dispose() caveat as the attaches above.
   attachFailureStreak({ runManager: runs, repo, alerts: services.alerts, events, workspaceId: ref.id });
+  // The inbox (R02a): one service per workspace over this context's own
+  // stores plus the Studio-global alert list (filtered to ref.id). It
+  // `start()`s its recount subscriptions here; `close()` stops the
+  // launch context's (index.ts).
+  const inbox = new InboxService({
+    repo,
+    runManager: runs,
+    approvalStore,
+    drafts,
+    suggestions,
+    alerts: services.alerts,
+    events,
+    workspaceId: ref.id,
+  });
+  inbox.start();
+  // The trigger host (R08a) + cron scheduler (R08c): webhook/cron
+  // dispatches queue through this workspace's RunManager; trigger-phase
+  // log lines land on the same run-log stream RunManager's entries use.
+  const { triggers, cron } = createTriggerRuntime({ baseDir: ref.root, repo, runManager: runs, events });
   return {
     ref,
     repo,
@@ -208,5 +261,8 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     chatTriggers: chatTriggersFor(runs),
     events,
     passes: services.passRunner,
+    inbox,
+    triggers,
+    cron,
   };
 }

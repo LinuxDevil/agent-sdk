@@ -1,0 +1,42 @@
+{
+  "name": "@lousho/workspaces-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Renders Lousho page UIs (lousho.ui/1) in any React 18+ app, bound to an ApiClient",
+  "license": "MIT",
+  "repository": { "type": "git", "url": "https://github.com/LinuxDevil/lousho.git", "directory": "packages/workspaces-react" },
+  "type": "module",
+  "sideEffects": ["./styles.css"],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    },
+    "./styles.css": "./styles.css"
+  },
+  "files": ["dist", "styles.css", "README.md"],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "lousho": ">=1.0.0-alpha.117",
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "axe-core": "4.13.0",
+    "jsdom": "^25.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsup": "^8.0.0",
+    "typescript": "^5.9.3",
+    "vitest": "^1.0.0"
+  }
+}

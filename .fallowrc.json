@@ -10,6 +10,7 @@
     // re-exports used, but type-only re-exports emit no JS for exports to
     // reach, so the file itself must count as an entry (S23).
     "src/spec/v2/index.ts",
+    "packages/workspaces-react/src/index.ts",
     "apps/agent-forge/evals/author/run.ts",
     // The elkjs layout worker: only referenced through
     // `new Worker(new URL('./layout.worker.ts', import.meta.url))` in
@@ -45,6 +46,47 @@
       "file": "packages/create-lousho/src/index.ts",
       "exports": [
         "main"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/__tests__/render.tsx",
+      "exports": [
+        "cleanup",
+        "typeInto",
+        "click",
+        "buttonNamed"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/components/outputs.tsx",
+      "exports": [
+        "outputValue",
+        "toText",
+        "OutputBlock"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/components/actions.tsx",
+      "exports": [
+        "isBusy"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/components/inputs.tsx",
+      "exports": [
+        "choiceOptions"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/schema.ts",
+      "exports": [
+        "schemaParts"
+      ]
+    },
+    {
+      "file": "apps/agent-forge/server/triggers/triggerHost.ts",
+      "exports": [
+        "HostRun"
       ]
     }
   ],
@@ -111,7 +153,8 @@
       "**/*.test-d.ts",
       "registry/**",
       "examples/**",
-      "apps/agent-forge/src/observe/types.ts"
+      "apps/agent-forge/src/observe/types.ts",
+      "packages/workspaces-react/src/components/inputs.tsx"
     ]
   },
   "health": {

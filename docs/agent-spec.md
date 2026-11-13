@@ -128,7 +128,7 @@ with `LOUSHO_SPEC_UNSUPPORTED` naming the field.
 | [`hooks`](./hooks.md) | `HookSpec[]` | Code that runs before or after tool calls and model calls. |
 | [`output`](./structured-output.md) | `{ jsonSchema }` | A JSON Schema the final answer must match. |
 | [`triggers`](./schedules.md) | `TriggerSpec[]` | What starts a run: chat, a schedule, a webhook, a channel or another agent finishing. |
-| `abortListeners` | not supported yet | Events that cancel a queued or running run. |
+| [`abortListeners`](./triggers.md#abort-listeners) | `AbortListenerSpec[]` | Events that cancel a queued or running run. |
 | [`flow`](./flows.md) | `AgentFlow` | An optional step-by-step workflow the agent runs instead of a single chat turn. |
 | `evals` | not supported yet | Datasets and pass gates checked before the agent is published. |
 

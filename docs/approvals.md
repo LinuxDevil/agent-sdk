@@ -445,6 +445,69 @@ const trusted = createAgent({
 });
 ```
 
+### Model-decided approvals
+
+`createAutoApprove` wraps a cheap model as the `approve` callback: calls an
+`auto` permission rule matched get a 0–1 safety score, and a score at or
+above 0.8 (within 8 s) runs the tool unreviewed. Everything else — a lower
+score, a timeout, a model error, arguments too long to judge — defers to a
+human exactly like `'defer'`. It never denies a call on its own.
+
+```ts
+import { ask, createAgent, createAutoApprove, modelAutoApprover } from 'lousho';
+
+declare const issueTool: any;
+declare const cheapProvider: import('lousho').LLMProvider;
+
+const agent = createAgent({
+  provider,
+  tools: [issueTool, emailTool],
+  permissions: [ask(['create_issue'])],
+  approve: createAutoApprove({
+    autoApprover: modelAutoApprover({ provider: cheapProvider }),
+    isAuto: (toolName) => toolName === 'create_issue',
+    // fallback: the agent's own approve, asked for non-auto and escalated calls
+    onDecision: (d) => console.log(d.toolName, d.outcome, d.cause),
+  }),
+});
+```
+
+`modelAutoApprover` asks the provider for `{"safety": <0..1>, "reason":
+"..."}` at temperature 0; `createAutoApprove` clips long arguments before
+they reach the model and reports every decision through `onDecision`. Pass a
+`fallback` approve callback to keep a second line of defense for escalated
+calls.
+
+An AgentSpec v2 wires the same machinery from a permission rule: `action:
+'auto'` compiles to `ask`, and a host that supplies `autoApprover` (and
+optionally `onAutoApproval`) gets the model-scored callback for exactly
+those rules — first match still wins, so an `allow` listed before an `auto`
+rule means the model is never consulted.
+
+```yaml
+permissions:
+  - id: p1
+    tool: github_create_issue
+    action: auto
+```
+
+```ts
+import { modelAutoApprover, specV2ToAgent } from 'lousho';
+
+declare const spec: import('lousho').AgentSpecV2;
+declare const baseDir: string;
+declare const cheapProvider: import('lousho').LLMProvider;
+
+const agent = await specV2ToAgent(spec, {
+  baseDir,
+  autoApprover: modelAutoApprover({ provider: cheapProvider }),
+  onAutoApproval: (d) => console.log(d.toolName, d.outcome, d.cause),
+});
+```
+
+With no `autoApprover` on the host, `action: 'auto'` behaves exactly like
+`ask`.
+
 ### Streaming the continued run
 
 `agent.approvals.streamResolve(decision, { signal })` and

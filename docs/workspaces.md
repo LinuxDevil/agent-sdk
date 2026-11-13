@@ -182,6 +182,26 @@ Page paths may not start with `pages/` (nested pages, PRD009).
 
 The block named by `type` is required. The other blocks are validated but not run, so a page keeps its other configurations when its type changes (see [type switching](#type-switching)). Aliases are names from `agents.json`, never refs.
 
+### goal.json (`lousho.goal/1`)
+
+The goal file of a goal-oriented page, named by `page.json` `execution.goal.goal` (`./goal.json`).
+
+| Field | Type and default |
+| --- | --- |
+| `goal` | The goal, in words; required, non-empty |
+| `checks` | Required, at least one `{ criterion }`; `criterion` names an id in the page's effective `evaluation.criteria`, and at least one named criterion must have an executable `check` (R19, PRD033) |
+| `stop.maxIterations` | Required integer, 1 to 50 (A12) |
+| `stop.maxCostUsd` | Required, US dollars (F5.3) |
+| `stop.maxDurationMs` | Optional integer |
+| `stop.onStall` | `stop` (default) or `continue` |
+| `stop.stallAfter` | Integer, default 2 |
+
+`goal.json` is structure: improvement never edits it (R10); people change it with the `write_goal` operation. The goal page's `lead` and `delegates` are in `page.json` `execution.goal`, so every attachment stays usable under every type.
+
+**How the loop stops.** The loop runs one turn per iteration in one session. It stops when the check passes, or at `maxIterations`, `maxDurationMs` or `maxCostUsd`, whichever comes first. The run's spend cap (P5.30) and the page's limits apply on top, the lower value of each winning. A stall — `stallAfter` iterations in a row without a better check score — stops the loop as `stalled` unless `onStall` is `continue`. Every iteration is a `goal-iteration` step, so a failure is attributed to the iteration it happened in.
+
+**Checkpoints and resume.** Given a `runId` and a checkpoint store, `runGoal` saves the loop's progress — the finished iterations, spend, elapsed time and stall count — as a checkpoint under the page run id after every iteration, and again with status `finished` at the end. `resumeGoal` reads that checkpoint and continues at the next iteration with the spend so far, so the limits count the whole run; a finished run returns its saved result and runs nothing. The turn that was running when the process died is not resumed mid-turn: it is run again from its start as the next iteration, its partial spend lost as for any crashed turn.
+
 ### Model precedence and `models.provider`
 
 `resolvePageModel` (exported from `lousho/workspaces`) picks the model a page's agent runs with. The first level that sets a model wins:
@@ -619,11 +639,21 @@ console.log(problems);
 
 No catalog component binds an array input; only `schemaForm` on the parent can.
 
+### The default UI
+
+A page with no `ui/page.ui.json` gets `defaultPageUi(effective, type)`: a `schemaForm` bound to `inputs` (when the harness has an input schema), a row with `runButton` and `cancelButton`, `runStatus`, `progress`, one view per output field (`markdown` for a string, `table` for an array, `text` for a number, integer or boolean, `json` for anything else, or one `json` view of `outputs` when the schema is a path, has a `$ref` or lists no fields), and an `artifactGallery` when `outputs.artifacts` is not empty. It is the same for every execution type, so switching a page's type never changes its UI, and it always passes `validateUiBindings`. `reset_page_ui` deletes the file so this default applies again; services and the CLI build it on read, from the page's effective harness. `reviseBox` and `versionList` are not in it.
+
+### Rendering a page UI
+
+`@lousho/workspaces-react` (`packages/workspaces-react`) renders a page UI in any React 18 or later app: `PageApp` takes an `ApiClient`, a workspace id and a page id, loads the UI spec and the effective input schema through the client, and draws the catalog. It never takes a URL, so a host binds the client to its own server-side proxy. Every label, title, placeholder and piece of model output is drawn as a text node; the schema blocklist above is defence in depth. Hosts theme it with the `--lousho-ui-*` CSS variables listed in the package README.
+
 ## Authoring operations
 
 Chat and forms edit a workspace through one closed set of typed operations, not raw files. `applyOps(tree, ops, { validate })` is pure: it applies the operations in order to a tree, writes only known files at their default paths (never `shared/policies/**`), and runs `validate` on the result. With any problem it returns the original tree and every problem, each naming its operation index. `validate` is required so callers pass `validateWorkspace`.
 
-The operations are: `create_workspace`, `set_workspace_field`, `create_page`, `remove_page`, `reorder_pages`, `set_page_field`, `set_harness_field`, `write_harness_prose`, `add_extends`, `remove_extends`, `set_base_harness_field`, `set_main_harness_field`, `add_criterion`, `remove_criterion`, `create_agent`, `write_agent_prose`, `attach_agent`, `detach_agent`, `set_attachment_field`, `set_execution_type`, `set_execution_config`, `write_workflow`, `write_goal`, `write_page_ui`, `reset_page_ui` and `write_shared_instruction`. `AUTHORING_OP_NAMES` lists them. Policy, secrets, the tool catalog and global agents are not in the set. Each operation validates against the file's own schema, so a forbidden key is refused here as well.
+The operations are: `create_workspace`, `set_workspace_field`, `create_page`, `remove_page`, `reorder_pages`, `set_page_field`, `set_harness_field`, `write_harness_prose`, `add_extends`, `remove_extends`, `set_base_harness_field`, `set_main_harness_field`, `add_criterion`, `remove_criterion`, `create_agent`, `write_agent_prose`, `attach_agent`, `detach_agent`, `set_attachment_field`, `set_execution_type`, `set_execution_config`, `write_workflow`, `write_goal`, `write_page_ui`, `reset_page_ui`, `write_shared_instruction`, `set_profile`, `delete_profile`, `set_resource`, `delete_resource` and `set_main_model`. `AUTHORING_OP_NAMES` lists them. Policy, secrets, the tool catalog and global agents are not in the set. Each operation validates against the file's own schema, so a forbidden key is refused here as well.
+
+`set_profile` writes a workspace harness profile (`harness-profiles/<path>/harness.json` and its prose) from a `workspace:<path>` ref. `delete_profile` removes the profile's folder. `set_resource` and `delete_resource` write and remove a text resource (`.md` or `.txt`) of a page or of the base harness; list it in the harness's `context.resources` with `set_harness_field`. `set_main_model` sets the main agent's model. Check scripts, tools, workspace workflows, brand files and the policy have no operation: a criterion's `check` may name a host-registry check by name.
 
 ```ts
 import { applyOps, validateWorkspace } from 'lousho/workspaces';
@@ -700,6 +730,7 @@ This prints PRD022, because `summarize` is listed but has no folder.
 | PRD030 | error | A workflow or goal file is missing or invalid |
 | PRD031 | warning | A main-harness limit was clamped to the workspace's |
 | PRD032 | error | A file a page harness or profile lists as prose, or any harness layer lists as a check script, resource or schema, is missing |
+| PRD033 | error | A goal names only rubric-only criteria; at least one needs an executable check (R19) |
 
 A refused tree is reported once: when a manifest is unreadable or its folders overlap, the cross-file checks do not run.
 
@@ -730,6 +761,7 @@ The structure of each file is exported as JSON Schema (draft 7) in the repositor
 | --- | --- |
 | `lousho.workspace.v1.json` | `workspace.json` |
 | `lousho.page.v1.json` | `page.json` |
+| `lousho.goal.v1.json` | `goal.json` |
 | `lousho.harness.v1.json` | `harness.json` (page, base harness or profile) |
 | `lousho.main-harness.v1.json` | `main-harness.json` |
 | `lousho.agents.v1.json` | `agents.json` |

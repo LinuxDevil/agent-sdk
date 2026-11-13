@@ -1,0 +1,83 @@
+/* RatingControl (R04b): the 1-5 run rating radiogroup and its comment popover. */
+
+.rating-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.rating {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.rating-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.rating-option:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.rating-option:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.rating-option-on {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.rating-option:disabled {
+  cursor: default;
+}
+
+.rating-comment {
+  margin-left: 2px;
+}
+
+.rating-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 240px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.rating-popover .textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.rating-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.rating-wrap-sm .rating-option {
+  min-width: 20px;
+  height: 20px;
+  font-size: 11px;
+}

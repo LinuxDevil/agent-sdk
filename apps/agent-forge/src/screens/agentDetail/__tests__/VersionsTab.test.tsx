@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   diffVersion: vi.fn(),
   getVersion: vi.fn(),
   restoreVersion: vi.fn(),
+  publish: vi.fn(),
   eventHandler: undefined as ((event: StudioEvent) => void) | undefined,
 }));
 
@@ -22,6 +23,7 @@ vi.mock('../../../runtime/runtimeClient', () => ({
     diffVersion: mocks.diffVersion,
     getVersion: mocks.getVersion,
     restoreVersion: mocks.restoreVersion,
+    publish: mocks.publish,
   },
 }));
 
@@ -67,12 +69,18 @@ function record(): AgentRecord {
     layout: { schemaVersion: 1, nodes: {}, notes: [] },
     updatedAt: '2026-10-29T10:00:00Z',
     latestVersion: null,
-    publishState: { version: null, matchesWorkingCopy: false, publishedAt: null },
+    publishState: {
+      version: publishedPin,
+      matchesWorkingCopy: publishedPin !== null,
+      publishedAt: publishedPin === null ? null : '2026-10-29T11:00:00Z',
+    },
     requirements: [],
   };
 }
 
 let versionCounter = 0;
+/** The publish pointer the fixture record reports (L14b); `null` = nothing published. */
+let publishedPin: number | null = null;
 
 function item(over: Partial<VersionListItem> = {}): VersionListItem {
   versionCounter += 1;
@@ -120,8 +128,11 @@ async function clickAndFlush(host: HTMLElement, label: string) {
 
 beforeEach(() => {
   versionCounter = 0;
+  publishedPin = null;
   mocks.listVersions.mockReset();
   mocks.saveVersion.mockReset();
+  mocks.publish.mockReset();
+  mocks.publish.mockResolvedValue({ publishedVersion: 3 });
   mocks.listVersions.mockResolvedValue([]);
   mocks.saveVersion.mockResolvedValue({ item: item({ version: 9 }), created: true });
   mocks.diffVersion.mockReset();
@@ -392,5 +403,75 @@ describe('VersionsTab', () => {
     await clickAndFlush(host, 'Save version');
 
     expect(host.querySelector('.toast-message')?.textContent).toBe('disk full');
+  });
+
+  it('marks the published version and offers "Publish this" on every other non-baseline item (L14b)', async () => {
+    publishedPin = 2;
+    mocks.listVersions.mockResolvedValue([
+      item({ version: 3 }),
+      item({ version: 2 }),
+      item({ version: 1, kind: 'baseline', source: 'external_file_edit', summary: null }),
+    ]);
+    const host = renderTab();
+    await flush();
+
+    const rows = [...host.querySelectorAll<HTMLElement>('.version-item')];
+    expect(rows[1].dataset.published).toBe('true');
+    expect(rows[1].querySelector('.status-pill.pill-ok')?.textContent).toContain('Published');
+    expect(rows[0].dataset.published).toBeUndefined();
+    expect(rows[2].dataset.published).toBeUndefined();
+
+    const publishButtons = rows.map((row) =>
+      [...row.querySelectorAll<HTMLButtonElement>('.version-actions button')].find((b) =>
+        b.textContent?.includes('Publish this'),
+      ),
+    );
+    expect(publishButtons[0]).not.toBeUndefined();
+    expect(publishButtons[1]).toBeUndefined();
+    // Baselines are history markers, never publish candidates.
+    expect(publishButtons[2]).toBeUndefined();
+  });
+
+  it('"Publish this" confirms in a dialog, pins the version, toasts and refreshes (L14b)', async () => {
+    publishedPin = 1;
+    mocks.listVersions.mockResolvedValue([item({ version: 3 }), item({ version: 2 }), item({ version: 1 })]);
+    mocks.publish.mockResolvedValue({ publishedVersion: 3 });
+    const refresh = vi.fn();
+    render(
+      <ToastProvider>
+        <AgentDetailContext.Provider value={{ record: record(), refresh, setRecord: () => {} }}>
+          <VersionsTab />
+        </AgentDetailContext.Provider>
+      </ToastProvider>,
+    );
+    await flush();
+
+    const rows = [...document.querySelectorAll<HTMLElement>('.version-item')];
+    const publishButton = [...rows[0].querySelectorAll<HTMLButtonElement>('.version-actions button')].find((b) =>
+      b.textContent?.includes('Publish this'),
+    )!;
+    act(() => publishButton.click());
+    await flush();
+
+    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    expect(dialog.querySelector('.dialog-title')?.textContent).toBe('Publish v3?');
+    expect(dialog.textContent).toContain(
+      'v3 becomes the live version. Serve, deploy and triggers use it. Your working copy does not change.',
+    );
+
+    const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes('Publish v3'),
+    )!;
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    expect(mocks.publish).toHaveBeenCalledWith('support-bot', 3);
+    expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.querySelector('.toast-message')?.textContent).toBe('Published v3');
+    expect(refresh).toHaveBeenCalled();
+    expect(mocks.listVersions).toHaveBeenCalledTimes(2);
   });
 });

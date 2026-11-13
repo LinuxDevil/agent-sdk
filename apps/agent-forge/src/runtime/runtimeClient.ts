@@ -33,11 +33,14 @@ import type {
   ForkRunResponse,
   ImportPreview,
   ImportRequest,
+  InboxCount,
+  InboxItem,
   McpProbeRequest,
   McpProbeResponse,
   PassSettings,
   PassSettingsPatch,
   PassSpendSummary,
+  RatingRequest,
   McpServerSpecV2,
   PatchAgentMetaRequest,
   PromptSuggestion,
@@ -337,11 +340,25 @@ class RuntimeClient implements AgentApi {
    * agent's published spec and answers the pinned version number. Idempotent:
    * pinning the already-published version is a no-op.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L14a); L14b's publish UI consumes it
   async publish(agentId: string, version?: number): Promise<{ publishedVersion: number }> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/publish`, {
       method: 'POST',
       body: JSON.stringify(version === undefined ? {} : { version }),
+    });
+  }
+
+  /** Records a 1-5 human rating on a run's trace (`POST /agents/:id/rating`, R04a). */
+  async rateRun(agentId: string, body: RatingRequest): Promise<void> {
+    await this.request(`/agents/${encodeURIComponent(agentId)}/rating`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** Copies a low-rating alert's trace into the agent's `<agentId>-regressions` dataset (R04a). */
+  async addAlertToDataset(agentId: string, alertId: string): Promise<{ dataset: string; exampleId: string }> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/rating/${encodeURIComponent(alertId)}/dataset`, {
+      method: 'POST',
     });
   }
 
@@ -375,6 +392,21 @@ class RuntimeClient implements AgentApi {
       `/agents/${encodeURIComponent(agentId)}/suggestions/${encodeURIComponent(suggestionId)}/dismiss`,
       { method: 'POST' }
     );
+  }
+
+  /**
+   * "Suggest a fix" (R06): reserves a suggestion id and answers 202 while
+   * the `prompt_suggestion` pass reads the trace's friction digest; the
+   * record lands under `suggestions/<id>.json` (announced by the
+   * `suggestion.new` event) when it finishes. 409 while one is already
+   * in flight for the trace, 422 when the agent's instructions live in a
+   * file (`LOUSHO_SUGGESTION_UNSUPPORTED`).
+   */
+  async suggestFromTrace(agentId: string, traceId: string): Promise<{ suggestionId: string }> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/suggestions/from-trace`, {
+      method: 'POST',
+      body: JSON.stringify({ traceId }),
+    });
   }
 
   /** The workspace the studio serves (`baseDir` is its root; `workspace` is the full ref for addressing it by id). */
@@ -474,6 +506,21 @@ class RuntimeClient implements AgentApi {
       method: 'POST',
       body: JSON.stringify({ approvalId, answer }),
     });
+  }
+
+  /** Everything waiting on the user across this workspace's agents (R02a's `GET /inbox`). */
+  async listInbox(): Promise<InboxItem[]> {
+    return this.request('/inbox', { method: 'GET' });
+  }
+
+  /** The inbox badge count (`GET /inbox/count`); also the `inbox.count` WS event's payload. */
+  async inboxCount(): Promise<InboxCount> {
+    return this.request('/inbox/count', { method: 'GET' });
+  }
+
+  /** Dismisses an undismissed inbox alert (`POST /inbox/alerts/:id/dismiss`). */
+  async dismissAlert(alertId: string): Promise<void> {
+    await this.request(`/inbox/alerts/${encodeURIComponent(alertId)}/dismiss`, { method: 'POST' });
   }
 
   /** Current breakpoints + pause state for `agentId` (see debugController.ts). */
@@ -777,7 +824,6 @@ class RuntimeClient implements AgentApi {
    * `PortabilityAnalysis` - findings plus the `[YOUR …]`-adapted
    * instructions an `adapt=1` export substitutes.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L09a); L09b's export sheet consumes it
   async checkPortability(agentId: string): Promise<PortabilityAnalysis> {
     return this.request<PortabilityAnalysis>(`/agents/${encodeURIComponent(agentId)}/portability`, {
       method: 'POST',
@@ -790,7 +836,6 @@ class RuntimeClient implements AgentApi {
    * pasted YAML/JSON/bundle text (parsed like `previewImport`) before the
    * agent exists; the analysis caches in memory server-side.
    */
-  // fallow-ignore-next-line unused-class-member -- contract surface (L09a); L09b's export sheet consumes it
   async checkImportPortability(text: string): Promise<PortabilityAnalysis> {
     return this.request<PortabilityAnalysis>('/agents/import/portability', {
       method: 'POST',

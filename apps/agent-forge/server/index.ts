@@ -173,6 +173,7 @@ export async function startStudioServer(
     settingsStore,
     observe: options.observe !== false,
     passRunner,
+    spendLog,
     alerts,
   });
   // A test-injected versioner replaces the context's default one before the
@@ -250,6 +251,11 @@ export async function startStudioServer(
       passRunner.close();
       // Flush pending idle-version captures before the socket stops taking writes.
       await workspace.idleVersioner.flushAll();
+      // Stop the launch workspace's inbox recount subscriptions (R02a)
+      // and its trigger host's run-status subscriptions (R08a).
+      workspace.inbox.stop();
+      workspace.triggers.stop();
+      workspace.cron.stop();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     },
   };

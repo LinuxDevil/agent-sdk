@@ -27,6 +27,8 @@ const SUGGESTION: PromptSuggestion = {
   status: 'open',
   createdAt: '2026-02-03T04:05:06.000Z',
   updatedAt: '2026-02-03T04:05:06.000Z',
+  resolvedAt: null,
+  appliedVersion: null,
 };
 
 const ANALYSIS: PortabilityAnalysis = {

@@ -164,6 +164,11 @@ describe('AgentOverviewTab', () => {
     const items = triggersCard.querySelectorAll('.agent-overview-list li');
     expect(items.length).toBe(5);
     expect(items[1].textContent).toContain('Cron · 0 9 * * 1-5 · UTC');
+    // Webhook triggers show their public URL with a Copy button (R08a).
+    expect(items[2].querySelector('.agent-overview-webhook code')?.textContent).toBe(
+      `${window.location.origin}/hooks/support-bot/gh`,
+    );
+    expect(items[2].querySelector('.agent-overview-webhook button')?.textContent).toBe('Copy');
 
     const emptyHost = renderTab(record({ spec: { triggers: [] } }));
     await flush();

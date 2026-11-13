@@ -1,0 +1,121 @@
+/* The Inbox screen (R02b): grouped waiting-on-you rows. */
+
+.inbox-screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.inbox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.inbox-group-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-overline);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.inbox-group-count {
+  font-weight: 500;
+}
+
+.inbox-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.inbox-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: var(--space-3);
+  align-items: start;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.inbox-row-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inbox-row-title {
+  margin: 0;
+  font-size: var(--fs-table);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.inbox-row-detail {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-row-meta {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+
+.inbox-row-meta a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.inbox-row-meta a:hover {
+  text-decoration: underline;
+}
+
+.inbox-deadline-soon {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.inbox-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.inbox-answer-group {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.inbox-answer {
+  width: 12rem;
+}
+
+@media (max-width: 860px) {
+  .inbox-row {
+    grid-template-columns: auto 1fr;
+  }
+
+  .inbox-row-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}

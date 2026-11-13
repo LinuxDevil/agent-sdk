@@ -37,7 +37,7 @@ describe('validateWorkspace', () => {
 
   it('each negative fixture yields exactly its code', () => {
     const index = readNegativeIndex();
-    expect(new Set(index.cases.map((item) => item.code)).size).toBe(22);
+    expect(new Set(index.cases.map((item) => item.code)).size).toBe(23);
     for (const item of index.cases) {
       const problems = validateWorkspace(readNegativeTree(item.name), { mode: 'default' });
       expect(codes(problems), item.name).toEqual([item.code]);

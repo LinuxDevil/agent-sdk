@@ -10,7 +10,7 @@ import type { WorkspaceManifest } from './workspace';
 /** How much a problem matters: an `error` makes the workspace invalid, a `warning` is corrected or tolerated, `info` is a note. */
 export type WorkspaceProblemSeverity = 'error' | 'warning' | 'info';
 
-/** Stable codes of `validateWorkspace`: PRD001 R13 key in a harness, PRD002 R18 key in a harness, PRD003 harness or profile invalid, PRD004 base harness invalid, PRD005 R13 key in an attachment, PRD006 agents.json invalid, PRD007 bad agent ref, PRD008 page.json invalid, PRD009 nested pages, PRD010 page UI invalid, PRD011 main harness invalid or leftover, PRD012 UI binding, PRD013 harness does not compose, PRD014 policy outside shared/policies, PRD015 route to a missing page, PRD016 goal check names a missing criterion, PRD017 no executable criterion (R19), PRD018 execution alias missing, PRD019 workflow alias missing, PRD020 agent ref has no folder, PRD021 page folder not listed, PRD022 listed page missing, PRD023 workspace.json missing or invalid, PRD024 extends profile not found, PRD025 capability not covered, PRD026 policy file invalid, PRD027 workspace folder overlaps, PRD028 invalid JSON, PRD029 no lock in v1 (strict), PRD030 workflow or goal file missing or invalid, PRD031 main harness limit clamped, PRD032 listed file missing. */
+/** Stable codes of `validateWorkspace`: PRD001 R13 key in a harness, PRD002 R18 key in a harness, PRD003 harness or profile invalid, PRD004 base harness invalid, PRD005 R13 key in an attachment, PRD006 agents.json invalid, PRD007 bad agent ref, PRD008 page.json invalid, PRD009 nested pages, PRD010 page UI invalid, PRD011 main harness invalid or leftover, PRD012 UI binding, PRD013 harness does not compose, PRD014 policy outside shared/policies, PRD015 route to a missing page, PRD016 goal check names a missing criterion, PRD017 no executable criterion (R19), PRD018 execution alias missing, PRD019 workflow alias missing, PRD020 agent ref has no folder, PRD021 page folder not listed, PRD022 listed page missing, PRD023 workspace.json missing or invalid, PRD024 extends profile not found, PRD025 capability not covered, PRD026 policy file invalid, PRD027 workspace folder overlaps, PRD028 invalid JSON, PRD029 no lock in v1 (strict), PRD030 workflow or goal file missing or invalid, PRD031 main harness limit clamped, PRD032 listed file missing, PRD033 goal names only rubric-only criteria (R19). */
 export type WorkspaceProblemCode =
   | 'PRD001'
   | 'PRD002'
@@ -43,13 +43,14 @@ export type WorkspaceProblemCode =
   | 'PRD029'
   | 'PRD030'
   | 'PRD031'
-  | 'PRD032';
+  | 'PRD032'
+  | 'PRD033';
 
 /** One problem `validateWorkspace` found, linkable to a file and a field. */
 export interface WorkspaceProblem {
   /** How much it matters; only `error` makes the workspace invalid. */
   severity: WorkspaceProblemSeverity;
-  /** Stable code, `PRD001` to `PRD032`. */
+  /** Stable code, `PRD001` to `PRD033`. */
   code: WorkspaceProblemCode;
   /** The file, relative to the workspace root, or the `global:` ref of a resolved global profile. */
   file: string;

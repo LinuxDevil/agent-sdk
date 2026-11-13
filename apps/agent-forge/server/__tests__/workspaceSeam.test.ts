@@ -21,6 +21,9 @@ import { SuggestionStore } from '../storage/suggestionStore';
 import { VersionStore } from '../storage/versionStore';
 import { StudioEventBus } from '../events/eventBus';
 import { PassRunner } from '../passes/passRunner';
+import type { InboxService } from '../inbox/inboxService';
+import type { TriggerHost } from '../triggers/triggerHost';
+import type { CronTriggers } from '../triggers/cronTriggers';
 import type { WorkspaceContext } from '../workspace/context';
 
 const SPEC: AgentSpec = {
@@ -127,6 +130,9 @@ describe('workspace seam', () => {
       chatTriggers: new TriggerRegistry(),
       events: new StudioEventBus(),
       passes: new PassRunner({ baseDir }),
+      inbox: {} as InboxService,
+      triggers: {} as TriggerHost,
+      cron: {} as CronTriggers,
     };
     const app = createApp({ workspace, baseDir });
 

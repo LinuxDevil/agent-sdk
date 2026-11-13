@@ -4,14 +4,16 @@ import { EmptyState } from '../../ui/EmptyState';
 import { Skeleton } from '../../ui/Skeleton';
 import { useAgentDetail } from './AgentDetailContext';
 import { DraftCard } from './DraftCard';
+import { PromptSuggestions } from './PromptSuggestions';
 import { useDraftView } from './useDraftView';
 import './suggestions.css';
 
 /**
- * The Suggestions tab (L11b): the agent's pending `ChangeDraft` as a
- * review card - R06 adds the prompt-suggestion list below it. Loads the
- * `DraftView` on mount, refetches on `draft.changed`/`agent.changed`,
- * and shows the shared empty state when nothing waits for review.
+ * The Suggestions tab (L11b + R06): the agent's pending `ChangeDraft`
+ * review card on top, then {@link PromptSuggestions} - the
+ * prompt-suggestion cards the `prompt_suggestion` pass writes, with the
+ * `?suggesting=<id>` pending skeleton every "Suggest a fix" entry point
+ * links to.
  */
 export function SuggestionsTab(): JSX.Element {
   const { record } = useAgentDetail();
@@ -43,21 +45,10 @@ export function SuggestionsTab(): JSX.Element {
     );
   }
 
-  if (draft === undefined) {
-    return (
-      <div className="suggestions-tab">
-        <EmptyState
-          icon={Inbox}
-          title="Nothing to review"
-          hint="Drafts from the Author and suggestions from runs show up here."
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="suggestions-tab">
-      <DraftCard agentId={record.id} draft={draft} onResolved={() => void refresh()} />
+      {draft !== undefined && <DraftCard agentId={record.id} draft={draft} onResolved={() => void refresh()} />}
+      <PromptSuggestions agentId={record.id} promptRef={record.spec.promptRef} hasDraft={draft !== undefined} />
     </div>
   );
 }
