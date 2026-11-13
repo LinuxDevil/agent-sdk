@@ -30,10 +30,13 @@ export async function runMarketing(options: RunOptions): Promise<Record<string, 
   const host = marketingHost({ storageDir, ...(!options.mock && live !== undefined && { providers: () => resolveProvider(live) }) });
   const runtime = createWorkspaceRuntime(memorySource(readWorkspaceFiles()), host);
   const results: Record<string, PageResult> = {};
-  for (const pageId of pagesOf(options.page)) {
-    results[pageId] = await runtime.runPage(pageId, { task: `Make a short video about ${TOPIC}.`, inputs: { topic: TOPIC } });
+  try {
+    for (const pageId of pagesOf(options.page)) {
+      results[pageId] = await runtime.runPage(pageId, { task: `Make a short video about ${TOPIC}.`, inputs: { topic: TOPIC } });
+    }
+  } finally {
+    await runtime.close();
   }
-  await runtime.close();
   console.log(`artifacts are under ${join(storageDir, 'artifacts')}`);
   return results;
 }

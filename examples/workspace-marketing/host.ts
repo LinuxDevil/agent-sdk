@@ -3,7 +3,7 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { defineTool, type LLMProvider } from 'lousho';
+import { defineTool, type LLMProvider, type ToolDescriptor } from 'lousho';
 import { mockModel, type MockModel, type MockRequest } from 'lousho/testing';
 import {
   checkRegistry,
@@ -11,10 +11,10 @@ import {
   ENGINES,
   fileArtifactStore,
   fileHostBackend,
-  singleEngine,
   type ArtifactSink,
   type EngineRegistry,
   type PageEngineFactory,
+  type PageToolScope,
   type WorkspaceHost,
   type WorkspaceCheckRegistry,
 } from 'lousho/workspaces';
@@ -122,6 +122,16 @@ export function scriptedMarketingModel(): MockModel {
   );
 }
 
+const IN_PROCESS_MOCKS: ReadonlySet<string> = new Set(['render_video', 'synthesize_voice', 'search_facts']);
+
+function bindMock(descriptor: ToolDescriptor, scope: PageToolScope): ToolDescriptor {
+  if (!IN_PROCESS_MOCKS.has(scope.name)) {
+    throw new Error(`tool '${scope.name}' needs a real binder: it is not one of the in-process mocks and the policy requires a sandbox`);
+  }
+  if (scope.secrets.length > 0) throw new Error(`mock tool '${scope.name}' reads no secrets, but the policy granted it some`);
+  return descriptor;
+}
+
 export interface MarketingHostOptions {
   storageDir: string;
   provider?: LLMProvider;
@@ -131,7 +141,7 @@ export interface MarketingHostOptions {
 export function marketingHost(options: MarketingHostOptions): WorkspaceHost {
   mkdirSync(options.storageDir, { recursive: true });
   const fallback = options.provider ?? scriptedMarketingModel();
-  const engines: EngineRegistry = { ...ENGINES, single: withRunSink(singleEngine) };
+  const engines: EngineRegistry = Object.fromEntries(Object.entries(ENGINES).map(([type, factory]) => [type, withRunSink(factory)]));
   return {
     tools: {
       render_video: { descriptor: renderVideo },
@@ -153,7 +163,7 @@ export function marketingHost(options: MarketingHostOptions): WorkspaceHost {
         },
       },
     },
-    bindTool: (descriptor) => descriptor,
+    bindTool: bindMock,
     checks: marketingChecks,
     engines,
   };

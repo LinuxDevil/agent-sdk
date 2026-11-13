@@ -1,12 +1,5 @@
 {
-  "permissions": [
-    {
-      "id": "no-shell",
-      "tool": "bash",
-      "action": "deny",
-      "reason": "Pages never run shell commands."
-    }
-  ],
+  "permissions": [],
   "tools": {
     "allow": [
       "render_video",

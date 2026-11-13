@@ -1,16 +1,17 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { createWorkspaceRuntime, memorySource, resolveCheck, type PageResult, type WorkspaceRuntime } from 'lousho/workspaces';
 import { marketingChecks, marketingHost, PAGES, readWorkspaceFiles, scriptedMarketingModel, WORKSPACE_ID } from './host';
 import { runMarketing } from './run';
-
-vi.setConfig({ testTimeout: 60_000 });
+import { jsonSchemaToStandardSchema } from 'lousho/spec';
 
 const dirs: string[] = [];
+const runtimes: WorkspaceRuntime[] = [];
 
-afterEach(() => {
+afterEach(async () => {
+  await Promise.all(runtimes.splice(0).map((runtime) => runtime.close()));
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
@@ -27,6 +28,7 @@ function build(files: Record<string, string> = readWorkspaceFiles()) {
   const host = marketingHost({ storageDir: storage(), provider: model });
   const source = memorySource(files);
   const runtime: WorkspaceRuntime = createWorkspaceRuntime(source, host);
+  runtimes.push(runtime);
   return { model, host, source, runtime };
 }
 
@@ -46,10 +48,9 @@ async function runBoth(runtime: WorkspaceRuntime): Promise<Record<string, PageRe
   return results;
 }
 
-function requiredStrings(schema: unknown, output: unknown): boolean {
-  const { required = [], properties = {} } = schema as { required?: string[]; properties?: Record<string, { type?: string }> };
-  const record = output as Record<string, unknown>;
-  return required.every((key) => typeof record[key] === properties[key]?.type);
+async function matchesSchema(schema: unknown, output: unknown): Promise<boolean> {
+  const result = await jsonSchemaToStandardSchema(schema as Record<string, unknown>)['~standard'].validate(output);
+  return result.issues === undefined;
 }
 
 describe('workspace-marketing', () => {
@@ -87,7 +88,7 @@ describe('workspace-marketing', () => {
     const results = await runBoth(runtime);
     for (const page of PAGES) {
       const { harness } = await runtime.explain(page);
-      expect(requiredStrings(harness.outputs?.schema, results[page].output)).toBe(true);
+      expect(await matchesSchema(harness.outputs?.schema, results[page].output)).toBe(true);
       const criteria = (harness.evaluation?.criteria ?? []).filter((criterion) => criterion.check !== undefined);
       expect(criteria.length).toBeGreaterThan(0);
       for (const criterion of criteria) {
