@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   answer: vi.fn(),
   dismissAlert: vi.fn(),
   addAlertToDataset: vi.fn(),
+  suggestFromTrace: vi.fn(),
   subscribeEvents: vi.fn(() => () => {}),
 }));
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
@@ -112,6 +113,8 @@ beforeEach(() => {
   api.answer.mockReset().mockResolvedValue({});
   api.dismissAlert.mockReset().mockResolvedValue(undefined);
   api.addAlertToDataset.mockReset().mockResolvedValue({ dataset: 'support-bot-regressions', exampleId: 'ex1' });
+  api.suggestFromTrace.mockReset().mockResolvedValue({ suggestionId: 'sg-1' });
+  window.location.hash = '';
   api.subscribeEvents.mockClear();
 });
 
@@ -203,6 +206,31 @@ describe('InboxScreen', () => {
     expect(container.textContent).toContain('Added to support-bot-regressions');
     // The row stays - the alert is dismissed separately.
     expect(container.querySelector('.inbox-row')).not.toBeNull();
+  });
+
+  it('"Suggest a fix" on a low-rating alert starts the pass and opens the Suggestions tab (R06)', async () => {
+    api.listInbox.mockResolvedValue([
+      alert({ alertKind: 'low_rating', payload: { traceId: 't-1' }, title: 'Run rated 2' }),
+    ]);
+    const container = mount();
+    await settle();
+
+    const suggest = button(container, 'Suggest a fix');
+    expect(suggest).toBeDefined();
+    await act(async () => suggest.click());
+    await settle();
+
+    expect(api.suggestFromTrace).toHaveBeenCalledWith('support-bot', 't-1');
+    expect(window.location.hash).toBe('#/agents/support-bot/suggestions?suggesting=sg-1');
+  });
+
+  it('does not offer "Suggest a fix" without a traceId in the alert payload', async () => {
+    api.listInbox.mockResolvedValue([
+      alert({ alertKind: 'low_rating', payload: {}, title: 'Run rated 2' }),
+    ]);
+    const container = mount();
+    await settle();
+    expect(button(container, 'Suggest a fix')).toBeUndefined();
   });
 
   it('does not offer the dataset action on other alert kinds', async () => {

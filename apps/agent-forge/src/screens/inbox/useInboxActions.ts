@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 
 import { runtimeClient } from '../../runtime/runtimeClient';
+import { useSuggestFix } from '../../state/useSuggestFix';
 import { useToast } from '../../ui/Toast';
 import type { InboxItem } from '../../../shared/wireTypes';
 
@@ -23,6 +24,7 @@ function restoreItem(items: InboxItem[] | null, index: number, item: InboxItem):
 export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (prev: InboxItem[] | null) => InboxItem[] | null) => void) {
   const [acting, setActing] = useState<ReadonlySet<string>>(new Set());
   const toast = useToast();
+  const suggestFix = useSuggestFix();
 
   const act = useCallback(
     async (item: InboxItem, message: string, run: () => Promise<unknown>) => {
@@ -61,22 +63,12 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
     [act],
   );
 
-  /** Low-rating alerts (R04b): seeds the trace into `<agentId>-regressions`; the row stays until dismissed. */
-  const onAddToDataset = useCallback(
-    async (item: InboxItem & { kind: 'alert' }) => {
+  /** Marks `item` acting for the duration of `run`; failures toast `errorMessage`. The row is never dropped. */
+  const withActing = useCallback(
+    async (item: InboxItem, run: () => Promise<unknown>) => {
       setActing((prev) => new Set(prev).add(item.id));
       try {
-        const { dataset } = await runtimeClient.addAlertToDataset(item.agentId, item.alertId);
-        toast.show({
-          message: `Added to ${dataset}`,
-          tone: 'success',
-          action: {
-            label: 'Open dataset',
-            onClick: () => {
-              window.location.hash = `#/evals/datasets/${encodeURIComponent(dataset)}`;
-            },
-          },
-        });
+        await run();
       } catch (cause) {
         toast.show({ message: errorMessage(cause), tone: 'error' });
       } finally {
@@ -90,5 +82,39 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
     [toast],
   );
 
-  return { acting, onApprove, onAnswer, onDismiss, onAddToDataset };
+  /** Low-rating alerts (R04b): seeds the trace into `<agentId>-regressions`; the row stays until dismissed. */
+  const onAddToDataset = useCallback(
+    (item: InboxItem & { kind: 'alert' }) =>
+      void withActing(item, async () => {
+        const { dataset } = await runtimeClient.addAlertToDataset(item.agentId, item.alertId);
+        toast.show({
+          message: `Added to ${dataset}`,
+          tone: 'success',
+          action: {
+            label: 'Open dataset',
+            onClick: () => {
+              window.location.hash = `#/evals/datasets/${encodeURIComponent(dataset)}`;
+            },
+          },
+        });
+      }),
+    [toast, withActing],
+  );
+
+  /**
+   * Low-rating alerts (R06): "Suggest a fix" starts the prompt-suggestion
+   * pass on the alert's trace, then opens the Suggestions tab (the shared
+   * `useSuggestFix` navigates with `?suggesting=<id>`). The row stays put -
+   * success navigates away, failure toasts and leaves it.
+   */
+  const onSuggestFix = useCallback(
+    (item: InboxItem & { kind: 'alert' }) => {
+      const traceId = item.payload.traceId;
+      if (typeof traceId !== 'string' || traceId === '') return;
+      return withActing(item, () => suggestFix(item.agentId, traceId));
+    },
+    [suggestFix, withActing],
+  );
+
+  return { acting, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix };
 }
