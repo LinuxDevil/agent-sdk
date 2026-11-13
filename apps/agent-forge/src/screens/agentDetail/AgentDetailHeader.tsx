@@ -3,7 +3,8 @@ import { CircleAlert, CircleCheck, CircleDashed, Clock, Cpu, Play, Wrench, Zap, 
 
 import type { AgentRecord, Requirement } from '../../../shared/wireTypes';
 import { fmtAge } from '../../observe/format';
-import { agentTabItems, agentTabPath, type AgentTab } from '../agents/agentTabs';
+import { agentListPath, agentTabItems, agentTabPath, type AgentTab } from '../agents/agentTabs';
+import { activeWorkspace } from '../../workspace/activeWorkspace';
 import { PublishStatePill } from '../../components/PublishPill';
 import { usePendingDraftCount } from '../../state/usePendingDraftCount';
 import { AgentTile } from '../../ui/AgentTile';
@@ -127,7 +128,7 @@ export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsIte
       <nav className="page-header-crumbs" aria-label="Breadcrumb">
         <ol>
           <li>
-            <a href="#/agents">Agents</a>
+            <a href={`#${agentListPath(activeWorkspace())}`}>Agents</a>
           </li>
           <li aria-hidden="true">
             <span className="page-header-crumb-sep">›</span>

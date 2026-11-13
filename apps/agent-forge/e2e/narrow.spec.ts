@@ -13,7 +13,8 @@ async function open(page: Page, width: number, height: number) {
   // an id that is not saved falls back there, so open a saved agent when one exists.
   const res = await page.request.get('/agents', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
   const ids = ((await res.json()) as { id: string }[]).map((a) => a.id);
-  await page.goto(`/?token=e2e-studio-token#/agents/${ids[0] ?? 'untitled-agent'}/canvas`);
+  const ws = ((await (await page.request.get('/workspace', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } })).json()) as { workspace: { id: string } }).workspace.id;
+  await page.goto(`/?token=e2e-studio-token#/w/${ws}/agents/${ids[0] ?? 'untitled-agent'}/canvas`);
   await expect(page.locator('.app')).toBeVisible();
 }
 

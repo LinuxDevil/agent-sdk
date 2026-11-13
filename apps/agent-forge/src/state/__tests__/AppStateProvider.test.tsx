@@ -22,6 +22,9 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../useAgentDocument', () => ({ useAgentDocument: () => mocks.doc }));
+vi.mock('../../workspace/WorkspacesProvider', () => ({
+  useWorkspaces: () => ({ list: [], launchId: 'launch-abc123', activeId: 'launch-abc123', error: undefined, refresh: async () => {} }),
+}));
 vi.mock('../useAgentStream', () => ({
   useAgentStatuses: () => ({}),
   // The real stream's chat/runStatus/feed setters - usePins reads
@@ -72,6 +75,8 @@ beforeEach(() => {
     layout: derived.layout as CanvasLayout,
     nodeIdMap: derived.nodeIdMap,
     agents: [],
+    agentsWorkspaceId: undefined,
+    refreshAgents: vi.fn(async () => undefined),
     save: vi.fn(async () => undefined),
     switchAgent: vi.fn(async () => undefined),
     createAgent: vi.fn(async () => undefined),
