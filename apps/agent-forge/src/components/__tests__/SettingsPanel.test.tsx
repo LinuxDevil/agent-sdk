@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../ui/__tests__/render';
 import { installMemoryStorage } from '../../ui/__tests__/memoryStorage';
+import { ToastProvider } from '../../ui/Toast';
 import { SettingsPanel } from '../SettingsPanel';
 import { toggleTheme } from '../../shell/theme';
 import type { ProviderKeyStatus } from '../../../shared/wireTypes';
@@ -44,7 +45,11 @@ vi.mock('../../shell/DaemonStatus', () => ({
 }));
 
 async function mount(variant?: 'drawer' | 'screen') {
-  const host = render(<SettingsPanel variant={variant} />);
+  const host = render(
+    <ToastProvider>
+      <SettingsPanel variant={variant} />
+    </ToastProvider>
+  );
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -77,10 +82,11 @@ describe('SettingsPanel', () => {
     expect(sectionNames(host)).toEqual(['Provider keys', 'Settings profile', 'Deploy target']);
   });
 
-  it('the routed screen adds Appearance, Agent Author, Background passes, Collector and Keyboard shortcuts', async () => {
+  it('the routed screen adds Appearance, Workspaces, Agent Author, Background passes, Collector and Keyboard shortcuts', async () => {
     const host = await mount('screen');
     expect(sectionNames(host)).toEqual([
       'Appearance',
+      'Workspaces',
       'Provider keys',
       'Agent Author',
       'Settings profile',

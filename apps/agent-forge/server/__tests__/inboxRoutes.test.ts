@@ -14,6 +14,7 @@ import { AgentRepo } from '../storage/agentRepo';
 import { DraftStore } from '../storage/draftStore';
 import { SuggestionStore } from '../storage/suggestionStore';
 import { AlertStore } from '../inbox/alertStore';
+import { WorkspaceRegistry } from '../workspace/workspaceRegistry';
 import type { InboxService } from '../inbox/inboxService';
 import type { InboxItem, PromptSuggestion } from '../../shared/wireTypes';
 import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
@@ -159,6 +160,53 @@ describe('inbox routes', () => {
     const res = await request(app()).post('/inbox/alerts/alert_nope/dismiss');
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('No alert alert_nope');
+  });
+
+  it('GET /inbox?ws=all and /inbox/count?ws=all aggregate every registered workspace (W09a)', async () => {
+    // A second workspace with a pending draft, registered but never
+    // resolved - the aggregate reads its disk stores without building
+    // a context (`warm: () => []` keeps even the launch folder cold).
+    const otherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-r02a-other-'));
+    try {
+      const otherRepo = new AgentRepo(otherDir);
+      await otherRepo.writeSpec('cold-one', { version: 2, name: 'Cold One', model: 'mock/mock-1', instructions: 'x' });
+      await new DraftStore(otherRepo).create('cold-one', {
+        patch: { description: 'x' },
+        origin: 'manual',
+        reason: 'cold reason',
+        baseVersion: null,
+        baseSpecHash: 'h',
+      });
+      const registry = new WorkspaceRegistry(path.join(baseDir, '.lousho', 'workspaces.json'));
+      const launchRef = await registry.ensure(baseDir);
+      const otherRef = await registry.ensure(otherDir);
+      const aggregateApp = createApp({
+        agentStore,
+        runManager,
+        baseDir,
+        alerts,
+        workspaceRegistry: registry,
+        warm: () => [],
+      });
+
+      const res = await request(aggregateApp).get('/inbox?ws=all');
+      expect(res.status).toBe(200);
+      const items = res.body as InboxItem[];
+      const cold = items.find((item) => item.agentId === 'cold-one');
+      expect(cold).toMatchObject({ kind: 'draft', workspaceId: otherRef.id, agentName: 'Cold One', detail: 'cold reason' });
+      // The launch workspace's own items carry its id too.
+      expect(items.every((item) => item.workspaceId === launchRef.id || item.workspaceId === otherRef.id)).toBe(true);
+
+      const count = await request(aggregateApp).get('/inbox/count?ws=all');
+      expect(count.body).toEqual({ count: items.length });
+
+      // The single-workspace routes are untouched.
+      const single = await request(aggregateApp).get('/inbox');
+      expect(single.status).toBe(200);
+      expect((single.body as InboxItem[]).every((item) => item.workspaceId === launchRef.id)).toBe(true);
+    } finally {
+      fs.rmSync(otherDir, { recursive: true, force: true });
+    }
   });
 
   it('an injected inbox stub serves /inbox* (the CreateAppOptions seam)', async () => {

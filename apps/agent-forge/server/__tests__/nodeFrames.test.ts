@@ -18,6 +18,7 @@ import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
 import { attachWebSocketServer } from '../wsServer';
 import { createUpgradeRouter } from '../ws/upgradeRouter';
+import { singleWorkspace, type WorkspaceContext } from '../workspace/context';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import {
@@ -215,7 +216,8 @@ describe('RunManager node status frames', () => {
   it('a node frame arrives on WS /agents/:id/stream', async () => {
     const runManager = makeRunManager(baseDir, new ScriptedHost(stampedRunScript));
     const server = http.createServer();
-    const wss = attachWebSocketServer(createUpgradeRouter(server), runManager);
+    const ctx = { ref: { id: 'ws-abc123', name: 'ws', root: baseDir, addedAt: '', lastOpenedAt: '' }, runs: runManager } as unknown as WorkspaceContext;
+    const wss = attachWebSocketServer(createUpgradeRouter(server), singleWorkspace(ctx));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const { port } = server.address() as AddressInfo;
     const ws = new WebSocket(`ws://127.0.0.1:${port}/agents/ws-agent/stream`);

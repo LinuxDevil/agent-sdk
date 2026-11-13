@@ -28,6 +28,8 @@
  *   POST /hooks/:agentId/<path>       -> webhook trigger fire (triggers/webhookRoute.ts, R08a);
  *                                        public - HMAC or loopback-only, no studio token
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
+ *   GET  /workspace/agent-dirs       -> CodeAgentDir[] - agent dirs found under the workspace root (workspace/agentDirRoutes.ts, X06a)
+ *   GET  /workspace/agent-dirs/spec  -> CodeAgentSpecResponse for ?path=<rel> (400 escape, 404 unlisted, 422 unreadable config)
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
  *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string, pins?: ToolPin[] }
@@ -105,7 +107,9 @@ import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
 import { configureStudioHome } from './workspace/studioPaths';
 import { workspaceRefFor } from './workspace/workspaceId';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
+import { CodeAgentCache } from './workspace/codeAgentScan';
 import { registerWorkspaceRegistryRoutes } from './workspace/workspaceRoutes';
+import { registerAgentDirRoutes } from './workspace/agentDirRoutes';
 import {
   DEFAULT_TRACE_LIMIT,
   MAX_TRACE_LIMIT,
@@ -132,6 +136,7 @@ import { FileApprovalStore } from './approvalStore';
 import { InProcessAgentHost } from './host/inProcessAgentHost';
 import { envCollector, WorkspaceHostSelector } from './host/hostSelector';
 import { registerAgentRoutes } from './routes/agentRoutes';
+import { registerAllAgentsRoute } from './routes/allAgentsRoute';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
@@ -178,6 +183,8 @@ interface CreateAppBaseOptions {
   sessions?: AuthorSessionStore;
   /** The `/workspaces` routes' store. Defaults to `new WorkspaceRegistry(studioPaths().workspaces)` when omitted. */
   workspaceRegistry?: WorkspaceRegistry;
+  /** The app's one code-agent scan cache (W08a). Defaults to a fresh `CodeAgentCache`; tests inject one to count scans. */
+  codeAgentCache?: CodeAgentCache;
   /**
    * The resolver every request's workspace id (`x-lousho-workspace` or
    * `?ws=`) resolves through - `startStudioServer` passes its
@@ -186,6 +193,12 @@ interface CreateAppBaseOptions {
    * in `singleWorkspace`, so every id but the launch one 404s (tests).
    */
   workspaces?: WorkspaceResolver;
+  /**
+   * The warm workspace contexts `GET /agents?ws=all` reads live run
+   * status through (W06a). `startStudioServer` passes
+   * `() => manager.warm()`; the default is the launch context alone.
+   */
+  warm?: () => WorkspaceContext[];
   /**
    * The app's one AuthorTurnRunner (turns are in-flight memory, so tests
    * pass their own to control the provider seam); defaults to
@@ -1113,6 +1126,9 @@ export function createApp(options: CreateAppOptions): Express {
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
   const workspaceRegistry = options.workspaceRegistry ?? new WorkspaceRegistry(paths.workspaces);
+  // The app's one code-agent scan cache (W08a): shared by the scan
+  // routes, `/workspace/agent-dirs` and the aggregate agent list.
+  const codeAgentCache = options.codeAgentCache ?? new CodeAgentCache();
   // The app's one spend log and pass runner (passes/): Studio-global, so
   // they live next to the other studioPaths() stores rather than per
   // workspace. `passRunner` defaults to one over this `spendLog`.
@@ -1219,6 +1235,17 @@ export function createApp(options: CreateAppOptions): Express {
   // import routes: `import` is a valid agent id. Per-agent stores come
   // from workspaceOf(req); secrets/settings are Studio-global deps.
   registerPortabilityRoutes(app, { secretsStore: secrets, settings });
+  // `GET /agents?ws=all` -> AllAgentsResponse (workspace + observed agents,
+  // routes/allAgentsRoute.ts). Registered BEFORE the single-workspace /agents
+  // routes: it answers only the ALL_WORKSPACES request and next()s the
+  // rest. Warm contexts come from `options.warm` (the manager's), so a
+  // running agent still reports its live status; cold workspaces read
+  // through a bare AgentRepo.
+  registerAllAgentsRoute(app, {
+    registry: workspaceRegistry,
+    warm: options.warm ?? (() => [workspace]),
+    codeAgents: codeAgentCache,
+  });
   // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).
@@ -1241,6 +1268,9 @@ export function createApp(options: CreateAppOptions): Express {
   // stores come from workspaceOf(req), the workspace seam).
   registerPublishRoutes(app);
   registerWorkspaceRoute(app);
+  // Code-agent discovery (X06a): agent dirs under the workspace root +
+  // their data-config specs for the read-only canvas.
+  registerAgentDirRoutes(app, { codeAgents: codeAgentCache, registry: workspaceRegistry });
   // The workspace registry's routes (`GET/POST /workspaces`,
   // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:
   // the launch workspace's id is this app's `defaultId` and the one entry
@@ -1252,6 +1282,7 @@ export function createApp(options: CreateAppOptions): Express {
     // WorkspaceManager - structural check, not instanceof, so a test's
     // plain resolver needs no `forget`.
     forget: forgetWorkspace(options.workspaces),
+    scanCache: codeAgentCache,
   });
   registerRunRoutes(app);
   registerChatRoutes(app);
@@ -1293,8 +1324,13 @@ export function createApp(options: CreateAppOptions): Express {
   // proxy so `/settings/passes/spend` is never proxied.
   registerPassRoutes(app, { spendLog, settings });
   // The inbox (inbox/inboxRoutes.ts, R02a): `/inbox`, `/inbox/count` and
-  // alert dismiss - the service comes from workspaceOf(req).inbox.
-  registerInboxRoutes(app);
+  // alert dismiss - the service comes from workspaceOf(req).inbox; the
+  // `?ws=all` reads aggregate across the registry + warm contexts (W09a).
+  registerInboxRoutes(app, {
+    registry: workspaceRegistry,
+    warm: options.warm ?? (() => [workspace]),
+    alerts,
+  });
   // Webhook triggers (triggers/webhookRoute.ts, R08a): `POST
   // /hooks/:agentId/<path>` - the trigger host and repo come from
   // workspaceOf(req); named-secret resolution is Studio-global.

@@ -236,6 +236,42 @@ describe('WorkspaceManager', () => {
     expect(launch.dispose).toHaveBeenCalledTimes(1);
   });
 
+  it('retain keeps an idle context through sweep until release; a second release is safe', async () => {
+    const a = await registry.ensure(folder('a'));
+    const manager = makeManager({ idleMs: 1000 });
+    const ca = (await manager.resolve(a.id)) as FakeCtx;
+    const release = manager.retain(a.id);
+    tick += 5000;
+    await manager.sweep();
+    expect(ca.dispose).not.toHaveBeenCalled();
+    expect(manager.warm().map((ctx) => ctx.ref.id)).toContain(a.id);
+
+    release();
+    release(); // idempotent: the second call changes nothing
+    await manager.sweep();
+    expect(ca.dispose).toHaveBeenCalled();
+    await manager.close();
+  });
+
+  it('retain also protects a context from LRU eviction over maxWarm', async () => {
+    const a = await registry.ensure(folder('a'));
+    const b = await registry.ensure(folder('b'));
+    const c = await registry.ensure(folder('c'));
+    // maxWarm counts launch: 3 warm = launch + two others.
+    const manager = makeManager({ maxWarm: 3 });
+    const ca = (await manager.resolve(a.id)) as FakeCtx;
+    tick += 100;
+    const cb = (await manager.resolve(b.id)) as FakeCtx;
+    manager.retain(b.id);
+    tick += 100;
+    await manager.resolve(c.id);
+    // b is held: a (the next-oldest) is evicted instead.
+    expect(ca.dispose).toHaveBeenCalled();
+    expect(cb.dispose).not.toHaveBeenCalled();
+    expect(await manager.resolve(b.id)).toBe(cb);
+    await manager.close();
+  });
+
   it('defaultId returns the launch id', async () => {
     const manager = makeManager();
     expect(manager.defaultId()).toBe(launchRef.id);
