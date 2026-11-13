@@ -4,6 +4,7 @@ import type { WireRunEvent } from '../client/wireTypes';
 import type { EffectiveHarness } from '../contracts/compose';
 import type { PageInput, PageResult, PageRunStatus, PageUsage } from '../contracts/execution';
 import type { RevisionId, WorkspaceSource } from '../source/types';
+import type { StartRun } from './stores';
 import { artifactSink } from './artifacts';
 import { finishStatus } from './engines/single';
 import { loadWorkspace, type LoadedWorkspace } from './loadWorkspace';
@@ -104,9 +105,9 @@ export interface PageExplanation {
 
 /** A workspace bound to its host: the one entry point for the service, the CLI, Forge and tests. */
 export interface WorkspaceRuntime {
-  /** Sends `message` on a thread, to the main agent or to `options.pageId`, and streams the run's events; ends with `finished`. Leaving the stream early cancels the run. */
+  /** Sends `message` on a thread, to the main agent or to `options.pageId`, and streams the run's events; ends with `finished`. Leaving the stream early cancels the run. A `runId` that is already active throws `LOUSHO_WORKSPACE_RUN_ACTIVE`. */
   run(message: string, options: WorkspaceRuntimeRunOptions): AsyncIterable<WorkspaceRunEvent>;
-  /** Runs one page directly (D18); with `options.threadId` the run is also noted in that thread. */
+  /** Runs one page directly (D18); with `options.threadId` the run is also noted in that thread. A `runId` that is already active throws `LOUSHO_WORKSPACE_RUN_ACTIVE`. */
   runPage(pageId: string, input: Omit<PageInput, 'pageId'> & Partial<Pick<PageInput, 'pageId'>>, options?: RunPageOptions): Promise<PageResult>;
   /** Aborts a running or queued workspace or page run; `false` when no such run is active. */
   cancel(runId: string): boolean;
@@ -118,10 +119,17 @@ export interface WorkspaceRuntime {
 
 interface ThreadState {
   tail: Promise<unknown>;
+  busy: number;
   runs: PageRunRecord[];
 }
 
 const KEPT_REVISIONS = 4;
+
+const KEPT_THREADS = 256;
+
+function activeError(runId: string): SDKError {
+  return new SDKError(`Run '${runId}' is already active in this runtime; pass a new runId.`, 'LOUSHO_WORKSPACE_RUN_ACTIVE');
+}
 
 function closedError(): SDKError {
   return new SDKError('This workspace runtime is closed.', 'LOUSHO_WORKSPACE_RUNTIME_CLOSED');
@@ -176,7 +184,12 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
     return work;
   }
 
+  function claim(runId: string): void {
+    if (active.has(runId)) throw activeError(runId);
+  }
+
   function register(runId: string, signal: AbortSignal | undefined): AbortSignal {
+    claim(runId);
     const controller = new AbortController();
     active.set(runId, controller);
     return signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
@@ -193,23 +206,40 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
     return next;
   }
 
+  function evictSettledThreads(keep: string): void {
+    for (const [id, entry] of threads) {
+      if (threads.size <= KEPT_THREADS) return;
+      if (entry.busy === 0 && id !== keep) threads.delete(id);
+    }
+  }
+
   function thread(threadId: string): ThreadState {
     const existing = threads.get(threadId);
-    if (existing) return existing;
-    const made: ThreadState = { tail: Promise.resolve(), runs: [] };
+    if (existing) {
+      threads.delete(threadId);
+      threads.set(threadId, existing);
+      return existing;
+    }
+    const made: ThreadState = { tail: Promise.resolve(), busy: 0, runs: [] };
     threads.set(threadId, made);
+    evictSettledThreads(threadId);
     return made;
   }
 
   function onThread<T>(threadId: string, task: () => Promise<T>): Promise<T> {
     const entry = thread(threadId);
+    entry.busy += 1;
     const next = entry.tail.then(task, task);
     entry.tail = next.catch(() => undefined);
+    const done = (): void => {
+      entry.busy -= 1;
+    };
+    next.then(done, done);
     return next;
   }
 
-  async function beginPage(runId: string, pageId: string, revision: RevisionId, recorders: Map<string, RunRecorder>, listener: ((event: WireRunEvent) => void) | undefined): Promise<RunRecorder> {
-    await stores.runs.start({ runId, pageId, revision });
+  async function beginPage(runId: string, row: Omit<StartRun, 'runId'>, recorders: Map<string, RunRecorder>, listener: ((event: WireRunEvent) => void) | undefined): Promise<RunRecorder> {
+    await stores.runs.start({ runId, ...row });
     const recorder = runRecorder(runId, stores.events, listener);
     recorders.set(runId, recorder);
     return recorder;
@@ -225,7 +255,7 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
     return signal.aborted ? 'cancelled' : 'failed';
   }
 
-  function sessionContext(workspace: LoadedWorkspace, threadId: string, runSignal: AbortSignal, channel: EventChannel<WorkspaceRunEvent>): WorkspaceSessionContext {
+  function sessionContext(workspace: LoadedWorkspace, parentRunId: string, threadId: string, runSignal: AbortSignal, channel: EventChannel<WorkspaceRunEvent>): WorkspaceSessionContext {
     const recorders = new Map<string, RunRecorder>();
     const push = (wire: WireRunEvent): void => channel.push({ type: 'page', ...wire });
     return {
@@ -233,14 +263,15 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
       artifacts: (runId) => artifactSink(stores.artifacts, { workspace: workspace.manifest.id, runId }),
       newRunId,
       sessionId: threadId,
+      parentRunId,
       threads: stores.threads,
       priorRuns: thread(threadId).runs,
       emit: (runId, event) => recorders.get(runId)?.emit(event),
       pageRuns: {
         async start(runId, pageId, signal) {
-          const linked = register(runId, signal ?? runSignal);
-          await beginPage(runId, pageId, workspace.revision, recorders, push);
-          return linked;
+          claim(runId);
+          await beginPage(runId, { pageId, revision: workspace.revision, threadId, parentRunId }, recorders, push);
+          return register(runId, signal ?? runSignal);
         },
         end: (runId, result) => endRun(runId, result?.status ?? failedStatus(runSignal), recorders.get(runId)),
       },
@@ -249,8 +280,8 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
     };
   }
 
-  async function turnOf(workspace: LoadedWorkspace, message: string, options: WorkspaceRuntimeRunOptions, signal: AbortSignal, channel: EventChannel<WorkspaceRunEvent>): Promise<WorkspaceTurn> {
-    const session = openWorkspaceSession(workspace, sessionContext(workspace, options.threadId, signal, channel));
+  async function turnOf(workspace: LoadedWorkspace, runId: string, message: string, options: WorkspaceRuntimeRunOptions, signal: AbortSignal, channel: EventChannel<WorkspaceRunEvent>): Promise<WorkspaceTurn> {
+    const session = openWorkspaceSession(workspace, sessionContext(workspace, runId, options.threadId, signal, channel));
     const turn = await session.run(message, { signal, ...(options.pageId !== undefined && { pageId: options.pageId }), ...(options.inputs !== undefined && { inputs: options.inputs }) });
     thread(options.threadId).runs = [...session.runs()];
     return turn;
@@ -258,11 +289,11 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
 
   async function workspaceRun(runId: string, message: string, options: WorkspaceRuntimeRunOptions, signal: AbortSignal, channel: EventChannel<WorkspaceRunEvent>): Promise<void> {
     const workspace = await load();
-    await stores.runs.start({ runId, pageId: '', revision: workspace.revision });
+    await stores.runs.start({ runId, pageId: '', revision: workspace.revision, threadId: options.threadId });
     const recorder = runRecorder(runId, stores.events, undefined);
     channel.push({ type: 'started', runId, threadId: options.threadId, revision: workspace.revision });
     try {
-      const finished = finishedEvent(runId, await turnOf(workspace, message, options, signal, channel), signal);
+      const finished = finishedEvent(runId, await turnOf(workspace, runId, message, options, signal, channel), signal);
       recorder.emit({ type: 'finished', status: finished.status, usage: finished.usage });
       await endRun(runId, finished.status, recorder);
       channel.push(finished);
@@ -283,7 +314,8 @@ export function createWorkspaceRuntime(source: WorkspaceSource, host: WorkspaceH
 
   async function directPage(runId: string, input: PageInput, options: RunPageOptions, signal: AbortSignal): Promise<PageResult> {
     const workspace = await load();
-    const recorder = await beginPage(runId, input.pageId, workspace.revision, new Map(), options.onEvent);
+    const row = { pageId: input.pageId, revision: workspace.revision, ...(options.threadId !== undefined && { threadId: options.threadId }) };
+    const recorder = await beginPage(runId, row, new Map(), options.onEvent);
     const prior = options.threadId === undefined ? undefined : thread(options.threadId).runs.find((record) => record.runId === input.revise?.runId)?.result;
     let result: PageResult | undefined;
     try {

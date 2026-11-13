@@ -175,11 +175,24 @@ const TABLES = [
   `CREATE TABLE IF NOT EXISTS ws_runs (
      project_id TEXT NOT NULL, workspace_id TEXT NOT NULL, run_id TEXT NOT NULL, page_id TEXT NOT NULL,
      revision TEXT NOT NULL, status TEXT NOT NULL, started_at BIGINT NOT NULL, ended_at BIGINT,
+     thread_id TEXT, parent_run_id TEXT,
      PRIMARY KEY (project_id, workspace_id, run_id))`,
   'CREATE INDEX IF NOT EXISTS ws_runs_status ON ws_runs (project_id, workspace_id, status)',
   'CREATE TABLE IF NOT EXISTS ws_run_events (project_id TEXT NOT NULL, workspace_id TEXT NOT NULL, run_id TEXT NOT NULL, seq INTEGER NOT NULL, event TEXT NOT NULL, PRIMARY KEY (project_id, workspace_id, run_id, seq))',
 ];
 
+const ADDED_COLUMNS = ['ALTER TABLE ws_runs ADD COLUMN thread_id TEXT', 'ALTER TABLE ws_runs ADD COLUMN parent_run_id TEXT'];
+
+function isDuplicateColumn(error: unknown): boolean {
+  const { code, message } = (error ?? {}) as { code?: unknown; message?: unknown };
+  return code === '42701' || (typeof message === 'string' && /duplicate column|already exists/i.test(message));
+}
+
 export async function migrateHostTables(client: SqlClient): Promise<void> {
   for (const statement of TABLES) await client.execute(statement);
+  for (const statement of ADDED_COLUMNS) {
+    await client.execute(statement).catch((error: unknown) => {
+      if (!isDuplicateColumn(error)) throw error;
+    });
+  }
 }
