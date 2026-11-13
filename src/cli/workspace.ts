@@ -213,36 +213,50 @@ function withModel(source: WorkspaceSource, model: string | undefined): Workspac
   };
 }
 
-async function runLocalRun(dir: string, values: Values, message: string | undefined, io: WorkspaceIo): Promise<number> {
+type LocalRuntime = ReturnType<typeof createWorkspaceRuntime>;
+type MainEvent = LocalRuntime['run'] extends (...args: never[]) => AsyncIterable<infer E> ? E : never;
+type FinishedEvent = Extract<MainEvent, { type: 'finished' }>;
+
+async function runLocalPage(runtime: LocalRuntime, page: string, values: Values, message: string | undefined, io: WorkspaceIo): Promise<number> {
   const asJson = values.json === true;
+  const inputs = readInputs(str(values.inputs), io.cwd ?? process.cwd());
+  const onEvent = (wire: Parameters<typeof describeEvent>[0]): void => {
+    if (!asJson) io.stderr.write(`${describeEvent(wire)}\n`);
+  };
+  const result = await runtime.runPage(page, { task: message ?? `Run the ${page} page.`, inputs }, { onEvent });
+  return printResult(result, asJson, io);
+}
+
+function finishedText(event: FinishedEvent): string {
+  const turn = event.turn;
+  if (turn.kind === 'main') return turn.text;
+  if (turn.kind === 'page') return turn.record.result.summary;
+  return `error: ${turn.error.message}`;
+}
+
+function reportMainEvent(event: MainEvent, asJson: boolean, io: WorkspaceIo): void {
+  if (asJson) outputOf(io).json(event);
+  else if (event.type === 'page') io.stderr.write(`${describeEvent(event)}\n`);
+  if (event.type === 'finished' && !asJson) outputOf(io).line(finishedText(event));
+}
+
+async function runLocalMain(runtime: LocalRuntime, message: string | undefined, asJson: boolean, io: WorkspaceIo): Promise<number> {
+  if (message === undefined) throw usageError(SPECS.run, 'a message or --page is required.');
+  let code = 1;
+  for await (const event of runtime.run(message, { threadId: randomUUID() })) {
+    reportMainEvent(event, asJson, io);
+    if (event.type === 'finished') code = event.status === 'ok' ? 0 : 1;
+  }
+  return code;
+}
+
+async function runLocalRun(dir: string, values: Values, message: string | undefined, io: WorkspaceIo): Promise<number> {
   const page = str(values.page);
   const host = await cliHost(dir, { cwd: io.cwd, providers: io.providers, project: str(values.project), hostModule: str(values.host) });
   const runtime = createWorkspaceRuntime(withModel(folderSource(dir), str(values.model)), host);
-  const out = outputOf(io);
   try {
-    if (page !== undefined) {
-      const inputs = readInputs(str(values.inputs), io.cwd ?? process.cwd());
-      const result = await runtime.runPage(
-        page,
-        { task: message ?? `Run the ${page} page.`, inputs },
-        { onEvent: (wire) => (asJson ? undefined : io.stderr.write(`${describeEvent(wire)}\n`)) }
-      );
-      return printResult(result, asJson, io);
-    }
-    if (message === undefined) throw usageError(SPECS.run, 'a message or --page is required.');
-    let code = 1;
-    for await (const event of runtime.run(message, { threadId: randomUUID() })) {
-      if (asJson) out.json(event);
-      else if (event.type === 'page') io.stderr.write(`${describeEvent(event)}\n`);
-      if (event.type !== 'finished') continue;
-      code = event.status === 'ok' ? 0 : 1;
-      if (asJson) continue;
-      const turn = event.turn;
-      if (turn.kind === 'main') out.line(turn.text);
-      else if (turn.kind === 'page') out.line(turn.record.result.summary);
-      else out.line(`error: ${turn.error.message}`);
-    }
-    return code;
+    if (page !== undefined) return await runLocalPage(runtime, page, values, message, io);
+    return await runLocalMain(runtime, message, values.json === true, io);
   } finally {
     await runtime.close();
   }

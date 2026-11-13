@@ -29,11 +29,14 @@ interface HostModule {
 
 const CEILING: PolicyCeiling = { permissions: [], tools: { allow: ['*'] }, secrets: [] };
 
+const fieldsOf = (output: unknown): unknown[] => (typeof output === 'object' && output !== null ? Object.values(output) : [output]);
+
+const isText = (value: unknown): boolean => typeof value === 'string' && value.trim().length > 0;
+
 const outputPresent: Check<unknown> = {
   evaluate: (output) => {
-    const values = typeof output === 'object' && output !== null ? Object.values(output) : [output];
-    const passed = values.some((value) => typeof value === 'string' && value.trim().length > 0);
-    return { score: passed ? 1 : 0, passed, threshold: 1, message: passed ? undefined : 'output has no non-empty text field' };
+    if (fieldsOf(output).some(isText)) return { score: 1, passed: true, threshold: 1 };
+    return { score: 0, passed: false, threshold: 1, message: 'output has no non-empty text field' };
   },
 };
 

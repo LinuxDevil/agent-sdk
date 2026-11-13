@@ -9,7 +9,7 @@ import { mockModel } from '../testing';
 import { fixtureClient } from '../workspaces/client/__fixtures__/fixtureClient';
 import { cliHost } from './workspaceHostCli';
 import { isWorkspaceCommand, runWorkspace, type WorkspaceIo } from './workspace';
-import { WORKSPACE_TEMPLATES } from './workspaceTemplates';
+import { OUTPUT_CHECK_NAME, WORKSPACE_TEMPLATES } from './workspaceTemplates';
 
 let root: string;
 beforeEach(() => {
@@ -184,6 +184,14 @@ describe('lousho workspace --host', () => {
     const host = await cliHost(root, { cwd: root, hostModule: 'host.mjs' });
     expect(host.policyCeiling.tools.allow).toEqual(['only']);
     expect(typeof host.bindTool).toBe('function');
+  });
+
+  it('registers an output-present check that passes only when the output has non-empty text', async () => {
+    const check = (await cliHost(root, { cwd: root })).checks?.get(OUTPUT_CHECK_NAME);
+    expect(check?.evaluate({ script: 'Hello' })).toMatchObject({ passed: true, score: 1 });
+    expect(check?.evaluate('plain text')).toMatchObject({ passed: true });
+    expect(check?.evaluate({ script: '   ', count: 3 })).toMatchObject({ passed: false, score: 0, message: 'output has no non-empty text field' });
+    expect(check?.evaluate(null)).toMatchObject({ passed: false });
   });
 
   it('reports a host module that cannot be imported', async () => {

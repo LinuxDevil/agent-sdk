@@ -19,7 +19,7 @@ import {
   type WorkspaceCheckRegistry,
 } from 'lousho/workspaces';
 
-export const WORKSPACE_DIR = fileURLToPath(new URL('./workspace', import.meta.url));
+const WORKSPACE_DIR = fileURLToPath(new URL('./workspace', import.meta.url));
 
 export const WORKSPACE_ID = 'marketing';
 
