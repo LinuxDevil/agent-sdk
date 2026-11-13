@@ -26,8 +26,14 @@
  *   GET  /inbox/count                -> InboxCount
  *   POST /inbox/alerts/:alertId/dismiss -> 204 | 404
  *   POST /hooks/:agentId/<path>       -> webhook trigger fire (triggers/webhookRoute.ts, R08a);
+ *                                        public - HMAC or loopback-only, no studio token
  *   ALL  /hooks/:agentId/channel/<kind> -> channel trigger (triggers/channelTriggers.ts, R08b);
  *                                        public - platform-signed, no studio token
+ *   ANY  /serve/:id/*                 -> the published agent's SDK chat API (serve/serveRoutes.ts, X02a);
+ *                                        host-only at the gate, bearer + allowedOrigins inside
+ *   GET/PUT /agents/:id/serve         -> ServeStatus - the serve switch + masked token (serve/serveRoutes.ts)
+ *   GET  /agents/:id/serve/token      -> { token } - the raw bearer, revealed on demand
+ *   POST /agents/:id/serve/rotate-token -> { token } - new bearer, old one dies at once
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   GET  /workspace/agent-dirs       -> CodeAgentDir[] - agent dirs found under the workspace root (workspace/agentDirRoutes.ts, X06a)
  *   GET  /workspace/agent-dirs/spec  -> CodeAgentSpecResponse for ?path=<rel> (400 escape, 404 unlisted, 422 unreadable config)
@@ -120,7 +126,7 @@ import {
   traceDirExists,
 } from './traceStore';
 import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
-import { checkApiAccess, checkHostAndOrigin, type StudioAccessOptions } from './auth';
+import { checkApiAccess, checkHostAndOrigin, checkHostOnly, type StudioAccessOptions } from './auth';
 import { registerObserveProxy } from './observeProxy';
 import { CollectorManager } from './collector';
 import { registerCollectorRoutes } from './routes/collectorRoutes';
@@ -170,6 +176,8 @@ import { registerRatingRoutes } from './ratings';
 import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
+import { ServeConfigStore } from './serve/serveConfigStore';
+import { createServeSurface, type ServeAgentBuilder } from './serve/serveRoutes';
 import { sdkRootDir } from './sdkRoot';
 
 interface CreateAppBaseOptions {
@@ -299,6 +307,18 @@ interface CreateAppBaseOptions {
    * `createWorkspaceContext`/`legacyWorkspaceContext`).
    */
   inbox?: InboxService;
+  /**
+   * The `/serve/<id>` switch's store (X02a, serve/serveConfigStore.ts) -
+   * Studio-global like the other `studioPaths()` stores. Defaults to
+   * `new ServeConfigStore(studioPaths().serve)`.
+   */
+  serveConfig?: ServeConfigStore;
+  /**
+   * The agent builder the serve surface uses (X02a) - a test seam:
+   * inject a stub `SimpleAgent` factory instead of the real
+   * `buildRunnableAgent` compile. Defaults to the real builder.
+   */
+  serveAgentBuilder?: ServeAgentBuilder;
 }
 
 /**
@@ -386,6 +406,18 @@ function isWebhookPost(req: Request): boolean {
   if (req.method !== 'POST') return false;
   const normalised = gatePath(req.path);
   return normalised !== undefined && normalised.startsWith('/hooks/');
+}
+
+/**
+ * `/serve/**` is the published-agent surface (X02a): external apps call it
+ * with the agent's own bearer token and their own `Origin`, so the global
+ * gate applies the Host check alone here - the serve router enforces the
+ * bearer and the agent's `allowedOrigins` itself. `gatePath` normalizes
+ * the same way the token gate compares.
+ */
+function isServePath(req: Request): boolean {
+  const normalised = gatePath(req.path);
+  return normalised !== undefined && (normalised === '/serve' || normalised.startsWith('/serve/'));
 }
 
 type ErrorClass = new (...args: never[]) => Error;
@@ -1001,7 +1033,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events|\/inbox|\/hooks).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events|\/inbox|\/hooks|\/serve).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -1193,6 +1225,16 @@ export function createApp(options: CreateAppOptions): Express {
     options.passRunner ??
     new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
   const alerts = options.alerts ?? new AlertStore(paths.alerts);
+  // The `/serve/<id>` surface (X02a): one config store (Studio-global,
+  // `studioPaths().serve`) + one cached-handler map shared by the early
+  // `/serve` router and the `/agents/:id/serve*` management routes.
+  const serve = createServeSurface({
+    config: options.serveConfig ?? new ServeConfigStore(paths.serve),
+    secretsStore: secrets,
+    settings,
+    spendLog,
+    ...(options.serveAgentBuilder !== undefined ? { buildAgent: options.serveAgentBuilder } : {}),
+  });
   const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog }, secrets);
   // One resolver for the middleware below and the Author tools' per-call
   // workspace lookup (PLAN 19.3): the injected `WorkspaceManager` when
@@ -1243,6 +1285,17 @@ export function createApp(options: CreateAppOptions): Express {
       next();
       return;
     }
+    // `/serve/**` callers are external apps, not Studio tabs: host-only at
+    // this layer (the serve router applies the agent bearer + allowedOrigins).
+    if (isServePath(req)) {
+      const decision = access ? checkHostOnly(req, access) : checkHostOnly(req, { token: '' });
+      if (!decision.ok) {
+        res.status(decision.status).json({ error: decision.error });
+        return;
+      }
+      next();
+      return;
+    }
     const decision = access
       ? needsToken(req)
         ? checkApiAccess(req, access)
@@ -1276,6 +1329,11 @@ export function createApp(options: CreateAppOptions): Express {
   // the exact body, and `express.raw` sets `req._body` so the JSON parser
   // below leaves it alone. Every other route keeps `express.json`.
   app.use('/hooks', express.raw({ type: () => true, limit: '1mb' }));
+  // The published-agent surface (X02a): `/serve/<id>/*` streams through
+  // the Fetch bridge, so it mounts BEFORE `express.json()` - a parsed body
+  // would already be consumed. The global gate above applied the host-only
+  // check; the router applies the per-agent bearer + allowed origins.
+  app.use('/serve', serve.router);
   app.use(express.json({ limit: '2mb' }));
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
@@ -1365,6 +1423,10 @@ export function createApp(options: CreateAppOptions): Express {
   // Publish pointer: `POST /agents/:id/publish` (lifecycle/publish.ts -
   // stores come from workspaceOf(req), the workspace seam).
   registerPublishRoutes(app);
+  // The serve switch's management routes (X02a): `GET/PUT
+  // /agents/:id/serve`, `GET .../serve/token`, `POST .../serve/rotate-token`.
+  // The `/serve/<id>/*` data router mounted before express.json() above.
+  serve.registerRoutes(app);
   registerWorkspaceRoute(app);
   // Code-agent discovery (X06a): agent dirs under the workspace root +
   // their data-config specs for the read-only canvas.
