@@ -55,7 +55,7 @@ export interface PageRuntimeHost {
   globalProfiles?: ProfileStore;
   /** Builds the slot for a `shared/memory/*.ts` file; the core never runs workspace code. */
   createMemory?: (file: SharedMemoryFile) => MemorySlot;
-  /** The host's programmatic checks by name, for criteria whose `check` names one; a workspace check file is never imported. */
+  /** The host's programmatic checks by name, for criteria whose `check` names one; the goal engine (P3.6) and check runs (P5.13) read it, and a workspace check file is never imported. */
   checks?: WorkspaceCheckRegistry;
 }
 
