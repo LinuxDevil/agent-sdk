@@ -7,6 +7,13 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('../../runtime/runtimeClient', () => ({ runtimeClient: api }));
 
+// The rail's WorkspaceSwitcher reads the workspace context; these tests
+// only exercise the nav items, so the list stays unloaded.
+vi.mock('../../workspace/WorkspacesProvider', () => ({
+  useWorkspaces: () => ({ list: undefined, launchId: undefined, activeId: undefined, error: undefined, refresh: async () => {} }),
+  useWorkspacesMaybe: () => undefined,
+}));
+
 import { NavRail } from '../NavRail';
 import { render } from '../../ui/__tests__/render';
 

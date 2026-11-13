@@ -74,3 +74,13 @@ export function useWorkspaces(): WorkspacesState {
   if (ctx === undefined) throw new Error('useWorkspaces must be used inside <WorkspacesProvider>');
   return ctx;
 }
+
+/**
+ * `useWorkspaces` without the throw: `undefined` outside the provider.
+ * The NavRail's `WorkspaceSwitcher` uses it so shell-level mounts (tests,
+ * isolated stories) that never wrap `WorkspacesProvider` simply render no
+ * switcher instead of crashing the whole rail.
+ */
+export function useWorkspacesMaybe(): WorkspacesState | undefined {
+  return useContext(WorkspacesContext);
+}

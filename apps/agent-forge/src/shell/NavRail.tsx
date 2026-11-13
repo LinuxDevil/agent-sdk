@@ -4,6 +4,7 @@ import { useInboxCount } from '../state/useInboxCount';
 import { useRoute } from '../router/useRoute';
 import { DaemonStatus } from './DaemonStatus';
 import { NavBrand } from './NavBrand';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 export type NavSection = 'Build' | 'Observe' | 'Evaluate' | 'Assets' | 'Footer';
 
@@ -90,6 +91,7 @@ export function NavRail({
   return (
     <nav id="primary-nav" className="nav-rail" aria-label="Primary" data-drawer={drawer} data-collapsed={rail || undefined}>
       <NavBrand collapsed={rail} onToggle={drawer === undefined ? onToggleCollapsed : undefined} />
+      <WorkspaceSwitcher collapsed={rail} />
       {SECTION_ORDER.map((section) => (
         <ul key={section} className={`nav-group${section === 'Footer' ? ' nav-footer' : ''}`}>
           {section !== 'Footer' && (
