@@ -5,13 +5,13 @@
  * Proves that what `npm pack` produces installs and works, in a fresh project
  * that has never seen this checkout:
  *
- *   1. builds the SDK, `create-lousho` and Agent Forge (the
- *      `build:studio` step `prepublishOnly` also runs, so the packed tarball is
- *      the one that is really published; skip with --skip-build),
+ *   1. builds the SDK and `create-lousho` (the `prepublishOnly` build, so the
+ *      packed tarball is the one that is really published; skip with
+ *      --skip-build),
  *   2. `npm pack`s both into a temp dir and checks the SDK tarball (no `.env`,
- *      tests, fixtures or secret-looking strings; the files `lousho build` and
- *      `lousho studio` need are present; entry count and unpacked size under
- *      the thresholds below),
+ *      tests, fixtures or secret-looking strings; the files `lousho build`
+ *      needs are present - Studio left the tarball in W13b; entry count and
+ *      unpacked size under the thresholds below),
  *   3. `npm publish <tarball> --dry-run` for both packages (nothing is
  *      published; a tarball argument also skips the prepublishOnly build),
  *   4. installs the tarballs plus the required peers from the REGISTRY into a
@@ -74,10 +74,14 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * The `@linuxdevil/lousho/spec` subpath (S23: dist/spec/{index.js,index.mjs,index.d.ts,
  * index.d.mts}) pushed the packed size to 5,276,320 bytes (~5.03 MiB);
  * packed budget raised to 5.5 MiB (~9% headroom).
+ * Studio left the SDK tarball (2026-11-13, W13b): measured 1016 entries /
+ * 15,289,389 bytes unpacked / 4,393,121 bytes packed; budgets ~10% headroom.
+ * The entry count still sits under the existing 1040 budget (new subpath
+ * entries offset Studio's removal), so MAX_ENTRIES stays put.
  */
 const MAX_ENTRIES = 1040;
-const MAX_UNPACKED_BYTES = 18 * 1024 * 1024;
-const MAX_PACKED_BYTES = Math.floor(5.5 * 1024 * 1024);
+const MAX_UNPACKED_BYTES = 17 * 1024 * 1024;
+const MAX_PACKED_BYTES = 5 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
 const FORBIDDEN_PATHS = [
@@ -90,7 +94,8 @@ const FORBIDDEN_PATHS = [
   /__snapshots__\//,
   /__cassettes__\//,
   /(^|\/)node_modules\//,
-  /^apps\/agent-forge\/dist-server\/.*\.map$/,
+  // Nothing under apps/ ships: Studio is the separate @linuxdevil/studio package (W13b).
+  /^apps\//,
   /^dist\/.*\.map$/,
   // bin/lousho.js loads only the ESM CLI build (dist/cli/*.mjs); the CJS one is not shipped.
   /^dist\/cli\/[^/]+\.js(\.map)?$/,
@@ -100,9 +105,7 @@ const FORBIDDEN_PATHS = [
 /**
  * Files the published package must contain: `lousho build` bundles
  * `src/deploy/runtime.worker.ts`, `src/deploy/shims/node.worker.ts` and
- * `src/index.ts` from the installed package root (see `src/deploy/bundle.ts`),
- * and `lousho studio` serves `apps/agent-forge/dist` and runs
- * `apps/agent-forge/dist-server/index.cjs`.
+ * `src/index.ts` from the installed package root (see `src/deploy/bundle.ts`).
  */
 const REQUIRED_PATHS = [
   'src/index.ts',
@@ -110,8 +113,6 @@ const REQUIRED_PATHS = [
   'src/deploy/runtime.worker.ts',
   'src/deploy/shims/node.worker.ts',
   'templates/support-triage/spec.yaml',
-  'apps/agent-forge/dist-server/index.cjs',
-  'apps/agent-forge/dist/index.html',
 ];
 const SECRET_PATTERNS = [/sk-[A-Za-z0-9]{32,}/, /AKIA[0-9A-Z]{16}/, /ghp_[A-Za-z0-9]{30,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/, /_authToken\s*=/];
 
@@ -308,8 +309,6 @@ function main(): void {
   if (!args.has('--skip-build')) {
     mustRun('npm run build', 'npm', ['run', 'build'], REPO_ROOT);
     mustRun('npm run build (create-lousho)', 'npm', ['run', 'build', '--workspace=packages/create-lousho'], REPO_ROOT);
-    // prepublishOnly also builds Agent Forge; without it the tarball is ~5 MB smaller than the published one.
-    mustRun('npm run build:studio', 'npm', ['run', 'build:studio'], REPO_ROOT);
   }
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-pack-smoke-'));
   log(`temp dir ${base}`);

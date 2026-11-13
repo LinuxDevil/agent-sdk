@@ -28,6 +28,7 @@ describe('bin/lousho.js', () => {
     expect(banner).not.toContain('stub');
     expect(banner).toContain('[--timeout <ms>]');
     expect(banner).toContain('lousho --version');
+    expect(banner).toContain('lousho studio [--port N] [--host H]');
     expect(banner).toContain('[--allowed-hosts a,b]');
     expect(banner).toContain('2 usage error');
   });

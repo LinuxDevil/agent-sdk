@@ -23,8 +23,8 @@ const USAGE = [
   '      Install a tool, skill, channel, schedule or kit from a registry into an agent directory.',
   '  lousho build <agent-dir|spec|agent.ts> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]   (or --agent=<path>)',
   '      Bundle an agent for deployment (default output: .lousho/build/<target>).',
-  '  lousho studio [--port N] [--host H] [--prod|--dev]',
-  '      Open Agent Forge, the visual agent builder.',
+  '  lousho studio [--port N] [--host H]',
+  '      Open Lousho Studio on this project (a separate install: npm i -g @linuxdevil/studio).',
   '  lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]',
   '      Serve an agent as an MCP server (stdio by default).',
   '  lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]',
@@ -66,9 +66,9 @@ const COMMANDS = new Map([
   // Installs a tool, skill, channel, schedule or memory slot from a JSON registry; see src/cli/add.ts.
   ['add', { module: 'add', run: 'runAdd' }],
   ['build', { module: 'build', run: 'runBuild', env: true }],
-  // Default 'auto': prod (single built server+UI) when apps/agent-forge has
-  // been built (`npm run build:studio`), dev (Vite + tsx, two processes)
-  // otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
+  // Finds an installed @linuxdevil/studio (or the SDK checkout's
+  // apps/agent-forge) and opens this folder as a workspace; inside the
+  // checkout, --prod/--dev pick the launch mode - see src/cli/studio.ts.
   ['studio', { module: 'studio', run: 'runStudio' }],
   // Serves an agent spec over MCP (stdio by default). The server keeps the
   // process alive; see src/cli/mcp.ts.

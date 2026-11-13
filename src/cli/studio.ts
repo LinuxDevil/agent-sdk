@@ -1,83 +1,86 @@
 /**
- * `lousho studio` - launches Agent Forge, the visual dashboard for building,
+ * `lousho studio` - opens Lousho Studio, the visual dashboard for building,
  * running and debugging agents built with this SDK.
  *
- * Two modes:
+ * Studio is a separate package (`@linuxdevil/studio`, W13a/W13b): the SDK
+ * tarball no longer ships `apps/agent-forge`, so this command resolves a
+ * Studio install and launches its CLI (`dist-server/cli.cjs`) as a child
+ * process. Two kinds of target:
  *
- *   - **prod** (single process, single port): the runtime control
- *     server (`apps/agent-forge/server`, bundled to plain JS by
- *     `apps/agent-forge/server/tsup.config.ts` into `dist-server/index.cjs`)
- *     serves both its own REST/WS API *and* the pre-built client
- *     (`apps/agent-forge/dist`, `vite build`'s output) as static files - see
- *     `createApp`'s `staticDir` option in `apps/agent-forge/server/app.ts`.
- *     No Vite process, no TypeScript loader (`tsx`), no dev dependencies:
- *     this is what actually ships in the published npm package and what
- *     `lousho studio` runs by default once `apps/agent-forge` has been
- *     built (`build:studio` - see the root `package.json`'s
- *     `prepublishOnly`, which always runs it before `npm publish`).
+ *   - **checkout**: `<cwd>/apps/agent-forge` whose package.json is named
+ *     `@linuxdevil/studio` - i.e. this SDK repository. Keeps the
+ *     contributor modes:
  *
- *   - **dev** (two sibling processes, original shape): the API
- *     server run via `tsx` straight off its TypeScript source, plus
- *     `apps/agent-forge`'s own Vite dev server (HMR) proxying `/agents/**`
- *     to it. Only usable from inside a source checkout that has
- *     `apps/agent-forge/src`/`server` and its devDependencies installed
- *     (this monorepo, or a project vendoring `apps/agent-forge` the same
- *     way) - not something the published package can rely on, which is
- *     exactly why prod mode above exists.
+ *       - **prod**: `dist-server/cli.cjs --workspace <cwd> --port <p>
+ *         --host <h>` - one process serving the built UI and API (the
+ *         Studio CLI mints and prints its own per-launch token).
+ *       - **dev**: the API server via `tsx` plus the Vite dev server
+ *         (HMR), exactly as before; only meaningful with the app's
+ *         devDependencies installed.
  *
- * Mode selection: `--prod` / `--dev` force one or the other (and error
- * clearly if what they need isn't present); with neither flag, `lousho
- * studio` auto-detects by checking whether `apps/agent-forge/dist-server`
- * has already been built - present (the normal case for anyone who `npm
- * install`ed the published package) means prod, absent (the normal case
- * mid-development in this monorepo, before running `build:studio`) means
- * dev. This means the *same* `lousho studio` command is the right one to
- * document for both audiences; only what's on disk differs.
+ *   - **installed**: `@linuxdevil/studio` resolved from the current
+ *     directory's node_modules, then next to the SDK package, then npm's
+ *     global root. Launched the same way as prod (`cli.cjs` with
+ *     `--workspace <cwd>`); `--prod`/`--dev` are a usage error there.
  *
- * Both modes are still started as child process(es) rather than imported
- * in-process, deliberately: `apps/agent-forge` is a separate workspace
- * package (its own `package.json`, `"type": "module"`, its own dependency
- * graph) - importing its code as a module from this SDK's own CLI bundle
- * would mean bundling all of `apps/agent-forge`'s dependencies into the
- * SDK's own `dist/`. Spawning `node dist-server/index.cjs` (prod) or two
- * ordinary `npm`-script child processes (dev) keeps `apps/agent-forge/**`
- * genuinely optional for every other SDK consumer, and says so clearly if
- * the app directory (or its build output, in `--prod`) isn't found.
+ * With no Studio anywhere the command prints STUDIO_MISSING and exits 1.
+ * Spawning a child process (rather than importing the app) is deliberate:
+ * Studio's dependency graph stays out of the SDK's own CLI bundle.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { exitCodeFor, parseCommand, portValue, stringValue, usageError, type CommandSpec } from './args';
 import { ConfigurationError } from '../execution/errors';
 import { findSdkRoot } from '../deploy/bundle';
 
+/** The published Studio package `lousho studio` looks for. */
+export const STUDIO_PACKAGE = '@linuxdevil/studio';
+/** Printed when no Studio checkout or install can be found. */
+export const STUDIO_MISSING = `Studio is a separate install: npx ${STUDIO_PACKAGE}`;
+
 export type StudioMode = 'auto' | 'dev' | 'prod';
 
+export type StudioTarget =
+  /** `<cwd>/apps/agent-forge` in the SDK repository. */
+  | { kind: 'checkout'; appDir: string }
+  /** An installed `@linuxdevil/studio` package. */
+  | { kind: 'installed'; cliPath: string; packageDir: string };
+
+export interface FindStudioOptions {
+  /** Root of the installed SDK package (step 3 of the search). Defaults to findSdkRoot(). */
+  packageRoot?: string;
+  /** npm's global root (`npm root -g`). Injectable for tests. */
+  globalRoot?: () => string | undefined;
+}
+
 export interface StudioOptions {
-  /** Repo root containing `apps/agent-forge`. Defaults to process.cwd(). */
+  /** Directory `lousho studio` was run from: the checkout lookup root and the installed `--workspace`. Default process.cwd(). */
   repoRoot?: string;
-  /** Port for the API server (env `PORT` for the child process). Default 4750. */
+  /** Port for the studio server. Default 4750. */
   apiPort?: number;
-  /** Host for the API server. Default 127.0.0.1. */
+  /** Host for the studio server. Default 127.0.0.1. */
   apiHost?: string;
   /**
-   * 'prod' | 'dev' force a mode (and throw if what it needs isn't present);
-   * 'auto' (default) picks 'prod' when `apps/agent-forge/dist-server` has
-   * been built, else 'dev'.
+   * 'prod' | 'dev' force a checkout mode (and throw if what they need isn't
+   * present); 'auto' (default) picks 'prod' when the checkout's
+   * `dist-server/cli.cjs` has been built, else 'dev'. With an installed
+   * target any explicit mode is a usage error.
    */
   mode?: StudioMode;
-  /**
-   * Root of the installed `lousho` package, whose own
-   * `apps/agent-forge` is used when `repoRoot` has none. Defaults to the
-   * package this CLI runs from; tests point it at a temporary directory.
-   */
+  /** Forwarded to {@link findStudio}. */
   packageRoot?: string;
+  /** Forwarded to {@link findStudio}. */
+  globalRoot?: () => string | undefined;
+  /** Test seam replacing `node:child_process`'s spawn for the launched Studio. */
+  spawnFn?: typeof spawn;
 }
 
 /**
- * Env var carrying the per-launch API token to the studio server
- * (and, in dev mode, to Vite's proxy). Mirrors `STUDIO_TOKEN_ENV` in
+ * Env var carrying the per-launch API token to the studio server in dev
+ * mode (and to Vite's proxy). Mirrors `STUDIO_TOKEN_ENV` in
  * `apps/agent-forge/server/auth.ts`.
  */
 const STUDIO_TOKEN_ENV = 'LOUSHO_STUDIO_TOKEN';
@@ -92,13 +95,17 @@ export function studioUrl(apiHost: string, apiPort: number, token: string): stri
 }
 
 export interface StudioHandle {
-  /** The per-launch token every API/WebSocket request must carry (it is in the printed URL). */
-  token: string;
-  /** The API server (prod: also serves the UI). Always present. */
+  /**
+   * The per-launch token every API/WebSocket request must carry. Only known
+   * in checkout dev mode - prod and installed launches let the Studio CLI
+   * mint and print its own.
+   */
+  token?: string;
+  /** The studio server process (dev mode: the API server; viteProcess is the UI). */
   apiProcess: ChildProcess;
-  /** The Vite dev server. Only present in dev mode. */
+  /** The Vite dev server. Only present in checkout dev mode. */
   viteProcess?: ChildProcess;
-  mode: 'dev' | 'prod';
+  mode: 'dev' | 'prod' | 'installed';
   stop: () => void;
 }
 
@@ -110,20 +117,97 @@ function resolveNpmCommand(): string {
   return process.platform === 'win32' ? 'npm.cmd' : 'npm';
 }
 
-function distServerEntry(appDir: string): string {
+function studioCliEntry(appDir: string): string {
   // `.cjs`, not `.js` - see `apps/agent-forge/server/tsup.config.ts`'s doc
   // comment for why the server is bundled to CommonJS.
-  return path.join(appDir, 'dist-server', 'index.cjs');
+  return path.join(appDir, 'dist-server', 'cli.cjs');
+}
+
+/** True when `dir/apps/agent-forge/package.json` names the Studio package (the SDK checkout). */
+function isStudioCheckout(dir: string): boolean {
+  const pkgPath = path.join(dir, 'apps', 'agent-forge', 'package.json');
+  if (!fs.existsSync(pkgPath)) return false;
+  try {
+    return JSON.parse(fs.readFileSync(pkgPath, 'utf8')).name === STUDIO_PACKAGE;
+  } catch {
+    return false;
+  }
+}
+
+/** Step 1: the SDK checkout's own `apps/agent-forge`. */
+function checkoutTarget(cwd: string): StudioTarget | undefined {
+  return isStudioCheckout(cwd) ? { kind: 'checkout', appDir: path.join(cwd, 'apps', 'agent-forge') } : undefined;
+}
+
+/** The directory holding `@linuxdevil/studio`'s package.json as resolved from `fromDir`, if any. */
+function resolveStudioPackageDir(fromDir: string): string | undefined {
+  try {
+    const require = createRequire(path.join(fromDir, 'package.json'));
+    return path.dirname(require.resolve(`${STUDIO_PACKAGE}/package.json`));
+  } catch {
+    return undefined;
+  }
+}
+
+/** An installed target, or undefined when `packageDir` lacks the runnable CLI. */
+function installedTarget(packageDir: string | undefined): StudioTarget | undefined {
+  if (!packageDir) return undefined;
+  const cliPath = path.join(packageDir, 'dist-server', 'cli.cjs');
+  if (!fs.existsSync(path.join(packageDir, 'package.json')) || !fs.existsSync(cliPath)) return undefined;
+  return { kind: 'installed', cliPath, packageDir };
+}
+
+/** Steps 2+3: Studio installed next to `cwd`, then next to the SDK package. */
+function localStudioTarget(cwd: string, packageRoot: string | undefined): StudioTarget | undefined {
+  for (const dir of [cwd, packageRoot]) {
+    const target = dir ? installedTarget(resolveStudioPackageDir(dir)) : undefined;
+    if (target) return target;
+  }
+  return undefined;
+}
+
+function sdkRootSafe(): string | undefined {
+  try {
+    return findSdkRoot();
+  } catch {
+    return undefined;
+  }
+}
+
+/** npm's global root (`npm root -g`); undefined when npm cannot answer. */
+function defaultGlobalRoot(): string | undefined {
+  const res = spawnSync(resolveNpmCommand(), ['root', '-g'], { encoding: 'utf8' });
+  const root = res.status === 0 ? res.stdout.trim() : '';
+  return root || undefined;
+}
+
+/** Step 4: Studio installed globally (`npm i -g @linuxdevil/studio`). */
+function globalStudioTarget(globalRoot: () => string | undefined): StudioTarget | undefined {
+  const root = globalRoot();
+  return root ? installedTarget(path.join(root, STUDIO_PACKAGE)) : undefined;
+}
+
+/**
+ * Finds Studio: the checkout copy under `cwd` first, then an installed
+ * `@linuxdevil/studio` resolved from `cwd`, from the SDK package, then npm's
+ * global root. Returns undefined when nothing runnable exists.
+ */
+export function findStudio(cwd: string, options: FindStudioOptions = {}): StudioTarget | undefined {
+  return (
+    checkoutTarget(cwd) ??
+    localStudioTarget(cwd, options.packageRoot ?? sdkRootSafe()) ??
+    globalStudioTarget(options.globalRoot ?? defaultGlobalRoot)
+  );
 }
 
 function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
   if (requested === 'dev' || requested === 'prod') return requested;
-  if (fs.existsSync(distServerEntry(appDir))) return 'prod';
+  if (fs.existsSync(studioCliEntry(appDir))) return 'prod';
   if (!fs.existsSync(path.join(appDir, 'server', 'index.ts'))) {
-    // Neither the build nor the source: a package packed without Agent Forge (a local `npm pack`).
+    // Neither the build nor the source: a checkout packed without a Studio build.
     throw new ConfigurationError(
-      `lousho studio: this copy of lousho has no Agent Forge build ('${distServerEntry(appDir)}' is missing). ` +
-        "It was packed without it: install a published release, or in the SDK checkout run 'npm run build:studio' before 'npm pack'.",
+      `lousho studio: this checkout's Studio has no build ('${studioCliEntry(appDir)}' is missing). ` +
+        "Run 'npm run build:studio' from the repo root first.",
       'studio'
     );
   }
@@ -131,45 +215,27 @@ function resolveMode(appDir: string, requested: StudioMode): 'dev' | 'prod' {
 }
 
 /**
- * Starts Agent Forge: in prod mode, a single API server process that
- * also serves the pre-built UI; in dev mode, that same API server (run from
- * TS source via `tsx`) alongside a sibling Vite dev server process. Both
- * inherit this process's stdio so their output (including each one's own
- * "listening on ..." line) shows up directly in the terminal that ran
- * `lousho studio`.
+ * Launches Studio: a checkout's prod/dev modes, or an installed package's
+ * `cli.cjs`. Child processes inherit this process's stdio so their output
+ * shows up in the terminal that ran `lousho studio`.
  */
 export function startStudio(options: StudioOptions = {}): StudioHandle {
   const { repoRoot = process.cwd(), apiPort = 4750, apiHost = '127.0.0.1', mode: requested = 'auto' } = options;
-  const packageRoot = options.packageRoot ?? findSdkRoot();
-  const appDir = resolveAgentForgeDir(repoRoot, packageRoot);
+  const spawnImpl = options.spawnFn ?? spawn;
+  const target = findStudio(repoRoot, options);
 
-  if (!appDir) throw agentForgeNotFound(repoRoot, packageRoot);
-
-  const mode = resolveMode(appDir, requested);
-  const token = randomBytes(24).toString('base64url');
-
-  if (mode === 'prod') return startProdStudio(appDir, repoRoot, apiPort, apiHost, token);
-  return startDevStudio(appDir, repoRoot, apiPort, apiHost, token);
-}
-
-/**
- * Finds the Agent Forge app: the project's own `apps/agent-forge` first (the
- * SDK repo, or a project that vendors the app), else the copy shipped inside
- * the installed package. Returns undefined when neither has a `package.json`.
- */
-export function resolveAgentForgeDir(repoRoot: string, packageRoot: string): string | undefined {
-  for (const root of [repoRoot, packageRoot]) {
-    const dir = path.join(root, 'apps', 'agent-forge');
-    if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
+  if (!target) throw new ConfigurationError(STUDIO_MISSING, 'studio');
+  if (target.kind === 'installed') {
+    if (requested !== 'auto') {
+      throw usageError(SPEC, '--prod and --dev only apply inside the SDK repository (apps/agent-forge).');
+    }
+    return startInstalledStudio(target, repoRoot, apiPort, apiHost, spawnImpl);
   }
-  return undefined;
-}
 
-function agentForgeNotFound(repoRoot: string, packageRoot: string): ConfigurationError {
-  return new ConfigurationError(
-    `lousho studio: could not find apps/agent-forge under '${repoRoot}' or in the installed package ` +
-      `('${path.join(packageRoot, 'apps', 'agent-forge')}'). Run this from the root of a repo that ` +
-      'includes the Agent Forge app, or reinstall lousho.', 'studio');
+  const mode = resolveMode(target.appDir, requested);
+  if (mode === 'prod') return startProdStudio(target.appDir, repoRoot, apiPort, apiHost, spawnImpl);
+  const token = randomBytes(24).toString('base64url');
+  return startDevStudio(target.appDir, repoRoot, apiPort, apiHost, token, spawnImpl);
 }
 
 /** Logs a child process's non-zero exit (a null code means it was killed by a signal). */
@@ -179,10 +245,28 @@ function reportUnexpectedExit(label: string, code: number | null): void {
   }
 }
 
+/** Launches an installed Studio: `cli.cjs --workspace <cwd> --port <p> --host <h>`. */
+function startInstalledStudio(
+  target: Extract<StudioTarget, { kind: 'installed' }>,
+  workspace: string,
+  apiPort: number,
+  apiHost: string,
+  spawnImpl: typeof spawn
+): StudioHandle {
+  console.log(`[lousho studio] starting ${STUDIO_PACKAGE} (port ${apiPort})...`);
+  const apiProcess = spawnImpl(
+    process.execPath,
+    [target.cliPath, '--workspace', workspace, '--port', String(apiPort), '--host', apiHost],
+    { stdio: 'inherit' }
+  );
+  apiProcess.on('exit', (code) => reportUnexpectedExit('Studio', code));
+  return { apiProcess, mode: 'installed', stop: () => apiProcess.kill() };
+}
+
 function assertProdBuildPresent(appDir: string, entry: string): void {
   if (!fs.existsSync(entry)) {
     throw new ConfigurationError(
-      `lousho studio --prod: '${entry}' does not exist. Build Agent Forge first: ` +
+      `lousho studio --prod: '${entry}' does not exist. Build Studio first: ` +
         "run 'npm run build:studio' from the repo root (this bundles both the client " +
         "'vite build' output into apps/agent-forge/dist and the server into " +
         'apps/agent-forge/dist-server).', 'studio');
@@ -196,17 +280,24 @@ function assertProdBuildPresent(appDir: string, entry: string): void {
   }
 }
 
-function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string, token: string): StudioHandle {
-  const entry = distServerEntry(appDir);
+function startProdStudio(
+  appDir: string,
+  repoRoot: string,
+  apiPort: number,
+  apiHost: string,
+  spawnImpl: typeof spawn
+): StudioHandle {
+  const entry = studioCliEntry(appDir);
   assertProdBuildPresent(appDir, entry);
 
   console.log(`[lousho studio] starting production server (port ${apiPort})...`);
 
-  const apiProcess = spawn(process.execPath, [entry], {
-    cwd: appDir,
-    stdio: 'inherit',
-    env: { ...process.env, PORT: String(apiPort), HOST: apiHost, BASE_DIR: repoRoot, [STUDIO_TOKEN_ENV]: token },
-  });
+  // cli.cjs mints and prints its own per-launch token; no BASE_DIR/token env.
+  const apiProcess = spawnImpl(
+    process.execPath,
+    [entry, '--workspace', repoRoot, '--port', String(apiPort), '--host', apiHost],
+    { cwd: appDir, stdio: 'inherit' }
+  );
 
   function stop(): void {
     apiProcess.kill();
@@ -214,28 +305,33 @@ function startProdStudio(appDir: string, repoRoot: string, apiPort: number, apiH
 
   apiProcess.on('exit', (code) => reportUnexpectedExit('server', code));
 
-  console.log(`[lousho studio] Agent Forge: ${studioUrl(apiHost, apiPort, token)}`);
-
-  return { apiProcess, mode: 'prod', token, stop };
+  return { apiProcess, mode: 'prod', stop };
 }
 
 function assertDevSourcePresent(appDir: string): void {
   if (!fs.existsSync(path.join(appDir, 'server', 'index.ts'))) {
     throw new ConfigurationError(
       `lousho studio --dev: '${path.join(appDir, 'server', 'index.ts')}' does not exist - dev mode ` +
-        'needs the Agent Forge TypeScript source (this only works from inside the SDK monorepo, ' +
+        'needs the Studio TypeScript source (this only works inside the SDK repository, ' +
         "not from an installed npm package). Use the default/--prod mode instead, after running " +
         "'npm run build:studio'.", 'studio');
   }
 }
 
-function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHost: string, token: string): StudioHandle {
+function startDevStudio(
+  appDir: string,
+  repoRoot: string,
+  apiPort: number,
+  apiHost: string,
+  token: string,
+  spawnImpl: typeof spawn
+): StudioHandle {
   assertDevSourcePresent(appDir);
   const npmCmd = resolveNpmCommand();
 
   console.log(`[lousho studio] starting API server (port ${apiPort}) and Vite dev server...`);
 
-  const apiProcess = spawn(npmCmd, ['run', 'server:dev'], {
+  const apiProcess = spawnImpl(npmCmd, ['run', 'server:dev'], {
     cwd: appDir,
     stdio: 'inherit',
     env: {
@@ -253,7 +349,7 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
     },
   });
 
-  const viteProcess = spawn(npmCmd, ['run', 'dev'], {
+  const viteProcess = spawnImpl(npmCmd, ['run', 'dev'], {
     cwd: appDir,
     stdio: 'inherit',
     // Tells vite.config.ts's dev-server proxy where the API server it just
@@ -280,26 +376,24 @@ function startDevStudio(appDir: string, repoRoot: string, apiPort: number, apiHo
   });
 
   console.log(`[lousho studio] API server:  http://${apiHost}:${apiPort}`);
-  console.log(`[lousho studio] Agent Forge UI: ${VITE_DEV_ORIGINS[0]}/?token=${encodeURIComponent(token)}`);
+  console.log(`[lousho studio] Studio UI: ${VITE_DEV_ORIGINS[0]}/?token=${encodeURIComponent(token)}`);
 
   return { apiProcess, viteProcess, mode: 'dev', token, stop };
 }
 
-const USAGE = 'Usage: lousho studio [--port N] [--host H] [--prod|--dev]';
+const USAGE = 'Usage: lousho studio [--port N] [--host H]';
 
 const HELP = `${USAGE}
 
-Opens Agent Forge, the visual agent builder. It prints a URL with a per-launch token; every
-API and WebSocket request needs that token.
+Opens Lousho Studio on this project. Studio is a separate package: install it with npm i -g @linuxdevil/studio
+(or run npx @linuxdevil/studio). This command finds it and opens this folder as a workspace.
 
 Options:
   --port N    the studio's port (default 4750)
   --host H    the interface to listen on (default 127.0.0.1)
-  --prod      serve the built UI from one process (needs the studio build)
-  --dev       run the API and the Vite dev server (a checkout of the SDK repository)
-  -h, --help  show this help
-
-Without --prod or --dev it serves the built UI when there is one, else the dev servers.`;
+  --prod      (SDK repository only) serve the built UI from one process
+  --dev       (SDK repository only) run the API and the Vite dev server
+  -h, --help  show this help`;
 
 const SPEC: CommandSpec = {
   command: 'studio',

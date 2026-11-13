@@ -13,9 +13,8 @@
  *      published package (what lands in node_modules).
  *
  * Needs a built `dist/` (`npm run build`). `npm pack` runs with --dry-run and
- * --ignore-scripts, so nothing is written; the tarball figure includes the
- * Agent Forge build only when `npm run build:studio` ran first (CI does both,
- * so its figure is the real one).
+ * --ignore-scripts, so nothing is written; the tarball never includes Studio
+ * (apps/agent-forge left the package in W13b).
  *
  * Usage: npm run size-check [-- --update]
  *   --update  rewrites the budgets to the current measurement + 5%.
