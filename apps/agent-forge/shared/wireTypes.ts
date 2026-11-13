@@ -746,6 +746,57 @@ export interface PublishState {
   publishedAt: string | null;
 }
 
+/** One dataset example's eval-gate outcome (X01a/X01b). */
+export interface EvalExampleResult {
+  exampleId: string;
+  passed: boolean;
+  /** Plain sentences, one per failed gate; empty when passed. */
+  failures: string[];
+  /** Trace id of the example run when the observe reporter produced one. */
+  traceId?: string;
+}
+
+/** One `spec.evals` entry's outcome over its dataset. */
+export interface EvalGateSetResult {
+  dataset: string;
+  /** 0..1, rounded to 4 decimals; 0 when the dataset is missing or empty. */
+  passRate: number;
+  minPassRate: number;
+  /** `passRate >= minPassRate && examples.length > 0`. */
+  passed: boolean;
+  examples: EvalExampleResult[];
+  /** Set when the whole set could not run. */
+  error?: string;
+}
+
+/** The whole eval gate's outcome: every set passed, the per-set detail, when it ran. */
+export interface EvalGateResult {
+  passed: boolean;
+  gates: EvalGateSetResult[];
+  /** ISO. */
+  ranAt: string;
+}
+
+/** `POST /agents/:id/publish`'s body. */
+export interface PublishRequest {
+  version?: number;
+}
+
+/** `POST /agents/:id/publish`'s 200 body: the pinned version, plus the eval gate's result when the spec has `evals`. */
+export interface PublishResponse {
+  publishedVersion: number;
+  evalResult?: EvalGateResult;
+}
+
+/** `POST /agents/:id/publish`'s 409 eval-gate-failure body (`LOUSHO_EVAL_GATE_FAILED`). */
+export interface PublishGateFailure {
+  error: 'Eval gate failed';
+  code: 'LOUSHO_EVAL_GATE_FAILED';
+  /** The version that was not published - the dialog's `v<n>`. */
+  version: number;
+  details: EvalGateResult;
+}
+
 /**
  * `GET /agents/:id` (v2): the working copy plus its `meta.json`/`layout.json`
  * sidecars and the newest version number - the detail header's (A05) and

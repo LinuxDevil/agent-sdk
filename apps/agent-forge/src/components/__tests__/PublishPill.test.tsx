@@ -1,9 +1,10 @@
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { PublishState } from '../../../shared/wireTypes';
+import type { EvalGateResult, PublishState } from '../../../shared/wireTypes';
 import { render } from '../../ui/__tests__/render';
 import { ToastProvider } from '../../ui/Toast';
+import { RuntimeApiError } from '../../runtime/runtimeClient';
 
 const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
@@ -12,6 +13,17 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../runtime/runtimeClient', () => ({
   runtimeClient: { publish: mocks.publish },
+  RuntimeApiError: class RuntimeApiError extends Error {
+    constructor(
+      message: string,
+      public readonly status: number,
+      public readonly code?: string,
+      public readonly details?: unknown,
+      public readonly body?: unknown,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 vi.mock('../../state/AppState', () => ({
@@ -119,6 +131,60 @@ describe('PublishPill', () => {
     expect(host.querySelector('.toast-message')?.textContent).toBe('Published v4');
   });
 
+  it('toasts "· evals passed" when the publish ran the eval gate (X01b)', async () => {
+    const evalResult: EvalGateResult = {
+      passed: true,
+      gates: [{ dataset: 'ds', passRate: 1, minPassRate: 0.8, passed: true, examples: [] }],
+      ranAt: '2026-01-02T03:04:05.000Z',
+    };
+    mocks.publish.mockResolvedValue({ publishedVersion: 4, evalResult });
+    const host = renderPill({ version: null });
+    act(() => host.querySelector<HTMLButtonElement>('button.publish-pill')!.click());
+    await flush();
+    await act(async () => menuItem('Publish current version').click());
+    await flush();
+
+    expect(host.querySelector('.toast-message')?.textContent).toBe('Published v4 · evals passed');
+  });
+
+  it('opens the eval gate dialog on a 409 LOUSHO_EVAL_GATE_FAILED instead of toasting', async () => {
+    const evalResult: EvalGateResult = {
+      passed: false,
+      gates: [
+        {
+          dataset: 'ds',
+          passRate: 0.5,
+          minPassRate: 0.8,
+          passed: false,
+          examples: [{ exampleId: 'abcdef123456', passed: false, failures: ['Took 9 steps, limit 5'], traceId: 't1' }],
+        },
+      ],
+      ranAt: '2026-01-02T03:04:05.000Z',
+    };
+    mocks.publish.mockRejectedValue(
+      new RuntimeApiError('Eval gate failed', 409, 'LOUSHO_EVAL_GATE_FAILED', evalResult, { version: 6, error: 'Eval gate failed', code: 'LOUSHO_EVAL_GATE_FAILED', details: evalResult })
+    );
+    const onPublished = vi.fn();
+    const host = renderPill({ version: null }, { onPublished });
+    act(() => host.querySelector<HTMLButtonElement>('button.publish-pill')!.click());
+    await flush();
+    await act(async () => menuItem('Publish current version').click());
+    await flush();
+
+    expect(onPublished).not.toHaveBeenCalled();
+    expect(host.querySelector('.toast-message')).toBeNull();
+    expect(document.querySelector('.dialog-title')?.textContent).toBe('Eval gate failed');
+    expect(document.querySelector('.dialog-description')?.textContent).toBe(
+      'v6 was not published. Fix the failures or change the gate, then publish again.'
+    );
+    expect(document.querySelector('.eval-gate-set-name')?.textContent).toBe('ds');
+    expect(document.querySelector('.eval-gate-example-failures li')?.textContent).toBe('Took 9 steps, limit 5');
+
+    await act(async () => [...document.querySelectorAll<HTMLButtonElement>('.dialog-footer button')].find((b) => b.textContent === 'Close')!.click());
+    await flush();
+    expect(document.querySelector('.dialog-title')).toBeNull();
+  });
+
   it('saves the dirty working copy before publishing', async () => {
     mocks.publish.mockResolvedValue({ publishedVersion: 2 });
     const order: string[] = [];
@@ -163,7 +229,7 @@ describe('PublishPill', () => {
 
     const pill = host.querySelector<HTMLButtonElement>('button.publish-pill')!;
     expect(pill.getAttribute('aria-busy')).toBe('true');
-    expect(pill.querySelector('.status-pill-label')?.textContent).toBe('Publishing…');
+    expect(pill.querySelector('.status-pill-label')?.textContent).toBe('Running evals…');
 
     await act(async () => rejectPublish?.(new Error('boom')));
     await flush();

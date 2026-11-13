@@ -8,3 +8,18 @@
 .menu-trigger.publish-pill[aria-busy='true'] {
   cursor: progress;
 }
+
+/* X01b: the busy pill's Loader2 spinner (reduced motion: no rotation). */
+.publish-pill .spin {
+  animation: publish-pill-spin 1s linear infinite;
+}
+@keyframes publish-pill-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .publish-pill .spin {
+    animation: none;
+  }
+}

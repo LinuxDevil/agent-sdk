@@ -201,6 +201,47 @@ describe('RuntimeClient version methods', () => {
   });
 });
 
+describe('RuntimeClient publish (X01b)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit];
+    return [path, init];
+  }
+
+  it('POSTs {} to publish the working copy and resolves the response incl. evalResult', async () => {
+    const evalResult = { passed: true, gates: [], ranAt: '2026-01-02T03:04:05.000Z' };
+    const fetchMock = vi.fn(async () => jsonResponse(200, { publishedVersion: 4, evalResult }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.publish('a1')).resolves.toEqual({ publishedVersion: 4, evalResult });
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/a1/publish');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({});
+  });
+
+  it('POSTs { version } when pinning a specific version', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { publishedVersion: 3 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.publish('a1', { version: 3 });
+    const [, init] = lastCall(fetchMock);
+    expect(JSON.parse(String(init.body))).toEqual({ version: 3 });
+  });
+
+  it('keeps the whole 409 body on the error for the eval-gate dialog', async () => {
+    const details = { passed: false, gates: [], ranAt: '2026-01-02T03:04:05.000Z' };
+    const body = { error: 'Eval gate failed', code: 'LOUSHO_EVAL_GATE_FAILED', version: 6, details };
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(409, body)));
+    const error = await client.publish('a1').catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(RuntimeApiError);
+    expect(error).toMatchObject({ status: 409, code: 'LOUSHO_EVAL_GATE_FAILED', details, body });
+  });
+});
+
 describe('RuntimeClient suggestion methods', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
