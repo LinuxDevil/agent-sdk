@@ -5,6 +5,7 @@
  * two scripts cannot drift and `fallow` sees no duplicated code.
  */
 import { spawnSync } from 'node:child_process';
+import { createServer, type AddressInfo } from 'node:net';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -57,6 +58,33 @@ export function mustRun(rep: Reporter, label: string, cmd: string, argv: string[
     throw new Error(`${label} failed (exit ${res.status})`);
   }
   return res;
+}
+
+/**
+ * `npm publish <tarball> --dry-run` - never a real publish. Tolerates the
+ * "cannot publish over the previously published versions" failure that only
+ * means this version is already on npm.
+ */
+export function dryRunPublish(rep: Reporter, label: string, tarball: string, cwd: string): void {
+  // `--tag next`: the versions are prereleases and npm 11 refuses a prerelease without an explicit tag.
+  const res = run('npm', ['publish', tarball, '--dry-run', '--tag', 'next', '--access', 'public'], cwd);
+  const out = res.stdout + res.stderr;
+  if (/cannot publish over the previously published versions/i.test(out)) {
+    rep.log(`npm publish --dry-run ${label}: ok (this version is already on npm; bump it before the next release)`);
+  } else if (res.status !== 0 || /npm (error|ERR!)/.test(out)) {
+    rep.fail(`npm publish --dry-run ${label} failed:\n${out}`);
+  } else {
+    rep.log(`npm publish --dry-run ${label}: ok`);
+  }
+}
+
+/** An ephemeral loopback port, free at call time (a small race window is fine for smoke tests). */
+export async function freePort(): Promise<number> {
+  const server = createServer();
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const port = (server.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => server.close(() => resolve()));
+  return port;
 }
 
 /** All `exports` subpaths with their targets, from the installed package.json. */

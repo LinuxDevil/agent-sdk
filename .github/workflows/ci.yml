@@ -47,9 +47,6 @@ jobs:
       - run: npm run docs:llms:check
       # registry/dist is generated from registry/; fail if stale.
       - run: npm run registry:check
-      # Agent Forge imports the SDK as `@linuxdevil/lousho` via `file:../..`, i.e. the root dist/ built above.
-      - run: npm run typecheck --workspace apps/agent-forge
-      - run: npm run typecheck:server --workspace apps/agent-forge
   zod4:
     runs-on: ubuntu-latest
     steps:
@@ -62,8 +59,11 @@ jobs:
       - run: npm install --no-save zod@4
       - run: npx tsc --noEmit
       - run: npm run typecheck:tests
-  forge:
+  # @linuxdevil/studio (apps/agent-forge): its own package since W13. Builds the SDK first (Studio depends on it through
+  # file:../.. in the monorepo), then Studio's checks, then packs both and smoke-tests the install.
+  studio:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -71,11 +71,19 @@ jobs:
           node-version: '22.19.0'
           cache: 'npm'
       - run: npm ci
-      - run: npm run build -- --no-dts
-      - run: npm run test --workspace apps/agent-forge -- --run
-      - run: npm run test:server --workspace apps/agent-forge
+      - run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+      - run: npm run typecheck --workspace apps/agent-forge
+      - run: npm run typecheck:server --workspace apps/agent-forge
       # Studio imports only public SDK exports (PLAN §19.7).
       - run: npm run lint:imports --workspace apps/agent-forge
+      - run: npm run test --workspace apps/agent-forge -- --run
+      - run: npm run test:server --workspace apps/agent-forge
+      - run: npm run build:studio
+      # Packs the SDK and @linuxdevil/studio, dry-run publishes Studio, installs both in a fresh project, and checks
+      # that `lousho-studio` and `lousho studio` serve the UI. Never publishes.
+      - run: npm run pack-smoke:studio -- --skip-build
   test:
     runs-on: ubuntu-latest
     steps:
