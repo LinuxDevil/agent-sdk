@@ -139,6 +139,7 @@ import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
 import { AuthorTurnRunner } from './author/turnRunner';
 import { createAuthorServices } from './author/services';
+import { loadAuthorScript } from './author/authorScript';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
@@ -1089,6 +1090,8 @@ export function createApp(options: CreateAppOptions): Express {
   // upgrade handler and the DELETE route's BUSY check share, so tests
   // inject theirs through `options.authorRunner` rather than racing a
   // second set of turn slots.
+  // X08: the e2e hook installs once here - a bad script file fails startup.
+  const authorScript = loadAuthorScript();
   const authorRunner =
     options.authorRunner ??
     createAuthorServices({
@@ -1099,6 +1102,7 @@ export function createApp(options: CreateAppOptions): Express {
       docsDir,
       workspaceResolver,
       ...(options.mcpConnect ? { mcpConnect: options.mcpConnect } : {}),
+      ...(authorScript !== undefined ? { scriptedProvider: authorScript } : {}),
     }).runner;
 
   const app = express();
