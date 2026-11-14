@@ -12,7 +12,7 @@ import { Field } from '../../../ui/Field';
 import { Input, Select, Textarea } from '../../../ui/controls';
 import { remoteUrlOk, SUBAGENT_KEY_PATTERN } from '../../../graph/v2/kinds/subagent';
 import { subagentEntryKey } from '../../../graph/v2/order';
-import type { SecretRef } from '../../../graph/v2/specTypes';
+import type { SecretRef } from '../../../../shared/wireTypes';
 import type { NodeOfKind, SubagentNodeData } from '../../../graph/v2/types';
 import { ChoiceField } from '../../fields/ChoiceField';
 import { SecretRefField } from '../../fields/SecretRefField';
