@@ -334,7 +334,7 @@ To use it from an MCP client, add it to the client's MCP config (for example
 ```json
 {
   "mcpServers": {
-    "support-bot": { "command": "npx", "args": ["lousho", "mcp", "agent.yaml"] }
+    "support-bot": { "command": "npx", "args": ["@linuxdevil/lousho", "mcp", "agent.yaml"] }
   }
 }
 ```

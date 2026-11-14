@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type {
   AgentRunStatusPayload,
@@ -9,8 +9,9 @@ import type {
   SpanEvent,
   StreamMessage,
 } from '../../shared/wireTypes';
-import type { AgentStoreEntry } from '../persistence/AgentStore';
+import type { AgentListItem } from '../../shared/wireTypes';
 import { appendLog } from './logReducer';
+import { applyNodeState, isNewRun, type NodeStates } from './nodeStateReducer';
 import { upsertSpan } from './spanReducer';
 import { applyChatState, emptyChatState } from './chatReducer';
 
@@ -33,7 +34,7 @@ function dispatchStreamMessage(handlers: StreamHandlers, message: StreamMessage)
  * rather than per-agent polling, which would need to pick a poll
  * interval that trades off staleness against request volume.
  */
-export function useAgentStatuses(agents: AgentStoreEntry[]): Record<string, AgentRunStatusPayload> {
+export function useAgentStatuses(agents: AgentListItem[]): Record<string, AgentRunStatusPayload> {
   const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentRunStatusPayload>>({});
 
   useEffect(() => {
@@ -65,6 +66,13 @@ export function useAgentStatuses(agents: AgentStoreEntry[]): Record<string, Agen
  */
 export function useAgentStream(agentId: string) {
   const [runStatus, setRunStatus] = useState<AgentRunStatusPayload | undefined>(undefined);
+  // The latest `node` frame per canvas node id - the status overlay's
+  // feed. Reset on agent switch and on each new run's first `running`
+  // status (see the `status` handler below), like `logs`/`spans`.
+  const [nodeStates, setNodeStates] = useState<NodeStates>({});
+  // The last status the stream reported, so the `status` handler can tell
+  // a fresh run's first `running` from a repeat of the live one.
+  const runStatusRef = useRef<AgentRunStatusPayload | undefined>(undefined);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [spans, setSpans] = useState<SpanEvent[]>([]);
   const [debugState, setDebugState] = useState<DebugStatePayload | undefined>(undefined);
@@ -82,6 +90,8 @@ export function useAgentStream(agentId: string) {
 
   useEffect(() => {
     setRunStatus(undefined);
+    runStatusRef.current = undefined;
+    setNodeStates({});
     setLogs([]);
     setSpans([]);
     setDebugState(undefined);
@@ -95,7 +105,14 @@ export function useAgentStream(agentId: string) {
   useEffect(() => {
     let retry: ReturnType<typeof setTimeout> | undefined;
     const handlers: StreamHandlers = {
-      status: setRunStatus,
+      status: (payload) => {
+        // A new run's first `running` status drops the previous run's
+        // node marks (done/error/running leftovers) before its frames land.
+        if (isNewRun(runStatusRef.current, payload)) setNodeStates({});
+        runStatusRef.current = payload;
+        setRunStatus(payload);
+      },
+      node: (payload) => setNodeStates((prev) => applyNodeState(prev, payload)),
       log: (entry) => setLogs((prev) => appendLog(prev, entry)),
       span: (span) => setSpans((prev) => upsertSpan(prev, span)),
       debug: setDebugState,
@@ -122,7 +139,10 @@ export function useAgentStream(agentId: string) {
     // stale breakpoint list) on agent switch.
     runtimeClient
       .status(agentId)
-      .then(setRunStatus)
+      .then((status) => {
+        runStatusRef.current = status;
+        setRunStatus(status);
+      })
       .catch(() => {
         // The runtime control server may not be running (e.g. the app was
         // opened without `lousho studio`) - status just stays unknown, and
@@ -139,6 +159,8 @@ export function useAgentStream(agentId: string) {
   return {
     connected,
     runStatus,
+    nodeStates,
+    setNodeStates,
     logs,
     setLogs,
     spans,

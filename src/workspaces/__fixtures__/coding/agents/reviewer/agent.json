@@ -1,0 +1,5 @@
+{
+  "name": "reviewer",
+  "version": "1.0.0",
+  "description": "Reviews a change before merge."
+}

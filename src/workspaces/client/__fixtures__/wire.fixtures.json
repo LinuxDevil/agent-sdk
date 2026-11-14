@@ -1,0 +1,1319 @@
+{
+  "schema": "lousho.workspace-wire-fixtures/1",
+  "workspaceId": "marketing",
+  "responses": {
+    "listWorkspaces": [
+      {
+        "id": "marketing",
+        "name": "Marketing",
+        "description": "Short videos for social channels.",
+        "domain": "marketing",
+        "revision": "rev-7d6e6f2ce202",
+        "pageCount": 3,
+        "hasMainAgent": true
+      }
+    ],
+    "getWorkspace": {
+      "id": "marketing",
+      "name": "Marketing",
+      "description": "Short videos for social channels.",
+      "domain": "marketing",
+      "revision": "rev-7d6e6f2ce202",
+      "pageCount": 3,
+      "hasMainAgent": true,
+      "manifest": {
+        "schema": "lousho.workspace/1",
+        "id": "marketing",
+        "name": "Marketing",
+        "version": "1.0.0",
+        "description": "Short videos for social channels.",
+        "domain": "marketing",
+        "mainAgent": {
+          "dir": "./main-agent",
+          "inheritsShared": true
+        },
+        "pages": [
+          "instagram-videos",
+          "facebook-videos",
+          "content-research"
+        ],
+        "defaults": {
+          "model": "mock/mock-model",
+          "limits": {
+            "maxConcurrentPages": 3,
+            "maxCostUsdPerRun": 5
+          }
+        },
+        "budget": {
+          "mode": "shared"
+        },
+        "improve": {
+          "enabled": true,
+          "healer": "shared"
+        }
+      },
+      "pages": [
+        {
+          "workspaceId": "marketing",
+          "id": "instagram-videos",
+          "revision": "rev-7d6e6f2ce202",
+          "manifest": {
+            "schema": "lousho.page/1",
+            "id": "instagram-videos",
+            "name": "Instagram",
+            "description": "Makes an Instagram video from a topic.",
+            "harness": {
+              "extends": [
+                "workspace:platforms/instagram",
+                "workspace:content-types/educational",
+                "workspace:audiences/general"
+              ]
+            },
+            "execution": {
+              "type": "workflow",
+              "multiAgent": {
+                "lead": "script",
+                "delegates": [
+                  "video",
+                  "voice"
+                ]
+              },
+              "workflow": {
+                "workflow": "workspace:video-production"
+              },
+              "goal": {
+                "lead": "script",
+                "delegates": [
+                  "video",
+                  "voice"
+                ],
+                "goal": "./goal.json"
+              },
+              "onFailure": "return-to-main"
+            }
+          },
+          "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
+        },
+        {
+          "workspaceId": "marketing",
+          "id": "facebook-videos",
+          "revision": "rev-7d6e6f2ce202",
+          "manifest": {
+            "schema": "lousho.page/1",
+            "id": "facebook-videos",
+            "name": "Facebook",
+            "description": "Makes a Facebook video from a topic.",
+            "harness": {
+              "extends": [
+                "workspace:platforms/facebook",
+                "workspace:content-types/educational",
+                "workspace:audiences/young-adults"
+              ]
+            },
+            "execution": {
+              "type": "multi-agent",
+              "multiAgent": {
+                "lead": "script",
+                "delegates": [
+                  "video",
+                  "voice"
+                ]
+              }
+            }
+          },
+          "harnessHash": "079f8f90217abe7b396d50debcf5b618271f5013ac010251dfda9da26e76d334"
+        },
+        {
+          "workspaceId": "marketing",
+          "id": "content-research",
+          "revision": "rev-7d6e6f2ce202",
+          "manifest": {
+            "schema": "lousho.page/1",
+            "id": "content-research",
+            "name": "Content research",
+            "description": "Researches a topic and returns sourced findings for a video.",
+            "harness": {
+              "extends": [
+                "workspace:content-types/educational",
+                "workspace:audiences/general"
+              ]
+            },
+            "execution": {
+              "type": "goal-oriented",
+              "goal": {
+                "lead": "lead",
+                "delegates": [
+                  "script"
+                ],
+                "goal": "./goal.json"
+              },
+              "limits": {
+                "maxDurationMs": 600000,
+                "maxCostUsd": 2
+              }
+            }
+          },
+          "harnessHash": "a72df8a2d4c7b7b6e66e7ce0499f3c0faddb293683b12338e9382410557b90dc"
+        }
+      ]
+    },
+    "listPages": [
+      {
+        "workspaceId": "marketing",
+        "id": "instagram-videos",
+        "revision": "rev-7d6e6f2ce202",
+        "manifest": {
+          "schema": "lousho.page/1",
+          "id": "instagram-videos",
+          "name": "Instagram",
+          "description": "Makes an Instagram video from a topic.",
+          "harness": {
+            "extends": [
+              "workspace:platforms/instagram",
+              "workspace:content-types/educational",
+              "workspace:audiences/general"
+            ]
+          },
+          "execution": {
+            "type": "workflow",
+            "multiAgent": {
+              "lead": "script",
+              "delegates": [
+                "video",
+                "voice"
+              ]
+            },
+            "workflow": {
+              "workflow": "workspace:video-production"
+            },
+            "goal": {
+              "lead": "script",
+              "delegates": [
+                "video",
+                "voice"
+              ],
+              "goal": "./goal.json"
+            },
+            "onFailure": "return-to-main"
+          }
+        },
+        "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
+      },
+      {
+        "workspaceId": "marketing",
+        "id": "facebook-videos",
+        "revision": "rev-7d6e6f2ce202",
+        "manifest": {
+          "schema": "lousho.page/1",
+          "id": "facebook-videos",
+          "name": "Facebook",
+          "description": "Makes a Facebook video from a topic.",
+          "harness": {
+            "extends": [
+              "workspace:platforms/facebook",
+              "workspace:content-types/educational",
+              "workspace:audiences/young-adults"
+            ]
+          },
+          "execution": {
+            "type": "multi-agent",
+            "multiAgent": {
+              "lead": "script",
+              "delegates": [
+                "video",
+                "voice"
+              ]
+            }
+          }
+        },
+        "harnessHash": "079f8f90217abe7b396d50debcf5b618271f5013ac010251dfda9da26e76d334"
+      },
+      {
+        "workspaceId": "marketing",
+        "id": "content-research",
+        "revision": "rev-7d6e6f2ce202",
+        "manifest": {
+          "schema": "lousho.page/1",
+          "id": "content-research",
+          "name": "Content research",
+          "description": "Researches a topic and returns sourced findings for a video.",
+          "harness": {
+            "extends": [
+              "workspace:content-types/educational",
+              "workspace:audiences/general"
+            ]
+          },
+          "execution": {
+            "type": "goal-oriented",
+            "goal": {
+              "lead": "lead",
+              "delegates": [
+                "script"
+              ],
+              "goal": "./goal.json"
+            },
+            "limits": {
+              "maxDurationMs": 600000,
+              "maxCostUsd": 2
+            }
+          }
+        },
+        "harnessHash": "a72df8a2d4c7b7b6e66e7ce0499f3c0faddb293683b12338e9382410557b90dc"
+      }
+    ],
+    "getPage": {
+      "workspaceId": "marketing",
+      "id": "instagram-videos",
+      "revision": "rev-7d6e6f2ce202",
+      "manifest": {
+        "schema": "lousho.page/1",
+        "id": "instagram-videos",
+        "name": "Instagram",
+        "description": "Makes an Instagram video from a topic.",
+        "harness": {
+          "extends": [
+            "workspace:platforms/instagram",
+            "workspace:content-types/educational",
+            "workspace:audiences/general"
+          ]
+        },
+        "execution": {
+          "type": "workflow",
+          "multiAgent": {
+            "lead": "script",
+            "delegates": [
+              "video",
+              "voice"
+            ]
+          },
+          "workflow": {
+            "workflow": "workspace:video-production"
+          },
+          "goal": {
+            "lead": "script",
+            "delegates": [
+              "video",
+              "voice"
+            ],
+            "goal": "./goal.json"
+          },
+          "onFailure": "return-to-main"
+        }
+      },
+      "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
+    },
+    "getEffectiveHarness": {
+      "pageId": "instagram-videos",
+      "revision": "rev-7d6e6f2ce202",
+      "effective": {
+        "sources": [
+          "workspace base",
+          "workspace:platforms/instagram",
+          "workspace:content-types/educational",
+          "workspace:audiences/general",
+          "page"
+        ],
+        "instructions": "### From workspace base\n\nWrite the way the brand speaks.\n\n### From workspace:platforms/instagram\n\nLead with a hook in the first second.\n\n### From workspace:content-types/educational\n\nExplain one idea with one example.\n\n### From page\n\nMake an Instagram video that teaches the topic in plain words.",
+        "audience": {
+          "description": "People who follow the brand and want a quick lesson."
+        },
+        "platform": {
+          "id": "instagram",
+          "requirements": {
+            "aspectRatio": "4:5",
+            "captionMaxChars": 2200
+          }
+        },
+        "inputs": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "topic": {
+                "type": "string"
+              },
+              "durationSeconds": {
+                "type": "number"
+              },
+              "tone": {
+                "type": "string",
+                "enum": [
+                  "friendly",
+                  "formal",
+                  "playful"
+                ]
+              }
+            },
+            "required": [
+              "topic"
+            ]
+          }
+        },
+        "outputs": {
+          "schema": {
+            "type": "object",
+            "properties": {
+              "script": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "script"
+            ]
+          },
+          "artifacts": [
+            {
+              "name": "video",
+              "mediaType": "video/mp4",
+              "required": true
+            }
+          ]
+        },
+        "constraints": [
+          {
+            "id": "brand-voice",
+            "text": "Follow the brand voice."
+          },
+          {
+            "id": "instagram-caption-length",
+            "text": "Keep captions under 2200 characters."
+          },
+          {
+            "id": "one-idea",
+            "text": "Teach one idea per video."
+          },
+          {
+            "id": "no-jargon",
+            "text": "Avoid jargon."
+          }
+        ],
+        "evaluation": {
+          "criteria": [
+            {
+              "id": "brand-voice-applied",
+              "description": "The output follows the brand voice.",
+              "check": "checks/brand-voice-applied.ts"
+            },
+            {
+              "id": "teaches-one-idea",
+              "description": "The video teaches exactly one idea.",
+              "rubric": "One idea, explained simply with one example."
+            },
+            {
+              "id": "script-present",
+              "description": "The output has a non-empty script.",
+              "check": "harness/checks/script-present.ts"
+            }
+          ]
+        },
+        "context": {
+          "resources": [
+            "resources/channel-notes.md"
+          ]
+        },
+        "provenance": {
+          "audience.description": [
+            "page"
+          ],
+          "constraints": [
+            "workspace base",
+            "workspace:platforms/instagram",
+            "workspace:content-types/educational",
+            "workspace:audiences/general"
+          ],
+          "constraints[\"brand-voice\"]": [
+            "workspace base"
+          ],
+          "constraints[\"instagram-caption-length\"]": [
+            "workspace:platforms/instagram"
+          ],
+          "constraints[\"no-jargon\"]": [
+            "workspace:audiences/general"
+          ],
+          "constraints[\"one-idea\"]": [
+            "workspace:content-types/educational"
+          ],
+          "context.resources": [
+            "page"
+          ],
+          "evaluation.criteria": [
+            "workspace base",
+            "workspace:content-types/educational",
+            "page"
+          ],
+          "evaluation.criteria[\"brand-voice-applied\"]": [
+            "workspace base"
+          ],
+          "evaluation.criteria[\"script-present\"]": [
+            "page"
+          ],
+          "evaluation.criteria[\"teaches-one-idea\"]": [
+            "workspace:content-types/educational"
+          ],
+          "inputs.schema": [
+            "page"
+          ],
+          "instructions": [
+            "workspace base",
+            "workspace:platforms/instagram",
+            "workspace:content-types/educational",
+            "page"
+          ],
+          "outputs.artifacts": [
+            "page"
+          ],
+          "outputs.artifacts[\"video\"]": [
+            "page"
+          ],
+          "outputs.schema": [
+            "page"
+          ],
+          "platform.id": [
+            "workspace:platforms/instagram"
+          ],
+          "platform.requirements[\"aspectRatio\"]": [
+            "workspace:platforms/instagram"
+          ],
+          "platform.requirements[\"captionMaxChars\"]": [
+            "workspace:platforms/instagram"
+          ]
+        },
+        "hash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
+      },
+      "layers": [
+        {
+          "source": "workspace base",
+          "harness": {
+            "schema": "lousho.harness/1",
+            "instructions": [
+              "brand-voice.md"
+            ],
+            "constraints": [
+              {
+                "id": "brand-voice",
+                "text": "Follow the brand voice."
+              }
+            ],
+            "evaluation": {
+              "criteria": [
+                {
+                  "id": "brand-voice-applied",
+                  "description": "The output follows the brand voice.",
+                  "check": "checks/brand-voice-applied.ts"
+                }
+              ]
+            }
+          },
+          "texts": {
+            "brand-voice.md": "Write the way the brand speaks.\n"
+          }
+        },
+        {
+          "source": "workspace:platforms/instagram",
+          "harness": {
+            "schema": "lousho.harness/1",
+            "id": "instagram",
+            "version": "1.0.0",
+            "instructions": [
+              "platform.md"
+            ],
+            "platform": {
+              "id": "instagram",
+              "requirements": {
+                "aspectRatio": "4:5",
+                "captionMaxChars": 2200
+              }
+            },
+            "constraints": [
+              {
+                "id": "instagram-caption-length",
+                "text": "Keep captions under 2200 characters."
+              }
+            ]
+          },
+          "texts": {
+            "platform.md": "Lead with a hook in the first second.\n"
+          }
+        },
+        {
+          "source": "workspace:content-types/educational",
+          "harness": {
+            "schema": "lousho.harness/1",
+            "id": "educational",
+            "version": "1.0.0",
+            "instructions": [
+              "teach.md"
+            ],
+            "constraints": [
+              {
+                "id": "one-idea",
+                "text": "Teach one idea per video."
+              }
+            ],
+            "evaluation": {
+              "criteria": [
+                {
+                  "id": "teaches-one-idea",
+                  "description": "The video teaches exactly one idea.",
+                  "rubric": "One idea, explained simply with one example."
+                }
+              ]
+            }
+          },
+          "texts": {
+            "teach.md": "Explain one idea with one example.\n"
+          }
+        },
+        {
+          "source": "workspace:audiences/general",
+          "harness": {
+            "schema": "lousho.harness/1",
+            "id": "general",
+            "version": "1.0.0",
+            "audience": {
+              "description": "A general audience with no prior knowledge."
+            },
+            "constraints": [
+              {
+                "id": "no-jargon",
+                "text": "Avoid jargon."
+              }
+            ]
+          },
+          "texts": {}
+        },
+        {
+          "source": "page",
+          "harness": {
+            "schema": "lousho.harness/1",
+            "extends": [
+              "workspace:platforms/instagram",
+              "workspace:content-types/educational",
+              "workspace:audiences/general"
+            ],
+            "instructions": [
+              "harness/task.md"
+            ],
+            "audience": {
+              "description": "People who follow the brand and want a quick lesson."
+            },
+            "inputs": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "topic": {
+                    "type": "string"
+                  },
+                  "durationSeconds": {
+                    "type": "number"
+                  },
+                  "tone": {
+                    "type": "string",
+                    "enum": [
+                      "friendly",
+                      "formal",
+                      "playful"
+                    ]
+                  }
+                },
+                "required": [
+                  "topic"
+                ]
+              }
+            },
+            "outputs": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "script": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "script"
+                ]
+              },
+              "artifacts": [
+                {
+                  "name": "video",
+                  "mediaType": "video/mp4",
+                  "required": true
+                }
+              ]
+            },
+            "evaluation": {
+              "criteria": [
+                {
+                  "id": "script-present",
+                  "description": "The output has a non-empty script.",
+                  "check": "harness/checks/script-present.ts"
+                }
+              ]
+            },
+            "context": {
+              "resources": [
+                "resources/channel-notes.md"
+              ]
+            }
+          },
+          "texts": {
+            "harness/task.md": "Make an Instagram video that teaches the topic in plain words.\n"
+          }
+        }
+      ],
+      "provenance": {
+        "audience.description": [
+          "page"
+        ],
+        "constraints": [
+          "workspace base",
+          "workspace:platforms/instagram",
+          "workspace:content-types/educational",
+          "workspace:audiences/general"
+        ],
+        "constraints[\"brand-voice\"]": [
+          "workspace base"
+        ],
+        "constraints[\"instagram-caption-length\"]": [
+          "workspace:platforms/instagram"
+        ],
+        "constraints[\"no-jargon\"]": [
+          "workspace:audiences/general"
+        ],
+        "constraints[\"one-idea\"]": [
+          "workspace:content-types/educational"
+        ],
+        "context.resources": [
+          "page"
+        ],
+        "evaluation.criteria": [
+          "workspace base",
+          "workspace:content-types/educational",
+          "page"
+        ],
+        "evaluation.criteria[\"brand-voice-applied\"]": [
+          "workspace base"
+        ],
+        "evaluation.criteria[\"script-present\"]": [
+          "page"
+        ],
+        "evaluation.criteria[\"teaches-one-idea\"]": [
+          "workspace:content-types/educational"
+        ],
+        "inputs.schema": [
+          "page"
+        ],
+        "instructions": [
+          "workspace base",
+          "workspace:platforms/instagram",
+          "workspace:content-types/educational",
+          "page"
+        ],
+        "outputs.artifacts": [
+          "page"
+        ],
+        "outputs.artifacts[\"video\"]": [
+          "page"
+        ],
+        "outputs.schema": [
+          "page"
+        ],
+        "platform.id": [
+          "workspace:platforms/instagram"
+        ],
+        "platform.requirements[\"aspectRatio\"]": [
+          "workspace:platforms/instagram"
+        ],
+        "platform.requirements[\"captionMaxChars\"]": [
+          "workspace:platforms/instagram"
+        ]
+      },
+      "hash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6"
+    },
+    "getMainHarness": {
+      "revision": "rev-7d6e6f2ce202",
+      "harness": {
+        "schema": "lousho.main-harness/1",
+        "instructions": [
+          "routing.md"
+        ],
+        "routes": [
+          {
+            "page": "instagram-videos",
+            "when": "The user wants an Instagram video."
+          },
+          {
+            "page": "facebook-videos",
+            "when": "The user wants a Facebook video."
+          },
+          {
+            "page": "content-research",
+            "when": "The user wants research on a topic before making a video."
+          }
+        ],
+        "clarify": {
+          "askWhen": [
+            "The channel is not named.",
+            "The topic is missing."
+          ],
+          "runImmediatelyWhen": [
+            "The channel and the topic are both clear."
+          ]
+        },
+        "presentation": {
+          "style": "Short and friendly.",
+          "followUps": "Offer one next step.",
+          "revisions": "Ask what to change."
+        },
+        "limits": {
+          "maxConcurrentPages": 2
+        },
+        "onPageFailure": "ask"
+      }
+    },
+    "getAttachments": [
+      {
+        "as": "script",
+        "ref": "workspace:script-maker",
+        "agentOwned": {
+          "instructions": "Write a script that fits the requested length.\n",
+          "skills": [],
+          "tools": [
+            "search_facts"
+          ]
+        },
+        "pageOwned": {
+          "as": "script",
+          "ref": "workspace:script-maker",
+          "role": "Writes the script."
+        }
+      },
+      {
+        "as": "video",
+        "ref": "workspace:video-maker",
+        "agentOwned": {
+          "instructions": "Render the video the script describes.\n",
+          "skills": [],
+          "tools": [
+            "render_video"
+          ]
+        },
+        "pageOwned": {
+          "as": "video",
+          "ref": "workspace:video-maker",
+          "role": "Renders the video."
+        }
+      },
+      {
+        "as": "voice",
+        "ref": "workspace:voice-maker",
+        "agentOwned": {
+          "instructions": "Read the script in the requested tone.\n",
+          "skills": [],
+          "tools": [
+            "synthesize_voice"
+          ]
+        },
+        "pageOwned": {
+          "as": "voice",
+          "ref": "workspace:voice-maker",
+          "role": "Records the voice-over."
+        }
+      }
+    ],
+    "getPageUi": {
+      "pageId": "instagram-videos",
+      "revision": "rev-7d6e6f2ce202",
+      "ui": {
+        "schema": "lousho.ui/1",
+        "layout": {
+          "type": "stack",
+          "children": [
+            {
+              "label": "Topic",
+              "type": "text",
+              "bind": "inputs.topic"
+            },
+            {
+              "label": "Duration in seconds",
+              "type": "number",
+              "bind": "inputs.durationSeconds",
+              "min": 5,
+              "max": 90
+            },
+            {
+              "label": "Tone",
+              "type": "select",
+              "bind": "inputs.tone"
+            },
+            {
+              "type": "runButton"
+            },
+            {
+              "type": "runStatus"
+            },
+            {
+              "label": "Script",
+              "type": "markdown",
+              "source": "outputs.script"
+            },
+            {
+              "label": "Video",
+              "type": "artifact",
+              "artifact": "video"
+            }
+          ]
+        }
+      }
+    },
+    "getProblems": [],
+    "getHistory": [
+      {
+        "revision": "rev-7d6e6f2ce202",
+        "at": "2026-11-10T09:00:00.000Z",
+        "by": "ali",
+        "kind": "authoring",
+        "summary": "Initial import of the Marketing workspace."
+      }
+    ],
+    "setPolicy": {
+      "revision": "rev-7d6e6f2ce202",
+      "problems": []
+    },
+    "writeSharedFile": {
+      "revision": "rev-7d6e6f2ce202",
+      "problems": []
+    },
+    "writeProfile": {
+      "revision": "rev-7d6e6f2ce202",
+      "problems": []
+    },
+    "applyOps": {
+      "draftId": "draft-0001",
+      "problems": [],
+      "diff": {
+        "files": [
+          {
+            "file": "pages/instagram-videos/page.json",
+            "change": "modified",
+            "kind": "json",
+            "changes": [
+              {
+                "path": "description",
+                "before": "Makes an Instagram video from a topic.",
+                "after": "Makes a vertical Instagram video from a topic and a tone."
+              }
+            ]
+          }
+        ],
+        "changedHarnessHashes": []
+      }
+    },
+    "listDrafts": [
+      {
+        "id": "draft-0001",
+        "workspaceId": "marketing",
+        "baseRevision": "rev-7d6e6f2ce202",
+        "createdBy": "ali",
+        "updatedAt": "2026-11-10T09:00:00.000Z",
+        "operations": [
+          {
+            "op": "set_page_field",
+            "page": "instagram-videos",
+            "field": "description",
+            "value": "Makes a vertical Instagram video from a topic and a tone."
+          }
+        ],
+        "diff": {
+          "files": [
+            {
+              "file": "pages/instagram-videos/page.json",
+              "change": "modified",
+              "kind": "json",
+              "changes": [
+                {
+                  "path": "description",
+                  "before": "Makes an Instagram video from a topic.",
+                  "after": "Makes a vertical Instagram video from a topic and a tone."
+                }
+              ]
+            }
+          ],
+          "changedHarnessHashes": []
+        },
+        "problems": []
+      }
+    ],
+    "getDraft": {
+      "id": "draft-0001",
+      "workspaceId": "marketing",
+      "baseRevision": "rev-7d6e6f2ce202",
+      "createdBy": "ali",
+      "updatedAt": "2026-11-10T09:00:00.000Z",
+      "operations": [
+        {
+          "op": "set_page_field",
+          "page": "instagram-videos",
+          "field": "description",
+          "value": "Makes a vertical Instagram video from a topic and a tone."
+        }
+      ],
+      "diff": {
+        "files": [
+          {
+            "file": "pages/instagram-videos/page.json",
+            "change": "modified",
+            "kind": "json",
+            "changes": [
+              {
+                "path": "description",
+                "before": "Makes an Instagram video from a topic.",
+                "after": "Makes a vertical Instagram video from a topic and a tone."
+              }
+            ]
+          }
+        ],
+        "changedHarnessHashes": []
+      },
+      "problems": []
+    },
+    "applyDraft": {
+      "revision": "rev-7d6e6f2ce202",
+      "problems": []
+    },
+    "rebaseDraft": {
+      "id": "draft-0001",
+      "workspaceId": "marketing",
+      "baseRevision": "rev-7d6e6f2ce202",
+      "createdBy": "ali",
+      "updatedAt": "2026-11-10T09:00:00.000Z",
+      "operations": [
+        {
+          "op": "set_page_field",
+          "page": "instagram-videos",
+          "field": "description",
+          "value": "Makes a vertical Instagram video from a topic and a tone."
+        }
+      ],
+      "diff": {
+        "files": [
+          {
+            "file": "pages/instagram-videos/page.json",
+            "change": "modified",
+            "kind": "json",
+            "changes": [
+              {
+                "path": "description",
+                "before": "Makes an Instagram video from a topic.",
+                "after": "Makes a vertical Instagram video from a topic and a tone."
+              }
+            ]
+          }
+        ],
+        "changedHarnessHashes": []
+      },
+      "problems": []
+    },
+    "discardDraft": {
+      "revision": "rev-7d6e6f2ce202",
+      "problems": []
+    },
+    "startPageRun": {
+      "runId": "run-0001"
+    },
+    "startWorkspaceRun": {
+      "runId": "run-0001"
+    },
+    "streamRunEvents": [
+      {
+        "id": 0,
+        "runId": "run-0001",
+        "event": {
+          "type": "started",
+          "page": "instagram-videos",
+          "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6",
+          "executionType": "workflow"
+        }
+      },
+      {
+        "id": 1,
+        "runId": "run-0001",
+        "event": {
+          "type": "step",
+          "phase": "start",
+          "page": "instagram-videos",
+          "attachment": "script",
+          "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6",
+          "executionType": "workflow",
+          "stepKind": "workflow-step",
+          "stepIndex": 0
+        }
+      },
+      {
+        "id": 2,
+        "runId": "run-0001",
+        "event": {
+          "type": "progress",
+          "message": "Writing the script",
+          "fraction": 0.5
+        }
+      },
+      {
+        "id": 3,
+        "runId": "run-0001",
+        "event": {
+          "type": "artifact",
+          "artifact": {
+            "name": "script.md",
+            "mediaType": "text/markdown",
+            "uri": "artifact://marketing/run-0001/script.md",
+            "bytes": 45,
+            "sha256": "21524b885183daace3f76266fb7cc8482994df8ae1e3f0609b23482074624872"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "runId": "run-0001",
+        "event": {
+          "type": "step",
+          "phase": "done",
+          "page": "instagram-videos",
+          "attachment": "script",
+          "harnessHash": "2748b7911544335a39662a4b9fd9357fdcf432469e4c8e90fb1651fb33ed27f6",
+          "executionType": "workflow",
+          "stepKind": "workflow-step",
+          "stepIndex": 0
+        }
+      },
+      {
+        "id": 5,
+        "runId": "run-0001",
+        "event": {
+          "type": "finished",
+          "status": "ok"
+        }
+      }
+    ],
+    "cancelRun": {
+      "runId": "run-0001",
+      "workspaceId": "marketing",
+      "pageId": "instagram-videos",
+      "status": "cancelled",
+      "startedAt": "2026-11-10T09:00:00.000Z",
+      "endedAt": "2026-11-10T09:00:00.000Z",
+      "input": {
+        "pageId": "instagram-videos",
+        "task": "A 30 second video about composting."
+      },
+      "result": {
+        "status": "ok",
+        "artifacts": [
+          {
+            "name": "script.md",
+            "mediaType": "text/markdown",
+            "uri": "artifact://marketing/run-0001/script.md",
+            "bytes": 45,
+            "sha256": "21524b885183daace3f76266fb7cc8482994df8ae1e3f0609b23482074624872"
+          }
+        ],
+        "summary": "Wrote the script.",
+        "usage": {
+          "inputTokens": 120,
+          "outputTokens": 80,
+          "totalTokens": 200,
+          "costUsd": 0.002
+        },
+        "runId": "run-0001",
+        "traceId": "trace-2748b791"
+      },
+      "lastEventId": 5
+    },
+    "approveRun": {
+      "runId": "run-0001",
+      "workspaceId": "marketing",
+      "pageId": "instagram-videos",
+      "status": "ok",
+      "startedAt": "2026-11-10T09:00:00.000Z",
+      "endedAt": "2026-11-10T09:00:00.000Z",
+      "input": {
+        "pageId": "instagram-videos",
+        "task": "A 30 second video about composting."
+      },
+      "result": {
+        "status": "ok",
+        "artifacts": [
+          {
+            "name": "script.md",
+            "mediaType": "text/markdown",
+            "uri": "artifact://marketing/run-0001/script.md",
+            "bytes": 45,
+            "sha256": "21524b885183daace3f76266fb7cc8482994df8ae1e3f0609b23482074624872"
+          }
+        ],
+        "summary": "Wrote the script.",
+        "usage": {
+          "inputTokens": 120,
+          "outputTokens": 80,
+          "totalTokens": 200,
+          "costUsd": 0.002
+        },
+        "runId": "run-0001",
+        "traceId": "trace-2748b791"
+      },
+      "lastEventId": 5
+    },
+    "getRun": {
+      "runId": "run-0001",
+      "workspaceId": "marketing",
+      "pageId": "instagram-videos",
+      "status": "ok",
+      "startedAt": "2026-11-10T09:00:00.000Z",
+      "endedAt": "2026-11-10T09:00:00.000Z",
+      "input": {
+        "pageId": "instagram-videos",
+        "task": "A 30 second video about composting."
+      },
+      "result": {
+        "status": "ok",
+        "artifacts": [
+          {
+            "name": "script.md",
+            "mediaType": "text/markdown",
+            "uri": "artifact://marketing/run-0001/script.md",
+            "bytes": 45,
+            "sha256": "21524b885183daace3f76266fb7cc8482994df8ae1e3f0609b23482074624872"
+          }
+        ],
+        "summary": "Wrote the script.",
+        "usage": {
+          "inputTokens": 120,
+          "outputTokens": 80,
+          "totalTokens": 200,
+          "costUsd": 0.002
+        },
+        "runId": "run-0001",
+        "traceId": "trace-2748b791"
+      },
+      "lastEventId": 5
+    },
+    "getRunTrace": {
+      "runId": "run-0001",
+      "traceId": "trace-2748b791",
+      "spans": [
+        {
+          "spanId": "span-1",
+          "name": "page",
+          "startedAt": "2026-11-10T09:00:00.000Z",
+          "endedAt": "2026-11-10T09:00:00.000Z"
+        }
+      ]
+    },
+    "getArtifact": {
+      "artifact": {
+        "name": "script.md",
+        "mediaType": "text/markdown",
+        "uri": "artifact://marketing/run-0001/script.md",
+        "bytes": 45,
+        "sha256": "21524b885183daace3f76266fb7cc8482994df8ae1e3f0609b23482074624872"
+      },
+      "text": "# Script\n\nHook, three beats, call to action.\n"
+    },
+    "listProposals": [
+      {
+        "id": "proposal-0001",
+        "pageId": "instagram-videos",
+        "status": "pending",
+        "summary": "Tighten the hook in the task prose.",
+        "diff": [
+          {
+            "file": "pages/instagram-videos/harness/task.md",
+            "change": "modified",
+            "kind": "prose",
+            "text": "-Open with a greeting.\n+Open with the question."
+          }
+        ],
+        "evidence": [
+          "run-0001 scored 0.6 on the hook criterion"
+        ],
+        "heldOut": {
+          "passed": true,
+          "score": 0.8,
+          "summary": "4 of 5 held-out cases passed."
+        },
+        "createdAt": "2026-11-10T09:00:00.000Z"
+      }
+    ],
+    "getProposal": {
+      "id": "proposal-0001",
+      "pageId": "instagram-videos",
+      "status": "pending",
+      "summary": "Tighten the hook in the task prose.",
+      "diff": [
+        {
+          "file": "pages/instagram-videos/harness/task.md",
+          "change": "modified",
+          "kind": "prose",
+          "text": "-Open with a greeting.\n+Open with the question."
+        }
+      ],
+      "evidence": [
+        "run-0001 scored 0.6 on the hook criterion"
+      ],
+      "heldOut": {
+        "passed": true,
+        "score": 0.8,
+        "summary": "4 of 5 held-out cases passed."
+      },
+      "createdAt": "2026-11-10T09:00:00.000Z"
+    },
+    "approveProposal": {
+      "id": "proposal-0001",
+      "pageId": "instagram-videos",
+      "status": "first-approved",
+      "summary": "Tighten the hook in the task prose.",
+      "diff": [
+        {
+          "file": "pages/instagram-videos/harness/task.md",
+          "change": "modified",
+          "kind": "prose",
+          "text": "-Open with a greeting.\n+Open with the question."
+        }
+      ],
+      "evidence": [
+        "run-0001 scored 0.6 on the hook criterion"
+      ],
+      "heldOut": {
+        "passed": true,
+        "score": 0.8,
+        "summary": "4 of 5 held-out cases passed."
+      },
+      "createdAt": "2026-11-10T09:00:00.000Z"
+    },
+    "rejectProposal": {
+      "id": "proposal-0001",
+      "pageId": "instagram-videos",
+      "status": "rejected",
+      "summary": "Tighten the hook in the task prose.",
+      "diff": [
+        {
+          "file": "pages/instagram-videos/harness/task.md",
+          "change": "modified",
+          "kind": "prose",
+          "text": "-Open with a greeting.\n+Open with the question."
+        }
+      ],
+      "evidence": [
+        "run-0001 scored 0.6 on the hook criterion"
+      ],
+      "heldOut": {
+        "passed": true,
+        "score": 0.8,
+        "summary": "4 of 5 held-out cases passed."
+      },
+      "createdAt": "2026-11-10T09:00:00.000Z"
+    },
+    "startImproveRun": {
+      "runId": "run-0001"
+    }
+  }
+}

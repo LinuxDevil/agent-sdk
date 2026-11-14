@@ -105,7 +105,7 @@ export interface McpOAuthOptions {
   /** The secret of a confidential pre-registered client. */
   clientSecret?: string;
   scopes?: readonly string[];
-  /** Shown on the consent screen when registering. Default `'lousho'`. */
+  /** Shown on the consent screen when registering. Default `'@linuxdevil/lousho'`. */
   clientName?: string;
 }
 

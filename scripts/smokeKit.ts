@@ -17,6 +17,7 @@ const OPTIONAL_PEERS = ['vue', 'react', 'svelte', '@opentelemetry/api', '@modelc
 
 /** Collects failures and prints `[<prefix>]` lines. */
 export interface Reporter {
+  prefix: string;
   failures: string[];
   log(msg: string): void;
   fail(msg: string): void;
@@ -25,6 +26,7 @@ export interface Reporter {
 export function createReporter(prefix: string): Reporter {
   const failures: string[] = [];
   return {
+    prefix,
     failures,
     log: (msg) => console.log(`[${prefix}] ${msg}`),
     fail: (msg) => {
@@ -50,7 +52,7 @@ export function run(cmd: string, argv: string[], cwd: string, env: NodeJS.Proces
   return { status: res.status ?? 1, stdout: res.stdout ?? '', stderr: res.stderr ?? '' };
 }
 
-export function mustRun(rep: Reporter, label: string, cmd: string, argv: string[], cwd: string, env?: NodeJS.ProcessEnv): RunResult {
+function mustRun(rep: Reporter, label: string, cmd: string, argv: string[], cwd: string, env?: NodeJS.ProcessEnv): RunResult {
   rep.log(label);
   const res = run(cmd, argv, cwd, env);
   if (res.status !== 0) {
@@ -76,6 +78,86 @@ export function dryRunPublish(rep: Reporter, label: string, tarball: string, cwd
   } else {
     rep.log(`npm publish --dry-run ${label}: ok`);
   }
+}
+
+export interface PackEntry {
+  filename: string;
+  entryCount: number;
+  size: number;
+  unpackedSize: number;
+  files: { path: string }[];
+}
+
+/** `npm pack --json` for one package; tolerates prepack/postpack stdout before the JSON array. */
+export function packTarball(rep: Reporter, label: string, cwd: string, dest: string): { entry: PackEntry; tarball: string } {
+  const res = mustRun(rep, `npm pack ${label}`, 'npm', ['pack', '--json', '--pack-destination', dest], cwd);
+  const jsonStart = res.stdout.search(/^\[/m);
+  if (jsonStart < 0) throw new Error(`npm pack ${label}: no JSON array in output:\n${res.stdout}`);
+  const entry = (JSON.parse(res.stdout.slice(jsonStart)) as PackEntry[])[0];
+  return { entry, tarball: path.join(dest, entry.filename) };
+}
+
+export interface TarballLimits {
+  maxEntries: number;
+  maxUnpackedBytes: number;
+  maxPackedBytes: number;
+  requiredPaths: readonly string[];
+  forbiddenPatterns: readonly RegExp[];
+}
+
+/** Entry count, sizes, required/forbidden paths and budgets for one packed tarball. */
+export function checkTarballContents(rep: Reporter, entry: PackEntry, limits: TarballLimits): void {
+  rep.log(`tarball ${entry.filename}: ${entry.entryCount} entries, ${(entry.unpackedSize / 1048576).toFixed(1)} MB unpacked, ${(entry.size / 1048576).toFixed(1)} MB packed`);
+  if (entry.entryCount > limits.maxEntries) rep.fail(`tarball has ${entry.entryCount} entries (max ${limits.maxEntries})`);
+  if (entry.unpackedSize > limits.maxUnpackedBytes) rep.fail(`tarball unpacked size ${entry.unpackedSize} exceeds ${limits.maxUnpackedBytes}`);
+  if (entry.size > limits.maxPackedBytes) rep.fail(`tarball packed size ${entry.size} exceeds ${limits.maxPackedBytes}`);
+  const packed = new Set(entry.files.map((f) => f.path));
+  for (const p of limits.requiredPaths) {
+    if (!packed.has(p)) rep.fail(`tarball is missing required file ${p}`);
+  }
+  for (const f of entry.files) {
+    if (limits.forbiddenPatterns.some((re) => re.test(f.path))) rep.fail(`tarball contains forbidden file ${f.path}`);
+  }
+}
+
+/** The argv/reporter/mustRun preamble every pack-smoke script shares. */
+export function smokeSetup(prefix: string): {
+  args: Set<string>;
+  rep: Reporter;
+  log(msg: string): void;
+  fail(msg: string): void;
+  mustRun(label: string, cmd: string, argv: string[], cwd: string, env?: NodeJS.ProcessEnv): RunResult;
+} {
+  const args = new Set(process.argv.slice(2));
+  const rep = createReporter(prefix);
+  const { log, fail } = rep;
+  const mustRunLocal = (label: string, cmd: string, argv: string[], cwd: string, env?: NodeJS.ProcessEnv) => mustRun(rep, label, cmd, argv, cwd, env);
+  return { args, rep, log, fail, mustRun: mustRunLocal };
+}
+
+/** `<tmp>/<prefix>-XXXX/{tarballs,project}` for a smoke run. */
+export function smokeDirs(prefix: string): { base: string; packDir: string; project: string } {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), `${prefix}-`));
+  const packDir = path.join(base, 'tarballs');
+  const project = path.join(base, 'project');
+  fs.mkdirSync(packDir);
+  fs.mkdirSync(project);
+  return { base, packDir, project };
+}
+
+/** Shared tail, step 1: keep or remove the temp dir (call from `finally`). */
+export function cleanSmokeDir(rep: Reporter, base: string, keep: boolean): void {
+  if (keep) rep.log(`kept ${base}`);
+  else fs.rmSync(base, { recursive: true, force: true });
+}
+
+/** Shared tail, step 2: report collected failures, or pass. */
+export function reportSmoke(rep: Reporter): void {
+  if (rep.failures.length) {
+    console.error(`\n[${rep.prefix}] ${rep.failures.length} failure(s):\n- ${rep.failures.join('\n- ')}`);
+    process.exit(1);
+  }
+  rep.log('all checks passed');
 }
 
 /** An ephemeral loopback port, free at call time (a small race window is fine for smoke tests). */
@@ -170,12 +252,12 @@ export function checkModuleLoads(rep: Reporter, project: string, pkgDir: string)
 export function checkBin(rep: Reporter, project: string): void {
   const installed = path.join(project, 'node_modules', '.bin', IS_WIN ? 'lousho.cmd' : 'lousho');
   if (!fs.existsSync(installed)) return rep.fail(`node_modules/.bin/lousho was not created (${installed})`);
-  const help = run('npx', ['--no-install', 'lousho', '--help'], project);
+  const help = run('npx', ['--no-install', '@linuxdevil/lousho', '--help'], project);
   if (help.status !== 0 || !/lousho init/.test(help.stdout + help.stderr)) rep.fail(`npx lousho --help failed: ${help.stdout}${help.stderr}`);
   else rep.log('npx lousho --help: ok');
   const clean = { ...process.env };
   for (const k of ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY']) delete clean[k];
-  const doctor = run('npx', ['--no-install', 'lousho', 'doctor', '--json'], project, clean);
+  const doctor = run('npx', ['--no-install', '@linuxdevil/lousho', 'doctor', '--json'], project, clean);
   // doctor exits non-zero when a check fails (e.g. no API key); only a crash is a smoke failure.
   try {
     const parsed = JSON.parse(doctor.stdout);

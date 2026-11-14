@@ -149,46 +149,6 @@
   box-shadow: 0 0 0 3px var(--success-soft);
 }
 
-/* A native checkbox drawn as a switch (role="switch"); the knob is the one allowed #fff. */
-.ev-switch {
-  appearance: none;
-  position: relative;
-  flex: none;
-  width: 32px;
-  height: 18px;
-  margin: 0;
-  border: 1px solid transparent;
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
-  cursor: pointer;
-  transition:
-    background-color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
-}
-.ev-switch::after {
-  content: '';
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--dur) var(--ease);
-}
-.ev-switch:checked {
-  background: var(--accent-solid);
-  border-color: var(--accent-solid);
-}
-.ev-switch:checked::after {
-  transform: translateX(14px);
-}
-.ev-switch:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 /* ---------- New evaluator: a titled stack of the form's cards above the grid ---------- */
 .ev-new {
   display: flex;
@@ -487,8 +447,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ev-switch,
-  .ev-switch::after,
   .ev-kind-option,
   .ev-editor {
     transition: none;

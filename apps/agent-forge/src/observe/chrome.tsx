@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, Unplug } from 'lucide-react';
 import { EmptyState } from '../ui/EmptyState';
 import { observeClient } from './observeClient';
-import type { ObserveAgentRow } from './types';
+import { fmtInt } from './format';
+import type { ObserveAgentRow, ObserveTraceRow } from './types';
 
 const DEFAULT_OBSERVE_URL = 'http://127.0.0.1:7777';
 
@@ -72,5 +73,17 @@ export function ObserveError({ error }: { error: Error | undefined }) {
       <AlertCircle size={14} strokeWidth={1.75} aria-hidden="true" />
       <span>{error.message}</span>
     </div>
+  );
+}
+
+/**
+ * A trace row's total-token cell: the in+out sum with the split as its
+ * tooltip. Shared by the traces list and the observed-agent page (W07b).
+ */
+export function TraceTokens({ trace }: { trace: Pick<ObserveTraceRow, 'input_tokens' | 'output_tokens'> }) {
+  return (
+    <span title={`${fmtInt(trace.input_tokens)} in / ${fmtInt(trace.output_tokens)} out`}>
+      {fmtInt(trace.input_tokens + trace.output_tokens)}
+    </span>
   );
 }

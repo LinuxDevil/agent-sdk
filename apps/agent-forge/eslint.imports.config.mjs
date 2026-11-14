@@ -9,14 +9,14 @@ export default [
     ignores: ['dist/**', 'node_modules/**', 'coverage/**'],
   },
   {
-    files: ['{src,server,shared,e2e}/**/*.{ts,tsx,mjs}'],
+    files: ['{src,server,shared,e2e,evals}/**/*.{ts,tsx,mjs}'],
     languageOptions: { parser: tseslint.parser },
     // This gate runs one rule; disables aimed at rules it does not enable
     // are none of its business.
     linterOptions: { reportUnusedDisableDirectives: 'off' },
     // The plugin is registered (not its rules) so inline
     // `eslint-disable @typescript-eslint/...` comments still resolve.
-    plugins: { '@typescript-eslint': tseslint.plugin, lousho: { rules: { 'no-sdk-source': noSdkSource } } },
-    rules: { 'lousho/no-sdk-source': 'error' },
+    plugins: { '@typescript-eslint': tseslint.plugin, '@linuxdevil/lousho': { rules: { 'no-sdk-source': noSdkSource } } },
+    rules: { '@linuxdevil/lousho/no-sdk-source': 'error' },
   },
 ];

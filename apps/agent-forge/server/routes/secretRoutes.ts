@@ -18,7 +18,7 @@
  * `SecretStatus`, PUT answers the same after storing, DELETE answers
  * 204. Error bodies name the secret, never its value.
  */
-import type { Express } from 'express';
+import type { Express, Request, Response } from 'express';
 import type { SecretStatus } from '../../shared/wireTypes';
 import { paramId, sendError } from '../http/routeUtils';
 import { MAX_SECRET_VALUE_LENGTH, SECRET_NAME_RE, type SecretsStore } from '../secretsStore';
@@ -35,6 +35,13 @@ const VALUE_INVALID = {
   code: 'LOUSHO_SECRET_VALUE_INVALID',
 } as const;
 
+function validName(req: Request, res: Response): string | undefined {
+  const name = paramId(req, 'name');
+  if (SECRET_NAME_RE.test(name)) return name;
+  sendError(res, 400, NAME_INVALID.error, NAME_INVALID.code);
+  return undefined;
+}
+
 /**
  * Registers the named-secret routes on `app` against the app's single
  * `SecretsStore`. Mounted next to the provider-key routes in `createApp`.
@@ -48,20 +55,14 @@ export function registerSecretRoutes(app: Express, secrets: SecretsStore): void 
   });
 
   app.get('/settings/secrets/:name', (req, res) => {
-    const name = paramId(req, 'name');
-    if (!SECRET_NAME_RE.test(name)) {
-      sendError(res, 400, NAME_INVALID.error, NAME_INVALID.code);
-      return;
-    }
+    const name = validName(req, res);
+    if (name === undefined) return;
     res.json(secrets.secretStatus(name));
   });
 
   app.put('/settings/secrets/:name', (req, res) => {
-    const name = paramId(req, 'name');
-    if (!SECRET_NAME_RE.test(name)) {
-      sendError(res, 400, NAME_INVALID.error, NAME_INVALID.code);
-      return;
-    }
+    const name = validName(req, res);
+    if (name === undefined) return;
     const { value } = req.body as { value?: unknown };
     if (typeof value !== 'string' || value.length === 0 || value.length > MAX_SECRET_VALUE_LENGTH || !value.trim()) {
       sendError(res, 400, VALUE_INVALID.error, VALUE_INVALID.code);
@@ -72,11 +73,8 @@ export function registerSecretRoutes(app: Express, secrets: SecretsStore): void 
   });
 
   app.delete('/settings/secrets/:name', (req, res) => {
-    const name = paramId(req, 'name');
-    if (!SECRET_NAME_RE.test(name)) {
-      sendError(res, 400, NAME_INVALID.error, NAME_INVALID.code);
-      return;
-    }
+    const name = validName(req, res);
+    if (name === undefined) return;
     secrets.removeSecret(name);
     res.status(204).end();
   });

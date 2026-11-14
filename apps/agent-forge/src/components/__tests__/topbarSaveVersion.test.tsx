@@ -10,6 +10,7 @@ const appState = vi.hoisted(() => ({
   dirty: false,
   runStatus: undefined,
   spans: [],
+  problems: [] as Array<{ nodeId: string; severity: 'error' | 'warning'; message: string; fieldPath?: string }>,
   debugMode: false,
   setDebugMode: vi.fn(),
   setDrawerTab: vi.fn(),
@@ -69,5 +70,37 @@ describe('Topbar Save (explicit version)', () => {
     await act(async () => saveButton(container).click());
     expect(container.querySelector('.run-error')?.textContent).toBe('save broke');
     expect(container.querySelector('.toast')).toBeNull();
+  });
+});
+
+describe('Topbar Run gating (C19)', () => {
+  beforeEach(() => {
+    appState.problems = [];
+  });
+
+  it('disables Run with the error count in its title when error problems exist', () => {
+    appState.problems = [
+      { nodeId: 'agent', severity: 'error', message: 'e1' },
+      { nodeId: 'tool:x', severity: 'warning', message: 'w1' },
+      { nodeId: 'tool:y', severity: 'error', message: 'e2' },
+    ];
+    const container = render(
+      <ToastProvider>
+        <Topbar />
+      </ToastProvider>,
+    );
+    const run = container.querySelector('button[title="Fix 2 problems first"]') as HTMLButtonElement;
+    expect(run.disabled).toBe(true);
+  });
+
+  it('keeps Run enabled when only warnings exist', () => {
+    appState.problems = [{ nodeId: 'agent', severity: 'warning', message: 'w1' }];
+    const container = render(
+      <ToastProvider>
+        <Topbar />
+      </ToastProvider>,
+    );
+    const run = container.querySelector('button[title="Run"]') as HTMLButtonElement;
+    expect(run.disabled).toBe(false);
   });
 });

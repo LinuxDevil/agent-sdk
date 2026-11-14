@@ -19,7 +19,8 @@ import {
   type PendingApproval,
   type ResolvedApproval,
 } from '../../execution/ApprovalGate';
-import { assertSessionId, decodeBytes, encodeBytes, transcriptRevision, type SessionStore } from '../../session/sessionStore';
+import { assertSessionId, transcriptRevision, type SessionStore } from '../../session/sessionStore';
+import { decodeBytes, encodeBytes } from '../jsonBytes';
 import type { Connection } from './connection';
 import { SDKError } from '../../execution/errors';
 import { assertCheckpointId } from '../../session/checkpointId';

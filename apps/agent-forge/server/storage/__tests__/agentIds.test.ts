@@ -1,7 +1,8 @@
 /**
- * `slugAgentId`/`uniqueAgentId`/`copyAgentId` - the id helpers
- * `POST /agents` uses to turn display names into filesystem-safe,
- * collision-free agent ids (storage/agentIds.ts).
+ * `slugAgentId`/`uniqueAgentId` - the id helpers `POST /agents` uses to
+ * turn display names into filesystem-safe, collision-free agent ids
+ * (storage/agentIds.ts). Copy ids go through lifecycle/agentIds.ts's
+ * `resolveNextCopyId` instead.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
@@ -10,7 +11,7 @@ import * as path from 'node:path';
 import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { isValidAgentId } from '../../../shared/agentId';
 import { AgentRepo } from '../agentRepo';
-import { copyAgentId, slugAgentId, uniqueAgentId } from '../agentIds';
+import { slugAgentId, uniqueAgentId } from '../agentIds';
 
 const SPEC: AgentSpecV2 = { version: 2, name: 'ops', model: 'mock/mock-1', instructions: 'Run the ops checks.' };
 
@@ -69,31 +70,3 @@ describe('uniqueAgentId', () => {
   });
 });
 
-describe('copyAgentId', () => {
-  let baseDir: string;
-  let repo: AgentRepo;
-
-  beforeEach(() => {
-    baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-d06b-ids-'));
-    repo = new AgentRepo(baseDir);
-  });
-
-  afterEach(() => {
-    fs.rmSync(baseDir, { recursive: true, force: true });
-  });
-
-  it('answers <id>-copy, then <id>-copy-2, <id>-copy-3, ...', async () => {
-    await repo.writeSpec('a', SPEC);
-    expect(copyAgentId(repo, 'a')).toBe('a-copy');
-    await repo.writeSpec('a-copy', SPEC);
-    expect(copyAgentId(repo, 'a')).toBe('a-copy-2');
-    await repo.writeSpec('a-copy-2', SPEC);
-    expect(copyAgentId(repo, 'a')).toBe('a-copy-3');
-  });
-
-  it('does not reuse a copy id whose sidecar dir exists', async () => {
-    await repo.writeSpec('a', SPEC);
-    fs.mkdirSync(path.join(repo.sidecarDir('a-copy'), 'versions'), { recursive: true });
-    expect(copyAgentId(repo, 'a')).toBe('a-copy-2');
-  });
-});

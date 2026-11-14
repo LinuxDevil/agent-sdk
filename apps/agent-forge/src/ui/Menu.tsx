@@ -1,5 +1,5 @@
 import './menu.css';
-import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, MoreHorizontal, type LucideIcon } from 'lucide-react';
 import { anchorStyle } from './anchor';
@@ -7,7 +7,6 @@ import { moveMenuFocus, typeaheadMenuFocus } from './menuKeys';
 import { Kbd } from './Kbd';
 
 /** One actionable row of a {@link Menu}: a menuitem, or a menuitemcheckbox when `checked` is set. */
-// fallow-ignore-next-line unused-type -- contract surface: adopted by the overflow menus in A04/A12 and W05a.
 export interface MenuAction {
   id: string;
   label: string;
@@ -33,6 +32,19 @@ export interface MenuTriggerOptions {
   variant?: 'ghost' | 'secondary' | 'primary';
   size?: 'sm' | 'md';
   caret?: boolean;
+  /**
+   * Replaces the default trigger classes (`btn btn-… menu-trigger`) with
+   * `menu-trigger <className>` - the publish pill's `status-pill` look.
+   */
+  className?: string;
+  /** Replaces the icon/text content entirely (the pill's dot + label). */
+  content?: ReactNode;
+  /** Accessible name when the trigger has no visible text (defaults to the Menu's `label`). */
+  ariaLabel?: string;
+  /** Tooltip override (defaults to the label, or the disabled reason). */
+  title?: string;
+  /** Marks the trigger `aria-busy` while an action it started is in flight (the publish pill). */
+  busy?: boolean;
 }
 
 /** Props for {@link Menu}: a WAI-ARIA menu button opening a portalled action list. */
@@ -110,13 +122,15 @@ interface MenuTriggerProps {
 
 /** Button classes for the trigger: icon-only ghost, or `btn btn-<variant>` (+ `btn-sm`) for a labelled one. */
 function triggerClasses(trigger?: MenuTriggerOptions): string {
+  if (trigger?.className !== undefined) return `menu-trigger ${trigger.className}`;
   if (!trigger?.text) return 'btn btn-ghost btn-icon menu-trigger';
   return `btn btn-${trigger.variant ?? 'secondary'} menu-trigger${trigger.size === 'sm' ? ' btn-sm' : ''}`;
 }
 
-/** The trigger's tooltip: the reason it is off, else the label that names an icon-only trigger. */
+/** The trigger's tooltip: the reason it is off, else an explicit `title`, else the label that names an icon-only trigger. */
 function triggerTitle({ label, trigger, disabled, disabledReason }: Pick<MenuTriggerProps, 'label' | 'trigger' | 'disabled' | 'disabledReason'>): string | undefined {
   if (disabled) return disabledReason;
+  if (trigger?.title !== undefined) return trigger.title;
   return trigger?.text ? undefined : label;
 }
 
@@ -147,13 +161,14 @@ function MenuTrigger({ label, menuId, open, trigger, disabled, disabledReason, b
       aria-haspopup="menu"
       aria-expanded={open}
       aria-controls={menuId}
-      aria-label={trigger?.text ? undefined : label}
+      aria-label={trigger?.text ? undefined : (trigger?.ariaLabel ?? label)}
+      aria-busy={trigger?.busy || undefined}
       title={triggerTitle({ label, trigger, disabled, disabledReason })}
       disabled={disabled}
       onClick={onToggle}
       onKeyDown={onKeyDown}
     >
-      <TriggerContent trigger={trigger} />
+      {trigger?.content ?? <TriggerContent trigger={trigger} />}
     </button>
   );
 }

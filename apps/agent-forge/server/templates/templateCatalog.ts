@@ -78,7 +78,7 @@ interface LoadedTemplate {
  * The shipped templates under one folder - read-only, so nothing in here
  * locks or writes. `list()`/`get()` re-read the folder on every call: six
  * small files, so caching would buy nothing and staleness would cost
- * correctness after a `lousho` upgrade.
+ * correctness after a `@linuxdevil/lousho` upgrade.
  */
 export class TemplateCatalog {
   private readonly dir: string;

@@ -1,12 +1,12 @@
 # Examples
 
-Runnable examples of `lousho` in use. Each directory below
+Runnable examples of `@linuxdevil/lousho` in use. Each directory below
 is runnable directly (see its own README for exact instructions); most use
 `tsx` and a free mock provider by default, so nothing here needs an API key
 to try.
 
 The examples import the SDK by its package name and public subpaths
-(`lousho`, `@linuxdevil/lousho/testing`, ...), exactly as
+(`@linuxdevil/lousho`, `@linuxdevil/lousho/testing`, ...), exactly as
 your app would, so you can copy a file out as it is. Inside this repo the
 `paths` in `tsconfig.json` (and a resolver in `vitest.config.ts`) point those
 imports at `src/`, so nothing needs building first.
@@ -96,3 +96,7 @@ Waves — Workers · Aggregate · Verify · Extend: bounded parallel workers in 
 ## [workflow-router](./workflow-router)
 
 An agent that classifies an incoming request into a fixed set of categories.
+
+## [workspace-marketing](./workspace-marketing)
+
+One Marketing workspace, two pages (Instagram and Facebook) attached to the same three agents with different harnesses, run through `createWorkspaceRuntime` from an in-memory source with an injected host; mock `render_video` and `synthesize_voice` tools write placeholder artifacts, and it runs offline with `--mock`.

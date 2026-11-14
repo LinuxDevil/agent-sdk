@@ -59,6 +59,7 @@ export class InProcessAgentHost implements AgentHost {
       },
       ...(input.captureContent !== undefined && { captureContent: input.captureContent }),
       ...(input.extraHooks !== undefined && { extraHooks: input.extraHooks }),
+      ...(input.onAutoApproval !== undefined && { onAutoApproval: input.onAutoApproval }),
     };
   }
 

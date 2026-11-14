@@ -33,6 +33,13 @@ export interface FieldProps {
   inline?: boolean;
   /** Schema path for `data-path`, e.g. `modelSettings.temperature` (schemaForm rows). */
   dataPath?: string;
+  /**
+   * Spec-path suffix for `data-field-path` (C19): the Inspector's Problems
+   * section focuses the control registered under the problem's field path.
+   * On a capability node this is the path after the node's own spec path,
+   * e.g. `.builtin`; on the root agent it is the whole path, e.g. `name`.
+   */
+  fieldPath?: string;
   className?: string;
   children: ReactNode;
 }
@@ -50,6 +57,7 @@ export function Field({
   id,
   inline,
   dataPath,
+  fieldPath,
   className,
   children,
 }: FieldProps): JSX.Element {
@@ -72,7 +80,7 @@ export function Field({
     .join(' ');
   return (
     <FieldContext.Provider value={ids}>
-      <div className={classes} data-path={dataPath}>
+      <div className={classes} data-path={dataPath} data-field-path={fieldPath}>
         <label className="field-label" htmlFor={controlId}>
           {label}
           {required ? (

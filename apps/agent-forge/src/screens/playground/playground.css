@@ -246,43 +246,6 @@
   font-size: 12.5px;
   color: var(--text);
 }
-/* a checkbox drawn as the kit's switch (ui/base.css `.switch`), keeping checkbox semantics. */
-.pg-switch {
-  appearance: none;
-  margin: 0;
-  width: 32px;
-  height: 18px;
-  flex: none;
-  position: relative;
-  border-radius: var(--radius-full);
-  background: var(--border-strong);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background-color var(--dur) var(--ease);
-}
-.pg-switch::after {
-  content: '';
-  position: absolute;
-  top: 1px;
-  left: 1px;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: var(--shadow-sm);
-  transition: transform var(--dur) var(--ease);
-}
-.pg-switch:checked {
-  background: var(--accent-solid);
-  border-color: var(--accent-solid);
-}
-.pg-switch:checked::after {
-  transform: translateX(14px);
-}
-.pg-switch:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
 
 /* ---------- Composer ---------- */
 .pg-messages {
@@ -655,8 +618,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pg-switch,
-  .pg-switch::after,
   .pg-message,
   .pg-role,
   .pg-tool-call > summary,

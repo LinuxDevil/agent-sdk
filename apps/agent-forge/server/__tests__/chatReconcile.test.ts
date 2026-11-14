@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Message } from '@linuxdevil/lousho';
-import { reconcileChatMessages } from '../chatReconcile';
-import type { ChatMessage } from '../../shared/wireTypes';
+import { reconcileChatMessages, markSteerInputs } from '../chatReconcile';
+import type { ChatMessage, SteerInfo } from '../../shared/wireTypes';
 
 const T1 = '2026-01-01T00:00:00.000Z';
 const T2 = '2026-01-01T00:00:05.000Z';
@@ -92,5 +92,75 @@ describe('reconcileChatMessages', () => {
 
   it('returns an empty array unchanged', () => {
     expect(reconcileChatMessages([], [], T2)).toEqual([]);
+  });
+});
+
+describe('markSteerInputs', () => {
+  const steer = (message: string, delivery: SteerInfo['delivery']): SteerInfo => ({
+    id: `steer-${message}`,
+    message,
+    at: T1,
+    delivery,
+    mode: 'queued',
+  });
+
+  it('tags a new user message whose content equals a delivered steer message', () => {
+    const prev: ChatMessage[] = [chatMsg({ role: 'user', content: 'hi' }, 'user-1', T1)];
+    const messages: ChatMessage[] = [
+      ...prev,
+      chatMsg({ role: 'assistant', content: 'ok' }, 'asst-1', T2),
+      chatMsg({ role: 'user', content: 'use Paris instead' }, 'user-2', T2),
+      chatMsg({ role: 'assistant', content: 'noted' }, 'asst-2', T2),
+    ];
+
+    const result = markSteerInputs(messages, prev, [steer('use Paris instead', 'delivered')]);
+
+    expect(result[2]).toMatchObject({ id: 'user-2', source: 'steer' });
+    // Everything else is untouched - no source invented elsewhere.
+    expect(result[0].source).toBeUndefined();
+    expect(result[1].source).toBeUndefined();
+    expect(result[3].source).toBeUndefined();
+  });
+
+  it('does not tag queued or undelivered steers, non-user roles, or non-matching content', () => {
+    const prev: ChatMessage[] = [];
+    const messages: ChatMessage[] = [
+      chatMsg({ role: 'user', content: 'queued one' }, 'u1', T2),
+      chatMsg({ role: 'user', content: 'undelivered one' }, 'u2', T2),
+      chatMsg({ role: 'user', content: 'typed by hand' }, 'u3', T2),
+      chatMsg({ role: 'assistant', content: 'delivered one' }, 'a1', T2),
+    ];
+    const steering = [
+      steer('queued one', 'queued'),
+      steer('undelivered one', 'undelivered'),
+      steer('delivered one', 'delivered'),
+    ];
+
+    const result = markSteerInputs(messages, prev, steering);
+
+    expect(result.every((m) => m.source === undefined)).toBe(true);
+  });
+
+  it('does not re-tag a matching user message that was already in prev', () => {
+    // The user typed the same text the steer carried; the OLD bubble keeps
+    // no source - only the new turn the steer added gets tagged.
+    const prev: ChatMessage[] = [chatMsg({ role: 'user', content: 'same words' }, 'user-old', T1)];
+    const messages: ChatMessage[] = [
+      ...prev,
+      chatMsg({ role: 'assistant', content: 'ok' }, 'asst-1', T2),
+      chatMsg({ role: 'user', content: 'same words' }, 'user-new', T2),
+    ];
+
+    const result = markSteerInputs(messages, prev, [steer('same words', 'delivered')]);
+
+    expect(result[0]).toMatchObject({ id: 'user-old' });
+    expect(result[0].source).toBeUndefined();
+    expect(result[2]).toMatchObject({ id: 'user-new', source: 'steer' });
+  });
+
+  it('returns the messages unchanged when no steer was delivered', () => {
+    const messages: ChatMessage[] = [chatMsg({ role: 'user', content: 'hi' }, 'u1', T2)];
+    expect(markSteerInputs(messages, [], [])).toBe(messages);
+    expect(markSteerInputs(messages, [], [steer('hi', 'queued')])).toBe(messages);
   });
 });

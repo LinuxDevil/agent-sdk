@@ -7,6 +7,7 @@ import { CopyLinkButton, Fact, FactUnit, HeaderCard } from '../../ui/HeaderCard'
 import { displayName, displayStatus, elapsedMs, playgroundHref } from '../../ui/run/rows';
 import { AddToDataset } from './AddToDataset';
 import { AddToQueue } from './AddToQueue';
+import { RatingControl } from '../../ui/RatingControl';
 
 /** The latest `end` over every observation, or `undefined` when none has ended. */
 function latestEnd(rows: ObserveObservationRow[]): number | undefined {
@@ -49,6 +50,10 @@ interface TraceHeaderProps {
   now: number;
   /** The selected step: "Open in Playground" loads it when it is a generation. */
   selectedObsId?: string | null;
+  /** The trace's latest human `rating` score (R04b), `null` when unrated. */
+  rating?: number | null;
+  /** Refetches the trace detail after a rating saves. */
+  onRated?: () => void;
 }
 
 /**
@@ -59,7 +64,7 @@ interface TraceHeaderProps {
  * agent (to the agent-filtered trace list) and session (to its thread). A
  * chip whose value the trace does not have is left out, not shown as a dash.
  */
-export function TraceHeader({ root, observations, agentName, now, selectedObsId }: TraceHeaderProps) {
+export function TraceHeader({ root, observations, agentName, now, selectedObsId, rating = null, onRated }: TraceHeaderProps) {
   const { tokens, cost } = traceTotals(observations);
   const model = traceModel(root, observations);
   const playground = playgroundTarget(observations, selectedObsId);
@@ -74,6 +79,9 @@ export function TraceHeader({ root, observations, agentName, now, selectedObsId 
           <CopyLinkButton />
           <AddToDataset traceId={root.trace_id} />
           <AddToQueue traceId={root.trace_id} />
+          {root.agent_id && (
+            <RatingControl agentId={root.agent_id} traceId={root.trace_id} value={rating} onRated={onRated} />
+          )}
           {playground && (
             <a className="btn" href={playgroundHref(playground.trace_id, playground.obs_id)}>
               <FlaskConical aria-hidden="true" />

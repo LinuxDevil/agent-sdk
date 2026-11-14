@@ -17,7 +17,7 @@ import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
 import { TemplateCatalog } from '../templates/templateCatalog';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { AgentRecord, VersionListItem } from '../../shared/wireTypes';
 
 const V2_SPEC: AgentSpecV2 = {
@@ -38,7 +38,7 @@ const LAYOUT = {
 describe('POST /agents', () => {
   let baseDir: string;
   let templatesDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
 
@@ -119,11 +119,17 @@ describe('POST /agents', () => {
       expect(copy.spec.description).toBe('Watches the queues.');
       expect(copy.meta.labels).toEqual(['ops', 'billing']);
       expect(copy.meta).toMatchObject({
-        enabled: true,
+        enabled: false,
         createdFrom: { kind: 'copy', ref: 'a' },
         publishedVersion: null,
       });
-      expect(copy.layout).toEqual(LAYOUT);
+      // Node positions and the viewport copy verbatim; the sticky note
+      // keeps its text but gets a fresh id (L10).
+      expect(copy.layout.nodes).toEqual(LAYOUT.nodes);
+      expect(copy.layout.viewport).toEqual(LAYOUT.viewport);
+      expect(copy.layout.notes).toHaveLength(1);
+      expect(copy.layout.notes[0]).toMatchObject({ x: 0, y: 0, text: 'remember this' });
+      expect(copy.layout.notes[0].id).not.toBe('n1');
       expect(copy.latestVersion).toBe(1);
 
       const second = await create({ from: { copyOf: 'a' } });
@@ -152,7 +158,7 @@ describe('POST /agents', () => {
     it('404s LOUSHO_AGENT_NOT_FOUND for a missing copyOf', async () => {
       const res = await create({ from: { copyOf: 'ghost' } });
       expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: "No saved agent 'ghost'", code: 'LOUSHO_AGENT_NOT_FOUND' });
+      expect(res.body).toEqual({ error: "No agent 'ghost' to copy", code: 'LOUSHO_AGENT_NOT_FOUND' });
     });
   });
 
@@ -280,7 +286,7 @@ describe('POST /agents', () => {
 
 describe('PUT /agents/:id/layout', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
 
   beforeEach(() => {

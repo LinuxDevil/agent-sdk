@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentSpec } from '@linuxdevil/lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { downloadSpec, importSpecFile, parseSpecText, serializeSpec } from '../importExport';
 
-const spec: AgentSpec = {
+const spec: AgentSpecV2 = {
+  version: 2,
   name: 'research-assistant',
-  prompt: 'Research a topic and summarize findings.',
-  provider: { type: 'anthropic', model: 'claude-3.7-sonnet' },
-  tools: ['http', 'current-date'],
+  model: 'mock/mock-1',
+  instructions: 'Research a topic and summarize findings.',
+  tools: [{ builtin: 'http_request' }],
 };
 
 describe('serializeSpec / parseSpecText', () => {
@@ -21,7 +22,7 @@ describe('serializeSpec / parseSpecText', () => {
   });
 
   it('rejects invalid spec text with a field-naming error', () => {
-    expect(() => parseSpecText('name: only-a-name', 'yaml')).toThrow(/'prompt'/);
+    expect(() => parseSpecText('name: only-a-name', 'yaml')).toThrow(/parseSpecText: import failed validation/);
   });
 });
 

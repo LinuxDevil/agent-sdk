@@ -27,14 +27,14 @@ are unchanged apart from where they live.
 
 | Name(s) | Old import | New import |
 | ------- | ---------- | ---------- |
-| `AgentExecutor`, `AgentBuilder`, `ExecuteOptions`, `ResumeExecuteOptions`, `ResumeRequest`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()` | `lousho` or `@linuxdevil/lousho/core` | `@linuxdevil/lousho/executor` |
-| `ToolRegistry`, `globalToolRegistry` | `lousho` or `@linuxdevil/lousho/core` | `@linuxdevil/lousho/executor` (also still in `@linuxdevil/lousho/tools`) |
+| `AgentExecutor`, `AgentBuilder`, `ExecuteOptions`, `ResumeExecuteOptions`, `ResumeRequest`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()` | `@linuxdevil/lousho` or `@linuxdevil/lousho/core` | `@linuxdevil/lousho/executor` |
+| `ToolRegistry`, `globalToolRegistry` | `@linuxdevil/lousho` or `@linuxdevil/lousho/core` | `@linuxdevil/lousho/executor` (also still in `@linuxdevil/lousho/tools`) |
 | `ExecutionResult`, `ExecutionFinishReason` (the executor's types) | `@linuxdevil/lousho/core` | `@linuxdevil/lousho/executor` (`ExecutionResult` is also still in the root, where `createAgent()`'s result type lives) |
-| `FlowBuilder`, `FlowExecutor`, `validateFlow` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) | `lousho` or `@linuxdevil/lousho/types` | `@linuxdevil/lousho/flows` |
-| `createJiraTools`, `createGitHubTools`, `createSlackTool`, `slackTool`, `postSlackAlert`, `createEmailTool` and their types | `lousho` or `@linuxdevil/lousho/tools` | `@linuxdevil/lousho/integrations` |
-| `EncryptionUtils`, `DTOEncryptionFilter`, `DecryptionError`, `sha256`, `generatePassword` | `lousho` | `@linuxdevil/lousho/utils` |
-| `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | `lousho` | `@linuxdevil/lousho/utils` (with `createAgent()` stores, prefer `fileStore(dir)` from the root) |
-| `validateWithSchema`, `safeValidate`, `isValidEmail` and the other validators | `lousho` | `@linuxdevil/lousho/utils` |
+| `FlowBuilder`, `FlowExecutor`, `validateFlow` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) | `@linuxdevil/lousho` or `@linuxdevil/lousho/types` | `@linuxdevil/lousho/flows` |
+| `createJiraTools`, `createGitHubTools`, `createSlackTool`, `slackTool`, `postSlackAlert`, `createEmailTool` and their types | `@linuxdevil/lousho` or `@linuxdevil/lousho/tools` | `@linuxdevil/lousho/integrations` |
+| `EncryptionUtils`, `DTOEncryptionFilter`, `DecryptionError`, `sha256`, `generatePassword` | `@linuxdevil/lousho` | `@linuxdevil/lousho/utils` |
+| `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | `@linuxdevil/lousho` | `@linuxdevil/lousho/utils` (with `createAgent()` stores, prefer `fileStore(dir)` from the root) |
+| `validateWithSchema`, `safeValidate`, `isValidEmail` and the other validators | `@linuxdevil/lousho` | `@linuxdevil/lousho/utils` |
 
 The `@linuxdevil/lousho/core` subpath no longer exists; everything it
 exported is under `/executor`.
@@ -291,7 +291,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | Change | Opt-out |
 | ------ | ------- |
 | `lousho dev`, `chat`, `acp`, `mcp`, `doctor`, `eval` and `build` load `./.env` when it exists; variables already set win. See [CLI](./cli.md). | remove or rename `.env` |
-| Every `lousho` usage error (unknown command or flag, bad value, extra argument) exits 2; 1 means the command ran and failed. See [CLI](./cli.md). | check for a non-zero exit instead of exactly 1 |
+| Every `@linuxdevil/lousho` usage error (unknown command or flag, bad value, extra argument) exits 2; 1 means the command ran and failed. See [CLI](./cli.md). | check for a non-zero exit instead of exactly 1 |
 | `t.maxCostUsd(n)` fails when a run reports no cost (the model has no known price). See [Evals](./evals.md). | `t.maxCostUsd(n, { unknownCost: 'skip' })` |
 | `lousho eval` gives each live, `--record` and `--drift` case 10 minutes instead of vitest's 5 s. See [Time limits](./evals.md#time-limits). | `--timeout <ms>` or `defineEval({ timeoutMs })` |
 | Agent Forge fails a run on a real provider with no API key (`LOUSHO_PROVIDER_MISSING_API_KEY`) instead of silently using the mock provider. | switch the agent's provider to `mock` |
@@ -300,7 +300,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | The observe daemon ends idle sessions: once none of a session's runs is open and nothing in it has started or finished for 30 minutes, its status becomes `ended` (with `ended_at` = its last activity) instead of staying `active`; a new run in it makes it `active` again. See [Idle sessions](./observability.md#idle-sessions). | `lousho observe start --session-idle-minutes N` (`0` keeps sessions `active` until their agent goes down) |
 | The observe daemon prunes old data by default: on its first sweep and then once a day it deletes every trace whose observations all finished more than 30 days ago, with that trace's scores and prompt-use links, and sessions that are no longer `active`, ended before the window and no longer referenced. A trace with a run still open, active sessions, the Insights rollups, prompts, hub entries, the agent registry, tokens, datasets, evaluator rules and annotation queues are never pruned. See [Retention](./observability.md#retention). | `lousho observe start --retention-days 0` keeps everything (or `N` for another window) |
 | `lousho mcp --port N` or `--host H` without `--http` is a usage error (exit 2); stdio has no port. | drop the flags, or add `--http` |
-| The `package.json` of a node-server or docker build no longer lists `lousho` (the bundle contains it). | add it yourself if other code next to the build imports the SDK |
+| The `package.json` of a node-server or docker build no longer lists `@linuxdevil/lousho` (the bundle contains it). | add it yourself if other code next to the build imports the SDK |
 | The npm package no longer ships `dist/cli/*.js` (the CommonJS CLI build) or `dist/cli/*.d.ts`; `bin/lousho.js` never loaded them. | run the CLI through `bin/lousho.js` (`npx @linuxdevil/lousho`) |
 
 ## What 1.0 promises
@@ -308,7 +308,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 Starting at 1.0 the package follows semver on its public surface:
 
 - **Public**: every entry point `exports` declares - the root
-  `lousho` and the `/executor`, `/tools`, `/flows`,
+  `@linuxdevil/lousho` and the `/executor`, `/tools`, `/flows`,
   `/integrations`, `/utils`, `/mcp`, `/types`, `/testing`, `/otel`, `/hooks`,
   `/sqlite`, `/auth`, `/kv`, `/worker`, `/traces`, `/triggers`, `/react`,
   `/vue` and `/svelte` subpaths - and every name in the checked-in API

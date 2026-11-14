@@ -65,6 +65,14 @@ export const ERROR_CODES = {
   LOUSHO_FLOW_CHANGED: 'Resume the run with the flow version that started it (same steps in the same order), or start a new run with another runId.',
   LOUSHO_STORAGE_FAILED: 'Read the message: it names the database or file that failed; check the path, permissions and Node version, and the `cause`.',
   LOUSHO_STORAGE_BUSY: 'Another process holds the SQLite write lock; retry the call, or find what keeps the lock (a long transaction, a backup, a second replica).',
+  /** A run asked an artifact store for an artifact of another run or workspace. */
+  LOUSHO_ARTIFACT_FORBIDDEN: "Read only the run's own artifacts, or pass the artifact's uri to this run as a ref (through the main agent).",
+  /** An artifact was larger than the store's `maxArtifactBytes`. */
+  LOUSHO_ARTIFACT_TOO_LARGE: 'Write a smaller artifact, or raise maxArtifactBytes on the artifact store.',
+  /** An artifact name was stored again with other content or another media type. */
+  LOUSHO_ARTIFACT_EXISTS: 'Store the new content under a new artifact name; a stored artifact never changes.',
+  /** The file artifact store found a symlink or a non-plain entry where it reads or writes. */
+  LOUSHO_ARTIFACT_UNSAFE_PATH: 'Remove the symlink or other entry the message names from the artifact store folder; the store reads and writes only plain folders and files inside its root.',
   LOUSHO_TRIGGER_INVALID: 'Fix the trigger option the message names; the message shows a working example.',
   LOUSHO_DEPLOY_FAILED: 'Read the message: it names the missing option, file or unsupported feature; docs/deployment.md covers each target.',
   /** The built server was asked to listen on a non-loopback host with no route auth. */
@@ -84,6 +92,9 @@ export const ERROR_CODES = {
   /** The approvals route got a body without `approved` or `answer` (`400`). */
   LOUSHO_APPROVAL_DECISION_INVALID: "Send a JSON body with 'approved' (true or false, and an optional 'note') or, for a question, 'answer'.",
   LOUSHO_APPROVAL_KIND_MISMATCH: "'answer' decides a question pause only; a tool-call pause takes 'approved' (a question also answers with 'approved' and the answer as 'note').",
+  /** `modelAutoApprover`'s reply carried no usable `{ safety, reason }` verdict. */
+  LOUSHO_AUTO_APPROVAL_INVALID:
+    'Check the auto approver\'s model and prompt: its reply must be a JSON object { "safety": <0..1>, "reason": "<text>" } (prose around it is fine).',
   LOUSHO_SESSION_FORBIDDEN: 'Use a session the route\'s authorizeSession lets this caller read, continue or decide approvals in.',
   /** A session route refused a cross-site POST or a `Host` outside `allowedHosts` (`403`). */
   LOUSHO_REQUEST_FORBIDDEN: "Call from the server's own origin (or add the page's origin to allowedOrigins) and use a Host the server allows (allowedHosts).",
@@ -147,6 +158,40 @@ export const ERROR_CODES = {
   LOUSHO_MCP_CALL_FAILED:
     "Read the message: it names the server and tool; the `cause` is the MCP error (its `code`, e.g. -32000 'Connection closed' when the server exited). Check the server is running.",
   LOUSHO_MCP_AUTH_REQUIRED: "Sign the app in to the MCP server once: open the URL from agent.oauth.mcpSignInUrl('<server>') and let the callback store the token.",
+  /** A workspace write named an expectedRevision that is no longer current. */
+  LOUSHO_WORKSPACE_STALE_REVISION: 'Read the workspace again at its current revision, reapply the change and write with that revision as expectedRevision.',
+  /** A workspace write would leave every file as it is. */
+  LOUSHO_WORKSPACE_NO_CHANGE: 'Drop the write, or change at least one file so the tree differs from the current revision.',
+  /** A workspace path, or a symlink in a workspace folder, leaves the workspace. */
+  LOUSHO_WORKSPACE_PATH_INVALID: 'Use a forward-slash path relative to the workspace root, and replace symlinks that leave the workspace folder with the files themselves.',
+  /** A workspace revision the source never recorded, or whose snapshot was pruned. */
+  LOUSHO_WORKSPACE_REVISION_UNKNOWN: "Pick a revision from source.history(), or raise folderSource()'s keep to keep older snapshots readable.",
+  /** A workspace folder's revision index or write journal is damaged. */
+  LOUSHO_WORKSPACE_SOURCE_CORRUPT: 'Look at the file the message names under .lousho/revisions/; a set-aside journal can be inspected and deleted once the workspace looks right.',
+  /** A workspace folder read went over a size or file-count limit. */
+  LOUSHO_WORKSPACE_SOURCE_LIMIT: 'Move large or generated files out of the workspace folder, or raise the limit the message names on folderSource().',
+  /** A database workspace source refused file content it cannot store, such as a NUL character. */
+  LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED: 'Remove the NUL characters from the file the message names; a database workspace source stores text only.',
+  /** A workspace read through a source has validation errors. */
+  LOUSHO_WORKSPACE_INVALID: 'Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.',
+  /** A page's agent reference names no agent folder, or no global agent version matches it. */
+  LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.",
+  /** A main harness lists an instruction file for which no text was supplied. */
+  LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: 'Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.',
+  /** A page requires a capability no tool in its effective toolset provides (`capability-missing`). */
+  LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.",
+  /** A page's execution type has no engine in the runtime's engine registry (`engine-unknown`). */
+  /** `runPage` was given a page id the workspace does not list (`page-unknown`). */
+  LOUSHO_WORKSPACE_PAGE_UNKNOWN: "Pass a page id listed in workspace.json pages that has a pages/<id>/page.json.",
+  LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.",
+  /** `workspace.run` without a `pageId` on a workspace whose `mainAgent` is `null` (`no-main-agent`). */
+  LOUSHO_WORKSPACE_NO_MAIN_AGENT: 'Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.',
+  /** `createWorkspaceRuntime` got a host that misses a dependency, or a tool's secrets, hosts or sandbox need a `bindTool` the host did not give. */
+  LOUSHO_WORKSPACE_HOST_INVALID: 'Give the host the field the message names; pass bindTool when a policy grants a tool secrets or hosts, or requires a sandbox.',
+  /** `run` or `runPage` got a `runId` that is already active in the runtime. */
+  LOUSHO_WORKSPACE_RUN_ACTIVE: 'Pass a run id that is not running, or leave runId out so the runtime makes one.',
+  /** A call on a workspace runtime after `close()`. */
+  LOUSHO_WORKSPACE_RUNTIME_CLOSED: 'Create a new runtime with createWorkspaceRuntime; a closed one takes no runs.',
 } as const;
 
 /** A stable error code, e.g. `'LOUSHO_CONFIG_MISSING_PROVIDER'`. */

@@ -27,7 +27,8 @@ async function agentIds(page: Page): Promise<string[]> {
  * saved agent's canvas tab, or the unsaved default's when none are saved yet.
  */
 async function builderHash(page: Page): Promise<string> {
-  return `#/agents/${(await agentIds(page))[0] ?? 'untitled-agent'}/canvas`;
+  const ws = ((await (await page.request.get('/workspace', API)).json()) as { workspace: { id: string } }).workspace.id;
+  return `#/w/${ws}/agents/${(await agentIds(page))[0] ?? 'untitled-agent'}/canvas`;
 }
 
 test('a new agent is named what you typed; a finished run says done and labels its input', async ({ page }) => {
@@ -139,13 +140,13 @@ test('the Output node is drawn once and the minimap shows the graph', async ({ p
   await createAgent(page, id);
 
   // Node cards: the LLM node shows its provider/model chip and an idle status before any run.
-  const llm = page.locator('[data-node-type="llm"]');
+  const llm = page.locator('[data-node-kind="agent"]');
   await expect(llm.locator('.node-model')).toHaveText('mock/mock-1');
   await expect(llm.locator('.status-pill')).toHaveText('idle');
 
   // React Flow's built-in `output` type used to add its own border/padding box around ours.
   await expect(page.locator('.react-flow__node-output')).toHaveCount(0);
-  const output = page.locator('.react-flow__node:has([data-node-type="output"])');
+  const output = page.locator('.react-flow__node:has([data-node-kind="output"])');
   await expect(output).toHaveCount(1);
   const wrapper = await output.evaluate((el) => {
     const s = getComputedStyle(el);

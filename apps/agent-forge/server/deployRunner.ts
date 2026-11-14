@@ -24,7 +24,7 @@ import { toLegacySpec } from './storage/legacySpec';
  * (`node-server`, `cloudflare-worker`, `docker`) - hand-kept in sync rather
  * than imported, because that function (and the adapter registry it
  * populates) is an internal wiring helper the SDK's public
- * `lousho` entrypoint doesn't re-export (only the
+ * `@linuxdevil/lousho` entrypoint doesn't re-export (only the
  * `DeploymentAdapter`/`getAdapter`/`registerAdapter` TYPES are public, via
  * `src/deploy/types.ts`). `lousho build --target=<name>` is still the real
  * source of truth for what's actually buildable - an unknown/stale name
@@ -45,7 +45,7 @@ export function isDeployAdapter(value: string): value is DeployAdapter {
  * "never throws" contract in src/cli/build.ts).
  *
  * Requires the SDK to have been built (`npm run build` at the repo root, so
- * `dist/cli/build.js` exists) - same prerequisite the `lousho` CLI itself
+ * `dist/cli/build.js` exists) - same prerequisite the `@linuxdevil/lousho` CLI itself
  * has outside this dev environment.
  */
 /**
@@ -63,8 +63,15 @@ async function writeLegacyDeploySpec(baseDir: string, agentId: string): Promise<
   return filePath;
 }
 
-export async function runDeploy(baseDir: string, agentId: string, adapter: string): Promise<DeployResult> {
-  const cliEntry = path.join(baseDir, 'bin', 'lousho.js');
+export async function runDeploy(
+  baseDir: string,
+  agentId: string,
+  adapter: string,
+  // W11c: a bridge workspace deploys through ITS SDK's bin (the project's
+  // installed `@linuxdevil/lousho`), not `<workspace>/bin/lousho.js` - the route passes
+  // `hostSelector.current().sdk.binPath` on bridge mode.
+  cliEntry: string = path.join(baseDir, 'bin', 'lousho.js')
+): Promise<DeployResult> {
   const outDir = path.join(baseDir, '.lousho', 'build', adapter, agentId);
   const agentPath = await writeLegacyDeploySpec(baseDir, agentId);
   const args = ['build', `--target=${adapter}`, `--agent=${agentPath}`, `--out=${outDir}`];

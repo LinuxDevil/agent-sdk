@@ -30,9 +30,8 @@
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
-import { IS_WIN, SDK_NAME, createReporter, dryRunPublish, freePort, mustRun as mustRunIn, run } from './smokeKit';
+import { checkTarballContents, cleanSmokeDir, IS_WIN, SDK_NAME, dryRunPublish, freePort, packTarball, reportSmoke, run, smokeDirs, smokeSetup, type TarballLimits } from './smokeKit';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 const STUDIO_DIR = path.join(REPO_ROOT, 'apps', 'agent-forge');
@@ -57,43 +56,15 @@ const STUDIO_FORBIDDEN_PATHS = [
   /\.package\.json\.prepack$/,
 ];
 
-const args = new Set(process.argv.slice(2));
-const rep = createReporter('pack-smoke:studio');
-const { log, fail, failures } = rep;
-const mustRun = (label: string, cmd: string, argv: string[], cwd: string, env?: NodeJS.ProcessEnv) => mustRunIn(rep, label, cmd, argv, cwd, env);
+const { args, rep, log, fail, mustRun } = smokeSetup('pack-smoke:studio');
 
-interface PackEntry {
-  filename: string;
-  entryCount: number;
-  size: number;
-  unpackedSize: number;
-  files: { path: string }[];
-}
-
-function pack(label: string, cwd: string, dest: string): { entry: PackEntry; tarball: string } {
-  const res = mustRun(`npm pack ${label}`, 'npm', ['pack', '--json', '--pack-destination', dest], cwd);
-  // prepack/postpack lifecycle output (e.g. pin-sdk-range) precedes the JSON array.
-  const jsonStart = res.stdout.search(/^\[/m);
-  if (jsonStart < 0) throw new Error(`npm pack ${label}: no JSON array in output:\n${res.stdout}`);
-  const entry = (JSON.parse(res.stdout.slice(jsonStart)) as PackEntry[])[0];
-  return { entry, tarball: path.join(dest, entry.filename) };
-}
-
-/** Step 2: entry count, sizes, required/forbidden paths and budgets. */
-function checkStudioTarball(entry: PackEntry): void {
-  log(`studio tarball ${entry.filename}: ${entry.entryCount} entries, ${(entry.unpackedSize / 1048576).toFixed(1)} MB unpacked, ${(entry.size / 1048576).toFixed(1)} MB packed`);
-  if (entry.entryCount > STUDIO_MAX_ENTRIES) fail(`studio tarball has ${entry.entryCount} entries (max ${STUDIO_MAX_ENTRIES})`);
-  if (entry.unpackedSize > STUDIO_MAX_UNPACKED_BYTES) fail(`studio tarball unpacked size ${entry.unpackedSize} exceeds ${STUDIO_MAX_UNPACKED_BYTES}`);
-  if (entry.size > STUDIO_MAX_PACKED_BYTES) fail(`studio tarball packed size ${entry.size} exceeds ${STUDIO_MAX_PACKED_BYTES}`);
-
-  const packed = new Set(entry.files.map((f) => f.path));
-  for (const p of STUDIO_REQUIRED_PATHS) {
-    if (!packed.has(p)) fail(`studio tarball is missing required file ${p}`);
-  }
-  for (const f of entry.files) {
-    if (STUDIO_FORBIDDEN_PATHS.some((re) => re.test(f.path))) fail(`studio tarball contains forbidden file ${f.path}`);
-  }
-}
+const STUDIO_TARBALL_LIMITS: TarballLimits = {
+  maxEntries: STUDIO_MAX_ENTRIES,
+  maxUnpackedBytes: STUDIO_MAX_UNPACKED_BYTES,
+  maxPackedBytes: STUDIO_MAX_PACKED_BYTES,
+  requiredPaths: STUDIO_REQUIRED_PATHS,
+  forbiddenPatterns: STUDIO_FORBIDDEN_PATHS,
+};
 
 /** Reads the packed package.json and checks name/bin/SDK range (prepack pin ran). */
 function checkStudioPackageJson(unpackedPackageJson: unknown): void {
@@ -225,17 +196,13 @@ async function main(): Promise<void> {
     mustRun('npm run build', 'npm', ['run', 'build'], REPO_ROOT);
     mustRun('npm run build:studio', 'npm', ['run', 'build:studio'], REPO_ROOT);
   }
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-studio-pack-smoke-'));
+  const { base, packDir, project } = smokeDirs('lousho-studio-pack-smoke');
   log(`temp dir ${base}`);
-  const packDir = path.join(base, 'tarballs');
-  const project = path.join(base, 'project');
-  fs.mkdirSync(packDir);
-  fs.mkdirSync(project);
 
   const studioPkgJsonBefore = fs.readFileSync(path.join(STUDIO_DIR, 'package.json'), 'utf8');
   try {
-    const sdk = pack('(sdk)', REPO_ROOT, packDir);
-    const studio = pack('(studio)', STUDIO_DIR, packDir);
+    const sdk = packTarball(rep, '(sdk)', REPO_ROOT, packDir);
+    const studio = packTarball(rep, '(studio)', STUDIO_DIR, packDir);
 
     // `npm pack` runs prepack/postpack; unpack once to read the shipped package.json.
     const unpackDir = path.join(base, 'studio-unpack');
@@ -245,7 +212,7 @@ async function main(): Promise<void> {
     else {
       const shippedPkg = JSON.parse(fs.readFileSync(path.join(unpackDir, 'package', 'package.json'), 'utf8'));
       checkStudioPackageJson(shippedPkg);
-      checkStudioTarball(studio.entry);
+      checkTarballContents(rep, studio.entry, STUDIO_TARBALL_LIMITS);
     }
 
     // prepack pins file:../.. to a semver range and postpack restores it - even on failure.
@@ -270,14 +237,9 @@ async function main(): Promise<void> {
     if (fs.readFileSync(path.join(STUDIO_DIR, 'package.json'), 'utf8') !== studioPkgJsonBefore) {
       rep.fail('apps/agent-forge/package.json was left modified - restoring is the postpack script\'s job');
     }
-    if (args.has('--keep')) log(`kept ${base}`);
-    else fs.rmSync(base, { recursive: true, force: true });
+    cleanSmokeDir(rep, base, args.has('--keep'));
   }
-  if (failures.length) {
-    console.error(`\n[pack-smoke:studio] ${failures.length} failure(s):\n- ${failures.join('\n- ')}`);
-    process.exit(1);
-  }
-  log('all checks passed');
+  reportSmoke(rep);
 }
 
 main().catch((err: unknown) => {

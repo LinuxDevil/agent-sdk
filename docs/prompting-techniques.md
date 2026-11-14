@@ -26,11 +26,11 @@ These all reduce to instructions and message shape — `createAgent`'s
 | Few-shot (in-context learning) | Show input/output pairs so the model copies the shape | Put example pairs in `instructions`, or seed `agent.session().send()` turns — a scripted "user/assistant" exchange the real turn continues |
 | Chain-of-thought | "Think step by step" before answering | Instructions. Prefer `reasoning` effort where the provider supports it — reasoning tokens are cleaner than prompted monologue |
 | Self-consistency | Sample N answers, take the majority | N runs + a vote step (a flow `parallel`/`llmCall` fan-out, or a sub-agent per sample) |
-| Tree/graph-of-thoughts | Explore a branching search of reasoning paths | A sub-agent per branch, an aggregator comparing them — same fan-out shape as [deep-research](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/deep-research) |
+| Tree/graph-of-thoughts | Explore a branching search of reasoning paths | A sub-agent per branch, an aggregator comparing them — same fan-out shape as [deep-research](https://github.com/LinuxDevil/lousho/tree/main/examples/deep-research) |
 | ReAct | Interleave reasoning and acting | The agent loop itself: every Lousho tool loop is ReAct |
-| Reflexion | Critique the last attempt, retry with the critique | [evaluator-loop](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/evaluator-loop): `llmCritique` feedback carried into the next draft |
+| Reflexion | Critique the last attempt, retry with the critique | [evaluator-loop](https://github.com/LinuxDevil/lousho/tree/main/examples/evaluator-loop): `llmCritique` feedback carried into the next draft |
 | Least-to-most | Solve the easy sub-problem first, chain to harder ones | Instructions decomposing into ordered steps, or a `flows` sequence |
-| Plan-and-solve / plan-and-execute | Write a plan, then execute it | `permissionMode: 'plan'` — the agent must produce a plan before any write tool runs; see [plan-mode](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/plan-mode) |
+| Plan-and-solve / plan-and-execute | Write a plan, then execute it | `permissionMode: 'plan'` — the agent must produce a plan before any write tool runs; see [plan-mode](https://github.com/LinuxDevil/lousho/tree/main/examples/plan-mode) |
 | Skeleton-of-thought | Outline first, expand each point (in parallel) | A `task` fan-out over outline points — the deep-research shape |
 | Self-ask | The model asks and answers its own follow-ups | Instructions, or an explicit `oneOf` flow that loops a clarifying sub-agent |
 | Generated knowledge | Ask the model to state relevant facts, then answer | A first `llmCall` into a variable, the second prompt templated with it |
@@ -91,14 +91,14 @@ the community terms that named two of them — all runnable in the repo:
 | Pattern | Shape | Lousho example |
 | ------- | ----- | -------------- |
 | Prompt chaining | Step → step → step, each a call | `flows` sequences (`llmCall` → `llmCall`) |
-| Routing | Classify, then dispatch to a specialist | [workflow-router](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/workflow-router); durable version: [support-desk](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/support-desk) handoffs |
+| Routing | Classify, then dispatch to a specialist | [workflow-router](https://github.com/LinuxDevil/lousho/tree/main/examples/workflow-router); durable version: [support-desk](https://github.com/LinuxDevil/lousho/tree/main/examples/support-desk) handoffs |
 | Parallelization | N calls at once, results merged | Parallel `task` calls (`toolConcurrency` is unbounded by default) |
-| Orchestrator-workers | A lead decomposes work, workers execute | [deep-research](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/deep-research) |
-| Evaluator-optimizer | Draft → score → revise loop | [evaluator-loop](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/evaluator-loop) (`llmCritique`) |
-| **Wave engineering** | Bounded waves of parallel workers with a verify gate and scoped extension (WAVES: Workers · Aggregate · Verify · Extend) | [waves](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/waves) |
-| **Phase engineering** | Deterministic phase pipelines — spec → plan → implement → verify — the model can't skip, with proof-command gates | [phase-pipeline](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/phase-pipeline) (flows + real proof steps) |
+| Orchestrator-workers | A lead decomposes work, workers execute | [deep-research](https://github.com/LinuxDevil/lousho/tree/main/examples/deep-research) |
+| Evaluator-optimizer | Draft → score → revise loop | [evaluator-loop](https://github.com/LinuxDevil/lousho/tree/main/examples/evaluator-loop) (`llmCritique`) |
+| **Wave engineering** | Bounded waves of parallel workers with a verify gate and scoped extension (WAVES: Workers · Aggregate · Verify · Extend) | [waves](https://github.com/LinuxDevil/lousho/tree/main/examples/waves) |
+| **Phase engineering** | Deterministic phase pipelines — spec → plan → implement → verify — the model can't skip, with proof-command gates | [phase-pipeline](https://github.com/LinuxDevil/lousho/tree/main/examples/phase-pipeline) (flows + real proof steps) |
 | Autonomous loop | Open-ended tool loop until done | The default agent loop, bounded by `maxSteps`, `limits`, permissions |
-| Handoffs | Control transfers wholesale to a specialist | [support-desk](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/support-desk), [handoffs](./handoffs.md) |
+| Handoffs | Control transfers wholesale to a specialist | [support-desk](https://github.com/LinuxDevil/lousho/tree/main/examples/support-desk), [handoffs](./handoffs.md) |
 
 ### Typed decisions ("System One" style)
 
@@ -123,7 +123,7 @@ const triage = createAgent({
 // and confidence < 0.7 routes to a human queue rather than acting.
 ```
 
-[coding-agent-workflows](https://github.com/LinuxDevil/agent-sdk/tree/main/examples/coding-agent-workflows)
+[coding-agent-workflows](https://github.com/LinuxDevil/lousho/tree/main/examples/coding-agent-workflows)
 is the full example: a coding agent driven by a deterministic workflow whose
 branch points are typed decisions, where confidence below the floor exits
 `needs-human` instead of patching.

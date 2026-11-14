@@ -1,6 +1,6 @@
 # API Overview
 
-The package root (`lousho`) exports everything below. For
+The package root (`@linuxdevil/lousho`) exports everything below. For
 the complete, generated API reference (every export, signature and doc
 comment), build the TypeDoc site:
 

@@ -20,6 +20,7 @@ import { AgentExecutor, ExecuteOptions, ExecutionResult } from './execution/Agen
 import { streamResumed, throwingRun, type AgentRun } from './execution/agentRun';
 import type { AgentEvent } from './execution/agentEvents';
 import type { TraceExporter } from './execution/tracing';
+import { harnessRevisionOf } from './execution/harnessRevision';
 import { defaultCaptureContent } from './observe/emit';
 import { capturedContentForObserveOnly, withObserveExporter, type PromptUseProvider } from './observe/reporter';
 import { parsePromptRef, registryPrompt } from './observe/promptClient';
@@ -128,6 +129,14 @@ export interface RunConfigContext {
  */
 export type PerRun<T> = T | ((ctx: RunConfigContext) => T | Promise<T>);
 
+/** A candidate harness one run serves in place of the agent's static instructions and skills. */
+export interface HarnessArm {
+  /** The candidate's instructions. */
+  instructions: string;
+  /** The candidate's skills. */
+  skills: readonly Skill[];
+}
+
 /** The `tools` option's static form; hosted tools (`webSearch()`, ...) go in it too. arrays may mix tools and records of them. */
 type AgentToolsOption = ToolsOption;
 
@@ -174,6 +183,10 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
    * createAgent({ instructions: '...', provider, skills: await loadSkills('./skills') });
    */
   skills?: readonly Skill[];
+  /** Per run, a candidate harness to serve instead of static `instructions` and `skills`, or undefined for the agent's own; `loadAgentDir` sets it for an opted-in live traffic canary. */
+  harnessCanary?: (ctx: RunConfigContext) => HarnessArm | undefined;
+  /** Attributes stamped on every run's `invoke_agent` span; the workspace runtime sets the `lousho.page` family through `labelsFor`. */
+  spanAttributes?: Readonly<Record<string, string | number>>;
   /** Optional agent name; defaults to 'agent'. */
   name?: string;
   /**
@@ -1535,34 +1548,47 @@ function agentSpecs(
   const provider = isPerRun(config.model) ? undefined : resolveModelSource(config, config.model);
   const staticTools = isPerRun(config.tools) ? undefined : toolsFor(config.tools);
   const agentId = newId();
-  const specOf = (prompt: string | undefined, model: string | undefined, runProvider: LLMProvider, tools: RunTools): SubagentSpec => {
+  const harnessRevision = typeof instructions === 'string' ? harnessRevisionOf(instructions, config.skills ?? []) : undefined;
+  const canary = typeof instructions === 'string' ? config.harnessCanary : undefined;
+  const specOf = (prompt: string | undefined, model: string | undefined, runProvider: LLMProvider, tools: RunTools, arm?: HarnessArm): SubagentSpec => {
     const builder = AgentBuilder.create()
       .setId(agentId)
       .setName(config.name || DEFAULT_AGENT_NAME)
-      .setPrompt((prompt ?? DEFAULT_INSTRUCTIONS) + projectBlock)
+      .setPrompt(((arm ? arm.instructions : prompt) ?? DEFAULT_INSTRUCTIONS) + projectBlock)
       .setTools(tools.toolsConfig);
     // With an explicit provider, `model` is a per-agent model setting.
     if (config.provider && model) builder.setSettings({ model });
+    const revision = arm ? harnessRevisionOf(arm.instructions, arm.skills) : harnessRevision;
     return {
-      agent: builder.build(),
+      agent: { ...builder.build(), ...(revision !== undefined && { harnessRevision: revision }), ...(config.spanAttributes && { spanAttributes: config.spanAttributes }) },
       provider: runProvider,
       toolRegistry: tools.toolRegistry,
       ...(tools.hostedTools.length > 0 && { hostedTools: tools.hostedTools }),
       ...runOptions,
+      ...(arm && { skills: arm.skills }),
     };
   };
   const resolve = async (ctx: RunConfigContext, pinned?: PinnedRunConfig): Promise<SubagentSpec> => {
     const model = pinned ? pinned.model : await resolveOption('model', config.model, ctx);
     const prompt = await resolveOption(option, instructions, ctx);
     const tools = staticTools ?? toolsFor(await resolveOption('tools', config.tools, ctx));
-    const spec = specOf(prompt, model, provider ?? resolveModelSource(config, model), tools);
+    const spec = specOf(prompt, model, provider ?? resolveModelSource(config, model), tools, canaryArmOf(canary, ctx));
     spec.agent.metadata = { [RUN_CONFIG_KEY]: { ctx, model } satisfies PinnedRunConfig };
     return spec;
   };
-  if (provider && staticTools && !isPerRun(instructions)) {
+  if (provider && staticTools && !isPerRun(instructions) && !canary) {
     return { static: specOf(instructions, config.model as string | undefined, provider, staticTools), staticTools, resolve };
   }
   return { staticTools, resolve };
+}
+
+function canaryArmOf(canary: CreateAgentBase['harnessCanary'], ctx: RunConfigContext): HarnessArm | undefined {
+  if (!canary) return undefined;
+  try {
+    return canary(ctx);
+  } catch {
+    return undefined;
+  }
 }
 
 function isPerRun<T>(value: PerRun<T>): value is (ctx: RunConfigContext) => T | Promise<T> {

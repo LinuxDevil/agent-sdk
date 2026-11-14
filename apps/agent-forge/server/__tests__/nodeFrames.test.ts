@@ -18,6 +18,7 @@ import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
 import { attachWebSocketServer } from '../wsServer';
 import { createUpgradeRouter } from '../ws/upgradeRouter';
+import { singleWorkspace, type WorkspaceContext } from '../workspace/context';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import {
@@ -197,8 +198,7 @@ describe('RunManager node status frames', () => {
       ['agent', 'done'],
       ['tool:current_date', 'running'],
       ['tool:current_date', 'done'],
-      ['tool:send_email', 'waiting'], // the approval.wait marker
-      ['tool:send_email', 'done'],
+      ['tool:send_email', 'waiting'], // the approval.wait marker - and NO done after it (zero-length marker ends emit no node frame)
       ['tool:failing_tool', 'running'],
       ['tool:failing_tool', 'error'],
       ['agent', 'done'],
@@ -216,7 +216,8 @@ describe('RunManager node status frames', () => {
   it('a node frame arrives on WS /agents/:id/stream', async () => {
     const runManager = makeRunManager(baseDir, new ScriptedHost(stampedRunScript));
     const server = http.createServer();
-    const wss = attachWebSocketServer(createUpgradeRouter(server), runManager);
+    const ctx = { ref: { id: 'ws-abc123', name: 'ws', root: baseDir, addedAt: '', lastOpenedAt: '' }, runs: runManager } as unknown as WorkspaceContext;
+    const wss = attachWebSocketServer(createUpgradeRouter(server), singleWorkspace(ctx));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const { port } = server.address() as AddressInfo;
     const ws = new WebSocket(`ws://127.0.0.1:${port}/agents/ws-agent/stream`);
@@ -249,16 +250,13 @@ describe('RunManager node status frames', () => {
     }
   });
 
-  it('a real mock-provider run through the in-process host emits no node frames today', async () => {
-    // NOTE: buildAgentV2 compiles specs via `compileSpec` (the config half
-    // of specV2ToAgent), which does NOT wrap the run's exporter in S20's
-    // nodeIdExporter - that wrapping lives in specV2ToAgent only. So a
-    // Studio in-process run's spans carry no `lousho.node.id` yet and this
-    // run produces zero `node` frames; the frame logic itself is proven by
-    // the stamped-span tests above. Wiring Studio's compile through the
-    // exporter is for the ticket that owns buildAgentV2's S20 integration -
-    // when it lands, replace this assertion with the real agent/tool
-    // sequence.
+  it('a real mock-provider run through the in-process host emits node frames end to end', async () => {
+    // buildAgentV2 wraps the run's exporter in the SDK's nodeIdExporter
+    // (specV2ToAgent's S20 wiring), so the run's spans carry
+    // `lousho.node.id` and RunManager derives `node` frames from them -
+    // the canvas overlay's whole feed. 'please use current_date' makes
+    // the mock provider call the current_date tool, so both the agent
+    // node and the tool node light up.
     const runManager = makeRunManager(baseDir, newTestHost(baseDir));
     const frames: NodeStatePayload[] = [];
     runManager.on('node', (agentId: string, payload: NodeStatePayload) => {
@@ -268,6 +266,12 @@ describe('RunManager node status frames', () => {
     await runManager.run('mock-agent', 'please use current_date', SPEC);
     await waitForStatus(runManager, 'mock-agent', (s) => s.status === 'done');
 
-    expect(frames).toEqual([]);
+    const sequence = frames.map((f) => [f.nodeId, f.state]);
+    expect(sequence).toContainEqual(['agent', 'running']);
+    expect(sequence).toContainEqual(['tool:current_date', 'running']);
+    expect(sequence).toContainEqual(['tool:current_date', 'done']);
+    expect(sequence[sequence.length - 1]).toEqual(['agent', 'done']);
+    // Only §3.3 node ids the spec declares - never span names or args.
+    expect(frames.every((f) => f.nodeId === 'agent' || f.nodeId === 'tool:current_date')).toBe(true);
   });
 });

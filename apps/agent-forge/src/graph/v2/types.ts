@@ -46,6 +46,11 @@ export const SECTION_KIND: Record<SectionKey, NodeKind> = {
 /** Sections that only exist on the root agent (an inline subagent cannot have them). */
 export const ROOT_ONLY_SECTIONS: readonly SectionKey[] = ['triggers', 'abortListeners', 'flow'];
 
+/** Node kinds that can only ever belong to the root agent — the kinds of `ROOT_ONLY_SECTIONS`. */
+export const ROOT_ONLY_KINDS: ReadonlySet<NodeKind> = new Set(
+  ROOT_ONLY_SECTIONS.map((key) => SECTION_KIND[key])
+);
+
 /** Agent-level scalar/object fields edited on the agent node (everything that is not a section, `version` or `evals`). */
 export const AGENT_FIELD_KEYS = [
   'name', 'description', 'model', 'fallbackModels', 'instructions', 'instructionsByFamily', 'promptRef',

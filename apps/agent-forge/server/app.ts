@@ -3,7 +3,7 @@
  *
  * Routes:
  *   GET  /health                     -> 200 'ok'
- *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> AgentStoreEntry[]
+ *   GET  /agents                     -> AgentListItem[] (saved agents + meta + lastRun); ?view=legacy -> LegacyAgentStoreEntry[]
  *   POST /agents                     -> create blank/template/copy (body: CreateAgentRequest), 201 AgentRecord
  *   GET  /templates                  -> TemplateSummary[] - the SDK's shipped templates (templates/templateCatalog.ts)
  *   GET  /templates/:id              -> TemplateDetail (summary + spec v2 + README) | 400/404
@@ -13,23 +13,38 @@
  *   PATCH /agents/:id/meta           -> toggle enabled / set labels (body: PatchAgentMetaRequest), 200 AgentMeta
  *   PUT  /agents/:id/layout          -> save the canvas layout (body: CanvasLayout), 204
  *   DELETE /agents/:id               -> remove the saved spec, 204
+ *   GET  /agents/:id/export?format=yaml|bundle -> spec YAML or a lousho.agent-bundle JSON download (lifecycle/export.ts)
  *   GET/POST/DELETE /agents/:id/draft -> the pending ChangeDraft (routes/draftRoutes.ts)
  *   POST /agents/:id/draft/approve · /reject -> settle the pending draft
  *   GET/POST /agents/:id/versions     -> VersionListItem[] newest first · explicit save (routes/versionRoutes.ts)
  *   GET  /agents/:id/versions/:n      -> VersionRecord; GET .../versions/:n/diff?against=:m -> SpecChange[]
  *   POST /agents/:id/versions/:n/restore -> writes a new kind:'restore' version over the working copy
+ *   GET  /agents/:id/suggestions      -> PromptSuggestion[] - open first, then newest (routes/suggestionRoutes.ts)
+ *   POST /agents/:id/suggestions/:sid/apply -> hash-guarded instructions edit, 201 VersionListItem | 404/409
+ *   POST /agents/:id/suggestions/:sid/dismiss -> 204 | 404/409
+ *   GET  /inbox                      -> InboxItem[] - approvals, questions, drafts, suggestions, alerts (inbox/inboxRoutes.ts)
+ *   GET  /inbox/count                -> InboxCount
+ *   POST /inbox/alerts/:alertId/dismiss -> 204 | 404
+ *   POST /hooks/:agentId/<path>       -> webhook trigger fire (triggers/webhookRoute.ts, R08a);
+ *                                        public - HMAC or loopback-only, no studio token
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
+ *   GET  /workspace/agent-dirs       -> CodeAgentDir[] - agent dirs found under the workspace root (workspace/agentDirRoutes.ts, X06a)
+ *   GET  /workspace/agent-dirs/spec  -> CodeAgentSpecResponse for ?path=<rel> (400 escape, 404 unlisted, 422 unreadable config)
  *   GET/POST /workspaces             -> WorkspaceList · register a folder as a workspace (workspace/workspaceRoutes.ts)
  *   DELETE /workspaces/:ws           -> drop a registry entry (the folder is never touched; the launch workspace stays)
- *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string }
- *   POST /agents/:id/stop            -> abort the in-flight run, if any
+ *   POST /agents/:id/run            -> body: { spec?: AgentSpec, input: string, pins?: ToolPin[] }
+ *   POST /agents/:id/abort          -> body (optional): { reason?: string } (1..200 chars, default 'user')
+ *   POST /agents/:id/stop           -> abort the in-flight run, if any (delegates to /abort's path)
  *   GET  /agents/:id/status          -> AgentRunStatusPayload
- *   POST /agents/:id/approve         -> body: { approvalId, approved, note? }
+ *   POST /agents/:id/approve         -> body: { approvalId, approved, note? } or { approvalId, answer } for a question pause
+ *   POST /agents/:id/steer           -> body: { message } - 202 SteerResponse; 409 when nothing is running / a flow run
  *   GET  /agents/:id/traces?limit=N  -> { traces: TraceSummaryPayload[] } (newest first)
  *   GET  /agents/:id/traces/:traceId -> TraceDetailPayload | 404
  *   GET  /runs/:id/history           -> RunHistoryPayload
  *   POST /runs/:id/fork              -> body: ForkRunRequest; starts the fork, 202 ForkRunResponse
  *   GET  /runs/compare?a=&b=         -> RunComparisonPayload (compareTrajectories)
+ *   POST /agents/:id/rating          -> body: RatingRequest; 204 (ratings.ts, R04a)
+ *   POST /agents/:id/rating/:alertId/dataset -> 200 { dataset, exampleId } | 422 no captured input
  *   GET  /observe/**                 -> proxied to the `lousho observe` daemon's read API (observeProxy.ts)
  *   POST /observe/api/v1/scores      -> proxied too (the proxy's write allowlist: human feedback scores)
  *   POST /observe/api/v1/evaluators/:id/test -> a judge rule's dry run here, a code rule forwarded (judge.ts)
@@ -66,30 +81,35 @@ import {
   agentSpecV2Schema,
   ConfigurationError,
   SDKError,
+  VERSION,
   type AgentSpec,
   type AgentSpecV2,
   type ForkPatch,
 } from '@linuxdevil/lousho';
 import type { connectMcp } from '@linuxdevil/lousho/mcp';
-import type { AgentStore } from '../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../src/persistence/AgentStore';
 import {
   RunManager,
   AgentNotFoundError,
   AlreadyRunningError,
   NoActiveRunError,
   ApprovalPendingError,
+  SteerUnsupportedError,
 } from './runRegistry';
 import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { ForkRunRequest, ForkRunResponse, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import { pinsProblem } from './pins';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
 import { configureStudioHome } from './workspace/studioPaths';
 import { workspaceRefFor } from './workspace/workspaceId';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
+import { CodeAgentCache } from './workspace/codeAgentScan';
 import { registerWorkspaceRegistryRoutes } from './workspace/workspaceRoutes';
+import { registerAgentDirRoutes } from './workspace/agentDirRoutes';
 import {
   DEFAULT_TRACE_LIMIT,
   MAX_TRACE_LIMIT,
@@ -116,17 +136,37 @@ import { mergeLegacySave } from './storage/legacySpec';
 import { FileCheckpointStore } from './checkpointStore';
 import { FileApprovalStore } from './approvalStore';
 import { InProcessAgentHost } from './host/inProcessAgentHost';
+import { envCollector, WorkspaceHostSelector } from './host/hostSelector';
+import { HostReadOnlyError, HostStartError } from './host/bridgeAgentHost';
+import { HostUnsupportedError } from './host/hostStatus';
 import { registerAgentRoutes } from './routes/agentRoutes';
+import { registerAllAgentsRoute } from './routes/allAgentsRoute';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
+import { registerHostRoutes } from './routes/hostRoutes';
 import { registerMcpProbeRoute } from './routes/mcpProbe';
 import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
 import { AuthorTurnRunner } from './author/turnRunner';
-import { createAuthorRunner } from './author/wiring';
+import { createAuthorServices } from './author/services';
 import { registerSecretRoutes } from './routes/secretRoutes';
+import { registerSuggestionRoutes } from './routes/suggestionRoutes';
+import { registerExportRoutes } from './lifecycle/export';
+import { registerImportRoutes } from './lifecycle/import';
+import { registerPortabilityRoutes } from './passes/portabilityRoutes';
+import { registerPublishRoutes } from './lifecycle/publish';
+import { PassRunner } from './passes/passRunner';
+import { SpendLog } from './passes/spendLog';
+import { AlertStore } from './inbox/alertStore';
+import { InboxService } from './inbox/inboxService';
+import { registerInboxRoutes } from './inbox/inboxRoutes';
+import { registerWebhookRoutes } from './triggers/webhookRoute';
+import { createTriggerRuntime } from './triggers/runtime';
+import { registerRatingRoutes } from './ratings';
+import { attachFailureStreak } from './lifecycle/failureStreak';
+import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { sdkRootDir } from './sdkRoot';
 
@@ -148,6 +188,22 @@ interface CreateAppBaseOptions {
   sessions?: AuthorSessionStore;
   /** The `/workspaces` routes' store. Defaults to `new WorkspaceRegistry(studioPaths().workspaces)` when omitted. */
   workspaceRegistry?: WorkspaceRegistry;
+  /** The app's one code-agent scan cache (W08a). Defaults to a fresh `CodeAgentCache`; tests inject one to count scans. */
+  codeAgentCache?: CodeAgentCache;
+  /**
+   * The resolver every request's workspace id (`x-lousho-workspace` or
+   * `?ws=`) resolves through - `startStudioServer` passes its
+   * `WorkspaceManager`, which lazily builds and disposes contexts for
+   * every registry entry. Omitted, `createApp` wraps the launch context
+   * in `singleWorkspace`, so every id but the launch one 404s (tests).
+   */
+  workspaces?: WorkspaceResolver;
+  /**
+   * The warm workspace contexts `GET /agents?ws=all` reads live run
+   * status through (W06a). `startStudioServer` passes
+   * `() => manager.warm()`; the default is the launch context alone.
+   */
+  warm?: () => WorkspaceContext[];
   /**
    * The app's one AuthorTurnRunner (turns are in-flight memory, so tests
    * pass their own to control the provider seam); defaults to
@@ -218,6 +274,29 @@ interface CreateAppBaseOptions {
    * missing folder makes `searchDocs` answer `UNAVAILABLE`, not fail.
    */
   docsDir?: string;
+  /**
+   * The app's one PassRunner for background model passes (passes/
+   * passRunner.ts) - stamped onto the workspace context as `passes` and
+   * closed by `startStudioServer`. Defaults to `new PassRunner({ baseDir,
+   * spendLog })`; a test injects its own (short backoff, stub exporter).
+   */
+  passRunner?: PassRunner;
+  /** The spend log `passRunner` and `GET /settings/passes/spend` share. Defaults to `new SpendLog(studioPaths().spend)`. */
+  spendLog?: SpendLog;
+  /**
+   * The Studio-global inbox alert store (L12, inbox/alertStore.ts) - the
+   * same instance `startStudioServer` hands every workspace's
+   * failure-streak pass and later tickets' inbox routes. Defaults to
+   * `new AlertStore(studioPaths().alerts)`.
+   */
+  alerts?: AlertStore;
+  /**
+   * The default workspace context's `InboxService` (R02a) - a test seam,
+   * like `eventBus`: inject a stub to answer `/inbox*` without building
+   * the real stores. Defaults to the context's own (built by
+   * `createWorkspaceContext`/`legacyWorkspaceContext`).
+   */
+  inbox?: InboxService;
 }
 
 /**
@@ -228,7 +307,7 @@ interface CreateAppBaseOptions {
  */
 type CreateAppWorkspaceOptions =
   | { workspace: WorkspaceContext; agentStore?: never; runManager?: never }
-  | { workspace?: undefined; agentStore: AgentStore; runManager: RunManager };
+  | { workspace?: undefined; agentStore: LegacyAgentStore; runManager: RunManager };
 
 /**
  * `createApp`'s options: the launch folder and Studio-global services,
@@ -250,6 +329,7 @@ const API_PREFIXES = [
   '/assistant',
   '/templates',
   '/events',
+  '/inbox',
 ];
 
 /** The only methods served without the token, and only off the API (`/health`, the static client). */
@@ -290,6 +370,20 @@ function isApiPath(pathname: string): boolean {
  */
 function needsToken(req: Request): boolean {
   return !PUBLIC_METHODS.has(req.method) || isApiPath(req.path);
+}
+
+/**
+ * `POST /hooks/**` is the public webhook surface (R08a): external callers
+ * carry no studio token and may come from non-loopback hosts, so the
+ * global Host/Origin + token gate must not touch it - the webhook route
+ * applies its own rule (HMAC signature, or loopback-only when the
+ * trigger has no secret). `gatePath` normalizes the same way the token
+ * gate compares, so encoded/case-folded spellings can't slip past.
+ */
+function isWebhookPost(req: Request): boolean {
+  if (req.method !== 'POST') return false;
+  const normalised = gatePath(req.path);
+  return normalised !== undefined && normalised.startsWith('/hooks/');
 }
 
 type ErrorClass = new (...args: never[]) => Error;
@@ -347,9 +441,14 @@ function registerRunRoutes(app: Express): void {
   app.post(
     '/agents/:id/run',
     asyncRoute(async (req, res) => {
-      const { spec, input } = req.body as { spec?: unknown; input?: string };
+      const { spec, input, pins } = req.body as Partial<RunAgentRequest>;
       if (typeof input !== 'string' || !input) {
         res.status(400).json({ error: "Request body must include a non-empty 'input' string" });
+        return;
+      }
+      const pinsError = pinsProblem(pins);
+      if (pinsError !== undefined) {
+        sendError(res, 400, pinsError, 'LOUSHO_PINS_INVALID');
         return;
       }
       try {
@@ -360,7 +459,7 @@ function registerRunRoutes(app: Express): void {
           return;
         }
         const runs = ws.runs;
-        await runs.run(paramId(req), input, resolved.spec);
+        await runs.run(paramId(req), input, resolved.spec, { pins });
         res.status(202).json(runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [
@@ -373,11 +472,32 @@ function registerRunRoutes(app: Express): void {
     })
   );
 
-  app.post('/agents/:id/stop', (req, res) => {
-    const runs = workspaceOf(req).runs;
-    runs.stop(paramId(req));
-    res.status(202).json(runs.status(paramId(req)));
-  });
+  // /abort is the primary cancel route (PLAN §5); /stop keeps its old
+  // contract and is the same call with the default 'user' reason. Both
+  // await RunManager.abort so a paused run's 'stopped' status is already
+  // on the entry when the 202 body is read.
+  app.post(
+    '/agents/:id/abort',
+    asyncRoute(async (req, res) => {
+      const { reason } = (req.body ?? {}) as AbortRunRequest;
+      if (reason !== undefined && (typeof reason !== 'string' || reason.length < 1 || reason.length > 200)) {
+        sendError(res, 400, "'reason' must be 1 to 200 characters", 'LOUSHO_BODY_INVALID');
+        return;
+      }
+      const runs = workspaceOf(req).runs;
+      await runs.abort(paramId(req), reason);
+      res.status(202).json(runs.status(paramId(req)));
+    })
+  );
+
+  app.post(
+    '/agents/:id/stop',
+    asyncRoute(async (req, res) => {
+      const runs = workspaceOf(req).runs;
+      await runs.abort(paramId(req), 'user');
+      res.status(202).json(runs.status(paramId(req)));
+    })
+  );
 
   app.get('/agents/:id/status', (req, res) => {
     res.json(workspaceOf(req).runs.status(paramId(req)));
@@ -386,20 +506,19 @@ function registerRunRoutes(app: Express): void {
   app.post(
     '/agents/:id/approve',
     asyncRoute(async (req, res) => {
-      const { approvalId, approved, note } = req.body as {
-        approvalId?: string;
-        approved?: boolean;
-        note?: string;
-      };
-      if (typeof approvalId !== 'string' || typeof approved !== 'boolean') {
-        res
-          .status(400)
-          .json({ error: "Request body must include 'approvalId' (string) and 'approved' (boolean)" });
+      const runs = workspaceOf(req).runs;
+      const pending = runs.status(paramId(req)).pendingApproval;
+      const parsed = parseApproveBody(req.body, pending);
+      if ('error' in parsed) {
+        res.status(400).json({ error: parsed.error, ...(parsed.code !== undefined && { code: parsed.code }) });
         return;
       }
       try {
-        const runs = workspaceOf(req).runs;
-        await runs.approve(paramId(req), approvalId, approved, note);
+        if ('answer' in parsed) {
+          await runs.answer(paramId(req), parsed.approvalId, parsed.answer);
+        } else {
+          await runs.approve(paramId(req), parsed.approvalId, parsed.approved, parsed.note);
+        }
         res.status(202).json(runs.status(paramId(req)));
       } catch (error) {
         respondWithMappedError(res, error, [
@@ -409,6 +528,76 @@ function registerRunRoutes(app: Express): void {
       }
     })
   );
+
+  // Steer: push a correction into the live run's input queue (the SDK's
+  // `steer()` via the AgentHost - see RunManager.steer()). Unlike approve,
+  // the 409s carry a `code` the Test pane's SteerBox can branch on.
+  app.post(
+    '/agents/:id/steer',
+    asyncRoute(async (req, res) => {
+      const { message } = req.body as { message?: unknown };
+      const trimmed = typeof message === 'string' ? message.trim() : '';
+      if (trimmed.length === 0 || trimmed.length > 3000) {
+        sendError(res, 400, "Request body must include a 'message' of 1 to 3000 characters", 'LOUSHO_BODY_INVALID');
+        return;
+      }
+      try {
+        const response = await workspaceOf(req).runs.steer(paramId(req), trimmed);
+        res.status(202).json(response);
+      } catch (error) {
+        if (error instanceof NoActiveRunError) {
+          sendError(res, 409, error.message, 'LOUSHO_NO_ACTIVE_RUN');
+          return;
+        }
+        if (error instanceof SteerUnsupportedError) {
+          sendError(res, 409, error.message, 'LOUSHO_STEER_UNSUPPORTED');
+          return;
+        }
+        throw error;
+      }
+    })
+  );
+}
+
+const APPROVE_BODY_ERROR = "Request body must include 'approvalId' (string) plus 'approved' (boolean) or 'answer' (string)";
+
+/**
+ * A validated `POST /agents/:id/approve` body: `{ approvalId, approved,
+ * note? }` for a `kind: 'tool'` pause, `{ approvalId, answer }` for a
+ * `kind: 'question'` pause. One shape sent to the other kind is a 400
+ * `LOUSHO_APPROVAL_KIND`; `pending` is the pause the body names (a stale
+ * or unknown id skips the kind check - RunManager's pending-id guard
+ * turns it into the usual 409).
+ */
+function parseApproveBody(
+  body: unknown,
+  pending: PendingApprovalInfo | undefined
+): ApproveRequest | { error: string; code?: string } {
+  const raw = (body ?? {}) as { approvalId?: unknown; approved?: unknown; note?: unknown; answer?: unknown };
+  if (typeof raw.approvalId !== 'string') {
+    return { error: APPROVE_BODY_ERROR };
+  }
+  const pause = pending?.approvalId === raw.approvalId ? pending : undefined;
+  if (raw.answer !== undefined) {
+    if (typeof raw.answer !== 'string' || raw.answer.length < 1 || raw.answer.length > 4000) {
+      return { error: "'answer' must be a string of 1..4000 characters" };
+    }
+    if (pause !== undefined && pause.kind !== 'question') {
+      return { error: 'This pause is a tool approval; send approved true or false.', code: 'LOUSHO_APPROVAL_KIND' };
+    }
+    return { approvalId: raw.approvalId, answer: raw.answer };
+  }
+  if (typeof raw.approved !== 'boolean') {
+    return { error: APPROVE_BODY_ERROR };
+  }
+  if (pause !== undefined && pause.kind === 'question') {
+    return { error: 'This pause is a question; send an answer.', code: 'LOUSHO_APPROVAL_KIND' };
+  }
+  return {
+    approvalId: raw.approvalId,
+    approved: raw.approved,
+    ...(typeof raw.note === 'string' && { note: raw.note }),
+  };
 }
 
 /** The `ForkPatch` fields a fork request may carry, each with its check. */
@@ -489,9 +678,19 @@ function registerTraceRoutes(app: Express): void {
 
 /** Time travel: a run's step history, forking it from a step, and comparing two runs. */
 function registerTimeTravelRoutes(app: Express): void {
+  // W11c: history/compare/fork read Studio's own checkpoint store - a
+  // bridge workspace's runs checkpoint inside the project SDK's process,
+  // so these refuse instead of answering "no checkpoint".
+  const refuseBridgeTimeTravel = (req: Request): void => {
+    if (workspaceOf(req).host.kind === 'bridge') {
+      throw new HostUnsupportedError('Time travel is not available yet for projects that run their own SDK.');
+    }
+  };
+
   app.get(
     '/runs/compare',
     asyncRoute(async (req, res) => {
+      refuseBridgeTimeTravel(req);
       const { a, b } = req.query;
       if (typeof a !== 'string' || typeof b !== 'string' || !isValidAgentId(a) || !isValidAgentId(b)) {
         res.status(400).json({ error: "Query must include valid run ids 'a' and 'b'" });
@@ -509,6 +708,7 @@ function registerTimeTravelRoutes(app: Express): void {
   app.get(
     '/runs/:id/history',
     asyncRoute(async (req, res) => {
+      refuseBridgeTimeTravel(req);
       const steps = await workspaceOf(req).runs.history(paramId(req));
       if (!steps) {
         res.status(404).json({ error: `No checkpoint history for run '${paramId(req)}'` });
@@ -521,6 +721,7 @@ function registerTimeTravelRoutes(app: Express): void {
   app.post(
     '/runs/:id/fork',
     asyncRoute(async (req, res) => {
+      refuseBridgeTimeTravel(req);
       const parsed = parseForkRequest(req.body as Partial<ForkRunRequest> | undefined);
       if (typeof parsed === 'string') {
         res.status(400).json({ error: parsed });
@@ -626,6 +827,12 @@ function registerDebugRoutes(app: Express): void {
       if (!Array.isArray(breakpoints) || !breakpoints.every((b) => typeof b === 'string')) {
         res.status(400).json({ error: "Request body must include a 'breakpoints' string array" });
         return;
+      }
+      // W11c: breakpoints drive the in-process debugger's agent hooks; a
+      // bridge run has none, so refuse rather than silently store them.
+      // Clearing ([] ) stays allowed.
+      if (breakpoints.length > 0 && workspaceOf(req).host.kind === 'bridge') {
+        throw new HostUnsupportedError("Breakpoints need Studio's built-in SDK for now.");
       }
       const runs = workspaceOf(req).runs;
       runs.setBreakpoints(paramId(req), breakpoints);
@@ -767,7 +974,13 @@ function registerDeployRoutes(app: Express): void {
         res.status(404).json({ error: `No saved agent '${paramId(req)}' to deploy - save it first` });
         return;
       }
-      const result = await runDeploy(ws.ref.root, paramId(req), adapter);
+      // W11c: a bridge workspace builds with the project's own SDK bin;
+      // in-process/read-only keep Studio's (`<ws>/bin/lousho.js` - the
+      // launch workspace IS the SDK checkout there, and read-only never
+      // reaches this line: the /agents write gate refused it).
+      const selection = ws.hostSelector.current();
+      const cliEntry = selection.mode === 'bridge' && selection.sdk !== undefined ? selection.sdk.binPath : undefined;
+      const result = await runDeploy(ws.ref.root, paramId(req), adapter, cliEntry);
       res.status(result.exitCode === 0 ? 200 : 422).json(result);
     })
   );
@@ -786,7 +999,7 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
     // `App.tsx` view state, but still refresh-safe) - serve `index.html` and
     // let the client app take over, the same as `vite preview`/most SPA
     // hosts do.
-    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events).*/, (_req, res) => {
+    app.get(/^(?!\/health|\/agents|\/runs|\/workspaces|\/observe|\/playground|\/catalog|\/assistant|\/templates|\/events|\/inbox|\/hooks).*/, (_req, res) => {
       res.sendFile(indexHtml);
     });
   }
@@ -797,14 +1010,40 @@ function registerStaticClient(app: Express, staticDir: string | undefined): void
  * legacy `{agentStore, runManager}` form instead of a ready-built
  * `workspace`: the launch folder's ref around those two stores.
  */
-function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
-  let workspace = options.workspace ?? legacyWorkspaceContext(options);
+function defaultWorkspaceContext(
+  options: CreateAppOptions,
+  passRunner: PassRunner,
+  alerts: AlertStore,
+  autoApproval: { settings: SettingsStore; spendLog: SpendLog },
+  secrets: SecretsStore
+): WorkspaceContext {
+  let workspace = options.workspace ?? legacyWorkspaceContext(options, passRunner, alerts, autoApproval, secrets);
   // `eventBus` is a test seam: it sets the default context's bus - the
   // one `workspaceOf(req).events` publishes on and `WS /events` reads.
   if (options.eventBus !== undefined) workspace = { ...workspace, events: options.eventBus };
+  // `passRunner` overrides the context's runner the same way: a caller
+  // passing both a ready `workspace` and its own runner means the runner.
+  if (options.passRunner !== undefined) workspace = { ...workspace, passes: options.passRunner };
   // `idleVersioner` is a test seam too: it swaps the context's idle-version
   // scheduler - the one `workspaceOf(req).idleVersioner` touches/cancels.
   if (options.idleVersioner !== undefined) workspace = { ...workspace, idleVersioner: options.idleVersioner };
+  // `inbox` is a test seam too (R02a): it swaps the context's InboxService
+  // - the one `/inbox*` handlers read through workspaceOf(req).
+  if (options.inbox !== undefined) workspace = { ...workspace, inbox: options.inbox };
+  // A caller-built `workspace` already carries its failure-streak attach
+  // (createWorkspaceContext); the legacy `{agentStore, runManager}` pair
+  // gets the same wiring here (L12), on the final - possibly
+  // test-overridden - event bus. Inert until a run passes `source:
+  // 'trigger'`.
+  if (options.workspace === undefined) {
+    attachFailureStreak({
+      runManager: options.runManager,
+      repo: workspace.repo,
+      alerts,
+      events: workspace.events,
+      workspaceId: workspace.ref.id,
+    });
+  }
   return workspace;
 }
 
@@ -813,30 +1052,105 @@ function defaultWorkspaceContext(options: CreateAppOptions): WorkspaceContext {
  * `{agentStore, runManager}` pair instead of a ready-built `workspace`:
  * the launch folder's ref around those two stores.
  */
-function legacyWorkspaceContext(options: CreateAppOptions & { workspace?: undefined }): WorkspaceContext {
+function legacyWorkspaceContext(
+  options: CreateAppOptions & { workspace?: undefined },
+  passRunner: PassRunner,
+  alerts: AlertStore,
+  autoApproval: { settings: SettingsStore; spendLog: SpendLog },
+  secrets: SecretsStore
+): WorkspaceContext {
   const repo = new AgentRepo(options.baseDir);
+  const ref = workspaceRefFor(options.baseDir);
   const versions = new VersionStore(repo);
+  const drafts = new DraftStore(repo);
+  const suggestions = new SuggestionStore(repo);
+  const events = new StudioEventBus();
+  // The legacy pair's approval store is only read through `peek` by the
+  // inbox, so a second instance over the same directory is consistent.
+  const inbox = new InboxService({
+    repo,
+    runManager: options.runManager,
+    approvalStore: new FileApprovalStore(options.baseDir),
+    drafts,
+    suggestions,
+    alerts,
+    events,
+    workspaceId: ref.id,
+  });
+  inbox.start();
+  // The legacy pair gets the same trigger stack the real context builds
+  // (R08a host + R08c cron) - webhook routes read it through workspaceOf(req).
+  const { triggers, cron } = createTriggerRuntime({
+    baseDir: options.baseDir,
+    repo,
+    runManager: options.runManager,
+    events,
+  });
+  const idleVersioner = createIdleVersioner(versions);
+  // Same host selection a real context gets (W11b) - the legacy pair's
+  // RunManager carries its own host, so this only satisfies the context
+  // shape (nothing reads ws.host/ws.hostSelector on this path yet).
+  const inProcessHost = new InProcessAgentHost({
+    baseDir: options.baseDir,
+    checkpointStore: new FileCheckpointStore(options.baseDir),
+    approvalStore: new FileApprovalStore(options.baseDir),
+    secretsStore: options.secretsStore,
+    settings: autoApproval.settings,
+    spend: autoApproval.spendLog,
+  });
+  const hostSelector = new WorkspaceHostSelector(ref, {
+    inProcess: () => inProcessHost,
+    secretsStore: secrets,
+    collector: envCollector,
+    studioVersion: VERSION,
+  });
+  if (hostSelector.host.kind === 'bridge') void hostSelector.ready().catch(() => undefined);
   return {
-    ref: workspaceRefFor(options.baseDir),
+    ref,
     repo,
     agentStore: options.agentStore,
     versions,
-    drafts: new DraftStore(repo),
-    idleVersioner: createIdleVersioner(versions),
-    suggestions: new SuggestionStore(repo),
-    // The legacy pair's RunManager carries its own host; this one exists to
-    // satisfy the context shape (nothing reads ws.host yet - catalog/steer
-    // routes are later tickets).
-    host: new InProcessAgentHost({
-      baseDir: options.baseDir,
-      checkpointStore: new FileCheckpointStore(options.baseDir),
-      approvalStore: new FileApprovalStore(options.baseDir),
-      secretsStore: options.secretsStore,
-    }),
+    drafts,
+    idleVersioner,
+    suggestions,
+    host: hostSelector.host,
+    hostSelector,
     runs: options.runManager,
     chatTriggers: chatTriggersFor(options.runManager),
-    events: new StudioEventBus(),
+    events,
+    passes: passRunner,
+    inbox,
+    triggers,
+    cron,
+    // Idempotent stop of this context's background services - the same
+    // pieces `startStudioServer`'s `close()` stops for the launch one.
+    // (A caller's `inbox`/`idleVersioner` test seams replace the fields
+    // afterwards; dispose still stops the originals it built.)
+    dispose: async () => {
+      inbox.stop();
+      triggers.stop();
+      cron.stop();
+      await hostSelector.host.dispose();
+      await idleVersioner.flushAll();
+    },
   };
+}
+
+/**
+ * The `forget` callback `DELETE /workspaces/:ws` gets when the injected
+ * resolver is a `WorkspaceManager`: it drops the warm context for the
+ * removed id. Structural (`forget` in the object) rather than
+ * `instanceof`, so a test's plain `WorkspaceResolver` needs no `forget`.
+ */
+function forgetWorkspace(resolver: WorkspaceResolver | undefined): ((id: string) => Promise<void>) | undefined {
+  if (resolver === undefined) return undefined;
+  const candidate = resolver as WorkspaceResolver & { forget?: (id: string) => Promise<void> };
+  return typeof candidate.forget === 'function' ? (id) => candidate.forget!(id) : undefined;
+}
+
+/** The injected `WorkspaceManager` when `startStudioServer` provides one, `singleWorkspace` around the launch context otherwise. */
+function workspaceResolverFor(workspaces: WorkspaceResolver | undefined, launch: WorkspaceContext): WorkspaceResolver {
+  return workspaces ?? singleWorkspace(launch);
 }
 
 export function createApp(options: CreateAppOptions): Express {
@@ -849,11 +1163,22 @@ export function createApp(options: CreateAppOptions): Express {
   const settings = options.settingsStore ?? new SettingsStore(paths);
   const sessions = options.sessions ?? new AuthorSessionStore(paths.sessions);
   const workspaceRegistry = options.workspaceRegistry ?? new WorkspaceRegistry(paths.workspaces);
-  const workspace = defaultWorkspaceContext(options);
+  // The app's one code-agent scan cache (W08a): shared by the scan
+  // routes, `/workspace/agent-dirs` and the aggregate agent list.
+  const codeAgentCache = options.codeAgentCache ?? new CodeAgentCache();
+  // The app's one spend log and pass runner (passes/): Studio-global, so
+  // they live next to the other studioPaths() stores rather than per
+  // workspace. `passRunner` defaults to one over this `spendLog`.
+  const spendLog = options.spendLog ?? new SpendLog(paths.spend);
+  const passRunner =
+    options.passRunner ??
+    new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
+  const alerts = options.alerts ?? new AlertStore(paths.alerts);
+  const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog }, secrets);
   // One resolver for the middleware below and the Author tools' per-call
-  // workspace lookup (PLAN 19.3 - until W02a it resolves the launch
-  // context whatever id comes in).
-  const workspaceResolver: WorkspaceResolver = singleWorkspace(workspace);
+  // workspace lookup (PLAN 19.3): the injected `WorkspaceManager` when
+  // `startStudioServer` provides one, `singleWorkspace` otherwise.
+  const workspaceResolver: WorkspaceResolver = workspaceResolverFor(options.workspaces, workspace);
   // One catalog for both the `/templates` routes and the `POST /agents`
   // template branch - Studio-global state, not per-workspace.
   const templates = options.templateCatalog ?? new TemplateCatalog();
@@ -866,14 +1191,15 @@ export function createApp(options: CreateAppOptions): Express {
     resolveSecret: (name: string) => secrets.getSecret(name),
     ...(options.mcpConnect ? { connect: options.mcpConnect } : {}),
   };
-  // The app's one AuthorTurnRunner (author/wiring.ts holds the real
-  // prompt + tool surface): the same instance the `/assistant/stream`
+  // The app's one AuthorTurnRunner (author/services.ts holds the real
+  // prompt + tool surface + Apply write path - the same bundle the AA21
+  // eval harness runs): the same instance the `/assistant/stream`
   // upgrade handler and the DELETE route's BUSY check share, so tests
   // inject theirs through `options.authorRunner` rather than racing a
   // second set of turn slots.
   const authorRunner =
     options.authorRunner ??
-    createAuthorRunner({
+    createAuthorServices({
       sessions,
       settings,
       secrets,
@@ -881,7 +1207,7 @@ export function createApp(options: CreateAppOptions): Express {
       docsDir,
       workspaceResolver,
       ...(options.mcpConnect ? { mcpConnect: options.mcpConnect } : {}),
-    });
+    }).runner;
 
   const app = express();
   // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`
@@ -893,6 +1219,11 @@ export function createApp(options: CreateAppOptions): Express {
   // loopback Host and carry no foreign Origin; everything except a GET/HEAD of
   // `/health` or the static client also needs the token (see needsToken()).
   app.use((req, res, next) => {
+    // Webhook posts skip the whole gate - the route does its own auth.
+    if (isWebhookPost(req)) {
+      next();
+      return;
+    }
     const decision = access
       ? needsToken(req)
         ? checkApiAccess(req, access)
@@ -904,11 +1235,17 @@ export function createApp(options: CreateAppOptions): Express {
     }
     next();
   });
+  // Raw bytes for `/hooks/**` BEFORE the JSON parser: webhook HMACs sign
+  // the exact body, and `express.raw` sets `req._body` so the JSON parser
+  // below leaves it alone. Every other route keeps `express.json`.
+  app.use('/hooks', express.raw({ type: () => true, limit: '1mb' }));
   app.use(express.json({ limit: '2mb' }));
   // Resolve every request's workspace before the first route so handlers
   // read their per-workspace stores from workspaceOf(req), never a
-  // closed-over singleton. Studio serves exactly one workspace today -
-  // the launch folder - so this changes nothing user-visible.
+  // closed-over singleton. Requests pick a workspace via
+  // `x-lousho-workspace` or `?ws=`; the injected `WorkspaceManager`
+  // builds contexts lazily (W02a), `singleWorkspace` serves only the
+  // launch folder.
   app.use(workspaceMiddleware(workspaceResolver));
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
@@ -928,6 +1265,55 @@ export function createApp(options: CreateAppOptions): Express {
     next();
   });
 
+  // W11c read-only gate: a workspace whose project SDK cannot host runs
+  // (too old, newer protocol, no bridge command) refuses every write under
+  // `/agents` - saves, drafts, runs, deploys - with the selection's warning
+  // banner as the message. Reads (GET/HEAD) and Studio-global routes
+  // (`/settings`, `/catalog`, `/inbox`, ...) are never gated. In-process
+  // workspaces resolve `ready()` at once, so this costs nothing there.
+  app.use((req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      next();
+      return;
+    }
+    if (req.path !== '/agents' && !req.path.startsWith('/agents/')) {
+      next();
+      return;
+    }
+    workspaceOf(req)
+      .hostSelector.ready()
+      .then((selection) => {
+        if (selection.mode === 'read-only') {
+          sendError(res, 409, selection.banner?.text ?? 'This workspace is read-only.', 'LOUSHO_WORKSPACE_READ_ONLY');
+          return;
+        }
+        next();
+      })
+      .catch(next);
+  });
+
+  // Agent import: `POST /agents/import/preview` + `POST /agents/import`
+  // (lifecycle/import.ts). Registered BEFORE the `/agents/:id` routes so
+  // `import` is never read as an agent id; stores come from
+  // workspaceOf(req), the workspace seam.
+  registerImportRoutes(app, { secrets });
+  // Portability check (L09a): `POST /agents/:id/portability` +
+  // `POST /agents/import/portability` (passes/portabilityRoutes.ts).
+  // Registered BEFORE the `/agents/:id` routes for the same reason as the
+  // import routes: `import` is a valid agent id. Per-agent stores come
+  // from workspaceOf(req); secrets/settings are Studio-global deps.
+  registerPortabilityRoutes(app, { secretsStore: secrets, settings });
+  // `GET /agents?ws=all` -> AllAgentsResponse (workspace + observed agents,
+  // routes/allAgentsRoute.ts). Registered BEFORE the single-workspace /agents
+  // routes: it answers only the ALL_WORKSPACES request and next()s the
+  // rest. Warm contexts come from `options.warm` (the manager's), so a
+  // running agent still reports its live status; cold workspaces read
+  // through a bare AgentRepo.
+  registerAllAgentsRoute(app, {
+    registry: workspaceRegistry,
+    warm: options.warm ?? (() => [workspace]),
+    codeAgents: codeAgentCache,
+  });
   // Saved-agent list/record/save/delete (routes/agentRoutes.ts - the v2
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).
@@ -939,12 +1325,37 @@ export function createApp(options: CreateAppOptions): Express {
   // Version history: list/get/diff/restore and the explicit "Save version"
   // (server/routes/versionRoutes.ts - stores come from workspaceOf(req)).
   registerVersionRoutes(app);
+  // Prompt suggestions: list, CAS-guarded apply and dismiss (server/
+  // routes/suggestionRoutes.ts - stores come from workspaceOf(req), the
+  // workspace seam, like drafts and versions).
+  registerSuggestionRoutes(app, { secretsStore: secrets, settings });
+  // Agent export: `GET /agents/:id/export?format=yaml|bundle` (lifecycle/
+  // export.ts - the repo comes from workspaceOf(req), the workspace seam).
+  registerExportRoutes(app);
+  // Publish pointer: `POST /agents/:id/publish` (lifecycle/publish.ts -
+  // stores come from workspaceOf(req), the workspace seam).
+  registerPublishRoutes(app);
   registerWorkspaceRoute(app);
+  // Code-agent discovery (X06a): agent dirs under the workspace root +
+  // their data-config specs for the read-only canvas.
+  registerAgentDirRoutes(app, { codeAgents: codeAgentCache, registry: workspaceRegistry });
   // The workspace registry's routes (`GET/POST /workspaces`,
   // `DELETE /workspaces/:ws`) - Studio-global like the settings routes:
   // the launch workspace's id is this app's `defaultId` and the one entry
   // DELETE refuses (workspace/workspaceRoutes.ts).
-  registerWorkspaceRegistryRoutes(app, { registry: workspaceRegistry, launchId: workspace.ref.id });
+  registerWorkspaceRegistryRoutes(app, {
+    registry: workspaceRegistry,
+    launchId: workspace.ref.id,
+    // DELETE drops the warm context too, when the resolver is a
+    // WorkspaceManager - structural check, not instanceof, so a test's
+    // plain resolver needs no `forget`.
+    forget: forgetWorkspace(options.workspaces),
+    scanCache: codeAgentCache,
+  });
+  // W11c: `GET /workspaces/:ws/host` + `POST /workspaces/:ws/host/restart`
+  // - the `:ws` path param resolves through the same resolver the
+  // middleware uses, so a warm context's hostSelector answers.
+  registerHostRoutes(app, { resolver: workspaceResolver, studioVersion: VERSION });
   registerRunRoutes(app);
   registerChatRoutes(app);
   registerDebugRoutes(app);
@@ -988,11 +1399,51 @@ export function createApp(options: CreateAppOptions): Express {
   // fallback so a proxied GET never gets index.html.
   // Test-on-trace for judge rules runs here (the daemon has no provider keys); before the proxy.
   registerJudgeTestRoute(app, { secretsStore: secrets, collector, ...(judge ? { judge } : {}) });
+  // The pass spend summary (passes/passRoutes.ts) - before the observe
+  // proxy so `/settings/passes/spend` is never proxied.
+  registerPassRoutes(app, { spendLog, settings });
+  // The inbox (inbox/inboxRoutes.ts, R02a): `/inbox`, `/inbox/count` and
+  // alert dismiss - the service comes from workspaceOf(req).inbox; the
+  // `?ws=all` reads aggregate across the registry + warm contexts (W09a).
+  registerInboxRoutes(app, {
+    registry: workspaceRegistry,
+    warm: options.warm ?? (() => [workspace]),
+    alerts,
+  });
+  // Webhook triggers (triggers/webhookRoute.ts, R08a): `POST
+  // /hooks/:agentId/<path>` - the trigger host and repo come from
+  // workspaceOf(req); named-secret resolution is Studio-global.
+  registerWebhookRoutes(app, { resolveSecret: (name) => secrets.getSecret(name) });
+  // Human run ratings (ratings.ts, R04a): `/agents/:id/rating` writes the
+  // score to the observe daemon and may raise a low_rating alert; the
+  // `/rating/:alertId/dataset` action copies the trace into the agent's
+  // `<agentId>-regressions` dataset. Before the observe proxy so neither
+  // path is ever proxied.
+  registerRatingRoutes(app, { alerts });
   registerObserveProxy(app, collector);
   registerStaticClient(app, staticDir);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    // W11c host errors map to their contract statuses/codes wherever they
+    // surface (run/message/approve/steer/abort rethrow through
+    // respondWithMappedError; the guards throw straight into asyncRoute).
+    if (err instanceof HostReadOnlyError) {
+      sendError(res, 409, err.message, err.code);
+      return;
+    }
+    if (err instanceof HostUnsupportedError) {
+      sendError(res, 409, err.message, err.code);
+      return;
+    }
+    if (err instanceof HostStartError) {
+      // A bridge-side failure is a 503 (the project's process, not the
+      // request); a spec the bridge refused to compile stays a 422 like
+      // ConfigurationError.
+      const status = err.code.startsWith('LOUSHO_BRIDGE_') ? 503 : 422;
+      sendError(res, status, err.message, err.code);
+      return;
+    }
     res.status(500).json({ error: err.message });
   });
 

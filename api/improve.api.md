@@ -5,7 +5,58 @@
 ```ts
 
 // @public
+export function addEntry(dir: string, entry: Omit<LibraryEntry, 'id' | 'at' | 'status' | 'votes'>, options?: {
+    failedChecks?: readonly string[];
+}): {
+    entry?: LibraryEntry;
+    refused?: string[];
+};
+
+// @public
+export function addToCorpus(dir: string, cases: readonly CorpusCase[], maxCases: number): Promise<CorpusCase[]>;
+
+// @public
+export function admitProtectedCases(options: {
+    harness: Harness;
+    cases: readonly CapturedCase[];
+    probe: ImproveOptions['probe'];
+    runs?: number;
+}): Promise<{
+    admitted: CapturedCase[];
+    refused: {
+        id: string;
+        passed: number;
+        scored: number;
+    }[];
+}>;
+
+// @public
 const AGENT_EVENT_SCHEMA_VERSION: 1;
+
+// @public
+interface AgentApprovals {
+    answer(reply: {
+        id: string;
+        answer: string;
+    }, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    get(id: string): Promise<PendingApproval | undefined>;
+    list(): Promise<PendingApproval[]>;
+    resolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    resolveAll(decisions: readonly ApprovalDecision[], options?: ResolveApprovalOptions): Promise<ExecutionResult>;
+    streamAnswer(reply: {
+        id: string;
+        answer: string;
+    }, options?: ResolveApprovalOptions): AgentRun;
+    streamResolve(decision: ApprovalDecision, options?: ResolveApprovalOptions): AgentRun;
+}
+
+// @public
+type AgentCompaction = boolean | AgentCompactionOptions;
+
+// @public
+interface AgentCompactionOptions extends Pick<CompactionHookOptions, 'strategy' | 'thresholdPercent' | 'contextWindow' | 'protectedTokens' | 'reserveOutputTokens' | 'onCompaction'> {
+    summarizer?: LLMProvider | string;
+}
 
 // @public
 interface AgentDrift {
@@ -86,12 +137,132 @@ interface AgentEventUsage {
 }
 
 // @public
+interface AgentFingerprint {
+    hash: string;
+    instructions: string;
+    model?: string;
+    tools: Record<string, string>;
+    // (undocumented)
+    version: number;
+}
+
+// @public
 interface AgentHook {
     name: string;
     postGenerate?(ctx: GenerateHookContext, result: GenerateResult): void | Promise<void>;
     postToolCall?(ctx: ToolCallHookContext, result: ToolCallHookResult): MaybePromise<PostToolCallOutcome | void>;
     preGenerate?(ctx: GenerateHookContext): void | Promise<void>;
     preToolCall?(ctx: ToolCallHookContext): MaybePromise<PreToolCallOutcome | void>;
+}
+
+// @public
+type AgentInput = string | ContentPart[] | Message[];
+
+// @public
+interface AgentOAuth {
+    complete(params: OAuthCallbackParams): Promise<OAuthCompleteResult>;
+    mcpSignInUrl(server: string): Promise<string>;
+    signInUrl(provider: OAuthProvider): Promise<string>;
+}
+
+// @public
+interface AgentRun<TObject = unknown> extends AsyncIterable<AgentEvent> {
+    enqueue(input: AgentInput): EnqueueResult;
+    readonly result: Promise<ExecutionResult<TObject>>;
+    readonly runId: string;
+    steer(input: AgentInput): SteerResult;
+}
+
+// @public
+class AgentSession<TObject = unknown> {
+    constructor(run: SessionRunner, options?: SessionOptions, streamRun?: SessionStreamRunner, spawn?: SessionSpawner);
+    protected readonly checkpointStore: CheckpointStore | undefined;
+    clear(): Promise<void>;
+    compact(options?: SessionCompactOptions): Promise<SessionCompactResult>;
+    protected continueTurn(next: () => Promise<ExecutionResult>): Promise<ExecutionResult>;
+    protected readonly currentPermissionMode: () => PermissionMode;
+    discardPending(): Promise<void>;
+    fork(options: SessionForkOptions): Promise<AgentSession<TObject>>;
+    protected readonly forwardToListeners: (event: AgentEvent) => void;
+    history(): Promise<SessionHistoryStep[]>;
+    // (undocumented)
+    readonly id: string;
+    load(): Promise<readonly Message[]>;
+    get messages(): readonly Message[];
+    on(listener: (event: AgentEvent) => void): () => void;
+    protected pausedTurnFound(_approvalId: string): void;
+    pending(): Promise<PendingTurn | null>;
+    protected pendingTurnDiscarded(_approvalIds: string[]): Promise<void>;
+    get permissionMode(): PermissionMode;
+    resume(options?: {
+        signal?: AbortSignal;
+    }): Promise<ExecutionResult | null>;
+    send(input: AgentInput, options?: SessionSendOptions): Promise<ExecutionResult<TObject>>;
+    setPermissionMode(mode: PermissionMode): void;
+    stream(input: AgentInput, options?: SessionSendOptions): AgentRun<TObject>;
+    protected get turnEvents(): ((event: AgentEvent) => void) | undefined;
+}
+
+// @public (undocumented)
+interface Alerter {
+    post(alerts: readonly AlertEvent[]): void;
+}
+
+// @public
+interface AlertEvent {
+    // (undocumented)
+    agent_id: string;
+    at: number;
+    details: Record<string, unknown>;
+    // (undocumented)
+    project: string | null;
+    status: string;
+    type: 'agent.status' | 'agent.error_rate' | 'agent.score_regression' | 'improve.pending' | 'improve.applied' | 'improve.rolled_back' | 'improve.guard_failed' | 'improve.paused' | 'improve.canary';
+}
+
+// @public
+export function appendAudit(dir: string, entry: AuditInput): Promise<AuditEntry>;
+
+// @public
+export interface ApplyInput {
+    base: Harness;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+    result: ImproveResult;
+}
+
+// @public
+export function applyProposal(dir: string, input: ApplyInput, approval: Approval): Promise<ApplyResult>;
+
+// @public
+export function applyProposalIn(store: HarnessStore, input: ApplyInput, approval: Approval): Promise<ApplyResult>;
+
+// @public
+export interface ApplyResult {
+    from: string;
+    to: string;
+    written: string[];
+}
+
+// @public
+export type Approval = {
+    mode: 'auto';
+    by: 'gate' | 'canary';
+} | {
+    mode: 'manual';
+    approvedBy: string;
+};
+
+// @public
+interface ApprovalDecision {
+    // (undocumented)
+    approved: boolean;
+    args?: Record<string, unknown>;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    note?: string;
+    remember?: 'session';
 }
 
 // @public
@@ -130,6 +301,75 @@ interface ApprovalSignIn {
 }
 
 // @public
+export type ApprovedPending = ApplyResult | {
+    canary: TrafficCanary;
+};
+
+// @public
+export function approvePending(dir: string, id: string, approvedBy: string, options?: ApprovePendingOptions): Promise<ApprovedPending>;
+
+// @public
+export interface ApprovePendingOptions {
+    db?: SqlDatabase;
+}
+
+// @public
+export interface AuditEntry {
+    action: 'propose' | 'apply' | 'reject' | 'stale' | 'rollback' | 'retire' | 'guard-pass' | 'guard-fail' | 'unverified' | 'pause' | 'resume' | 'canary-start' | 'canary-end' | 'reflect-fail';
+    actor: 'gate' | 'canary' | 'monitor' | 'guard' | 'scheduler' | `person:${string}`;
+    at: string;
+    cycle?: string;
+    evidence?: {
+        gate?: string;
+        cases?: {
+            caseId: string;
+            base: string;
+            final: string;
+        }[];
+        score?: {
+            before: number;
+            after: number;
+            runs: number;
+        };
+    };
+    from?: string;
+    hash: string;
+    prev: string;
+    reason: string;
+    seq: number;
+    to?: string;
+}
+
+// @public
+export type AuditInput = Omit<AuditEntry, 'seq' | 'at' | 'prev' | 'hash'>;
+
+// @public
+export interface AuditLog {
+    append(entry: AuditInput): Promise<AuditEntry>;
+    read(): Promise<AuditEntry[]>;
+    verify(): Promise<number | undefined>;
+}
+
+// @public
+type BackgroundTaskStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'awaiting-approval';
+
+// @public
+interface BackgroundTaskView {
+    // (undocumented)
+    agent: string;
+    approvalId?: string;
+    elapsedMs: number;
+    error?: string;
+    result?: string;
+    // (undocumented)
+    status: BackgroundTaskStatus | 'timeout';
+    // (undocumented)
+    taskId: string;
+    // (undocumented)
+    toolName?: string;
+}
+
+// @public
 interface BudgetExceeded {
     // (undocumented)
     limit: BudgetLimit;
@@ -145,6 +385,229 @@ interface BudgetExceededEvent extends AgentEventBase<'budget.exceeded'>, BudgetE
 
 // @public
 type BudgetLimit = Exclude<keyof RunLimits, 'onExceeded'>;
+
+// @public
+interface BudgetSpent {
+    // (undocumented)
+    costUsd?: number;
+    // (undocumented)
+    durationMs: number;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    outputTokens: number;
+    // (undocumented)
+    steps: number;
+    // (undocumented)
+    totalTokens: number;
+}
+
+// @public
+export function cachedProbe(probe: ImproveOptions['probe'], options: CachedProbeOptions): ImproveOptions['probe'];
+
+// @public
+export interface CachedProbeOptions {
+    dir: string;
+    distinct?: boolean;
+    ledger?: ImproveLedger;
+    model: string;
+    salt?: string;
+}
+
+// @public
+export interface CacheLimits {
+    maxAgeMs?: number;
+    maxBytes?: number;
+    now?: number;
+}
+
+// @public
+export function canaryReplay(options: CanaryReplayOptions): Promise<CanaryReplayResult>;
+
+// @public
+export interface CanaryReplayOptions {
+    base: Harness;
+    candidate: Harness;
+    firstRepeat?: number;
+    probe: ImproveOptions['probe'];
+    protected: readonly string[];
+    runs?: number;
+    signal?: AbortSignal;
+    training: readonly string[];
+}
+
+// @public
+export interface CanaryReplayResult {
+    cases: CaseVerdict[];
+    passed: boolean;
+    reason: string;
+    tokens: number;
+}
+
+// @public
+export interface CanarySettlement {
+    applied?: ApplyResult;
+    outcome: 'none' | 'pending' | 'applied' | 'queued' | 'retired';
+    queued?: PendingProposal;
+    reason: string;
+    verdict: CanaryVerdict;
+}
+
+// @public
+export interface CanaryVerdict {
+    flagged: number;
+    newClasses: string[];
+    p0: number;
+    reason: string;
+    sessions: number;
+    state: 'none' | 'pending' | 'promote' | 'retire';
+}
+
+// @public
+export function canaryVerdict(db: SqlDatabase, dir: string, settings: ImproveSettings, now?: number): CanaryVerdict;
+
+// @public
+export interface CapturedCase {
+    id: string;
+    input: string;
+    kind: 'failure' | 'protected';
+    recovery?: RecoveryEvidence;
+    traceId: string;
+}
+
+// @public
+export type CaseCheck = (input: string, answer: string) => boolean | null | {
+    passed: boolean;
+    failure?: string;
+};
+
+// @public
+export interface CaseCount {
+    passed: number;
+    scored: number;
+}
+
+// @public
+export function casesFromFailures(db: SqlDatabase, filter?: {
+    since?: number;
+    agent?: string;
+    minScore?: number;
+    traceIds?: readonly string[];
+    recurring?: boolean;
+}): CapturedCase[];
+
+// @public
+export function casesFromRecoveries(db: SqlDatabase, filter?: Parameters<typeof casesFromFailures>[1]): CapturedCase[];
+
+// @public
+export interface CaseVerdict {
+    base: CaseCount;
+    caseId: string;
+    final: CaseCount;
+    reasons: string[];
+    role: 'training' | 'holdout';
+}
+
+// @public
+export function checkApplied(db: SqlDatabase, dir: string, settings: Pick<ImproveSettings, 'monitor' | 'cooldownHours'>, options: {
+    agent: string;
+    now?: number;
+}): Promise<MonitorVerdict>;
+
+// @public
+interface Checkpoint {
+    agentFingerprint?: AgentFingerprint;
+    // (undocumented)
+    agentId: string;
+    approvalId?: string;
+    approvalIds?: string[];
+    approvalKind?: ApprovalKind;
+    attempts?: number;
+    businessState?: unknown;
+    delegatedInFlight?: CheckpointUsage[];
+    // (undocumented)
+    finishReason?: string;
+    flow?: FlowCheckpointState;
+    lastError?: CheckpointError;
+    // (undocumented)
+    messages: Message[];
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+    runConfig?: unknown;
+    // (undocumented)
+    sessionId: string;
+    startedToolCallIds?: string[];
+    status?: CheckpointStatus;
+    // (undocumented)
+    stepIndex: number;
+    stepUsage?: StepUsage[];
+    // (undocumented)
+    toolCalls: unknown[];
+    unstarted?: boolean;
+    usage: CheckpointUsage;
+}
+
+// @public
+interface CheckpointDeleteOptions {
+    keepHistory?: boolean;
+}
+
+// @public
+interface CheckpointError {
+    at: string;
+    category?: string;
+    code?: string;
+    // (undocumented)
+    message: string;
+    retryable: boolean;
+}
+
+// @public
+interface CheckpointHistoryEntry {
+    checkpoint: Checkpoint;
+    savedAt: string;
+    status: CheckpointStatus;
+    step: number;
+}
+
+// @public
+interface CheckpointHistoryOptions {
+    limit?: number;
+}
+
+// @public
+interface CheckpointListEntry {
+    checkpoint: Checkpoint;
+    sessionId: string;
+    status: CheckpointStatus;
+}
+
+// @public
+interface CheckpointListOptions {
+    status?: CheckpointStatus | readonly CheckpointStatus[];
+}
+
+// @public
+type CheckpointStatus = 'in-progress' | 'awaiting-approval' | 'finished';
+
+// @public
+interface CheckpointStore {
+    acquireLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
+    delete(sessionId: string, options?: CheckpointDeleteOptions): Promise<void>;
+    history?(sessionId: string, options?: CheckpointHistoryOptions): Promise<CheckpointHistoryEntry[]>;
+    list?(options?: CheckpointListOptions): Promise<CheckpointListEntry[]>;
+    load(sessionId: string): Promise<Checkpoint | null>;
+    releaseLease?(sessionId: string, owner: string): Promise<void>;
+    renewLease?(sessionId: string, owner: string, ttlMs: number): Promise<boolean>;
+    save(sessionId: string, checkpoint: Checkpoint): Promise<void>;
+    saveIfLeased?(sessionId: string, checkpoint: Checkpoint, owner: string): Promise<boolean>;
+}
+
+// @public
+type CheckpointUsage = Pick<RunUsage, 'promptTokens' | 'completionTokens' | 'totalTokens'> & Partial<RunUsage>;
+
+// @public
+export function citedEntries(notes: string): string[];
 
 // @public
 type CompactedProviderErrorCategory = 'rate-limit' | 'timeout' | 'context-length-exceeded' | 'quota-exceeded' | 'auth-failure' | 'model-unloaded' | 'unknown';
@@ -168,12 +631,75 @@ interface CompactionDoneEvent extends AgentEventBase<'compaction.done'> {
 }
 
 // @public
+interface CompactionHookOptions extends Omit<CompactMessagesOptions, 'model'> {
+    onCompaction?: (info: CompactionInfo) => void;
+}
+
+// @public
+interface CompactionInfo {
+    appliedStrategy?: string;
+    error?: Error;
+    // (undocumented)
+    prunedToolCallIds: string[];
+    strategy: string;
+    summary?: string;
+    // (undocumented)
+    tokensAfter: number;
+    // (undocumented)
+    tokensBefore: number;
+}
+
+// @public
+interface CompactionInput {
+    contextWindow: number;
+    estimateTokens: CompactionTokenCounter;
+    generate?: (provider: LLMProvider, request: GenerateOptions) => Promise<GenerateResult>;
+    messages: Message[];
+    protectedTokens: number;
+    signal?: AbortSignal;
+    thresholdTokens: number;
+}
+
+// @public
+interface CompactionResult {
+    error?: Error;
+    messages: Message[];
+    prunedToolCallIds: string[];
+    summary?: string;
+    // (undocumented)
+    tokensAfter: number;
+    // (undocumented)
+    tokensBefore: number;
+}
+
+// @public
 interface CompactionStartEvent extends AgentEventBase<'compaction.start'> {
     contextWindow: number;
     strategy: string;
     thresholdTokens: number;
     tokensBefore: number;
     trigger?: 'manual';
+}
+
+// @public
+interface CompactionStrategy {
+    // (undocumented)
+    compact(input: CompactionInput): CompactionResult | Promise<CompactionResult>;
+    // (undocumented)
+    name: string;
+}
+
+// @public
+type CompactionTokenCounter = (input: Message | Message[]) => number;
+
+// @public
+interface CompactMessagesOptions {
+    contextWindow?: number;
+    model?: string;
+    protectedTokens?: number;
+    reserveOutputTokens?: number;
+    strategy?: CompactionStrategy;
+    thresholdPercent?: number;
 }
 
 // @public
@@ -187,13 +713,91 @@ interface ContextClearedEvent extends AgentEventBase<'context.cleared'> {
 }
 
 // @public
+export interface CorpusCase {
+    addedAt: string;
+    baseline: CaseCount;
+    id: string;
+    input: string;
+    origin: 'protected' | 'fixed';
+    revision: string;
+    traceId: string;
+}
+
+// @public
 export function createShadowHook(options: {
     readOnly: readonly string[];
     recorded?: Readonly<Record<string, unknown>>;
 }): AgentHook;
 
 // @public
+type CredentialOwner = 'app' | 'user';
+
+// @public
+export function currentRevision(dir: string): string;
+
+// @public
+type DefinedSchedule = Readonly<ScheduleInput>;
+
+// @public
+interface DelegatedUsage {
+    costPartial?: boolean;
+    costUsd: number | undefined;
+    // (undocumented)
+    estimated: boolean;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    runs: number;
+    toolErrors?: number;
+    // (undocumented)
+    totalTokens: number;
+}
+
+// @public
+export const emptyLedger: () => ImproveLedger;
+
+// @public
+interface EnqueueResult {
+    applied: false | Promise<boolean>;
+    id: string;
+}
+
+// @public
 type ExecutionFinishReason = GenerateResult['finishReason'] | 'awaiting-approval' | 'aborted' | 'max-steps' | 'output-invalid' | 'budget-exceeded' | 'guardrail';
+
+// @public
+interface ExecutionResult<TObject = unknown> {
+    abortReason?: {
+        name: string;
+        message: string;
+    };
+    agentName?: string;
+    approvalId?: string;
+    approvalIds?: string[];
+    backgroundTasks?: BackgroundTaskView[];
+    budget?: BudgetExceeded;
+    // (undocumented)
+    finishReason: ExecutionFinishReason;
+    guardrail?: GuardrailTrip;
+    // (undocumented)
+    messages: Message[];
+    object?: TObject;
+    outputError?: OutputError;
+    outputRepaired?: true;
+    reasoning?: string;
+    // (undocumented)
+    steps: number;
+    stepUsage?: StepUsage[];
+    // (undocumented)
+    text: string;
+    // (undocumented)
+    toolCalls: ToolCall[];
+    toolErrors?: number;
+    usage: RunUsage;
+}
 
 // @public
 interface FileContentPart {
@@ -205,6 +809,70 @@ interface FileContentPart {
     mimeType: string;
     // (undocumented)
     type: 'file';
+}
+
+// @public
+interface FlowCheckpointState {
+    choices: Record<string, number>;
+    code: string;
+    completedNodeIds: string[];
+    nodeResults: Record<string, unknown>;
+    output?: unknown;
+    pendingApproval?: FlowPendingApproval;
+    steps: number;
+    structure?: string;
+    usage: ProviderUsage;
+    variables: Record<string, unknown>;
+}
+
+// @public
+interface FlowPendingApproval {
+    approvalId: string;
+    args: Record<string, unknown>;
+    nodeId: string;
+    toolName: string;
+}
+
+// @public
+export function folderAuditLog(dir: string): AuditLog;
+
+// @public
+interface ForkOptions {
+    checkpointStore: CheckpointStore;
+    fromStep: number;
+    newSessionId?: string;
+    // (undocumented)
+    patch?: ForkPatch;
+    sessionId: string;
+}
+
+// @public
+interface ForkPatch {
+    appendInput?: string;
+    businessState?: unknown;
+    messages?: (messages: Message[]) => Message[];
+    toolResult?: {
+        toolCallId: string;
+        result: unknown;
+    };
+}
+
+// @public
+interface ForkResult {
+    checkpoint: Checkpoint;
+    // (undocumented)
+    sessionId: string;
+    step: number;
+}
+
+// @public
+export function formatImproveResult(result: ImproveResult): string;
+
+// @public
+export interface GateVerdict {
+    label: 'compose' | 'invariant' | 'domain' | `invariant-${number}` | `domain-${number}` | `compose-${number}`;
+    passed: boolean;
+    reason: string;
 }
 
 // @public
@@ -266,6 +934,54 @@ interface GenerateResult {
     toolCalls?: ToolCall[];
     usage?: ProviderUsage;
 }
+
+// @public
+export function guardApproval(dir: string, applied: {
+    from: string;
+    to: string;
+}, options: GuardApprovalOptions): Promise<GuardApprovalResult>;
+
+// @public
+export interface GuardApprovalOptions {
+    probe: ImproveOptions['probe'];
+    runs?: number;
+}
+
+// @public
+export interface GuardApprovalResult {
+    guard?: GuardCorpusResult;
+    passed: boolean;
+    reason: string;
+    rolledBackTo?: string;
+}
+
+// @public
+export function guardCorpus(dir: string, options: GuardCorpusOptions): Promise<GuardCorpusResult>;
+
+// @public
+export interface GuardCorpusOptions {
+    firstRepeat?: number;
+    probe: ImproveOptions['probe'];
+    rollback: boolean;
+    runs?: number;
+    signal?: AbortSignal;
+}
+
+// @public
+export interface GuardCorpusResult {
+    cases: GuardedCase[];
+    passed: boolean;
+    reason: string;
+    revision: string;
+    rolledBackTo?: string;
+    runs: number;
+    tokens: number;
+}
+
+// @public
+export type GuardedCase = CaseVerdict & {
+    class: 'regressed' | 'improved' | 'unchanged' | 'inconclusive';
+};
 
 // @public
 interface GuardrailRewroteEvent extends AgentEventBase<'guardrail.rewrote'>, GuardrailTrip {
@@ -331,11 +1047,98 @@ export interface Harness {
 }
 
 // @public
+export interface HarnessCommit {
+    action: 'apply' | 'rollback';
+    audit: AuditInput;
+    from: string;
+}
+
+// @public
+export function harnessHash(harness: Harness): string;
+
+// @public
+export interface HarnessRevision {
+    at: string;
+    harness: Harness;
+    id: string;
+    parent?: string;
+    readOnly?: string[];
+    source: 'baseline' | 'apply' | 'rollback';
+}
+
+// @public
+export interface HarnessStore {
+    readonly audit: AuditLog;
+    commit(next: Harness, commit: HarnessCommit): Promise<{
+        to: string;
+        written: string[];
+    }>;
+    readonly key: string;
+    read(): Promise<HarnessStoreState>;
+    revisions(): Promise<HarnessRevision[]>;
+    withLock<T>(task: () => Promise<T>): Promise<T>;
+}
+
+// @public
+export interface HarnessStoreState {
+    harness: Harness;
+    readOnly: string[];
+}
+
+// @public
 interface HealActionEvent extends AgentEventBase<'heal.action'> {
     action: 'hint' | 'deny' | 'stop';
     failure?: 'bad-input' | 'timeout' | 'missing-capability' | 'permission' | 'unknown';
     reason: string;
     toolName: string;
+}
+
+// @public
+export interface HealCycle {
+    approval: ImproveSettings['approval'];
+    canary?: CanaryReplayResult;
+    endedAt?: string;
+    errors?: string[];
+    from?: string;
+    guard?: GuardCorpusResult;
+    id: string;
+    outcome: 'idle' | 'paused' | 'busy' | 'budget' | 'cooldown' | Exclude<ImproveOutcome, 'proposal'> | 'canary-failed' | 'canary-started' | 'applied' | 'pending' | 'guard-rolled-back' | 'stale' | 'refused' | 'interrupted';
+    pending?: string;
+    reason: string;
+    result?: ImproveResult;
+    rolledBackTo?: string;
+    startedAt: string;
+    to?: string;
+    tokens: number;
+    trigger: 'failures' | 'score' | 'manual';
+}
+
+// @public
+export function healOnce(options: HealOptions): Promise<HealCycle>;
+
+// @public
+export interface HealOptions {
+    agent?: string;
+    check: CaseCheck;
+    db: SqlDatabase;
+    dir: string;
+    editor: ImproveOptions['editor'];
+    editorHooks?: readonly AgentHook[];
+    editorTimeoutMs?: number;
+    maxTokens?: number;
+    protect?: readonly string[];
+    reflect?: boolean;
+    runCase: (harness: Harness, input: string) => Promise<{
+        answer: string;
+        transcript: string;
+        tokens: number;
+        ended: string;
+    }>;
+    settings: ImproveSettings;
+    signal?: AbortSignal;
+    since?: number;
+    trigger?: HealCycle['trigger'];
+    withRecoveries?: boolean;
 }
 
 // @public
@@ -396,8 +1199,26 @@ interface ImageContentPart {
 export function improveAgent(options: ImproveOptions): Promise<ImproveResult>;
 
 // @public
+export interface ImproveChange {
+    after?: string;
+    before?: string;
+    kind: 'add' | 'modify' | 'remove';
+    reason?: string;
+    target: string;
+}
+
+// @public
+export interface ImproveLedger {
+    cached: number;
+    excluded: number;
+    planned: number;
+    run: number;
+}
+
+// @public
 export interface ImproveOptions {
     alwaysPropose?: boolean;
+    cacheDir?: string;
     cases: readonly string[];
     editor: {
         provider: LLMProvider;
@@ -405,14 +1226,22 @@ export interface ImproveOptions {
         model: string;
     };
     editorHooks?: readonly AgentHook[];
+    editorTimeoutMs?: number;
     harness: Harness;
     holdout?: readonly string[];
+    library?: Readonly<Record<string, string>>;
     maxAlwaysOnChars?: number;
     maxCostIncrease?: number;
     maxEditorSteps?: number;
     maxTokens?: number;
+    mode?: 'agg' | 'seq';
+    parallelEditors?: boolean;
     probe: (harness: Harness, caseId: string, repeat: number) => Promise<ProbeRun>;
+    proposers?: number;
+    quotedChecks?: 'reject' | 'flag';
+    recoveries?: readonly RecoveryEvidence[];
     repeats?: number;
+    select?: boolean;
     signal?: AbortSignal;
 }
 
@@ -422,6 +1251,14 @@ export type ImproveOutcome = 'proposal' | 'keep-base' | 'no-failures' | 'outage'
 // @public
 export interface ImproveResult {
     base: ProbeSummary;
+    candidates?: {
+        invariant: Harness;
+        domain: Harness;
+        compose: Harness;
+        pool?: Record<string, Harness>;
+    };
+    cases?: CaseVerdict[];
+    changes?: ImproveChange[];
     costOnPassingCases?: {
         cases: number;
         base: number;
@@ -429,14 +1266,27 @@ export interface ImproveResult {
         noise: number;
     };
     diff?: string;
+    diversity?: {
+        meanJaccard: number;
+        distinct: number;
+    };
+    failedChecks?: string[];
     final?: ProbeSummary;
+    freshBase?: ProbeSummary;
+    gate?: GateVerdict[];
     harness?: Harness;
     holdout?: {
         base: ProbeSummary;
         final: ProbeSummary;
     };
+    ledger?: ImproveLedger;
     outcome: ImproveOutcome;
     reason: string;
+    selection?: {
+        chosen: GateVerdict['label'];
+        why: string;
+        fallback: boolean;
+    };
     spend: {
         tokens: number;
     };
@@ -444,13 +1294,120 @@ export interface ImproveResult {
 }
 
 // @public
+export function improveSchedule(options: WatchOptions & {
+    cron?: string;
+    name?: string;
+}): DefinedSchedule;
+
+// @public
+export interface ImproveSettings {
+    approval: 'auto' | 'manual';
+    budget: {
+        maxTokensPerCycle?: number;
+        maxTokensPerDay: number;
+        maxCyclesPerDay: number;
+        maxAppliesPerDay: number;
+    };
+    canary: {
+        replayRuns: number;
+        traffic?: {
+            share: number;
+            sessions: number;
+        };
+    };
+    cooldownHours: number;
+    editors: {
+        proposers: number;
+        mode: 'agg' | 'seq';
+        select: boolean;
+        parallel: boolean;
+    };
+    enabled: boolean;
+    guard: {
+        runs: number;
+        everyHours: number;
+        maxCases: number;
+    };
+    library: {
+        enabled: boolean;
+        domain?: string;
+    };
+    monitor: {
+        minRuns: number;
+        window: number;
+        maxDrop: number;
+        autoRollback: boolean;
+        giveUpDays: number;
+    };
+    rateLimit: {
+        rpm: number;
+    };
+    trigger: {
+        minNewFailures: number;
+        requireRecurring: boolean;
+    };
+}
+
+// @public
+export interface ImproveSettingsOverrides {
+    approval?: ImproveSettings['approval'];
+    editors?: Partial<ImproveSettings['editors']>;
+}
+
+// @public
 export interface ImproveStage {
     error?: string;
-    label: 'invariant' | 'domain' | 'compose';
+    label: GateVerdict['label'];
     notes: string;
     status: 'edited' | 'no-change' | 'fell-back';
     tokens: number;
 }
+
+// @public
+export interface ImproveStatus {
+    approval: 'auto' | 'manual';
+    audit: Pick<AuditEntry, 'seq' | 'at' | 'actor' | 'action' | 'reason'>[];
+    budget: {
+        cycles: StatusCount;
+        applies: StatusCount;
+        tokens: StatusCount;
+    };
+    canary: {
+        traffic: {
+            share: number;
+            sessions: number;
+        } | null;
+        last: {
+            cycle: string;
+            passed: boolean;
+            reason: string;
+        } | null;
+    };
+    cooldownUntil: string | null;
+    dir: string;
+    editors: ImproveSettings['editors'];
+    lastCycle: {
+        id: string;
+        outcome: string;
+        reason: string;
+        startedAt: string;
+    } | null;
+    monitor: MonitorVerdict | null;
+    paused: string | null;
+    pending: {
+        id: string;
+        createdAt: string;
+        stale: boolean;
+    }[];
+    revision: string | null;
+    warnings: string[];
+}
+
+// @public
+export function improveStatus(dir: string, options?: {
+    now?: number;
+    env?: NodeJS.ProcessEnv;
+}): ImproveStatus;
 
 // @public
 interface InputAppliedEvent extends AgentEventBase<'input.applied'> {
@@ -458,6 +1415,30 @@ interface InputAppliedEvent extends AgentEventBase<'input.applied'> {
     id: string;
     // (undocumented)
     step: number;
+}
+
+// @public
+class InputQueue {
+    // @internal
+    callOutput(): void;
+    // @internal
+    close(): void;
+    // @internal
+    closeAfter(run: Promise<unknown>): void;
+    // @internal
+    endPhase(): void;
+    // @internal
+    listen(listener: (input: QueuedInput) => void): void;
+    // @internal
+    get messages(): Message[];
+    push(input: AgentInput): EnqueueResult;
+    // @internal
+    startBatch(): AbortSignal;
+    // @internal
+    startCall(): AbortSignal;
+    steer(input: AgentInput): SteerResult;
+    // @internal
+    take(): QueuedInput[];
 }
 
 // @public
@@ -479,6 +1460,42 @@ interface InputSteeredEvent extends AgentEventBase<'input.steered'> {
 type IoGuardrailKind = 'input' | 'output' | 'tool';
 
 // @public
+export function lastGoodRevision(dir: string): string | undefined;
+
+// @public
+export interface LibraryEntry {
+    at: string;
+    confidence: 'low' | 'medium' | 'high';
+    cue: string;
+    domain: string;
+    evidence: string;
+    id: string;
+    lesson: string;
+    outcome: 'kept' | 'rejected' | 'rolled-back';
+    revision: string;
+    status: 'active' | 'retired';
+    votes: {
+        helped: number;
+        hurt: number;
+    };
+}
+
+// @public
+export function libraryFiles(dir: string, domain: string, limit?: number): Record<string, string>;
+
+// @public
+export function libraryHome(agentDir: string, domain?: string): {
+    dir: string;
+    domain: string;
+};
+
+// @public
+export function listPending(dir: string): PendingProposal[];
+
+// @public
+export function listRevisions(dir: string): HarnessRevision[];
+
+// @public
 interface LLMProvider {
     readonly defaultModel?: string;
     generate(options: GenerateOptions): Promise<GenerateResult>;
@@ -489,6 +1506,9 @@ interface LLMProvider {
     supportsStreaming(model: string): boolean;
     supportsTools(model: string): boolean;
 }
+
+// @public
+export function loadImproveSettings(dir: string, overrides?: ImproveSettingsOverrides, env?: NodeJS.ProcessEnv): ImproveSettings;
 
 // @public (undocumented)
 type MaybePromise<T> = T | Promise<T>;
@@ -512,7 +1532,102 @@ interface Message {
 type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
 // @public
+interface ModelSettings {
+    frequencyPenalty?: number;
+    maxTokens?: number;
+    presencePenalty?: number;
+    seed?: number;
+    stop?: string[];
+    temperature?: number;
+    toolChoice?: 'auto' | 'required' | 'none' | {
+        type: 'function';
+        function: {
+            name: string;
+        };
+    };
+    topP?: number;
+}
+
+// @public
+interface ModelUsage {
+    calls: number;
+    costPartial?: boolean;
+    costUsd?: number;
+    // (undocumented)
+    inputTokens: number;
+    // (undocumented)
+    outputTokens: number;
+}
+
+// @public
 type ModerationCategory = 'hate' | 'harassment' | 'self-harm' | 'sexual' | 'sexual-minors' | 'violence' | 'illicit';
+
+// @public
+export interface MonitorVerdict {
+    after?: WindowStat;
+    baselineRuns?: number;
+    before?: WindowStat;
+    reason?: string;
+    runs?: number;
+    state: 'idle' | 'pending' | 'kept' | 'kept-unverified' | 'regressed' | 'rolled-back';
+    to?: string;
+}
+
+// @public
+interface OAuthCallbackParams {
+    // (undocumented)
+    code?: string;
+    error?: string;
+    principal?: Principal;
+    // (undocumented)
+    state: string;
+}
+
+// @public
+type OAuthClientAuth = 'client_secret_post' | 'client_secret_basic';
+
+// @public
+interface OAuthCompleteResult {
+    approvalId?: string;
+    displayName?: string;
+    // (undocumented)
+    outcome: 'signed-in' | 'declined';
+    provider: string;
+    // (undocumented)
+    sessionId?: string;
+}
+
+// @public
+interface OAuthProvider extends Readonly<Omit<OAuthProviderOptions, 'displayName' | 'credentialOwner' | 'clientAuth' | 'scopes'>> {
+    // (undocumented)
+    readonly clientAuth: OAuthClientAuth;
+    // (undocumented)
+    readonly credentialOwner: CredentialOwner;
+    // (undocumented)
+    readonly displayName: string;
+    // (undocumented)
+    readonly kind: 'oauth-provider';
+    // (undocumented)
+    readonly scopes: readonly string[];
+}
+
+// @public
+interface OAuthProviderOptions {
+    authorizationParams?: Record<string, string>;
+    authorizationUrl: string;
+    clientAuth?: OAuthClientAuth;
+    // (undocumented)
+    clientId: string;
+    clientSecret?: string;
+    credentialOwner?: CredentialOwner;
+    displayName?: string;
+    fetch?: typeof fetch;
+    name: string;
+    redirectUri: string;
+    // (undocumented)
+    scopes?: readonly string[];
+    tokenUrl: string;
+}
 
 // @public
 interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
@@ -520,7 +1635,97 @@ interface ObjectDeltaEvent extends AgentEventBase<'object.delta'> {
 }
 
 // @public
+interface OutputError {
+    issues: ToolArgumentIssue[];
+    kind: 'invalid' | 'truncated';
+    message: string;
+}
+
+// @public
+export function pauseImprove(dir: string, options?: {
+    by?: string;
+    reason?: string;
+}): Promise<boolean>;
+
+// @public
+interface PendingApproval {
+    // (undocumented)
+    agentId?: string;
+    // (undocumented)
+    args: Record<string, unknown>;
+    // (undocumented)
+    createdAt: string;
+    expiresAt?: string;
+    // (undocumented)
+    id: string;
+    kind?: ApprovalKind;
+    principal?: Principal;
+    question?: ApprovalQuestion;
+    sessionId?: string;
+    signIn?: ApprovalSignIn;
+    subagentPath?: string[];
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
+}
+
+// @public
+export interface PendingProposal {
+    base: Harness;
+    card: string;
+    createdAt: string;
+    cycle?: string;
+    failure?: string;
+    id: string;
+    maxAlwaysOnChars?: number;
+    result: ImproveResult;
+    staleAt?: string;
+}
+
+// @public
+interface PendingRun {
+    approvalId?: string;
+    approvalIds?: string[];
+    approvalKind?: ApprovalKind;
+    attempts?: number;
+    checkpointId: string;
+    kind: 'session' | 'run';
+    lastError?: CheckpointError;
+    sessionId: string;
+    status: 'in-progress' | 'awaiting-approval';
+    step: number;
+}
+
+// @public
+interface PendingTurn {
+    // (undocumented)
+    approvalId?: string;
+    approvalIds?: string[];
+    approvalKind?: ApprovalKind;
+    idempotencyKey?: string;
+    status: 'in-progress' | 'awaiting-approval';
+}
+
+// @public
 type PermissionAction = 'allow' | 'deny' | 'ask';
+
+// @public
+interface PermissionAuditContext {
+    // (undocumented)
+    principal?: Readonly<Principal>;
+}
+
+// @public
+interface PermissionContext {
+    principal?: Readonly<Principal>;
+    // (undocumented)
+    sessionId?: string;
+    // (undocumented)
+    toolCallId: string;
+    // (undocumented)
+    toolName: string;
+}
 
 // @public
 type PermissionDecision = PermissionAction | 'default';
@@ -552,6 +1757,39 @@ interface PermissionDecisionEvent extends AgentEventBase<'permission.decision'>,
 type PermissionMode = 'default' | 'plan' | 'acceptEdits' | 'dontAsk';
 
 // @public
+interface PermissionModeChange {
+    at: string;
+    // (undocumented)
+    from: PermissionMode;
+    // (undocumented)
+    sessionId: string;
+    // (undocumented)
+    to: PermissionMode;
+}
+
+// @public
+interface PermissionOptions {
+    onPermissionDecision?: (entry: PermissionDecisionEntry, context: PermissionAuditContext) => void;
+    onPermissionModeChange?: (change: PermissionModeChange) => void;
+    permissionMode?: PermissionMode | (() => PermissionMode);
+    permissions?: readonly PermissionRule[];
+}
+
+// @public
+interface PermissionRule {
+    // (undocumented)
+    action: PermissionAction;
+    reason?: string;
+    // (undocumented)
+    tool: PermissionToolMatcher;
+    ttlMs?: number;
+    when?: (args: Record<string, unknown>, ctx: PermissionContext) => boolean | Promise<boolean>;
+}
+
+// @public
+type PermissionToolMatcher = string | readonly string[] | RegExp;
+
+// @public
 type PiiType = 'email' | 'phone' | 'credit-card' | 'iban' | 'us-ssn' | 'ip-address';
 
 // @public
@@ -580,7 +1818,26 @@ interface Principal {
 }
 
 // @public
+export function probeCacheKey(parts: {
+    model: string;
+    salt: string;
+    caseId: string;
+    repeat: number;
+    harness: Harness;
+}): string;
+
+// @public
+export function probeCapturedCases(cases: readonly CapturedCase[], runCase: (harness: Harness, input: string) => Promise<{
+    answer: string;
+    transcript: string;
+    tokens: number;
+    ended: string;
+}>, check: CaseCheck): ImproveOptions['probe'];
+
+// @public
 export interface ProbeRun {
+    answer?: string;
+    cached?: boolean;
     ended: string;
     failure?: string;
     passed: boolean | null;
@@ -599,6 +1856,18 @@ export interface ProbeSummary {
 
 // @public
 type PromptCachingOption = 'auto' | false;
+
+// @public
+interface PromptScheduleInput extends ScheduleBase {
+    // (undocumented)
+    prompt: string;
+    // (undocumented)
+    run?: never;
+    sharedSession?: boolean;
+}
+
+// @public
+export function protectedCasesFromPasses(db: SqlDatabase, traceIds: readonly string[]): CapturedCase[];
 
 // @public
 interface ProviderFallbackEvent extends AgentEventBase<'provider.fallback'> {
@@ -637,6 +1906,31 @@ interface ProviderUsage {
     // (undocumented)
     totalTokens: number;
 }
+
+// @public
+export function pruneCache(dir: string, limits?: CacheLimits): void;
+
+// @public
+interface QueuedInput {
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    messages: Message[];
+    steered?: 'immediate' | 'queued';
+    text: string;
+}
+
+// @public
+export function readAgentHarness(dir: string): Harness;
+
+// @public
+export function readAudit(dir: string): AuditEntry[];
+
+// @public
+export function readCanary(dir: string): TrafficCanary | undefined;
+
+// @public
+export function readCorpus(dir: string): CorpusCase[];
 
 // @public
 interface ReasoningBlock {
@@ -679,9 +1973,86 @@ interface ReasoningSettings {
 type ReasoningStartEvent = AgentEventBase<'reasoning.start'>;
 
 // @public
+interface RecoverOptions<TResult = unknown> {
+    intervalMs?: number;
+    maxAttempts?: number;
+    onError?: (error: unknown, run?: PendingRun) => void;
+    onOutage?: (paused: boolean) => void;
+    onQuarantined?: (run: PendingRun) => void;
+    onRecovered?: (run: PendingRun, result: TResult) => void;
+    retryWithDiagnosis?: boolean;
+    signal?: AbortSignal;
+}
+
+// @public
+export interface RecoveryEvidence {
+    answer: string;
+    caseId: string;
+    diagnosis: string;
+    traceId: string;
+    transcript: string;
+}
+
+// @public
+export function reflect(options: {
+    dir: string;
+    domain: string;
+    result: ImproveResult;
+    outcome: LibraryEntry['outcome'];
+    revision: string;
+    editor: ImproveOptions['editor'];
+    maxTokens?: number;
+    hooks?: readonly AgentHook[];
+    signal?: AbortSignal;
+}): Promise<{
+    entry?: LibraryEntry;
+    refused?: string[];
+    tokens: number;
+    error?: string;
+}>;
+
+// @public
+export function rejectPending(dir: string, id: string, by: string, reason: string): Promise<AuditEntry>;
+
+// @public
 export function renderTranscript(messages: readonly Message[], options?: {
     maxResultChars?: number;
 }): string;
+
+// @public
+interface ResolveApprovalOptions {
+    principal?: Principal;
+    // (undocumented)
+    signal?: AbortSignal;
+}
+
+// @public
+export function resumeImprove(dir: string, options?: {
+    by?: string;
+}): Promise<boolean>;
+
+// @public
+export interface RollbackBy {
+    actor: AuditEntry['actor'];
+    expectedFrom?: string;
+    reason: string;
+}
+
+// @public
+export function rollbackHarness(dir: string, to: string, by: RollbackBy): Promise<RollbackResult>;
+
+// @public
+export function rollbackHarnessIn(store: HarnessStore, to: string, by: RollbackBy): Promise<RollbackResult>;
+
+// @public
+export interface RollbackResult {
+    from: string;
+    to: string;
+    written: string[];
+}
+
+// @public
+export function routesToCandidate(sessionId: string, share: number): boolean;
 
 // @public
 interface RunDoneEvent extends AgentEventBase<'run.done'> {
@@ -706,11 +2077,77 @@ interface RunLimits {
 }
 
 // @public
+interface RunRecovery {
+    readonly done: Promise<void>;
+    stop(): Promise<void>;
+}
+
+// @public
+interface RunScheduleInput extends ScheduleBase {
+    // (undocumented)
+    prompt?: never;
+    // (undocumented)
+    run: (ctx: ScheduleContext) => Promise<void>;
+    // (undocumented)
+    sharedSession?: never;
+}
+
+// @public
 interface RunStartEvent extends AgentEventBase<'run.start'> {
     agentId?: string;
     // (undocumented)
     agentName: string;
 }
+
+// @public
+interface RunUsage {
+    byModel: Record<string, ModelUsage>;
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    // @deprecated (undocumented)
+    completionTokens: number;
+    costPartial?: boolean;
+    costUsd: number | undefined;
+    delegated?: DelegatedUsage;
+    estimated: boolean;
+    hostedToolCalls?: Partial<Record<string, number>>;
+    // (undocumented)
+    inputTokens: number;
+    modelCalls: number;
+    // (undocumented)
+    outputTokens: number;
+    // @deprecated (undocumented)
+    promptTokens: number;
+    reasoningTokens?: number;
+    // (undocumented)
+    totalTokens: number;
+}
+
+// @public
+export function savePending(dir: string, input: {
+    result: ImproveResult;
+    base: Harness;
+    card: string;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+}): Promise<PendingProposal>;
+
+// @public (undocumented)
+interface ScheduleBase {
+    cron: string;
+    name?: string;
+    timezone?: string;
+}
+
+// @public
+interface ScheduleContext {
+    agent: SimpleAgent;
+    firedAt: Date;
+    name: string;
+}
+
+// @public
+type ScheduleInput = PromptScheduleInput | RunScheduleInput;
 
 // @public
 interface SchemaIssue {
@@ -723,11 +2160,195 @@ interface SchemaIssue {
 }
 
 // @public
+interface SendOptions {
+    approvalTtlMs?: number;
+    instructions?: string;
+    maxSteps?: number;
+    metadata?: Record<string, unknown>;
+    modelSettings?: ModelSettings;
+    onEvent?: (event: AgentEvent) => void;
+    parentSpanId?: string;
+    permissionMode?: PermissionMode;
+    principal?: Principal;
+    reasoning?: ReasoningOption;
+    sessionId?: string;
+    signal?: AbortSignal;
+    throwOnError?: boolean;
+}
+
+// @public
 interface ServedBy {
     model?: string;
     // (undocumented)
     provider: string;
 }
+
+// @public
+interface SessionBudget {
+    // (undocumented)
+    limits: RunLimits;
+    // (undocumented)
+    spent: BudgetSpent;
+}
+
+// @public
+interface SessionCompactOptions extends Pick<CompactMessagesOptions, 'strategy' | 'protectedTokens' | 'contextWindow'> {
+    // (undocumented)
+    signal?: AbortSignal;
+}
+
+// @public
+interface SessionCompactResult {
+    error?: {
+        message: string;
+    };
+    // (undocumented)
+    messagesAfter: number;
+    // (undocumented)
+    messagesBefore: number;
+    strategy: string;
+    // (undocumented)
+    tokensAfter: number;
+    // (undocumented)
+    tokensBefore: number;
+}
+
+// @public
+interface SessionForkOptions {
+    fromStep: number;
+    id?: string;
+    patch?: Pick<ForkPatch, 'toolResult'>;
+}
+
+// @public
+interface SessionHistoryStep {
+    messageIndex: number;
+    step: number;
+    text: string;
+    // (undocumented)
+    toolCalls: Array<{
+        id: string;
+        name: string;
+        args: unknown;
+        result?: string;
+    }>;
+    turn: number;
+}
+
+// @public
+interface SessionOptions {
+    checkpointStore?: CheckpointStore;
+    compaction?: AgentCompaction;
+    id?: string;
+    limits?: RunLimits;
+    onPermissionModeChange?: PermissionOptions['onPermissionModeChange'];
+    permissionMode?: PermissionOptions['permissionMode'];
+    store?: SessionStore | SessionStores;
+    turnHistoryLimit?: number;
+    turnPolicy?: 'queue' | 'steer' | 'wait';
+}
+
+// @public
+type SessionRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnOptions, call?: SessionTurnCall) => Promise<ExecutionResult>;
+
+// @public
+interface SessionSendOptions {
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+    // (undocumented)
+    signal?: AbortSignal;
+}
+
+// @public
+type SessionSpawner = (options: SessionOptions) => AgentSession;
+
+// @public
+interface SessionStore {
+    delete(id: string): Promise<void>;
+    load(id: string): Promise<Message[] | undefined>;
+    save(id: string, messages: readonly Message[]): Promise<void>;
+    saveIf?(id: string, expectedRevision: string, messages: readonly Message[]): Promise<boolean>;
+}
+
+// @public
+interface SessionStores {
+    // (undocumented)
+    checkpoints?: CheckpointStore;
+    // (undocumented)
+    sessions: SessionStore;
+}
+
+// @public
+type SessionStreamRunner = (input: Message[], signal?: AbortSignal, checkpoint?: SessionTurnOptions, call?: SessionTurnCall) => AgentRun;
+
+// @public
+interface SessionTurnCall {
+    // (undocumented)
+    input: AgentInput;
+    // (undocumented)
+    metadata?: Record<string, unknown>;
+    principal?: Principal;
+}
+
+// @public
+interface SessionTurnCheckpoint {
+    // (undocumented)
+    checkpointStore: CheckpointStore;
+    sessionId: string;
+}
+
+// @public
+type SessionTurnOptions = Partial<SessionTurnCheckpoint> & {
+    sessionBudget?: SessionBudget;
+    inputQueue?: InputQueue;
+    permissionMode?: PermissionOptions['permissionMode'];
+    onAgentEvent?: (event: AgentEvent) => void;
+};
+
+// @public
+export function settleCanary(db: SqlDatabase, dir: string, settings: ImproveSettings, now?: number): Promise<CanarySettlement>;
+
+// @public
+interface SimpleAgent<TObject = unknown> {
+    approvals: AgentApprovals;
+    close: () => Promise<void>;
+    fork: (sessionId: string, options: Omit<ForkOptions, 'sessionId' | 'checkpointStore'>) => Promise<ForkResult>;
+    oauth: AgentOAuth;
+    pending: () => Promise<PendingRun[]>;
+    ready: () => Promise<void>;
+    recover: (options?: RecoverOptions<ExecutionResult<TObject>>) => RunRecovery;
+    resume: (sessionId: string, options?: {
+        signal?: AbortSignal;
+    }) => Promise<ExecutionResult<TObject> | null>;
+    send: (message: AgentInput, options?: SendOptions) => Promise<ExecutionResult<TObject>>;
+    session: (options?: SessionOptions) => AgentSession<TObject>;
+    stream: (message: AgentInput, options?: SendOptions) => AgentRun<TObject>;
+}
+
+// @public
+export function snapshotRevision(dir: string, source: HarnessRevision['source'], parent?: string): HarnessRevision;
+
+// @public
+export interface SqlDatabase {
+    close(): void;
+    exec(sql: string): void;
+    prepare(sql: string): SqlStatement;
+}
+
+// @public
+export type SqlRow = Record<string, unknown>;
+
+// @public
+export interface SqlStatement {
+    all(...params: SqlValue[]): SqlRow[];
+    get(...params: SqlValue[]): SqlRow | undefined;
+    run(...params: SqlValue[]): {
+        changes: number | bigint;
+    };
+}
+
+// @public
+export type SqlValue = string | number | Uint8Array | null;
 
 // @public (undocumented)
 type StandardResult<Output> = {
@@ -751,6 +2372,34 @@ interface StandardSchemaV1<Input = unknown, Output = Input> {
 }
 
 // @public
+export function startCanary(db: SqlDatabase, dir: string, input: StartCanaryInput, settings: ImproveSettings, now?: number): Promise<TrafficCanary>;
+
+// @public
+export interface StartCanaryInput {
+    agent?: string;
+    approvedBy?: string;
+    base: Harness;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+    replay?: Pick<CanaryReplayResult, 'passed' | 'reason'>;
+    result: ImproveResult;
+}
+
+// @public
+export interface StatusCount {
+    max: number;
+    used: number;
+}
+
+// @public
+interface SteerResult {
+    // (undocumented)
+    applied: 'immediate' | 'queued' | false;
+    id: string;
+    joined: Promise<boolean>;
+}
+
+// @public
 interface StepDoneEvent extends AgentEventBase<'step.done'> {
     finishReason: ExecutionFinishReason | 'steered';
     // (undocumented)
@@ -763,6 +2412,22 @@ interface StepStartEvent extends AgentEventBase<'step.start'> {
     // (undocumented)
     step: number;
 }
+
+// @public
+interface StepUsage {
+    costUsd?: number;
+    estimated: boolean;
+    model: string;
+    step: number;
+    // (undocumented)
+    usage: Usage;
+}
+
+// @public
+export function stopCanary(dir: string, by: {
+    actor: AuditEntry['actor'];
+    reason: string;
+}): Promise<boolean>;
 
 // @public
 interface StreamChunk {
@@ -862,6 +2527,12 @@ interface TodoUpdatedEvent extends AgentEventBase<'todo.updated'> {
     // (undocumented)
     todos: Todo[];
     toolCallId: string;
+}
+
+// @public
+interface ToolArgumentIssue {
+    message: string;
+    path: string;
 }
 
 // @public
@@ -969,6 +2640,87 @@ interface ToolStartEvent extends AgentEventBase<'tool.start'> {
     toolCallId: string;
     // (undocumented)
     toolName: string;
+}
+
+// @public
+export interface TrafficCanary {
+    agent?: string;
+    approvedBy?: string;
+    base: Harness;
+    baseRevision: string;
+    candidate: Harness;
+    cycle?: string;
+    maxAlwaysOnChars?: number;
+    p0: number;
+    result: ImproveResult;
+    revision: string;
+    sessions: number;
+    share: number;
+    startedAt: string;
+}
+
+// @public
+interface Usage {
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens?: number;
+    totalTokens: number;
+}
+
+// @public
+export function verifyAudit(dir: string): number | undefined;
+
+// @public
+export function voteEntry(dir: string, id: string, vote: 'helped' | 'hurt'): LibraryEntry;
+
+// @public
+export function voteOnOutcome(dir: string, options: {
+    outcome: 'kept' | 'rolled-back';
+    result: ImproveResult;
+    domain: string;
+    library?: ImproveOptions['library'];
+    entryId?: string;
+}): LibraryEntry[];
+
+// @public
+export function watchAgent(options: WatchOptions): {
+    stop(): Promise<void>;
+};
+
+// @public
+export interface WatchOptions extends Omit<HealOptions, 'trigger' | 'maxTokens' | 'agent'> {
+    agent: string;
+    alerter?: Alerter;
+    intervalMs?: number;
+    log?: (line: string) => void;
+    onCycle?: (cycle: HealCycle) => void;
+    onError?: (error: unknown) => void;
+    onTick?: (tick: WatchTick) => void;
+    registry?: string;
+    reloadSettings?: () => ImproveSettings;
+    store?: CheckpointStore;
+}
+
+// @public
+export interface WatchTick {
+    canary?: CanarySettlement;
+    cycle?: HealCycle;
+    guard?: GuardCorpusResult;
+    monitor?: MonitorVerdict;
+    reason: string;
+    state: 'paused' | 'stopped' | 'leased' | 'cooldown' | 'deduped' | 'ran';
+}
+
+// @public
+export interface WindowStat {
+    lower: number;
+    mean: number;
+    pass3?: number;
+    passRate: number;
+    runs: number;
+    upper: number;
 }
 
 // (No @packageDocumentation comment for this package)

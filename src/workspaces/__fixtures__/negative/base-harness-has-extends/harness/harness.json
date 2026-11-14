@@ -1,0 +1,12 @@
+{
+  "schema": "lousho.harness/1",
+  "extends": [
+    "workspace:tone"
+  ],
+  "constraints": [
+    {
+      "id": "tone",
+      "text": "Be brief."
+    }
+  ]
+}

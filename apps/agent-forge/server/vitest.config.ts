@@ -7,7 +7,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['server/**/*.{test,spec}.ts'],
+    include: ['server/**/*.{test,spec}.ts', 'evals/**/*.test.ts'],
+    // bridge.compat.test.ts runs only under server/vitest.compat.config.ts
+    // (it needs a built SDK and LOUSHO_BRIDGE_SDK_DIR plumbing).
+    exclude: ['server/__tests__/bridge.compat.test.ts'],
     env: {
       // Like the e2e server's observe stub: tests never spawn a real
       // collector daemon - `startStudioServer` probes only (collector.ts).

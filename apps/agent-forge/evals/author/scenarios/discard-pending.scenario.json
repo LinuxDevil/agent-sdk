@@ -1,0 +1,4 @@
+{ "name": "discard-pending", "focus": { "mode": "edit", "agentId": "support-triage" }, "seed": { "agents": ["support-triage"] },
+  "turns": ["Add the web_fetch tool.", "Actually, never mind. Drop that change."],
+  "expect": { "tools": ["proposeAgentUpdate", "discardPendingChanges"], "mustNot": ["saveAgentUpdate"],
+    "rubric": "In the second turn the assistant discards the unsaved change and says nothing was saved." } }

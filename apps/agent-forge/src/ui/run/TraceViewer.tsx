@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { GanttChart, ListTree, type LucideIcon } from 'lucide-react';
 
 import { nestObservations } from '../../observe/tree';
@@ -32,6 +32,13 @@ export interface TraceViewerProps {
   renderFeedback?: RunInspectorProps['renderFeedback'];
   playgroundLinks?: boolean;
   inspectorPlaygroundLink?: boolean;
+  /**
+   * Optional per-row trailing action (T04's pin toggle): called with each
+   * observation row; its result renders at the row's right edge in place of
+   * the playground-link slot. `undefined`/`null` falls back to the default
+   * slot, so non-actionable rows keep the layout.
+   */
+  rowAction?: (row: ObserveObservationRow) => ReactNode;
 }
 
 const MODES: { mode: TraceViewMode; label: string; icon: LucideIcon }[] = [
@@ -89,6 +96,7 @@ export function TraceViewer({
   renderFeedback,
   playgroundLinks = true,
   inspectorPlaygroundLink = true,
+  rowAction,
 }: TraceViewerProps) {
   const inspected = useMemo(() => pickInspected(observations, selectedObsId), [observations, selectedObsId]);
   if (inspected === undefined) {
@@ -99,7 +107,11 @@ export function TraceViewer({
     <div className="run-viewer" data-mode={mode}>
       <div className="run-viewer-steps">
         <StepsBar mode={mode} onModeChange={onModeChange} count={observations.length} />
-        {mode === 'waterfall' ? <Waterfall {...listProps} /> : <RunTree {...listProps} playgroundLinks={playgroundLinks} />}
+        {mode === 'waterfall' ? (
+          <Waterfall {...listProps} rowAction={rowAction} />
+        ) : (
+          <RunTree {...listProps} playgroundLinks={playgroundLinks} rowAction={rowAction} />
+        )}
       </div>
       <div className="run-viewer-inspector">
         <RunInspector

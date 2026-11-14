@@ -64,6 +64,7 @@ interface AgentConfig {
     expectedResult?: unknown;
     // (undocumented)
     flows?: AgentFlow[];
+    harnessRevision?: string;
     // (undocumented)
     id?: string;
     // (undocumented)
@@ -76,6 +77,7 @@ interface AgentConfig {
     prompt?: string;
     // (undocumented)
     settings?: AgentSettings;
+    spanAttributes?: Readonly<Record<string, string | number>>;
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }

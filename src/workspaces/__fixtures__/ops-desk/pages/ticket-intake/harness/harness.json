@@ -1,0 +1,49 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "audience": {
+    "description": "The operations team."
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "request": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "request"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "ticket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ticket"
+      ]
+    }
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "ticket-present",
+        "description": "The ticket is not empty.",
+        "check": "harness/checks/ticket-present.ts"
+      }
+    ]
+  },
+  "context": {
+    "resources": [
+      "resources/ticket-fields.md"
+    ]
+  }
+}

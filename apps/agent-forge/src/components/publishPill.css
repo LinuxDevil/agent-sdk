@@ -1,0 +1,10 @@
+/* PublishPill (L14b): the Menu trigger reuses .status-pill; as a button it
+   needs the reset .btn would have given it. */
+.menu-trigger.publish-pill {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.menu-trigger.publish-pill[aria-busy='true'] {
+  cursor: progress;
+}

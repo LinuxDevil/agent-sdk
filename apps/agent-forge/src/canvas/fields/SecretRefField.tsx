@@ -26,6 +26,8 @@ export interface SecretRefFieldProps {
   help?: string;
   /** Empty input shows 'Required' (and still emits `undefined`). */
   required?: boolean;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 const ENV_NAME_RE = /^[A-Z_][A-Z0-9_]*$/;
@@ -83,6 +85,7 @@ export function SecretRefField({
   allowPlain = false,
   help,
   required = false,
+  fieldPath,
 }: SecretRefFieldProps): JSX.Element {
   const [pickedMode, setPickedMode] = useState<SecretMode | undefined>();
   const [draft, setDraft] = useState(() => textOf(value));
@@ -137,6 +140,7 @@ export function SecretRefField({
       error={error}
       hint={mode === 'plain' ? <span className="field-warning">{PLAIN_WARNING}</span> : help}
       required={required}
+      fieldPath={fieldPath}
     >
       <div className="secretref-row">
         <Select

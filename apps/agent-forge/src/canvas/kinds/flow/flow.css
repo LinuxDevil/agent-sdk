@@ -1,0 +1,33 @@
+/* Flow step Inspector rows (src/canvas/kinds/flow/*) — reuses the field kit's kv-row grid. */
+
+/* A router option's "Default" tag beside its (empty) condition. */
+.flow-default-tag {
+  flex: none;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+}
+
+/* FlowInputsEditor rows: name, type, required, description, remove. */
+.flow-input-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1.4fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+}
+.flow-input-row .field {
+  margin-bottom: 0;
+}
+
+/* Container child rows: title, then the Up/Down pair. */
+.flow-child-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.flow-child-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

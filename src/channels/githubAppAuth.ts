@@ -106,7 +106,7 @@ export function createInstallationTokens(options: GitHubAppAuthOptions): (instal
     try {
       res = await doFetch(`${apiUrl}/app/installations/${installationId}/access_tokens`, {
         method: 'POST',
-        headers: { authorization: `Bearer ${jwt}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'lousho' },
+        headers: { authorization: `Bearer ${jwt}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': '@linuxdevil/lousho' },
       });
     } catch {
       throw new SDKError(`githubChannel: ${call} failed: the request did not complete`, 'LOUSHO_CHANNEL_REQUEST_FAILED');

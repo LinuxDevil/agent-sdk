@@ -11,7 +11,7 @@ agent, an example tool, an offline test, a `.env.example` for your provider),
 installs its dependencies and runs `git init`:
 
 ```bash
-npm create lousho my-agent
+npm create @linuxdevil/lousho my-agent
 cd my-agent
 # copy .env.example to .env (cp on macOS/Linux, copy on Windows), then put your API key in it
 npm run dev              # chat with your agent in the terminal
@@ -23,7 +23,7 @@ To try a locally packed `create-lousho` (`npm pack`), pass the tarball's absolut
 `npx @linuxdevil/lousho init my-agent` is equivalent (pass `--provider`
 and `--template`, since it runs without the interactive prompts). Inside a
 project that already has the SDK installed, `npx @linuxdevil/lousho init` works too: the
-`lousho` command comes from the SDK package, so a bare `npx @linuxdevil/lousho` outside such
+`@linuxdevil/lousho` command comes from the SDK package, so a bare `npx @linuxdevil/lousho` outside such
 a project finds nothing to run. Without arguments, `init` asks for the
 directory, provider and template; `npx @linuxdevil/lousho init --help`
 lists every flag.

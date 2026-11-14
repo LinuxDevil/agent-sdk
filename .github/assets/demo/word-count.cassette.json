@@ -1,0 +1,351 @@
+{
+  "version": 1,
+  "sdkVersion": "1.0.0-alpha.117",
+  "recordedAt": "2026-11-09T13:44:04.929Z",
+  "provider": {
+    "name": "ollama",
+    "defaultModel": "llama3.2"
+  },
+  "entries": [
+    {
+      "kind": "stream",
+      "request": {
+        "model": "llama3.2",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant. Use your tools when they help."
+          },
+          {
+            "role": "user",
+            "content": "How many words are in \"the quick brown fox\"?"
+          }
+        ],
+        "tools": [
+          {
+            "name": "current_time",
+            "description": "Get the current date and time, optionally in an IANA time zone.",
+            "parameters": {
+              "properties": {
+                "timeZone": {
+                  "description": "IANA time zone, e.g. \"Europe/Paris\". Defaults to UTC.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "roll_die",
+            "description": "Roll a die with the given number of sides and return the result.",
+            "parameters": {
+              "properties": {
+                "sides": {
+                  "inner": {
+                    "checks": [
+                      {
+                        "kind": "int"
+                      },
+                      {
+                        "kind": "min",
+                        "value": 2
+                      },
+                      {
+                        "kind": "max",
+                        "value": 1000
+                      }
+                    ],
+                    "type": "number"
+                  },
+                  "type": "default"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "word_count",
+            "description": "Count the words in a piece of text.",
+            "parameters": {
+              "properties": {
+                "text": {
+                  "checks": [],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": 4096
+      },
+      "response": {
+        "text": "",
+        "finishReason": "tool-calls",
+        "usage": {
+          "promptTokens": 286,
+          "completionTokens": 20,
+          "totalTokens": 306
+        },
+        "toolCalls": [
+          {
+            "id": "call_4d4u3iey",
+            "type": "function",
+            "function": {
+              "name": "word_count",
+              "arguments": "{\"text\":\"the quick brown fox\"}"
+            }
+          }
+        ],
+        "chunks": [
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "tool-call",
+              "toolCall": {
+                "id": "call_4d4u3iey",
+                "type": "function",
+                "function": {
+                  "name": "word_count",
+                  "arguments": "{\"text\":\"the quick brown fox\"}"
+                }
+              }
+            }
+          },
+          {
+            "delayMs": 26,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "tool-calls",
+              "usage": {
+                "promptTokens": 286,
+                "completionTokens": 20,
+                "totalTokens": 306
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "stream",
+      "request": {
+        "model": "llama3.2",
+        "messages": [
+          {
+            "role": "system",
+            "content": "You are a helpful assistant. Use your tools when they help."
+          },
+          {
+            "role": "user",
+            "content": "How many words are in \"the quick brown fox\"?"
+          },
+          {
+            "role": "assistant",
+            "content": "",
+            "toolCalls": [
+              {
+                "name": "word_count",
+                "arguments": "{\"text\":\"the quick brown fox\"}"
+              }
+            ]
+          },
+          {
+            "role": "tool",
+            "content": "{\"words\":4}",
+            "name": "word_count",
+            "toolName": "word_count"
+          }
+        ],
+        "tools": [
+          {
+            "name": "current_time",
+            "description": "Get the current date and time, optionally in an IANA time zone.",
+            "parameters": {
+              "properties": {
+                "timeZone": {
+                  "description": "IANA time zone, e.g. \"Europe/Paris\". Defaults to UTC.",
+                  "inner": {
+                    "checks": [],
+                    "type": "string"
+                  },
+                  "type": "optional"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "roll_die",
+            "description": "Roll a die with the given number of sides and return the result.",
+            "parameters": {
+              "properties": {
+                "sides": {
+                  "inner": {
+                    "checks": [
+                      {
+                        "kind": "int"
+                      },
+                      {
+                        "kind": "min",
+                        "value": 2
+                      },
+                      {
+                        "kind": "max",
+                        "value": 1000
+                      }
+                    ],
+                    "type": "number"
+                  },
+                  "type": "default"
+                }
+              },
+              "type": "object"
+            }
+          },
+          {
+            "name": "word_count",
+            "description": "Count the words in a piece of text.",
+            "parameters": {
+              "properties": {
+                "text": {
+                  "checks": [],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        ],
+        "temperature": null,
+        "maxTokens": 4096
+      },
+      "response": {
+        "text": "There are 4 words in the phrase \"the quick brown fox\".",
+        "finishReason": "stop",
+        "usage": {
+          "promptTokens": 114,
+          "completionTokens": 15,
+          "totalTokens": 129
+        },
+        "chunks": [
+          {
+            "delayMs": 0,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "There"
+            }
+          },
+          {
+            "delayMs": 28,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " are"
+            }
+          },
+          {
+            "delayMs": 32,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " "
+            }
+          },
+          {
+            "delayMs": 25,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "4"
+            }
+          },
+          {
+            "delayMs": 29,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " words"
+            }
+          },
+          {
+            "delayMs": 31,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " in"
+            }
+          },
+          {
+            "delayMs": 26,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " the"
+            }
+          },
+          {
+            "delayMs": 27,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " phrase"
+            }
+          },
+          {
+            "delayMs": 22,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " \""
+            }
+          },
+          {
+            "delayMs": 78,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "the"
+            }
+          },
+          {
+            "delayMs": 97,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " quick"
+            }
+          },
+          {
+            "delayMs": 53,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " brown"
+            }
+          },
+          {
+            "delayMs": 122,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": " fox"
+            }
+          },
+          {
+            "delayMs": 43,
+            "chunk": {
+              "type": "text-delta",
+              "textDelta": "\"."
+            }
+          },
+          {
+            "delayMs": 113,
+            "chunk": {
+              "type": "finish",
+              "finishReason": "stop",
+              "usage": {
+                "promptTokens": 114,
+                "completionTokens": 15,
+                "totalTokens": 129
+              }
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

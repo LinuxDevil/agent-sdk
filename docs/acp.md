@@ -38,14 +38,14 @@ Add the agent to Zed's `settings.json`, then pick it in the agent panel:
     "My Lousho agent": {
       "type": "custom",
       "command": "npx",
-      "args": ["lousho", "acp", "/path/to/my-agent"],
+      "args": ["@linuxdevil/lousho", "acp", "/path/to/my-agent"],
       "env": { "OPENAI_API_KEY": "sk-..." }
     }
   }
 }
 ```
 
-Run it from the project that has `lousho` installed (or use
+Run it from the project that has `@linuxdevil/lousho` installed (or use
 an absolute path to `node_modules/.bin/lousho` as `command`). Provider keys
 come from `env` or from the environment Zed was started in.
 

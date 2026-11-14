@@ -8,9 +8,10 @@
  *
  * Node-only helpers stay on the package root: `specV2ToAgent`/`compileSpec`,
  * `specToAgent`, `loadSpec`/`loadSpecV2`, the `src/spec/v2/resolve/*`
- * compilers, `files.ts`, `specToAgentDir`/`agentDirToSpec` — and
- * `listBuiltinTools`, whose catalog builds the real tool factories
- * (`node:net` for `web_fetch`).
+ * compilers, `files.ts`, `agentDirToSpec` (the directory read side touches
+ * the filesystem; the write side, `specToAgentDir`, is pure and exported
+ * here) — and `listBuiltinTools`, whose catalog builds the real tool
+ * factories (`node:net` for `web_fetch`).
  */
 
 // S01a/S01b: the v2 schema, parser, spec type and every section's spec type.
@@ -18,10 +19,12 @@ export { agentSpecV2Schema } from './schema';
 export { parseAgentSpecV2 } from './parse';
 export type { AgentSpecV2, AgentSpecV2Compaction, AgentSpecV2Retry, InlineAgentSpec, SubagentSpec } from './types';
 export type { GuardrailSide, GuardrailSpec } from './guardrails';
+export { guardrailSidesOf, REWRITABLE_GUARDRAILS } from './guardrails';
 export type { HandoffSpec } from './handoffs';
 export type { HookPoint, HookSpec, InlineHookSpec } from './hooks';
 export type { PermissionRuleSpec } from './permissions';
 export type { McpServerSpecV2 } from './mcpServers';
+export { MCP_SERVER_NAME } from './mcpServers';
 
 // S02: v1 → v2 upgrader.
 export { upgradeSpec } from './upgrade';
@@ -30,7 +33,9 @@ export { upgradeSpec } from './upgrade';
 export { isSecretRef, secretRefSchema, type SecretRef } from './secrets';
 
 // S04a (with S04b/S05 kinds): tool references.
-export { TOOL_REF_KINDS, toolRefSchema, type IntegrationName, type OpenApiToolRefOptions, type ToolRef, type ToolRefKind } from './tools';
+export { TOOL_REF_KINDS, toolRefSchema, INTEGRATION_CREDENTIALS, SECRET_CREDENTIALS, type IntegrationName, type OpenApiToolRefOptions, type ToolRef, type ToolRefKind } from './tools';
+// Shared spec primitives Studio's Inspector validates against.
+export { isSafeRelativePath, SPEC_ID_PATTERN } from './common';
 
 // S07: the model catalog Studio's pickers show.
 export { listModels, type ListModelsOptions, type ModelCapabilities, type ModelCatalogEntry } from '../../models/catalog';
@@ -54,17 +59,25 @@ export { agentSpecV2JsonSchema, SPEC_FIELD_DESCRIPTIONS } from './jsonSchema';
 // S18: the TypeScript generator.
 export { specToCode, type SpecToCodeOptions } from '../generators/typescript';
 
+// S19: the pure write side of the agent-directory round trip (the read
+// side, `agentDirToSpec`, reads the filesystem and stays on the root).
+export { specToAgentDir, type DroppedField, type SpecToAgentDirResult } from './specToAgentDir';
+
 // S20a–S20c: stable node ids and the span exporter that stamps them.
 export { specNodeIds, type SpecNodeIds } from './nodeIds';
-export { isNodeIdExporter, nodeIdExporter, nodeIdIndexOf, type NodeIdIndex } from './nodeIdExporter';
+export { isNodeIdExporter, nodeIdExporter, nodeIdIndexOf, subAgentNodeIndexes, type NodeIdIndex } from './nodeIdExporter';
 
 // S21b/S21c: the `flow` spec key's schema and validation.
-export { flowProblems, flowSpecSchema, type FlowProblem } from './flow';
+export { flowProblems, flowSpecSchema, EXECUTABLE_TYPES, type FlowProblem } from './flow';
 export type { AgentFlow } from '../../types/flow';
 
 // S22a: triggers schema and catalog.
-export { triggerSpecSchema, type ChannelKind, type TriggerSpec } from './triggers';
+export { abortListenerSpecSchema, abortListenerListSchema, type AbortListenerScope, type AbortListenerSpec } from './abortListeners';
+export { triggerSpecSchema, CHANNEL_SECRET_KEYS, type ChannelKind, type TriggerSpec } from './triggers';
 export { listTriggerTypes, type TriggerTypeInfo } from './triggerCatalog';
+
+// The approval deadline ceiling the spec schema enforces (`approvalTtlMs`/`ttlMs`).
+export { MAX_APPROVAL_TTL_MS } from '../../execution/approvalTtl';
 
 // v1: lets Studio drop its deep `src/spec/schema` import.
 export { agentSpecSchema, type AgentSpec } from '../schema';

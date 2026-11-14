@@ -15,7 +15,7 @@ import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
 import { StudioEventBus } from '../events/eventBus';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { StudioEvent, StreamMessage } from '../../shared/wireTypes';
 
 const TOKEN = 'events-token-0123456789';
@@ -156,7 +156,7 @@ describe('WS /events (startStudioServer)', () => {
  */
 describe('route publishes (injected eventBus)', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
   let events: StudioEvent[];

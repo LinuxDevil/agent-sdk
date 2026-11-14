@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
-    "src/cli/{dev,chat,build,studio,mcp,doctor,init,eval,observe,prompt}.ts",
+    "src/cli/{dev,chat,build,studio,mcp,doctor,init,eval,observe,prompt,workspace,bridge}.ts",
     "**/*.test-d.ts",
     "**/*.{test,spec}.{ts,tsx}",
     "**/*.eval.ts",
@@ -12,7 +12,13 @@
     "src/spec/v2/index.ts",
     // The packaged Studio's `lousho-studio` bin and its pack-time SDK-range pin.
     "apps/agent-forge/server/cli.ts",
-    "apps/agent-forge/scripts/pin-sdk-range.mjs"
+    "apps/agent-forge/scripts/pin-sdk-range.mjs",
+    "packages/workspaces-react/src/index.ts",
+    "apps/agent-forge/evals/author/run.ts",
+    // The elkjs layout worker: only referenced through
+    // `new Worker(new URL('./layout.worker.ts', import.meta.url))` in
+    // apps/agent-forge/src/canvas/layout.ts (C17).
+    "apps/agent-forge/src/canvas/layout.worker.ts"
   ],
   "ignorePatterns": [
     ".claude/**"
@@ -31,6 +37,8 @@
     "src/agentDir/__fixtures__/**/*.{ts,js}",
     "src/observe/__fixtures__/*.mts",
     "src/spec/v2/__fixtures__/**/*.{ts,js}",
+    "src/workspaces/__fixtures__/*/**/*.ts",
+    "examples/workspace-marketing/workspace/**/*.ts",
     "examples/agent-dir/tools/*.ts",
     "registry/**/*.ts"
   ],
@@ -42,6 +50,47 @@
       "file": "packages/create-lousho/src/index.ts",
       "exports": [
         "main"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/__tests__/render.tsx",
+      "exports": [
+        "cleanup",
+        "typeInto",
+        "click",
+        "buttonNamed"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/components/outputs.tsx",
+      "exports": [
+        "outputValue",
+        "toText",
+        "OutputBlock"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/components/actions.tsx",
+      "exports": [
+        "isBusy"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/components/inputs.tsx",
+      "exports": [
+        "choiceOptions"
+      ]
+    },
+    {
+      "file": "packages/workspaces-react/src/schema.ts",
+      "exports": [
+        "schemaParts"
+      ]
+    },
+    {
+      "file": "apps/agent-forge/server/triggers/triggerHost.ts",
+      "exports": [
+        "HostRun"
       ]
     }
   ],
@@ -79,6 +128,7 @@
         "listAgents",
         "loadAgent",
         "saveAgent",
+        "saveLayout",
         "deleteAgent",
         "workspace"
       ]
@@ -107,7 +157,8 @@
       "**/*.test-d.ts",
       "registry/**",
       "examples/**",
-      "apps/agent-forge/src/observe/types.ts"
+      "apps/agent-forge/src/observe/types.ts",
+      "packages/workspaces-react/src/components/inputs.tsx"
     ]
   },
   "health": {

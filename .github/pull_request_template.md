@@ -31,9 +31,9 @@ What did you run, and what did it show? Name anything you couldn't verify, such 
 
 ## Release
 
-Merging publishes `@linuxdevil/lousho` and `create-lousho` to npm as `latest`, so everyone on a default install gets this change.
+Merging doesn't publish. The Release workflow publishes `@linuxdevil/lousho` and `create-lousho` to npm as `latest` every Monday at 06:00 UTC, or when run by hand, so everyone on a default install gets this change in the next release. The `Unreleased` entry above becomes that release's notes.
 
-- [ ] This PR doesn't need a release, so I added the `norelease` label
+- [ ] This PR doesn't need a release on its own, so I added the `norelease` label. The weekly run skips when every PR since the last release has it
 
 ## Before & After
 

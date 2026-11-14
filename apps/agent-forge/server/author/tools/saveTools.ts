@@ -16,7 +16,8 @@ import { z } from 'zod';
 import type { AuthorToolFailure } from '../../../shared/authorWire';
 import { resolveStoredProposal, saveBlockingError } from '../proposal/gate';
 import { agentGoneFailure } from '../proposal/failures';
-import { requestTextFor, writeProposal, type SaveResult } from '../proposal/save';
+import { requestTextForProposal } from '../requestText';
+import { writeProposal, type SaveResult } from '../proposal/save';
 import { identityKey, proposalTurnState, type ProposalIdentity } from '../proposal/turnState';
 import type { AuthorTurn } from '../turnRunner';
 import type { AuthorToolDeps, AuthorToolFactory } from './index';
@@ -45,7 +46,7 @@ async function saveFromCard(
   if (workspace === undefined) return agentGoneFailure(goneLabel(identity, resolved.output.spec.name));
   const result = await writeProposal(identity, resolved.output, {
     sessionId: turn.sessionId,
-    requestText: requestTextFor(turn.storedTranscript, proposalId),
+    requestText: requestTextForProposal(turn.storedTranscript, proposalId),
     agents: workspace.repo,
     versions: workspace.versions,
     sessions: deps.sessions,

@@ -8,6 +8,7 @@
  * module graph stays acyclic.
  */
 import type { CreateAgentConfig, SimpleAgent } from '../../createAgent';
+import { createAutoApprove } from '../../execution/autoApproval';
 import { ConfigurationError } from '../../execution/errors';
 import type { Handoff } from '../../handoffs';
 import type { RemoteSubagent } from '../../subagents/types';
@@ -128,9 +129,31 @@ const guardrailsSection: SectionCompiler = async (spec) => {
   return guardrails === undefined ? {} : { guardrails };
 };
 
-/** `spec.permissions` → `permissions`, in order (globs become anchored RegExps in the resolver). */
-const permissionsSection: SectionCompiler = async (spec) =>
-  spec.permissions === undefined ? {} : { permissions: permissionsFromSpec(spec.permissions) };
+/**
+ * `spec.permissions` → `permissions` (auto rules compiled to `ask`) plus,
+ * when the spec has an `auto` rule and the host supplies `autoApprover`,
+ * the `approve` callback `createAutoApprove` builds: the model scores
+ * auto-rule calls, everything else - and every escalation - goes to the
+ * host's own `approve` (or `'defer'`). With no approver, or no auto rule,
+ * `approve` is just the host's own callback (usually unset), so `auto`
+ * behaves exactly like `ask`.
+ */
+const permissionsSection: SectionCompiler = async (spec, host) => {
+  if (spec.permissions === undefined) return {};
+  const { rules, isAuto } = permissionsFromSpec(spec.permissions);
+  const hasAuto = spec.permissions.some((rule) => rule.action === 'auto');
+  const approve =
+    host.autoApprover !== undefined && hasAuto
+      ? createAutoApprove({
+          autoApprover: host.autoApprover,
+          isAuto,
+          fallback: host.approve,
+          describe: () => ({ agentName: spec.name, agentDescription: spec.description }),
+          onDecision: host.onAutoApproval,
+        })
+      : host.approve;
+  return { permissions: rules, ...(approve !== undefined && { approve }) };
+};
 
 /** `spec.hooks` → `hooks`: file hooks load under host.baseDir, inline ones through host.inlineHook. */
 const hooksSection: SectionCompiler = async (spec, host) =>

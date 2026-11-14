@@ -68,12 +68,9 @@ invoke_agent {agent name}          INTERNAL
   guardrail {guardrail name}       INTERNAL   one per input/output guardrail check
   chat {model}                     CLIENT     one per provider.generate() call
   execute_tool {tool name}         INTERNAL   one per tool call
-<<<<<<< HEAD
+    guardrail {guardrail name}     INTERNAL   one per tool guardrail check
   handoff {target agent}           INTERNAL   zero-length marker, one per honored handoff
   approval.wait {tool name}        INTERNAL   zero-length marker, one per paused approval
-=======
-    guardrail {guardrail name}     INTERNAL   one per tool guardrail check
->>>>>>> origin/fb-s20b-guardrail-spans
 ```
 
 `handoff` and `approval.wait` are marker spans: `startTime === endTime`, so a
@@ -138,6 +135,18 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `lousho.subagent.name` | On a sub-agent's run: the name the lead knows it by (the `task` tool's `agent`) |
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
+| `lousho.harness.revision` | The harness revision: a sha256 of the instructions and skills, the same id `harnessHash` gives and `lousho improve` records. Two agents with the same instructions and skills share it. Absent when the instructions are a function or come from the prompt registry. It covers `instructions` and `skills` only: `projectInstructions` (AGENTS.md), a per-send `instructions` addition and the tools are not part of it, and an `instructions/<family>.md` tail is, so such a run matches no saved revision. `lousho traces` shows its first 12 characters |
+| `lousho.workspace` | On a workspace page run: the workspace id |
+| `lousho.page` | On a workspace page run: the flat page id |
+| `lousho.attachment` | On a workspace page run: the attachment alias from `agents.json` that ran the step |
+| `lousho.execution_type` | On a workspace page run: the page's execution type (`single`, `multi-agent`, `workflow` or `goal-oriented`) |
+| `lousho.step.kind` | On a workspace page run: `single`, `workflow-step`, `delegate` or `goal-iteration`, the same on every engine |
+| `lousho.step.index` | On a workspace page run: the step's position in one sequence across the run, from 0 |
+| `lousho.harness.hash` | On a workspace page run: the composed harness hash, so two pages sharing an agent differ here |
+| `lousho.harness.part_hash` | On a workspace page run: the hash of the harness part of the assembled prompt |
+| `lousho.agent.ref.version` | On the run of an agent from a `global:` ref: the resolved version |
+| `lousho.agent.ref.sha256` | On the run of an agent from a `global:` ref: the sha256 of the resolved agent |
+| `lousho.workspace.revision` | Reserved for the workspace revision of a run; not set yet |
 
 #### Summing token usage over spans
 
@@ -503,9 +512,34 @@ Traces and Trace (trace trees with latency waterfalls), Threads, Monitoring
 sessions flip to `interrupted` — over per-agent charts of runs, p95 latency,
 error rate, cost and tokens), Scores, Datasets, Evaluators, Annotation
 queues, Prompts and Context Hub. The Studio's nav shows whether it can reach
-the daemon. Alerts on `down` transitions or
-error-rate thresholds POST to `--webhook` URLs or an `alerts.json` next to
-the db.
+the daemon. Alerts on `down` transitions,
+error-rate thresholds and score regressions (see
+[Continuous score](#continuous-score)) POST to `--webhook` URLs or an
+`alerts.json` next to the db.
+
+`lousho improve --watch` posts to the same `alerts.json` webhooks:
+`improve.pending`, `improve.applied`, `improve.rolled_back`,
+`improve.guard_failed`, `improve.paused` and `improve.canary`. `details` holds
+`{ agent, dir, from, to, reason, cycle }`, plus `card`, the local path of a
+pending proposal. A regression the monitor or a scheduled guard saw but did
+not roll back (automatic rollback off, or refused) is `improve.guard_failed`,
+posted once per revision. The reason is plain text: links, images and markup are
+stripped. Each event is also one stderr line, and a webhook that fails never
+fails the cycle.
+
+The sweep also records each `agent.score_regression` in the db's
+`score_regressions` table, with or without webhooks. A running
+`lousho improve --watch` polls it every tick and starts a cycle with
+`trigger: 'score'` for a regression of the agent's current revision, instead
+of waiting for new failed runs; every budget, the cooldown and the kill switch
+still apply. The daemon never writes to an agent directory. A watcher lists
+itself in `watchers.json` beside the db while it runs (informational: the sweep
+records every regression, once per agent and revision, across daemon restarts).
+A score cycle learns from the revision's failed and low-scored runs; a
+regression with neither ends `idle`. The `score_regressions` table is a schema
+migration, so once this daemon has opened a db, a process on an older `@linuxdevil/lousho`
+refuses it with `LOUSHO_STORAGE_FAILED`; upgrade every process that shares the
+db. See [Running it continuously](./improve.md#running-it-continuously).
 
 Insights averages runs/day over the days an agent was active in the window
 (from the later of the window start and the agent's first sighting), so an
@@ -865,6 +899,90 @@ shapes as the trace list and detail APIs, oldest trace first and not capped.
 count goes to stderr) unless `--out` names a file, which is overwritten. It
 reads the db directly and works without a running daemon. Captured content is
 exported as stored, so treat the file like the db.
+
+### Continuous score
+
+Each finished run of an agent becomes one point in a series, oldest first:
+
+- the mean of the run's finished online evaluator scores, when it has any;
+- otherwise 0 when the run is in the failure report (a failed call, no
+  answer, an interrupted process or a low score), and 1 when it is not.
+
+A point of 0.5 or more counts as a pass. Scores still without a value, and
+runs still in flight, are left out. Each point carries the run's
+`lousho.harness.revision`, so a series can be cut to one revision.
+
+The trajectory gate from the Self-Healing Harness paper judges the shape of
+the series rather than one number. It works on the rolling mean of 10
+points:
+
+- The first full window (10 points) sets a running peak.
+- A later window mean at least 0.02 above the peak is a gain, which raises
+  the peak.
+
+The gate judges the newest window:
+
+| State | When |
+| --- | --- |
+| `regression` | The newest window's mean is more than 0.15 below the peak, **and** the newest window sits significantly below the points before it (one-sided 95%, on the pass rate or on the mean value) |
+| `stall` | 10 windows have passed since the last gain while the peak is below 0.5, so a stall needs at least 20 points |
+| `ok` | Neither. This covers a low start that keeps improving, a plateau above 0.5, and a dip that has recovered |
+
+The significance check is the paper's corroboration step. A drop of 0.15 is
+only one or two failures in a window of pass/fail runs, so the shape alone
+would fire on most healthy agents. The test depends on the values:
+
+- for pass/fail values it compares pass rates (Newcombe's interval from
+  Wilson bounds);
+- otherwise it compares means (Welch's t).
+
+One judgement of a stable series reads `regression` about 5% of the time.
+Before the first full window the gate reports `ok` with `ready: false`.
+
+The daemon does not judge on every run, because repeating the test would add
+up to false alarms. It waits until an agent has 20 finished runs. After
+that, each time 10 new runs have arrived, it runs the gate over the last 200
+points at a stricter z of 1.96. The long lookback keeps the old baseline in
+view when a lasting drop fills recent runs. It raises an
+`agent.score_regression` alert only after three judgements in a row read
+`regression`.
+
+These are simulated figures for pass/fail agents (1,000 seeded streams each).
+
+A stable agent with a pass rate between 0.6 and 0.95 raised a false alert in
+under 1% of 1,000-run stretches.
+
+When 200 runs at the old rate were followed by 100 at the new one, the fall
+was caught within those 100 runs this often:
+
+| Fall | Caught |
+| --- | --- |
+| 0.9 → 0.1 | always |
+| 0.9 → 0.5 | about 80% |
+| 0.9 → 0.6 | about half |
+| 0.7 → 0.4 | about 1 in 5 |
+
+The alert fires at most once per agent per revision. The revision is that of
+the newest run, and `null` when that run has no stamp.
+The alert's `details` carry:
+
+- `revision`, `peak`, `mean` and `drop`;
+- `since_gain` and the number of `runs`;
+- `recent`: a summary of the newest 10 runs.
+
+The daemon keeps this memory only while it delivers alerts, and starts it
+afresh on restart. A failure in this pass is logged and never costs the
+sweep its other alerts.
+
+`lousho observe score [--agent X] [--revision R] [--limit N] [--json]` prints
+the same view for each agent from the db:
+
+- runs, mean, and the pass rate with its one-sided 95% Wilson lower bound;
+- pass^3, the chance that three independent runs all pass;
+- the gate state.
+
+Without `--revision`, the line covers every revision in the window and names
+the latest one. It reads the db directly and works without a running daemon.
 
 ### Trace list API
 

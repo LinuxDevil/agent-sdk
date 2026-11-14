@@ -1,8 +1,8 @@
 name: CI
+# PRs only: main is updated solely by merging green PRs (and the release
+# bot's version bump), so re-running the suite on push is redundant.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 # A newer push to the same PR cancels the run it supersedes.
@@ -38,6 +38,8 @@ jobs:
       # and the diff committed. Runs only here so the report reflects the default peers, not the compat job's ai/zod pairing.
       - run: npm run api:check
       - run: npm run build --workspace=packages/create-lousho
+      - run: npm run typecheck --workspace=packages/workspaces-react
+      - run: npm run build --workspace=packages/workspaces-react
       # Every ```ts block in README.md and docs/*.md must type-check against
       # src/ (quick-start also runs against the packed tarball). Needs dist/.
       - run: npm run docs:verify-snippets -- --skip-build
@@ -47,6 +49,8 @@ jobs:
       - run: npm run docs:llms:check
       # registry/dist is generated from registry/; fail if stale.
       - run: npm run registry:check
+      # schemas/ is generated from the workspace contracts; fail if stale.
+      - run: npm run workspaces:schema:check
   zod4:
     runs-on: ubuntu-latest
     steps:
@@ -80,10 +84,58 @@ jobs:
       - run: npm run lint:imports --workspace apps/agent-forge
       - run: npm run test --workspace apps/agent-forge -- --run
       - run: npm run test:server --workspace apps/agent-forge
+      # W15b: the same bridge-compat matrix against the SDK in this commit.
+      - run: npm run test:bridge-compat --workspace apps/agent-forge
       - run: npm run build:studio
       # Packs the SDK and @linuxdevil/studio, dry-run publishes Studio, installs both in a fresh project, and checks
       # that `lousho-studio` and `lousho studio` serve the UI. Never publishes.
       - run: npm run pack-smoke:studio -- --skip-build
+  # W15b: the same bridge-compat matrix against the OLDEST SDK release Studio
+  # still supports (MIN_BRIDGE_SDK_VERSION in server/host/sdkCompat.ts). When
+  # that version is not on npm yet the job skips with a notice; once it is
+  # published this runs the suite against the real installed package.
+  bridge-compat-min:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=12288
+      - name: Resolve MIN_BRIDGE_SDK_VERSION
+        id: min
+        run: |
+          v=$(npx tsx -e "import { MIN_BRIDGE_SDK_VERSION } from './apps/agent-forge/server/host/sdkCompat.ts'; console.log(MIN_BRIDGE_SDK_VERSION)")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Check the minimum SDK is published
+        id: pub
+        env:
+          MIN: ${{ steps.min.outputs.version }}
+        run: |
+          if npm view "@linuxdevil/lousho@$MIN" version > /dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::@linuxdevil/lousho@$MIN is not published yet - bridge-compat-min skips until it is."
+          fi
+      - name: Install the minimum SDK
+        if: steps.pub.outputs.published == 'true'
+        env:
+          MIN: ${{ steps.min.outputs.version }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/min-sdk" && cd "$RUNNER_TEMP/min-sdk"
+          npm init -y > /dev/null
+          npm install "@linuxdevil/lousho@$MIN" ai@7 zod@4 --no-audit --no-fund
+      - name: Run the compat suite against it
+        if: steps.pub.outputs.published == 'true'
+        env:
+          MIN: ${{ steps.min.outputs.version }}
+          LOUSHO_BRIDGE_SDK_DIR: ${{ runner.temp }}/min-sdk/node_modules/@linuxdevil/lousho
+        run: npm run test:bridge-compat --workspace apps/agent-forge
   test:
     runs-on: ubuntu-latest
     steps:
@@ -125,7 +177,7 @@ jobs:
   # with zod 4). Then the sandbox egress, credential broker and docker deploy image against the runner's
   # real Docker Engine (`*.docker.test.ts`, which fail instead of skipping with LOUSHO_DOCKER_TESTS=1).
   compat:
-    # Slow (full suite on the newest peers plus Docker); runs on main and by hand, not on every PR push.
+    # Slow (full suite on the newest peers plus Docker); manual only (Actions -> CI -> Run workflow), not on every PR push.
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25

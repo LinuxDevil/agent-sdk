@@ -12,6 +12,7 @@ import { defineTool } from './tools/defineTool';
 import { InMemoryApprovalStore } from './execution/InMemoryApprovalStore';
 import { mockModel } from './testing';
 import { ask, MAX_APPROVAL_TTL_MS } from './execution/permissions';
+import { createAutoApprove } from './execution/autoApproval';
 import type { Message } from './providers';
 import { fileStore } from './storage/fileStore';
 import { memoryStore, type AgentStore } from './storage/agentStore';
@@ -453,5 +454,39 @@ describe('createAgent approvals: durable list and cross-process staleness', () =
     const paused = await agent.send('Email Sam');
     expect((await agent.approvals.list()).map((entry) => entry.id)).toEqual([paused.approvalId]);
     expect((await agent.approvals.get(paused.approvalId!))?.id).toBe(paused.approvalId);
+  });
+
+  it('createAutoApprove runs a high-score auto call and defers a low-score one (R01a)', async () => {
+    const execute = vi.fn(async ({ title }: { title: string }) => `issue: ${title}`);
+    const issue = defineTool({
+      name: 'create_issue',
+      description: 'Files an issue',
+      input: z.object({ title: z.string() }),
+      execute,
+    });
+    const callIssue = { toolCalls: [{ name: 'create_issue', args: { title: 'the flake' }, id: 'call_issue' }] };
+    const isAuto = (toolName: string) => toolName === 'create_issue';
+    const approveWith = (safety: number) =>
+      createAutoApprove({ autoApprover: async () => ({ safety, reason: 'test' }), isAuto });
+
+    const high = createAgent({
+      provider: mockModel([callIssue, 'Filed it.']),
+      tools: [issue],
+      permissions: [ask('create_issue')],
+      approve: approveWith(0.95),
+    });
+    const done = await high.send('file the flake');
+    expect(done.finishReason).toBe('stop');
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    const low = createAgent({
+      provider: mockModel([callIssue, 'unused']),
+      tools: [issue],
+      permissions: [ask('create_issue')],
+      approve: approveWith(0.1),
+    });
+    const paused = await low.send('file the flake');
+    expect(paused.finishReason).toBe('awaiting-approval');
+    expect(execute).toHaveBeenCalledTimes(1);
   });
 });

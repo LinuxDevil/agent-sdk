@@ -38,6 +38,7 @@ import { fileStore } from '../storage/fileStore';
 import { loadAuth } from './loadAuth';
 import type { ChatRoutesAccess } from '../server/fetchRoutes';
 import { importModule } from './importModule';
+import { canaryArm, trafficOptedIn } from '../improve/canaryArm';
 
 export type { AgentDirConfig } from './readConfig';
 export type { Attestation, RegistryItemStatus, RegistryStatus } from './registryEnforce';
@@ -571,11 +572,13 @@ async function resolveWith(
     ...optional('hostApprove', scope.hostApprove),
   });
 
+  const harnessCanary = trafficCanaryFor(dir, { fromFile, familyFile, instructions, skills, overrides });
+
   const files = [...new Set([configFile, fromFile?.file, familyFile, configured?.file, approver?.file, ...tools.map((t) => t.file)])].filter(
     (f): f is string => f !== undefined
   );
   return {
-    config: assembled,
+    config: harnessCanary ? { ...assembled, harnessCanary } : assembled,
     schedules,
     channels,
     manifest: {
@@ -593,6 +596,16 @@ async function resolveWith(
       ...optional('registry', registry),
     },
   };
+}
+
+function trafficCanaryFor(
+  dir: string,
+  parts: { fromFile: unknown; familyFile: string | undefined; instructions: unknown; skills: Skill[]; overrides: AgentDirOverrides }
+): CreateAgentConfig['harnessCanary'] {
+  const { overrides, instructions } = parts;
+  const overridden = overrides.instructions !== undefined || overrides.prompt !== undefined || overrides.skills !== undefined || overrides.harnessCanary !== undefined;
+  if (overridden || !parts.fromFile || parts.familyFile !== undefined || typeof instructions !== 'string') return undefined;
+  return trafficOptedIn(dir) ? canaryArm(dir, { instructions, skills: parts.skills }) : undefined;
 }
 
 /** The directory's approver with receipt-enforced calls taken out of its hands (see {@link deferEnforcedApprovals}). */

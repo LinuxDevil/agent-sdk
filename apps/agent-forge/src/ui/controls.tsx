@@ -118,13 +118,23 @@ export interface SelectOption {
   value: string;
   label: string;
   disabled?: boolean;
+  /** The option's `title` tooltip (e.g. a catalog entry's description). */
+  title?: string;
+}
+
+/** One labelled `<optgroup>` for {@link Select} (e.g. a provider's models); rendered before the flat `options`. */
+export interface SelectGroup {
+  label: string;
+  options: SelectOption[];
 }
 
 /** Props for {@link Select}. */
 // fallow-ignore-next-line unused-type -- prop contract; adopted by the form screens in the next tickets.
 export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children'> {
-  /** Options rendered in order after the optional placeholder. */
+  /** Options rendered in order after the optional placeholder and any `groups`. */
   options: SelectOption[];
+  /** `<optgroup>` sections rendered after the placeholder, before `options`. */
+  groups?: SelectGroup[];
   /** First option: `<option value="" disabled>`, selected while `value === ''`. */
   placeholder?: string;
   /** Danger border + ring; also set automatically by an enclosing Field error. */
@@ -137,6 +147,7 @@ export interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(props, ref) {
   const {
     options,
+    groups,
     placeholder,
     invalid,
     controlSize,
@@ -162,8 +173,17 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
           {placeholder}
         </option>
       ) : null}
+      {groups?.map((group) => (
+        <optgroup key={group.label} label={group.label}>
+          {group.options.map((option) => (
+            <option key={option.value} value={option.value} disabled={option.disabled} title={option.title}>
+              {option.label}
+            </option>
+          ))}
+        </optgroup>
+      ))}
       {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>
+        <option key={option.value} value={option.value} disabled={option.disabled} title={option.title}>
           {option.label}
         </option>
       ))}

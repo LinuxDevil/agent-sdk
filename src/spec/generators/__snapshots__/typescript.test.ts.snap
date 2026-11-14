@@ -68,7 +68,7 @@ export const agent = createAgent({
       options: { topics: ['weapons'] },
     },
   ]),
-  permissions: permissionsFromSpec([{ id: 'p1', tool: '*', action: 'allow' }]),
+  permissions: permissionsFromSpec([{ id: 'p1', tool: '*', action: 'allow' }]).rules,
   permissionMode: 'plan',
   approvalTtlMs: 60000,
   askQuestion: true,

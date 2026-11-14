@@ -7,7 +7,7 @@
  * downloads. `pack-smoke` tests the tarball built from the checkout; this tests
  * the published copy. Run it right after a publish, and on the weekly CI job.
  *
- *   1. `npm view` of `lousho` and `create-lousho` (retried:
+ *   1. `npm view` of `@linuxdevil/lousho` and `create-lousho` (retried:
  *      a fresh publish can lag for a minute),
  *   2. `npm create lousho demo -- --yes --provider openrouter --no-git`
  *      (installs from the registry) and a check of the installed SDK version,

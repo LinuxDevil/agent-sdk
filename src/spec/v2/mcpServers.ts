@@ -12,7 +12,6 @@ import { forwardIssues } from './common';
 import { addSecretRefIssues, isSecretRef, type SecretRef } from './secrets';
 
 /** MCP server names become the `<server>__<tool>` prefix, so they follow the tool-name alphabet. */
-// fallow-ignore-next-line unused-export -- consumed by later spec v2 section schemas (S03 secret refs, Studio name validation)
 export const MCP_SERVER_NAME = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** An MCP server entry as a v2 spec writes it: v1's McpServerSpec, with SecretRef allowed where secrets go. */

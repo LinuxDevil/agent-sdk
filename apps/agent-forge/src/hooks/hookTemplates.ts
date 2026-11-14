@@ -1,29 +1,41 @@
-import type { AgentNodeHookPhase, AgentNodeHookPoint } from '../graph/types';
-
 /**
- * Starter hook templates for the Inspector "Hooks" section (`redact-pii`, `rate-limit`,
- * `inject-context`, `audit-log`). Each is an editable starting point - the
- * Inspector's CodeMirror editor lets a user change `code` freely after
- * dragging/adding one onto a node; `templateId` is kept on the resulting
- * `AgentNodeHookInstance` only as provenance (what it started from), not as
- * a live link back to this list.
+ * Starter hook templates for the hook node's Inspector (`redact-pii`,
+ * `rate-limit`, `inject-context`, `audit-log`). Each is an editable starting
+ * point — the Inspector's CodeMirror editor lets a user change `code`
+ * freely after applying one.
  *
  * `code` is the BODY of an async function invoked as `hook(ctx)` inside the
- * sandboxed subprocess (see server/hookSandbox.ts) - `ctx` shape depends on
+ * sandboxed subprocess (see server/hookSandbox.ts) — `ctx` shape depends on
  * `point`:
- *   - `toolCall`: `{ toolName, args, result?, error? }` - mutate `ctx.args`
+ *   - `toolCall`: `{ toolName, args, result?, error? }` — mutate `ctx.args`
  *     (pre) or `ctx.result`/`ctx.error` (post) and return `ctx`.
- *   - `generate`: `{ messages, model }` - mutate/push onto `ctx.messages`
+ *   - `generate`: `{ messages, model }` — mutate/push onto `ctx.messages`
  *     and return `ctx`.
+ */
+import type { HookSpec } from '../graph/v2/specTypes';
+
+/** The `inline` member of `HookSpec`. */
+type InlineHookSpec = Extract<HookSpec, { inline: unknown }>['inline'];
+
+/**
+ * A starter hook: `point`/`phase` are the v1 dimensions (`templatePoint`
+ * maps them onto the spec's four hook points).
  */
 export interface HookTemplate {
   id: string;
   name: string;
-  phase: AgentNodeHookPhase;
-  point: AgentNodeHookPoint;
-  /** Shown in the Inspector's hook-chip, e.g. "before llm.generate". */
+  /** Which call the hook wraps. */
+  point: 'toolCall' | 'generate';
+  /** Before or after that call. */
+  phase: 'pre' | 'post';
+  /** Shown in the template row, e.g. "before tool.call". */
   when: string;
   code: string;
+}
+
+/** The spec hook point a template lands at: `toolCall`+`pre` → `preToolCall`, `generate`+`post` → `postGenerate`, … */
+export function templatePoint(t: HookTemplate): InlineHookSpec['point'] {
+  return `${t.phase}${t.point === 'toolCall' ? 'ToolCall' : 'Generate'}` as InlineHookSpec['point'];
 }
 
 export const HOOK_TEMPLATES: HookTemplate[] = [

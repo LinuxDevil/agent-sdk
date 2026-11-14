@@ -3,7 +3,7 @@ import { ArrowLeft, FileQuestion } from 'lucide-react';
 
 import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
 import { nestObservations } from '../../observe/tree';
-import type { ObserveObservationRow } from '../../observe/types';
+import type { ObserveObservationRow, ObserveScoreRow } from '../../observe/types';
 import { useAgents, useDaemonDown, useDaemonHealth, useTraceDetail } from '../../observe/useObserve';
 import { navigate } from '../../router/router';
 import { useQueryState } from '../../router/useRoute';
@@ -30,6 +30,16 @@ const formatObs = (v: string | null): string | null => v;
 
 function rootOf(rows: ObserveObservationRow[]): ObserveObservationRow | undefined {
   return nestObservations(rows)[0]?.row;
+}
+
+/** The newest `rating` score's value on this trace, `null` when none was recorded (R04b). */
+function ratingOf(scores: ObserveScoreRow[] | undefined): number | null {
+  let latest: ObserveScoreRow | undefined;
+  for (const score of scores ?? []) {
+    if (score.name !== 'rating' || score.value === null) continue;
+    if (latest === undefined || score.created_at > latest.created_at) latest = score;
+  }
+  return latest?.value ?? null;
 }
 
 function MissingTrace({ traceId }: { traceId: string }) {
@@ -100,6 +110,7 @@ function useTrace(traceId: string, pollMs: number) {
  */
 export function TraceScreen({ traceId, pollMs = DEFAULT_POLL_MS }: { traceId: string; pollMs?: number }) {
   const { detail, down, root, now, agentName } = useTrace(traceId, pollMs);
+  const rating = useMemo(() => ratingOf(detail.data?.scores), [detail.data?.scores]);
   const [obsId, setObsId] = useQueryState('obs', parseObs, formatObs);
   const [mode, setMode] = useState<TraceViewMode>('tree');
 
@@ -118,7 +129,15 @@ export function TraceScreen({ traceId, pollMs = DEFAULT_POLL_MS }: { traceId: st
     body = (
       <>
         {root && (
-          <TraceHeader root={root} observations={detail.data.observations} agentName={agentName} now={now} selectedObsId={obsId} />
+          <TraceHeader
+            root={root}
+            observations={detail.data.observations}
+            agentName={agentName}
+            now={now}
+            selectedObsId={obsId}
+            rating={rating}
+            onRated={refresh}
+          />
         )}
         <TraceViewer
           observations={detail.data.observations}

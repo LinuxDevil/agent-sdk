@@ -20,7 +20,7 @@ endpoint, and how settings/secrets/deploy wiring works.
 
 ## Installation
 
-Agent Forge ships inside `lousho` itself - there's no
+Agent Forge ships inside `@linuxdevil/lousho` itself - there's no
 separate package to install:
 
 ```bash
@@ -103,7 +103,9 @@ without the CLI:
 Agent specs and run state are stored under `.lousho/` in the directory you
 ran `lousho studio` from (agent YAML files under `.lousho/agents/`,
 checkpoints and approvals alongside them) - the same `.lousho/` layout
-`lousho dev`/`lousho build` use.
+`lousho dev`/`lousho build` use. Those YAML files are
+[Agent spec v2](./agent-spec.md) documents, which that page explains field
+by field.
 
 The Agents screen's agent rail lists exactly the agents in that `.lousho/agents/`: a YAML
 file you add there shows up, and an agent you create in the studio is
@@ -141,6 +143,7 @@ The left navigation lists every screen, grouped:
 | --- | --- | --- |
 | Build | **Agents** | The builder: canvas, Inspector, bottom drawer. The build toolbar (Run, Stop, Debug, Import, Export, Save, model badge) shows only here. |
 | Build | **Playground** | Try messages against a model without editing an agent. |
+| Build | **Workspaces** | Workspaces in this project: their pages, problems, drafts and revisions. |
 | Observe | **Traces** | Every run the observe daemon holds, filtered and sorted; a row opens the trace. |
 | Observe | **Threads** | Sessions (conversations): one row per session, one turn per run. |
 | Observe | **Monitoring** | The fleet's health and charts over a time window. |
@@ -184,6 +187,8 @@ unknown hash goes to `#/agents` (the `?token=` stays).
 | `#/prompts` | Prompt registry | |
 | `#/prompts/<name>`, `#/prompts/<name>@<version or label>` | One prompt (latest version by default) | `diff=<a>,<b>` |
 | `#/hub`, `#/hub/<namespace>` | Context Hub | `agent` (the "Viewing as" agent), `scope` (`private`, `fleet`) |
+| `#/workspaces` | Workspaces list | `q` (filters name, id, domain) |
+| `#/workspaces/<id>`, `#/workspaces/<id>/<section>` | One workspace; section is `overview`, `main-agent`, `pages`, `agents`, `runs`, `improve` or `revisions` | |
 | `#/settings` | Settings | |
 
 A time range picked from a preset other than the default is written as
@@ -295,6 +300,24 @@ run's trace. Both read the observe daemon: when it is down, the Playground
 says so and keeps an empty editor, and runs still work. Runs go through the
 [playground run endpoint](#playground-run-endpoint) and report as agent
 `playground`.
+
+### Workspaces
+
+`#/workspaces` lists the workspaces the typed workspaces API knows: name and
+domain, page count, a `Valid`/`Invalid (n)` badge from the workspace's
+problems, the live revision and a last-run column (filled in by a later
+ticket). `#/workspaces/<id>` opens one workspace with a header that carries
+the live revision, the problems badge, an **Draft open** badge while a draft
+exists, and disabled **Run**/**Chat** actions; a left nav switches between
+the `overview`, `main-agent`, `pages`, `agents`, `runs`, `improve` and
+`revisions` sections, the ones not built yet naming their ticket. Every edit
+is a typed authoring operation sent through `ApiClient.call('applyOps', …)`
+into a draft with `expectedRevision`; the draft is applied or discarded
+later. When the live revision moved under an open screen the operation gets a
+409, the latest revision reloads and a toast says "This workspace changed
+since you opened it." The screens call only the workspaces API
+(`/api/workspaces`, mounted by a later ticket), through an injected
+`ApiClient`, so they run on fixtures today and move to the Next.js app later.
 
 ### Traces
 
@@ -802,7 +825,7 @@ automatically as long as `apps/agent-forge/dist-server` hasn't been built
 yet:
 
 ```bash
-git clone https://github.com/LinuxDevil/agent-sdk.git
+git clone https://github.com/LinuxDevil/lousho.git
 cd agent-sdk
 npm install
 npx @linuxdevil/lousho studio --dev   # or just `npx @linuxdevil/lousho studio` before building

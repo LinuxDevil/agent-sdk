@@ -13,11 +13,11 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     files: ['{src,server,shared,e2e}/**/*.{ts,tsx,mjs}'],
-    plugins: { lousho: { rules: { 'no-sdk-source': noSdkSource } } },
-    rules: { 'lousho/no-sdk-source': 'error' },
+    plugins: { '@linuxdevil/lousho': { rules: { 'no-sdk-source': noSdkSource } } },
+    rules: { '@linuxdevil/lousho/no-sdk-source': 'error' },
   },
   {
-    files: ['src/**/*.{ts,tsx}', 'server/**/*.ts'],
+    files: ['src/**/*.{ts,tsx}', 'server/**/*.ts', 'evals/**/*.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': 'warn',

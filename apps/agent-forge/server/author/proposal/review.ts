@@ -1,9 +1,9 @@
 /**
  * The pluggable draft review the propose tools run before showing a card
  * (PLAN §8.4). This module holds only the contract: `AuthorToolDeps.reviewDraft`
- * is injected so AA12 can plug the real review-model pass in behind the
- * same call, and `passReview` - the default `createApp` wires until then -
- * always lets the draft through.
+ * is injected, AA12's `createReviewDraft` (author/review/) is the pass
+ * `createApp` wires, and `passReview` - the always-approve double tests
+ * use - lets every draft through.
  *
  * A rejected verdict is a returned failure (`pass: false` carries the
  * `AuthorToolFailure` the tool hands back to the model), never a throw -
@@ -37,8 +37,8 @@ export type ReviewVerdict = { pass: true } | { pass: false; failure: AuthorToolF
 export type ReviewDraft = (input: ReviewInput) => Promise<ReviewVerdict>;
 
 /**
- * The review every turn gets until AA12 lands the real one: always
- * `{ pass: true }`. `createApp` wires it as `AuthorToolDeps.reviewDraft`'s
- * default so `proposeAgent` already runs the full pipeline.
+ * The always-approve review: always `{ pass: true }`. Tests wire it as
+ * `AuthorToolDeps.reviewDraft` when the AA12 judge pass should stay out
+ * of the way; the app wires `createReviewDraft`.
  */
 export const passReview: ReviewDraft = async () => ({ pass: true });

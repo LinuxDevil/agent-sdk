@@ -1,6 +1,6 @@
 # create-lousho
 
-Scaffold a new [`lousho`](https://www.npmjs.com/package/lousho) project with one command:
+Scaffold a new [`@linuxdevil/lousho`](https://www.npmjs.com/package/lousho) project with one command:
 
 ```bash
 npm create lousho my-agent
@@ -40,6 +40,6 @@ This package is a thin wrapper: it runs `lousho init` from the SDK, so `npx @lin
 
 - Documentation: [lousho.com](https://lousho.com) (English and Arabic)
 - Quick start: [lousho.com/quickstart](https://lousho.com/quickstart)
-- Source: [github.com/LinuxDevil/agent-sdk](https://github.com/LinuxDevil/agent-sdk)
+- Source: [github.com/LinuxDevil/lousho](https://github.com/LinuxDevil/lousho)
 
 MIT licensed.

@@ -21,6 +21,7 @@ import { randomUUID } from 'node:crypto';
 import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type {
   ChangeDraft,
+  DraftFieldClasses,
   DraftOrigin,
   DraftStatus,
   SpecPatch,
@@ -28,6 +29,8 @@ import type {
 } from '../../shared/wireTypes';
 import type { AgentRepo } from './agentRepo';
 import { readJsonFile, writeJsonAtomic } from './atomic';
+import { stableStringify } from '../../shared/stableJson';
+import { draftFingerprint } from '../lifecycle/draftFields';
 
 /**
  * The `draftId` a settle call named is not the current pending draft - a
@@ -60,8 +63,19 @@ export interface NewDraftInput {
   baseSpecHash: string;
 }
 
+/** What {@link DraftStore.update} may change on the pending draft. */
+export interface DraftUpdate {
+  patch?: SpecPatch;
+  reason?: string;
+}
+
+/** Called after a draft's `current.json` write that created it or changed its patch/reason (never for review bookkeeping). */
+export type DraftWrittenListener = (agentId: string, draft: ChangeDraft) => void;
+
 /** The draft store over `repo`'s `.lousho/agents/<id>/drafts/` trees. `clock` is injectable for tests. */
 export class DraftStore {
+  private readonly writtenListeners = new Set<DraftWrittenListener>();
+
   constructor(
     private readonly repo: AgentRepo,
     private readonly clock: () => Date = () => new Date()
@@ -118,13 +132,105 @@ export class DraftStore {
       baseVersion: input.baseVersion,
       baseSpecHash: input.baseSpecHash,
       autoReview: null,
+      classes: null,
       note: null,
       createdAt: now,
       updatedAt: now,
       respondedAt: null,
     };
     await writeJsonAtomic(this.currentPath(agentId), draft);
+    this.notifyDraftWritten(agentId, draft);
     return { draft, replaced };
+  }
+
+  /**
+   * Restates the pending draft's `patch`/`reason` in place (same draft
+   * id). A content change also clears `autoReview` - the old verdict
+   * binds to the old fingerprint - and notifies `onDraftWritten`
+   * listeners; a no-op update writes nothing and notifies nobody.
+   * Throws {@link NoDraftError}/{@link DraftMismatchError} like `settle`.
+   */
+  async update(agentId: string, draftId: string, changes: DraftUpdate): Promise<ChangeDraft> {
+    const cur = await this.current(agentId);
+    if (cur === undefined) throw new NoDraftError(agentId);
+    if (draftId !== cur.id) throw new DraftMismatchError(agentId, draftId);
+    const patch = changes.patch ?? cur.patch;
+    const reason = changes.reason ?? cur.reason;
+    const contentChanged =
+      stableStringify(patch) !== stableStringify(cur.patch) || reason !== cur.reason;
+    if (!contentChanged) return cur;
+    const updated: ChangeDraft = {
+      ...cur,
+      patch,
+      reason,
+      autoReview: null,
+      updatedAt: this.clock().toISOString(),
+    };
+    await writeJsonAtomic(this.currentPath(agentId), updated);
+    this.notifyDraftWritten(agentId, updated);
+    return updated;
+  }
+
+  /**
+   * Stamps the routine/gated `classes` and clears `autoReview` ahead of
+   * the review pass (L11a). `fingerprint` must still match the current
+   * draft's `{patch, reason, baseVersion}` - a restated draft keeps its
+   * own listener run to classify it. Review bookkeeping never notifies
+   * `onDraftWritten` - that listener is what got us here. Returns the
+   * updated draft, or `undefined` when `draftId` is no longer pending
+   * or the fingerprint went stale.
+   */
+  async setReviewInput(
+    agentId: string,
+    draftId: string,
+    classes: DraftFieldClasses,
+    fingerprint: string
+  ): Promise<ChangeDraft | undefined> {
+    const cur = await this.current(agentId);
+    if (cur === undefined || cur.id !== draftId || cur.status !== 'pending') return undefined;
+    if (draftFingerprint(cur) !== fingerprint) return undefined;
+    const updated: ChangeDraft = { ...cur, classes, autoReview: null, updatedAt: this.clock().toISOString() };
+    await writeJsonAtomic(this.currentPath(agentId), updated);
+    return updated;
+  }
+
+  /**
+   * Writes `autoReview` onto the pending draft, but only while it still
+   * is `draftId`, still `pending`, and its `{patch, reason, baseVersion}`
+   * fingerprint equals `fingerprint` - a restated or settled draft drops
+   * the late verdict. Returns whether the write landed.
+   */
+  async setAutoReview(agentId: string, draftId: string, review: ChangeDraft['autoReview'], fingerprint: string): Promise<boolean> {
+    const cur = await this.current(agentId);
+    if (cur === undefined || cur.id !== draftId || cur.status !== 'pending') return false;
+    if (draftFingerprint(cur) !== fingerprint) return false;
+    const updated: ChangeDraft = { ...cur, autoReview: review, updatedAt: this.clock().toISOString() };
+    await writeJsonAtomic(this.currentPath(agentId), updated);
+    return true;
+  }
+
+  /**
+   * Subscribes `listener` to draft writes that created the draft or
+   * changed its patch/reason (the auto-review pass's hook, L11a); the
+   * returned function unsubscribes. Listener errors are caught and
+   * logged - a bad listener must never fail the write that succeeded.
+   */
+  onDraftWritten(listener: DraftWrittenListener): () => void {
+    this.writtenListeners.add(listener);
+    return () => {
+      this.writtenListeners.delete(listener);
+    };
+  }
+
+  /** Fans `draft` out to the `onDraftWritten` listeners; each runs behind its own try/catch. */
+  private notifyDraftWritten(agentId: string, draft: ChangeDraft): void {
+    for (const listener of this.writtenListeners) {
+      try {
+        listener(agentId, draft);
+      } catch (error) {
+        console.warn(`[agent-forge] draft-written listener failed for '${agentId}' draft ${draft.id}:`, error);
+      }
+    }
   }
 
   /**

@@ -1,0 +1,27 @@
+{
+  "permissions": [
+    {
+      "id": "no-shell",
+      "tool": "bash",
+      "action": "deny",
+      "reason": "Pages never run shell commands."
+    }
+  ],
+  "tools": {
+    "allow": [
+      "read_file",
+      "search_code",
+      "edit_file",
+      "run_tests"
+    ]
+  },
+  "secrets": [],
+  "approvals": {
+    "require": [
+      "edit_file"
+    ]
+  },
+  "sandbox": {
+    "required": true
+  }
+}

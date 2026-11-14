@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Bot, Circle, FlaskConical, Layers, Sparkles, Wrench, Zap, type LucideIcon } from 'lucide-react';
 
 import { VirtualList } from '../../components/debug/VirtualList';
@@ -31,6 +32,8 @@ export interface RunTreeProps {
   onSelect: (obsId: string) => void;
   now?: number;
   playgroundLinks?: boolean;
+  /** Per-row trailing action rendered in place of the playground-link slot (see TraceViewerProps.rowAction). */
+  rowAction?: (row: ObserveObservationRow) => ReactNode;
 }
 
 const INDENT_PX = 16;
@@ -69,10 +72,11 @@ interface TreeRowProps {
   virtual: boolean;
   now: number;
   playgroundLinks: boolean;
+  rowAction?: (row: ObserveObservationRow) => ReactNode;
   onSelect: (obsId: string) => void;
 }
 
-function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: TreeRowProps) {
+function TreeRow({ node, selected, virtual, now, playgroundLinks, rowAction, onSelect }: TreeRowProps) {
   const { row } = node;
   const tokens = totalTokens(row);
   const status = displayStatus(row);
@@ -100,8 +104,9 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
         {tokens !== null && <span className="run-tokens">{fmtInt(tokens)} tok</span>}
         <Duration node={node} now={now} />
       </button>
-      {playgroundLinks &&
-        (row.kind === 'generation' ? (
+      {rowAction?.(row) ??
+        (playgroundLinks &&
+          (row.kind === 'generation' ? (
           <a className="run-playground-link" href={playgroundHref(row.trace_id, row.obs_id)} title={`Open ${name} in Playground`}>
             <FlaskConical size={14} strokeWidth={1.75} aria-hidden="true" />
             <span className="visually-hidden">Open in Playground</span>
@@ -109,7 +114,7 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
         ) : (
           // Every row reserves the link's slot, so the durations line up in one column.
           <span className="run-row-slot" aria-hidden="true" />
-        ))}
+        )))}
     </div>
   );
 }
@@ -123,7 +128,7 @@ function TreeRow({ node, selected, virtual, now, playgroundLinks, onSelect }: Tr
  * and token count drop out, so each row stays on one line. Above 500 observations
  * the rows render through `VirtualList` at a fixed height.
  */
-export function RunTree({ observations, selectedObsId, onSelect, now, playgroundLinks = true }: RunTreeProps) {
+export function RunTree({ observations, selectedObsId, onSelect, now, playgroundLinks = true, rowAction }: RunTreeProps) {
   const nodes = useFlatNodes(observations);
   const clock = now ?? Date.now();
   const virtual = nodes.length > VIRTUALISE_ABOVE;
@@ -135,6 +140,7 @@ export function RunTree({ observations, selectedObsId, onSelect, now, playground
       virtual={virtual}
       now={clock}
       playgroundLinks={playgroundLinks}
+      rowAction={rowAction}
       onSelect={onSelect}
     />
   );

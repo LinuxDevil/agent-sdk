@@ -1,0 +1,8 @@
+{
+  "schema": "lousho.harness/1",
+  "id": "tone-a",
+  "version": "1.0.0",
+  "extends": [
+    "workspace:tone-b"
+  ]
+}

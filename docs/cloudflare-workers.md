@@ -92,7 +92,7 @@ Provider API keys are read from Worker bindings named `<TYPE>_API_KEY` (for exam
 `wrangler secret put OPENAI_API_KEY`, `wrangler secret put ANTHROPIC_API_KEY` or
 `wrangler secret put OPENROUTER_API_KEY`). The peer packages (`@ai-sdk/openai` for
 `openai` and `openrouter`, `@ai-sdk/anthropic` for `anthropic`, and `ai`) must be
-installed alongside `lousho` for `lousho build` to bundle them.
+installed alongside `@linuxdevil/lousho` for `lousho build` to bundle them.
 
 **Agent directories on a Worker.** A Worker has no file system and cannot import
 a file by path at run time, so the build reads the
@@ -145,7 +145,7 @@ cd .lousho/build/cloudflare-worker && npx wrangler deploy
 - Tool files are bundled from where they are, so their relative imports and their
   `node_modules` resolve as in development. A tool that imports a Node builtin fails the
   build's leak check, which names the file.
-- In a tool or `agent.ts`, `lousho` is a Worker-safe subset of the package:
+- In a tool or `agent.ts`, `@linuxdevil/lousho` is a Worker-safe subset of the package:
   `defineTool`, `isDefinedTool`, `always`, `never`, `once`, `defineSkill`, `defineSchedule`,
   `isDefinedSchedule`, `defineChannel`, `httpChannel`, `slackChannel`, `discordChannel`,
   `telegramChannel`, `githubChannel`, `teamsChannel`, `defineMemory`, `inMemoryMemory`,

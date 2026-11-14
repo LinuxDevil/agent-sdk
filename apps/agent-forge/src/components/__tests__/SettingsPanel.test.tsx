@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../ui/__tests__/render';
 import { installMemoryStorage } from '../../ui/__tests__/memoryStorage';
+import { ToastProvider } from '../../ui/Toast';
 import { SettingsPanel } from '../SettingsPanel';
 import { toggleTheme } from '../../shell/theme';
 import type { ProviderKeyStatus } from '../../../shared/wireTypes';
@@ -25,11 +26,36 @@ vi.mock('../../runtime/runtimeClient', () => ({
       daemonVersion: null,
       error: 'No collector answered at http://127.0.0.1:7777.',
     }),
+    getAuthorSettings: async () => ({
+      model: 'anthropic/claude-sonnet-5-5',
+      reviewModel: 'anthropic/claude-haiku-5-5',
+      reviewEnabled: true,
+      ready: true,
+    }),
+    catalogModels: async () => [],
+    getPassSettings: async () => ({
+      model: 'anthropic/claude-haiku-5-5',
+      autoApprovalModel: 'anthropic/claude-haiku-5-5',
+      enabled: {
+        version_summary: true,
+        draft_review: true,
+        portability_check: true,
+        prompt_suggestion: true,
+        auto_approval: true,
+        eval_judge: true,
+      },
+    }),
+    savePassSettings: async (patch: unknown) => patch,
+    getPassSpend: async () => ({ month: '2026-11', totalUsd: 0, calls: 0, byKind: {} }),
   },
 }));
 
 async function mount(variant?: 'drawer' | 'screen') {
-  const host = render(<SettingsPanel variant={variant} />);
+  const host = render(
+    <ToastProvider>
+      <SettingsPanel variant={variant} />
+    </ToastProvider>
+  );
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
@@ -63,13 +89,16 @@ describe('SettingsPanel', () => {
     expect(sectionNames(host)).toEqual(['Provider keys', 'Settings profile', 'Deploy target']);
   });
 
-  it('the routed screen adds Appearance, Collector and Keyboard shortcuts', async () => {
+  it('the routed screen adds Appearance, Workspaces, Agent Author, Background passes, Collector and Keyboard shortcuts', async () => {
     const host = await mount('screen');
     expect(sectionNames(host)).toEqual([
       'Appearance',
+      'Workspaces',
       'Provider keys',
+      'Agent Author',
       'Settings profile',
       'Deploy target',
+      'Background passes',
       'Collector',
       'Keyboard shortcuts',
     ]);
@@ -135,8 +164,11 @@ describe('SettingsPanel', () => {
     const shortcuts = host.querySelector('section[aria-label="Keyboard shortcuts"]')!;
     expect([...shortcuts.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual([
       'Ctrl/Cmd+K',
+      'Ctrl/Cmd+J',
       '?',
       'Ctrl/Cmd+S',
+      'Ctrl/Cmd+Z',
+      'Ctrl/Cmd+Shift+Z',
       'j',
       'k',
       'Enter',

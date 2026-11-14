@@ -1,0 +1,3 @@
+{ "name": "out-of-scope", "turns": ["Write me a poem about the sea."],
+  "expect": { "creates": false, "mustNot": ["proposeAgent", "saveAgent"],
+    "rubric": "The assistant politely says it only helps with lousho agents and Studio, and offers to help build an agent instead." } }

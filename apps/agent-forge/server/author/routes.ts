@@ -17,11 +17,8 @@ import { randomUUID } from 'node:crypto';
 import type { Express, Request, Response } from 'express';
 import {
   AUTHOR_SESSION_ID_RE,
-  type AuthorFocus,
   type AuthorMessage,
-  type AuthorSaveResponse,
   type AuthorSessionRecord,
-  type AuthorToolFailure,
   type AuthorToolPart,
   type AuthorUserMessage,
   type RequestSecretOutput,
@@ -31,9 +28,8 @@ import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import type { SecretsStore } from '../secretsStore';
 import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceResolver } from '../workspace/context';
-import { identityOfProposal, resolveStoredProposal } from './proposal/gate';
-import { agentGoneFailure, unknownProposalFailure } from './proposal/failures';
-import { requestTextFor, writeProposal } from './proposal/save';
+import { applyStoredProposal } from './applyProposal';
+import { parseFocus, type ParsedFocus } from './parseFocus';
 import { computeRequirements, requirementDeps } from './requirements';
 import { setAgentEnabledFor } from './tools/stateTools';
 import type { AuthorSessionStore } from './sessionStore';
@@ -48,18 +44,10 @@ const INVALID_FOCUS_MESSAGE = 'focus must be { mode: "create" } or { mode: "edit
  * is present it must be `{ mode: 'create' }` or `{ mode: 'edit', agentId }`
  * with `agentId` passing `isValidAgentId`.
  */
-function parseFocus(body: unknown): { ok: true; focus?: AuthorFocus } | { ok: false } {
+function parseBodyFocus(body: unknown): ParsedFocus {
   if (body === undefined || body === null) return { ok: true };
   if (typeof body !== 'object' || Array.isArray(body)) return { ok: false };
-  const focus = (body as { focus?: unknown }).focus;
-  if (focus === undefined) return { ok: true };
-  if (typeof focus !== 'object' || focus === null || Array.isArray(focus)) return { ok: false };
-  const candidate = focus as { mode?: unknown; agentId?: unknown };
-  if (candidate.mode === 'create') return { ok: true, focus: { mode: 'create' } };
-  if (candidate.mode === 'edit' && typeof candidate.agentId === 'string' && isValidAgentId(candidate.agentId)) {
-    return { ok: true, focus: { mode: 'edit', agentId: candidate.agentId } };
-  }
-  return { ok: false };
+  return parseFocus((body as { focus?: unknown }).focus);
 }
 
 /** The request's `:id` as a session id, or `undefined` once the 400 was sent. */
@@ -176,18 +164,6 @@ function enableAgentIdOf(body: unknown, res: Response): string | undefined {
 }
 
 /**
- * A failed save's HTTP answer: the person-facing `userMessage` and the
- * failure `code` (`latestProposalId` travels as `details` so the client
- * can point at the newer card). A `WRITE_FAILED` is a server fault - 500;
- * every refusal is a 400.
- */
-function sendSaveFailure(res: Response, failure: AuthorToolFailure): void {
-  const details =
-    typeof failure.latestProposalId === 'string' ? { latestProposalId: failure.latestProposalId } : undefined;
-  sendError(res, failure.code === 'WRITE_FAILED' ? 500 : 400, failure.userMessage, failure.code, details);
-}
-
-/**
  * Registers the four session routes. `deps.sessions` is the app's single
  * `AuthorSessionStore` (sessions are Studio-global); the workspace the
  * session belongs to still comes from `workspaceOf(req)` on create.
@@ -202,11 +178,12 @@ export function registerAuthorRoutes(
     sessions: AuthorSessionStore;
     runner?: Pick<AuthorTurnRunner, 'running' | 'continueAfterUiEvent'>;
     /**
-     * The app's secrets store: the `POST .../secret` card answer writes
-     * named secrets through its encrypted `setSecret` path (the value
-     * never enters the transcript, the WS stream or a log line - only the
-     * outcome is persisted), and `POST .../enable` reports the agent's
-     * `missingRequirements` count through it (AA13's `requirementDeps`).
+     * The app's named-secrets store (D13): the `POST .../secret` card
+     * answer writes through its encrypted `setSecret` path (the value
+     * never enters the transcript, the WS stream or a log line - only
+     * the outcome is persisted), and `POST .../enable` reads stored
+     * provider keys and named secrets through it for the
+     * `missingRequirements` count (AA13's `requirementDeps`).
      */
     secrets: SecretsStore;
     /**
@@ -228,7 +205,7 @@ export function registerAuthorRoutes(
   app.post(
     '/assistant/sessions',
     asyncRoute(async (req, res) => {
-      const parsed = parseFocus(req.body);
+      const parsed = parseBodyFocus(req.body);
       if (!parsed.ok) {
         sendError(res, 400, INVALID_FOCUS_MESSAGE, 'INVALID_INPUT');
         return;
@@ -309,52 +286,16 @@ export function registerAuthorRoutes(
       }
       savesInFlight.add(id);
       try {
-        const identity = identityOfProposal(session.transcript, proposalId);
-        if (identity === null) {
-          const failure = unknownProposalFailure('create', proposalId);
-          sendError(res, 400, failure.userMessage, failure.code);
+        const outcome = await applyStoredProposal(
+          { sessions: deps.sessions, workspaceResolver: deps.workspaceResolver },
+          session,
+          proposalId
+        );
+        if (!outcome.ok) {
+          sendError(res, outcome.status, outcome.userMessage, outcome.code, outcome.details);
           return;
         }
-        const ws = await deps.workspaceResolver.resolve(session.workspaceId);
-        if (ws === undefined) {
-          const failure = agentGoneFailure(identity.kind === 'update' ? identity.agentId : session.workspaceId);
-          sendSaveFailure(res, failure);
-          return;
-        }
-        const resolved = resolveStoredProposal(session.transcript, identity, proposalId);
-        if (!resolved.ok) {
-          sendSaveFailure(res, resolved);
-          return;
-        }
-        const result = await writeProposal(identity, resolved.output, {
-          sessionId: id,
-          requestText: requestTextFor(session.transcript, proposalId),
-          agents: ws.repo,
-          versions: ws.versions,
-          sessions: deps.sessions,
-          bus: ws.events,
-        });
-        if (!result.ok) {
-          sendSaveFailure(res, result);
-          return;
-        }
-        const message: AuthorUserMessage = {
-          id: `m_${randomUUID()}`,
-          role: 'user',
-          text: '',
-          at: new Date().toISOString(),
-          uiEvent: { kind: 'save', proposalId, agentId: result.agentId, version: result.version },
-        };
-        await deps.sessions.update(id, (s) => ({ ...s, transcript: [...s.transcript, message] }));
-        const body: AuthorSaveResponse = {
-          ok: true,
-          agentId: result.agentId,
-          version: result.version,
-          name: result.name,
-          enabled: result.enabled,
-          message,
-        };
-        res.status(200).json(body);
+        res.status(200).json(outcome.response);
       } finally {
         savesInFlight.delete(id);
       }

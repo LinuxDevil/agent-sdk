@@ -18,7 +18,7 @@ const NO_SCORES: ObserveScoreRow[] = [];
  * the live feed it also jumps to the Logs tab, whose highlight follows.
  */
 function SpanTrace({ spans, jumpToLogs }: { spans: SpanEvent[]; jumpToLogs: boolean }) {
-  const { setHighlightedNodeId, graph, setDrawerTab } = useAppState();
+  const { setHighlightedNodeId, graph, nodeIdMap, setDrawerTab } = useAppState();
   const [selectedObsId, setSelectedObsId] = useState<string | null>(null);
   const [mode, setMode] = useState<TraceViewMode>('tree');
   const observations = useMemo(() => spansToObservations(spans), [spans]);
@@ -27,7 +27,7 @@ function SpanTrace({ spans, jumpToLogs }: { spans: SpanEvent[]; jumpToLogs: bool
   function handleSelect(obsId: string) {
     setSelectedObsId(obsId);
     const span = spans.find((s) => s.id === obsId);
-    setHighlightedNodeId(span ? nodeIdForSpan(graph, span) : undefined);
+    setHighlightedNodeId(span ? nodeIdForSpan(graph, span, nodeIdMap) : undefined);
     if (jumpToLogs) setDrawerTab('logs');
   }
 

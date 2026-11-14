@@ -15,12 +15,12 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { AgentMeta, VersionListItem } from '../../shared/wireTypes';
 
 describe('PATCH /agents/:id/meta', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
 
@@ -75,6 +75,25 @@ describe('PATCH /agents/:id/meta', () => {
     expect(off.body.disabledAt).not.toBe('2026-01-01T00:00:00.000Z');
   });
 
+  it('enabled:false on an auto-disabled agent keeps disabledReason and the streak (L12)', async () => {
+    const meta = await createOps();
+    await repo.writeMeta('ops', {
+      ...meta,
+      enabled: false,
+      disabledAt: '2026-01-01T00:00:00.000Z',
+      disabledReason: 'auto_failure_streak',
+      failureStreak: 5,
+    });
+    const res = await patch('ops', { enabled: false });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      enabled: false,
+      disabledAt: '2026-01-01T00:00:00.000Z',
+      disabledReason: 'auto_failure_streak',
+      failureStreak: 5,
+    });
+  });
+
   it("stores ['ops', 'billing'] for labels [' Ops ', 'ops', 'Billing'] and bumps updatedAt", async () => {
     const meta = await createOps();
     const res = await patch('ops', { labels: [' Ops ', 'ops', 'Billing'] });
@@ -97,9 +116,8 @@ describe('PATCH /agents/:id/meta', () => {
     expect((await repo.readMeta('ops')).labels).toEqual([]);
   });
 
-  it.each([[{}], [{ enabled: 'yes' }], [{ labels: 'ops' }], [{ labels: [1] }]])(
-    '400s LOUSHO_BODY_INVALID for %j',
-    async (body) => {
+  // Non-array/non-string `labels` are LabelError cases (LOUSHO_LABELS_INVALID) covered by metaLabels.test.ts.
+  it.each([[{}], [{ enabled: 'yes' }]])('400s LOUSHO_BODY_INVALID for %j', async (body) => {
       await createOps();
       const res = await patch('ops', body);
       expect(res.status).toBe(400);

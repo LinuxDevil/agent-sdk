@@ -1,0 +1,44 @@
+/* The "Background passes" settings card (L06b): the per-kind switch list
+ * and this month's spend rollup under the model inputs. */
+
+.passes-kinds {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 0;
+}
+
+.passes-kind {
+  cursor: pointer;
+}
+
+.passes-kind .switch-wrap {
+  flex-shrink: 0;
+}
+
+.passes-spend {
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.passes-spend-total {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.passes-spend-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.passes-spend-table td {
+  padding: 2px 0;
+  color: var(--text-muted);
+}
+
+.passes-spend-table td:last-child,
+.passes-spend-table td:nth-child(2) {
+  text-align: right;
+}

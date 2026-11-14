@@ -417,7 +417,7 @@ console.log('Open this to connect Linear:', await agent.oauth.mcpSignInUrl('line
   [callback route](#the-callback-route) of the deployed agent.
 - `clientId`, and `clientSecret` for a confidential client: a client you
   registered with the authorization server yourself. Without `clientId`, the
-  SDK registers one at the first sign-in (as `clientName`, default `lousho`,
+  SDK registers one at the first sign-in (as `clientName`, default `@linuxdevil/lousho`,
   with `redirectUri` as its only redirect URI) and keeps it in the token store.
 - `scopes`: requested when the server's metadata names none.
 

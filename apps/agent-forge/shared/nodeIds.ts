@@ -64,3 +64,20 @@ export function keyedItems<T>(items: readonly T[], keyOf: (item: T) => string): 
     return { key: count === 1 ? base : `${base}#${count}`, item };
   });
 }
+
+/**
+ * `items` as a comma-joined list of `<prefix><deduped key>` node ids
+ * ('tool:web-fetch, tool:current_date'), `undefined` when the list is
+ * absent or empty - the digest/prompt rendering the version summary and
+ * draft review share.
+ */
+export function nodeIdList<T>(
+  items: readonly T[] | undefined,
+  keyOf: (item: T) => string,
+  prefix: string
+): string | undefined {
+  if (items === undefined || items.length === 0) return undefined;
+  return keyedItems(items, keyOf)
+    .map(({ key }) => `${prefix}${key}`)
+    .join(', ');
+}

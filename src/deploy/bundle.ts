@@ -62,7 +62,7 @@ function runtimeSourceFile(fileName: string): string {
 /**
  * esbuild plugin mapping the virtual runtime specifiers to the SDK's runtime
  * sources. `sdkEntry: 'worker'` (cloudflare-worker target) resolves agent
- * code's `lousho` to the Worker-safe subset in ./workerSdk.ts
+ * code's `@linuxdevil/lousho` to the Worker-safe subset in ./workerSdk.ts
  * instead of the package's main entry, which imports Node-only modules.
  */
 export function sdkRuntimePlugin({ sdkEntry = 'main' }: { sdkEntry?: 'main' | 'worker' } = {}): Plugin {

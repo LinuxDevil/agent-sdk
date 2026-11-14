@@ -19,13 +19,7 @@ import type { AgentSpecV2 } from '@linuxdevil/lousho';
 /** The spec keys the Author never sets: `version` is forced to 2, `evals` and `flow` are not in v1 of the Author. */
 export const DRAFT_OMITTED_KEYS = ['version', 'evals', 'flow'] as const;
 
-/**
- * `agentSpecV2Schema` as the strict zod object it is at run time. Its
- * published type (SpecObjectSchema) is structural so the SDK's
- * declarations do not depend on the installed zod major; Studio pins the
- * same zod the SDK builds with, so composing it as a zod object is safe.
- */
-const specSchema = agentSpecV2Schema as unknown as z.ZodObject<z.ZodRawShape>;
+const specShape = agentSpecV2Schema.shape as z.ZodRawShape;
 
 /**
  * One sentence per draftable field - what the field does, when to set it,
@@ -90,23 +84,19 @@ const DESCRIPTION_MAX_CHARS = 500;
  * required exactly where the spec requires them) and is `.describe()`d.
  */
 function draftFieldSchemas(): Record<string, z.ZodTypeAny> {
-  // `.shape`, not `.omit`: agentSpecV2Schema is a ZodEffects at run time
-  // (its `.superRefine` flow check), which has no `.omit` - the SDK patches
-  // `.shape` back on, so filter it here instead.
   const omitted: readonly string[] = DRAFT_OMITTED_KEYS;
-  const specFields = Object.fromEntries(
-    Object.entries(specSchema.shape).filter(([key]) => !omitted.includes(key))
-  );
   return Object.fromEntries(
-    Object.entries(specFields).map(([key, field]) => {
-      const schema =
-        key === 'description'
-          ? z.string().min(1, 'must not be empty').max(DESCRIPTION_MAX_CHARS, `must be at most ${DESCRIPTION_MAX_CHARS} characters`)
-          : key === 'instructions'
-            ? z.string().min(1, 'must not be empty').max(INSTRUCTIONS_MAX_CHARS, `must be at most ${INSTRUCTIONS_MAX_CHARS} characters`)
-            : field;
-      return [key, schema.describe(FIELD_DESCRIPTIONS[key])];
-    })
+    Object.entries(specShape)
+      .filter(([key]) => !omitted.includes(key))
+      .map(([key, field]) => {
+        const schema =
+          key === 'description'
+            ? z.string().min(1, 'must not be empty').max(DESCRIPTION_MAX_CHARS, `must be at most ${DESCRIPTION_MAX_CHARS} characters`)
+            : key === 'instructions'
+              ? z.string().min(1, 'must not be empty').max(INSTRUCTIONS_MAX_CHARS, `must be at most ${INSTRUCTIONS_MAX_CHARS} characters`)
+              : field;
+        return [key, schema.describe(FIELD_DESCRIPTIONS[key])];
+      })
   );
 }
 
@@ -132,7 +122,7 @@ type AuthorDraftFields = Omit<AgentSpecV2, (typeof DRAFT_OMITTED_KEYS)[number] |
  * the one-sentence pitch true. Computed from the schema's shape so an
  * optional field the spec gains is resettable automatically.
  */
-export const NULLABLE_PATCH_KEYS: readonly string[] = Object.entries(specSchema.shape)
+export const NULLABLE_PATCH_KEYS: readonly string[] = Object.entries(specShape)
   .filter(([key, field]) => key !== 'description' && field.isOptional())
   .map(([key]) => key);
 

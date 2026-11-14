@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-/** The published names the rule guards: `@linuxdevil/lousho` now, `lousho`/`@lousho/build-ai-agent` for older layouts. */
+/** The published names the rule guards: `@linuxdevil/lousho` now, `@linuxdevil/lousho`/`@lousho/build-ai-agent` for older layouts. */
 const SDK_DEEP_IMPORT = /^(?:@linuxdevil\/lousho|@lousho\/build-ai-agent|lousho)\/(?:src|dist)(?:\/|$)/;
 
 function isOutsideAppRoot(filename, specifier) {

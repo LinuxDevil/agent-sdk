@@ -16,7 +16,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomBytes } from 'node:crypto';
-import type { SettingsFile, SettingsProfile } from '../shared/wireTypes';
+import type { PassKind, PassSettings, PassSettingsPatch, SettingsFile, SettingsProfile } from '../shared/wireTypes';
+import { PASS_KINDS } from '../shared/wireTypes';
 import type { AuthorSettings } from '../shared/authorWire';
 import type { StudioPaths } from './workspace/studioPaths';
 
@@ -51,6 +52,46 @@ const DEFAULT_PROFILES: SettingsProfile[] = [
     sandboxBackend: 'noop',
   },
 ];
+
+/** Every pass kind on by default (L06b). */
+const DEFAULT_PASS_ENABLED: Record<PassKind, boolean> = Object.fromEntries(PASS_KINDS.map((kind) => [kind, true])) as Record<
+  PassKind,
+  boolean
+>;
+
+/** The background passes' out-of-the-box choices: a small fast model for everything, every kind on. */
+const DEFAULT_PASS_SETTINGS: PassSettings = {
+  model: 'anthropic/claude-haiku-5-5',
+  autoApprovalModel: 'anthropic/claude-haiku-5-5',
+  enabled: DEFAULT_PASS_ENABLED,
+};
+
+/** `model`/`autoApprovalModel` must look like `provider/model`. */
+function assertModelField(field: 'model' | 'autoApprovalModel', value: unknown): void {
+  if (value !== undefined && (typeof value !== 'string' || !/^[a-z0-9-]+\/\S+$/.test(value))) {
+    throw new Error(`${field} must look like provider/model.`);
+  }
+}
+
+/** `enabled` may name only known `PassKind`s with boolean values. */
+function assertEnabledField(enabled: PassSettingsPatch['enabled']): void {
+  if (enabled === undefined) return;
+  if (typeof enabled !== 'object' || enabled === null || Array.isArray(enabled)) {
+    throw new Error('enabled must be an object of pass kinds to booleans.');
+  }
+  for (const [kind, value] of Object.entries(enabled)) {
+    if (!PASS_KINDS.includes(kind as PassKind) || typeof value !== 'boolean') {
+      throw new Error(`enabled has an unknown pass kind or a non-boolean value: '${kind}'.`);
+    }
+  }
+}
+
+/** Throws the first `setPasses` validation failure, or nothing. */
+function assertValidPassPatch(patch: PassSettingsPatch): void {
+  assertModelField('model', patch.model);
+  assertModelField('autoApprovalModel', patch.autoApprovalModel);
+  assertEnabledField(patch.enabled);
+}
 
 function defaultFile(): SettingsFile {
   return { activeProfileId: DEFAULT_PROFILES[0].id, profiles: DEFAULT_PROFILES.map((p) => ({ ...p })) };
@@ -190,5 +231,39 @@ export class SettingsStore {
     data.author = { ...data.author, ...clean };
     this.save(data);
     return data.author;
+  }
+
+  /**
+   * The effective pass settings: the stored `passes` object merged over
+   * {@link DEFAULT_PASS_SETTINGS}, `enabled` merged per kind so a stored
+   * `{ prompt_suggestion: false }` keeps the other kinds on.
+   */
+  passes(): PassSettings {
+    const stored = this.load().passes;
+    return {
+      model: stored?.model ?? DEFAULT_PASS_SETTINGS.model,
+      autoApprovalModel: stored?.autoApprovalModel ?? DEFAULT_PASS_SETTINGS.autoApprovalModel,
+      enabled: { ...DEFAULT_PASS_ENABLED, ...(stored?.enabled ?? {}) },
+    };
+  }
+
+  /**
+   * Validates `patch` and merges it into the stored `passes` object,
+   * leaving the profiles and every other settings.json key untouched.
+   * `model`/`autoApprovalModel` must look like `provider/model`; `enabled`
+   * may name only known `PassKind`s with boolean values. Returns the
+   * effective settings.
+   */
+  setPasses(patch: PassSettingsPatch): PassSettings {
+    assertValidPassPatch(patch);
+    const data = this.load();
+    const stored: Partial<PassSettings> = data.passes ?? {};
+    data.passes = {
+      model: patch.model ?? stored.model ?? DEFAULT_PASS_SETTINGS.model,
+      autoApprovalModel: patch.autoApprovalModel ?? stored.autoApprovalModel ?? DEFAULT_PASS_SETTINGS.autoApprovalModel,
+      enabled: { ...DEFAULT_PASS_ENABLED, ...(stored.enabled ?? {}), ...(patch.enabled ?? {}) },
+    };
+    this.save(data);
+    return this.passes();
   }
 }

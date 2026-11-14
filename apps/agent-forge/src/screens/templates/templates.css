@@ -1,0 +1,221 @@
+/* Templates screen (A10): the category pills, the card grid and the detail
+   sheet's inner blocks. Tokens only; card values per the ticket. */
+
+.templates-screen {
+  container-type: inline-size;
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+  padding: var(--space-5) var(--page-gutter) var(--space-8);
+}
+
+.templates-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.templates-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--surface);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.templates-pill:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.templates-pill[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--text);
+}
+
+.templates-pill:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.templates-pill-count {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.templates-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.templates-grid > li {
+  display: flex;
+  min-width: 0;
+}
+
+.template-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  height: 100%;
+  padding: var(--space-5);
+}
+
+.template-card:has(.template-card-open:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.template-card-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-bottom: 4px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.template-card-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.template-card-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+.template-card-open::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.template-card-category {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.template-card-description {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.template-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.template-card-tag {
+  height: 20px;
+  padding: 0 8px;
+  border-radius: var(--radius-full);
+  background: var(--surface-2);
+  font-size: 11px;
+  line-height: 20px;
+  color: var(--text-muted);
+}
+
+.template-card-requires {
+  margin: auto 0 0;
+  padding-top: var(--space-2);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.template-card-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 180px;
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.template-sheet-section + .template-sheet-section {
+  margin-top: var(--space-5);
+}
+
+.template-sheet-section h3 {
+  margin: 0 0 var(--space-2);
+}
+
+.template-requirements {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.template-requirements li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.template-sheet-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.template-sheet-error-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.template-sheet-error {
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.template-readme {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.6 var(--font-ui);
+  color: var(--text);
+}

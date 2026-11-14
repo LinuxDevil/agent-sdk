@@ -33,8 +33,14 @@ export interface KeyValueFieldProps {
   valueKind: 'text' | 'secret';
   /** Every non-empty key must match (env-name maps pass `^[A-Z_][A-Z0-9_]*$`). */
   keyPattern?: RegExp;
+  /** When set, a row with an empty key is invalid and shows this message (empty keys are allowed otherwise). */
+  emptyKeyError?: string;
+  /** An external error that wins over the row checks — for "the map itself is invalid" rules like a required credential set. */
+  error?: string;
   /** Muted help under the control. */
   help?: string;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 const DUPLICATE_KEYS_ERROR = 'Each name must be unique';
@@ -45,8 +51,9 @@ function rowsOf(value: Record<string, RowValue> | undefined): KvRow[] {
   return Object.entries(value ?? {}).map(([key, rowValue]) => ({ key, value: rowValue }));
 }
 
-/** The first problem with `rows` ('Each name must be unique', then the key pattern), or `undefined`. */
-function validate(rows: KvRow[], keyPattern: RegExp | undefined): string | undefined {
+/** The first problem with `rows` (empty key, 'Each name must be unique', then the key pattern), or `undefined`. */
+function validate(rows: KvRow[], keyPattern: RegExp | undefined, emptyKeyError: string | undefined): string | undefined {
+  if (emptyKeyError !== undefined && rows.some((row) => row.key === '')) return emptyKeyError;
   const seen = new Set<string>();
   for (const row of rows) {
     if (seen.has(row.key)) return DUPLICATE_KEYS_ERROR;
@@ -75,7 +82,10 @@ export function KeyValueField({
   onChange,
   valueKind,
   keyPattern,
+  emptyKeyError,
+  error,
   help,
+  fieldPath,
 }: KeyValueFieldProps): JSX.Element {
   const [rows, setRows] = useState<KvRow[]>(() => rowsOf(value));
   // The last record this field emitted, so an external change can be told
@@ -87,12 +97,12 @@ export function KeyValueField({
     setRows(rowsOf(value));
   }, [value]);
 
-  const problem = validate(rows, keyPattern);
+  const problem = error ?? validate(rows, keyPattern, emptyKeyError);
 
   /** Emits `nextRows` when they are valid; the draft always updates either way. */
   const update = (nextRows: KvRow[]) => {
     setRows(nextRows);
-    if (validate(nextRows, keyPattern) !== undefined) return;
+    if (validate(nextRows, keyPattern, emptyKeyError) !== undefined) return;
     const next = nextRows.length === 0 ? undefined : mapOf(nextRows);
     emitted.current = next;
     onChange(next);
@@ -112,7 +122,7 @@ export function KeyValueField({
   };
 
   return (
-    <Field id={id} label={label} error={problem} hint={help}>
+    <Field id={id} label={label} error={problem} hint={help} fieldPath={fieldPath}>
       <div className="kv-rows">
         {rows.map((row, index) => (
           <div key={index} className="kv-row">

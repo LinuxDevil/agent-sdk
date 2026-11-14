@@ -6,8 +6,8 @@ import { render } from './render';
 
 const appState = vi.hoisted(() => ({
   agents: [
-    { id: 'support-bot', spec: { name: 'Support Bot' } },
-    { id: 'researcher', spec: { name: '' } },
+    { id: 'support-bot', name: 'Support Bot' },
+    { id: 'researcher', name: '' },
   ],
   switchAgent: vi.fn<[string], Promise<void>>(() => Promise.resolve()),
 }));
@@ -102,14 +102,15 @@ describe('CommandPalette', () => {
     mount();
     key('k', { ctrlKey: true });
     type('open agent');
-    // the label is the spec name, falling back to the id when the name is empty
-    expect(options()).toEqual(['Open agent Support Bot', 'Open agent researcher']);
+    // the label is the spec name, falling back to the id when the name is empty;
+    // 'Open Agent Author' (AA19) matches the query too and sits in Actions, after the agents
+    expect(options()).toEqual(['Open agent Support Bot', 'Open agent researcher', 'Open Agent Author']);
     const activeText = () => document.getElementById(input().getAttribute('aria-activedescendant')!)?.textContent;
     expect(activeText()).toBe('Open agent Support Bot');
     key('ArrowDown', {}, input());
     expect(activeText()).toBe('Open agent researcher');
     key('ArrowDown', {}, input());
-    expect(activeText()).toBe('Open agent Support Bot');
+    expect(activeText()).toBe('Open Agent Author');
     key('ArrowUp', {}, input());
     key('Enter', {}, input());
     expect(window.location.hash).toBe('#/agents/researcher/overview');
@@ -265,7 +266,7 @@ describe('CommandPalette groups and look', () => {
     expect(groups().map((g) => g.name)).toEqual(['Navigation', 'Agents', 'Actions']);
     expect(groups().flatMap((g) => g.options)).toEqual(all);
     expect(groups()[1]!.options).toEqual(['Open agent Support Bot', 'Open agent researcher']);
-    expect(groups()[2]!.options).toEqual(['Toggle theme']);
+    expect(groups()[2]!.options).toEqual(['Open Agent Author', 'Describe a new agent with AI', 'Toggle theme']);
     // Every option carries a decorative icon; the label is its whole text.
     for (const o of document.querySelectorAll('[role="option"]')) {
       expect(o.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
@@ -275,6 +276,25 @@ describe('CommandPalette groups and look', () => {
     const active = document.getElementById(input().getAttribute('aria-activedescendant')!);
     expect(active?.textContent).toBe('Toggle theme');
     expect(active?.closest('[role="group"]')).toBe(document.querySelectorAll('[role="group"]')[2]);
+  });
+
+  it('"Open Agent Author" and "Describe a new agent with AI" queue their open requests (AA19)', async () => {
+    const { takePendingOpen, CREATE_AGENT_DRAFT } = await import('../../author/authorEntry');
+    mount();
+    key('k', { ctrlKey: true });
+    type('open agent author');
+    key('Enter', {}, input());
+    expect(takePendingOpen()).toEqual({ source: 'palette' });
+
+    key('k', { ctrlKey: true });
+    type('describe a new agent');
+    key('Enter', {}, input());
+    expect(takePendingOpen()).toEqual({
+      source: 'agents-list',
+      focus: { mode: 'create' },
+      draft: CREATE_AGENT_DRAFT,
+      newChat: true,
+    });
   });
 
   it('"Go to" commands use the same icon as their nav rail item', () => {

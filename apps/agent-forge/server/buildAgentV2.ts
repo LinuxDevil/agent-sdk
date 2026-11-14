@@ -33,12 +33,13 @@
  */
 import * as path from 'node:path';
 import {
-  compileSpec,
+  compileSpecWithNodeIds,
   createAgent,
   type AgentEvent,
   type AgentHook,
   type AgentSpecV2,
   type ApprovalStore,
+  type AutoApprovalDecision,
   type CheckpointStore,
   type SimpleAgent,
   type SpecHost,
@@ -46,9 +47,12 @@ import {
   type TraceExporter,
 } from '@linuxdevil/lousho';
 import type { AgentFlow } from '@linuxdevil/lousho/flows';
-import { LOCAL_TOOLS, resolveProviderForModel } from './buildAgent';
+import { studioAutoApprover } from './autoApproval';
+import { asAgentFlow, LOCAL_TOOLS, resolveProviderForModel } from './buildAgent';
 import type { FileApprovalStore } from './approvalStore';
+import type { SpendLog } from './passes/spendLog';
 import { isSecretProvider, PROVIDER_KEY_ENV, type SecretsStore } from './secretsStore';
+import type { SettingsStore } from './settingsStore';
 
 /**
  * What a Studio workspace hands `buildRunnableAgent`: the workspace root
@@ -63,6 +67,14 @@ export interface StudioRunDeps {
   checkpointStore: CheckpointStore;
   approvalStore: FileApprovalStore;
   secretsStore?: SecretsStore;
+  /**
+   * The Studio-global stores auto-approval needs (R01b): `settings` for the
+   * `autoApprovalModel`/`auto_approval` switches, `spend` for the per-decision
+   * `auto_approval` PassRecord. Both absent → `action: 'auto'` rules behave
+   * as plain `ask`.
+   */
+  settings?: SettingsStore;
+  spend?: SpendLog;
 }
 
 /** The per-run wiring that is not part of the spec: event sink, trace exporter and Studio-appended hooks. */
@@ -72,6 +84,8 @@ export interface RunWiring {
   captureContent?: boolean;
   /** Appended after the spec's own hooks (the step-debugger's `agentHooks()`). */
   extraHooks?: readonly AgentHook[];
+  /** One callback per auto-approval decision (R01b); RunManager turns it into the Logs-tab row. */
+  onAutoApproval?: (decision: AutoApprovalDecision) => void;
 }
 
 /** What `buildRunnableAgent` returns: the built agent plus the side data RunManager/the status payload need. */
@@ -100,13 +114,7 @@ export function scopedApprovalStore(store: FileApprovalStore, agentId: string): 
 
 /** `spec.flow`, lenient like buildAgent.ts's `extractFlowFromSpec` (the v2 `flow` key is a pending section typed `never`, so it is read as data). */
 function flowOf(spec: AgentSpecV2): AgentFlow | undefined {
-  const raw = (spec as { flow?: unknown }).flow;
-  if (!raw || typeof raw !== 'object') return undefined;
-  const candidate = raw as Partial<AgentFlow>;
-  if (typeof candidate.code !== 'string' || typeof candidate.name !== 'string' || !candidate.flow) {
-    return undefined;
-  }
-  return candidate as AgentFlow;
+  return asAgentFlow((spec as { flow?: unknown }).flow);
 }
 
 /** A `tools` entry's name when it is a `{ builtin }`/`{ registry }` ref naming a Studio-local tool (LOCAL_TOOLS key), else undefined. */
@@ -135,6 +143,34 @@ function splitLocalTools(spec: AgentSpecV2): { spec: AgentSpecV2; localTools: Re
   return { spec: stripped, localTools };
 }
 
+/**
+ * `toolNamesByRef` re-aligned to the ORIGINAL spec's `tools` array:
+ * `compiled` only saw the non-local refs (local tools were stripped for
+ * the compiler), so each stripped ref contributes its Studio-local
+ * model-facing name — the key `mergeLocalTools` registers it under —
+ * letting `nodeIdIndexOf` stamp `lousho.node.id` on its spans (including
+ * the `approval.wait` marker) with the canvas's `tool:<…>` id.
+ */
+function toolNamesByRefForIndex(
+  spec: AgentSpecV2,
+  compilable: AgentSpecV2,
+  compiledNames: readonly (readonly string[])[]
+): (readonly string[])[] {
+  const kept = compilable.tools ?? [];
+  const out: (readonly string[])[] = [];
+  let next = 0;
+  for (const ref of spec.tools ?? []) {
+    if (next < kept.length && kept[next] === ref) {
+      out.push(compiledNames[next] ?? []);
+      next += 1;
+    } else {
+      const local = localToolName(ref);
+      out.push(local === undefined ? [] : [local]);
+    }
+  }
+  return out;
+}
+
 /** `config.tools` as a mutable record (compileSpec only ever returns the record form; a function form is left alone). */
 function mergeLocalTools(configTools: unknown, localTools: Record<string, ToolDescriptor>): unknown {
   const base =
@@ -142,6 +178,16 @@ function mergeLocalTools(configTools: unknown, localTools: Record<string, ToolDe
       ? (configTools as Record<string, ToolDescriptor>)
       : {};
   return { ...base, ...localTools };
+}
+
+/** Seeds the stored provider key into its env var for the compile; `restore` puts it back. */
+function seedProviderKeyEnv(providerType: string, secretsStore: StudioRunDeps['secretsStore']): { envVar?: string; restore: () => void } {
+  if (!isSecretProvider(providerType)) return { restore: () => {} };
+  const envVar = PROVIDER_KEY_ENV[providerType];
+  const stored = process.env[envVar] === undefined ? secretsStore?.getKey(providerType) : undefined;
+  if (stored === undefined) return { envVar, restore: () => {} };
+  process.env[envVar] = stored;
+  return { envVar, restore: () => delete process.env[envVar] };
 }
 
 /**
@@ -157,11 +203,17 @@ export async function buildRunnableAgent(
   wiring: RunWiring
 ): Promise<RunnableAgent> {
   const approvals = scopedApprovalStore(deps.approvalStore, agentId);
+  const autoApprover =
+    deps.settings !== undefined && deps.spend !== undefined
+      ? studioAutoApprover({ settings: deps.settings, secretsStore: deps.secretsStore, spend: deps.spend, agentId })
+      : undefined;
   const host: SpecHost = {
     baseDir: path.join(deps.baseDir, '.lousho', 'agents'),
     resolveSecret: (name) => deps.secretsStore?.getSecret(name),
     exporter: wiring.exporter,
     store: { checkpoints: deps.checkpointStore, approvals },
+    ...(autoApprover !== undefined && { autoApprover }),
+    ...(wiring.onAutoApproval !== undefined && { onAutoApproval: wiring.onAutoApproval }),
   };
 
   const { spec: compilable, localTools } = splitLocalTools(spec);
@@ -176,22 +228,24 @@ export async function buildRunnableAgent(
   // whose model is 'anthropic/claude-x' gets the 'claude' tail; a
   // stand-in model would drop or mis-pick it).
   const providerType = spec.model.slice(0, spec.model.indexOf('/')).toLowerCase();
-  let envVar: string | undefined;
-  let seeded = false;
-  if (isSecretProvider(providerType)) {
-    envVar = PROVIDER_KEY_ENV[providerType];
-    const stored = process.env[envVar] === undefined ? deps.secretsStore?.getKey(providerType) : undefined;
-    if (stored !== undefined) {
-      process.env[envVar] = stored;
-      seeded = true;
-    }
-  }
-  let config;
+  const seeded = seedProviderKeyEnv(providerType, deps.secretsStore);
+  let compiled;
   try {
-    ({ config } = await compileSpec(compilable, host));
+    // compileSpecWithNodeIds applies specV2ToAgent's S20 wiring: the run's
+    // exporter is wrapped in the node-id exporter so every span carries
+    // `lousho.node.id` and RunManager can emit `node` frames for the canvas
+    // overlay. The index is built from the ORIGINAL spec (local tools were
+    // stripped only for the compiler) with toolNamesByRef re-aligned onto
+    // it, so Studio-local tools' spans - including `approval.wait` markers -
+    // still stamp their canvas `tool:<…>` ids.
+    compiled = await compileSpecWithNodeIds(compilable, host, {
+      spec,
+      toolNamesByRef: (c) => toolNamesByRefForIndex(spec, compilable, c.toolNamesByRef),
+    });
   } finally {
-    if (seeded && envVar !== undefined) delete process.env[envVar];
+    seeded.restore();
   }
+  const { config } = compiled;
   // The compiled provider is Studio's (stored keys over env); `model` keeps
   // the spec's string for reporting/fallbacks (a provider INSTANCE wins
   // over `model` in createAgent's resolveModelSource).
