@@ -55,6 +55,11 @@ interface WarmEntry {
 export class WorkspaceManager implements WorkspaceResolver {
   private readonly contexts = new Map<string, WarmEntry>();
   private readonly building = new Map<string, Promise<WorkspaceContext>>();
+  /** Open-socket holds per workspace id (W02b `retain`): sweep never disposes a held context. */
+  private readonly holds = new Map<string, number>();
+  /** `onBuilt`/`onDisposed` listeners (W09a): `WS /events?ws=all` follows contexts built after it connected. */
+  private readonly builtListeners = new Set<(ctx: WorkspaceContext) => void>();
+  private readonly disposedListeners = new Set<(id: string) => void>();
   private readonly maxWarm: number;
   private readonly idleMs: number;
   private readonly now: () => number;
@@ -65,6 +70,7 @@ export class WorkspaceManager implements WorkspaceResolver {
     this.maxWarm = options.maxWarm ?? MAX_WARM_WORKSPACES;
     this.idleMs = options.idleMs ?? WORKSPACE_IDLE_MS;
     this.contexts.set(options.launch.ref.id, { ctx: options.launch, lastUsedAt: this.now() });
+    this.emitBuilt(options.launch);
     const sweepMs = options.sweepMs ?? WORKSPACE_SWEEP_MS;
     this.sweepTimer =
       sweepMs > 0
@@ -110,15 +116,20 @@ export class WorkspaceManager implements WorkspaceResolver {
 
   /**
    * Disposes idle and over-capacity contexts: first every non-launch
-   * context unused for `≥ idleMs` with no run in flight; then, while more
-   * than `maxWarm` are warm, the least recently used one whose
-   * `runs.hasActiveRun()` is false. Candidates with a run in flight are
-   * always kept - going over the cap beats killing a run.
+   * context unused for `≥ idleMs` with no run in flight and no open-socket
+   * hold; then, while more than `maxWarm` are warm, the least recently
+   * used one whose `runs.hasActiveRun()` is false and that isn't held.
+   * Candidates with a run in flight or a live socket are always kept -
+   * going over the cap beats killing a run or a stream.
    */
   async sweep(): Promise<void> {
     const now = this.now();
     const idle = [...this.contexts.entries()].filter(
-      ([id, entry]) => id !== this.defaultId() && entry.disposing === undefined && now - entry.lastUsedAt >= this.idleMs
+      ([id, entry]) =>
+        id !== this.defaultId() &&
+        entry.disposing === undefined &&
+        (this.holds.get(id) ?? 0) === 0 &&
+        now - entry.lastUsedAt >= this.idleMs
     );
     for (const [, entry] of idle) {
       if (!entry.ctx.runs.hasActiveRun()) await this.disposeEntry(entry);
@@ -133,20 +144,80 @@ export class WorkspaceManager implements WorkspaceResolver {
     }
   }
 
+  /**
+   * Increments `id`'s open-socket hold and returns the release: sweep
+   * skips held contexts until every release ran. Idempotent per call -
+   * the count never drops below zero and a second release is a no-op.
+   */
+  retain(id: string): () => void {
+    this.holds.set(id, (this.holds.get(id) ?? 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = (this.holds.get(id) ?? 1) - 1;
+      if (next <= 0) this.holds.delete(id);
+      else this.holds.set(id, next);
+    };
+  }
+
+  /**
+   * Subscribes to contexts joining the warm set (first build, W09a). The
+   * launch context fires once at construction - before any listener can
+   * exist - so subscribers see only later builds; `warm()` covers the
+   * rest. Returns the unsubscribe.
+   */
+  onBuilt(listener: (ctx: WorkspaceContext) => void): () => void {
+    this.builtListeners.add(listener);
+    return () => this.builtListeners.delete(listener);
+  }
+
+  /** Subscribes to contexts leaving the warm set (sweep/forget/close), by workspace id. */
+  onDisposed(listener: (id: string) => void): () => void {
+    this.disposedListeners.add(listener);
+    return () => this.disposedListeners.delete(listener);
+  }
+
   /** Drops a removed workspace's warm context now (`DELETE /workspaces/:ws` calls it after `registry.remove`). */
   // fallow-ignore-next-line unused-class-member -- invoked structurally through app.ts's forgetWorkspace wiring
   async forget(id: string): Promise<void> {
     const entry = this.contexts.get(id);
     if (entry === undefined || id === this.defaultId()) return;
+    // The registry entry is gone for good: any stale hold must not
+    // protect a later rebuild of the same id.
+    this.holds.delete(id);
     await this.disposeEntry(entry);
   }
 
   /** Disposes every context, launch included (server close). */
   async close(): Promise<void> {
     if (this.sweepTimer !== undefined) clearInterval(this.sweepTimer);
+    this.holds.clear();
     const entries = [...this.contexts.entries()];
     this.contexts.clear();
+    for (const [id] of entries) this.emitDisposed(id);
     await Promise.all(entries.map(([, entry]) => this.disposeQuietly(entry.ctx)));
+  }
+
+  /** Listener failures never break a resolve/dispose - a bad subscriber is warned and skipped. */
+  private emitBuilt(ctx: WorkspaceContext): void {
+    for (const listener of this.builtListeners) {
+      try {
+        listener(ctx);
+      } catch (error) {
+        console.warn(`[lousho studio] onBuilt listener failed:`, error);
+      }
+    }
+  }
+
+  private emitDisposed(id: string): void {
+    for (const listener of this.disposedListeners) {
+      try {
+        listener(id);
+      } catch (error) {
+        console.warn(`[lousho studio] onDisposed listener failed:`, error);
+      }
+    }
   }
 
   private touch(ctx: WorkspaceContext): WorkspaceContext {
@@ -168,6 +239,7 @@ export class WorkspaceManager implements WorkspaceResolver {
     const promise = (async () => {
       const ctx = this.options.build(ref);
       this.contexts.set(ref.id, { ctx, lastUsedAt: this.now() });
+      this.emitBuilt(ctx);
       return ctx;
     })().finally(() => this.building.delete(ref.id));
     this.building.set(ref.id, promise);
@@ -179,11 +251,17 @@ export class WorkspaceManager implements WorkspaceResolver {
     return stat?.isDirectory() === true;
   }
 
-  /** The least recently used non-launch context with no run in flight, or `undefined` when every candidate is busy. */
+  /** The least recently used non-launch context with no run in flight and no open-socket hold, or `undefined` when every candidate is busy. */
   private lruDisposable(): WarmEntry | undefined {
     let lru: WarmEntry | undefined;
     for (const [id, entry] of this.contexts) {
-      if (id === this.defaultId() || entry.disposing !== undefined || entry.ctx.runs.hasActiveRun()) continue;
+      if (
+        id === this.defaultId() ||
+        entry.disposing !== undefined ||
+        entry.ctx.runs.hasActiveRun() ||
+        (this.holds.get(id) ?? 0) > 0
+      )
+        continue;
       if (lru === undefined || entry.lastUsedAt < lru.lastUsedAt) lru = entry;
     }
     return lru;
@@ -192,9 +270,14 @@ export class WorkspaceManager implements WorkspaceResolver {
   /** Removes the entry first, then disposes - a `resolve` during disposal rebuilds rather than serving a dying context. */
   private async disposeEntry(entry: WarmEntry): Promise<void> {
     if (entry.disposing !== undefined) return entry.disposing;
-    for (const [id, candidate] of this.contexts) {
-      if (candidate === entry) this.contexts.delete(id);
+    let id: string | undefined;
+    for (const [key, candidate] of this.contexts) {
+      if (candidate === entry) {
+        this.contexts.delete(key);
+        id = key;
+      }
     }
+    if (id !== undefined) this.emitDisposed(id);
     const disposing = this.disposeQuietly(entry.ctx);
     entry.disposing = disposing;
     return disposing;

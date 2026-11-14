@@ -55,8 +55,8 @@ function breakpointKeyFor(node: GraphNode): string | undefined {
   return undefined;
 }
 
-/** The header: the node's kind icon tile, its view label as an overline, its title (truncated, full text in the tooltip) and an optional action. */
-function InspectorHead({ node, graph, action }: { node: GraphNode; graph: Graph; action?: ReactNode }) {
+/** The header: the node's kind icon tile, its view label as an overline, its title (truncated, full text in the tooltip) and an optional action. Exported for X06b's read-only code-agent inspector. */
+export function InspectorHead({ node, graph, action }: { node: GraphNode; graph: Graph; action?: ReactNode }) {
   const view = viewFor(node.kind);
   const { Icon } = view;
   return (
@@ -75,7 +75,12 @@ function InspectorHead({ node, graph, action }: { node: GraphNode; graph: Graph;
   );
 }
 
-function EmptyInspector() {
+/**
+ * The empty inspector: icon, "No node selected" and a hint line. Shared
+ * with X06b/W08b's read-only code-agent canvas, whose hint says the agent
+ * is defined in code.
+ */
+export function EmptyInspector({ hint }: { hint: string }) {
   return (
     <aside className="inspector" id="studio-inspector" aria-label="Inspector">
       <div className="inspector-head">
@@ -88,7 +93,7 @@ function EmptyInspector() {
           <MousePointerClick size={20} strokeWidth={1.75} />
         </span>
         <div className="inspector-empty-title">No node selected</div>
-        <div className="hint">Select a node on the canvas to view and edit its configuration.</div>
+        <div className="hint">{hint}</div>
       </div>
     </aside>
   );
@@ -294,5 +299,5 @@ export function Inspector() {
   // selected node's fields are the proposed ones (C21).
   const { displayGraph, selectedNodeId } = useAppState();
   const selected = displayGraph.nodes.find((n) => n.id === selectedNodeId);
-  return selected ? <NodeInspector selected={selected} /> : <EmptyInspector />;
+  return selected ? <NodeInspector selected={selected} /> : <EmptyInspector hint="Select a node on the canvas to view and edit its configuration." />;
 }

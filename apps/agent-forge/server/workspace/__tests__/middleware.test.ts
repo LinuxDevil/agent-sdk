@@ -126,6 +126,7 @@ describe('workspaceMiddleware (resolver with a second workspace)', () => {
     const resolver: WorkspaceResolver = {
       resolve: async (id) => (id === 'other-abc123' ? other : id === undefined ? main : undefined),
       defaultId: () => main.ref.id,
+      retain: () => () => {},
     };
     const res = await request(appWith(resolver)).get('/echo?ws=other-abc123');
     expect(res.status).toBe(200);

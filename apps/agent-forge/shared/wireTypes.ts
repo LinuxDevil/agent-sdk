@@ -556,6 +556,31 @@ export interface WorkspaceInfo {
 }
 
 /**
+ * One row of `GET /workspace/agent-dirs` (X06a): an agent directory found
+ * under the workspace root - a folder holding an `agent.*` config file.
+ * `path` is relative to the workspace root, POSIX separators, `'.'` for
+ * the root itself; `configKind` says whether the config is data
+ * (`agent.json`/`.yaml`, spec-readable) or code (`agent.ts`/`.js`, listed
+ * but refused by `agentDirToSpec`).
+ */
+export interface CodeAgentDir {
+  path: string;
+  /** Directory basename (`'.'` path → the workspace folder's own name). */
+  name: string;
+  /** The config file found, e.g. 'agent.ts'. */
+  configFile: string;
+  configKind: 'code' | 'data';
+}
+
+/** `GET /workspace/agent-dirs/spec?path=<rel>`'s response (X06a). */
+export interface CodeAgentSpecResponse {
+  path: string;
+  spec: AgentSpecV2;
+  /** What `agentDirToSpec` left out of the spec, as `field: reason` strings. */
+  warnings: string[];
+}
+
+/**
  * One row of `GET /workspaces`: the registry's `WorkspaceRef` plus the
  * per-request facts the route computes (`isLaunch` is a per-process fact,
  * `available`/`agentCount` come from the folder's current state - none of
@@ -568,6 +593,8 @@ export interface WorkspaceListItem extends WorkspaceRef {
   available: boolean;
   /** `.lousho/agents/*.yaml` count; 0 when unavailable. */
   agentCount: number;
+  /** The observe-daemon project this workspace's runs report under (`observeProjectOf(root)`, W09a). */
+  observeProject: string;
 }
 
 /**
@@ -731,6 +758,88 @@ export interface AgentListItem {
   lastRun?: AgentLastRun;
   /** Section sizes the card chips render (A03). */
   counts: { tools: number; mcpServers: number; subagents: number; triggers: number };
+}
+
+/**
+ * One `GET /agents?ws=all` row (W06a): a workspace agent's `AgentListItem`
+ * tagged with the workspace it came from. W07a adds `ObservedAgentItem`
+ * and W08a `CodeAgentItem` to the `AnyAgentItem` union.
+ */
+export interface WorkspaceAgentItem extends AgentListItem {
+  kind: 'workspace';
+  workspaceId: string;
+}
+
+/** An observed agent's rolled-up health (W07a): the best status across its daemon instances. */
+export type ObservedStatus = 'healthy' | 'stale' | 'down' | 'stopped';
+
+/**
+ * One observed agent in `GET /agents?ws=all` (W07a): a daemon-reported
+ * agent that is not one of Studio's own runs, grouped by project+name.
+ * `workspaceId` is the workspace whose project it matched, `null` for
+ * "Elsewhere".
+ */
+export interface ObservedAgentItem {
+  kind: 'observed';
+  /** The newest instance's daemon agent_id; the observed page route key (#/observed/:agentId). */
+  id: string;
+  name: string;
+  project: string | null;
+  workspaceId: string | null;
+  instances: number;
+  status: ObservedStatus;
+  lastSeenAt: string;
+  runsToday: number;
+  errorRateToday: number;
+}
+
+/**
+ * The agent-directory glob patterns a workspace scan uses when it has no
+ * stored `agentDirs` (W08a): `*` matches exactly one directory name,
+ * segments are POSIX, a trailing `/` is optional. Stored per workspace by
+ * `POST /workspaces/:ws/scan`.
+ */
+export const DEFAULT_AGENT_DIRS = ['agents/*/', 'src/agents/*/'] as const;
+
+/**
+ * One code-defined agent in `GET /agents?ws=all` (W08a): an agent
+ * directory found by the workspace's pattern scan - `id` is the
+ * directory's POSIX path relative to the workspace root (the same key
+ * `#/code/:path` routes and `GET /workspace/agent-dirs` list by).
+ */
+export interface CodeAgentItem {
+  kind: 'code';
+  id: string;
+  name: string;
+  workspaceId: string;
+  /** The `agent.*` config file the scan found in the directory. */
+  configFile: string;
+  configKind: 'code' | 'data';
+}
+
+/** Every agent kind the aggregate `GET /agents?ws=all` can return. W08a adds `CodeAgentItem`. */
+export type AnyAgentItem = WorkspaceAgentItem | ObservedAgentItem | CodeAgentItem;
+
+/**
+ * `GET`/`POST /workspaces/:ws/scan`'s response (W08a): the cached-or-fresh
+ * pattern scan of one workspace's agent directories.
+ */
+export interface WorkspaceScanResult {
+  workspaceId: string;
+  /** ISO timestamp of when this scan ran (a cache hit keeps the original). */
+  scannedAt: string;
+  /** The glob patterns the scan ran with (the workspace's stored `agentDirs`, else `DEFAULT_AGENT_DIRS`). */
+  patterns: string[];
+  agents: CodeAgentDir[];
+}
+
+/** `GET /agents?ws=all`'s response: every workspace's agents plus the workspaces that could not be read. */
+export interface AllAgentsResponse {
+  items: AnyAgentItem[];
+  /** Workspaces that could not be read this time (folder missing, unreadable). */
+  skipped: { workspaceId: string; reason: string }[];
+  /** 'ok' when the daemon answered; 'unavailable' when it did not (observed items then absent). */
+  observed: 'ok' | 'unavailable';
 }
 
 /**
@@ -1270,10 +1379,23 @@ export type InboxItem =
   | (InboxItemBase & { kind: 'suggestion'; suggestionId: string; confidence: 'high' | 'low' })
   | (InboxItemBase & { kind: 'alert'; alertId: string; alertKind: AlertKind; payload: Record<string, unknown> });
 
+/** `GET /inbox?ws=all`'s row (W09a): an `InboxItem` already names its workspace; the alias keeps the aggregate's wire type explicit. */
+export type WorkspaceInboxItem = InboxItem & { workspaceId: string };
+
 /** `GET /inbox/count`'s answer - also the `inbox.count` WS event's payload. */
 export interface InboxCount {
   count: number;
 }
+
+/**
+ * One frame on `WS /events?ws=all` (W09a): every workspace's `StudioEvent`
+ * tagged with its `workspaceId`, plus the Studio-wide inbox total as
+ * `{ type: 'inbox.count', count, workspaceId: 'all' }` - sent on connect
+ * and whenever the total changed.
+ */
+export type AllEventsFrame =
+  | (StudioEvent & { workspaceId: string })
+  | { type: 'inbox.count'; count: number; workspaceId: 'all' };
 
 /** `POST /agents/:id/rating`'s body (R04a): a 1-5 human score on the run's trace. */
 export interface RatingRequest {
