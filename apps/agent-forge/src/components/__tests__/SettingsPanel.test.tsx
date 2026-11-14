@@ -21,6 +21,7 @@ vi.mock('../../state/AppState', () => ({
 }));
 vi.mock('../../ui/Toast', () => ({
   useToast: () => ({ show: toast.show }),
+  ToastProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock('../../runtime/runtimeClient', () => ({
   runtimeClient: {
