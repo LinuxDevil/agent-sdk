@@ -168,6 +168,7 @@ export function CodeAgentRoute() {
   return <CodeAgentScreen key={`${ws}/${agentPath}`} workspaceId={ws} path={agentPath} />;
 }
 
+// fallow-ignore-next-line complexity
 export function CodeAgentScreen({ workspaceId, path }: { workspaceId: string; path: string }) {
   const state = useCodeAgentSpec(workspaceId, path);
   const { copying, copy } = useCopyIntoStudio(state.kind === 'ready' ? state.spec : undefined, workspaceId);
