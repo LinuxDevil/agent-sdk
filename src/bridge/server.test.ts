@@ -191,13 +191,16 @@ describe('serveBridge', () => {
     await expect(b.done).resolves.toBe(0);
   });
 
-  it('answers UNKNOWN_METHOD for protocol methods this build does not implement', async () => {
+  it('answers UNKNOWN_METHOD for names that are not bridge methods', async () => {
     const b = bridge();
     await hello(b);
-    const r = await b.response(b.send('run', { agentId: 'a', spec: {}, sessionId: 's', input: 'hi' }));
-    expect(error(r)).toMatchObject({ code: 'LOUSHO_BRIDGE_UNKNOWN_METHOD', message: "Unknown method 'run'." });
     const bogus = await b.response(b.send('bogusMethod'));
-    expect(error(bogus)?.code).toBe('LOUSHO_BRIDGE_UNKNOWN_METHOD');
+    expect(error(bogus)).toMatchObject({ code: 'LOUSHO_BRIDGE_UNKNOWN_METHOD', message: "Unknown method 'bogusMethod'." });
+    // Inherited Object members must not read as handlers either.
+    for (const name of ['constructor', '__proto__', 'hasOwnProperty']) {
+      const r = await b.response(b.send(name));
+      expect(error(r)?.code).toBe('LOUSHO_BRIDGE_UNKNOWN_METHOD');
+    }
     b.stdin.end();
     await expect(b.done).resolves.toBe(0);
   });

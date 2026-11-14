@@ -237,9 +237,9 @@ export interface BridgeResults {
     /** `'immediate'` ran now, `'queued'` waits for the next step, `false` was not accepted. */
     applied: 'immediate' | 'queued' | false;
   };
-  /** `abort`'s outcome: whether the run is aborting, was already gone, or had settled. */
+  /** `abort`'s outcome: whether the run is aborting, was paused and dropped, or unknown. */
   abort: {
-    /** `'aborting'` is winding down, `'discarded'` was unknown, `'idle'` had already settled. */
+    /** `'aborting'` is winding down, `'discarded'` was paused and dropped, `'idle'` names no run. */
     state: 'aborting' | 'discarded' | 'idle';
   };
   /** `resolveApproval` always succeeds or throws. */

@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- `lousho bridge`: a new command that speaks Studio's bridge protocol (NDJSON on stdin/stdout, protocol 1) so Lousho Studio can build and run a project's agents with that project's own SDK and dependencies. This build answers `hello`, `catalog`, `compile` and `shutdown`; the run methods arrive next.
+- `lousho bridge`: a new command that speaks Studio's bridge protocol (NDJSON on stdin/stdout, protocol 1) so Lousho Studio can build and run a project's agents with that project's own SDK and dependencies. It answers `hello`, `catalog`, `compile` and `shutdown`, and runs agents: `run`/`chat` start a run or chat turn, `steer`/`abort` control it, `resolveApproval`/`answerQuestion` resume a paused run, and every `AgentEvent`, trace span, steer join and run settle arrives as a pushed event (flows are refused with `LOUSHO_HOST_UNSUPPORTED`).
 - Model strings resolve any official AI SDK provider: `mistral/...`, `groq/...`, `xai/...`, `bedrock/...`, `vertex/...`, `azure/...` and 13 more load `@ai-sdk/<vendor>` on the first call, and `ai-sdk/<vendor>/<model>` loads any other `@ai-sdk/*` package. The package reads its own credentials. See [Providers](docs/providers.md#any-ai-sdk-vendor-by-name).
 
 ## [1.0.0-alpha.117] - 2026-11-09
