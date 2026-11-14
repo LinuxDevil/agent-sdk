@@ -932,6 +932,219 @@ interface BestOfAllNode {
 }
 
 // @public
+export const BRIDGE_PROTOCOL_VERSION = 1;
+
+// @public
+export interface BridgeCatalog {
+    // (undocumented)
+    guardrails: ReturnType<typeof listGuardrails>;
+    // (undocumented)
+    models: ReturnType<typeof listModels>;
+    // (undocumented)
+    tools: ReturnType<typeof listBuiltinTools>;
+    // (undocumented)
+    triggers: ReturnType<typeof listTriggerTypes>;
+}
+
+// @public
+export interface BridgeCompileResult {
+    // (undocumented)
+    mcpServers: string[];
+    // (undocumented)
+    modelLabel: string;
+    // (undocumented)
+    toolNamesByRef: string[][];
+}
+
+// @public
+export interface BridgeErrorInfo {
+    // (undocumented)
+    code: string;
+    // (undocumented)
+    details?: unknown;
+    // (undocumented)
+    message: string;
+}
+
+// @public
+export interface BridgeHelloResult {
+    // (undocumented)
+    catalogHash: string;
+    // (undocumented)
+    protocol: number;
+    // (undocumented)
+    sdkVersion: string;
+    // (undocumented)
+    specVersions: number[];
+}
+
+// @public
+export type BridgeMethod = 'hello' | 'compile' | 'run' | 'chat' | 'steer' | 'abort' | 'resolveApproval' | 'answerQuestion' | 'catalog' | 'shutdown';
+
+// @public
+export interface BridgeParams {
+    // (undocumented)
+    abort: {
+        runId: string;
+        reason?: string;
+    };
+    // (undocumented)
+    answerQuestion: {
+        runId: string;
+        questionId: string;
+        answer: string;
+    };
+    // (undocumented)
+    catalog: Record<string, never>;
+    // (undocumented)
+    chat: BridgeRunParamsBase & {
+        messages: Message[];
+    };
+    // (undocumented)
+    compile: Omit<BridgeRunParamsBase, 'sessionId' | 'captureContent'>;
+    // (undocumented)
+    hello: {
+        protocol: number;
+        client: {
+            name: string;
+            version: string;
+        };
+    };
+    // (undocumented)
+    resolveApproval: {
+        runId: string;
+        approvalId: string;
+        approved: boolean;
+        note?: string;
+    };
+    // (undocumented)
+    run: BridgeRunParamsBase & {
+        input: string;
+    };
+    // (undocumented)
+    shutdown: Record<string, never>;
+    // (undocumented)
+    steer: {
+        runId: string;
+        message: string;
+    };
+}
+
+// @public
+export interface BridgePush<E extends BridgePushEvent = BridgePushEvent> {
+    // (undocumented)
+    data: BridgePushData[E];
+    // (undocumented)
+    event: E;
+    // (undocumented)
+    runId: string;
+}
+
+// @public
+export interface BridgePushData {
+    // (undocumented)
+    'run.failed': BridgeErrorInfo;
+    // (undocumented)
+    'run.settled': BridgeRunResult;
+    // (undocumented)
+    'span.end': Span;
+    // (undocumented)
+    'span.start': Span;
+    // (undocumented)
+    'steer.joined': {
+        steerId: string;
+        joined: boolean;
+    };
+    // (undocumented)
+    agent: AgentEvent;
+}
+
+// @public
+export type BridgePushEvent = 'agent' | 'span.start' | 'span.end' | 'steer.joined' | 'run.settled' | 'run.failed';
+
+// @public
+export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {
+    // (undocumented)
+    id: number;
+    // (undocumented)
+    method: M;
+    // (undocumented)
+    params?: BridgeParams[M];
+}
+
+// @public
+export type BridgeResponse = {
+    id: number | null;
+    result: unknown;
+} | {
+    id: number | null;
+    error: BridgeErrorInfo;
+};
+
+// @public
+export interface BridgeResults {
+    // (undocumented)
+    abort: {
+        state: 'aborting' | 'discarded' | 'idle';
+    };
+    // (undocumented)
+    answerQuestion: {
+        ok: true;
+    };
+    // (undocumented)
+    catalog: BridgeCatalog;
+    // (undocumented)
+    chat: BridgeRunStarted;
+    // (undocumented)
+    compile: BridgeCompileResult;
+    // (undocumented)
+    hello: BridgeHelloResult;
+    // (undocumented)
+    resolveApproval: {
+        ok: true;
+    };
+    // (undocumented)
+    run: BridgeRunStarted;
+    // (undocumented)
+    shutdown: {
+        ok: true;
+    };
+    // (undocumented)
+    steer: {
+        id: string;
+        applied: 'immediate' | 'queued' | false;
+    };
+}
+
+// @public (undocumented)
+interface BridgeRunParamsBase {
+    // (undocumented)
+    agentId: string;
+    // (undocumented)
+    captureContent?: boolean;
+    env?: Record<string, string>;
+    secrets?: Record<string, string>;
+    // (undocumented)
+    sessionId: string;
+    // (undocumented)
+    spec: AgentSpecV2;
+}
+
+// @public
+export type BridgeRunResult = Pick<ExecutionResult, 'finishReason' | 'text' | 'messages' | 'usage' | 'steps' | 'approvalId' | 'approvalIds' | 'abortReason'> & {
+    object?: unknown;
+    pendingApproval?: PendingApproval;
+};
+
+// @public
+export interface BridgeRunStarted {
+    // (undocumented)
+    modelLabel: string;
+    // (undocumented)
+    runId: string;
+}
+
+// @public
 export type BrokerHeaderValue = string | (() => string | Promise<string>);
 
 // @public
