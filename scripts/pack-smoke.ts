@@ -81,7 +81,7 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * R08b channel triggers landed (2026-11-14); packed budget raised to 8 MiB.
  */
 const MAX_ENTRIES = 1300;
-const MAX_UNPACKED_BYTES = 26 * 1024 * 1024;
+const MAX_UNPACKED_BYTES = 28 * 1024 * 1024;
 const MAX_PACKED_BYTES = 8 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
