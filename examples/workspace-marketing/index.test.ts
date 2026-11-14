@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createWorkspaceRuntime, memorySource, resolveCheck, type PageResult, type WorkspaceRuntime } from 'lousho/workspaces';
+import { createWorkspaceRuntime, memorySource, resolveCheck, type PageResult, type WorkspaceRuntime } from '@linuxdevil/lousho/workspaces';
 import { marketingChecks, marketingHost, PAGES, readWorkspaceFiles, scriptedMarketingModel, WORKSPACE_ID } from './host';
 import { runMarketing } from './run';
-import { jsonSchemaToStandardSchema } from 'lousho/spec';
+import { jsonSchemaToStandardSchema } from '@linuxdevil/lousho/spec';
 
 const dirs: string[] = [];
 const runtimes: WorkspaceRuntime[] = [];

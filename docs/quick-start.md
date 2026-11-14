@@ -20,19 +20,19 @@ npm test                 # offline tests: no API key needed
 
 To try a locally packed `create-lousho` (`npm pack`), pass the tarball's absolute path with `--package`: `npx --package=/abs/path/create-lousho-x.y.z.tgz create-lousho my-agent`. A bare `npx ../x.tgz` fails on Windows.
 
-`npx lousho init my-agent` is equivalent (pass `--provider`
+`npx @linuxdevil/lousho init my-agent` is equivalent (pass `--provider`
 and `--template`, since it runs without the interactive prompts). Inside a
-project that already has the SDK installed, `npx lousho init` works too: the
-`lousho` command comes from the SDK package, so a bare `npx lousho` outside such
+project that already has the SDK installed, `npx @linuxdevil/lousho init` works too: the
+`lousho` command comes from the SDK package, so a bare `npx @linuxdevil/lousho` outside such
 a project finds nothing to run. Without arguments, `init` asks for the
-directory, provider and template; `npx lousho init --help`
+directory, provider and template; `npx @linuxdevil/lousho init --help`
 lists every flag.
 
 Prefer to add the SDK to an existing project? Install it by hand (see
 [Installation](./installation.md)):
 
 ```bash
-npm install lousho ai@^7.0.0 zod
+npm install @linuxdevil/lousho ai@^7.0.0 zod
 npm install @ai-sdk/openai@^4.0.0 @ai-sdk/anthropic@^4.0.0
 ```
 
@@ -49,7 +49,7 @@ providers). The `vendor/` model prefix chooses the provider; with OpenRouter
 use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4.1-mini`).
 
 ```ts no-run
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4.1-mini', instructions: 'You are a helpful assistant.' });
 const { text } = await agent.send('Hello!');
@@ -72,7 +72,7 @@ whenever the user message mentions a tool's name, so this snippet exercises a
 real tool round trip without an LLM.
 
 ```ts
-import { createAgent, createMockProvider, defineTool } from 'lousho';
+import { createAgent, createMockProvider, defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const currentDate = defineTool({
@@ -105,7 +105,7 @@ it for typed events (model text as it arrives, tool calls, step boundaries),
 and `await run.result` for the same result `send()` returns.
 
 ```ts
-import { createAgent, createMockProvider } from 'lousho';
+import { createAgent, createMockProvider } from '@linuxdevil/lousho';
 
 const agent = createAgent({
   instructions: 'You are a helpful assistant.',
@@ -131,7 +131,7 @@ sending the events to a browser.
 keeps the transcript and passes it to the model on each `send()`.
 
 ```ts
-import { createAgent, createMockProvider } from 'lousho';
+import { createAgent, createMockProvider } from '@linuxdevil/lousho';
 
 const agent = createAgent({
   instructions: 'You are a helpful assistant.',
@@ -153,12 +153,12 @@ Pass a store to keep sessions across restarts; see [Sessions](./sessions.md).
 Flag a tool `needsApproval` and the run pauses before calling it. `send()`
 resolves with `finishReason: 'awaiting-approval'` and an `approvalId`; your code
 (or a human) then approves or rejects the call and the run continues. Here
-`mockModel` from `lousho/testing` scripts the model's turns
+`mockModel` from `@linuxdevil/lousho/testing` scripts the model's turns
 exactly, so the tool call is certain.
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -196,8 +196,8 @@ request the agent made, so you can assert on what the model was sent as well as
 on the result. No network, no key.
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 let sent: string | undefined;
@@ -244,7 +244,7 @@ the mock provider otherwise - the same pattern the runnable
 [examples](../examples/README.md) use.
 
 ```ts
-import { createAgent, createMockProvider, resolveProvider } from 'lousho';
+import { createAgent, createMockProvider, resolveProvider } from '@linuxdevil/lousho';
 
 const provider = process.env.OPENAI_API_KEY
   ? resolveProvider('openai/gpt-4.1-mini')
@@ -267,7 +267,7 @@ into a live agent with `specToAgent()`. The same shape can be written as a
 YAML or JSON file and loaded with `loadSpec()`.
 
 ```ts
-import { specToAgent, agentSpecSchema } from 'lousho';
+import { specToAgent, agentSpecSchema } from '@linuxdevil/lousho';
 
 const spec = agentSpecSchema.parse({
   name: 'support-bot',
@@ -297,8 +297,8 @@ the same spec runs in the local dev server (chat UI at `/`, `POST /chat`,
 hot reload on save) and builds into a deployable server:
 
 ```bash
-npx lousho dev agent.yaml
-npx lousho build --target=node-server --agent=agent.yaml
+npx @linuxdevil/lousho dev agent.yaml
+npx @linuxdevil/lousho build --target=node-server --agent=agent.yaml
 ```
 
 ## Advanced: the executor API

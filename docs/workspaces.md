@@ -319,7 +319,7 @@ A criterion's `check` names a check in the host's check registry, and the runtim
 The result, `EffectiveHarness`, holds `sources`, the composed `instructions`, the merged fields, `provenance` (for each field path, the sources its value came from) and `hash`. The hash is the sha256 of the canonical JSON of the sources, prose and fields, with keys sorted. It does not depend on key order and is stable across runs, so a revision or a span can name the exact harness it ran with. Provenance is not part of the hash.
 
 ```ts
-import { composeHarness, type HarnessLayer } from 'lousho/workspaces';
+import { composeHarness, type HarnessLayer } from '@linuxdevil/lousho/workspaces';
 
 const base: HarnessLayer = {
   source: 'workspace base',
@@ -363,7 +363,7 @@ Agent refs and harness profile refs have different grammars. Do not read one as 
 Agent names are kebab-case. A `workspace:` or `local:` agent ref takes no range. A prefix is required. `parseAgentRef` returns `{ ok: true, ref }` or `{ ok: false, error }` and never throws:
 
 ```ts
-import { parseAgentRef } from 'lousho/workspaces';
+import { parseAgentRef } from '@linuxdevil/lousho/workspaces';
 
 const parsed = parseAgentRef('global:fact-checker@^1.0.0');
 if (parsed.ok && parsed.ref.kind === 'global') console.log(parsed.ref.name, parsed.ref.range);
@@ -420,7 +420,7 @@ Shared files sit under fixed patterns: `shared/instructions/<name>.md`, `shared/
 | `sandbox.required` | OR of the two. A workspace can turn it on but never off. Absent means `false` |
 
 ```ts
-import { narrowPolicy, type WorkspacePolicy } from 'lousho/workspaces';
+import { narrowPolicy, type WorkspacePolicy } from '@linuxdevil/lousho/workspaces';
 
 const ceiling: WorkspacePolicy = {
   permissions: [],
@@ -461,8 +461,8 @@ A workspace agent is read from its files and nothing in it is run, so settings i
 `agentPolicyOptions(policy, { attachment, agent }, registry)` returns the `createAgent` `tools` and `permissions` for one attachment, or for the main agent when `attachment` is left out. It also returns a `toolRegistry` for a workflow's `toolCall` steps, which pass `flowToolGate`, plus `secrets` by tool, `network`, `sandbox` and `warnings`. It is the only code path under `src/workspaces/runtime` that builds a toolset. `attachmentAgent()` is the only place the page runtime builds a page agent, and `createMainAgent()` the only place it builds the main agent: it takes those options, passes every tool through the host's `bindTool(descriptor, scope)` with the tool's `secrets`, `network.allowHosts` and `sandbox.required`, and the host enforces them. Under `createWorkspaceRuntime` a host without `bindTool` can run only tools whose scope grants no secrets, no hosts and no sandbox; any other tool fails the run with `LOUSHO_WORKSPACE_HOST_INVALID`, so nothing the policy narrows ever runs unenforced (see [The workspace runtime and its host](#the-workspace-runtime-and-its-host)).
 
 ```ts
-import { narrowPolicy, pagePolicy, type HostToolRegistry } from 'lousho/workspaces';
-import { defineTool } from 'lousho';
+import { narrowPolicy, pagePolicy, type HostToolRegistry } from '@linuxdevil/lousho/workspaces';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const registry: HostToolRegistry = {
@@ -493,7 +493,7 @@ console.log(Object.keys(page.attachments.video.tools), page.warnings);
 Every engine implements one interface, so the main agent, the wire contract and the page UI do not care which type a page runs under. These are plain JSON types.
 
 ```ts
-import type { PageEngine, PageInput, PageResult, PageRunContext } from 'lousho/workspaces';
+import type { PageEngine, PageInput, PageResult, PageRunContext } from '@linuxdevil/lousho/workspaces';
 
 async function runEngine(engine: PageEngine, input: PageInput, ctx: PageRunContext): Promise<PageResult> {
   ctx.emit({ type: 'progress', message: `running ${input.pageId} as ${engine.type}` });
@@ -616,7 +616,7 @@ Text is plain: `label`, `title`, `placeholder` and option labels are 1 to 500 ch
 `validateWorkspace` reports each of these as PRD012 and resolves a schema path against the page folder first.
 
 ```ts
-import { pageUiSchema, validateUiBindings } from 'lousho/workspaces';
+import { pageUiSchema, validateUiBindings } from '@linuxdevil/lousho/workspaces';
 
 const ui = pageUiSchema.parse({
   schema: 'lousho.ui/1',
@@ -656,7 +656,7 @@ The operations are: `create_workspace`, `set_workspace_field`, `create_page`, `r
 `set_profile` writes a workspace harness profile (`harness-profiles/<path>/harness.json` and its prose) from a `workspace:<path>` ref. `delete_profile` removes the profile's folder. `set_resource` and `delete_resource` write and remove a text resource (`.md` or `.txt`) of a page or of the base harness; list it in the harness's `context.resources` with `set_harness_field`. `set_main_model` sets the main agent's model. Check scripts, tools, workspace workflows, brand files and the policy have no operation: a criterion's `check` may name a host-registry check by name.
 
 ```ts
-import { applyOps, validateWorkspace } from 'lousho/workspaces';
+import { applyOps, validateWorkspace } from '@linuxdevil/lousho/workspaces';
 
 const result = applyOps(
   {},
@@ -678,7 +678,7 @@ This batch is refused: the page names the alias `writer` that `agents.json` does
 `validateWorkspace(tree, options?)` checks a whole tree across files. It never throws for invalid input and never touches the file system. It returns problems `{ severity, code, file, path, message }` in a stable order. Only `error` makes a workspace invalid; `warning` and `info` do not. `options.resolveGlobal(ref)` answers `global:` refs with that folder's files, and `options.mode: "strict"` adds only an `info` note in v1.
 
 ```ts
-import { validateWorkspace } from 'lousho/workspaces';
+import { validateWorkspace } from '@linuxdevil/lousho/workspaces';
 
 const problems = validateWorkspace({
   'workspace.json': JSON.stringify({

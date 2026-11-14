@@ -14,7 +14,7 @@ if (next !== indexSrc) fs.writeFileSync(indexPath, next);
 
 const scaffoldPath = 'packages/create-lousho/package.json';
 const scaffold = JSON.parse(fs.readFileSync(scaffoldPath, 'utf8'));
-scaffold.dependencies['lousho'] = `^${version}`;
+scaffold.dependencies['@linuxdevil/lousho'] = `^${version}`;
 fs.writeFileSync(scaffoldPath, JSON.stringify(scaffold, null, 2) + '\n');
 
 console.log(`sync-version: VERSION and scaffold pin set to ${version}`);

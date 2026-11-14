@@ -26,7 +26,7 @@ import {
   WorkspaceCheckpoints,
   WorkspaceError,
   type FsProvider,
-} from 'lousho';
+} from '@linuxdevil/lousho';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

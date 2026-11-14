@@ -1,4 +1,4 @@
-import type { ApplyOpsBody, HarnessView, MainHarnessView, PageDetail, WorkspaceDetail } from 'lousho/workspaces/client';
+import type { ApplyOpsBody, HarnessView, MainHarnessView, PageDetail, WorkspaceDetail } from '@linuxdevil/lousho/workspaces/client';
 
 export type AuthoringOp = ApplyOpsBody['ops'][number];
 export type WorkspaceManifest = WorkspaceDetail['manifest'];

@@ -48,7 +48,7 @@ vi.mock('../../../canvas/layout', async (importActual) => {
   return { ...actual, autoLayout: vi.fn(async (graph: unknown) => graph) };
 });
 
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AgentRecord } from '../../../../shared/wireTypes';
 import { RuntimeApiError } from '../../../runtime/runtimeClient';
 import { CodeAgentScreen } from '../CodeAgentScreen';

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { BridgePush } from 'lousho';
+import type { BridgePush } from '@linuxdevil/lousho';
 import { BridgeClient, type BridgeState } from '../host/bridgeClient';
 
 const FAKE_BRIDGE = fileURLToPath(new URL('../host/__tests__/fakeBridge.mjs', import.meta.url));

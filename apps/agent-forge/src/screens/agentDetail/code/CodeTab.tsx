@@ -4,7 +4,7 @@ import { stringify as stringifyYaml } from 'yaml';
 // `lousho/spec` is the SDK's browser-safe spec entry (S23): `specToCode`
 // (S18) and `specToAgentDir` (S19) are both pure renderers, so the Code tab
 // generates every view in the browser with no server round-trip.
-import { specToAgentDir, specToCode, type AgentSpecV2 } from 'lousho/spec';
+import { specToAgentDir, specToCode, type AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 import { errorMessage } from '../../../components/errorMessage';
 import { downloadText } from '../../../persistence/importExport';

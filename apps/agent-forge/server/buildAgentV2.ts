@@ -46,8 +46,8 @@ import {
   type SpecHost,
   type ToolDescriptor,
   type TraceExporter,
-} from 'lousho';
-import type { AgentFlow } from 'lousho/flows';
+} from '@linuxdevil/lousho';
+import type { AgentFlow } from '@linuxdevil/lousho/flows';
 import { studioAutoApprover } from './autoApproval';
 import { asAgentFlow, LOCAL_TOOLS, resolveProviderForModel } from './buildAgent';
 import type { FileApprovalStore } from './approvalStore';

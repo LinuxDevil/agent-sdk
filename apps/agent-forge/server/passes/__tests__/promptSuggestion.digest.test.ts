@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ObservationRow } from 'lousho/traces';
+import type { ObservationRow } from '@linuxdevil/lousho/traces';
 import { buildFrictionDigest } from '../promptSuggestion';
 
 /** A minimal ObservationRow; every field the digest does not read defaults sanely. */

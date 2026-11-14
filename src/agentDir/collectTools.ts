@@ -31,7 +31,7 @@ export interface ToolModule {
 const EXAMPLE = `Expected a tool made with defineTool(), for example:
 
   import { z } from 'zod';
-  import { defineTool } from 'lousho';
+  import { defineTool } from '@linuxdevil/lousho';
   export default defineTool({ name: 'ping', description: 'Ping', input: z.object({}), execute: () => 'pong' });`;
 
 /** Tools found in one exported value: a tool, an array of tools, or (CJS) an exports object of tools. */

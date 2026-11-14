@@ -15,8 +15,8 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import type { AgentSpecV2 } from 'lousho';
-import type { TriggerSpec } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
+import type { TriggerSpec } from '@linuxdevil/lousho/spec';
 
 import type { AgentRepo } from '../storage/agentRepo';
 import type { RunManager } from '../runRegistry';

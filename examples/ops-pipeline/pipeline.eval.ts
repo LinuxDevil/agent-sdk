@@ -26,10 +26,10 @@
  *    ran, in what order, without inventing a fake single-result shape.
  */
 import { describe, it, expect } from 'vitest';
-import { defineEval } from 'lousho';
-import { toolCallOrder } from 'lousho';
-import { ToolRegistry } from 'lousho/executor';
-import { secretScanCheck, createDiffSizeCheck } from 'lousho';
+import { defineEval } from '@linuxdevil/lousho';
+import { toolCallOrder } from '@linuxdevil/lousho';
+import { ToolRegistry } from '@linuxdevil/lousho/executor';
+import { secretScanCheck, createDiffSizeCheck } from '@linuxdevil/lousho';
 import { startOpsPipeline } from './index';
 import { createDemoProvider } from './demoProvider';
 import { createFixerTool, buildFixerAgent } from './fixer';

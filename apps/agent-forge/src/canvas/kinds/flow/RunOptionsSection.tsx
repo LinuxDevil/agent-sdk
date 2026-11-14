@@ -6,7 +6,7 @@
  * object and deleted when Attempts is cleared; `timeoutMs` deletes on
  * empty.
  */
-import type { NodeRetry } from 'lousho/flows';
+import type { NodeRetry } from '@linuxdevil/lousho/flows';
 import { InspectorSection } from '../../../components/InspectorSection';
 import { OptionalNumberField } from '../../fields/OptionalNumberField';
 import type { KindFieldsProps } from '../index';

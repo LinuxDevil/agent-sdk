@@ -7,7 +7,7 @@
  * `diffSpecs` (the `SpecChange[]` the diff route returns), so the Versions
  * tab's chips and the diff sheet never disagree or reshuffle.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { stableStringify } from './stableJson';
 import type { SpecSection, SpecSnapshot } from './wireTypes';
 

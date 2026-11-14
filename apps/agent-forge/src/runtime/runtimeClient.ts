@@ -6,7 +6,7 @@
  * so the two can evolve together without every component knowing the HTTP
  * details.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type {
   AddWorkspaceRequest,
   AgentListItem,

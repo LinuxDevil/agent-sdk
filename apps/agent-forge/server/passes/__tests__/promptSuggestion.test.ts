@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vite
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentSpecV2 } from 'lousho';
-import type { ObservationRow } from 'lousho/traces';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
+import type { ObservationRow } from '@linuxdevil/lousho/traces';
 import type { PromptSuggestion } from '../../../shared/wireTypes';
 import { AgentRepo } from '../../storage/agentRepo';
 import { VersionStore } from '../../storage/versionStore';

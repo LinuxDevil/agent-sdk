@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { CircleAlert } from 'lucide-react';
-import type { WorkspaceSummary } from 'lousho/workspaces/client';
+import type { WorkspaceSummary } from '@linuxdevil/lousho/workspaces/client';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { ScreenHeader } from '../../shell/ScreenHeader';

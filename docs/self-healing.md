@@ -26,8 +26,8 @@ each interrupted run from its last checkpoint, so completed steps don't run
 again.
 
 ```ts
-import { createAgent, createProgressGuard } from 'lousho';
-import { SqliteStore } from 'lousho/sqlite';
+import { createAgent, createProgressGuard } from '@linuxdevil/lousho';
+import { SqliteStore } from '@linuxdevil/lousho/sqlite';
 
 const agent = createAgent({
   provider,
@@ -91,7 +91,7 @@ recorded as not retryable, so `agent.recover()` won't resume the run.
 Each hint, denial and stop is streamed as a `heal.action` event:
 
 ```ts
-import { createAgent, createProgressGuard } from 'lousho';
+import { createAgent, createProgressGuard } from '@linuxdevil/lousho';
 
 const agent = createAgent({ provider, hooks: [createProgressGuard()] });
 
@@ -173,8 +173,8 @@ better instructions and skills using failing cases you give it, and returns a
 proposal without writing anything.
 
 ```ts
-import { createAgent } from 'lousho';
-import { formatImproveResult, improveAgent, renderTranscript } from 'lousho/improve';
+import { createAgent } from '@linuxdevil/lousho';
+import { formatImproveResult, improveAgent, renderTranscript } from '@linuxdevil/lousho/improve';
 
 const result = await improveAgent({
   harness: { instructions: 'You answer from the docs.', skills: {} },

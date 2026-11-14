@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentSpecV2 } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 import type { Requirement } from '../../../../shared/wireTypes';
 import { capabilityRows, missingRequirements, permissionRuleText, safetySummary, triggerLine } from '../overviewModel';

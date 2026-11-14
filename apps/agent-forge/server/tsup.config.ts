@@ -39,8 +39,10 @@ import { defineConfig } from 'tsup';
  * bundled here instead of left as a real `require`/`import`.
  */
 export default defineConfig({
-  entry: { index: 'server/index.ts' },
+  entry: { index: 'server/index.ts', cli: 'server/cli.ts' },
   outDir: 'dist-server',
+  // The `lousho-studio` bin. Harmless on index.cjs (a comment line).
+  banner: { js: '#!/usr/bin/env node' },
   // CJS, not ESM: bundling `express` (and its own dependency `debug`, which
   // does `require('tty')`/`require('util')` conditionally at runtime to
   // detect a TTY) as ESM makes esbuild emit those as its own
@@ -61,6 +63,6 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   minify: false,
-  external: ['lousho', 'yaml'],
+  external: ['@linuxdevil/lousho', 'yaml', 'ai', 'zod', '@ai-sdk/openai', '@ai-sdk/anthropic'],
   noExternal: ['express', 'ws'],
 });

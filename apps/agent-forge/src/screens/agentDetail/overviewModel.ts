@@ -5,7 +5,7 @@
  * capability rows and the safety rows.
  */
 import { Clock, MessageSquare, Radio, Webhook, Workflow, type LucideIcon } from 'lucide-react';
-import type { AgentSpecV2 } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 import type { Requirement } from '../../../shared/wireTypes';
 

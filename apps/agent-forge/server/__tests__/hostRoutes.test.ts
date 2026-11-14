@@ -29,10 +29,10 @@ const FAKE_BRIDGE = fileURLToPath(new URL('../host/__tests__/fakeBridge.mjs', im
 
 /** A workspace whose node_modules SDK's `bin/lousho.js` IS the fake bridge. */
 function sdkWorkspace(root: string): void {
-  const pkgDir = path.join(root, 'node_modules', '@lousho', 'build-ai-agent');
+  const pkgDir = path.join(root, 'node_modules', '@linuxdevil', '@linuxdevil/lousho');
   fs.mkdirSync(path.join(pkgDir, 'bin'), { recursive: true });
   fs.mkdirSync(path.join(pkgDir, 'dist', 'cli'), { recursive: true });
-  fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ name: '@lousho/build-ai-agent', version: '9.9.9-test' }));
+  fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ name: '@linuxdevil/lousho', version: '9.9.9-test' }));
   fs.copyFileSync(FAKE_BRIDGE, path.join(pkgDir, 'bin', 'lousho.js'));
   fs.writeFileSync(path.join(pkgDir, 'dist', 'cli', 'bridge.mjs'), '// built\n');
 }
@@ -146,7 +146,7 @@ describe('host routes (W11c)', () => {
       studioSdkVersion: expect.any(String),
     });
     expect(res.body.banner).toMatchObject({ tone: 'info' });
-    expect(res.body.banner.text).toContain('no @lousho/build-ai-agent');
+    expect(res.body.banner.text).toContain('no @linuxdevil/lousho');
     expect(res.body.recentStderr).toBeUndefined();
   });
 
@@ -168,7 +168,7 @@ describe('host routes (W11c)', () => {
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ workspaceId: readOnlyCtx.ref.id, mode: 'read-only', state: 'ready' });
     expect(res.body.banner).toMatchObject({ tone: 'warning' });
-    expect(res.body.banner.text).toContain('@lousho/build-ai-agent');
+    expect(res.body.banner.text).toContain('@linuxdevil/lousho');
   });
 
   it('GET on a crashed bridge reports failed with the restart banner and stderr', async () => {

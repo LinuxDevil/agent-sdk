@@ -21,7 +21,7 @@
  * the `published.yaml` write inside the final lock.
  */
 import type { Express, Request, Response } from 'express';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type {
   AgentMeta,
   EvalGateResult,

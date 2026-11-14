@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
-import { VERSION, type AgentSpecV2 } from 'lousho';
+import { VERSION, type AgentSpecV2 } from '@linuxdevil/lousho';
 import { createApp } from '../app';
 import type { Express } from 'express';
 import { createWorkspaceContext, type WorkspaceContext, type WorkspaceServices } from '../workspace/context';

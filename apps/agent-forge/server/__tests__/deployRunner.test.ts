@@ -15,7 +15,7 @@ import type { ChildProcess } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
 import { publishedSpecPath, runDeploy, writePublishedSpec, DEPLOY_ADAPTERS, isDeployAdapter } from '../deployRunner';
 import { mergeLegacySave } from '../storage/legacySpec';
-import type { AgentSpec } from 'lousho';
+import type { AgentSpec } from '@linuxdevil/lousho';
 
 const V1_SPEC: AgentSpec = {
   name: 'deploy-me',

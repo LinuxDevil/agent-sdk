@@ -3,8 +3,8 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { defineTool, type LLMProvider, type ToolDescriptor } from 'lousho';
-import { mockModel, type MockModel, type MockRequest } from 'lousho/testing';
+import { defineTool, type LLMProvider, type ToolDescriptor } from '@linuxdevil/lousho';
+import { mockModel, type MockModel, type MockRequest } from '@linuxdevil/lousho/testing';
 import {
   checkRegistry,
   createWorkspaceStores,
@@ -17,7 +17,7 @@ import {
   type PageToolScope,
   type WorkspaceHost,
   type WorkspaceCheckRegistry,
-} from 'lousho/workspaces';
+} from '@linuxdevil/lousho/workspaces';
 
 const WORKSPACE_DIR = fileURLToPath(new URL('./workspace', import.meta.url));
 

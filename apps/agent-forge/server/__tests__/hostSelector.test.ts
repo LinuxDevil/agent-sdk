@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 /** A workspace whose node_modules SDK's `bin/lousho.js` IS the fake bridge. */
-function sdkWorkspace(root: string, sdkName = '@lousho/build-ai-agent'): string {
+function sdkWorkspace(root: string, sdkName = '@linuxdevil/lousho'): string {
   const pkgDir = path.join(root, 'node_modules', ...sdkName.split('/'));
   fs.mkdirSync(path.join(pkgDir, 'bin'), { recursive: true });
   fs.mkdirSync(path.join(pkgDir, 'dist', 'cli'), { recursive: true });
@@ -78,7 +78,7 @@ describe('WorkspaceHostSelector', () => {
       sdkVersion: '9.9.9-studio',
       banner: {
         tone: 'info',
-        text: "This project has no @lousho/build-ai-agent installed. Runs use Studio's built-in SDK 9.9.9-studio.",
+        text: "This project has no @linuxdevil/lousho installed. Runs use Studio's built-in SDK 9.9.9-studio.",
       },
     });
     await expect(selector.ready()).resolves.toMatchObject({ mode: 'in-process' });
@@ -87,7 +87,7 @@ describe('WorkspaceHostSelector', () => {
   it('row 2: the SDK checkout itself, unbuilt -> in-process with the build hint', () => {
     const root = path.join(dir, 'sdk-src');
     fs.mkdirSync(path.join(root, 'bin'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'lousho', version: '9.9.9' }));
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: '@linuxdevil/lousho', version: '9.9.9' }));
     fs.writeFileSync(path.join(root, 'bin', 'lousho.js'), '// bin\n');
     const selector = new WorkspaceHostSelector(refFor(root), deps(root));
     expect(selector.host).toBeInstanceOf(InProcessAgentHost);
@@ -112,7 +112,7 @@ describe('WorkspaceHostSelector', () => {
     expect(settled.mode).toBe('read-only');
     expect(settled.banner).toEqual({
       tone: 'warning',
-      text: `Update @lousho/build-ai-agent in this project to ${MIN_BRIDGE_SDK_VERSION} or later to edit agents here.`,
+      text: `Update @linuxdevil/lousho in this project to ${MIN_BRIDGE_SDK_VERSION} or later to edit agents here.`,
     });
     await expect(selector.host.start({ agentId: 'a', spec: {} as never, sessionId: 's', input: 'hi', onEvent: () => {} })).rejects.toBeInstanceOf(HostReadOnlyError);
   });
@@ -140,7 +140,7 @@ describe('WorkspaceHostSelector', () => {
     expect(settled.mode).toBe('read-only');
     expect(settled.banner).toEqual({
       tone: 'warning',
-      text: "This project's @lousho/build-ai-agent 99.0.0 is newer than this Studio understands. Update Studio to edit agents here.",
+      text: "This project's @linuxdevil/lousho 99.0.0 is newer than this Studio understands. Update Studio to edit agents here.",
     });
   });
 

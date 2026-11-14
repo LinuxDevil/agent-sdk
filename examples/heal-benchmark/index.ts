@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { createProgressGuard, type AgentHook } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createProgressGuard, type AgentHook } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { AGENTS } from './agents';
 import { runBenchmark } from './run';
 import { formatSummary, summarize } from './score';

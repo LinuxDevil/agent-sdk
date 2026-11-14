@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 
 import { applyAbortListeners, type AbortListenerInput } from '../triggers/abortListeners';
 import type { HostRun } from '../triggers/triggerHost';

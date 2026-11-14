@@ -1,6 +1,6 @@
-import { createAgent, defineSkill, type AgentHook } from 'lousho';
-import { renderTranscript, type Harness, type ProbeRun } from 'lousho/improve';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineSkill, type AgentHook } from '@linuxdevil/lousho';
+import { renderTranscript, type Harness, type ProbeRun } from '@linuxdevil/lousho/improve';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { AGENTS, type BenchmarkAgent } from './agents';
 
 export type FailureNames = 'real' | 'none' | 'shuffled';

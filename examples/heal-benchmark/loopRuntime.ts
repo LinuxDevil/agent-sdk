@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { createAgent, defineSkill, memoryStore, resolveProvider, type AgentHook, type HarnessArm, type LLMProvider, type Skill } from 'lousho';
-import { loadImproveSettings, readAgentHarness, readCanary, renderTranscript, routesToCandidate, watchAgent, type CaseCheck, type Harness, type HealOptions, type ImproveOptions, type SqlDatabase, type WatchOptions, type WatchTick } from 'lousho/improve';
-import { mockModel, type MockRequest, type MockStaticTurn } from 'lousho/testing';
-import { observeExporter, type ObserveReporter, type TraceExporter } from 'lousho/traces';
+import { createAgent, defineSkill, memoryStore, resolveProvider, type AgentHook, type HarnessArm, type LLMProvider, type Skill } from '@linuxdevil/lousho';
+import { loadImproveSettings, readAgentHarness, readCanary, renderTranscript, routesToCandidate, watchAgent, type CaseCheck, type Harness, type HealOptions, type ImproveOptions, type SqlDatabase, type WatchOptions, type WatchTick } from '@linuxdevil/lousho/improve';
+import { mockModel, type MockRequest, type MockStaticTurn } from '@linuxdevil/lousho/testing';
+import { observeExporter, type ObserveReporter, type TraceExporter } from '@linuxdevil/lousho/traces';
 import { codingAgent, FIXES } from './codingAgent';
 import { rootTracking } from './improve-cli/record';
 import { harnessKey, passK } from './gates';

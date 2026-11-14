@@ -13,7 +13,7 @@ import * as path from 'node:path';
 import type { ChildProcess } from 'node:child_process';
 import { parse as parseYaml } from 'yaml';
 import request from 'supertest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';

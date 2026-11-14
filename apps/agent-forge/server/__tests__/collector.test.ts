@@ -11,7 +11,7 @@ import * as http from 'node:http';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { AddressInfo } from 'node:net';
-import { startObserveDaemon, type ObserveDaemon } from 'lousho/observe';
+import { startObserveDaemon, type ObserveDaemon } from '@linuxdevil/lousho/observe';
 import {
   COLLECTOR_TOKEN_SECRET,
   CollectorLockedError,

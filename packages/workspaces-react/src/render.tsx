@@ -1,5 +1,5 @@
 import { useEffect, type Key, type ReactElement } from 'react';
-import type { UiComponent, UiComponentType, UiText } from 'lousho/workspaces/client';
+import type { UiComponent, UiComponentType, UiText } from '@linuxdevil/lousho/workspaces/client';
 import type { RenderContext } from './context';
 import { CancelButton, ReviseBox, RunButton } from './components/actions';
 import { ChoiceRadio, ChoiceSelect, FileInput, NumberInput, SchemaFormField, TextArea, TextInput, Toggle } from './components/inputs';

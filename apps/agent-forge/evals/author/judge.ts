@@ -6,7 +6,7 @@
  * or tool input in the transcript zeroes the score, so the judge cannot
  * pass a scenario on invented evidence.
  */
-import { createAgent, type LLMProvider } from 'lousho';
+import { createAgent, type LLMProvider } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import type { AuthorMessage } from '../../shared/authorWire';
 import { userMessageText } from '../../server/author/modelMessages';

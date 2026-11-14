@@ -12,7 +12,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { AgentSpecV2, BridgePush, Message } from 'lousho';
+import type { AgentSpecV2, BridgePush, Message } from '@linuxdevil/lousho';
 import { BridgeAgentHost, HostReadOnlyError, HostStartError } from '../host/bridgeAgentHost';
 import { BridgeClient, BridgeError } from '../host/bridgeClient';
 import { HostRunNotActiveError } from '../host/agentHost';
@@ -285,7 +285,8 @@ async function realBridge(turns: unknown): Promise<RealBridge> {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-w11b-real-'));
   const nm = path.join(root, 'node_modules');
   fs.mkdirSync(nm, { recursive: true });
-  fs.symlinkSync(REPO_ROOT, path.join(nm, 'lousho'), 'junction');
+  fs.mkdirSync(path.join(nm, '@linuxdevil'), { recursive: true });
+  fs.symlinkSync(REPO_ROOT, path.join(nm, '@linuxdevil', '@linuxdevil/lousho'), 'junction');
   const sdk = findWorkspaceSdk(root);
   if (sdk === undefined) throw new Error('junction workspace did not resolve the SDK');
   const client = new BridgeClient(

@@ -17,16 +17,16 @@ import { withBuildLock } from '../buildLock.testkit';
 
 const FILES: Record<string, string> = {
   'instructions.md': 'You are a deployed agent directory.\n',
-  'agent.ts': `import { createMockProvider } from 'lousho';
+  'agent.ts': `import { createMockProvider } from '@linuxdevil/lousho';
 export default { provider: createMockProvider({ name: 'mock', responses: ['pong'] }) };
 `,
-  'schedules/daily.ts': `import { defineSchedule } from 'lousho';
+  'schedules/daily.ts': `import { defineSchedule } from '@linuxdevil/lousho';
 export default defineSchedule({ cron: '0 9 * * *', prompt: 'Good morning' });
 `,
-  'auth.ts': `import { apiToken, basic } from 'lousho/auth';
+  'auth.ts': `import { apiToken, basic } from '@linuxdevil/lousho/auth';
 export default [basic({ users: { ops: 'pw' } }), apiToken('dir-token', { id: 'ci' })];
 `,
-  'channels/echo.ts': `import { defineChannel } from 'lousho';
+  'channels/echo.ts': `import { defineChannel } from '@linuxdevil/lousho';
 export default defineChannel({
   name: 'echo',
   async parse(req) { return { sessionKey: 'k', input: req.text, replyTo: null }; },

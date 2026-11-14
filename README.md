@@ -55,8 +55,8 @@ npm test
 Now add an eval. Save this as `src/weather.eval.ts`:
 
 ```ts no-run
-import { createAgent, defineEval, defineTool } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineEval, defineTool } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 
 const getWeather = defineTool({
@@ -138,7 +138,7 @@ See [Installation](https://lousho.com/installation#provider-packages) for other 
 This file uses top-level `await`, so it must be an ES module (`.mts`, or `"type": "module"` in `package.json`). Set `OPENAI_API_KEY` to run it.
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const getWeather = defineTool({

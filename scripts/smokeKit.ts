@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export const SDK_NAME = 'lousho';
+export const SDK_NAME = '@linuxdevil/lousho';
 export const IS_WIN = process.platform === 'win32';
 
 /** Optional peers: a subpath whose load fails because one of these is absent is checked by file existence only. */
@@ -142,14 +142,14 @@ export function checkModuleLoads(rep: Reporter, project: string, pkgDir: string)
 }
 
 export function checkBin(rep: Reporter, project: string): void {
-  const installed = path.join(project, 'node_modules', '.bin', IS_WIN ? 'lousho.cmd' : 'lousho');
+  const installed = path.join(project, 'node_modules', '.bin', IS_WIN ? 'lousho.cmd' : '@linuxdevil/lousho');
   if (!fs.existsSync(installed)) return rep.fail(`node_modules/.bin/lousho was not created (${installed})`);
-  const help = run('npx', ['--no-install', 'lousho', '--help'], project);
+  const help = run('npx', ['--no-install', '@linuxdevil/lousho', '--help'], project);
   if (help.status !== 0 || !/lousho init/.test(help.stdout + help.stderr)) rep.fail(`npx lousho --help failed: ${help.stdout}${help.stderr}`);
   else rep.log('npx lousho --help: ok');
   const clean = { ...process.env };
   for (const k of ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'OPENROUTER_API_KEY']) delete clean[k];
-  const doctor = run('npx', ['--no-install', 'lousho', 'doctor', '--json'], project, clean);
+  const doctor = run('npx', ['--no-install', '@linuxdevil/lousho', 'doctor', '--json'], project, clean);
   // doctor exits non-zero when a check fails (e.g. no API key); only a crash is a smoke failure.
   try {
     const parsed = JSON.parse(doctor.stdout);

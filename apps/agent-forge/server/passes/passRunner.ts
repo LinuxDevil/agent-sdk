@@ -18,8 +18,8 @@
  * (`callPassModel` in L06b throws them for a missing key, a provider
  * refusal, or a disabled kind).
  */
-import { recordSpanError, withSpan } from 'lousho';
-import type { TraceExporter } from 'lousho/traces';
+import { recordSpanError, withSpan } from '@linuxdevil/lousho';
+import type { TraceExporter } from '@linuxdevil/lousho/traces';
 import type { PassKind } from '../../shared/wireTypes';
 import { observeReporting } from '../observeReporting';
 import { studioPaths } from '../workspace/studioPaths';

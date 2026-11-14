@@ -15,10 +15,10 @@
  */
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { fanOutExporters, fileTraceExporter, type ObserveExporterOptions } from 'lousho/traces';
+import { fanOutExporters, fileTraceExporter, type ObserveExporterOptions } from '@linuxdevil/lousho/traces';
 import { agentTraceDir } from './traceStore';
 import { observeReporting, withoutCapturedContent, type ObserveReporting } from './observeReporting';
-import { AgentExecutor } from 'lousho/executor';
+import { AgentExecutor } from '@linuxdevil/lousho/executor';
 import {
   type AgentEvent,
   type AgentInput,
@@ -35,8 +35,8 @@ import {
   type CheckpointHistoryEntry,
   type ForkPatch,
   type TrajectoryComparison,
-} from 'lousho';
-import { FlowExecutor, type AgentFlow } from 'lousho/flows';
+} from '@linuxdevil/lousho';
+import { FlowExecutor, type AgentFlow } from '@linuxdevil/lousho/flows';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
 import { toLegacySpec } from './storage/legacySpec';
 import { HostRunNotActiveError, type AgentHost, type HostEvent, type HostRunResult } from './host/agentHost';
@@ -883,7 +883,7 @@ export class RunManager extends EventEmitter {
     agentId: string,
     flow: AgentFlow,
     resolvedSpec: AgentSpecV2,
-    legacySpec: import('lousho').AgentSpec,
+    legacySpec: import('@linuxdevil/lousho').AgentSpec,
     existing: RunEntry | undefined,
     options: { runInput?: string; source?: 'manual' | 'trigger'; triggerId?: string }
   ): Promise<void> {

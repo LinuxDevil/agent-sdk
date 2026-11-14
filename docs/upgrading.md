@@ -16,7 +16,7 @@ Already on `1.0.0-alpha.19`? Skip to
 since.
 
 ```bash
-npm install lousho@^1.0.0-alpha.19
+npm install @linuxdevil/lousho@^1.0.0-alpha.19
 ```
 
 ## Import paths that moved
@@ -27,23 +27,23 @@ are unchanged apart from where they live.
 
 | Name(s) | Old import | New import |
 | ------- | ---------- | ---------- |
-| `AgentExecutor`, `AgentBuilder`, `ExecuteOptions`, `ResumeExecuteOptions`, `ResumeRequest`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()` | `lousho` or `lousho/core` | `lousho/executor` |
-| `ToolRegistry`, `globalToolRegistry` | `lousho` or `lousho/core` | `lousho/executor` (also still in `lousho/tools`) |
-| `ExecutionResult`, `ExecutionFinishReason` (the executor's types) | `lousho/core` | `lousho/executor` (`ExecutionResult` is also still in the root, where `createAgent()`'s result type lives) |
-| `FlowBuilder`, `FlowExecutor`, `validateFlow` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) | `lousho` or `lousho/types` | `lousho/flows` |
-| `createJiraTools`, `createGitHubTools`, `createSlackTool`, `slackTool`, `postSlackAlert`, `createEmailTool` and their types | `lousho` or `lousho/tools` | `lousho/integrations` |
-| `EncryptionUtils`, `DTOEncryptionFilter`, `DecryptionError`, `sha256`, `generatePassword` | `lousho` | `lousho/utils` |
-| `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | `lousho` | `lousho/utils` (with `createAgent()` stores, prefer `fileStore(dir)` from the root) |
-| `validateWithSchema`, `safeValidate`, `isValidEmail` and the other validators | `lousho` | `lousho/utils` |
+| `AgentExecutor`, `AgentBuilder`, `ExecuteOptions`, `ResumeExecuteOptions`, `ResumeRequest`, `resumeAfterApproval()`, `streamResumeAfterApproval()`, `resumeRequest()` | `lousho` or `@linuxdevil/lousho/core` | `@linuxdevil/lousho/executor` |
+| `ToolRegistry`, `globalToolRegistry` | `lousho` or `@linuxdevil/lousho/core` | `@linuxdevil/lousho/executor` (also still in `@linuxdevil/lousho/tools`) |
+| `ExecutionResult`, `ExecutionFinishReason` (the executor's types) | `@linuxdevil/lousho/core` | `@linuxdevil/lousho/executor` (`ExecutionResult` is also still in the root, where `createAgent()`'s result type lives) |
+| `FlowBuilder`, `FlowExecutor`, `validateFlow` and every flow type (`AgentFlow`, `EditorStep`, `FlowExecutionEvent`, ...) | `lousho` or `@linuxdevil/lousho/types` | `@linuxdevil/lousho/flows` |
+| `createJiraTools`, `createGitHubTools`, `createSlackTool`, `slackTool`, `postSlackAlert`, `createEmailTool` and their types | `lousho` or `@linuxdevil/lousho/tools` | `@linuxdevil/lousho/integrations` |
+| `EncryptionUtils`, `DTOEncryptionFilter`, `DecryptionError`, `sha256`, `generatePassword` | `lousho` | `@linuxdevil/lousho/utils` |
+| `StorageService`, `StorageServiceApprovalStore`, `LocalStorageCheckpointStore` | `lousho` | `@linuxdevil/lousho/utils` (with `createAgent()` stores, prefer `fileStore(dir)` from the root) |
+| `validateWithSchema`, `safeValidate`, `isValidEmail` and the other validators | `lousho` | `@linuxdevil/lousho/utils` |
 
-The `lousho/core` subpath no longer exists; everything it
+The `@linuxdevil/lousho/core` subpath no longer exists; everything it
 exported is under `/executor`.
 
 ```ts
-import { AgentExecutor, AgentBuilder, ToolRegistry } from 'lousho/executor';
-import { FlowBuilder, validateFlow } from 'lousho/flows';
-import { createSlackTool } from 'lousho/integrations';
-import { EncryptionUtils, validateWithSchema } from 'lousho/utils';
+import { AgentExecutor, AgentBuilder, ToolRegistry } from '@linuxdevil/lousho/executor';
+import { FlowBuilder, validateFlow } from '@linuxdevil/lousho/flows';
+import { createSlackTool } from '@linuxdevil/lousho/integrations';
+import { EncryptionUtils, validateWithSchema } from '@linuxdevil/lousho/utils';
 ```
 
 ## Removed APIs and their replacements
@@ -75,13 +75,13 @@ import { EncryptionUtils, validateWithSchema } from 'lousho/utils';
 
 ```ts no-verify
 // Before (alpha):
-import { createDelegateTool } from 'lousho';
+import { createDelegateTool } from '@linuxdevil/lousho';
 const delegate = createDelegateTool({ agent: billing, name: 'billing' });
 ```
 
 ```ts
 // After (1.0): the lead gets a `task` tool per sub-agent.
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 const billing = createAgent({ model: 'openai/gpt-4o-mini', instructions: 'You answer billing questions.' });
 const lead = createAgent({
@@ -114,7 +114,7 @@ results and behavior are unchanged; `SECRET_PATTERNS` keeps its name. See
 
 ## Migrating from triggers
 
-`WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and their option/handle types were removed from `lousho/triggers`. `TriggerAdapter`, `TriggerRegistry`, the `WebhookAuth` helpers, `verifySlackSignature()` and `parseCronExpression()` stay. See [Triggers](./triggers.md).
+`WebhookTriggerAdapter`, `SlackTriggerAdapter`, `CronTriggerAdapter` and their option/handle types were removed from `@linuxdevil/lousho/triggers`. `TriggerAdapter`, `TriggerRegistry`, the `WebhookAuth` helpers, `verifySlackSignature()` and `parseCronExpression()` stay. See [Triggers](./triggers.md).
 
 | Removed | Replacement |
 | ------- | ----------- |
@@ -301,7 +301,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | The observe daemon prunes old data by default: on its first sweep and then once a day it deletes every trace whose observations all finished more than 30 days ago, with that trace's scores and prompt-use links, and sessions that are no longer `active`, ended before the window and no longer referenced. A trace with a run still open, active sessions, the Insights rollups, prompts, hub entries, the agent registry, tokens, datasets, evaluator rules and annotation queues are never pruned. See [Retention](./observability.md#retention). | `lousho observe start --retention-days 0` keeps everything (or `N` for another window) |
 | `lousho mcp --port N` or `--host H` without `--http` is a usage error (exit 2); stdio has no port. | drop the flags, or add `--http` |
 | The `package.json` of a node-server or docker build no longer lists `lousho` (the bundle contains it). | add it yourself if other code next to the build imports the SDK |
-| The npm package no longer ships `dist/cli/*.js` (the CommonJS CLI build) or `dist/cli/*.d.ts`; `bin/lousho.js` never loaded them. | run the CLI through `bin/lousho.js` (`npx lousho`) |
+| The npm package no longer ships `dist/cli/*.js` (the CommonJS CLI build) or `dist/cli/*.d.ts`; `bin/lousho.js` never loaded them. | run the CLI through `bin/lousho.js` (`npx @linuxdevil/lousho`) |
 
 ## What 1.0 promises
 

@@ -12,7 +12,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import type { Express } from 'express';
 import request from 'supertest';
-import { upgradeSpec, type AgentSpec } from 'lousho';
+import { upgradeSpec, type AgentSpec } from '@linuxdevil/lousho';
 import { createApp } from '../app';
 import {
   createWorkspaceContext,

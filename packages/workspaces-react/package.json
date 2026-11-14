@@ -24,7 +24,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
-    "lousho": ">=1.0.0-alpha.117",
+    "@linuxdevil/lousho": ">=1.0.0-alpha.117",
     "react": ">=18",
     "react-dom": ">=18"
   },

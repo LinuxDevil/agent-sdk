@@ -17,13 +17,13 @@
  *
  * Tools, guardrails, trigger types and the parsed registry index are
  * memoised per `registerCatalogRoutes` call (static until the next
- * `lousho` upgrade); models are computed per request because stored keys
+ * `@linuxdevil/lousho` upgrade); models are computed per request because stored keys
  * change at runtime. `/catalog/mcp/probe` is a later ticket.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Express } from 'express';
-import { listBuiltinTools, listGuardrails, listTriggerTypes } from 'lousho';
+import { listBuiltinTools, listGuardrails, listTriggerTypes } from '@linuxdevil/lousho';
 import type {
   CatalogGuardrail,
   CatalogKit,

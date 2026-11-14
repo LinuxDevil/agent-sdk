@@ -12,9 +12,9 @@
  * required `agent` option; the connector tools ride in `tools`.
  */
 import { z } from 'zod';
-import { createAgent, defineTool } from 'lousho';
-import { serveMcp } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
+import { serveMcp } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const DOCS = new Map<string, string>([
   ['doc-1', '# Launch plan\n\nShip the connector example on Friday.'],

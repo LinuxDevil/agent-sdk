@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { UiRunWidget } from 'lousho/workspaces/client';
+import type { UiRunWidget } from '@linuxdevil/lousho/workspaces/client';
 import type { RenderContext, RunPhase } from '../context';
 
 const BUSY: ReadonlySet<RunPhase> = new Set<RunPhase>(['starting', 'queued', 'running', 'needs-approval']);

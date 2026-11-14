@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AgentSpecV2, ToolCallHookContext } from 'lousho';
+import type { AgentSpecV2, ToolCallHookContext } from '@linuxdevil/lousho';
 import { MAX_PINS, pinsProblem, pinnedResultsHook } from '../pins';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
@@ -87,7 +87,7 @@ describe('pinnedResultsHook', () => {
 
 describe('RunManager run with pins', () => {
   // The `{ file }` tool ref resolves under the SpecHost baseDir
-  // (`<baseDir>/.lousho/agents`), and the tool file imports 'lousho'/'zod' -
+  // (`<baseDir>/.lousho/agents`), and the tool file imports '@linuxdevil/lousho'/'zod' -
   // so baseDir must live inside this repo for Node's resolution to find
   // them. `.tmp-pins-*` dirs are removed in afterEach.
   const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));
@@ -111,7 +111,7 @@ describe('RunManager run with pins', () => {
       [
         "import { appendFileSync } from 'node:fs';",
         "import { z } from 'zod';",
-        "import { defineTool } from 'lousho';",
+        "import { defineTool } from '@linuxdevil/lousho';",
         `const MARKER = ${JSON.stringify(markerPath)};`,
         'export default defineTool({',
         "  name: 'spy-tool',",

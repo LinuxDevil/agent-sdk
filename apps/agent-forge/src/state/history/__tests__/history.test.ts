@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { CanvasLayout } from '../../../../shared/wireTypes';
 import {
   COALESCE_MS,

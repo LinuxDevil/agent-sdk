@@ -18,7 +18,7 @@
  *   answer fails the example - a gate that could not be checked never
  *   passes.
  */
-import type { AgentSpecV2, EvalGate, EvalGateSpec } from 'lousho/spec';
+import type { AgentSpecV2, EvalGate, EvalGateSpec } from '@linuxdevil/lousho/spec';
 import type { EvalExampleResult, EvalGateResult, EvalGateSetResult } from '../../shared/wireTypes';
 import type { PassRunner } from '../passes/passRunner';
 import type { SecretsStore } from '../secretsStore';

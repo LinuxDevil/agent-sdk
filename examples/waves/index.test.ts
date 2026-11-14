@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createAgent } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { createAgent } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { runWaves } from './index';
 
 /** A worker factory handing each new agent the next scripted line. */

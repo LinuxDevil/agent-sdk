@@ -224,7 +224,7 @@ const BRIDGE_TS = [
   ' */',
   "import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';",
   "import { basename, dirname, join } from 'node:path';",
-  "import type { Agent, Session } from 'lousho';",
+  "import type { Agent, Session } from '@linuxdevil/lousho';",
   'import {',
   '  answerCallbackQuery,',
   '  downloadFile,',
@@ -616,7 +616,7 @@ function agentSource(config: ProjectConfig, bot: BotOptions): string {
   const info = providerInfo(config.provider);
   const persona = bot.persona?.trim() || 'a helpful assistant that lives on Telegram';
   const lines = [
-    "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from 'lousho';",
+    "import { createAgent, defineTool, type CreateAgentConfig, type LLMProvider } from '@linuxdevil/lousho';",
     "import { z } from 'zod';",
     '',
     '/** An example tool: the model calls it when it needs the current date or time. */',
@@ -663,7 +663,7 @@ function agentSource(config: ProjectConfig, bot: BotOptions): string {
 
 function testSource(): string {
   return `import { describe, expect, it } from 'vitest';
-import { mockModel } from 'lousho/testing';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { buildAgent } from './agent.js';
 
 // mockModel scripts the model turn by turn: no network and no API key needed.

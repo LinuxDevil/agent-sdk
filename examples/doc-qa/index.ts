@@ -8,9 +8,9 @@
  *
  * Run with: tsx examples/doc-qa/index.ts
  */
-import { createAgent } from 'lousho';
-import { createMockProvider } from 'lousho';
-import { resolveProvider } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
+import { createMockProvider } from '@linuxdevil/lousho';
+import { resolveProvider } from '@linuxdevil/lousho';
 
 const DOCUMENT = `
 Lousho Refund Policy: Refunds are available within 30 days of purchase.

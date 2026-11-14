@@ -12,7 +12,7 @@ import type { AuthFn, Principal } from './types';
 export interface BasicOptions {
   /** User name to password, or a function that checks a pair (it should compare in constant time itself). */
   users: Readonly<Record<string, string>> | ((user: string, password: string) => boolean | Promise<boolean>);
-  /** The realm of the `WWW-Authenticate: Basic` challenge. Default `'lousho'`. */
+  /** The realm of the `WWW-Authenticate: Basic` challenge. Default `'@linuxdevil/lousho'`. */
   realm?: string;
 }
 
@@ -71,7 +71,7 @@ export function basic(options: BasicOptions): AuthFn {
           return async (user: string, password: string) => ((await fn(user, password)) === true ? user : undefined);
         })()
       : usersChecker(options.users);
-  const realm = options.realm ?? 'lousho';
+  const realm = options.realm ?? '@linuxdevil/lousho';
   const auth: AuthFn = async (request): Promise<Principal | null> => {
     const credentials = basicCredentials(request.headers.get('authorization'));
     if (!credentials) return null;
@@ -84,7 +84,7 @@ export function basic(options: BasicOptions): AuthFn {
 
 /** The `WWW-Authenticate` value of a Basic challenge. */
 export function basicChallenge(realm: string | undefined): string {
-  return `Basic realm=${quoted(realm ?? 'lousho')}, charset="UTF-8"`;
+  return `Basic realm=${quoted(realm ?? '@linuxdevil/lousho')}, charset="UTF-8"`;
 }
 
 /**

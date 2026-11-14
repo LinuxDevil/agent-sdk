@@ -8,5 +8,5 @@
     "network": ["api.openrouter.ai"],
     "env": ["OPENROUTER_API_KEY"]
   },
-  "dependencies": ["lousho", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent"]
+  "dependencies": ["@linuxdevil/lousho", "@earendil-works/pi-ai", "@earendil-works/pi-coding-agent"]
 }

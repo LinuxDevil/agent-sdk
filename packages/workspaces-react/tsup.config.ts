@@ -10,5 +10,5 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   platform: 'browser',
-  external: ['react', 'react-dom', 'react/jsx-runtime', 'lousho', 'lousho/workspaces/client'],
+  external: ['react', 'react-dom', 'react/jsx-runtime', '@linuxdevil/lousho', '@linuxdevil/lousho/workspaces/client'],
 });

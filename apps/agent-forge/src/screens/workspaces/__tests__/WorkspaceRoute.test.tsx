@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ROUTE_NAMES, WorkspaceApiError } from 'lousho/workspaces/client';
+import { ROUTE_NAMES, WorkspaceApiError } from '@linuxdevil/lousho/workspaces/client';
 
 import { WorkspaceRoute } from '../WorkspaceRoute';
 import { buttonByName, click, conflict, flush, renderWithClient, spyClient, typeInto } from './workspaceTestKit';

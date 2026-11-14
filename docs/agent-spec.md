@@ -74,8 +74,8 @@ A minimal spec is four fields. This snippet parses one and runs it on the
 built-in `mock` provider, so it works offline with no API key:
 
 ```ts
-import { createMockProvider, LLMProviderRegistry, specV2ToAgent } from 'lousho';
-import { parseAgentSpecV2 } from 'lousho/spec';
+import { createMockProvider, LLMProviderRegistry, specV2ToAgent } from '@linuxdevil/lousho';
+import { parseAgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 // 'mock' is a registered provider name; scripting its reply keeps the output deterministic.
 LLMProviderRegistry.register('mock', () => createMockProvider({ responses: ['Hello!'] }));
@@ -274,8 +274,8 @@ for when you want to build the agent yourself. v1's `specToAgent()` stays
 separate: it is synchronous and takes a v1 spec, not v2 data.
 
 ```ts
-import { compileSpec, specV2ToAgent, type SpecHost } from 'lousho';
-import { parseAgentSpecV2 } from 'lousho/spec';
+import { compileSpec, specV2ToAgent, type SpecHost } from '@linuxdevil/lousho';
+import { parseAgentSpecV2 } from '@linuxdevil/lousho/spec';
 
 const host: SpecHost = { baseDir: process.cwd() };
 const spec = parseAgentSpecV2({ version: 2, name: 'Greeter', model: 'mock/greeter', instructions: 'Say hello.' });
@@ -303,14 +303,14 @@ and v1's `agentSpecSchema`. Node-only helpers (`specV2ToAgent`,
 stay on the package root.
 
 ```ts
-import { agentSpecV2JsonSchema } from 'lousho/spec';
+import { agentSpecV2JsonSchema } from '@linuxdevil/lousho/spec';
 
 const schema = agentSpecV2JsonSchema(); // the draft-07 JSON Schema of a spec, for forms and editors
 console.log(schema.title); // 'AgentSpec v2'
 ```
 
 ```ts
-import { parseAgentSpecV2, specToCode } from 'lousho/spec';
+import { parseAgentSpecV2, specToCode } from '@linuxdevil/lousho/spec';
 
 const spec = parseAgentSpecV2({ version: 2, name: 'Greeter', model: 'mock/greeter', instructions: 'Say hello.' });
 console.log(specToCode(spec)); // the same spec as a readable createAgent({...}) module
@@ -325,7 +325,7 @@ is not re-validated - run it through `parseAgentSpecV2()` or use
 version and always returns a validated `AgentSpecV2`.
 
 ```ts
-import { loadSpecV2, upgradeSpec } from 'lousho';
+import { loadSpecV2, upgradeSpec } from '@linuxdevil/lousho';
 
 const v1 = {
   name: 'support-bot',

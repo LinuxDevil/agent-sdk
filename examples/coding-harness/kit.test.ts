@@ -23,8 +23,8 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { PassThrough, Writable } from 'node:stream';
 import { spawn } from 'node:child_process';
-import { loadAgentDir } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { loadAgentDir } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { NodeServerAdapter } from '../../src/deploy/adapters/node-server';
 import { withBuildLock } from '../../src/deploy/buildLock.testkit';
 import { runAdd } from '../../src/cli/add';
@@ -57,7 +57,7 @@ async function add(args: string[]) {
 
 async function kitModule() {
   return (await import(pathToFileURL(path.join(root, 'tools', 'fs.ts')).href)) as {
-    checkpoints: import('lousho').WorkspaceCheckpoints;
+    checkpoints: import('@linuxdevil/lousho').WorkspaceCheckpoints;
   };
 }
 
@@ -67,7 +67,7 @@ async function kitModule() {
  * approver by passing it in code.
  */
 async function kitApprove() {
-  return ((await import(pathToFileURL(path.join(root, 'approve.ts')).href)) as { default: import('lousho').ApproveToolCall }).default;
+  return ((await import(pathToFileURL(path.join(root, 'approve.ts')).href)) as { default: import('@linuxdevil/lousho').ApproveToolCall }).default;
 }
 
 /** A provider that plays the lead's script and the explorer's, in call order. */
@@ -292,7 +292,7 @@ describe('lousho build --target=node-server', () => {
     fs.rmSync(path.join(root, 'agent.json'));
     fs.writeFileSync(
       path.join(root, 'agent.ts'),
-      `import { createMockProvider } from 'lousho';
+      `import { createMockProvider } from '@linuxdevil/lousho';
 export default {
   provider: createMockProvider({ name: 'mock', responses: ['Fixed add() in math.js; node --test now passes.'] }),
   maxSteps: 20,

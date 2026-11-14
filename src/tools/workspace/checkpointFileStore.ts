@@ -52,7 +52,7 @@ function isLog(value: unknown): value is WorkspaceCheckpointLog {
  *
  * @example
  * ```ts
- * import { FileWorkspaceCheckpointStore, NodeWorkspace, WorkspaceCheckpoints } from 'lousho';
+ * import { FileWorkspaceCheckpointStore, NodeWorkspace, WorkspaceCheckpoints } from '@linuxdevil/lousho';
  * const workspace = new NodeWorkspace({ root: '.' });
  * const checkpoints = new WorkspaceCheckpoints(workspace, { store: new FileWorkspaceCheckpointStore('.lousho/rewind') });
  * ```

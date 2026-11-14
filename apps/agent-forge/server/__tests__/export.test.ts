@@ -4,7 +4,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';

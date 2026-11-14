@@ -1,4 +1,4 @@
-import type { CreateAgentConfig } from 'lousho';
+import type { CreateAgentConfig } from '@linuxdevil/lousho';
 import { DEFAULT_MODEL, refuseUnsharedModels } from './modelRule.ts';
 import { codingInstructions, freshProjectHook, projectTools } from './projectRuns.ts';
 

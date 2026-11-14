@@ -11,7 +11,7 @@
  * approve). The hook matches the FIRST pin whose `toolName` equals the
  * call's and whose `args` (when set) stable-stringify-equal the call's.
  */
-import type { AgentHook, ToolCallHookContext } from 'lousho';
+import type { AgentHook, ToolCallHookContext } from '@linuxdevil/lousho';
 import { stableStringify } from '../shared/stableJson';
 import type { ToolPin } from '../shared/wireTypes';
 

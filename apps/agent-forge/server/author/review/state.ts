@@ -7,7 +7,7 @@
  * cannot blow the review prompt up, and the catalog facts the judge
  * checks membership against.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AuthorMessage, Requirement, SpecChange } from '../../../shared/authorWire';
 import type { CatalogFacts } from '../proposal/catalogChecks';
 import type { ReviewInput } from '../proposal/review';

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } fr
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { LLMProviderRegistry, type LLMProvider } from 'lousho';
+import { LLMProviderRegistry, type LLMProvider } from '@linuxdevil/lousho';
 import { SecretsStore } from '../../secretsStore';
 import { resolveAuthorProvider } from '../provider';
 

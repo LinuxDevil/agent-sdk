@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildTurnContext, specSummary, TURN_CONTEXT_HEADER, type TurnContextInput } from '../turnContext';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 
 /**
  * buildTurnContext: the per-turn block the runner prepends to the user

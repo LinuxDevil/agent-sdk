@@ -4,7 +4,7 @@
  * content is captured only for a loopback target.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { observeExporterFromEnv, type ObserveReporter } from 'lousho/traces';
+import { observeExporterFromEnv, type ObserveReporter } from '@linuxdevil/lousho/traces';
 import { isLoopbackUrl, observeReporting } from '../observeReporting';
 
 const noFetch = (async () => new Response('{}', { status: 200 })) as typeof fetch;

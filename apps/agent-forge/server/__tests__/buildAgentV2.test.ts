@@ -14,7 +14,7 @@ import {
   createAgentConfigOf,
   type AgentEvent,
   type AgentSpecV2,
-} from 'lousho';
+} from '@linuxdevil/lousho';
 type Global = { __hookOrder?: string[] };
 import { buildRunnableAgent, scopedApprovalStore, type RunWiring } from '../buildAgentV2';
 import { FileApprovalStore } from '../approvalStore';

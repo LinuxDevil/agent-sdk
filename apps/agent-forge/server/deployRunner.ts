@@ -13,7 +13,7 @@
 import { spawn } from 'node:child_process';
 import * as path from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { DeployResult } from '../shared/wireTypes';
 import { writeFileAtomic } from './storage/atomic';
 import { toLegacySpec } from './storage/legacySpec';

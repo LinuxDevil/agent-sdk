@@ -12,7 +12,7 @@
  */
 import { diffLines, type Change } from 'diff';
 import { z } from 'zod';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { fieldLabel } from '../../shared/specFieldLabels';
 import { nodeIdList, skillKey, toolKey } from '../../shared/nodeIds';
 import type { SpecFieldKey } from '../../shared/specFields';

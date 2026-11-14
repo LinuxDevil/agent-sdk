@@ -17,7 +17,7 @@
  * only the pass kind, key and outcome reach the runner's own records.
  */
 import { z } from 'zod';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { PassOutcome, PassRunner } from './passRunner';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';

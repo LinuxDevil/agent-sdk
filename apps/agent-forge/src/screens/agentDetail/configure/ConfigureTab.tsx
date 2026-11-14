@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { agentSpecV2JsonSchema } from 'lousho/spec';
+import { agentSpecV2JsonSchema } from '@linuxdevil/lousho/spec';
 
 import { useQueryState } from '../../../router/useRoute';
 import { useAppState } from '../../../state/AppState';

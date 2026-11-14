@@ -8,7 +8,7 @@
  * guessing from span names. Frames carry node ids and state only -
  * never secret values.
  */
-import { APPROVAL_WAIT_SPAN_NAME, SdkAttr, type Span } from 'lousho';
+import { APPROVAL_WAIT_SPAN_NAME, SdkAttr, type Span } from '@linuxdevil/lousho';
 import type { NodeRunState, NodeStatePayload } from '../shared/wireTypes';
 
 /**

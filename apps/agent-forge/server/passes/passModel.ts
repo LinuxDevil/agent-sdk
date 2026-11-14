@@ -17,8 +17,8 @@
  *
  * Prompts and replies are never logged - they hold user instructions.
  */
-import { estimateCost, SDKError } from 'lousho';
-import type { LLMProvider } from 'lousho';
+import { estimateCost, SDKError } from '@linuxdevil/lousho';
+import type { LLMProvider } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import type { PassKind } from '../../shared/wireTypes';
 import { buildAgentFromSpec } from '../buildAgent';

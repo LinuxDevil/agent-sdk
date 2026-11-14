@@ -12,8 +12,8 @@
  * seams (`providerFor`, `reviewDraft`, `mcpConnect`) exist for tests and
  * the eval's `--mock`/`--no-review` modes.
  */
-import type { LLMProvider } from 'lousho';
-import type { connectMcp } from 'lousho/mcp';
+import type { LLMProvider } from '@linuxdevil/lousho';
+import type { connectMcp } from '@linuxdevil/lousho/mcp';
 import type { AuthorSession } from '../../shared/authorWire';
 import type { SettingsStore } from '../settingsStore';
 import type { SecretsStore } from '../secretsStore';

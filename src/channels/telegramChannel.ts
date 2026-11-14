@@ -128,7 +128,7 @@ function escapeRegExp(text: string): string {
  *
  * @example
  * ```ts
- * import { telegramChannel } from 'lousho';
+ * import { telegramChannel } from '@linuxdevil/lousho';
  *
  * const telegram = telegramChannel({
  *   botToken: process.env.TELEGRAM_BOT_TOKEN ?? '',

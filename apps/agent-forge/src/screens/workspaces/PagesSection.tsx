@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ArrowDown, ArrowUp, Trash2 } from 'lucide-react';
-import type { PageDetail } from 'lousho/workspaces/client';
+import type { PageDetail } from '@linuxdevil/lousho/workspaces/client';
 import { ConfirmDialog, Dialog } from '../../ui/Dialog';
 import { EmptyState } from '../../ui/EmptyState';
 import { Field } from '../../ui/Field';

@@ -29,7 +29,7 @@ import {
   type AgentSpecV2,
   type GenerateOptions,
   type LLMProvider,
-} from 'lousho';
+} from '@linuxdevil/lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';

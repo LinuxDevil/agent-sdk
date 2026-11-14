@@ -19,7 +19,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { LLMProvider } from 'lousho';
+import type { LLMProvider } from '@linuxdevil/lousho';
 import type { AuthorMessage, AuthorSettings } from '../../shared/authorWire';
 import { SecretsStore } from '../../server/secretsStore';
 import { passReview } from '../../server/author/proposal/review';

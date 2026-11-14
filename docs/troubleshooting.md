@@ -1,7 +1,7 @@
 # Troubleshooting
 
 This page starts from what you see and points to the cause, the fix and the page
-that explains it. First run `npx lousho doctor` ([what it checks](./installation.md#troubleshooting-lousho-doctor)),
+that explains it. First run `npx @linuxdevil/lousho doctor` ([what it checks](./installation.md#troubleshooting-lousho-doctor)),
 then, if you have an error code (`LOUSHO_...`), look it up in [Errors](./errors.md).
 
 ## Setup
@@ -16,7 +16,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 ### "The API key is not set"
 
 - **Cause:** the provider's key variable (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`) is not in the environment of the process that runs the agent (`LOUSHO_PROVIDER_MISSING_API_KEY`).
-- **Fix:** set it, or pass a configured provider instance. `npx lousho doctor` prints `set` or `not set` for each key, never the value. The `vendor/` model prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`) — `model: 'openai/gpt-4o-mini'` needs `OPENAI_API_KEY` even when only `OPENROUTER_API_KEY` is set.
+- **Fix:** set it, or pass a configured provider instance. `npx @linuxdevil/lousho doctor` prints `set` or `not set` for each key, never the value. The `vendor/` model prefix chooses the provider; with OpenRouter use `openrouter/<vendor>/<model>` (e.g. `openrouter/openai/gpt-4o-mini`) — `model: 'openai/gpt-4o-mini'` needs `OPENAI_API_KEY` even when only `OPENROUTER_API_KEY` is set.
 - **More:** [the error](./errors.md#lousho_provider_missing_api_key).
 
 ### "Cannot find package `@ai-sdk/openai`" or "install the optional peer"
@@ -40,7 +40,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 ### The Node version is too old
 
 - **Cause:** the SDK needs Node.js 22.19 or newer (`engines.node`).
-- **Fix:** upgrade Node. `npx lousho doctor` compares your version with the requirement.
+- **Fix:** upgrade Node. `npx @linuxdevil/lousho doctor` compares your version with the requirement.
 - **More:** [Requirements](./installation.md#requirements).
 
 ### Ollama and zod versions disagree
@@ -139,7 +139,7 @@ environment (`LOUSHO_CONFIG_MISSING_PROVIDER`).
 
 Open an issue at <https://github.com/LinuxDevil/lousho/issues>. Include:
 
-- the output of `npx lousho doctor --json`,
+- the output of `npx @linuxdevil/lousho doctor --json`,
 - the error code (`LOUSHO_...`) and the full message,
 - the SDK version (`npm ls lousho`) and your `ai` version.
 

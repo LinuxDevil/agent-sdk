@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 
 // The registry's mock provider calls a tool the user message names, with { input: 'mock input' }.
 export default defineTool({

@@ -2,7 +2,7 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { AgentRecord, TraceSummaryPayload } from '../../../../../shared/wireTypes';
-import type { AgentSpecV2 } from 'lousho/spec';
+import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 import type { ObserveScoreRow } from '../../../../observe/types';
 import { render } from '../../../../ui/__tests__/render';
 

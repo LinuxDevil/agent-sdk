@@ -25,8 +25,8 @@
  *   daemon unchanged.
  */
 import type { Express, Request, Response } from 'express';
-import type { AgentSpec } from 'lousho';
-import { evaluatorTraceFrom, type EvaluatorTrace, type ObservationRow } from 'lousho/traces';
+import type { AgentSpec } from '@linuxdevil/lousho';
+import { evaluatorTraceFrom, type EvaluatorTrace, type ObservationRow } from '@linuxdevil/lousho/traces';
 import { buildAgentFromSpec } from './buildAgent';
 import { daemonHeaders, observeTarget } from './observeProxy';
 import { firstJsonObject } from './passes/jsonReply';

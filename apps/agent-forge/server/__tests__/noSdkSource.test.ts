@@ -18,14 +18,14 @@ const appFile = (rel: string) => path.join(APP, rel);
 
 new RuleTester({ languageOptions: { parser: tseslint.parser } }).run('no-sdk-source', noSdkSource, {
   valid: [
-    { code: "import { AgentExecutor } from 'lousho';", filename: appFile('server/x.ts') },
-    { code: "import { agentSpecSchema } from 'lousho/spec';", filename: appFile('src/x.ts') },
-    { code: "import { startObserveDaemon } from 'lousho/observe';", filename: appFile('server/__tests__/x.test.ts') },
-    { code: "import type { ToolRef } from 'lousho/spec';", filename: appFile('src/graph/v2/specTypes.ts') },
+    { code: "import { AgentExecutor } from '@linuxdevil/lousho';", filename: appFile('server/x.ts') },
+    { code: "import { agentSpecSchema } from '@linuxdevil/lousho/spec';", filename: appFile('src/x.ts') },
+    { code: "import { startObserveDaemon } from '@linuxdevil/lousho/observe';", filename: appFile('server/__tests__/x.test.ts') },
+    { code: "import type { ToolRef } from '@linuxdevil/lousho/spec';", filename: appFile('src/graph/v2/specTypes.ts') },
     { code: "import { helper } from '../../state/AppState';", filename: appFile('src/screens/x.ts') },
     { code: "import { helper } from './local';", filename: appFile('server/x.ts') },
     { code: "vi.mock('../../state/AppState');", filename: appFile('src/screens/x.test.ts') },
-    { code: "vi.mock('lousho/spec', () => ({}));", filename: appFile('src/x.test.ts') },
+    { code: "vi.mock('@linuxdevil/lousho/spec', () => ({}));", filename: appFile('src/x.test.ts') },
     // In-app relative specifiers that stay inside apps/agent-forge are fine.
     { code: "import { graphToSpec } from '../../src/graph/graphToSpec';", filename: appFile('server/__tests__/x.test.ts') },
   ],
@@ -41,7 +41,7 @@ new RuleTester({ languageOptions: { parser: tseslint.parser } }).run('no-sdk-sou
       errors: [{ messageId: 'deep' }],
     },
     {
-      code: "import { x } from 'lousho/src/spec/schema';",
+      code: "import { x } from '@linuxdevil/lousho/src/spec/schema';",
       filename: appFile('src/x.ts'),
       errors: [{ messageId: 'deep' }],
     },

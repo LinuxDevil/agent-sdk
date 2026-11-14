@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { AgentRepo } from '../../storage/agentRepo';
 import { buildAgentListItems } from '../agentListItems';
 import type { AgentRunStatusPayload } from '../../../shared/wireTypes';

@@ -228,7 +228,7 @@ async function signatureMatches(secret: string, header: string, rawBody: Uint8Ar
  *
  * @example
  * ```ts
- * import { githubChannel } from 'lousho';
+ * import { githubChannel } from '@linuxdevil/lousho';
  *
  * const github = githubChannel({
  *   webhookSecret: process.env.GITHUB_WEBHOOK_SECRET ?? '',
@@ -290,7 +290,7 @@ export function githubChannel(options: GitHubChannelOptions): Channel<GitHubComm
           authorization: `Bearer ${token}`,
           accept: 'application/vnd.github+json',
           'x-github-api-version': '2022-11-28',
-          'user-agent': 'lousho',
+          'user-agent': '@linuxdevil/lousho',
           'content-type': 'application/json',
         },
         body: JSON.stringify({ body }),

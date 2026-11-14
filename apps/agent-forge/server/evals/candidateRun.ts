@@ -14,8 +14,8 @@
  *   tools pause for approval leaves the pending record where the agent's
  *   own approvals UI never lists it.
  */
-import type { AgentSpecV2, TraceExporter } from 'lousho';
-import type { Span } from 'lousho/traces';
+import type { AgentSpecV2, TraceExporter } from '@linuxdevil/lousho';
+import type { Span } from '@linuxdevil/lousho/traces';
 import { buildRunnableAgent, type StudioRunDeps } from '../buildAgentV2';
 import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';

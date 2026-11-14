@@ -1,4 +1,4 @@
-import { evaluateSafeExpression } from 'lousho/workspaces/client';
+import { evaluateSafeExpression } from '@linuxdevil/lousho/workspaces/client';
 
 export interface VisibleScope {
   inputs: unknown;

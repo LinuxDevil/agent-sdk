@@ -6,7 +6,7 @@
  * hatch: with no usable key the Author shows a setup card instead of
  * pretending to answer (PLAN 16 decision 4).
  */
-import { LLMProviderRegistry, type LLMProvider } from 'lousho';
+import { LLMProviderRegistry, type LLMProvider } from '@linuxdevil/lousho';
 import { PROVIDER_KEY_ENV, isSecretProvider, type SecretsStore } from '../secretsStore';
 
 /** The outcome of {@link resolveAuthorProvider}: a ready provider, or why the Author cannot run. */

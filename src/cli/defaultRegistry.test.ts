@@ -23,7 +23,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { PassThrough, Writable } from 'node:stream';
-import { resolveAgentDir } from 'lousho';
+import { resolveAgentDir } from '@linuxdevil/lousho';
 import { runAdd } from './add';
 import { IndexSchema, ItemSchema } from './registry';
 
@@ -128,7 +128,7 @@ describe('default registry (registry/dist)', () => {
     const kits = index.items.filter((entry) => entry.type === 'kit');
     expect(kits.length).toBeGreaterThan(0);
     const loader =
-      "const { resolveAgentDir } = await import('lousho');" +
+      "const { resolveAgentDir } = await import('@linuxdevil/lousho');" +
       'const { manifest } = await resolveAgentDir(process.argv[1]);' +
       'console.log(JSON.stringify({ tools: manifest.tools.length }));';
     // Dummy keys and secrets: the kits are only loaded, never run.

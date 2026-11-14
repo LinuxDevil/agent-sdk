@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
-import { mockModel } from 'lousho/testing';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { createApp } from '../app';
 import { STUDIO_TOKEN_HEADER } from '../auth';
 import { RunManager } from '../runRegistry';

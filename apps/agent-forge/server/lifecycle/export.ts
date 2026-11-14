@@ -10,7 +10,7 @@
  */
 import type { Express, Request, Response } from 'express';
 import { stringify as stringifyYaml } from 'yaml';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AgentBundle } from '../../shared/wireTypes';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { daemonHeaders, observeTarget } from '../observeProxy';

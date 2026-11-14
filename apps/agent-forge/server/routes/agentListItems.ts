@@ -7,7 +7,7 @@
  * bare `new AgentRepo(root)` and no RunManager - `runStatus` is simply
  * absent there, so `lastRun` falls back to the newest persisted trace.
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AgentLastRun, AgentListItem, AgentRunStatusPayload } from '../../shared/wireTypes';
 import type { AgentRepo } from '../storage/agentRepo';
 import { listAgentTraces } from '../traceStore';

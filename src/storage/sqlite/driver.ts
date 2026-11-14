@@ -2,7 +2,7 @@ import { SDKError } from '../../execution/errors';
 /**
  * Minimal structural types for the parts of `node:sqlite` this package uses,
  * plus the lazy loader. `@types/node` older than 22.5 has no `node:sqlite`
- * typings, and loading it lazily keeps `import 'lousho/sqlite'`
+ * typings, and loading it lazily keeps `import '@linuxdevil/lousho/sqlite'`
  * safe on Node versions that lack it.
  */
 

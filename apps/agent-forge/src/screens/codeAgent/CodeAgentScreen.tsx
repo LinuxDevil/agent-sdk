@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Folder, Info } from 'lucide-react';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { stringify } from 'yaml';
 import type { Graph } from '../../graph/v2/types';
 import { specToGraph } from '../../graph/v2/specToGraph';

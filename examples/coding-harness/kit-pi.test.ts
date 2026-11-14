@@ -12,7 +12,7 @@
  * delegating to a real Pi coding agent over OpenRouter.
  *
  * Like kit.test.ts this needs `npm run build` to have run (the kit's files
- * import `lousho` by name and the loader goes through dist).
+ * import `@linuxdevil/lousho` by name and the loader goes through dist).
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
@@ -22,8 +22,8 @@ import * as path from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import { fauxAssistantMessage, fauxProvider, fauxToolCall, type FauxResponseStep } from '@earendil-works/pi-ai';
 import { ModelRuntime } from '@earendil-works/pi-coding-agent';
-import { loadAgentDir } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { loadAgentDir } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { runAdd } from '../../src/cli/add';
 import { FIXTURE } from './index';
 
@@ -140,7 +140,7 @@ describe('lousho add coding-pi', () => {
 
 describe('the installed kit, loaded', () => {
   it('puts the pi coder in the subagents map and keeps the explorer a delegate tool', async () => {
-    const { resolveAgentDir } = await import('lousho');
+    const { resolveAgentDir } = await import('@linuxdevil/lousho');
     const { config, manifest } = await resolveAgentDir(root, { provider: mockModel(['x']) });
 
     expect(manifest.subagents).toEqual(['coder', 'explorer']);

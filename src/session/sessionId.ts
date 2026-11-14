@@ -1,6 +1,6 @@
 /**
  * Session id validation, in a module with no Node builtins so Worker code
- * (`KVStore`, `lousho/kv`) can import it. `sessionStore.ts`
+ * (`KVStore`, `@linuxdevil/lousho/kv`) can import it. `sessionStore.ts`
  * re-exports `assertSessionId`.
  */
 

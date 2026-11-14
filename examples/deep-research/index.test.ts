@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { toolResultText } from 'lousho';
-import { testToolContext } from 'lousho/testing';
+import { toolResultText } from '@linuxdevil/lousho';
+import { testToolContext } from '@linuxdevil/lousho/testing';
 import {
   CORPUS,
   createDeepResearch,

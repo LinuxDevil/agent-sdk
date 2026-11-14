@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { TrajectoryStep } from 'lousho';
+import type { TrajectoryStep } from '@linuxdevil/lousho';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { errorMessage } from '../errorMessage';
 import type { ForkRunRequest, RunComparisonPayload, RunHistoryStep } from '../../../shared/wireTypes';

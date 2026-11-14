@@ -11,7 +11,7 @@ code at any time without a rewrite.
 > implied; the files run with your process's full permissions.
 
 ```ts
-import { loadAgentDir } from 'lousho';
+import { loadAgentDir } from '@linuxdevil/lousho';
 
 const agent = await loadAgentDir('./my-agent');
 const { text } = await agent.send('Hello!');
@@ -108,7 +108,7 @@ rule decides.
 
 ```ts
 // hooks.ts — the default export is a hook or a list of them
-import type { AgentHook } from 'lousho';
+import type { AgentHook } from '@linuxdevil/lousho';
 const audit: AgentHook = {
   name: 'audit',
   postToolCall(ctx) {
@@ -120,7 +120,7 @@ export default audit;
 
 ```ts
 // approve.ts — the default export decides every `ask`ed call
-import type { ApproveToolCall } from 'lousho';
+import type { ApproveToolCall } from '@linuxdevil/lousho';
 const approve: ApproveToolCall = ({ args }) => !String(args.path ?? '').endsWith('.test.js');
 export default approve;
 ```
@@ -145,7 +145,7 @@ that exports no tool at all is an error, as are two tools with the same name
 ```ts no-verify
 // tools/send_email.ts
 import { z } from 'zod';
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 
 export default defineTool({
   name: 'send_email',
@@ -236,7 +236,7 @@ internal helper of the generated bundle); with your own server, use
 
 ```ts
 import { createServer } from 'node:http';
-import { createAgent, mountChannels, resolveAgentDir } from 'lousho';
+import { createAgent, mountChannels, resolveAgentDir } from '@linuxdevil/lousho';
 
 // channels/support.ts: export default webhookChannel({ secret: process.env.HOOK_SECRET ?? '' })
 const { config, channels } = await resolveAgentDir('./my-agent');
@@ -259,7 +259,7 @@ naming the file. A `memory` override passed to `loadAgentDir(dir, { overrides })
 is merged with the directory's slots by name: the override wins a name clash.
 
 ```ts
-import { defineMemory, fileMemory, resolveAgentDir } from 'lousho';
+import { defineMemory, fileMemory, resolveAgentDir } from '@linuxdevil/lousho';
 
 // memory/notes.ts: export default { scope: 'global', provider: fileMemory({ dir: './.lousho/memory' }) }
 const { manifest } = await resolveAgentDir('./my-agent', {
@@ -273,7 +273,7 @@ A relative `dir` in a `memory/*.ts` file resolves against the process working di
 ```ts
 // memory/notes.ts
 import { fileURLToPath } from 'node:url';
-import { fileMemory } from 'lousho';
+import { fileMemory } from '@linuxdevil/lousho';
 
 export default {
   scope: 'global',
@@ -297,7 +297,7 @@ The path follows the module: a copied or bundled build keeps its memory next to 
 handy for tests and tooling:
 
 ```ts
-import { resolveAgentDir, createAgent } from 'lousho';
+import { resolveAgentDir, createAgent } from '@linuxdevil/lousho';
 
 const { config, manifest } = await resolveAgentDir('./my-agent');
 console.log(manifest.tools, manifest.skills, manifest.subagents);
@@ -317,8 +317,8 @@ declares (`guardrails`, `onEvent`, `retry`, `reasoning`, `redactContent`,
 `output`, ...). Use it to swap the model in tests:
 
 ```ts no-run
-import { loadAgentDir } from 'lousho';
-import { mockModel } from 'lousho/testing';
+import { loadAgentDir } from '@linuxdevil/lousho';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 const agent = await loadAgentDir('./my-agent', { provider: mockModel(['Hi there.']) });
 ```
@@ -349,7 +349,7 @@ says so. Compile the directory first, or use `.js`/`.mjs` tools with an
 ## Run it with `lousho dev`
 
 ```bash
-npx lousho dev ./my-agent
+npx @linuxdevil/lousho dev ./my-agent
 ```
 
 Serves the chat UI and `POST /chat` for the directory and reloads it when
@@ -368,7 +368,7 @@ dev](schedules.md#in-lousho-dev)).
 ## Deploy it with `lousho build`
 
 ```bash
-npx lousho build ./my-agent --target=node-server    # or docker
+npx @linuxdevil/lousho build ./my-agent --target=node-server    # or docker
 ```
 
 The agent directory is the unit of deployment: the built server loads it with

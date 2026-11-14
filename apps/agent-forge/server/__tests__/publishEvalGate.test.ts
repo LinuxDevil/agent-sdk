@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { EvalGateResult } from '../../shared/wireTypes';
 import type { EvalGateDeps } from '../evals/gateRunner';
 import { createApp } from '../app';

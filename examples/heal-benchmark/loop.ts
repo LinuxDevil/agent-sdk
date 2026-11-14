@@ -3,7 +3,7 @@ import { appendFileSync, existsSync, readFileSync, realpathSync } from 'node:fs'
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import type { SqlDatabase } from 'lousho/improve';
+import type { SqlDatabase } from '@linuxdevil/lousho/improve';
 import { renderLoopReport, type LoopRowLike } from './armSummary';
 import { spawnCollector, type Collector } from './improve-cli/record';
 import { AGENT_MODEL, assertSynthetic, EDITOR_MODEL, LOOP_PREFIX, syntheticOnly, type LoopEnv } from './loopRuntime';

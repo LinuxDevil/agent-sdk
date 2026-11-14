@@ -1,8 +1,8 @@
 /**
  * The tool exports of the package root: everything `src/tools/index.ts`
  * re-exports except `ToolRegistry` / `globalToolRegistry`, which moved to
- * `lousho/executor` (they are also still here, on
- * `lousho/tools`, for the `JiraTools` / `GitHubTools`
+ * `@linuxdevil/lousho/executor` (they are also still here, on
+ * `@linuxdevil/lousho/tools`, for the `JiraTools` / `GitHubTools`
  * subclasses and the `/tools` subpath).
  */
 export * from './defineTool';

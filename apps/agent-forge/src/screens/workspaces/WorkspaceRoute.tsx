@@ -1,7 +1,7 @@
 import './workspaces.css';
 import { useState } from 'react';
 import { CircleAlert, SearchX } from 'lucide-react';
-import type { ApiClient } from 'lousho/workspaces/client';
+import type { ApiClient } from '@linuxdevil/lousho/workspaces/client';
 import { matchRoute } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { EmptyState } from '../../ui/EmptyState';

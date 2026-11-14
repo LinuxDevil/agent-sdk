@@ -31,10 +31,10 @@
  * workspace mode. Secrets are Studio-global (`resolveSecret` dep).
  */
 import type { Express, Request, Response } from 'express';
-import { evaluateSafeExpression } from 'lousho/flows';
-import { resolveSecretRef } from 'lousho';
-import type { TriggerSpec } from 'lousho/spec';
-import { checkWebhookAuth } from 'lousho/triggers';
+import { evaluateSafeExpression } from '@linuxdevil/lousho/flows';
+import { resolveSecretRef } from '@linuxdevil/lousho';
+import type { TriggerSpec } from '@linuxdevil/lousho/spec';
+import { checkWebhookAuth } from '@linuxdevil/lousho/triggers';
 
 import { isLoopbackHost } from '../auth';
 import { asyncRoute, sendError } from '../http/routeUtils';

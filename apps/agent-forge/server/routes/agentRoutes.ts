@@ -33,7 +33,7 @@
  * `?ws=all` route reuses them verbatim (W06a).
  */
 import type { Express, Response } from 'express';
-import type { AgentSpec, AgentSpecV2 } from 'lousho';
+import type { AgentSpec, AgentSpecV2 } from '@linuxdevil/lousho';
 import { LabelError, MAX_LABEL_LENGTH, MAX_LABELS, normalizeLabels } from '../../shared/labels';
 import type {
   AgentMeta,

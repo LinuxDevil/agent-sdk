@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { WorkspaceApiError, type ApplyOpsView, type ProblemView } from 'lousho/workspaces/client';
+import { WorkspaceApiError, type ApplyOpsView, type ProblemView } from '@linuxdevil/lousho/workspaces/client';
 import { useToast } from '../../ui/Toast';
 import { useWorkspacesClient } from './workspacesClient';
 import type { AuthoringOp } from './workspaceTypes';

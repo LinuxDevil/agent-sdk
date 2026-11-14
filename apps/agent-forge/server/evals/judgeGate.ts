@@ -12,7 +12,7 @@
  */
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import type { EvalGateSpec } from 'lousho/spec';
+import type { EvalGateSpec } from '@linuxdevil/lousho/spec';
 import { callPassModel } from '../passes/passModel';
 import type { PassRunner } from '../passes/passRunner';
 import type { SecretsStore } from '../secretsStore';

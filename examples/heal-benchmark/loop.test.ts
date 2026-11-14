@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { startObserveDaemon } from '../../src/observe/daemon';
 import { ingestBatch, openDb } from '../../src/observe/store';
-import type { SqlDatabase } from 'lousho/improve';
+import type { SqlDatabase } from '@linuxdevil/lousho/improve';
 import { AGENT_MODEL, assertSynthetic, EDITOR_MODEL, LOOP_PREFIX, openKit, syntheticOnly, type LoopEnv } from './loopRuntime';
 import { runAttempt, SCENARIOS, type LoopRow, type ScenarioId } from './loopScenarios';
 

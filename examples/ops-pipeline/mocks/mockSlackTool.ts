@@ -6,8 +6,8 @@
  * POSTing to a real webhook - so the ops-pipeline demo runs with zero
  * external network access.
  */
-import { ToolDescriptor } from 'lousho';
-import { buildSlackAlertPayload, SlackAlertPayload } from 'lousho/integrations';
+import { ToolDescriptor } from '@linuxdevil/lousho';
+import { buildSlackAlertPayload, SlackAlertPayload } from '@linuxdevil/lousho/integrations';
 
 export interface MockSlackPost {
   channel: string;

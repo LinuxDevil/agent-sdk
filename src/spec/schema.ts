@@ -105,7 +105,7 @@ export interface McpOAuthOptions {
   /** The secret of a confidential pre-registered client. */
   clientSecret?: string;
   scopes?: readonly string[];
-  /** Shown on the consent screen when registering. Default `'lousho'`. */
+  /** Shown on the consent screen when registering. Default `'@linuxdevil/lousho'`. */
   clientName?: string;
 }
 
@@ -141,7 +141,7 @@ export interface McpHttpServerSpec {
  */
 export type McpServerSpec = McpStdioServerSpec | McpHttpServerSpec;
 
-/** The v1 agent spec shape (a `.yaml`/`.json` agent file); v2 specs use `AgentSpecV2` (`lousho/spec`). */
+/** The v1 agent spec shape (a `.yaml`/`.json` agent file); v2 specs use `AgentSpecV2` (`@linuxdevil/lousho/spec`). */
 export interface AgentSpec {
   /** Agent name. */
   name: string;
@@ -345,5 +345,5 @@ export const agentSpecProviderSchema = providerSchema as unknown as SpecSchema<A
 export const agentSpecPolicySchema = policySchema as unknown as SpecSchema<AgentSpecPolicy>;
 export const agentSpecTriggerSchema = triggerSchema as unknown as SpecSchema<AgentSpecTrigger>;
 export const mcpServerSpecSchema = mcpServerSchema as unknown as SpecSchema<McpServerSpec>;
-/** The v1 agent spec schema (zod): what `loadSpec()` and `lousho/spec`'s `agentSpecSchema` validate against. */
+/** The v1 agent spec schema (zod): what `loadSpec()` and `@linuxdevil/lousho/spec`'s `agentSpecSchema` validate against. */
 export const agentSpecSchema = specSchema as unknown as SpecObjectSchema<AgentSpec>;

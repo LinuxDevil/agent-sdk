@@ -12,8 +12,8 @@
  *   moved, and stops one whose agent lost its publish pointer.
  * - `closeAll` runs on Studio shutdown.
  */
-import type { AgentSpecV2, SimpleAgent } from 'lousho';
-import { serveMcp, type ServeMcpHandle, type ServeMcpOptions } from 'lousho/mcp';
+import type { AgentSpecV2, SimpleAgent } from '@linuxdevil/lousho';
+import { serveMcp, type ServeMcpHandle, type ServeMcpOptions } from '@linuxdevil/lousho/mcp';
 import type { McpServeStatus } from '../../shared/wireTypes';
 import type { AgentRepo } from '../storage/agentRepo';
 import type { VersionStore } from '../storage/versionStore';

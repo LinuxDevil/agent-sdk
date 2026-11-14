@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react';
-import type { UiChoiceField, UiFileField, UiInputField, UiNumberField, UiOption, UiText } from 'lousho/workspaces/client';
+import type { UiChoiceField, UiFileField, UiInputField, UiNumberField, UiOption, UiText } from '@linuxdevil/lousho/workspaces/client';
 import type { RenderContext } from '../context';
 import { enumValues, fieldSchema } from '../schema';
 import { Field, FieldError, fieldLabel, useControl } from './field';

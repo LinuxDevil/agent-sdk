@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AuthorMessage, Requirement, SpecChange } from '../../../../shared/authorWire';
 import type { AuthorTurn } from '../../turnRunner';
 import type { ReviewInput } from '../../proposal/review';

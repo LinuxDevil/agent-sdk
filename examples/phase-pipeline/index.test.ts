@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { defineTool } from 'lousho';
-import { ToolRegistry } from 'lousho/executor';
-import { mockModel } from 'lousho/testing';
+import { defineTool } from '@linuxdevil/lousho';
+import { ToolRegistry } from '@linuxdevil/lousho/executor';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { z } from 'zod';
 import { buildPhaseFlow, runPhasePipeline, scriptedPhases } from './index';
 

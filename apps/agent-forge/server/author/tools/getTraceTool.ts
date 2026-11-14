@@ -8,7 +8,7 @@
  * `.lousho/agents/<id>/traces`. With `agentId` the lookup is scoped;
  * without it every saved agent's folder is tried in turn.
  */
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 import { isValidTraceId, readAgentTrace } from '../../traceStore';
 import { isValidAgentId } from '../../../shared/agentId';

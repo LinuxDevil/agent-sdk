@@ -14,9 +14,9 @@
  * and fall back to the saved instructions, then the merged patch runs the
  * same build / catalog / requirements / review gauntlet as `proposeAgent`.
  */
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AuthorToolFailure, ProposalOutput } from '../../../shared/authorWire';
 import { diffSpecs } from '../../diff/specChange';
 import { specHash } from '../../storage/specHash';

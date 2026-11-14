@@ -1,7 +1,7 @@
 import { appendFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { cachedProbe, emptyLedger, improveAgent, type Harness, type ImproveOptions } from 'lousho/improve';
-import { mockModel } from 'lousho/testing';
+import { cachedProbe, emptyLedger, improveAgent, type Harness, type ImproveOptions } from '@linuxdevil/lousho/improve';
+import { mockModel } from '@linuxdevil/lousho/testing';
 import { benchmarkProbe, buildAgent, checkFailureNames, nameFailures, parseFailureNames, throttleHook, type FailureNames } from './probe';
 import { confirmHarness, replayRow, type RecordedRow, type ReplayLine } from './replayRows';
 

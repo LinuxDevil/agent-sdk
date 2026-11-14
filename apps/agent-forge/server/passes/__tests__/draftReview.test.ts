@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi, type Mock } from 'vite
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type { SpecChange } from '../../../shared/wireTypes';
 import { AgentRepo } from '../../storage/agentRepo';
 import { DraftStore, type NewDraftInput } from '../../storage/draftStore';

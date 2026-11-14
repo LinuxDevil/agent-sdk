@@ -10,7 +10,7 @@ See also: [Pause, restart, resume](./pause-and-resume.md), a short end-to-end tu
 > Snippets on this page leave some names to you: `provider` is any `LLMProvider` (offline: `createMockProvider()`); `agent` is a `createAgent()` result; `input` is the user's text, a `string`; `emailTool` is a tool built with `defineTool()`; `storage` is a `StorageService`; `toolRegistry` is a `ToolRegistry`.
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -36,7 +36,7 @@ if (paused.finishReason === 'awaiting-approval') {
 arguments, typed from the tool's zod `input`:
 
 ```ts
-import { defineTool } from 'lousho';
+import { defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -89,7 +89,7 @@ error. `allow(tools)`, `deny(tools, reason?)` and `ask(tools)` build the
 common rules.
 
 ```ts
-import { allow, ask, createAgent, defineTool, deny, type PermissionRule } from 'lousho';
+import { allow, ask, createAgent, defineTool, deny, type PermissionRule } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const shell = defineTool({
@@ -168,7 +168,7 @@ session, each `send()` is its own transcript. Compacting away that message
 makes the tool ask again.
 
 ```ts
-import { createAgent, defineTool, once } from 'lousho';
+import { createAgent, defineTool, once } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const askOnce = once();
@@ -234,8 +234,8 @@ restart, give the agent a durable store, such as the SQLite one (see
 [Choosing a store](./sessions.md#choosing-a-store)):
 
 ```ts
-import { createAgent } from 'lousho';
-import { SqliteStore } from 'lousho/sqlite';
+import { createAgent } from '@linuxdevil/lousho';
+import { SqliteStore } from '@linuxdevil/lousho/sqlite';
 
 const store = new SqliteStore('./.lousho/agent.db');
 const agent = createAgent({ provider, tools: [emailTool], store }); // or approvalStore: store.approvals
@@ -269,7 +269,7 @@ The step's calls that need no approval do not wait: they run when the step
 does, before the pause.
 
 ```ts
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini' /* , tools: [payInvoice, archiveThread] */ });
 const paused = await agent.send('Pay the invoice and archive the thread');
@@ -311,7 +311,7 @@ decided.
   `approved: false`.
 
 ```ts
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 const agent = createAgent({ model: 'openai/gpt-4o-mini', tools: [emailTool] });
 const support = agent.session({ id: 'support-42' });
@@ -338,7 +338,7 @@ approval. There is no option on `resolve()` that ends the run. To stop that:
   model gets the reason and answers:
 
 ```ts
-import { createAgent, type AgentHook } from 'lousho';
+import { createAgent, type AgentHook } from '@linuxdevil/lousho';
 
 const noRefile: AgentHook = {
   name: 'no-refile',
@@ -369,7 +369,7 @@ is only on the audit entry (`onPermissionDecision`). An expired pause resolved
 with `approved: true` does not run the tool.
 
 ```ts
-import { createAgent, defineTool } from 'lousho';
+import { createAgent, defineTool } from '@linuxdevil/lousho';
 import { z } from 'zod';
 
 const sendEmail = defineTool({
@@ -436,7 +436,7 @@ Its argument's `principal` is whose call it is, and
 tool's `ctx.approval.by` (see [auth](./auth.md#who-approved)).
 
 ```ts
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 const trusted = createAgent({
   provider,
@@ -454,10 +454,10 @@ score, a timeout, a model error, arguments too long to judge — defers to a
 human exactly like `'defer'`. It never denies a call on its own.
 
 ```ts
-import { ask, createAgent, createAutoApprove, modelAutoApprover } from 'lousho';
+import { ask, createAgent, createAutoApprove, modelAutoApprover } from '@linuxdevil/lousho';
 
 declare const issueTool: any;
-declare const cheapProvider: import('lousho').LLMProvider;
+declare const cheapProvider: import('@linuxdevil/lousho').LLMProvider;
 
 const agent = createAgent({
   provider,
@@ -492,11 +492,11 @@ permissions:
 ```
 
 ```ts
-import { modelAutoApprover, specV2ToAgent } from 'lousho';
+import { modelAutoApprover, specV2ToAgent } from '@linuxdevil/lousho';
 
-declare const spec: import('lousho').AgentSpecV2;
+declare const spec: import('@linuxdevil/lousho').AgentSpecV2;
 declare const baseDir: string;
-declare const cheapProvider: import('lousho').LLMProvider;
+declare const cheapProvider: import('@linuxdevil/lousho').LLMProvider;
 
 const agent = await specV2ToAgent(spec, {
   baseDir,
@@ -523,7 +523,7 @@ is what `resolve()` resolves with. A continuation that pauses again ends with
 continues in that session, and `run.done` comes once the transcript is saved.
 
 ```ts
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 const agent = createAgent({ provider, tools: [emailTool] });
 const paused = await agent.send('Email Sam the report');
@@ -560,7 +560,7 @@ approval: in sessions, in durable stores and across a restart.
   in tests and scripted agents.
 
 ```ts
-import { createAgent } from 'lousho';
+import { createAgent } from '@linuxdevil/lousho';
 
 const agent = createAgent({ instructions: 'Plan the trip with the user.', provider, askQuestion: true });
 
@@ -597,8 +597,8 @@ tool. Resume later, after a real restart if you like, with
 `resumeAfterApproval()`:
 
 ```ts
-import { AgentExecutor, resumeAfterApproval } from 'lousho/executor';
-import { StorageServiceApprovalStore } from 'lousho/utils';
+import { AgentExecutor, resumeAfterApproval } from '@linuxdevil/lousho/executor';
+import { StorageServiceApprovalStore } from '@linuxdevil/lousho/utils';
 
 const approvalStore = new StorageServiceApprovalStore(storage);
 

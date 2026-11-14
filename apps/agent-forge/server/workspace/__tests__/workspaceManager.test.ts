@@ -16,7 +16,7 @@ import type { InboxService } from '../../inbox/inboxService';
 import type { TriggerHost } from '../../triggers/triggerHost';
 import type { CronTriggers } from '../../triggers/cronTriggers';
 import type { LegacyAgentStore } from '../../../src/persistence/AgentStore';
-import { TriggerRegistry } from 'lousho/triggers';
+import { TriggerRegistry } from '@linuxdevil/lousho/triggers';
 import type { WorkspaceContext } from '../context';
 import type { WorkspaceRef } from '../../../shared/workspace';
 import { WorkspaceRegistry } from '../workspaceRegistry';

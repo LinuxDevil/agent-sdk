@@ -37,7 +37,7 @@ import { listSubagentDirs } from './subagents';
 import { fail, validateConfig, type AgentDirConfig, type AgentDirPermissionRule } from './validateConfig';
 
 // The pure write side moved to `src/spec/v2/specToAgentDir.ts` (S19); these
-// re-exports keep `import { specToAgentDir } from 'lousho'` working.
+// re-exports keep `import { specToAgentDir } from '@linuxdevil/lousho'` working.
 export { specToAgentDir };
 export type { DroppedField, SpecToAgentDirResult };
 

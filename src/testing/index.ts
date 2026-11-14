@@ -1,5 +1,5 @@
 /**
- * `lousho/testing` - test doubles for agents.
+ * `@linuxdevil/lousho/testing` - test doubles for agents.
  *
  * Re-exports the in-memory repository mocks, the scripted `mockModel` and the
  * `recordReplay` VCR provider.

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { createAgent, type AgentHook, type LLMProvider } from 'lousho';
+import { createAgent, type AgentHook, type LLMProvider } from '@linuxdevil/lousho';
 import type { BenchmarkAgent, BenchmarkTask } from './agents';
 
 export type RunOutcome = 'passed' | 'failed' | 'unknown';

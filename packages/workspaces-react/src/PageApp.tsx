@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type Key, type ReactElement } from 'react';
-import type { ApiClient, PageUiView, UiComponent } from 'lousho/workspaces/client';
+import type { ApiClient, PageUiView, UiComponent } from '@linuxdevil/lousho/workspaces/client';
 import { IDLE_RUN, type RenderContext, type RunHandle } from './context';
 import { useFormState, type FormCheck } from './form';
 import { renderComponent } from './render';

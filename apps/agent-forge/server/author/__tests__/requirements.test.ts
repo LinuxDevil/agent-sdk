@@ -8,7 +8,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { computeRequirements, requirementDeps, type RequirementDeps } from '../requirements';
 import type { Requirement } from '../../../shared/authorWire';
 import type { SecretsStore } from '../../secretsStore';

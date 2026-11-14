@@ -3,7 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import request from 'supertest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { createApp } from '../app';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
@@ -268,7 +268,7 @@ describe('/serve/<id> published-agent surface (X02a)', () => {
     });
 
     it('POST maps a missing MCP peer to 422 LOUSHO_MCP_PEER_MISSING', async () => {
-      const { ConfigurationError } = await import('lousho');
+      const { ConfigurationError } = await import('@linuxdevil/lousho');
       vi.mocked(mcpStub.start).mockRejectedValueOnce(
         new ConfigurationError('serveMcp: optional peer @modelcontextprotocol/sdk is not installed', 'mcp')
       );

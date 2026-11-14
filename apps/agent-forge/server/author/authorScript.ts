@@ -14,8 +14,8 @@
  * outside e2e.
  */
 import { readFileSync } from 'node:fs';
-import { mockModel, type MockModel, type MockTurnObject } from 'lousho/testing';
-import type { LLMProvider } from 'lousho';
+import { mockModel, type MockModel, type MockTurnObject } from '@linuxdevil/lousho/testing';
+import type { LLMProvider } from '@linuxdevil/lousho';
 
 /** The env var naming the JSON file of scripted Author turns. */
 export const AUTHOR_SCRIPT_ENV = 'LOUSHO_FORGE_AUTHOR_SCRIPT';

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import * as path from 'node:path';
-import { agentSpecV2Schema, type AgentSpecV2 } from 'lousho';
+import { agentSpecV2Schema, type AgentSpecV2 } from '@linuxdevil/lousho';
 import type { AuthorToolFailure, ProposalOutput } from '../../../../shared/authorWire';
 import type { StudioEvent } from '../../../../shared/wireTypes';
 import { AgentRepo, defaultMeta } from '../../../storage/agentRepo';

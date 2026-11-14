@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { downloadSpec, importSpecFile, parseSpecText, serializeSpec } from '../importExport';
 
 const spec: AgentSpecV2 = {

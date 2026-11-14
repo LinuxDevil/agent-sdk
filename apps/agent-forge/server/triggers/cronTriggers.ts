@@ -17,8 +17,8 @@
  */
 import * as path from 'node:path';
 
-import { CronExpressionError, parseCronExpression, type CronSchedule } from 'lousho/triggers';
-import type { TriggerSpec } from 'lousho/spec';
+import { CronExpressionError, parseCronExpression, type CronSchedule } from '@linuxdevil/lousho/triggers';
+import type { TriggerSpec } from '@linuxdevil/lousho/spec';
 
 import { readJsonFile, withAgentLock, writeJsonAtomic } from '../storage/atomic';
 import { AgentRepo } from '../storage/agentRepo';

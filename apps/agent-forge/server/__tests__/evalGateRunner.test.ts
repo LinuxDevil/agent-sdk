@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import type { AgentSpecV2, EvalGateSpec } from 'lousho/spec';
+import type { AgentSpecV2, EvalGateSpec } from '@linuxdevil/lousho/spec';
 import type { PassRunner, PassResult } from '../passes/passRunner';
 import { SettingsStore } from '../settingsStore';
 import { SecretsStore } from '../secretsStore';

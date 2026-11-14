@@ -8,7 +8,7 @@
  * `shared/` ships in the browser bundle, so basenames are computed by hand
  * (`node:path` is not available here).
  */
-import type { AgentSpecV2 } from 'lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 
 /** One `spec.tools` entry (the SDK's ToolRef union, derived here since it is not a public export). */
 type ToolRef = NonNullable<AgentSpecV2['tools']>[number];

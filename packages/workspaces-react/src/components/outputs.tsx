@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import type { UiArtifactView, UiOutputField, UiRunWidget, UiText } from 'lousho/workspaces/client';
+import type { UiArtifactView, UiOutputField, UiRunWidget, UiText } from '@linuxdevil/lousho/workspaces/client';
 import type { RenderContext } from '../context';
 import { getAt } from '../paths';
 import { isRecord } from '../schema';

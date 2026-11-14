@@ -24,16 +24,16 @@ import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { z } from 'zod';
-import { defineTool, resolveProvider, type LLMProvider } from 'lousho';
+import { defineTool, resolveProvider, type LLMProvider } from '@linuxdevil/lousho';
 import {
   FlowBuilder,
   FlowExecutor,
   type AgentFlow,
   type EditorStep,
   type FlowExecutionResult,
-} from 'lousho/flows';
-import { ToolRegistry } from 'lousho/executor';
-import { mockModel } from 'lousho/testing';
+} from '@linuxdevil/lousho/flows';
+import { ToolRegistry } from '@linuxdevil/lousho/executor';
+import { mockModel } from '@linuxdevil/lousho/testing';
 
 export const LIVE_MODEL = 'openrouter/openai/gpt-4o-mini';
 

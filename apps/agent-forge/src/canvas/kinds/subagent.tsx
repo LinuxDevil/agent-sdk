@@ -10,7 +10,7 @@
 import { Users } from 'lucide-react';
 import { uniqueName } from '../../graph/v2/nodeIds';
 import { subagentSiblingKeys } from '../../graph/v2/order';
-import type { SecretRef } from '../../graph/v2/specTypes';
+import type { SecretRef } from '../../../shared/wireTypes';
 import type { NodeOfKind } from '../../graph/v2/types';
 import { SubagentFields } from './subagent/SubagentFields';
 import { urlHost } from './urlHost';

@@ -29,7 +29,7 @@
  * only supported on `llm` and `tool` nodes, matching this app's graph model
  * (graph/types.ts) - see the epic report for the full breakdown.
  */
-import type { AgentHook, Message } from 'lousho';
+import type { AgentHook, Message } from '@linuxdevil/lousho';
 
 export type DebugBoundary = 'before' | 'after';
 
