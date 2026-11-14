@@ -348,6 +348,13 @@ export class BridgeClient {
       );
     });
     child.on('exit', (code, signal) => this.handleExit(child, code, signal));
+    // A broken stdin pipe (EPIPE when the child died between the writable
+    // check and the write) emits 'error' on the stream itself - without a
+    // listener that surfaces as an unhandled error. The 'exit' handler
+    // above does the real state work; this just keeps the write side quiet.
+    child.stdin?.on('error', (error) => {
+      if (this.child === child) this.recordStderr(`stdin: ${error.message}`);
+    });
   }
 
   private async handshake(child: ChildProcess): Promise<void> {
