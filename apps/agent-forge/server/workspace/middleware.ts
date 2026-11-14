@@ -1,8 +1,10 @@
 /**
  * Per-request workspace resolution.
  *
- * Mounted right after `express.json`, before the first route, so it runs
- * on every request: it reads the workspace id the client asked for
+ * Mounted right after the access gate and BEFORE the body parsers (the
+ * `/serve` router needs the context but must see the raw request stream),
+ * so it runs on every request: it reads the workspace id the client asked
+ * for
  * (`x-lousho-workspace` header, else `?ws=`), resolves it through the
  * app's `WorkspaceResolver`, and remembers the resulting
  * `WorkspaceContext` for `workspaceOf(req)`. Route handlers then read

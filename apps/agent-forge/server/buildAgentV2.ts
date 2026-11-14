@@ -42,6 +42,7 @@ import {
   type AutoApprovalDecision,
   type CheckpointStore,
   type SimpleAgent,
+  type SessionStore,
   type SpecHost,
   type ToolDescriptor,
   type TraceExporter,
@@ -75,6 +76,13 @@ export interface StudioRunDeps {
    */
   settings?: SettingsStore;
   spend?: SpendLog;
+  /**
+   * The store the built agent keeps chat sessions in (createAgent's
+   * `store.sessions`, X02a): absent → sessions live in memory only, which
+   * is right for one-shot runs but wrong for the `/serve/<id>` surface,
+   * whose callers resume sessions across requests and restarts.
+   */
+  sessions?: SessionStore;
 }
 
 /** The per-run wiring that is not part of the spec: event sink, trace exporter and Studio-appended hooks. */
@@ -211,7 +219,11 @@ export async function buildRunnableAgent(
     baseDir: path.join(deps.baseDir, '.lousho', 'agents'),
     resolveSecret: (name) => deps.secretsStore?.getSecret(name),
     exporter: wiring.exporter,
-    store: { checkpoints: deps.checkpointStore, approvals },
+    store: {
+      checkpoints: deps.checkpointStore,
+      approvals,
+      ...(deps.sessions !== undefined && { sessions: deps.sessions }),
+    },
     ...(autoApprover !== undefined && { autoApprover }),
     ...(wiring.onAutoApproval !== undefined && { onAutoApproval: wiring.onAutoApproval }),
   };

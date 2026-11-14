@@ -110,6 +110,20 @@ export function checkHostAndOrigin(req: IncomingMessage, options: StudioAccessOp
   return { ok: true };
 }
 
+/**
+ * The Host half of {@link checkHostAndOrigin} alone (X02a): the `/serve/**`
+ * surface skips the studio token AND the studio-origin rule - external
+ * apps call it with their own bearer token and their own Origin, which
+ * the serve router checks against the agent's `allowedOrigins` instead.
+ */
+export function checkHostOnly(req: IncomingMessage, options: StudioAccessOptions): AccessDecision {
+  const host = header(req, 'host');
+  if (!isAllowedHost(host, options.allowedHosts ?? [])) {
+    return { ok: false, status: 403, error: 'Forbidden host' };
+  }
+  return { ok: true };
+}
+
 /** Host + Origin + token, for the API routes and the WebSocket upgrade. */
 export function checkApiAccess(req: IncomingMessage, options: StudioAccessOptions): AccessDecision {
   const base = checkHostAndOrigin(req, options);
