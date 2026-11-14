@@ -129,6 +129,12 @@ export interface WorkspaceResolver {
    */
   resolve(id: string | undefined): Promise<WorkspaceContext | undefined>;
   defaultId(): string;
+  /**
+   * Keeps `id` warm until the returned release runs (open sockets, W02b).
+   * `singleWorkspace` returns a no-op release - its one context is never
+   * a disposal candidate anyway.
+   */
+  retain(id: string): () => void;
 }
 
 /** A resolver that serves exactly `ctx` - the launch folder, whatever id came in that names it. */
@@ -137,6 +143,7 @@ export function singleWorkspace(ctx: WorkspaceContext): WorkspaceResolver {
     resolve: (id) =>
       Promise.resolve(id === undefined || id === ALL_WORKSPACES || id === ctx.ref.id ? ctx : undefined),
     defaultId: () => ctx.ref.id,
+    retain: () => () => {},
   };
 }
 
