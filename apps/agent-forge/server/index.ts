@@ -17,9 +17,11 @@ import { RunManager } from './runRegistry';
 import { SecretsStore } from './secretsStore';
 import { SettingsStore } from './settingsStore';
 import { startJudgeLoop, type JudgeLoopOptions } from './judge';
+import { CollectorManager } from './collector';
 import type { IdleVersioner } from './storage/idleVersioner';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
-import { createWorkspaceContext, singleWorkspace } from './workspace/context';
+import { createWorkspaceContext, type WorkspaceServices } from './workspace/context';
+import { WorkspaceManager } from './workspace/workspaceManager';
 import { configureStudioHome, studioPaths } from './workspace/studioPaths';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 import { AUTHOR_STREAM_PATH } from '../shared/authorWire';
@@ -32,6 +34,7 @@ import { TemplateCatalog } from './templates/templateCatalog';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
+import { VERSION } from 'lousho';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -47,6 +50,8 @@ export interface StudioServerHandle {
   token: string;
   /** The URL to open: the studio's own origin with `?token=` appended. */
   url: string;
+  /** The app's collector (collector.ts): `close()` already stopped a Studio-started daemon. */
+  collector: CollectorManager;
   close: () => Promise<void>;
 }
 
@@ -103,6 +108,21 @@ export interface StartStudioServerOptions {
    * own `createIdleVersioner(versions)` (storage/idleVersioner.ts).
    */
   idleVersioner?: IdleVersioner;
+  /**
+   * The Studio home directory (`configureStudioHome`'s argument - every
+   * Studio-global store derives its files from it). Defaults to
+   * `<baseDir>/.lousho`, where the launch folder's files already live;
+   * tests pass a temp dir so they never touch a real home (W02b).
+   */
+  studioHome?: string;
+  /**
+   * The collector (observe daemon) manager - `false` never starts one in
+   * this process (`LOUSHO_STUDIO_COLLECTOR=0` does the same; the e2e server
+   * uses it against its observe stub), a `CollectorManager` is used as-is
+   * (tests), and the default builds one over the app's settings/secrets
+   * stores and `start()`s it before `listen` (collector.ts).
+   */
+  collector?: false | CollectorManager;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -146,10 +166,22 @@ export async function startStudioServer(
   // The Studio home keeps every file where it was (the launch folder's
   // `.lousho/`); moving it to `~/.lousho/studio` is a later change of this
   // one default - every store below already reads its paths from it.
-  configureStudioHome(path.join(baseDir, '.lousho'));
+  configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
   const paths = studioPaths();
   const secretsStore = new SecretsStore(paths);
   const settingsStore = new SettingsStore(paths);
+  // The one collector every daemon client follows (collector.ts): attach
+  // to a running daemon, start one on a loopback URL, or report a remote
+  // one down. `LOUSHO_STUDIO_COLLECTOR=0` / `collector: false` only ever
+  // attaches - nothing is spawned in this process.
+  const collector =
+    options.collector !== undefined && options.collector !== false
+      ? options.collector
+      : new CollectorManager({
+          settings: settingsStore,
+          secrets: secretsStore,
+          ...(options.collector === false ? { autoStart: false } : {}),
+        });
 
   // The launch folder is added to the workspace registry on every start
   // (`ensure` keeps one entry and bumps lastOpenedAt on a restart) and
@@ -169,14 +201,27 @@ export async function startStudioServer(
   // writes `auto_disabled` alerts here per workspace; R02a's inbox routes
   // read the same instance off the app options.
   const alerts = new AlertStore(paths.alerts);
-  const workspace = createWorkspaceContext(launchRef, {
+  // The Studio-global stores every workspace context shares (W02a): the
+  // manager's `build` reuses this exact object, so a lazily-built context
+  // gets the same passRunner/spendLog/alerts/secrets/settings as launch.
+  const services: WorkspaceServices = {
     secretsStore,
     settingsStore,
     observe: options.observe !== false,
     passRunner,
     spendLog,
     alerts,
-  });
+    // W12: the one CollectorManager feeds run reporting here and bridge
+    // children through the host selector's env (context.ts adapts it).
+    collector,
+    studioVersion: VERSION,
+  };
+  const workspace = createWorkspaceContext(launchRef, services);
+  // Every registered workspace resolves over HTTP through this manager:
+  // contexts build lazily on first use, stay warm up to the cap, and idle
+  // ones dispose - the launch context is always warm and never a
+  // candidate (workspace/workspaceManager.ts).
+  const workspaces = new WorkspaceManager({ registry, launch: workspace, build: (ref) => createWorkspaceContext(ref, services) });
   // A test-injected versioner replaces the context's default one before the
   // app and `close()` below both read `workspace.idleVersioner`.
   if (options.idleVersioner !== undefined) workspace.idleVersioner = options.idleVersioner;
@@ -204,7 +249,7 @@ export async function startStudioServer(
       secrets: secretsStore,
       templates: templateCatalog,
       docsDir,
-      workspaceResolver: singleWorkspace(workspace),
+      workspaceResolver: workspaces,
       ...(authorScript !== undefined ? { scriptedProvider: authorScript } : {}),
     });
   const app = createApp({
@@ -214,6 +259,8 @@ export async function startStudioServer(
     secretsStore,
     settingsStore,
     workspaceRegistry: registry,
+    workspaces,
+    warm: () => workspaces.warm(),
     staticDir,
     docsDir,
     access,
@@ -224,21 +271,36 @@ export async function startStudioServer(
     spendLog,
     passRunner,
     alerts,
+    collector,
   });
   const server = http.createServer(app);
   // One upgrade listener for every WS endpoint: the shared Host/Origin/
   // token gate runs in the router, then the first registered route wins.
   const upgradeRouter = createUpgradeRouter(server, access);
-  attachWebSocketServer(upgradeRouter, workspace.runs);
-  attachEventsWebSocket(upgradeRouter, workspace.events);
+  attachWebSocketServer(upgradeRouter, workspaces);
+  // `WS /events?ws=all` (W09a): every warm context's events tagged by
+  // workspace plus the Studio-wide inbox count; onBuilt/onDisposed keep
+  // the socket's subscription set following lazily-built contexts.
+  attachEventsWebSocket(upgradeRouter, workspaces, {
+    registry,
+    warm: () => workspaces.warm(),
+    alerts,
+    onBuilt: (listener) => workspaces.onBuilt(listener),
+    onDisposed: (listener) => workspaces.onDisposed(listener),
+  });
   upgradeRouter.register(
     AUTHOR_STREAM_PATH,
     createAuthorUpgradeHandler({ runner: authorRunner, sessions: authorSessions })
   );
 
+  // The collector resolves (attach or in-process start) before the API
+  // listens, so the first `/observe` request already has a target.
+  await collector.start();
+
   await listen(server, port, host);
   const judgeOption = options.judge ?? (options.observe === false ? false : {});
-  const judgeLoop = judgeOption === false ? undefined : startJudgeLoop({ ...judgeOption, secretsStore });
+  const judgeLoop =
+    judgeOption === false ? undefined : startJudgeLoop({ ...judgeOption, secretsStore, collector });
   const boundPort = (server.address() as { port: number }).port;
   const urlHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host.includes(':') ? `[${host}]` : host;
 
@@ -249,18 +311,25 @@ export async function startStudioServer(
     upgradeRouter,
     token,
     url: `http://${urlHost}:${boundPort}/?token=${encodeURIComponent(token)}`,
+    collector,
     close: async () => {
       judgeLoop?.stop();
       // Abort in-flight passes and settle queued ones; running jobs get the
       // abort signal and their records land if they settle before exit.
       passRunner.close();
-      // Flush pending idle-version captures before the socket stops taking writes.
+      // Dispose every warm workspace context (launch included) - each
+      // flushes its idle-version captures and stops its inbox/triggers/
+      // cron - before the socket stops taking writes.
+      await workspaces.close();
+      // The explicit launch stops stay for the `options.idleVersioner`
+      // test seam, which replaces `workspace.idleVersioner` after the
+      // context built its own (dispose flushes the original).
       await workspace.idleVersioner.flushAll();
-      // Stop the launch workspace's inbox recount subscriptions (R02a)
-      // and its trigger host's run-status subscriptions (R08a).
       workspace.inbox.stop();
       workspace.triggers.stop();
       workspace.cron.stop();
+      // A daemon this Studio started stops with it; an attached one is left alone.
+      await collector.stop();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     },
   };
@@ -292,8 +361,23 @@ if (isMainModule) {
   startStudioServer({ port, host, baseDir, staticDir, judge })
     .then((handle) => {
       console.log(`[lousho studio] API server listening on http://${host ?? '127.0.0.1'}:${handle.port}`);
+      const collector = handle.collector.status();
+      if (collector.mode === 'started') {
+        console.log(`[lousho studio] Collector: started on ${collector.url} (stops with Studio)`);
+      } else if (collector.mode === 'attached') {
+        console.log(`[lousho studio] Collector: attached to ${collector.url}`);
+      } else if (collector.mode === 'remote') {
+        console.log(`[lousho studio] Collector: remote ${collector.url}`);
+      } else {
+        console.log(`[lousho studio] Collector: not reachable (${collector.error ?? 'unknown'})`);
+      }
       // `lousho studio` mints the token itself and prints this URL; only print it when launched directly.
       if (!process.env[STUDIO_TOKEN_ENV]) console.log(`[lousho studio] Agent Forge: ${handle.url}`);
+      const shutdown = () => {
+        void handle.close().finally(() => process.exit(0));
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
     })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));

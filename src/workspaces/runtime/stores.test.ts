@@ -8,8 +8,9 @@ import type { Checkpoint } from '../../execution/checkpoint';
 import type { PageRunEvent } from '../contracts/execution';
 import { appendFileSync, writeFileSync } from 'node:fs';
 import { pglitePool } from '../__fixtures__/pglitePool';
-import { fileHostBackend, postgresHostBackend, sqlHostBackend, sqliteHostBackend } from './backends';
+import { fileHostBackend, postgresHostBackend, sqliteHostBackend } from './backends';
 import { postgresSqlClient, sqliteSqlClient, type PgQueryable } from './sql';
+import { sqliteWorkspaceSource } from '../source/dbSource';
 import { createWorkspaceStores, type HostBackend, type WorkspaceScope } from './stores';
 
 const dirs: string[] = [];
@@ -55,7 +56,7 @@ async function liveBackend(dir: string): Promise<HostBackend> {
 const BACKENDS: Array<[string, (dir: string) => Promise<HostBackend>]> = [
   ['file', async (dir) => fileHostBackend(join(dir, 'files'))],
   ['sqlite', (dir) => sqliteHostBackend(join(dir, 'host.db'))],
-  ['sql tables on sqlite', (dir) => sqlHostBackend(sqliteSqlClient(join(dir, 'sql.db')))],
+  ['sql tables on a shared sqlite connection', (dir) => sqliteHostBackend(sqliteSqlClient(join(dir, 'sql.db')))],
   ['postgres over pglite', (dir) => postgresHostBackend(pglitePool(join(dir, 'pg')), { ownsPool: true })],
   ...(PG_URL === undefined ? [] : [['postgres at LOUSHO_TEST_PG_URL', liveBackend] as [string, (dir: string) => Promise<HostBackend>]]),
 ];
@@ -110,6 +111,16 @@ describe.each(BACKENDS)('the store contract on %s', (_name, make) => {
     expect(await stores.runs.get('run-1')).toEqual(done);
     expect(await stores.runs.list(['running'])).toEqual([]);
     expect(await stores.runs.list(['ok'])).toEqual([done]);
+  });
+
+  it('keeps the thread and the parent run of a run row', async () => {
+    const stores = createWorkspaceStores(await backend(), A);
+    await stores.runs.start({ runId: 'ws-1', pageId: '', revision: 'r1', threadId: 'thread-1' });
+    await stores.runs.start({ runId: 'page-1', pageId: 'post', revision: 'r1', threadId: 'thread-1', parentRunId: 'ws-1' });
+    await stores.runs.finish('page-1', 'ok');
+    expect(await stores.runs.get('ws-1')).toMatchObject({ threadId: 'thread-1' });
+    expect((await stores.runs.get('ws-1'))?.parentRunId).toBeUndefined();
+    expect(await stores.runs.get('page-1')).toMatchObject({ threadId: 'thread-1', parentRunId: 'ws-1', status: 'ok' });
   });
 
   it('a run row survives a restart and is marked interrupted', async () => {
@@ -242,5 +253,29 @@ describe('the Postgres client', () => {
     expect(await client.execute('DELETE FROM ws_threads WHERE key = ?', ['k'])).toBe(1);
     expect(calls[0]).toEqual({ text: 'SELECT * FROM ws_runs WHERE run_id = $1 AND status = $2', values: ["x' OR 1=1 --", 'ok'] });
     expect(calls[1]?.text).toBe('DELETE FROM ws_threads WHERE key = $1');
+  });
+});
+
+describe('host backends and shared connections', () => {
+  it('a hand-built backend fails createWorkspaceStores with a config error', () => {
+    const fake: HostBackend = { close: async () => undefined };
+    expect(() => createWorkspaceStores(fake, A)).toThrow(expect.objectContaining({ code: 'LOUSHO_CONFIG_INVALID' }));
+  });
+
+  it('sqliteHostBackend and sqliteWorkspaceSource share one connection, and the backend leaves it open', async () => {
+    const client = sqliteSqlClient(join(scratch(), 'one.db'));
+    const backend = await sqliteHostBackend(client);
+    const source = await sqliteWorkspaceSource(client, { ref: { projectId: 'proj-1', workspaceId: 'marketing' } });
+    const stores = createWorkspaceStores(backend, A);
+    await stores.runs.start({ runId: 'run-1', pageId: 'p', revision: await source.revision() });
+    await backend.close();
+    expect((await client.query('SELECT run_id FROM ws_runs')).map((row) => row.run_id)).toEqual(['run-1']);
+    await client.close();
+  });
+
+  it('refuses a SQL client that is not a sqliteSqlClient', async () => {
+    const pgClient = postgresSqlClient({ query: async () => ({ rows: [], rowCount: 0 }) });
+    await expect(sqliteHostBackend(pgClient)).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
+    await expect(sqliteWorkspaceSource(pgClient)).rejects.toMatchObject({ code: 'LOUSHO_CONFIG_INVALID' });
   });
 });

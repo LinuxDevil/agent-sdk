@@ -11,6 +11,7 @@ import { SecretsStore } from '../secretsStore';
 import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { RunManager } from '../runRegistry';
 import type { AgentHost } from '../host/agentHost';
+import type { WorkspaceHostSelector } from '../host/hostSelector';
 import { AgentRepo } from '../storage/agentRepo';
 import { DraftStore } from '../storage/draftStore';
 import { SuggestionStore } from '../storage/suggestionStore';
@@ -20,6 +21,7 @@ import { StudioEventBus } from '../events/eventBus';
 import { PassRunner } from '../passes/passRunner';
 import type { InboxService } from '../inbox/inboxService';
 import type { TriggerHost } from '../triggers/triggerHost';
+import type { ChannelTriggers } from '../triggers/channelTriggers';
 import type { CronTriggers } from '../triggers/cronTriggers';
 import type { WorkspaceContext } from '../workspace/context';
 import { workspaceRefFor } from '../workspace/workspaceId';
@@ -87,6 +89,7 @@ function appWith(
     idleVersioner: new IdleVersioner({ capture: async () => {} }),
     suggestions: new SuggestionStore(repo),
     host: {} as AgentHost,
+    hostSelector: {} as WorkspaceHostSelector,
     runs: {} as RunManager,
     chatTriggers: new TriggerRegistry(),
     events: new StudioEventBus(),
@@ -94,6 +97,8 @@ function appWith(
     inbox: {} as InboxService,
     triggers: host,
     cron: {} as CronTriggers,
+    dispose: async () => {},
+    channels: {} as ChannelTriggers,
   };
   const secrets = new SecretsStore(baseDir);
   secrets.setSecret('wh', SECRET);

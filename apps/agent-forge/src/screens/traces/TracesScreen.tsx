@@ -15,10 +15,10 @@ import { Radio, RefreshCw, SearchX, X } from 'lucide-react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useAgents, useDaemonDown, useDaemonHealth, useTraces } from '../../observe/useObserve';
-import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
+import { ObserveDaemonDown, ObserveError, TraceTokens } from '../../observe/chrome';
 import type { TraceSort } from '../../observe/observeClient';
 import type { ObserveAgentRow, ObserveTraceRow } from '../../observe/types';
-import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../observe/format';
+import { fmtCost, fmtDuration, fmtStarted } from '../../observe/format';
 import { Card } from '../../ui/Card';
 import { DataTable, ErrorCell, type Column, type TableSort } from '../../ui/DataTable';
 import { FilterBar } from '../../ui/FilterBar';
@@ -26,6 +26,9 @@ import { EmptyState } from '../../ui/EmptyState';
 import { StatusPill } from '../../ui/StatusPill';
 import { ScreenHeader } from '../../shell/ScreenHeader';
 import { Clip, agentFacet, facet, useRangeFilter } from '../listFilters';
+import { useWorkspacesMaybe } from '../../workspace/WorkspacesProvider';
+import type { WorkspaceListItem } from '../../../shared/wireTypes';
+import { projectWorkspaceNames, workspaceProjects } from './workspaceProjects';
 import {
   PAGE_SIZE,
   formatTracesQuery,
@@ -105,11 +108,7 @@ function columns(now: number): Column<ObserveTraceRow>[] {
       sortable: true,
       width: 86,
       hideBelow: 600,
-      render: (t) => (
-        <span title={`${fmtInt(t.input_tokens)} in / ${fmtInt(t.output_tokens)} out`}>
-          {fmtInt(t.input_tokens + t.output_tokens)}
-        </span>
-      ),
+      render: (t) => <TraceTokens trace={t} />,
     },
     { key: 'cost', header: 'Cost', align: 'right', sortable: true, width: 84, hideBelow: 600, render: (t) => fmtCost(t.cost_usd) },
   ];
@@ -134,18 +133,44 @@ function PromptChip({ prompt, onRemove }: { prompt: string | undefined; onRemove
 const toSort = (next: TableSort | undefined): TracesUrlState['sort'] =>
   next && SORTABLE.includes(next.key) ? { key: next.key as TraceSort, order: next.order } : undefined;
 
-/** The agent / status / model / project facets; model options come from the rows on screen. */
+/**
+ * The agent / status / model / workspace / project facets; model options
+ * come from the rows on screen. The Workspace facet (W09b) is a view over
+ * the `project` filter - the URL stores only `project`, so picking a
+ * workspace writes its `observeProject` and the facet's selection is
+ * derived back from it. Project options name their workspace when the
+ * project maps to one.
+ */
 function traceFacets(
   state: TracesUrlState,
   rows: ObserveTraceRow[],
   agentRows: ObserveAgentRow[],
+  workspaces: readonly WorkspaceListItem[] | undefined,
   setText: (key: 'agent' | 'status' | 'model' | 'project') => (v: string | undefined) => void
 ) {
+  const wsProjects = workspaceProjects(workspaces);
+  const projectNames = projectWorkspaceNames(workspaces);
+  const nameToProject = new Map<string, string>();
+  for (const { workspaceName, project } of wsProjects) {
+    if (!nameToProject.has(workspaceName)) nameToProject.set(workspaceName, project);
+  }
+  const wsNames = [...new Set(wsProjects.map((p) => p.workspaceName))];
+  const wsValue = state.project === undefined ? undefined : projectNames.get(state.project);
+  const projectFacet = facet('project', 'Project', uniqueSorted(agentRows.map((a) => a.project)), state.project, setText('project'));
   return [
     agentFacet(agentRows, state.agent, setText('agent')),
     facet('status', 'Status', STATUSES, state.status, setText('status')),
     facet('model', 'Model', uniqueSorted(rows.map((t) => t.model)), state.model, setText('model')),
-    facet('project', 'Project', uniqueSorted(agentRows.map((a) => a.project)), state.project, setText('project')),
+    facet('workspace', 'Workspace', wsNames, wsValue, (name) =>
+      setText('project')(name === undefined ? undefined : nameToProject.get(name))
+    ),
+    {
+      ...projectFacet,
+      options: projectFacet.options.map((o) => {
+        const wsName = projectNames.get(o.value);
+        return wsName === undefined ? o : { ...o, label: `${o.value} (${wsName})` };
+      }),
+    },
   ];
 }
 
@@ -187,9 +212,10 @@ function TracesList({ refreshKey, live, onDown }: TracesListProps) {
 
   const range = useRangeFilter(state.window, '24h', (window) => update({ window }));
   const onSort = (next: TableSort | undefined) => update({ sort: toSort(next) });
+  const workspaces = useWorkspacesMaybe()?.list;
 
   const rows = rowsOf(traces.data);
-  const facets = traceFacets(state, rows, agentsOf(agents.data), setText);
+  const facets = traceFacets(state, rows, agentsOf(agents.data), workspaces, setText);
   if (down) return <ObserveDaemonDown />;
 
   return (

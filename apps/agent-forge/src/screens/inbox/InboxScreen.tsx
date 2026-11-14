@@ -3,9 +3,13 @@ import { Inbox } from 'lucide-react';
 import { EmptyState } from '../../ui/EmptyState';
 import { SkeletonRows } from '../../ui/Skeleton';
 import { ScreenHeader } from '../../shell/ScreenHeader';
+import { useWorkspacesMaybe } from '../../workspace/WorkspacesProvider';
+import { workspaceLabel } from '../../workspace/workspaceLabels';
 import type { InboxItem, InboxItemKind } from '../../../shared/wireTypes';
+import { useRoute } from '../../router/useRoute';
 import { InboxRow, type InboxActionHandlers } from './InboxRow';
-import { useInboxActions } from './useInboxActions';
+import { inboxScopeFromHash, type InboxScope } from './inboxScope';
+import { inboxRowKey, useInboxActions } from './useInboxActions';
 import { useInboxData } from './useInboxData';
 import './inbox.css';
 
@@ -17,11 +21,17 @@ const GROUPS: readonly { kind: InboxItemKind; title: string }[] = [
   { kind: 'alert', title: 'Alerts' },
 ];
 
-function InboxHeader({ onRefresh }: { onRefresh: () => void }) {
+function InboxHeader({ scope, onRefresh }: { scope: InboxScope; onRefresh: () => void }) {
+  const workspaces = useWorkspacesMaybe();
+  const name = scope.kind === 'workspace' ? workspaceLabel(scope.workspaceId, workspaces?.list) : undefined;
+  const description =
+    scope.kind === 'all'
+      ? 'Approvals, questions and changes waiting on you in every workspace.'
+      : `Approvals, questions and changes waiting on you in ${name}.`;
   return (
     <ScreenHeader
       title="Inbox"
-      description="Approvals, questions and changes waiting on you."
+      description={description}
       actions={
         <button type="button" className="btn btn-secondary btn-sm" onClick={onRefresh}>
           Refresh
@@ -55,9 +65,11 @@ interface InboxGroupsProps extends InboxActionHandlers {
   items: InboxItem[];
   acting: ReadonlySet<string>;
   now: number;
+  /** All-workspaces view only: resolves an item's `workspaceId` to its display name for the row chip. */
+  workspaceName?: (id: string) => string;
 }
 
-function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix }: InboxGroupsProps) {
+function InboxGroups({ items, acting, now, workspaceName, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix }: InboxGroupsProps) {
   return (
     <div className="inbox">
       {GROUPS.map((group) => {
@@ -71,10 +83,11 @@ function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss, onAdd
             <ul className="inbox-list">
               {rows.map((item) => (
                 <InboxRow
-                  key={item.id}
+                  key={inboxRowKey(item)}
                   item={item}
-                  acting={acting.has(item.id)}
+                  acting={acting.has(inboxRowKey(item))}
                   now={now}
+                  workspaceName={workspaceName?.(item.workspaceId)}
                   onApprove={onApprove}
                   onAnswer={onAnswer}
                   onDismiss={onDismiss}
@@ -90,10 +103,16 @@ function InboxGroups({ items, acting, now, onApprove, onAnswer, onDismiss, onAdd
   );
 }
 
-function InboxBody({ data }: { data: ReturnType<typeof useInboxData> }) {
+function InboxBody({ scope, data }: { scope: InboxScope; data: ReturnType<typeof useInboxData> }) {
   const { items, setItems, state, error, now, refresh } = data;
   const { acting, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix } = useInboxActions(items, setItems);
-  const header = <InboxHeader onRefresh={() => void refresh()} />;
+  const workspaces = useWorkspacesMaybe();
+  const header = <InboxHeader scope={scope} onRefresh={() => void refresh()} />;
+  // The all-workspaces rows carry a workspace chip; a scoped view's rows don't need one.
+  const nameOf =
+    scope.kind === 'all'
+      ? (id: string) => workspaceLabel(id, workspaces?.list)
+      : undefined;
 
   if (state === 'loading') {
     return (
@@ -122,22 +141,25 @@ function InboxBody({ data }: { data: ReturnType<typeof useInboxData> }) {
   return (
     <>
       {header}
-      <InboxGroups items={items} acting={acting} now={now} onApprove={onApprove} onAnswer={onAnswer} onDismiss={onDismiss} onAddToDataset={onAddToDataset} onSuggestFix={onSuggestFix} />
+      <InboxGroups items={items} acting={acting} now={now} workspaceName={nameOf} onApprove={onApprove} onAnswer={onAnswer} onDismiss={onDismiss} onAddToDataset={onAddToDataset} onSuggestFix={onSuggestFix} />
     </>
   );
 }
 
 /**
- * `#/inbox` (R02b): everything waiting on the user across the workspace's
- * agents, grouped by kind with the actions in the row. The list refetches
- * on mount, on Refresh, and on every `inbox.count` event - the badge and
- * this screen stay in step without polling.
+ * `#/inbox` (W09b): everything waiting on the user in EVERY workspace,
+ * grouped by kind with a workspace chip per row; `#/w/<ws>/inbox` scopes
+ * the same screen to one workspace. The list refetches on mount, on
+ * Refresh, and on every `inbox.count` event - the badge and this screen
+ * stay in step without polling.
  */
 export function InboxScreen() {
-  const data = useInboxData();
+  const route = useRoute();
+  const scope = inboxScopeFromHash(`#${route.path}`);
+  const data = useInboxData(scope);
   return (
     <section className="inbox-screen" aria-label="Inbox">
-      <InboxBody data={data} />
+      <InboxBody scope={scope} data={data} />
     </section>
   );
 }

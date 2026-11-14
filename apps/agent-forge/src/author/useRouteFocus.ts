@@ -7,16 +7,14 @@
  * on the next `chat.send`'s `focus` field.
  */
 import { useEffect, useRef } from 'react';
-import { matchRoute } from '../router/router';
 import { useRoute } from '../router/useRoute';
 import { useAuthorChat } from './AuthorChatContext';
 import { authorFocusCleared } from './authorEntry';
+import { agentRouteId } from '../screens/agents/agentRoute';
 
-const AGENT_ROUTE_PATTERNS = ['/agents/:id', '/agents/:id/:tab'];
-
-/** The agent id a path names (`/agents/<id>` and every `/agents/<id>/<tab>`), else undefined. */
+/** The agent id a path names (every agents URL shape, workspace-scoped included), else undefined. */
 function agentIdOfPath(path: string): string | undefined {
-  return matchRoute(path, AGENT_ROUTE_PATTERNS)?.params.id;
+  return agentRouteId(path);
 }
 
 /**

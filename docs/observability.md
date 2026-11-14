@@ -136,6 +136,17 @@ Constants for every name live in `src/execution/semconv.ts` (exported as
 | `lousho.subagent.depth` | On a sub-agent's run: `1` for a sub-agent of the top-level run, `2` for its sub-agent, and so on |
 | `lousho.task.id` | On a sub-agent's run started by `task`: the task's `taskId` |
 | `lousho.harness.revision` | The harness revision: a sha256 of the instructions and skills, the same id `harnessHash` gives and `lousho improve` records. Two agents with the same instructions and skills share it. Absent when the instructions are a function or come from the prompt registry. It covers `instructions` and `skills` only: `projectInstructions` (AGENTS.md), a per-send `instructions` addition and the tools are not part of it, and an `instructions/<family>.md` tail is, so such a run matches no saved revision. `lousho traces` shows its first 12 characters |
+| `lousho.workspace` | On a workspace page run: the workspace id |
+| `lousho.page` | On a workspace page run: the flat page id |
+| `lousho.attachment` | On a workspace page run: the attachment alias from `agents.json` that ran the step |
+| `lousho.execution_type` | On a workspace page run: the page's execution type (`single`, `multi-agent`, `workflow` or `goal-oriented`) |
+| `lousho.step.kind` | On a workspace page run: `single`, `workflow-step`, `delegate` or `goal-iteration`, the same on every engine |
+| `lousho.step.index` | On a workspace page run: the step's position in one sequence across the run, from 0 |
+| `lousho.harness.hash` | On a workspace page run: the composed harness hash, so two pages sharing an agent differ here |
+| `lousho.harness.part_hash` | On a workspace page run: the hash of the harness part of the assembled prompt |
+| `lousho.agent.ref.version` | On the run of an agent from a `global:` ref: the resolved version |
+| `lousho.agent.ref.sha256` | On the run of an agent from a `global:` ref: the sha256 of the resolved agent |
+| `lousho.workspace.revision` | Reserved for the workspace revision of a run; not set yet |
 
 #### Summing token usage over spans
 

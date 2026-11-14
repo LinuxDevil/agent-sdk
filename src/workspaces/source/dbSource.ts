@@ -1,6 +1,6 @@
 import type { AuditInput } from '../../improve/audit';
 import type { SqlRow, SqlValue } from '../../storage/sqlite/driver';
-import { isUniqueViolation, postgresSqlClient, sqliteSqlClient, type PgPool, type PostgresOptions, type SqlClient, type SqlStatements } from '../runtime/sql';
+import { isUniqueViolation, postgresSqlClient, sqliteClientOnly, sqliteSqlClient, type PgPool, type PostgresOptions, type SqlClient, type SqlStatements } from '../runtime/sql';
 import { StaleRevisionError, unknownRevision, unsupportedContent } from './errors';
 import { migrateWorkspaceSource } from './migrations/workspaceSource';
 import { applyChanges, checkPath, checkTree, contentHash, listFiles, nextTree, revisionId, revisionMeta, type FileMap } from './revision';
@@ -177,7 +177,7 @@ const leaveOpen = async (): Promise<void> => undefined;
 
 /** A database workspace source in SQLite, for tests and Forge-only; it creates its tables on open. Given a path (or `:memory:`) it opens and owns one connection; given a `sqliteSqlClient`, it shares that connection and leaves it open. Open one connection per file per process and pass it to every workspace on that file. */
 export async function sqliteWorkspaceSource(db: string | SqlClient, options: DbSourceOptions = {}): Promise<DbWorkspaceSource> {
-  if (typeof db !== 'string') return dbSource(db, options, 'sqlite', leaveOpen);
+  if (typeof db !== 'string') return dbSource(sqliteClientOnly(db, 'sqliteWorkspaceSource'), options, 'sqlite', leaveOpen);
   const client = sqliteSqlClient(db);
   try {
     return await dbSource(client, options, 'sqlite', () => client.close());

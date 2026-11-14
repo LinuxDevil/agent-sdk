@@ -11,8 +11,10 @@ vi.mock('../../../state/AppState', () => ({ useAppState: () => ({ runStatus: nul
 
 const api = vi.hoisted(() => ({
   listAgents: vi.fn(),
+  listAllAgentItems: vi.fn(),
   patchAgentMeta: vi.fn(),
   createAgentRecord: vi.fn(),
+  forWorkspace: vi.fn(),
 }));
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
 
@@ -75,7 +77,12 @@ const optionInput = (labelText: string) => {
 beforeEach(() => {
   vi.clearAllMocks();
   api.listAgents.mockResolvedValue(ITEMS);
+  api.listAllAgentItems.mockResolvedValue({
+    items: ITEMS.map((a) => ({ ...a, kind: 'workspace' as const, workspaceId: 'alpha-1a2b3c' })),
+    skipped: [],
+  });
   api.patchAgentMeta.mockResolvedValue({});
+  api.forWorkspace.mockImplementation(() => api);
   api.createAgentRecord.mockResolvedValue({ id: 'untitled-1' } as AgentRecord);
   window.history.replaceState(null, '', '/#/agents');
 });

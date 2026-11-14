@@ -7,19 +7,27 @@ import type { InboxItem } from '../../../shared/wireTypes';
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : 'Request failed');
 
+/**
+ * A row's identity across the all-workspaces merge (W09b): item ids are
+ * unique only inside a workspace, so acting/restore keys carry both.
+ */
+export const inboxRowKey = (item: Pick<InboxItem, 'id' | 'workspaceId'>): string => `${item.workspaceId}/${item.id}`;
+
 /** Re-inserts `item` at `index` unless it is already back or the list is gone. */
 function restoreItem(items: InboxItem[] | null, index: number, item: InboxItem): InboxItem[] | null {
-  if (items === null || index < 0 || items.some((entry) => entry.id === item.id)) return items;
+  if (items === null || index < 0 || items.some((entry) => inboxRowKey(entry) === inboxRowKey(item))) return items;
   const next = [...items];
   next.splice(Math.min(index, next.length), 0, item);
   return next;
 }
 
 /**
- * The inbox row actions (R02b): each one optimistically drops its row,
- * toasts the outcome, and on failure restores the row at its old index.
- * `acting` marks the rows with a request in flight so the row can disable
- * its buttons.
+ * The inbox row actions (R02b, workspace-pinned by W09b): each one
+ * optimistically drops its row, toasts the outcome, and on failure
+ * restores the row at its old index. Every request goes through
+ * `forWorkspace(item.workspaceId)` so an all-workspaces row acts on its
+ * own workspace. `acting` marks the rows with a request in flight so the
+ * row can disable its buttons.
  */
 export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (prev: InboxItem[] | null) => InboxItem[] | null) => void) {
   const [acting, setActing] = useState<ReadonlySet<string>>(new Set());
@@ -28,9 +36,10 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
 
   const act = useCallback(
     async (item: InboxItem, message: string, run: () => Promise<unknown>) => {
-      const index = items?.findIndex((entry) => entry.id === item.id) ?? -1;
-      setActing((prev) => new Set(prev).add(item.id));
-      setItems((prev) => prev?.filter((entry) => entry.id !== item.id) ?? prev);
+      const key = inboxRowKey(item);
+      const index = items?.findIndex((entry) => inboxRowKey(entry) === key) ?? -1;
+      setActing((prev) => new Set(prev).add(key));
+      setItems((prev) => prev?.filter((entry) => inboxRowKey(entry) !== key) ?? prev);
       try {
         await run();
         toast.show({ message, tone: 'success' });
@@ -40,7 +49,7 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
       } finally {
         setActing((prev) => {
           const next = new Set(prev);
-          next.delete(item.id);
+          next.delete(key);
           return next;
         });
       }
@@ -50,23 +59,29 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
 
   const onApprove = useCallback(
     (item: InboxItem & { kind: 'approval' }, approved: boolean) =>
-      void act(item, approved ? 'Approved' : 'Denied', () => runtimeClient.approve(item.agentId, item.approvalId, approved)),
+      void act(item, approved ? 'Approved' : 'Denied', () =>
+        runtimeClient.forWorkspace(item.workspaceId).approve(item.agentId, item.approvalId, approved)
+      ),
     [act],
   );
   const onAnswer = useCallback(
     (item: InboxItem & { kind: 'question' }, answer: string) =>
-      void act(item, 'Answer sent', () => runtimeClient.answer(item.agentId, item.approvalId, answer)),
+      void act(item, 'Answer sent', () =>
+        runtimeClient.forWorkspace(item.workspaceId).answer(item.agentId, item.approvalId, answer)
+      ),
     [act],
   );
   const onDismiss = useCallback(
-    (item: InboxItem & { kind: 'alert' }) => void act(item, 'Dismissed', () => runtimeClient.dismissAlert(item.alertId)),
+    (item: InboxItem & { kind: 'alert' }) =>
+      void act(item, 'Dismissed', () => runtimeClient.forWorkspace(item.workspaceId).dismissAlert(item.alertId)),
     [act],
   );
 
   /** Marks `item` acting for the duration of `run`; failures toast `errorMessage`. The row is never dropped. */
   const withActing = useCallback(
     async (item: InboxItem, run: () => Promise<unknown>) => {
-      setActing((prev) => new Set(prev).add(item.id));
+      const key = inboxRowKey(item);
+      setActing((prev) => new Set(prev).add(key));
       try {
         await run();
       } catch (cause) {
@@ -74,7 +89,7 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
       } finally {
         setActing((prev) => {
           const next = new Set(prev);
-          next.delete(item.id);
+          next.delete(key);
           return next;
         });
       }
@@ -86,7 +101,7 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
   const onAddToDataset = useCallback(
     (item: InboxItem & { kind: 'alert' }) =>
       void withActing(item, async () => {
-        const { dataset } = await runtimeClient.addAlertToDataset(item.agentId, item.alertId);
+        const { dataset } = await runtimeClient.forWorkspace(item.workspaceId).addAlertToDataset(item.agentId, item.alertId);
         toast.show({
           message: `Added to ${dataset}`,
           tone: 'success',
@@ -111,7 +126,7 @@ export function useInboxActions(items: InboxItem[] | null, setItems: (updater: (
     (item: InboxItem & { kind: 'alert' }) => {
       const traceId = item.payload.traceId;
       if (typeof traceId !== 'string' || traceId === '') return;
-      return withActing(item, () => suggestFix(item.agentId, traceId));
+      return withActing(item, () => suggestFix(item.agentId, traceId, item.workspaceId));
     },
     [suggestFix, withActing],
   );

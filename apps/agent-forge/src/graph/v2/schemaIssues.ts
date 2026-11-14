@@ -6,10 +6,7 @@
  * schema's own complaints (bad enums, patterns, missing required fields,
  * and the "not supported yet" placeholders, which become warnings).
  */
-import { agentSpecV2Schema } from 'lousho/spec';
-// The same deep seam `specTypes.ts` uses: `UNSUPPORTED_PREFIX` is not on a
-// published subpath, and it is a constant, so importing the module is cheap.
-import { UNSUPPORTED_PREFIX } from '../../../../../src/spec/v2/unsupported';
+import { agentSpecV2Schema, UNSUPPORTED_PREFIX } from 'lousho/spec';
 import type { AgentSpecV2 } from './specTypes';
 import type { Problem } from './types';
 

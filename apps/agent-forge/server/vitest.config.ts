@@ -8,5 +8,10 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['server/**/*.{test,spec}.ts', 'evals/**/*.test.ts'],
+    env: {
+      // Like the e2e server's observe stub: tests never spawn a real
+      // collector daemon - `startStudioServer` probes only (collector.ts).
+      LOUSHO_STUDIO_COLLECTOR: '0',
+    },
   },
 });

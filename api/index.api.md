@@ -74,6 +74,7 @@ export interface AgentConfig {
     prompt?: string;
     // (undocumented)
     settings?: AgentSettings;
+    spanAttributes?: Readonly<Record<string, string | number>>;
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }
@@ -931,6 +932,167 @@ interface BestOfAllNode {
 }
 
 // @public
+export const BRIDGE_PROTOCOL_VERSION = 1;
+
+// @public
+export interface BridgeCatalog {
+    guardrails: ReturnType<typeof listGuardrails>;
+    models: ReturnType<typeof listModels>;
+    tools: ReturnType<typeof listBuiltinTools>;
+    triggers: ReturnType<typeof listTriggerTypes>;
+}
+
+// @public
+export interface BridgeCompileResult {
+    mcpServers: string[];
+    modelLabel: string;
+    toolNamesByRef: string[][];
+}
+
+// @public
+export interface BridgeErrorInfo {
+    code: string;
+    details?: unknown;
+    message: string;
+}
+
+// @public
+export interface BridgeHelloResult {
+    catalogHash: string;
+    protocol: number;
+    sdkVersion: string;
+    specVersions: number[];
+}
+
+// @public
+export type BridgeMethod = 'hello' | 'compile' | 'run' | 'chat' | 'steer' | 'abort' | 'resolveApproval' | 'answerQuestion' | 'catalog' | 'shutdown';
+
+// @public
+export interface BridgeParams {
+    abort: {
+        runId: string;
+        reason?: string;
+    };
+    answerQuestion: {
+        runId: string;
+        questionId: string;
+        answer: string;
+    };
+    catalog: Record<string, never>;
+    chat: BridgeRunParamsBase & {
+        messages: Message[];
+    };
+    compile: Omit<BridgeRunParamsBase, 'sessionId' | 'captureContent'>;
+    hello: {
+        protocol: number;
+        client: {
+            name: string;
+            version: string;
+        };
+    };
+    resolveApproval: {
+        runId: string;
+        approvalId: string;
+        approved: boolean;
+        note?: string;
+    };
+    run: BridgeRunParamsBase & {
+        input: string;
+    };
+    shutdown: Record<string, never>;
+    steer: {
+        runId: string;
+        message: string;
+    };
+}
+
+// @public
+export interface BridgePush<E extends BridgePushEvent = BridgePushEvent> {
+    data: BridgePushData[E];
+    event: E;
+    runId: string;
+}
+
+// @public
+export interface BridgePushData {
+    'run.failed': BridgeErrorInfo;
+    'run.settled': BridgeRunResult;
+    'span.end': Span;
+    'span.start': Span;
+    'steer.joined': {
+        steerId: string;
+        joined: boolean;
+    };
+    agent: AgentEvent;
+}
+
+// @public
+export type BridgePushEvent = 'agent' | 'span.start' | 'span.end' | 'steer.joined' | 'run.settled' | 'run.failed';
+
+// @public
+export interface BridgeRequest<M extends BridgeMethod = BridgeMethod> {
+    id: number;
+    method: M;
+    params?: BridgeParams[M];
+}
+
+// @public
+export type BridgeResponse = {
+    id: number | null;
+    result: unknown;
+} | {
+    id: number | null;
+    error: BridgeErrorInfo;
+};
+
+// @public
+export interface BridgeResults {
+    abort: {
+        state: 'aborting' | 'discarded' | 'idle';
+    };
+    answerQuestion: {
+        ok: true;
+    };
+    catalog: BridgeCatalog;
+    chat: BridgeRunStarted;
+    compile: BridgeCompileResult;
+    hello: BridgeHelloResult;
+    resolveApproval: {
+        ok: true;
+    };
+    run: BridgeRunStarted;
+    shutdown: {
+        ok: true;
+    };
+    steer: {
+        id: string;
+        applied: 'immediate' | 'queued' | false;
+    };
+}
+
+// @public (undocumented)
+interface BridgeRunParamsBase {
+    agentId: string;
+    captureContent?: boolean;
+    env?: Record<string, string>;
+    secrets?: Record<string, string>;
+    sessionId: string;
+    spec: AgentSpecV2;
+}
+
+// @public
+export type BridgeRunResult = Pick<ExecutionResult, 'finishReason' | 'text' | 'messages' | 'usage' | 'steps' | 'approvalId' | 'approvalIds' | 'abortReason'> & {
+    object?: unknown;
+    pendingApproval?: PendingApproval;
+};
+
+// @public
+export interface BridgeRunStarted {
+    modelLabel: string;
+    runId: string;
+}
+
+// @public
 export type BrokerHeaderValue = string | (() => string | Promise<string>);
 
 // @public
@@ -1642,6 +1804,7 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
     redactContent?: boolean | ((text: string) => string);
     retry?: WithRetryOptions | false;
     skills?: readonly Skill[];
+    spanAttributes?: Readonly<Record<string, string | number>>;
     store?: AgentStore;
     subagentOptions?: SubagentOptions;
     subagents?: Subagents;
@@ -2264,6 +2427,13 @@ export const ERROR_CODES: {
     readonly LOUSHO_WORKSPACE_INVALID: "Read error.problems: each has a code, a file and a field path. Fix those files and load the workspace again.";
     readonly LOUSHO_WORKSPACE_AGENT_UNRESOLVED: "Check the ref in the page's agents.json: a workspace or local agent needs its folder, and a global ref needs a globalRegistry with a version in its range.";
     readonly LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING: "Pass the text of every file listed in main-harness.json instructions, keyed by main-agent/harness/<file>, or remove the name from the list.";
+    readonly LOUSHO_WORKSPACE_CAPABILITY_MISSING: "Give an attached agent a host tool that provides the capability and that the workspace policy and the host ceiling allow, or drop it from the harness's capabilities.require.";
+    readonly LOUSHO_WORKSPACE_PAGE_UNKNOWN: "Pass a page id listed in workspace.json pages that has a pages/<id>/page.json.";
+    readonly LOUSHO_WORKSPACE_ENGINE_UNKNOWN: "Set the page's execution.type to a type the runtime has an engine for, or pass an engines registry that has one.";
+    readonly LOUSHO_WORKSPACE_NO_MAIN_AGENT: "Pass the page to run as pageId, or call runPage; a workspace with mainAgent null has no router.";
+    readonly LOUSHO_WORKSPACE_HOST_INVALID: "Give the host the field the message names; pass bindTool when a policy grants a tool secrets or hosts, or requires a sandbox.";
+    readonly LOUSHO_WORKSPACE_RUN_ACTIVE: "Pass a run id that is not running, or leave runId out so the runtime makes one.";
+    readonly LOUSHO_WORKSPACE_RUNTIME_CLOSED: "Create a new runtime with createWorkspaceRuntime; a closed one takes no runs.";
 };
 
 // @public
@@ -6288,6 +6458,17 @@ export const SdkAttr: {
     readonly SUBAGENT_NAME: "lousho.subagent.name";
     readonly HARNESS_REVISION: "lousho.harness.revision";
     readonly SUBAGENT_DEPTH: "lousho.subagent.depth";
+    readonly WORKSPACE: "lousho.workspace";
+    readonly PAGE: "lousho.page";
+    readonly ATTACHMENT: "lousho.attachment";
+    readonly EXECUTION_TYPE: "lousho.execution_type";
+    readonly STEP_KIND: "lousho.step.kind";
+    readonly STEP_INDEX: "lousho.step.index";
+    readonly HARNESS_HASH: "lousho.harness.hash";
+    readonly HARNESS_PART_HASH: "lousho.harness.part_hash";
+    readonly AGENT_REF_VERSION: "lousho.agent.ref.version";
+    readonly AGENT_REF_SHA256: "lousho.agent.ref.sha256";
+    readonly WORKSPACE_REVISION: "lousho.workspace.revision";
     readonly TASK_ID: "lousho.task.id";
     readonly GUARDRAIL_NAME: "lousho.guardrail.name";
     readonly GUARDRAIL_KIND: "lousho.guardrail.kind";

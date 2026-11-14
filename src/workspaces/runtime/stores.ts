@@ -31,6 +31,10 @@ export interface RunRecord extends WorkspaceScope {
   startedAt: number;
   /** Epoch milliseconds when the run ended; absent while it runs or waits for approval. */
   endedAt?: number;
+  /** The workspace thread the run belongs to. */
+  threadId?: string;
+  /** The workspace run that started this page run. */
+  parentRunId?: string;
 }
 
 /** What `runs.start` needs. */
@@ -41,6 +45,10 @@ export interface StartRun {
   pageId: string;
   /** The workspace revision the run is pinned to. */
   revision: string;
+  /** The workspace thread the run belongs to. */
+  threadId?: string;
+  /** The workspace run that started this page run. */
+  parentRunId?: string;
 }
 
 export interface LedgerEvent {
@@ -186,7 +194,16 @@ function runView(ledger: RunLedger, scope: WorkspaceScope): WorkspaceRunStore {
   };
   return {
     async start(run) {
-      const record: RunRecord = { ...scope, runId: part(run.runId, 'run id'), pageId: run.pageId, revision: run.revision, status: 'running', startedAt: Date.now() };
+      const record: RunRecord = {
+        ...scope,
+        runId: part(run.runId, 'run id'),
+        pageId: run.pageId,
+        revision: run.revision,
+        status: 'running',
+        startedAt: Date.now(),
+        ...(run.threadId !== undefined && { threadId: run.threadId }),
+        ...(run.parentRunId !== undefined && { parentRunId: run.parentRunId }),
+      };
       await ledger.insertRun(record);
       return record;
     },
@@ -219,9 +236,17 @@ function eventView(ledger: RunLedger, scope: WorkspaceScope, runs: WorkspaceRunS
   };
 }
 
+function backendParts(backend: HostBackend): BackendParts {
+  const parts = backend as Partial<BackendParts>;
+  if (typeof parts.ledger !== 'object' || typeof parts.agent !== 'object') {
+    throw new SDKError('createWorkspaceStores takes a backend from fileHostBackend, sqliteHostBackend or postgresHostBackend.', 'LOUSHO_CONFIG_INVALID');
+  }
+  return backend as BackendParts;
+}
+
 /** Binds a backend to one project and workspace; both ids are in every key it reads or writes. */
 export function createWorkspaceStores(backend: HostBackend, scope: WorkspaceScope): WorkspaceStores {
-  const parts = backend as BackendParts;
+  const parts = backendParts(backend);
   const runs = runView(parts.ledger, scope);
   return {
     threads: threadView(required(parts.agent.sessions, 'session store'), scope),

@@ -27,16 +27,15 @@
  *
  * Per-workspace stores come from `workspaceOf(req)` (the workspace
  * seam); the only dep is the Studio-global TemplateCatalog the
- * `{ template }` create branch reads. `toListItem`/`lastRunOf`/
- * `countsOf`/`toRecord` take a `WorkspaceContext`, never `req`, so a
- * later ticket can lift them verbatim.
+ * `{ template }` create branch reads. The `AgentListItem[]` builder
+ * (`toListItem`/`lastRunOf`/`countsOf`, now `agentListItems.ts`) and
+ * `toRecord` take repo-level sources, never `req`, so the aggregate
+ * `?ws=all` route reuses them verbatim (W06a).
  */
 import type { Express, Response } from 'express';
 import type { AgentSpec, AgentSpecV2 } from 'lousho';
 import { LabelError, MAX_LABEL_LENGTH, MAX_LABELS, normalizeLabels } from '../../shared/labels';
 import type {
-  AgentLastRun,
-  AgentListItem,
   AgentMeta,
   AgentRecord,
   CanvasLayout,
@@ -46,6 +45,7 @@ import { computeRequirements, requirementDeps } from '../author/requirements';
 import { readAgentRecord } from '../agentRecord';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { copyAgent } from '../lifecycle/copy';
+import { ChainInvalidError } from '../triggers/chainTriggers';
 import { enabledPatch } from '../lifecycle/enabledState';
 import type { SecretsStore } from '../secretsStore';
 import { defaultMeta, InvalidSpecError } from '../storage/agentRepo';
@@ -54,61 +54,12 @@ import { withAgentLock } from '../storage/atomic';
 import { mergeLegacySave } from '../storage/legacySpec';
 import { TEMPLATE_ID_RE, type TemplateCatalog } from '../templates/templateCatalog';
 import { parseCanvasLayout } from './layoutValidation';
-import { listAgentTraces } from '../traceStore';
+import { buildAgentListItems } from './agentListItems';
 import type { WorkspaceContext } from '../workspace/context';
 import { workspaceOf } from '../workspace/middleware';
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/** The `counts` an `AgentListItem` carries: section sizes read off the spec as data. */
-function countsOf(spec: AgentSpecV2): AgentListItem['counts'] {
-  return {
-    tools: spec.tools?.length ?? 0,
-    mcpServers: Object.keys(spec.mcpServers ?? {}).length,
-    subagents: Object.keys(spec.subagents ?? {}).length,
-    triggers: spec.triggers?.length ?? 0,
-  };
-}
-
-/**
- * The `lastRun` of an `AgentListItem`: the live status while a run is not
- * `idle`, else the newest persisted trace's outcome, else `undefined` when
- * the agent has never run.
- */
-async function lastRunOf(ws: WorkspaceContext, id: string): Promise<AgentLastRun | undefined> {
-  const live = ws.runs.status(id);
-  if (live.status !== 'idle') {
-    return { status: live.status, at: live.updatedAt, ...(live.traceId !== undefined && { traceId: live.traceId }) };
-  }
-  const [trace] = await listAgentTraces(ws.ref.root, id, 1);
-  if (trace === undefined) return undefined;
-  return {
-    status: trace.status === 'error' ? 'error' : 'done',
-    at: new Date(trace.startTime + trace.durationMs).toISOString(),
-    traceId: trace.traceId,
-  };
-}
-
-/** One agent's `AgentListItem`; `undefined` when the id has no spec (it can disappear mid-list). */
-async function toListItem(ws: WorkspaceContext, id: string): Promise<AgentListItem | undefined> {
-  const spec = await ws.repo.readSpec(id);
-  if (spec === undefined) return undefined;
-  const [meta, lastRun] = await Promise.all([ws.repo.readMeta(id), lastRunOf(ws, id)]);
-  return {
-    id,
-    name: spec.name,
-    description: spec.description ?? '',
-    model: spec.model,
-    enabled: meta.enabled,
-    disabledReason: meta.disabledReason,
-    labels: meta.labels,
-    updatedAt: ws.repo.updatedAt(id),
-    publishedVersion: meta.publishedVersion,
-    ...(lastRun !== undefined && { lastRun }),
-    counts: countsOf(spec),
-  };
 }
 
 /** One agent's `AgentRecord` - the shared assembler in ../agentRecord. */
@@ -152,6 +103,52 @@ function parseCreateBody(body: unknown): ParsedCreateBody | string {
     if (typeof from.copyOf === 'string') return { kind: 'copy', copyOf: from.copyOf, name };
   }
   return "'from' must be 'blank', { template: string } or { copyOf: string }";
+}
+
+/** What a parsed `POST /agents` body resolves to: the record to answer, or the 404 to send. */
+type CreateOutcome =
+  | { kind: 'created'; record: AgentRecord; reason: 'save' | 'version' }
+  | { kind: 'missing'; status: 404; error: string; code: string };
+
+/**
+ * The three `from` shapes → record or missing-source 404: the POST
+ * /agents dispatch, kept out of the route handler for complexity.
+ */
+async function createOutcome(
+  ws: WorkspaceContext,
+  catalog: TemplateCatalog,
+  parsed: ParsedCreateBody
+): Promise<CreateOutcome> {
+  if (parsed.kind === 'template') {
+    const record = await createAgentFromTemplate(ws, catalog, parsed.template, parsed.name);
+    return record === undefined
+      ? { kind: 'missing', status: 404, error: `No template '${parsed.template}'`, code: 'LOUSHO_TEMPLATE_NOT_FOUND' }
+      : { kind: 'created', record, reason: 'save' };
+  }
+  if (parsed.kind === 'copy') {
+    const record = await copyAgent(ws, parsed.copyOf, parsed.name);
+    return record === undefined
+      ? { kind: 'missing', status: 404, error: `No agent '${parsed.copyOf}' to copy`, code: 'LOUSHO_AGENT_NOT_FOUND' }
+      : { kind: 'created', record, reason: 'version' };
+  }
+  return { kind: 'created', record: await createBlankAgent(ws, parsed.name), reason: 'save' };
+}
+
+/**
+ * Maps a spec-write failure (`writeSpec`'s chain/spec validation) to its
+ * 400 and answers `true`; anything else returns `false` for the caller
+ * to rethrow. Shared by POST /agents and PUT /agents/:id.
+ */
+function sendSpecWriteError(res: Response, error: unknown): boolean {
+  if (error instanceof ChainInvalidError) {
+    sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
+    return true;
+  }
+  if (error instanceof InvalidSpecError) {
+    sendError(res, 400, error.message, error.code, { issues: error.issues });
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -276,17 +273,9 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
         res.json(await ws.agentStore.list());
         return;
       }
-      const items = await Promise.all(
-        ws.repo.listIds().map(async (id) => {
-          try {
-            return await toListItem(ws, id);
-          } catch (error) {
-            console.warn(`[agent-forge] skipping unreadable agent spec '${id}': ${(error as Error).message}`);
-            return undefined;
-          }
-        })
+      res.json(
+        await buildAgentListItems({ repo: ws.repo, root: ws.ref.root, runStatus: (id) => ws.runs.status(id) })
       );
-      res.json(items.filter((item): item is AgentListItem => item !== undefined));
     })
   );
 
@@ -308,35 +297,15 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
       }
       const ws = workspaceOf(req);
       try {
-        if (parsed.kind === 'template') {
-          const record = await createAgentFromTemplate(ws, deps.templates, parsed.template, parsed.name);
-          if (record === undefined) {
-            sendError(res, 404, `No template '${parsed.template}'`, 'LOUSHO_TEMPLATE_NOT_FOUND');
-            return;
-          }
-          res.status(201).json(record);
-          ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
+        const outcome = await createOutcome(ws, deps.templates, parsed);
+        if (outcome.kind === 'missing') {
+          sendError(res, outcome.status, outcome.error, outcome.code);
           return;
         }
-        if (parsed.kind === 'copy') {
-          const record = await copyAgent(ws, parsed.copyOf, parsed.name);
-          if (record === undefined) {
-            sendError(res, 404, `No agent '${parsed.copyOf}' to copy`, 'LOUSHO_AGENT_NOT_FOUND');
-            return;
-          }
-          res.status(201).json(record);
-          ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'version' });
-          return;
-        }
-        const record = await createBlankAgent(ws, parsed.name);
-        res.status(201).json(record);
-        ws.events.publish({ type: 'agent.changed', agentId: record.id, reason: 'save' });
+        res.status(201).json(outcome.record);
+        ws.events.publish({ type: 'agent.changed', agentId: outcome.record.id, reason: outcome.reason });
       } catch (error) {
-        if (error instanceof InvalidSpecError) {
-          sendError(res, 400, error.message, error.code, { issues: error.issues });
-          return;
-        }
-        throw error;
+        if (!sendSpecWriteError(res, error)) throw error;
       }
     })
   );
@@ -384,6 +353,17 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
     })
   );
 
+  // The agent's channel-trigger mount status (R08b): one row per
+  // `channel` trigger with its public URL and mount error (missing
+  // secret, duplicate kind), for the Overview Triggers card.
+  app.get(
+    '/agents/:id/triggers/status',
+    asyncRoute(async (req, res) => {
+      const ws = workspaceOf(req);
+      res.json(ws.channels.status(paramId(req)));
+    })
+  );
+
   app.put(
     '/agents/:id',
     asyncRoute(async (req, res) => {
@@ -409,11 +389,7 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
           await ws.repo.writeSpec(id, spec);
         });
       } catch (error) {
-        if (error instanceof InvalidSpecError) {
-          sendError(res, 400, error.message, error.code, { issues: error.issues });
-          return;
-        }
-        throw error;
+        if (!sendSpecWriteError(res, error)) throw error;
       }
       res.status(204).end();
       // A successful autosave (re)arms this agent's idle-version timer.

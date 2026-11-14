@@ -3,19 +3,27 @@ import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useAppState } from '../../state/AppState';
 import { useToast } from '../../ui/Toast';
+import { agentListPath } from './agentTabs';
 import { agentPath, agentRouteId, routeSyncAction } from './agentRoute';
+import { activeWorkspace } from '../../workspace/activeWorkspace';
 import { confirmDiscardChanges } from './unsavedChanges';
 
 /**
- * Keeps `#/agents/:id/<tab>` and the open agent in step. The hash drives
+ * Keeps the agents URL and the open agent in step. The hash drives
  * selection (rail clicks push the tab URL, back/forward and reload land
  * here), asking first when the open agent has unsaved changes - cancelling
  * restores the hash. When the open agent changes under the URL (create,
  * rename, delete), the hash follows with replace. An unknown id falls back
- * to `#/agents` (the list).
+ * to the workspace's agent list.
+ *
+ * W04b: the saved-agent list belongs to one workspace (`agentsWorkspaceId`);
+ * while it is not the URL's workspace the sync waits - judging `#/w/<B>/…`
+ * against workspace A's list would switch to the wrong agent or fall back
+ * spuriously. `AppStateProvider` refetches the list on every workspace
+ * change, and the `agentsWorkspaceId` dep re-runs this effect once it lands.
  */
 export function useAgentRouteSync(): void {
-  const { agentId, agents, agentsLoaded, dirty, switchAgent } = useAppState();
+  const { agentId, agents, agentsLoaded, agentsWorkspaceId, dirty, switchAgent } = useAppState();
   const hash = `#${useRoute().path}`;
   const routeId = agentRouteId(hash);
   const toast = useToast();
@@ -24,14 +32,15 @@ export function useAgentRouteSync(): void {
   latest.current = { agentId, agents, dirty, switchAgent, toast };
 
   useEffect(() => {
-    const { agentId: openId, dirty: unsaved, switchAgent: open, toast: notify } = latest.current;
+    if (agentsWorkspaceId !== undefined && agentsWorkspaceId !== activeWorkspace()) return;
+    const { agentId: openId, agents: saved, dirty: unsaved, switchAgent: open, toast: notify } = latest.current;
     // `agents` is a dep (not only read through `latest`): a list refresh that
     // lands after the hash changed - an Author Apply's agent.changed event is
     // debounced - must re-run the sync, or a just-created agent's deep link
     // falls back against the stale list and never retries.
-    const action = routeSyncAction(routeId, openId, agents, agentsLoaded);
+    const action = routeSyncAction(routeId, openId, saved, agentsLoaded);
     if (action.kind === 'fallback') {
-      navigate('/agents', { replace: true });
+      navigate(agentListPath(activeWorkspace()), { replace: true });
       return;
     }
     if (action.kind !== 'switch') return;
@@ -41,9 +50,9 @@ export function useAgentRouteSync(): void {
     }
     open(action.id).catch((err: unknown) => {
       notify.show({ tone: 'error', message: `Could not open agent ${action.id}: ${err instanceof Error ? err.message : String(err)}` });
-      navigate('/agents', { replace: true });
+      navigate(agentListPath(activeWorkspace()), { replace: true });
     });
-  }, [routeId, agentsLoaded, agents]);
+  }, [routeId, agentsLoaded, agents, agentsWorkspaceId]);
 
   // The agent the URL last agreed with; `undefined` until the list has loaded.
   const synced = useRef<string | undefined>(undefined);

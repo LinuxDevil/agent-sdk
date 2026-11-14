@@ -96,3 +96,7 @@ Waves — Workers · Aggregate · Verify · Extend: bounded parallel workers in 
 ## [workflow-router](./workflow-router)
 
 An agent that classifies an incoming request into a fixed set of categories.
+
+## [workspace-marketing](./workspace-marketing)
+
+One Marketing workspace, two pages (Instagram and Facebook) attached to the same three agents with different harnesses, run through `createWorkspaceRuntime` from an in-memory source with an injected host; mock `render_video` and `synthesize_voice` tools write placeholder artifacts, and it runs offline with `--mock`.

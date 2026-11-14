@@ -186,7 +186,7 @@ export interface LayerOwner {
   files: Readonly<Record<string, unknown>>;
 }
 
-const SCRIPT_PATH = /\.[cm]?[jt]s$/;
+export const SCRIPT_PATH = /\.[cm]?[jt]s$/;
 
 function listedFiles(harness: Harness, withInstructions: boolean): [string, string, boolean][] {
   const instructions = withInstructions ? (harness.instructions ?? []).map((file, index): [string, string, boolean] => [`instructions.${index}`, file, false]) : [];

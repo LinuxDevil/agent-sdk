@@ -244,6 +244,77 @@ describe('resolveAttachments', () => {
     }
   });
 
+  it('matches resolveAgentDir on a fixture agent with skills and memory', async () => {
+    const tree = textFiles(readFixtureTree('parity-agents'));
+    const dir = 'note-keeper';
+    const fromDisk = await resolveAgentDir(join(fixtureDir('parity-agents'), dir));
+    const files = Object.fromEntries(Object.entries(tree).filter(([path]) => path.startsWith(`${dir}/`)).map(([path, text]) => [path.slice(dir.length + 1), text]));
+    const owned = readAgentOwned({ format: 'dir', dir, files });
+    expect(owned.skills).toEqual(['hooks', 'outline-notes']);
+    expect(owned.memory).toEqual(['notes']);
+    expect({ tools: owned.tools, skills: owned.skills, memory: owned.memory, instructions: owned.instructions }).toEqual({
+      tools: fromDisk.manifest.tools,
+      skills: fromDisk.manifest.skills,
+      memory: fromDisk.manifest.memory,
+      instructions: fromDisk.config.instructions,
+    });
+  });
+
+  it('refuses Studio keys and agent folders a workspace agent would silently ignore', () => {
+    const studio = { version: 2, name: 'helper', model: 'openai/gpt-4o', instructions: 'Help.' };
+    const extras: Record<string, unknown>[] = [
+      { mcpServers: { docs: { url: 'https://x.test/mcp' } } },
+      { guardrails: [{ id: 'g1', name: 'pii' }] },
+      { subagents: { billing: { ref: 'agents/billing.yaml' } } },
+      { handoffs: [{ agent: 'billing' }] },
+      { triggers: [{ id: 'chat', type: 'chat' }] },
+      { flow: { code: 'f', name: 'F', flow: { type: 'end', id: 'x' } } },
+    ];
+    for (const extra of extras) {
+      const key = Object.keys(extra)[0];
+      expect(() => readAgentOwned({ format: 'studio', dir: 'agents/helper', files: { 'spec.json': JSON.stringify({ ...studio, ...extra }) } })).toThrow(`'${key}' is not run for a workspace agent`);
+    }
+    for (const folder of ['subagents/helper/agent.json', 'schedules/daily.json', 'channels/slack.json']) {
+      const files = { 'instructions.md': 'Write.', [folder]: '{}' };
+      expect(() => readAgentOwned({ format: 'dir', dir: 'agents/writer', files })).toThrow(`agents/writer/${folder.split('/')[0]}/`);
+    }
+  });
+
+  it('names a Studio file tool by its file stem, as a folder agent does', () => {
+    const spec = { version: 2, name: 'helper', model: 'openai/gpt-4o', instructions: 'Help.', tools: [{ file: 'tools/web.ts' }, { builtin: 'web_fetch' }] };
+    const owned = readAgentOwned({ format: 'studio', dir: 'agents/helper', files: { 'spec.json': JSON.stringify(spec) } });
+    expect(owned.tools).toEqual(['web', 'web_fetch']);
+    expect(owned.toolFiles).toEqual(['tools/web.ts']);
+  });
+
+  it('names a Studio tool by what the model sees, not its canvas id, and keeps approval always', () => {
+    const spec = { version: 2, name: 'helper', model: 'openai/gpt-4o', instructions: 'Help.', tools: [{ builtin: 'web_fetch', id: 'fetch', approval: 'always' }, { file: 'tools/post.ts', id: 'poster' }] };
+    const owned = readAgentOwned({ format: 'studio', dir: 'agents/helper', files: { 'spec.json': JSON.stringify(spec) } });
+    expect(owned.tools).toEqual(['web_fetch', 'post']);
+    expect(owned.approvals).toEqual(['web_fetch']);
+  });
+
+  it('refuses agent settings a workspace agent would silently drop', () => {
+    const studio = { version: 2, name: 'helper', model: 'openai/gpt-4o', instructions: 'Help.' };
+    const extras: Record<string, unknown>[] = [
+      { permissionMode: 'acceptEdits' },
+      { approvalTtlMs: 60_000 },
+      { codeMode: true },
+      { toolSearch: false },
+      { output: { jsonSchema: { type: 'object', properties: {} } } },
+      { promptRef: 'helper@prod' },
+    ];
+    for (const extra of extras) {
+      const key = Object.keys(extra)[0];
+      expect(() => readAgentOwned({ format: 'studio', dir: 'agents/helper', files: { 'spec.json': JSON.stringify({ ...studio, ...extra }) } })).toThrow(`'${key}' is not applied to a workspace agent`);
+    }
+    for (const extra of [{ permissionMode: 'acceptEdits' }, { projectInstructions: true }, { approvalTtlMs: 60_000 }, { output: { type: 'object', properties: {} } }]) {
+      const key = Object.keys(extra)[0];
+      const files = { 'instructions.md': 'Write.', 'agent.json': JSON.stringify(extra) };
+      expect(() => readAgentOwned({ format: 'dir', dir: 'agents/writer', files })).toThrow(`'${key}' is not applied to a workspace agent`);
+    }
+  });
+
   it('does not cache a failed global lookup, and refuses a cache it did not make', async () => {
     const workspace = await load(withGlobal(marketing()));
     let fail = true;

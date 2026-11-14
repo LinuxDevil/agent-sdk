@@ -40,6 +40,7 @@ import { FlowExecutor, type AgentFlow } from 'lousho/flows';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
 import { toLegacySpec } from './storage/legacySpec';
 import { HostRunNotActiveError, type AgentHost, type HostEvent, type HostRunResult } from './host/agentHost';
+import { HostUnsupportedError } from './host/hostStatus';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
 import { approvalDeadline, EXPIRED_APPROVAL_NOTE, NO_ANSWER_TEXT } from './approvalDeadline';
@@ -214,6 +215,12 @@ export interface RunManagerOptions {
    * itself inside the test. Production callers leave it unset.
    */
   minDeadlineMs?: number;
+  /**
+   * The Studio collector (collector.ts): run reporting reads its
+   * `url()`/`token()` per exporter, so a Settings → Collector change
+   * repoints new runs without a restart.
+   */
+  collector?: import('./collector').CollectorSource;
 }
 
 export class AgentNotFoundError extends Error {}
@@ -317,6 +324,14 @@ export class RunManager extends EventEmitter {
       triggerId: entry.triggerId,
       updatedAt: entry.updatedAt,
     };
+  }
+
+  /** True while any agent's run is 'running' or 'paused' - `WorkspaceManager.sweep()` keeps a context warm on this. */
+  hasActiveRun(): boolean {
+    for (const entry of this.entries.values()) {
+      if (entry.status === 'running' || entry.status === 'paused') return true;
+    }
+    return false;
   }
 
   private setEntry(agentId: string, patch: Partial<RunEntry>, base?: RunEntry): RunEntry {
@@ -470,7 +485,12 @@ export class RunManager extends EventEmitter {
     if (!observe) return undefined;
     let reporting = this.reporting.get(agentId);
     if (!reporting) {
-      reporting = observeReporting({ agentName: agentId, baseDir: this.opts.baseDir, ...(observe === true ? {} : { overrides: observe }) });
+      reporting = observeReporting({
+        agentName: agentId,
+        baseDir: this.opts.baseDir,
+        ...(observe === true ? {} : { overrides: observe }),
+        ...(this.opts.collector ? { collector: this.opts.collector } : {}),
+      });
       this.reporting.set(agentId, reporting);
     }
     return reporting;
@@ -703,6 +723,14 @@ export class RunManager extends EventEmitter {
     const legacySpec = toLegacySpec(resolvedSpec);
     const flow = extractFlowFromSpec(legacySpec);
     if (flow) {
+      // W11c: the flow path is Studio's own in-process FlowExecutor - on a
+      // bridge workspace that would silently bypass the project's SDK, so
+      // refuse until the bridge protocol carries flows (protocol 2).
+      if (this.opts.host.kind === 'bridge') {
+        throw new HostUnsupportedError(
+          "Flow runs need Studio's built-in SDK for now. Remove the project's SDK from this workspace or run the flow from code."
+        );
+      }
       return this.startFlowRun(agentId, flow, resolvedSpec, legacySpec, existing, options);
     }
     return this.startAgentRun(agentId, input, resolvedSpec, existing, options);
