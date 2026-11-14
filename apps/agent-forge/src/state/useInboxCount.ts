@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 
 import { runtimeClient } from '../runtime/runtimeClient';
-import { useStudioEvents } from './useStudioEvents';
-import type { StudioEvent } from '../../shared/wireTypes';
+import { useAllStudioEvents } from './useStudioEvents';
+import type { AllEventsFrame } from '../../shared/wireTypes';
 
 /**
- * The nav rail's Inbox badge (R02b): the server's `GET /inbox/count` on
- * mount, then every `inbox.count` StudioEvent replaces it - the event
- * already carries the new count, so no refetch. A dropped socket changes
- * nothing: the next event or remount resyncs.
+ * The nav rail's Inbox badge (R02b, Studio-wide since W09b): the server's
+ * `GET /inbox/count?ws=all` on mount, then every aggregate `inbox.count`
+ * frame (`workspaceId: 'all'`) replaces it - the frame already carries the
+ * new total, so no refetch. A dropped socket changes nothing: the next
+ * frame or remount resyncs.
  */
 export function useInboxCount(): number {
   const [count, setCount] = useState(0);
@@ -16,8 +17,8 @@ export function useInboxCount(): number {
   useEffect(() => {
     let live = true;
     runtimeClient
-      .inboxCount()
-      .then(({ count: n }) => {
+      .allInboxCount()
+      .then((n) => {
         if (live) setCount(n);
       })
       .catch(() => {});
@@ -26,8 +27,8 @@ export function useInboxCount(): number {
     };
   }, []);
 
-  useStudioEvents((event: StudioEvent) => {
-    if (event.type === 'inbox.count') setCount(event.count);
+  useAllStudioEvents((frame: AllEventsFrame) => {
+    if (frame.type === 'inbox.count' && frame.workspaceId === 'all') setCount(frame.count);
   });
 
   return count;

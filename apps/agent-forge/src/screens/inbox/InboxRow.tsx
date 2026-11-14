@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Sparkles, type LucideIcon } from 'lucide-react';
+import { Folder, Sparkles, type LucideIcon } from 'lucide-react';
 
 import { fmtAge } from '../../observe/format';
 import { AgentTile } from '../../ui/AgentTile';
@@ -33,6 +33,8 @@ interface RowProps extends InboxActionHandlers {
   acting: boolean;
   /** The screen's shared clock (ms epoch), ticking once a second. */
   now: number;
+  /** All-workspaces view only (W09b): the item's workspace name, shown as a chip before the agent name. */
+  workspaceName?: string;
 }
 
 /** The callbacks every inbox row offers, shared by the row and its group wrapper. */
@@ -44,17 +46,23 @@ export interface InboxActionHandlers {
   onSuggestFix: (item: InboxItem & { kind: 'alert' }) => void;
 }
 
-const agentHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'canvas')}`;
-const suggestionsHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'suggestions')}`;
-const overviewHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'overview')}`;
+const agentHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'canvas', item.workspaceId)}`;
+const suggestionsHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'suggestions', item.workspaceId)}`;
+const overviewHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'overview', item.workspaceId)}`;
 
-function Meta({ item, now }: { item: InboxItem; now: number }) {
+function Meta({ item, now, workspaceName }: { item: InboxItem; now: number; workspaceName?: string }) {
   const deadline = item.kind === 'approval' || item.kind === 'question' ? expiresLabel(item.expiresAt, now) : null;
   const soon = item.kind === 'approval' || item.kind === 'question'
     ? item.expiresAt !== null && Date.parse(item.expiresAt) - now < 60_000 && Date.parse(item.expiresAt) > now
     : false;
   return (
     <p className="inbox-row-meta">
+      {workspaceName !== undefined && (
+        <span className="chip inbox-row-workspace">
+          <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+          {workspaceName}
+        </span>
+      )}{' '}
       <a href={agentHref(item)}>{item.agentName}</a>
       {' · '}
       {fmtAge(now - Date.parse(item.at))}
@@ -245,7 +253,7 @@ export function InboxRow(props: RowProps): ReactNode {
       <div className="inbox-row-main">
         <p className="inbox-row-title">{item.title}</p>
         {item.detail !== null && <p className="inbox-row-detail">{item.detail}</p>}
-        <Meta item={item} now={props.now} />
+        <Meta item={item} now={props.now} workspaceName={props.workspaceName} />
       </div>
       <div className="inbox-row-actions">
         <RowActions {...props} />
