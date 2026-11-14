@@ -68,6 +68,12 @@ export function attachWebSocketServer(router: UpgradeRouter, workspaces: Workspa
         rejectUpgradeWith(socket, result.status);
         return;
       }
+      // `all` is only reachable with allowAll, which this endpoint never
+      // passes - the guard keeps the union narrow for `ctx`.
+      if (result.all === true) {
+        socket.destroy();
+        return;
+      }
       const { ctx } = result;
       const runs = ctx.runs;
       // Held from the resolved context until the socket is gone - sweep()

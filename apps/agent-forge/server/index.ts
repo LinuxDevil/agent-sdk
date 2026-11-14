@@ -244,7 +244,16 @@ export async function startStudioServer(
   // token gate runs in the router, then the first registered route wins.
   const upgradeRouter = createUpgradeRouter(server, access);
   attachWebSocketServer(upgradeRouter, workspaces);
-  attachEventsWebSocket(upgradeRouter, workspaces);
+  // `WS /events?ws=all` (W09a): every warm context's events tagged by
+  // workspace plus the Studio-wide inbox count; onBuilt/onDisposed keep
+  // the socket's subscription set following lazily-built contexts.
+  attachEventsWebSocket(upgradeRouter, workspaces, {
+    registry,
+    warm: () => workspaces.warm(),
+    alerts,
+    onBuilt: (listener) => workspaces.onBuilt(listener),
+    onDisposed: (listener) => workspaces.onDisposed(listener),
+  });
   upgradeRouter.register(
     AUTHOR_STREAM_PATH,
     createAuthorUpgradeHandler({ runner: authorRunner, sessions: authorSessions })

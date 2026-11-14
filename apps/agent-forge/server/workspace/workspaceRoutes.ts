@@ -22,6 +22,7 @@ import type { AddWorkspaceRequest, WorkspaceList, WorkspaceListItem, WorkspaceSc
 import { WORKSPACE_ID_RE, type WorkspaceRef } from '../../shared/workspace';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { AgentRepo } from '../storage/agentRepo';
+import { observeProjectOf } from '../observed/observeProject';
 import { isAgentDirPattern, type CodeAgentCache } from './codeAgentScan';
 import {
   WorkspaceExistsError,
@@ -64,6 +65,9 @@ async function toListItem(ref: WorkspaceRef, launchId: string): Promise<Workspac
     isLaunch: ref.id === launchId,
     available,
     agentCount: available ? new AgentRepo(ref.root).listIds().length : 0,
+    // W09a: the observe project this workspace's runs report under - the
+    // aggregate screens group observed agents by it.
+    observeProject: observeProjectOf(ref.root),
   };
 }
 

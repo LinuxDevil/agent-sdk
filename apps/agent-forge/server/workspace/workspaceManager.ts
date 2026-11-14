@@ -57,6 +57,9 @@ export class WorkspaceManager implements WorkspaceResolver {
   private readonly building = new Map<string, Promise<WorkspaceContext>>();
   /** Open-socket holds per workspace id (W02b `retain`): sweep never disposes a held context. */
   private readonly holds = new Map<string, number>();
+  /** `onBuilt`/`onDisposed` listeners (W09a): `WS /events?ws=all` follows contexts built after it connected. */
+  private readonly builtListeners = new Set<(ctx: WorkspaceContext) => void>();
+  private readonly disposedListeners = new Set<(id: string) => void>();
   private readonly maxWarm: number;
   private readonly idleMs: number;
   private readonly now: () => number;
@@ -67,6 +70,7 @@ export class WorkspaceManager implements WorkspaceResolver {
     this.maxWarm = options.maxWarm ?? MAX_WARM_WORKSPACES;
     this.idleMs = options.idleMs ?? WORKSPACE_IDLE_MS;
     this.contexts.set(options.launch.ref.id, { ctx: options.launch, lastUsedAt: this.now() });
+    this.emitBuilt(options.launch);
     const sweepMs = options.sweepMs ?? WORKSPACE_SWEEP_MS;
     this.sweepTimer =
       sweepMs > 0
@@ -157,6 +161,23 @@ export class WorkspaceManager implements WorkspaceResolver {
     };
   }
 
+  /**
+   * Subscribes to contexts joining the warm set (first build, W09a). The
+   * launch context fires once at construction - before any listener can
+   * exist - so subscribers see only later builds; `warm()` covers the
+   * rest. Returns the unsubscribe.
+   */
+  onBuilt(listener: (ctx: WorkspaceContext) => void): () => void {
+    this.builtListeners.add(listener);
+    return () => this.builtListeners.delete(listener);
+  }
+
+  /** Subscribes to contexts leaving the warm set (sweep/forget/close), by workspace id. */
+  onDisposed(listener: (id: string) => void): () => void {
+    this.disposedListeners.add(listener);
+    return () => this.disposedListeners.delete(listener);
+  }
+
   /** Drops a removed workspace's warm context now (`DELETE /workspaces/:ws` calls it after `registry.remove`). */
   // fallow-ignore-next-line unused-class-member -- invoked structurally through app.ts's forgetWorkspace wiring
   async forget(id: string): Promise<void> {
@@ -174,7 +195,29 @@ export class WorkspaceManager implements WorkspaceResolver {
     this.holds.clear();
     const entries = [...this.contexts.entries()];
     this.contexts.clear();
+    for (const [id] of entries) this.emitDisposed(id);
     await Promise.all(entries.map(([, entry]) => this.disposeQuietly(entry.ctx)));
+  }
+
+  /** Listener failures never break a resolve/dispose - a bad subscriber is warned and skipped. */
+  private emitBuilt(ctx: WorkspaceContext): void {
+    for (const listener of this.builtListeners) {
+      try {
+        listener(ctx);
+      } catch (error) {
+        console.warn(`[lousho studio] onBuilt listener failed:`, error);
+      }
+    }
+  }
+
+  private emitDisposed(id: string): void {
+    for (const listener of this.disposedListeners) {
+      try {
+        listener(id);
+      } catch (error) {
+        console.warn(`[lousho studio] onDisposed listener failed:`, error);
+      }
+    }
   }
 
   private touch(ctx: WorkspaceContext): WorkspaceContext {
@@ -196,6 +239,7 @@ export class WorkspaceManager implements WorkspaceResolver {
     const promise = (async () => {
       const ctx = this.options.build(ref);
       this.contexts.set(ref.id, { ctx, lastUsedAt: this.now() });
+      this.emitBuilt(ctx);
       return ctx;
     })().finally(() => this.building.delete(ref.id));
     this.building.set(ref.id, promise);
@@ -226,9 +270,14 @@ export class WorkspaceManager implements WorkspaceResolver {
   /** Removes the entry first, then disposes - a `resolve` during disposal rebuilds rather than serving a dying context. */
   private async disposeEntry(entry: WarmEntry): Promise<void> {
     if (entry.disposing !== undefined) return entry.disposing;
-    for (const [id, candidate] of this.contexts) {
-      if (candidate === entry) this.contexts.delete(id);
+    let id: string | undefined;
+    for (const [key, candidate] of this.contexts) {
+      if (candidate === entry) {
+        this.contexts.delete(key);
+        id = key;
+      }
     }
+    if (id !== undefined) this.emitDisposed(id);
     const disposing = this.disposeQuietly(entry.ctx);
     entry.disposing = disposing;
     return disposing;

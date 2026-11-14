@@ -34,6 +34,7 @@ const ws = (id: string, name: string, available = true): WorkspaceListItem => ({
   isLaunch: id === 'app-1a2b3c',
   available,
   agentCount: 0,
+  observeProject: 'default',
 });
 
 const trigger = () => document.body.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]');

@@ -29,6 +29,7 @@ const ITEM: WorkspaceListItem = {
   isLaunch: false,
   available: true,
   agentCount: 0,
+  observeProject: 'default',
 };
 
 const input = () => document.body.querySelector<HTMLInputElement>('#add-workspace-form input')!;

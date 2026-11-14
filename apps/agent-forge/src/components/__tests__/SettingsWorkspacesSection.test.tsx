@@ -34,6 +34,7 @@ const ws = (over: Partial<WorkspaceListItem> = {}): WorkspaceListItem => ({
   isLaunch: false,
   available: true,
   agentCount: 3,
+  observeProject: 'default',
   ...over,
 });
 

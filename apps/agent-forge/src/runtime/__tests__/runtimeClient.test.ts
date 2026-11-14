@@ -298,6 +298,23 @@ describe('RuntimeClient agent methods', () => {
     window.location.hash = '';
   });
 
+  it('listAllInbox and allInboxCount hit the aggregate inbox routes pinned to all (W09a)', async () => {
+    window.location.hash = '#/w/proj-def456/inbox';
+    const fetchMock = vi.fn(async (url: unknown) =>
+      jsonResponse(200, String(url).includes('/count') ? { count: 7 } : [])
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listAllInbox()).resolves.toEqual([]);
+    await expect(client.allInboxCount()).resolves.toBe(7);
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0][0]).toBe('/inbox?ws=all');
+    expect(calls[1][0]).toBe('/inbox/count?ws=all');
+    for (const [, init] of calls) {
+      expect(new Headers(init.headers).get('x-lousho-workspace')).toBe('all');
+    }
+    window.location.hash = '';
+  });
+
   it('loadAgent GETs /agents/:id and resolves undefined on a 404', async () => {
     const record = { id: 'a1', spec: { version: 2 }, latestVersion: 3 };
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, record)));
@@ -446,6 +463,7 @@ describe('RuntimeClient workspace methods', () => {
     isLaunch: false,
     available: true,
     agentCount: 2,
+    observeProject: 'default',
   };
 
   /** The last fetch call's [path, init]. */
@@ -692,5 +710,15 @@ describe('RuntimeClient workspace targeting (W04a)', () => {
     window.location.hash = '';
     client.forWorkspace('other-fff000').subscribeEvents(() => {});
     expect(WsStub.urls[0]).toContain('ws=other-fff000');
+  });
+
+  it('subscribeAllEvents opens /events with ws=all regardless of the URL workspace (W09a)', () => {
+    WsStub.urls = [];
+    vi.stubGlobal('WebSocket', WsStub);
+    window.location.hash = '#/w/proj-def456/inbox';
+    client.subscribeAllEvents(() => {});
+    expect(WsStub.urls[0]).toContain('/events?');
+    expect(WsStub.urls[0]).toContain('ws=all');
+    window.location.hash = '';
   });
 });
