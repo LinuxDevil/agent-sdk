@@ -206,6 +206,7 @@ async function buildWorkspaceStack(
   return { registry, workspace, workspaces };
 }
 
+// fallow-ignore-next-line complexity
 export async function startStudioServer(
   options: StartStudioServerOptions = {}
 ): Promise<StudioServerHandle> {

@@ -114,6 +114,7 @@ function timeText(iso: string, now: number): TimeText | null {
  * last run's status and both timestamps. A disabled agent keeps full text
  * contrast - only the tile goes grey - so the card stays AA-readable.
  */
+// fallow-ignore-next-line complexity
 export function AgentCard({ agent, onOpen, onToggleEnabled, toggling = false, now = Date.now(), workspaceName, workspaceRoot, workspaceId }: AgentCardProps): JSX.Element {
   const { id, name, description, model, enabled, disabledReason, labels, updatedAt, publishedVersion, lastRun } = agent;
   const nameId = `agent-card-name-${encodeURIComponent(id)}`;

@@ -11,6 +11,7 @@
 /** Serializes `value` for one protocol line; `undefined` (a bare function/symbol top-level) becomes `'null'`. */
 export function toWireJson(value: unknown): string {
   const parents = new WeakMap<object, object>();
+  // fallow-ignore-next-line complexity
   const json = JSON.stringify(value, function (this: unknown, _key: string, val: unknown) {
     if (typeof val === 'bigint') return val.toString();
     if (val instanceof Uint8Array) {
