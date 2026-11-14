@@ -6,6 +6,7 @@ import { ChangeList } from '../../ui/ChangeList';
 import type { ChangeItem } from '../../ui/changeValue';
 import { lineDiff } from '../prompts/lineDiff';
 import { useSuggestionActions, type SuggestionBusy } from './useSuggestionActions';
+import { agentTabPath } from '../agents/agentTabs';
 import type { PromptSuggestion } from '../../../shared/wireTypes';
 
 /** Props for {@link SuggestionCard}. */
@@ -139,7 +140,7 @@ export function SuggestionCard({ agentId, suggestion, promptRef, onChanged }: Su
 
       {status === 'applied' ? (
         <p className="suggestion-card-applied">
-          <a href={`#/agents/${encodeURIComponent(agentId)}/versions`}>
+          <a href={`#${agentTabPath(agentId, 'versions')}`}>
             {appliedAs !== null ? `Applied as v${appliedAs}` : 'Applied'}
           </a>
         </p>

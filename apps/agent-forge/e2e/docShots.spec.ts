@@ -289,7 +289,9 @@ async function open(page: Page, hash: string) {
 async function builderHash(page: Page): Promise<string> {
   const res = await page.request.get('/agents', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
   const ids = ((await res.json()) as { id: string }[]).map((a) => a.id);
-  return `/agents/${ids[0] ?? 'untitled-agent'}/canvas`;
+  const wsRes = await page.request.get('/workspace', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
+  const ws = ((await wsRes.json()) as { workspace: { id: string } }).workspace.id;
+  return `/w/${ws}/agents/${ids[0] ?? 'untitled-agent'}/canvas`;
 }
 
 /** The docs set shot in dark too, written as `studio-<screen>-dark.png`. */

@@ -4,6 +4,7 @@ import { Sparkles, type LucideIcon } from 'lucide-react';
 import { fmtAge } from '../../observe/format';
 import { AgentTile } from '../../ui/AgentTile';
 import type { InboxItem } from '../../../shared/wireTypes';
+import { agentTabPath } from '../agents/agentTabs';
 
 /** An approval/question deadline has passed (or is missing a parseable `expiresAt`). */
 function isExpired(item: InboxItem, now: number): boolean {
@@ -43,9 +44,9 @@ export interface InboxActionHandlers {
   onSuggestFix: (item: InboxItem & { kind: 'alert' }) => void;
 }
 
-const agentHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/canvas`;
-const suggestionsHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/suggestions`;
-const overviewHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/overview`;
+const agentHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'canvas')}`;
+const suggestionsHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'suggestions')}`;
+const overviewHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'overview')}`;
 
 function Meta({ item, now }: { item: InboxItem; now: number }) {
   const deadline = item.kind === 'approval' || item.kind === 'question' ? expiresLabel(item.expiresAt, now) : null;

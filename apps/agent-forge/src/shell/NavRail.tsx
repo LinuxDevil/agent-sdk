@@ -35,9 +35,11 @@ const SECTION_ORDER: NavSection[] = ['Build', 'Observe', 'Evaluate', 'Assets', '
 
 const firstSegment = (path: string) => path.split('/')[1] ?? '';
 
-/** An item owns every route under its first path segment (`/evals/datasets` -> Evaluations). The bare `/` is Agents. */
+/** An item owns every route under its first path segment (`/evals/datasets` -> Evaluations). The bare `/` is Agents. `/w/<ws>/<section>/…` scopes a screen to a workspace (W04b): the section is the segment after the id. */
 export function isActive(item: NavItem, path: string): boolean {
-  const segment = firstSegment(path) || 'agents';
+  const segments = path.split('/').filter(Boolean);
+  const section = segments[0] === 'w' ? segments[2] : segments[0];
+  const segment = section ?? 'agents';
   return firstSegment(item.href.slice(1)) === segment;
 }
 

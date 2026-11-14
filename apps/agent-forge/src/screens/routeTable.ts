@@ -33,11 +33,15 @@ export interface RouteEntry {
  * Kept free of React so the Playwright specs can import it.
  */
 export const ROUTES: readonly RouteEntry[] = [
-  { pattern: '/agents', screen: 'agentList', example: '/agents' },
-  { pattern: '/agents/:id', screen: 'agents', example: '/agents/e2e-agent' }, // legacy, redirected
-  // Keep '/agents/:id/canvas' above '/agents/:id/:tab': 'canvas' is a tab name too.
-  { pattern: '/agents/:id/canvas', screen: 'agents', example: '/agents/e2e-agent/canvas' },
-  { pattern: '/agents/:id/:tab', screen: 'agentDetail', example: '/agents/e2e-agent/overview' },
+  { pattern: '/agents', screen: 'agentList', example: '/agents' }, // every workspace (W06b fills it)
+  // Pre-W04b links: '/agents/:id…' redirects (replace) into the launch workspace.
+  { pattern: '/agents/:id', screen: 'agents', example: '/agents/e2e-agent' },
+  { pattern: '/agents/:id/:tab', screen: 'agents', example: '/agents/e2e-agent/canvas' },
+  // Keep '/w/:ws/agents/:id/canvas' above '/w/:ws/agents/:id/:tab': 'canvas' is a tab name too.
+  { pattern: '/w/:ws/agents', screen: 'agentList', example: '/w/e2e-000000/agents' }, // one workspace's list
+  { pattern: '/w/:ws/agents/:id', screen: 'agents', example: '/w/e2e-000000/agents/e2e-agent' }, // → canvas
+  { pattern: '/w/:ws/agents/:id/canvas', screen: 'agents', example: '/w/e2e-000000/agents/e2e-agent/canvas' },
+  { pattern: '/w/:ws/agents/:id/:tab', screen: 'agentDetail', example: '/w/e2e-000000/agents/e2e-agent/overview' },
   { pattern: '/inbox', screen: 'inbox', example: '/inbox' },
   { pattern: '/templates', screen: 'templates', example: '/templates' },
   { pattern: '/playground', screen: 'playground', example: '/playground' },

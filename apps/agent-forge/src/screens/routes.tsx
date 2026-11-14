@@ -13,6 +13,7 @@ import { InboxScreen } from './inbox/InboxScreen';
 import { AgentDetailRoute } from './agentDetail/AgentDetailRoute';
 import { TemplatesScreen } from './templates/TemplatesScreen';
 import { agentRedirect } from './agents/agentTabs';
+import { useWorkspaces } from '../workspace/WorkspacesProvider';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
@@ -42,7 +43,11 @@ export function screenFor(hash: string): ScreenId | null {
 export function useScreen(): ScreenId {
   const { path } = useRoute();
   const screen = screenFor(`#${path}`);
-  const redirect = agentRedirect(window.location.hash);
+  // Legacy '/agents/:id…' URLs redirect into the launch workspace; until
+  // GET /workspaces answers (launchId undefined) agentRedirect returns
+  // null and the builder shows meanwhile, exactly as before W04b.
+  const { launchId } = useWorkspaces();
+  const redirect = agentRedirect(window.location.hash, launchId);
   useEffect(() => {
     if (redirect !== null) navigate(redirect, { replace: true });
     else if (screen === null) navigate('/agents', { replace: true });

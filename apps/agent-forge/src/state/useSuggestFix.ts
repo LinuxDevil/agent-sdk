@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 import { runtimeClient } from '../runtime/runtimeClient';
 import { navigate } from '../router/router';
+import { agentTabPath } from '../screens/agents/agentTabs';
 
 /**
  * The "Suggest a fix" action every surface shares (R06): POST
@@ -14,6 +15,6 @@ import { navigate } from '../router/router';
 export function useSuggestFix(): (agentId: string, traceId: string) => Promise<void> {
   return useCallback(async (agentId: string, traceId: string) => {
     const { suggestionId } = await runtimeClient.suggestFromTrace(agentId, traceId);
-    navigate(`/agents/${encodeURIComponent(agentId)}/suggestions?suggesting=${encodeURIComponent(suggestionId)}`);
+    navigate(`${agentTabPath(agentId, 'suggestions')}?suggesting=${encodeURIComponent(suggestionId)}`);
   }, []);
 }
