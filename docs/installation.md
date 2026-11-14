@@ -129,8 +129,7 @@ The tarball is about 4 MB packed (15 MB unpacked). That is a stated trade-off,
 not an accident: `src/` ships because `lousho build` bundles
 `src/deploy/runtime.worker.ts` and `src/index.ts` from the installed package
 and the `dist/` source maps point at it (the maps carry no embedded source;
-embedding it instead and dropping `src/` measured larger, 5.2 MB packed), and
-`apps/agent-forge/` is the prebuilt dashboard that `lousho studio` serves. The
+embedding it instead and dropping `src/` measured larger, 5.2 MB packed). The
 1 MB `llms-full.txt` is in the repo, not the package.
 
 ## Entry points share code (ESM and CJS)
@@ -259,9 +258,19 @@ runs `lousho init` with the same arguments.
 ## The `@linuxdevil/lousho` CLI
 
 Installing the package also installs the `@linuxdevil/lousho` command: `init`, `doctor`,
-`dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build` and `studio`. See
+`dev`, `chat`, `acp`, `add`, `mcp`, `eval`, `traces`, `build`, `studio`,
+`observe`, `bridge` and more. See
 [CLI](./cli.md) for what each one does and its flags. Building needs `tsup`,
 an optional peer (see the table above): `npm install --save-dev tsup`.
+
+### Studio (optional)
+
+The visual dashboard, Lousho Studio, is a separate package,
+`@linuxdevil/studio` - it is not part of this tarball. Install it with
+`npm i -g @linuxdevil/studio` (or run `npx @linuxdevil/studio`), or just run
+`lousho studio` inside a project that has the SDK: the launcher finds an
+installed Studio and opens the folder as a workspace. See
+[Lousho Studio](./agent-forge.md).
 
 ## Troubleshooting: lousho doctor
 

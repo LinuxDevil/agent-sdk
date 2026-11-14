@@ -23,11 +23,11 @@ TypeScript AI agents you can test in CI, pause for approval, and resume after a 
   <a href="https://lousho.com/agent-forge">
     <picture>
       <source media="(prefers-color-scheme: dark)" srcset="docs/images/studio-trace-dark.png">
-      <img alt="Agent Forge, the local studio, showing one agent run as a trace" src="docs/images/studio-trace.png" width="560">
+      <img alt="Lousho Studio, the local studio, showing one agent run as a trace" src="docs/images/studio-trace.png" width="560">
     </picture>
   </a>
   <br>
-  <sub>Agent Forge, the local studio. Open it with <code>npx @linuxdevil/lousho studio</code>.</sub>
+  <sub>Lousho Studio, the local studio. Open it with <code>npx @linuxdevil/studio</code> (a separate install).</sub>
 </div>
 
 ![Lousho demo: scaffold a project, replay an eval offline, change the prompt, and see the replay flag it](.github/assets/demo.gif)
@@ -37,7 +37,7 @@ TypeScript AI agents you can test in CI, pause for approval, and resume after a 
 - **Test agents in CI without an API key.** `lousho eval` records a real run once, replays it with no network, and reports when the tool-call trajectory drifts. [Evals](https://lousho.com/evals)
 - **Resume after a crash.** Give the agent a store and `agent.resume()` finishes an interrupted run. Tool calls that already have a result do not run again. [Durable execution](https://lousho.com/durable-execution)
 - **Pause for a human.** A tool marked `needsApproval` pauses the run. Another request, or with a durable store another process, can approve it later, and the run continues where it stopped. [Approvals](https://lousho.com/approvals)
-- **Runs in your own Node process.** There is no hosted runtime. `lousho build` targets a Node server, Docker or Cloudflare Workers, and `lousho studio` runs on your machine. [Deployment](https://lousho.com/deployment)
+- **Runs in your own Node process.** There is no hosted runtime. `lousho build` targets a Node server, Docker or Cloudflare Workers, and Lousho Studio (`@linuxdevil/studio`, a separate install) runs on your machine. [Deployment](https://lousho.com/deployment)
 - **Works with the Vercel AI SDK.** `fromAiSdk()` and `fromAiSdkTools()` wrap AI SDK models and tools, so you can move over one piece at a time. [Migrating from the AI SDK](https://lousho.com/migrating-from-ai-sdk)
 
 ## Try it in 60 seconds, no API key
@@ -178,7 +178,7 @@ Loading a folder runs its code, so only load ones you trust. See [Agent director
 - **Multi-agent**: [sub-agents](https://lousho.com/sub-agents) that run in parallel, and [handoffs](https://lousho.com/handoffs) to specialists.
 - **UI**: bindings for [React](https://lousho.com/react), [Vue](https://lousho.com/vue) and [Svelte](https://lousho.com/svelte), plus [AI SDK `useChat`](https://lousho.com/ai-sdk-ui) and [Next.js routes](https://lousho.com/nextjs).
 - **Tracing**: OpenTelemetry GenAI spans and a local trace viewer. [Observability](https://lousho.com/observability)
-- **Agent Forge**: `lousho studio` opens a local visual canvas, run debugger and chat. [Agent Forge](https://lousho.com/agent-forge)
+- **Lousho Studio**: a separate install (`npx @linuxdevil/studio`) opens a local visual canvas, run debugger and chat across all your projects. [Lousho Studio](https://lousho.com/agent-forge)
 - **Self-healing (experimental)**: `lousho improve` turns an agent's failed runs into tested edits to its instructions and skills, applies one that passes (or queues it for a person), and rolls it back on a regression. [Self-healing](docs/self-healing.md)
 - **Workspaces (experimental)**: `@linuxdevil/lousho/workspaces` holds the contracts for a workspace of pages, harnesses and shared policy: schemas, validation, harness composition and typed authoring operations. [Workspaces](docs/workspaces.md)
 - **Coding agents**: workspace tools, permission rules and starter kits from `lousho add`. [Build a coding agent](https://lousho.com/build-a-coding-agent)

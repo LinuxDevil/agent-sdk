@@ -1,73 +1,198 @@
-# Agent Forge
+# Lousho Studio
 
-Agent Forge (`apps/agent-forge`, also called the Studio) is this SDK's
-companion dashboard: one app with a left navigation to build and run agents,
-try prompts, and read what your agents did from the observe daemon. Build an
-agent's graph on a canvas, run it, chat with it and author sandboxed
-pre/post hooks (all reading and writing the same `AgentSpec` YAML that
-`lousho dev` and `lousho build` use), try prompts in a playground, and read
-the [observe daemon](./observability.md#the-observe-daemon)'s traces,
-threads, fleet monitoring, eval scores, datasets, annotation queues, prompt
-registry and context hub. It's launched with one command,
-`lousho studio`, and ships as part of this SDK's npm package.
+Lousho Studio is a local web app for building, testing and watching every agent across your projects.
 
-This doc covers: installation, the `lousho studio` quickstart, the
-[navigation and screens](#navigation), a first-agent walkthrough, hook
-authoring, time travel (replaying a run from a past step), the playground
-endpoint, and how settings/secrets/deploy wiring works.
+It is a separate npm package, `@linuxdevil/studio` — the SDK (`@linuxdevil/lousho`)
+does not contain it. One Studio server shows every agent you have: the spec-v2
+graph agents saved in your project folders, code agents Studio finds by scanning
+a workspace, and agents running anywhere that report to the observe collector.
 
-![The Agents screen: nav, agent rail, the fitted canvas with the Inspector folded, and the bottom drawer](./images/studio-agents.png)
+This page covers installing and starting Studio, workspaces, which SDK runs a
+workspace's agents (and what each banner means), the collector, and how agents
+deployed on other machines show up here. [Using Studio](#using-studio) covers
+the builder, the playground, traces and the rest of the app.
 
-## Installation
+## Install and start
 
-Agent Forge ships inside `@linuxdevil/lousho` itself - there's no
-separate package to install:
+Any of these works:
 
 ```bash
-npm install @linuxdevil/lousho
+npx @linuxdevil/studio
 ```
-
-That's it. `lousho studio` (below) runs a pre-built copy of the app; you
-don't need `apps/agent-forge`'s own source or its devDependencies (Vite,
-`tsx`, etc.) to use it.
-
-If you're working inside this SDK's own monorepo instead (contributing to
-Agent Forge itself), see [Dev mode](#dev-mode) below.
-
-## Quickstart
 
 ```bash
-npx @linuxdevil/lousho studio
+npm i -g @linuxdevil/studio
+lousho-studio
 ```
 
-This starts one local server and prints its URL (default
-`http://127.0.0.1:4750/?token=<random>`). Open that exact URL in a browser.
-It lands on the Agents screen (`#/agents`): the left navigation, the build
-toolbar (the agent's name and run status, the model badge, then Debug, Stop,
-Run, Import, Export and Save), the
-agent rail (your saved agents plus a node/hook palette), the canvas, the
-Inspector (right), and a bottom drawer with Chat, Logs, Trace, Output,
-History and Settings tabs. An agent opens with nothing selected and the
-whole graph fitted in view; the Inspector stays folded away until you
-select a node, or press the **Inspector** button at the canvas's
-top-right (its accessible name is "Show inspector"), which is remembered. The other screens are one click away in the
-navigation; see [Navigation](#navigation).
-
-Below 860px wide the navigation becomes a drawer opened from the
-**Navigation** (menu) button at the top; picking a screen, the scrim or Esc
-closes it. On the Agents screen the agent rail and the Inspector become
-slide-over panels you open from the top bar; Run (or Stop) and Save stay in
-the bar, and Debug, Import, Export and the model badge move into its **More
-actions** (`⋯`) menu.
-
-Useful flags:
+Or, inside a project that already has `@linuxdevil/lousho` installed, the SDK's
+launcher finds the installed Studio and opens this folder as a workspace:
 
 ```bash
-npx @linuxdevil/lousho studio --port 5000       # pick a different port
-npx @linuxdevil/lousho studio --host 0.0.0.0    # bind to all interfaces
-npx @linuxdevil/lousho studio --prod            # force production mode (see below)
-npx @linuxdevil/lousho studio --dev             # force dev mode (monorepo only)
+lousho studio
 ```
+
+When no Studio is installed the launcher says so instead of bundling one:
+
+```
+Studio is a separate install: npx @linuxdevil/studio
+```
+
+`lousho studio` accepts `--port` and `--host` and passes them through; run
+`lousho studio --help` for its options. `--prod` and `--dev` only apply inside
+the SDK's own repository checkout (see [Dev mode](#dev-mode)).
+
+`lousho-studio` (and `npx @linuxdevil/studio`) take the same flags:
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--workspace <dir>` | the current folder | A project folder to open; it is added to your workspaces. |
+| `--port N` | `4750` | The port to listen on. |
+| `--host H` | `127.0.0.1` | The interface to bind to. |
+
+The server prints its URL, `http://127.0.0.1:4750/?token=<random>`. The
+`?token=` is a per-launch access token: the page keeps it for that tab and
+sends it on every API call, so open the printed URL, not the bare host (see
+[Access token](#access-token)).
+
+## Workspaces
+
+A workspace is a project folder on disk. The folder you launch Studio from is
+added automatically; add more with **Add workspace → folder path** (or the
+**Add workspace…** entry in the switcher).
+
+The switcher at the top of the nav lists **All workspaces**, each workspace,
+and **Add workspace…**. `#/agents` is the all-workspaces list; an agent route
+is `#/w/<workspace>/agents/<id>/<tab>`.
+
+Things live in three places:
+
+| Where | What |
+| --- | --- |
+| `~/.lousho/studio/` | Studio-wide state: the workspace registry, settings, secrets, assistant sessions, pass spend, inbox alerts. Shared across workspaces. |
+| `<workspace>/.lousho/agents/` | The project's agents: spec, metadata, layout, working copy, versions, drafts, suggestions, traces, chats, approvals, checkpoints. Travels with the project. |
+| `~/.lousho/observe.db` | The observe collector's database (traces, scores, sessions). |
+
+On first launch after the split, if a workspace still has a project-level
+`.lousho/settings.json` or `.lousho/secrets.json`, Studio offers **Import
+settings and keys from <workspace>** once, copies them into
+`~/.lousho/studio/`, and leaves the originals alone.
+
+## Three kinds of agent
+
+The all-workspaces agent list mixes three kinds:
+
+| Kind | Source | What you can do |
+| --- | --- | --- |
+| Workspace agent | `<workspace>/.lousho/agents/<id>.yaml` (Agent spec v2) | Everything: canvas, Author, versions, test, publish. |
+| Code agent | An agent directory or `agent.ts` found by scanning a workspace | Read-only canvas, traces, runs. |
+| Observed agent | Any agent reporting to the observe collector (`GET /api/v1/agents`): deployed workers, CI, other machines | Read-only card: name, project, instances, last seen, traces, scores, evals. |
+
+Observed agents whose collector `project` matches a workspace id appear under
+that workspace (see [See agents running elsewhere](#see-agents-running-elsewhere)).
+The rest are grouped under **Elsewhere**.
+
+## Which SDK runs your agents
+
+For each workspace Studio picks how agent processes run:
+
+- **Bridge** — the normal case. Studio spawns `lousho bridge` from the SDK
+  installed in that project (`@linuxdevil/lousho`), so runs use the project's
+  own SDK version. This matters because a project's `{ file }` tools and
+  skills import that project's dependencies, which only resolve inside the
+  project.
+- **In-process** — Studio's own built-in SDK, used when the project has no
+  SDK installed or its checkout is not built.
+- **Read-only** — the project's SDK is too old or speaks a protocol this
+  Studio does not know, so edits are refused until it is fixed.
+
+Each non-default state shows a banner at the top of the workspace's pages:
+
+| Banner | What to do |
+| --- | --- |
+| `This project has no @linuxdevil/lousho installed. Runs use Studio's built-in SDK <version>.` | Runs still work on Studio's SDK. Install `@linuxdevil/lousho` in the project to run its own version. |
+| `This SDK checkout is not built, so runs use Studio's built-in SDK <version>. Run npm run build to use it.` | Inside the SDK repository: run `npm run build` in the checkout. |
+| `Update @linuxdevil/lousho in this project to <minimum> or later to edit agents here.` | The project's SDK is older than this Studio understands. The workspace is read-only: update `@linuxdevil/lousho` in the project to edit. |
+| `This project's @linuxdevil/lousho <version> is newer than this Studio understands. Update Studio to edit agents here.` | The project has a newer SDK than this Studio was built for. Update Studio (`npm i -g @linuxdevil/studio@latest`) to edit. |
+| `This project's agent process keeps stopping. Check the Studio terminal for its output, then restart it.` | The bridge process crashed repeatedly. Its output is in the terminal that started Studio; use **Restart** on the banner to try again. |
+
+While a workspace is read-only, writes under its agents (saves, drafts, runs,
+deploys) are refused; reads still work.
+
+A few features still need Studio's built-in SDK and are unavailable on
+bridge workspaces:
+
+- Flow runs: `Flow runs need Studio's built-in SDK for now. Remove the project's SDK from this workspace or run the flow from code.`
+- Breakpoints: `Breakpoints need Studio's built-in SDK for now.`
+- Time travel: `Time travel is not available yet for projects that run their own SDK.`
+
+## The collector
+
+Everything under Observe, Evaluate and Assets — and run reporting — reads the
+observe collector. On boot Studio probes the configured URL (default
+`http://127.0.0.1:7777`):
+
+- **Attached** — a `lousho observe` daemon is already running there; Studio
+  uses it.
+- **Started** — none answered on loopback, so Studio started its own and
+  stops it on exit. It never stops a daemon it did not start.
+- **Remote** — a non-loopback URL (team or hosted collector); Studio probes
+  it but does not start or stop anything there.
+- **Down** — nothing answers; daemon screens show the start command instead
+  of data and recover on their own.
+
+The collector card at the bottom of the nav shows the mode (`Attached to
+<url>`, `Started by Studio on <url>`, `Remote collector at <url>`, `Not
+reachable: <error>`). **Settings → Collector** sets a remote URL and bearer
+token; create a token with `lousho observe token create --project <name>`.
+`LOUSHO_OBSERVE_URL` and `LOUSHO_OBSERVE_TOKEN` in Studio's own environment
+override the stored setting, and `LOUSHO_STUDIO_COLLECTOR=0` stops Studio
+from auto-starting a local daemon.
+
+## See agents running elsewhere
+
+An agent deployed on another machine — a server, CI, a teammate's laptop —
+shows up in Studio once it reports to a collector Studio can read. Reporting
+is pure SDK configuration; nothing in the agent is Studio-specific:
+
+```ts no-run
+import { createAgent } from '@linuxdevil/lousho';
+
+// LOUSHO_OBSERVE, LOUSHO_OBSERVE_TOKEN and LOUSHO_OBSERVE_PROJECT are read
+// from the environment - no Studio-specific code.
+export const agent = createAgent({ model: 'openai/gpt-4.1-mini' });
+```
+
+Set these in the deployed environment:
+
+| Variable | Meaning |
+| --- | --- |
+| `LOUSHO_OBSERVE` | The collector URL, e.g. `http://127.0.0.1:7777` or a tunnel/remote URL. `1`/`true` uses the default. |
+| `LOUSHO_OBSERVE_TOKEN` | Bearer token, when the collector requires one (`lousho observe token create`). |
+| `LOUSHO_OBSERVE_PROJECT` | The workspace id to group the agent under — shown in **Settings → Workspaces**. Without it the project name is the package name and the agent appears under **Elsewhere**. |
+
+Point Studio at the same collector under **Settings → Collector** (or with
+`LOUSHO_OBSERVE_URL`/`LOUSHO_OBSERVE_TOKEN` in Studio's environment), and the
+deployed agent's traces, scores and sessions appear in Studio's Observe
+screens.
+
+## Updating
+
+Studio (`@linuxdevil/studio`) and the SDK (`@linuxdevil/lousho`) are separate
+packages and update independently:
+
+```bash
+npm i -g @linuxdevil/studio@latest   # Studio itself
+npm i @linuxdevil/lousho@latest      # inside each project, its SDK
+```
+
+A workspace's agents edit only when the project's SDK is at least
+`MIN_BRIDGE_SDK_VERSION` — the SDK version this Studio was built against. Older
+SDKs get the read-only banner above; newer ones get the "update Studio" banner.
+Bridge workspaces also need `lousho bridge` in the project's SDK, which speaks
+bridge protocol `1`.
+
+## Using Studio
 
 ### Access token
 
@@ -100,40 +225,38 @@ without the CLI:
 
 ### Where agents live
 
-Agent specs and run state are stored under `.lousho/` in the directory you
-ran `lousho studio` from (agent YAML files under `.lousho/agents/`,
-checkpoints and approvals alongside them) - the same `.lousho/` layout
-`lousho dev`/`lousho build` use. Those YAML files are
-[Agent spec v2](./agent-spec.md) documents, which that page explains field
-by field.
+Each workspace's agent specs and run state live under `.lousho/` in that
+project folder (agent YAML files under `.lousho/agents/`, checkpoints and
+approvals alongside them) - the same `.lousho/` layout `lousho dev`/`lousho
+build` use, so the files travel with the project and stay diffable.
+Studio-wide state (settings, secrets, the workspace registry) lives in
+`~/.lousho/studio/` instead; see [Workspaces](#workspaces). Those YAML files
+are [Agent spec v2](./agent-spec.md) documents, which that page explains
+field by field.
 
-The Agents screen's agent rail lists exactly the agents in that `.lousho/agents/`: a YAML
-file you add there shows up, and an agent you create in the studio is
-written there at once (autosave and **Save** both write the file), so it
-can be chatted with straight away. Another project, opened in its own
-`lousho studio`, shows only its own agents. The browser keeps nothing but a
-draft of an edit that could not reach the server (it is pushed on the next
-load), stored per workspace directory. A file in `.lousho/agents/` that no
-longer parses is skipped with a warning in the server log.
+The Agents screen's agent rail lists exactly the agents in that workspace's
+`.lousho/agents/`: a YAML file you add there shows up, and an agent you
+create in the studio is written there at once (autosave and **Save** both
+write the file), so it can be chatted with straight away. Another workspace
+shows only its own agents. The browser keeps nothing but a draft of an edit
+that could not reach the server (it is pushed on the next load), stored per
+workspace directory. A file in `.lousho/agents/` that no longer parses is
+skipped with a warning in the server log.
 
 ### Production vs. dev mode
 
-`lousho studio` has two modes, and picks the right one automatically:
+An installed Studio (`lousho-studio`, `npx @linuxdevil/studio`, or
+`lousho studio` finding it) is always production mode: a single Express
+server serves both the REST/WebSocket API *and* the pre-built client (React
+app) as static files, on one port. There is no separate Vite dev server and
+no TypeScript loader involved.
 
-- **Production** (the default once Agent Forge has been built): a single
-  Express server serves both the REST/WebSocket API *and* the pre-built
-  client (React app) as static files, on one port. This is what runs when
-  you `npm install` the published package - there's no separate Vite dev
-  server and no TypeScript loader involved.
-- **Dev** (falls back to this if the build hasn't been run yet, i.e. inside
-  a source checkout of this monorepo): the API server runs straight off
-  its TypeScript source via `tsx`, alongside a real Vite dev server (with
-  hot-module reload) that proxies API requests to it. Two processes, two
-  ports internally, one command.
-
-`--prod`/`--dev` force one or the other; run without either flag and
-`lousho studio` auto-detects based on whether `apps/agent-forge/dist-server`
-exists.
+Dev mode - the API server running from TypeScript via `tsx` next to a Vite
+dev server with hot-module reload - exists only inside the SDK's own
+repository checkout, for people contributing to Studio itself. There
+`lousho studio --dev` (or `--prod` to force the built bundle) picks the mode;
+run without either flag it auto-detects based on whether
+`apps/agent-forge/dist-server` exists. See [Dev mode](#dev-mode).
 
 ## Navigation
 
@@ -231,30 +354,27 @@ Every status in the Studio is the same pill:
 
 ### The collector (observe daemon)
 
-Everything under Observe, Evaluate and Assets reads the observe daemon
-(`lousho observe start`) through the Studio server's `/observe` proxy. The
-proxy reads only `LOUSHO_OBSERVE_URL` (default `http://127.0.0.1:7777`);
-`LOUSHO_OBSERVE` does not change where the screens read (it only picks where
-builder runs report, see the [walkthrough](#first-agent-walkthrough)). When
-`LOUSHO_OBSERVE_TOKEN` is set, the proxy sends it to the daemon as the bearer
-token on every read and write (as run reporting and the judge evaluators do),
-so the screens also work against a daemon started with `--require-token`.
-Without it, such a daemon answers `401` to every `/api/` read and the screens
-show that error instead of data (`/health` still answers, so the collector
-card says running). The browser's own credentials (the Studio token, cookies,
-`Authorization`) are never passed on. The proxy only forwards reads plus the
-writes the screens make (feedback scores, new prompt versions from the
-Playground, prompt label moves, hub entry edits, dataset and example writes,
-annotation queue writes, evaluator rule writes); every other write, ingest
-above all, is refused with `405`. It always calls the daemon at
-`LOUSHO_OBSERVE_URL`, whatever host the request line names.
+Everything under Observe, Evaluate and Assets reads the observe collector
+through the Studio server's `/observe` proxy, which calls whatever URL the
+collector manager resolved (see [The collector](#the-collector)). The proxy
+forwards reads plus the writes the screens make (feedback scores, new prompt
+versions from the Playground, prompt label moves, hub entry edits, dataset
+and example writes, annotation queue writes, evaluator rule writes); every
+other write, ingest above all, is refused with `405`. When a bearer token is
+configured the proxy sends it to the collector on every read and write (as
+run reporting and the judge evaluators do), so the screens also work against
+a collector started with `--require-token`. Without it, such a collector
+answers `401` to every `/api/` read and the screens show that error instead
+of data (`/health` still answers, so the collector card says running). The
+browser's own credentials (the Studio token, cookies, `Authorization`) are
+never passed on.
 
-The collector card at the bottom of the nav says whether the daemon answers:
-**Checking collector…** until the first probe, then **Collector running**
-or **Collector unreachable**, with the daemon URL underneath. The probe keeps polling. While the daemon is down, each
-daemon screen shows the command to start it instead of an error, keeps its
-URL, and swaps the data back in by itself once the daemon answers. The
-Agents screen and Playground runs do not need the daemon.
+The collector card at the bottom of the nav shows the resolved mode —
+**Attached to \<url\>**, **Started by Studio on \<url\>**, **Remote collector
+at \<url\>** or **Not reachable: \<error\>** — and keeps polling. While the
+collector is down, each daemon screen shows the command to start it instead
+of an error, keeps its URL, and swaps the data back in by itself once it
+answers. The Agents screen and Playground runs do not need the collector.
 
 ## Screens
 
@@ -461,7 +581,7 @@ filter (agent, status `ok` or `error`, name contains), and the kind:
   the provider's environment variable where the Studio runs (the stored key
   wins); the provider list offers the providers that have either, plus
   `ollama` and `mock`. With no key at all the judge option is disabled, with
-  a link to Settings. Judges run only while `lousho studio` is running; until
+  a link to Settings. Judges run only while Studio is running; until
   then their jobs wait in the daemon (see
   [Judge rules](./observability.md#judge-rules-through-agent-forge)). Set
   `LOUSHO_STUDIO_JUDGE=0` on the Studio server to turn its judge loop off.
@@ -560,10 +680,10 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
    `awaiting approval`), and once the run's trace id is known an **Open
    trace** link next to it opens the run at `#/traces/<traceId>` (in the
    narrow layout it is in the **More** menu). Builder runs report to the
-   observe daemon as agent `<agent id>`, the same way the Playground does:
-   when `LOUSHO_OBSERVE` is set its reporter is used (nothing is reported
-   twice), a daemon that is down only drops events and never fails the run,
-   and message content is sent only to a loopback daemon (never to the
+   observe collector as agent `<agent id>`, the same way the Playground
+   does (see [The collector](#the-collector)): a collector that is down
+   only drops events and never fails the run, and message content is sent
+   only to a loopback collector (never to the
    trace files or the live Trace tab). Run sends a fixed
    prompt, which the Chat tab shows
    as a **Run input** bubble instead of a message from you. If the studio
@@ -594,7 +714,7 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
    live. Selecting a step highlights its node on the canvas. The list
    refreshes when a run ends. The files are the ones `lousho traces` reads, in
    `.lousho/agents/<agent id>/traces/<day>/<trace id>.jsonl` under the
-   directory `lousho studio` was started in (see
+   workspace folder (see
    [Local traces](observability.md#local-traces)):
    `npx @linuxdevil/lousho traces --dir .lousho/agents/<agent id>/traces` shows the same
    runs in the terminal, and deleting the agent's folder deletes its traces.
@@ -778,36 +898,36 @@ Every stream ends with exactly one `done` or `error`, even a run that stops
 without a result. `usage` has the `run.done` event's usage shape
 (`AgentEventUsage`).
 
-Closing the connection aborts the run. Every run reports to the observe
-daemon the Studio reads (`LOUSHO_OBSERVE_URL`, default
-`http://127.0.0.1:7777`, or `LOUSHO_OBSERVE` when set) as agent
+Closing the connection aborts the run. Every run reports to the collector
+the Studio reads (see [The collector](#the-collector)) as agent
 `playground`, with `lousho.prompt.ref` on the run's root span when
-`promptRef` is given. `LOUSHO_OBSERVE_TOKEN` is sent as the bearer token, for a
-daemon bound beyond loopback. A daemon that is down does not slow or fail the run.
+`promptRef` is given. A bearer token is sent when one is configured, for a
+collector bound beyond loopback. A collector that is down does not slow or
+fail the run.
 
 ## Settings, secrets and deploy wiring
 
 The Settings screen (`#/settings`, the last screen in the nav) and the builder
 drawer's **Settings** tab share three parts: provider API keys
-(OpenAI and Anthropic, stored encrypted under `.lousho/` and never shown
+(OpenAI and Anthropic, stored encrypted under `~/.lousho/studio/` and never shown
 again; each key shows **Set** with its masked last characters, **From
 environment** when only `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` is set, or
 **Not set**), named settings profiles (provider, deploy adapter, hook timeout,
-OpenTelemetry toggle; kept in `.lousho/settings.json`, which holds no
+OpenTelemetry toggle; kept in `~/.lousho/studio/settings.json`, which holds no
 secrets), and a **Deploy** section that picks an adapter (`node-server`,
 `docker` or `cloudflare-worker`) and runs `lousho build` for the selected
 agent. Other providers still read their environment variables, the same way
 `lousho dev`/`lousho build` do (see [Configuration](./configuration.md)), and
 the `mock` provider needs no credentials.
 
-Stored keys are encrypted with AES-256-GCM in `.lousho/secrets.json`. The
-encryption key is generated on first use and kept next to it in
-`.lousho/secrets.key` (both `0600` on POSIX). This keeps keys out of
+Stored keys are encrypted with AES-256-GCM in `~/.lousho/studio/secrets.json`.
+The encryption key is generated on first use and kept next to it in
+`~/.lousho/studio/secrets.key` (both `0600` on POSIX). This keeps keys out of
 anything that copies the ciphertext alone - a backup, a zip of the project,
 a shared agent YAML - but anyone who can read both files as your user can
-decrypt them. It is not an OS keychain. Keep `.lousho/` out of version
-control and out of shared archives, and prefer environment variables on
-shared machines.
+decrypt them. It is not an OS keychain. Keep `~/.lousho/studio/` out of
+version control and out of shared archives, and prefer environment variables
+on shared machines.
 
 An agent whose provider has no key (no stored key and no environment
 variable) does not run. **Run** and **Chat** fail with
@@ -819,16 +939,18 @@ mock agent carries a **MOCK** badge.
 
 ## Dev mode
 
-If you're working inside this SDK's own monorepo (contributing to Agent
-Forge itself, not just using it), `lousho studio` falls back to dev mode
-automatically as long as `apps/agent-forge/dist-server` hasn't been built
-yet:
+Dev mode exists only for people contributing to Studio inside the SDK's own
+monorepo - an installed Studio is always the production bundle (see
+[Production vs. dev mode](#production-vs-dev-mode)). From a checkout of this
+repository, `lousho studio` detects the Studio source and falls back to dev
+mode automatically as long as `apps/agent-forge/dist-server` hasn't been
+built yet:
 
 ```bash
 git clone https://github.com/LinuxDevil/lousho.git
 cd agent-sdk
 npm install
-npx @linuxdevil/lousho studio --dev   # or just `npx @linuxdevil/lousho studio` before building
+node bin/lousho.js studio --dev   # or just `node bin/lousho.js studio` before building
 ```
 
 This runs the API server straight from TypeScript (`tsx`) and a real Vite
@@ -840,7 +962,7 @@ is pinned to port 5173 and the API server accepts that origin. To build the prod
 ```bash
 npm run build:studio   # builds apps/agent-forge/dist (client) and
                         # apps/agent-forge/dist-server (bundled server)
-npx @linuxdevil/lousho studio       # now runs in production mode
+node bin/lousho.js studio       # now runs in production mode
 ```
 
 `npm run build:studio` also runs automatically as part of the root
@@ -905,4 +1027,5 @@ review shots included.
 ```bash
 LOUSHO_DOC_SHOTS=1 LOUSHO_DOC_SHOTS_OUT=/tmp/shots-dark LOUSHO_DOC_SHOTS_SCHEME=dark npx playwright test -c apps/agent-forge/playwright.config.ts docShots
 ```
+
 

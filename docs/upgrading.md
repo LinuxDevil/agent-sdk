@@ -286,7 +286,7 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | `agent.stream()` rethrows the run's error after the `error` and `run.done` events. See [Streaming](./streaming.md). | `stream(input, { throwOnError: false })` |
 | `send([])` throws `LOUSHO_CONFIG_INVALID`. | no opt-out |
 
-### CLI, evals and Agent Forge
+### CLI, evals and Studio
 
 | Change | Opt-out |
 | ------ | ------- |
@@ -302,6 +302,29 @@ there is one. A change marked "no opt-out" closed a security or data-loss bug.
 | `lousho mcp --port N` or `--host H` without `--http` is a usage error (exit 2); stdio has no port. | drop the flags, or add `--http` |
 | The `package.json` of a node-server or docker build no longer lists `@linuxdevil/lousho` (the bundle contains it). | add it yourself if other code next to the build imports the SDK |
 | The npm package no longer ships `dist/cli/*.js` (the CommonJS CLI build) or `dist/cli/*.d.ts`; `bin/lousho.js` never loaded them. | run the CLI through `bin/lousho.js` (`npx @linuxdevil/lousho`) |
+| The npm package no longer ships Studio (`apps/agent-forge`); `lousho studio` is now a launcher that finds an installed `@linuxdevil/studio`. | `npm i -g @linuxdevil/studio` (or `npx @linuxdevil/studio`); see below |
+
+### Studio moved to its own package
+
+Lousho Studio is published separately as `@linuxdevil/studio` and is no longer
+part of the `@linuxdevil/lousho` tarball. What to do:
+
+- Install it once: `npm i -g @linuxdevil/studio`, then run `lousho-studio`.
+  Or run `npx @linuxdevil/studio`. `lousho studio` inside a project keeps
+  working - it finds the installed Studio and opens that folder as a
+  workspace; with none installed it prints
+  `Studio is a separate install: npx @linuxdevil/studio`.
+- Studio-wide settings and secrets moved from a project's `.lousho/` to
+  `~/.lousho/studio/`. On first launch Studio offers **Import settings and
+  keys from <workspace>** once and copies them; the originals stay put.
+- `lousho studio --prod`/`--dev` now only apply inside the SDK's own
+  repository checkout; an installed Studio is always the production build.
+- A workspace's agents run on the project's own `@linuxdevil/lousho` through
+  `lousho bridge` when the installed SDK is new enough; older SDKs make the
+  workspace read-only until updated (the banner names the minimum). Studio
+  and the SDK update independently.
+
+See [Lousho Studio](./agent-forge.md) for the full picture.
 
 ## What 1.0 promises
 
