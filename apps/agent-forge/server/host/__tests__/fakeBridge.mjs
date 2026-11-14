@@ -44,6 +44,7 @@ if (mode === 'garbage') {
 }
 
 const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
+// fallow-ignore-next-line complexity
 rl.on('line', (line) => {
   let request;
   try {
