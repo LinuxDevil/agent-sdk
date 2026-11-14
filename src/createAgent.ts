@@ -185,6 +185,8 @@ export interface CreateAgentBase<TOutput extends StandardSchemaV1 = StandardSche
   skills?: readonly Skill[];
   /** Per run, a candidate harness to serve instead of static `instructions` and `skills`, or undefined for the agent's own; `loadAgentDir` sets it for an opted-in live traffic canary. */
   harnessCanary?: (ctx: RunConfigContext) => HarnessArm | undefined;
+  /** Attributes stamped on every run's `invoke_agent` span; the workspace runtime sets the `lousho.page` family through `labelsFor`. */
+  spanAttributes?: Readonly<Record<string, string | number>>;
   /** Optional agent name; defaults to 'agent'. */
   name?: string;
   /**
@@ -1558,7 +1560,7 @@ function agentSpecs(
     if (config.provider && model) builder.setSettings({ model });
     const revision = arm ? harnessRevisionOf(arm.instructions, arm.skills) : harnessRevision;
     return {
-      agent: { ...builder.build(), ...(revision !== undefined && { harnessRevision: revision }) },
+      agent: { ...builder.build(), ...(revision !== undefined && { harnessRevision: revision }), ...(config.spanAttributes && { spanAttributes: config.spanAttributes }) },
       provider: runProvider,
       toolRegistry: tools.toolRegistry,
       ...(tools.hostedTools.length > 0 && { hostedTools: tools.hostedTools }),

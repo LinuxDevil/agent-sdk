@@ -1,23 +1,24 @@
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { AgentRecord, DraftView, StudioEvent } from '../../../../shared/wireTypes';
+import type { AgentRecord, DraftView, PromptSuggestion, StudioEvent } from '../../../../shared/wireTypes';
 import type { AgentSpecV2 } from 'lousho/spec';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
 
 const mocks = vi.hoisted(() => ({
   getDraft: vi.fn(),
-  eventHandler: undefined as ((event: StudioEvent) => void) | undefined,
+  listSuggestions: vi.fn(),
+  eventHandlers: [] as Array<(event: StudioEvent) => void>,
 }));
 
 vi.mock('../../../runtime/runtimeClient', () => ({
-  runtimeClient: { getDraft: mocks.getDraft },
+  runtimeClient: { getDraft: mocks.getDraft, listSuggestions: mocks.listSuggestions },
 }));
 
 vi.mock('../../../state/useStudioEvents', () => ({
   useStudioEvents: (handler: (event: StudioEvent) => void) => {
-    mocks.eventHandler = handler;
+    mocks.eventHandlers.push(handler);
   },
 }));
 
@@ -101,10 +102,43 @@ async function flush() {
   });
 }
 
+function promptSuggestion(over: Partial<PromptSuggestion> = {}): PromptSuggestion {
+  return {
+    kind: 'prompt_edit',
+    id: 'sg-1',
+    agentId: 'support-bot',
+    sourceTraceId: 'trace-abc12345-6789',
+    expectedPromptHash: 'hash-before',
+    proposedPromptHash: 'hash-after',
+    oldText: 'Be helpful.',
+    newText: 'Be helpful and concise.',
+    confidence: 'high',
+    optimizationClass: 'Ambiguous instruction',
+    evidence: 'The run asked twice.',
+    expectedSaving: 'About 2s per run.',
+    risk: 'Low.',
+    validationPlan: ['Run the agent once'],
+    status: 'open',
+    createdAt: new Date(Date.now() - 180_000).toISOString(),
+    updatedAt: new Date(Date.now() - 180_000).toISOString(),
+    resolvedAt: null,
+    appliedVersion: null,
+    ...over,
+  };
+}
+
+/** Fires `event` on every subscribed handler (the tab mounts two: draft + suggestions). The mock registers on each render, so dedupe by identity. */
+function emit(event: StudioEvent) {
+  for (const handler of new Set(mocks.eventHandlers)) handler(event);
+}
+
 beforeEach(() => {
   mocks.getDraft.mockReset();
   mocks.getDraft.mockResolvedValue(undefined);
-  mocks.eventHandler = undefined;
+  mocks.listSuggestions.mockReset();
+  mocks.listSuggestions.mockResolvedValue([]);
+  mocks.eventHandlers = [];
+  window.location.hash = '';
 });
 
 describe('SuggestionsTab', () => {
@@ -121,9 +155,9 @@ describe('SuggestionsTab', () => {
     const host = renderTab();
     await flush();
 
-    expect(host.querySelector('.empty-state-title')?.textContent).toBe('Nothing to review');
+    expect(host.querySelector('.empty-state-title')?.textContent).toBe('No suggestions yet');
     expect(host.querySelector('.empty-state-hint')?.textContent).toBe(
-      'Drafts from the Author and suggestions from runs show up here.',
+      'Rate a run 2 or lower, or use Suggest a fix on a run, to get a suggested instruction change.',
     );
     expect(host.querySelector('.draft-card')).toBeNull();
   });
@@ -156,7 +190,7 @@ describe('SuggestionsTab', () => {
     expect(mocks.getDraft).toHaveBeenCalledTimes(1);
 
     act(() => {
-      mocks.eventHandler?.({ type: 'draft.changed', agentId: 'support-bot', draftId: 'd1', status: 'pending' });
+      emit({ type: 'draft.changed', agentId: 'support-bot', draftId: 'd1', status: 'pending' });
     });
     await flush();
 
@@ -171,7 +205,7 @@ describe('SuggestionsTab', () => {
     await flush();
 
     act(() => {
-      mocks.eventHandler?.({ type: 'draft.changed', agentId: 'other-agent', draftId: 'd9', status: 'pending' });
+      emit({ type: 'draft.changed', agentId: 'other-agent', draftId: 'd9', status: 'pending' });
     });
     await flush();
 
@@ -185,13 +219,13 @@ describe('SuggestionsTab', () => {
     await flush();
 
     act(() => {
-      mocks.eventHandler?.({ type: 'agent.changed', agentId: 'support-bot', reason: 'version' });
+      emit({ type: 'agent.changed', agentId: 'support-bot', reason: 'version' });
     });
     await flush();
     expect(mocks.getDraft).toHaveBeenCalledTimes(2);
 
     act(() => {
-      mocks.eventHandler?.({ type: 'agent.changed', agentId: 'support-bot', reason: 'meta' });
+      emit({ type: 'agent.changed', agentId: 'support-bot', reason: 'meta' });
     });
     await flush();
     expect(mocks.getDraft).toHaveBeenCalledTimes(2);
@@ -204,12 +238,12 @@ describe('SuggestionsTab', () => {
     expect(host.querySelector('.draft-card')).not.toBeNull();
 
     act(() => {
-      mocks.eventHandler?.({ type: 'draft.changed', agentId: 'support-bot', draftId: 'd1', status: 'approved' });
+      emit({ type: 'draft.changed', agentId: 'support-bot', draftId: 'd1', status: 'approved' });
     });
     await flush();
 
     expect(host.querySelector('.draft-card')).toBeNull();
-    expect(host.querySelector('.empty-state-title')?.textContent).toBe('Nothing to review');
+    expect(host.querySelector('.empty-state-title')?.textContent).toBe('No suggestions yet');
   });
 
   it('shows the error state with a Retry action', async () => {
@@ -223,5 +257,63 @@ describe('SuggestionsTab', () => {
     act(() => retry.click());
     await flush();
     expect(mocks.getDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it('lists prompt suggestions as cards below the draft card', async () => {
+    mocks.getDraft.mockResolvedValue(draftView());
+    mocks.listSuggestions.mockResolvedValue([
+      promptSuggestion(),
+      promptSuggestion({ id: 'sg-2', status: 'dismissed' }),
+      promptSuggestion({ id: 'sg-3', status: 'conflict' }),
+    ]);
+    const host = renderTab();
+    await flush();
+
+    expect(host.querySelector('.draft-card')).not.toBeNull();
+    const cards = [...host.querySelectorAll<HTMLElement>('.suggestion-card')];
+    expect(cards).toHaveLength(2);
+    expect(cards[0].getAttribute('data-status')).toBe('open');
+    expect(cards[1].getAttribute('data-status')).toBe('conflict');
+    expect(host.querySelector('#suggestions-title')?.textContent).toContain('Suggestions');
+    // The dismissed record stays in the store but never renders.
+    expect(host.querySelector('#sg-sg-2-title')).toBeNull();
+  });
+
+  it('shows the pending skeleton for ?suggesting=<id> until suggestion.new lands the record', async () => {
+    window.location.hash = '#/agents/support-bot/suggestions?suggesting=sg-9';
+    mocks.listSuggestions.mockResolvedValue([]);
+    const host = renderTab();
+    await flush();
+
+    expect(host.querySelector('.suggestion-card-pending')?.textContent).toContain('Working on a suggestion…');
+
+    // The pass finishes: the event refetches and the record replaces the skeleton.
+    mocks.listSuggestions.mockResolvedValue([promptSuggestion({ id: 'sg-9' })]);
+    act(() => {
+      emit({ type: 'suggestion.new', agentId: 'support-bot', suggestionId: 'sg-9' });
+    });
+    await flush();
+
+    expect(host.querySelector('.suggestion-card-pending')).toBeNull();
+    expect(host.querySelector('#sg-sg-9-title')).not.toBeNull();
+  });
+
+  it('refetches the list on suggestion.new for this agent only', async () => {
+    mocks.listSuggestions.mockResolvedValue([]);
+    renderTab();
+    await flush();
+    expect(mocks.listSuggestions).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      emit({ type: 'suggestion.new', agentId: 'other-agent', suggestionId: 'sg-x' });
+    });
+    await flush();
+    expect(mocks.listSuggestions).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      emit({ type: 'suggestion.new', agentId: 'support-bot', suggestionId: 'sg-1' });
+    });
+    await flush();
+    expect(mocks.listSuggestions).toHaveBeenCalledTimes(2);
   });
 });

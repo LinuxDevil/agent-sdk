@@ -83,6 +83,14 @@
 }
 
 /* ---------- Fleet card ---------- */
+/* The Workspace column (W09b): the agent's observe project mapped to its Studio workspace name. */
+.mon-workspace {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .mon-agent {
   display: inline-flex;
   align-items: baseline;

@@ -6,10 +6,22 @@ const appState = vi.hoisted(() => ({
   agentId: 'alpha',
   agents: [{ id: 'alpha' }, { id: 'beta' }] as { id: string }[],
   agentsLoaded: true,
+  agentsWorkspaceId: undefined as string | undefined,
   dirty: false,
   switchAgent: vi.fn<[string], Promise<void>>(() => Promise.resolve()),
 }));
 vi.mock('../../../state/AppState', () => ({ useAppState: () => appState }));
+
+// W04b: useScreen (via useLeaveAgentsGuard probes) reads the launch workspace.
+vi.mock('../../../workspace/WorkspacesProvider', () => ({
+  useWorkspaces: () => ({
+    list: [],
+    launchId: 'launch-abc123',
+    activeId: 'launch-abc123',
+    error: undefined,
+    refresh: async () => {},
+  }),
+}));
 
 import { agentPath, agentRouteId, routeSyncAction } from '../agentRoute';
 import { useAgentRouteSync } from '../useAgentRouteSync';
@@ -45,6 +57,7 @@ beforeEach(() => {
   appState.agentId = 'alpha';
   appState.agents = [{ id: 'alpha' }, { id: 'beta' }];
   appState.agentsLoaded = true;
+  appState.agentsWorkspaceId = undefined;
   appState.dirty = false;
   appState.switchAgent.mockReset();
   appState.switchAgent.mockImplementation(() => Promise.resolve());
@@ -67,6 +80,12 @@ describe('agentRouteId / agentPath', () => {
     expect(agentRouteId('#/agents')).toBeUndefined();
     expect(agentRouteId('#/traces/abc')).toBeUndefined();
     expect(agentRouteId('')).toBeUndefined();
+    // Workspace-scoped shapes (W04b).
+    expect(agentRouteId('#/w/app-1a2b3c/agents/support-bot')).toBe('support-bot');
+    expect(agentRouteId('#/w/app-1a2b3c/agents/support-bot/canvas')).toBe('support-bot');
+    expect(agentRouteId('#/w/app-1a2b3c/agents/support-bot/runs')).toBe('support-bot');
+    expect(agentRouteId('#/w/app-1a2b3c/agents')).toBeUndefined();
+    expect(agentRouteId('#/w/app-1a2b3c/agents/a%20b')).toBe('a b');
   });
   it('is the canvas URL for every agent, including the unsaved default', () => {
     expect(agentPath('beta')).toBe('/agents/beta/canvas');
@@ -160,6 +179,19 @@ describe('useAgentRouteSync', () => {
     expect(appState.switchAgent).not.toHaveBeenCalled();
   });
 
+  it('ignores the URL while the agent list belongs to another workspace (W04b)', () => {
+    window.history.replaceState(null, '', '/#/w/proj-def456/agents/beta/canvas');
+    // The list on hand is workspace A's; the URL names workspace B - no
+    // switch or fallback until the B list lands.
+    appState.agentsWorkspaceId = 'launch-abc123';
+    render(createElement(Probe));
+    expect(appState.switchAgent).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe('#/w/proj-def456/agents/beta/canvas');
+    appState.agentsWorkspaceId = 'proj-def456';
+    rerender(createElement(Probe));
+    expect(appState.switchAgent).toHaveBeenCalledWith('beta');
+  });
+
   it('opens the agent the hash names once the saved list has loaded', () => {
     window.history.replaceState(null, '', '/#/agents/beta/canvas');
     appState.agentsLoaded = false;
@@ -197,7 +229,7 @@ describe('useLeaveAgentsGuard', () => {
     confirmSpy.mockReturnValue(false);
     go('#/traces');
     expect(confirmSpy).toHaveBeenCalledTimes(1);
-    expect(window.location.hash).toBe('#/agents/alpha/canvas');
+    expect(window.location.hash).toBe('#/w/launch-abc123/agents/alpha/canvas');
     expect(seen.at(-1)).toBe('agents');
     expect(seen).not.toContain('traces');
     await flush();

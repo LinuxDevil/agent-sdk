@@ -10,6 +10,7 @@ import { graphFromTemplate, type TemplateId } from '../canvas/templates';
 import { agentIdProblem } from '../../shared/agentId';
 import type { CanvasLayout, StudioEvent } from '../../shared/wireTypes';
 import { useStudioEvents } from './useStudioEvents';
+import { activeWorkspace } from '../workspace/activeWorkspace';
 import {
   emptyHistory,
   record as recordHistory,
@@ -210,8 +211,12 @@ async function loadInitialAgent(
   preferredId: string,
   isCancelled: () => boolean,
   setAgents: (agents: Awaited<ReturnType<AgentStore['list']>>) => void,
+  setAgentsWorkspaceId: (id: string | undefined) => void,
   doc: DocumentSetters
 ): Promise<void> {
+  // The workspace the list belongs to (W04b): route sync must not judge a
+  // URL against a list fetched for another workspace.
+  const ws = activeWorkspace();
   let list: Awaited<ReturnType<AgentStore['list']>> = [];
   try {
     list = await store.list();
@@ -220,6 +225,7 @@ async function loadInitialAgent(
   }
   if (isCancelled()) return;
   setAgents(list);
+  setAgentsWorkspaceId(ws);
   const id = list.some((entry) => entry.id === preferredId) ? preferredId : list[0]?.id;
   if (!id) return;
   const loaded = await store.load(id).catch(() => undefined);
@@ -315,10 +321,15 @@ function useAgentChangedRefresh(refreshAgents: () => Promise<void>): (event: Stu
 function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters) {
   const [agents, setAgents] = useState<Awaited<ReturnType<AgentStore['list']>>>([]);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
+  /** The workspace `agents` was fetched for (W04b); `undefined` only before the first successful fetch. */
+  const [agentsWorkspaceId, setAgentsWorkspaceId] = useState<string | undefined>(undefined);
 
   const refreshAgents = useCallback(async () => {
+    const ws = activeWorkspace();
     try {
-      setAgents(await store.list());
+      const list = await store.list();
+      setAgents(list);
+      setAgentsWorkspaceId(ws);
     } catch {
       // Server unreachable: keep the last list rather than failing the caller.
     }
@@ -328,7 +339,7 @@ function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters
   // first saved agent - or, when there is none, an unsaved 'untitled-agent'.
   useEffect(() => {
     let cancelled = false;
-    void loadInitialAgent(store, initialId, () => cancelled, setAgents, doc).finally(() => {
+    void loadInitialAgent(store, initialId, () => cancelled, setAgents, setAgentsWorkspaceId, doc).finally(() => {
       if (!cancelled) setAgentsLoaded(true);
     });
     return () => {
@@ -338,7 +349,7 @@ function useAgentList(store: AgentStore, initialId: string, doc: DocumentSetters
     // agent changes explicitly rather than re-running this on agentId writes.
   }, []);
 
-  return { agents, setAgents, refreshAgents, agentsLoaded };
+  return { agents, setAgents, refreshAgents, agentsLoaded, agentsWorkspaceId };
 }
 
 /**
@@ -597,7 +608,7 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
   const agentIdRef = useRef(agentId);
   agentIdRef.current = agentId;
   const { setDirty, lastSavedJson, setSelectedNodeId } = doc;
-  const { agents, setAgents, refreshAgents, agentsLoaded } = useAgentList(store, initialId ?? agentId, doc);
+  const { agents, setAgents, refreshAgents, agentsLoaded, agentsWorkspaceId } = useAgentList(store, initialId ?? agentId, doc);
   // `WS /events`: another tab's write refreshes this tab's agents list.
   useStudioEvents(useAgentChangedRefresh(refreshAgents));
 
@@ -660,6 +671,10 @@ export function useAgentDocument(store: AgentStore, initialId?: string) {
     setSelectedNodeId,
     agents,
     agentsLoaded,
+    /** The workspace `agents` was fetched for; route sync waits for it to match the URL's workspace (W04b). */
+    agentsWorkspaceId,
+    /** Re-fetches the saved-agent list - the workspace-switch reload (W04b) and every mutation already call it. */
+    refreshAgents,
     switchAgent,
     createAgent,
     ...historyControls,

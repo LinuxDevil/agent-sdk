@@ -20,6 +20,7 @@ import { diffSpecs } from '../diff/specChange';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { withAgentLock } from '../storage/atomic';
 import { flattenSpecIssues } from '../storage/agentRepo';
+import { ChainInvalidError } from '../triggers/chainTriggers';
 import { specHash } from '../storage/specHash';
 import { workspaceOf } from '../workspace/middleware';
 import type { SpecSnapshot } from '../../shared/wireTypes';
@@ -205,7 +206,15 @@ export function registerVersionRoutes(app: Express): void {
           sendError(res, 409, `v${n} is already the current version.`, 'LOUSHO_RESTORE_NOOP');
           return;
         }
-        await ws.repo.writeSpec(id, parsed.data);
+        try {
+          await ws.repo.writeSpec(id, parsed.data);
+        } catch (error) {
+          if (error instanceof ChainInvalidError) {
+            sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
+            return;
+          }
+          throw error;
+        }
         await ws.repo.writeMeta(id, { ...meta, labels: rec.snapshot.labels, updatedAt: new Date().toISOString() });
         const item = await ws.versions.capture(id, {
           kind: 'restore',

@@ -6,10 +6,10 @@ import type { AgentSpecV2 } from 'lousho/spec';
 import type { ObserveScoreRow } from '../../../../observe/types';
 import { render } from '../../../../ui/__tests__/render';
 
-const mocks = vi.hoisted(() => ({ listTraces: vi.fn(), listScores: vi.fn(), rateRun: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listTraces: vi.fn(), listScores: vi.fn(), rateRun: vi.fn(), suggestFromTrace: vi.fn() }));
 
 vi.mock('../../../../runtime/runtimeClient', () => ({
-  runtimeClient: { listTraces: mocks.listTraces, rateRun: mocks.rateRun },
+  runtimeClient: { listTraces: mocks.listTraces, rateRun: mocks.rateRun, suggestFromTrace: mocks.suggestFromTrace },
   RuntimeApiError: class RuntimeApiError extends Error {
     status: number;
     constructor(message: string, status: number) {
@@ -91,10 +91,10 @@ function score(traceId: string, value: number, comment: string | null = null): O
 }
 
 /** Mounts the tab inside the detail context the route provides. */
-function renderTab() {
+function renderTab(rec: AgentRecord = record()) {
   return render(
     <ToastProvider>
-      <AgentDetailContext.Provider value={{ record: record(), refresh: () => {}, setRecord: () => {} }}>
+      <AgentDetailContext.Provider value={{ record: rec, refresh: () => {}, setRecord: () => {} }}>
         <RunsTab />
       </AgentDetailContext.Provider>
     </ToastProvider>,
@@ -122,6 +122,8 @@ beforeEach(() => {
   mocks.listScores.mockReset();
   mocks.rateRun.mockReset();
   mocks.rateRun.mockResolvedValue(undefined);
+  mocks.suggestFromTrace.mockReset();
+  mocks.suggestFromTrace.mockResolvedValue({ suggestionId: 'sg-1' });
   mocks.listTraces.mockResolvedValue([]);
   mocks.listScores.mockResolvedValue([]);
 });
@@ -214,6 +216,39 @@ describe('RunsTab', () => {
     expect(row.querySelectorAll('.rating-option-on').length).toBe(2);
     expect(row.querySelector('[aria-label="2, Fair"]')?.getAttribute('aria-checked')).toBe('true');
     await flush();
+  });
+
+  it('"Suggest a fix" starts the pass on the row’s trace and opens the Suggestions tab (R06)', async () => {
+    window.location.hash = '';
+    mocks.listTraces.mockResolvedValue([trace('t1')]);
+    const host = renderTab();
+    await flush();
+
+    const button = [...host.querySelectorAll<HTMLButtonElement>('tbody button')].find((b) =>
+      b.textContent?.includes('Suggest a fix'),
+    )!;
+    expect(button.disabled).toBe(false);
+    act(() => button.click());
+    await flush();
+
+    expect(mocks.suggestFromTrace).toHaveBeenCalledWith('support-bot', 't1');
+    expect(window.location.hash).toBe('#/agents/support-bot/suggestions?suggesting=sg-1');
+  });
+
+  it('disables "Suggest a fix" when the instructions live in a file', async () => {
+    const fileSpec = {
+      ...record(),
+      spec: { ...record().spec, instructions: { file: 'instructions.md' } } as AgentSpecV2,
+    };
+    mocks.listTraces.mockResolvedValue([trace('t1')]);
+    const host = renderTab(fileSpec);
+    await flush();
+
+    const button = [...host.querySelectorAll<HTMLButtonElement>('tbody button')].find((b) =>
+      b.textContent?.includes('Suggest a fix'),
+    )!;
+    expect(button.disabled).toBe(true);
+    expect(button.title).toBe('Suggestions need inline instructions');
   });
 
   it('Refresh refetches both the runs and the ratings', async () => {

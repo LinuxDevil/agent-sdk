@@ -17,6 +17,24 @@ vi.mock('../../../shell/ScreenHeader', () => ({
   ),
 }));
 
+// W09b's Workspace facet reads the registered workspaces; Alpha reports
+// under project 'shop' (the stub daemon's agent project), Beta under 'ci'.
+vi.mock('../../../workspace/WorkspacesProvider', () => ({
+  useWorkspacesMaybe: () => ({
+    list: [
+      { id: 'alpha-a1b2c3', name: 'Alpha', root: '/a', addedAt: '', lastOpenedAt: '', isLaunch: true, available: true, agentCount: 1, observeProject: 'shop' },
+      { id: 'beta-b2c3d4', name: 'Beta', root: '/b', addedAt: '', lastOpenedAt: '', isLaunch: false, available: true, agentCount: 1, observeProject: 'ci' },
+    ],
+    launchId: 'alpha-a1b2c3',
+    activeId: 'alpha-a1b2c3',
+    error: undefined,
+    refresh: async () => {},
+  }),
+  useWorkspaces: () => {
+    throw new Error('unused');
+  },
+}));
+
 const NOW = new Date(2026, 9, 25, 15, 30, 0).getTime();
 
 const TRACE_OK: ObserveTraceRow = {
@@ -214,6 +232,37 @@ describe('TracesScreen', () => {
     await flush();
     expect(listRequests().length).toBe(before + 1);
     expect(window.location.hash).toBe('#/traces');
+  });
+
+  it('Workspace facet writes the workspace’s observeProject into project= (W09b)', async () => {
+    const container = await mountAt('#/traces');
+    const facetBtn = [...container.querySelectorAll('.facet-btn')].find((b) => b.textContent?.startsWith('Workspace'))!;
+    act(() => (facetBtn as HTMLButtonElement).click());
+    await flush();
+    const option = [...container.querySelectorAll('.facet-opt')].find((l) => l.textContent?.includes('Beta'))!;
+    act(() => (option.querySelector('input') as HTMLInputElement).click());
+    await flush();
+    expect(window.location.hash).toBe('#/traces?project=ci');
+    expect(listRequests().at(-1)!.get('project')).toBe('ci');
+    // The facet shows the derived selection.
+    const wsBtn = [...container.querySelectorAll('.facet-btn')].find((b) => b.textContent?.startsWith('Workspace'))!;
+    expect(wsBtn.querySelector('.facet-count')?.textContent).toBe('1');
+  });
+
+  it('derives the Workspace selection from project= and labels Project options with their workspace (W09b)', async () => {
+    const container = await mountAt('#/traces?project=shop');
+    const wsBtn = [...container.querySelectorAll('.facet-btn')].find((b) => b.textContent?.startsWith('Workspace'))!;
+    expect(wsBtn.querySelector('.facet-count')?.textContent).toBe('1');
+    act(() => (wsBtn as HTMLButtonElement).click());
+    await flush();
+    const alpha = [...container.querySelectorAll('.facet-opt')].find((l) => l.textContent?.includes('Alpha'))!;
+    expect(alpha.querySelector('input')?.checked).toBe(true);
+    // Project facet: 'shop' maps to Alpha → 'shop (Alpha)'.
+    const projectBtn = [...container.querySelectorAll('.facet-btn')].find((b) => b.textContent?.startsWith('Project'))!;
+    act(() => (projectBtn as HTMLButtonElement).click());
+    await flush();
+    const shop = [...container.querySelectorAll('.facet-opt')].find((l) => l.textContent?.includes('shop'))!;
+    expect(shop.textContent).toContain('shop (Alpha)');
   });
 
   it('shows the agent and trace id under the name, and the model as a chip', async () => {
