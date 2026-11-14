@@ -1,9 +1,12 @@
 /**
  * Webhook trigger routes (R08a, PLAN §5):
  *
- *   POST /hooks/:agentId/<trigger.path> -> 202 { queued, runKey, started }
+ *   POST /hooks/:agentId/<trigger.path> -> 202 { queued, runKey, started, cancelled }
  *                                        | 202 { skipped: 'filter' }
  *                                        | 400/401/403/404/422/429
+ *
+ * `cancelled` lists the runKeys abort listeners (R03b) stopped for this
+ * event, evaluated after signature verification and before the filter.
  *
  * The request path after `/hooks/:agentId/` must equal a webhook
  * trigger's `path` (the canvas default is `/hooks/<triggerId>`, so the
@@ -31,6 +34,7 @@ import { checkWebhookAuth } from '@linuxdevil/lousho/triggers';
 import { isLoopbackHost } from '../auth';
 import { asyncRoute, sendError } from '../http/routeUtils';
 import { workspaceOf } from '../workspace/middleware';
+import { applyAbortListeners } from './abortListeners';
 import { renderTemplate } from './template';
 
 type WebhookTrigger = Extract<TriggerSpec, { type: 'webhook' }>;
@@ -114,6 +118,25 @@ export function registerWebhookRoutes(app: Express, deps: WebhookRouteDeps): voi
       if (!(await checkSignature(req, res, trigger, rawBody, deps.resolveSecret))) return;
 
       const event = eventOf(rawBody);
+
+      // Abort listeners run after signature verification but before the
+      // filter and the dispatch (R03b): a `when: true` listener cancels
+      // matching queued/running runs of the trigger it watches. The run
+      // this event is about to queue does not exist yet, so it can never
+      // cancel itself.
+      const spec = await ws.repo.readSpec(agentId);
+      const cancelled =
+        spec === undefined
+          ? []
+          : applyAbortListeners({
+              spec,
+              agentId,
+              triggerId: trigger.id,
+              event,
+              host: ws.triggers,
+              log: (id, message, level) => ws.triggers.log(id, message, level),
+            }).flatMap((outcome) => outcome.cancelled.map((c) => c.runKey));
+
       if (trigger.filter !== undefined) {
         const keep = evaluateSafeExpression(trigger.filter, { event });
         if (keep !== true) {
@@ -141,7 +164,7 @@ export function registerWebhookRoutes(app: Express, deps: WebhookRouteDeps): voi
         sendError(res, 404, `No webhook trigger '${trigger.id}' for agent '${agentId}'`);
         return;
       }
-      res.status(202).json({ queued: true, runKey: result.runKey, started: result.started });
+      res.status(202).json({ queued: true, runKey: result.runKey, started: result.started, cancelled });
     })
   );
 }

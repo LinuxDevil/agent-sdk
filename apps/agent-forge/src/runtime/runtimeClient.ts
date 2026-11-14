@@ -56,6 +56,9 @@ import type {
   RunComparisonPayload,
   RunHistoryPayload,
   SecretStatus,
+  ServeAgentConfig,
+  ServeStatus,
+  ServeTokenReveal,
   SettingsFile,
   SteerRequest,
   SteerResponse,
@@ -402,6 +405,34 @@ class RuntimeClient implements AgentApi {
       method: 'POST',
       body: JSON.stringify(version === undefined ? {} : { version }),
     });
+  }
+
+  // -------------------------------------------------------------------
+  // `/agents/:id/serve*` - the published-agent serve switch (X02a). The
+  // token itself only ever comes back from `serveToken`/`rotateServeToken`.
+  // -------------------------------------------------------------------
+
+  /** The agent's serve config + masked token + publish pointer (`GET /agents/:id/serve`). */
+  async getServe(agentId: string): Promise<ServeStatus> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve`);
+  }
+
+  /** Patches `enabled`/`allowedOrigins` and answers the new status (`PUT /agents/:id/serve`). */
+  async putServe(agentId: string, patch: Partial<ServeAgentConfig>): Promise<ServeStatus> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve`, {
+      method: 'PUT',
+      body: JSON.stringify(patch),
+    });
+  }
+
+  /** The raw bearer token, revealed on demand (`GET /agents/:id/serve/token`). */
+  async serveToken(agentId: string): Promise<ServeTokenReveal> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/token`);
+  }
+
+  /** Mints a new bearer - the old one stops working at once (`POST .../serve/rotate-token`). */
+  async rotateServeToken(agentId: string): Promise<ServeTokenReveal> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/rotate-token`, { method: 'POST' });
   }
 
   /** Records a 1-5 human rating on a run's trace (`POST /agents/:id/rating`, R04a). */
