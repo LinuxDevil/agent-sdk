@@ -22,9 +22,9 @@ if (mode === 'silent') {
 }
 
 const hello = {
-  sdkVersion: '0.0.0-fake',
-  specVersions: [1, 2],
-  protocol: 1,
+  sdkVersion: process.env.FAKE_BRIDGE_SDK_VERSION ?? '0.0.0-fake',
+  specVersions: JSON.parse(process.env.FAKE_BRIDGE_SPEC_VERSIONS ?? '[1,2]'),
+  protocol: Number(process.env.FAKE_BRIDGE_PROTOCOL ?? '1'),
   catalogHash: 'fakehash',
 };
 
@@ -50,6 +50,12 @@ rl.on('line', (line) => {
   if (method === 'hello') {
     helloDone = true;
     say({ id, result: hello });
+    if (process.env.FAKE_BRIDGE_REPORT_ENV) {
+      // W11b: lets a test read the child's env back through recentStderr().
+      for (const key of ['LOUSHO_OBSERVE', 'LOUSHO_OBSERVE_PROJECT', 'LOUSHO_BRIDGE', 'LOUSHO_OBSERVE_TOKEN', 'LOUSHO_STUDIO_TOKEN']) {
+        process.stderr.write(`env ${key}=${process.env[key] ?? '<unset>'}\n`);
+      }
+    }
     return;
   }
   if (mode === 'crash-after-hello' && helloDone) {

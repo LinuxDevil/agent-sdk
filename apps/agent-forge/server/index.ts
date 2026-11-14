@@ -32,6 +32,8 @@ import { TemplateCatalog } from './templates/templateCatalog';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
+import { envCollector } from './host/hostSelector';
+import { VERSION } from 'lousho';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -186,6 +188,10 @@ export async function startStudioServer(
     passRunner,
     spendLog,
     alerts,
+    // W11b: bridge children report to the same daemon Studio reads; W12's
+    // CollectorManager replaces envCollector behind the same shape.
+    collector: envCollector,
+    studioVersion: VERSION,
   };
   const workspace = createWorkspaceContext(launchRef, services);
   // Every registered workspace resolves over HTTP through this manager:

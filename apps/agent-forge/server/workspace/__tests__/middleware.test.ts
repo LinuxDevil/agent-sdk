@@ -9,6 +9,7 @@ import { AgentRepo } from '../../storage/agentRepo';
 import { DraftStore } from '../../storage/draftStore';
 import { StudioEventBus } from '../../events/eventBus';
 import type { AgentHost } from '../../host/agentHost';
+import type { WorkspaceHostSelector } from '../../host/hostSelector';
 import { SuggestionStore } from '../../storage/suggestionStore';
 import { VersionStore } from '../../storage/versionStore';
 import { IdleVersioner } from '../../storage/idleVersioner';
@@ -37,6 +38,7 @@ function ctx(id: string): WorkspaceContext {
     idleVersioner: new IdleVersioner({ capture: async () => {} }),
     suggestions: new SuggestionStore(repo),
     host: {} as AgentHost,
+    hostSelector: {} as WorkspaceHostSelector,
     runs: {} as RunManager,
     chatTriggers: new TriggerRegistry(),
     events: new StudioEventBus(),
