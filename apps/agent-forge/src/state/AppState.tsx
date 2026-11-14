@@ -345,6 +345,7 @@ function agentActionsClearing(doc: AgentDocument, hideProposal: () => void) {
   };
 }
 
+// fallow-ignore-next-line complexity
 export function AppStateProvider({ children }: { children: ReactNode }) {
   // Agents live in the server workspace (.lousho/agents/), not the browser.
   const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
