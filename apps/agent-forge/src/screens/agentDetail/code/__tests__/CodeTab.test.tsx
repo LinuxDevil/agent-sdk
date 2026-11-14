@@ -27,6 +27,7 @@ vi.mock('@linuxdevil/lousho/spec', () => ({
 
 import { AgentDetailContext } from '../../AgentDetailContext';
 import { CodeTab } from '../CodeTab';
+import { runtimeClient, RuntimeApiError } from '../../../../runtime/runtimeClient';
 
 function record(): AgentRecord {
   return {
@@ -237,5 +238,73 @@ describe('CodeTab', () => {
     await clickView(host, 'YAML');
     expect(host.querySelector('pre.code-view')?.textContent).toContain('name: Support bot');
     expect(host.querySelector('.empty-state-title')).toBeNull();
+  });
+
+  it('Eject to project opens the dialog with the generated file count and posts on confirm', async () => {
+    const eject = vi.spyOn(runtimeClient, 'ejectAgent').mockResolvedValue({ dir: 'agents/support-bot', files: ['agent.yaml'] });
+    const host = renderTab();
+    await flush();
+
+    const ejectButton = [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes('Eject to project'),
+    )!;
+    act(() => ejectButton.click());
+    await flush();
+
+    const dialog = document.querySelector<HTMLElement>('.dialog, [role="dialog"], [role="alertdialog"]')!;
+    expect(dialog.textContent).toContain('Writes 2 files to agents/support-bot/');
+
+    const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes('Eject'),
+    )!;
+    act(() => confirm.click());
+    await flush();
+
+    expect(eject).toHaveBeenCalledWith('support-bot', false);
+    expect(dialog.isConnected).toBe(false);
+    expect(host.querySelector('.toast-message')?.textContent).toBe('Ejected to agents/support-bot/');
+    eject.mockRestore();
+  });
+
+  it('a 409 LOUSHO_EJECT_EXISTS shows the overwrite checkbox and resends with overwrite', async () => {
+    const err = new RuntimeApiError('agents/support-bot/ already exists.', 409, 'LOUSHO_EJECT_EXISTS', {
+      files: ['agent.yaml', 'prompts/system.md'],
+    });
+    const eject = vi
+      .spyOn(runtimeClient, 'ejectAgent')
+      .mockRejectedValueOnce(err)
+      .mockResolvedValueOnce({ dir: 'agents/support-bot', files: ['agent.yaml'] });
+    const host = renderTab();
+    await flush();
+
+    const ejectButton = [...host.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes('Eject to project'),
+    )!;
+    act(() => ejectButton.click());
+    await flush();
+
+    const confirm = [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.trim() === 'Eject',
+    )!;
+    act(() => confirm.click());
+    await flush();
+
+    expect(eject).toHaveBeenLastCalledWith('support-bot', false);
+    const checkbox = document.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    expect(checkbox).not.toBeNull();
+    expect(document.body.textContent).toContain('agents/support-bot/ already exists.');
+
+    act(() => {
+      checkbox.click();
+    });
+    await flush();
+    const confirmAgain = [...document.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.trim() === 'Eject',
+    )!;
+    act(() => confirmAgain.click());
+    await flush();
+
+    expect(eject).toHaveBeenLastCalledWith('support-bot', true);
+    eject.mockRestore();
   });
 });

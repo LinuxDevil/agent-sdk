@@ -119,7 +119,7 @@ function createEvalServices(baseDir: string, opts: EvalHarnessOptions): EvalServ
     // Evals run in-process only; the collector/version exist for the
     // host selector's shape (a bridge candidate would still spawn - eval
     // baseDirs carry no SDK install, so selection lands in-process).
-    collector: envCollector,
+    collector: { url: () => envCollector().url, token: () => envCollector().token },
     studioVersion: VERSION,
   });
   const workspaceResolver = singleWorkspace(workspace);
