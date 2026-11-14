@@ -56,6 +56,9 @@ export default defineConfig({
       },
       // The inbox (R02a): approvals/questions/drafts/suggestions/alerts + count + alert dismiss.
       '/inbox': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
+      // The published-agent serve surface (X02a): `/serve/<id>/*` is the
+      // external chat API; `/agents/:id/serve*` management rides `/agents`.
+      '/serve': { target: process.env.LOUSHO_STUDIO_API_URL ?? 'http://127.0.0.1:4750', changeOrigin: true },
     },
   },
   test: {

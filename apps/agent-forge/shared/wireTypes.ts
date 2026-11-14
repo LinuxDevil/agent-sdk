@@ -906,6 +906,33 @@ export interface PublishState {
 }
 
 /**
+ * The serve switch's editable half (X02a): whether `/serve/<id>/*` answers
+ * and which browser origins may call it. The bearer token is never part of
+ * this shape - `GET /agents/:id/serve/token` reveals it on demand.
+ */
+export interface ServeAgentConfig {
+  enabled: boolean;
+  /** Lower-case `scheme://host[:port]` origins, max 10. */
+  allowedOrigins: string[];
+}
+
+/** `GET /agents/:id/serve`'s body: the config plus what the Serve card needs to show. */
+export interface ServeStatus extends ServeAgentConfig {
+  agentId: string;
+  /** The pinned version being served, `null` when nothing is published. */
+  publishedVersion: number | null;
+  /** Masked: first 4 chars + '…' + last 4 - never the raw token. */
+  tokenMasked: string;
+  /** `/serve/<id>` - the client prefixes `location.origin`. */
+  baseUrl: string;
+}
+
+/** `GET /agents/:id/serve/token` and `POST .../serve/rotate-token`'s body. */
+export interface ServeTokenReveal {
+  token: string;
+}
+
+/**
  * `GET /agents/:id` (v2): the working copy plus its `meta.json`/`layout.json`
  * sidecars and the newest version number - the detail header's (A05) and
  * Author's (AA06) one-read view of an agent.
