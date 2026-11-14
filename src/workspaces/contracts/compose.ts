@@ -131,7 +131,7 @@ function composeInstructions(draft: Draft, layer: HarnessLayer): void {
   const texts = files.map((file) => {
     const text = layer.texts[file];
     if (text === undefined) throw invalid(`${layer.source} lists instruction '${file}', but its layer has no text for it`);
-    return text;
+    return text.trim();
   });
   draft.sections.push(`### From ${layer.source}\n\n${texts.join('\n\n')}`);
   addSource(draft, 'instructions', layer.source);

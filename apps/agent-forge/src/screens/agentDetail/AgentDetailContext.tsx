@@ -9,6 +9,12 @@ export interface AgentDetailContextValue {
   refresh(): void;
   /** Replaces the record in place (after this screen's own save). */
   setRecord(next: AgentRecord): void;
+  /**
+   * W11c: the workspace host banner's text when the workspace is
+   * read-only (`undefined` otherwise) - Run/save controls disable with it
+   * as their `title`.
+   */
+  readOnlyTitle?: string;
 }
 
 const AgentDetailContext = createContext<AgentDetailContextValue | null>(null);

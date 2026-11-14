@@ -82,6 +82,8 @@ export interface AuthorTurnRunnerDeps {
   turnContextInput: (session: AuthorSession, now: Date) => Promise<TurnContextInput>;
   /** Test seam: resolves the provider without the stored/env key lookup. */
   providerFor?: (model: string) => LLMProvider;
+  /** X08 e2e hook: a scripted provider that wins over key resolution (never set outside Playwright). */
+  scriptedProvider?: LLMProvider;
   /** Test seam: the turn clock (`turnContextInput` and message timestamps). */
   now?: () => Date;
 }
@@ -300,8 +302,13 @@ export class AuthorTurnRunner extends EventEmitter {
     };
   }
 
-  /** The provider for `model`: the test seam, or the real key-backed resolution. */
+  /** The provider for `model`: the e2e script, the test seam, or the real key-backed resolution. */
   private providerFor(model: string): { ok: true; provider: LLMProvider; modelId: string } | { ok: false; message: string } {
+    const scripted = this.deps.scriptedProvider;
+    if (scripted !== undefined) {
+      const slash = model.indexOf('/');
+      return { ok: true, provider: scripted, modelId: slash === -1 ? model : model.slice(slash + 1) };
+    }
     if (this.deps.providerFor !== undefined) {
       const slash = model.indexOf('/');
       const modelId = slash === -1 ? model : model.slice(slash + 1);

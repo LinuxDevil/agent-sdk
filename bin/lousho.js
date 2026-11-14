@@ -25,6 +25,10 @@ const USAGE = [
   '      Bundle an agent for deployment (default output: .lousho/build/<target>).',
   '  lousho studio [--port N] [--host H] [--prod|--dev]',
   '      Open Agent Forge, the visual agent builder.',
+  '  lousho bridge',
+  '      Speak Studio\'s bridge protocol on stdio (Lousho Studio starts it in a project).',
+  '  lousho workspace <init|ls|show|validate|run> [args] [--source <dir> | --service <url>]',
+  '      Create, inspect, validate and run a workspace from a folder or a running service.',
   '  lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]',
   '      Serve an agent as an MCP server (stdio by default).',
   '  lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]',
@@ -72,6 +76,9 @@ const COMMANDS = new Map([
   // been built (`npm run build:studio`), dev (Vite + tsx, two processes)
   // otherwise. --prod/--dev force one or the other - see src/cli/studio.ts.
   ['studio', { module: 'studio', run: 'runStudio' }],
+  // Speaks Studio's NDJSON bridge protocol on stdio; see src/cli/bridge.ts.
+  ['bridge', { module: 'bridge', run: 'runBridge', env: true }],
+  ['workspace', { module: 'workspace', run: 'runWorkspace', env: true }],
   // Serves an agent spec over MCP (stdio by default). The server keeps the
   // process alive; see src/cli/mcp.ts.
   ['mcp', { module: 'mcp', run: 'runMcp', env: true }],

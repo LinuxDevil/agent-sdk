@@ -8,6 +8,7 @@ import * as readline from 'node:readline';
 import type { Readable, Writable } from 'node:stream';
 import { serveAcp } from '../acp/serveAcp';
 import type { CreateAgentConfig } from '../createAgent';
+import { withConsoleOnStderr } from '../utils/consoleOnStderr';
 import { exitCodeFor, parseCommand, stringValue, usageError, type CommandSpec } from './args';
 import { buildAgent } from './chat';
 
@@ -39,17 +40,6 @@ export interface AcpIo {
   stderr: Writable;
   /** `createAgent()` options that win over what the target says (tests pass a mock provider). */
   overrides?: CreateAgentConfig;
-}
-
-/** Sends `console.log/info/debug` to stderr while `run` runs, so they cannot corrupt the protocol on stdout. */
-async function withConsoleOnStderr<T>(run: () => Promise<T>): Promise<T> {
-  const saved = { log: console.log, info: console.info, debug: console.debug };
-  Object.assign(console, { log: console.error, info: console.error, debug: console.error });
-  try {
-    return await run();
-  } finally {
-    Object.assign(console, saved);
-  }
 }
 
 /** Runs `lousho acp` with the arguments after `acp` until stdin ends; resolves with the exit code. */

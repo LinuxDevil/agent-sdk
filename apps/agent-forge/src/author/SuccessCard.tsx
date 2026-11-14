@@ -14,8 +14,9 @@
 import { useState } from 'react';
 import { CircleCheck } from 'lucide-react';
 import type { Requirement, SetEnabledOutput } from '../../shared/authorWire';
-import { matchRoute, navigate } from '../router/router';
+import { navigate } from '../router/router';
 import { useRoute } from '../router/useRoute';
+import { agentPath, agentRouteId } from '../screens/agents/agentRoute';
 import { runtimeClient } from '../runtime/runtimeClient';
 import { useToast, type ToastApi } from '../ui/Toast';
 import type { AuthorChat } from './AuthorChatContext';
@@ -129,7 +130,7 @@ function SuccessActions({
         <button
           type="button"
           className="btn btn-ghost btn-sm"
-          onClick={() => navigate(`/agents/${encodeURIComponent(agentId)}`)}
+          onClick={() => navigate(agentPath(agentId))}
         >
           Open in canvas
         </button>
@@ -199,7 +200,7 @@ export function SuccessCard({
           enabling={enabling}
           agentId={agentId}
           onEnable={() => void onEnable()}
-          onAgentScreen={matchRoute(`#${path}`, ['/agents/:id'])?.params.id === agentId}
+          onAgentScreen={agentRouteId(`#${path}`) === agentId}
         />
       </div>
     </div>

@@ -58,14 +58,17 @@ describe('schemaProblems', () => {
     expect(byPath.get('mcpServers.linear.url')).toBe('mcp:linear');
   });
 
-  it('reports "not supported yet" placeholder sections as warnings', () => {
-    const problems = schemaProblems(specOf({ evals: { suites: [] } }), PATHS);
+  it('reports "not supported yet" issues as warnings', () => {
+    const problems = schemaProblems(
+      specOf({ guardrails: [{ id: 'g1', name: 'pii', onTripped: 'warn' }] }),
+      PATHS,
+    );
     expect(problems).toEqual([
       {
         nodeId: 'agent',
         severity: 'warning',
-        message: 'This setting is not supported yet: evals',
-        fieldPath: 'evals',
+        message: 'This setting is not supported yet: guardrails[0].onTripped',
+        fieldPath: 'guardrails[0].onTripped',
       },
     ]);
   });

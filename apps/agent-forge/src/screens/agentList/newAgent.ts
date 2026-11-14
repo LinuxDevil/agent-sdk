@@ -64,19 +64,24 @@ export interface NewAgentActions {
  * header menu and the empty state (AgentListScreen owns it): two instances
  * would each track `creating` separately and allow a duplicate POST /agents.
  */
-export function useNewAgentActions(onImport?: () => void): NewAgentActions {
+export function useNewAgentActions(onImport?: () => void, createWorkspaceId?: string): NewAgentActions {
   const toast = useToast();
   const [creating, setCreating] = useState(false);
   const templatesAvailable = hasTemplatesRoute();
 
   const createBlank = useCallback(() => {
     setCreating(true);
-    runtimeClient
+    // W06b: the blank agent is created in `createWorkspaceId` when the
+    // screen resolved one (the scoped route's workspace, the single
+    // selected Workspace filter, or the launch workspace); undefined
+    // means the client's own target (the URL's/launch workspace).
+    const client = createWorkspaceId === undefined ? runtimeClient : runtimeClient.forWorkspace(createWorkspaceId);
+    client
       .createAgentRecord({ from: 'blank' })
-      .then((record) => navigate(agentTabPath(record.id, 'canvas')))
+      .then((record) => navigate(agentTabPath(record.id, 'canvas', createWorkspaceId)))
       .catch((error: unknown) => toast.show({ message: messageOf(error), tone: 'error' }))
       .finally(() => setCreating(false));
-  }, [toast]);
+  }, [toast, createWorkspaceId]);
 
   const openTemplates = useCallback(() => navigate('/templates'), []);
 
