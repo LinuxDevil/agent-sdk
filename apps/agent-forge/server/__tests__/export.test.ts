@@ -25,7 +25,7 @@ const V2_SPEC: AgentSpecV2 = {
   instructions: 'Check the queues.',
 };
 
-/** Writes a spec file verbatim (bypasses writeSpec's strict parse - pending sections like `evals` stay). */
+/** Writes a spec file verbatim (bypasses writeSpec; readSpec still strict-parses on read). */
 function writeSpecFile(repo: AgentRepo, id: string, spec: unknown): void {
   fs.mkdirSync(path.dirname(repo.specPath(id)), { recursive: true });
   fs.writeFileSync(repo.specPath(id), stringifyYaml(spec));
@@ -96,7 +96,7 @@ describe('GET /agents/:id/export', () => {
     writeSpecFile(repo, 'ops', {
       ...V2_SPEC,
       promptRef: 'support@prod',
-      evals: [{ dataset: 'ds1', minPassRate: 0.9 }],
+      evals: [{ dataset: 'ds1', gates: [{ maxSteps: 10 }], minPassRate: 0.9 }],
     });
     await request(app()).patch('/agents/ops/meta').send({ labels: ['prod', 'tier-1'] });
     vi.stubGlobal(
@@ -148,7 +148,7 @@ describe('GET /agents/:id/export', () => {
   });
 
   it('a failing dataset fetch warns and omits that dataset', async () => {
-    writeSpecFile(repo, 'ops', { ...V2_SPEC, evals: [{ dataset: 'missing' }] });
+    writeSpecFile(repo, 'ops', { ...V2_SPEC, evals: [{ dataset: 'missing', gates: [{ maxSteps: 10 }], minPassRate: 1 }] });
     vi.stubGlobal('fetch', daemonFetch({}));
     const res = await request(app()).get('/agents/ops/export?format=bundle');
     expect(res.status).toBe(200);

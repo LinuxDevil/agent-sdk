@@ -12,6 +12,7 @@ import type { SpecObjectSchema } from '../schema';
 import { abortListenerListSchema } from './abortListeners';
 import { modelIdSchema, relativePathSchema } from './common';
 import { flowProblems, flowSpecSchema } from './flow';
+import { evalSpecListSchema } from './evals';
 import { guardrailListSchema } from './guardrails';
 import { handoffListSchema } from './handoffs';
 import { hookListSchema } from './hooks';
@@ -23,7 +24,7 @@ import { skillRefListSchema } from './skills';
 import { subagentsSchemaOf, TOP_LEVEL_ONLY_KEYS } from './subagents';
 import { toolRefListSchema } from './tools';
 import { triggerListSchema } from './triggers';
-import { addUnsupportedIssue, pendingField } from './unsupported';
+import { addUnsupportedIssue } from './unsupported';
 import type { AgentSpecV2 } from './types';
 
 /** Agent `name`: 1-64 letters, digits, spaces, dots, dashes or underscores, starting with a letter or digit. */
@@ -90,7 +91,7 @@ export const agentSpecV2Shape = {
   triggers: triggerListSchema.optional(),
   abortListeners: abortListenerListSchema.optional(),
   flow: flowSpecSchema.optional(),
-  evals: pendingField('evals'),
+  evals: evalSpecListSchema.optional(),
 };
 
 /**
