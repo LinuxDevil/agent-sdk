@@ -487,6 +487,15 @@ is printed per process and reporting stays off. `LOUSHO_OBSERVE_PROJECT` labels
 the rows; `LOUSHO_OBSERVE_TOKEN` sends a bearer token for daemons bound
 beyond loopback (`--require-token` plus `lousho observe token create`).
 
+`LOUSHO_OBSERVE_PROJECT` also decides where an agent lands in
+[Lousho Studio](./agent-forge.md): set it to a workspace id (shown in Studio's
+**Settings → Workspaces**) and the agent's observed card appears under that
+workspace; unset, the project name is the package name and the agent appears
+under **Elsewhere**. Studio reads the same collector - it attaches to a
+running daemon or starts one itself on loopback (see
+[The collector](./agent-forge.md#the-collector)) - so a deployed agent that
+reports to Studio's collector shows up with no Studio-specific code.
+
 **Security.** Because the loopback daemon takes no token, it refuses requests
 a web page in your browser could forge. On every `/api/*` route:
 
@@ -506,7 +515,7 @@ check comes first.
 
 One SQLite file (default `~/.lousho/observe.db`, WAL mode) holds the fleet's
 observations, sessions, eval scores, prompt versions and shared context.
-`npx @linuxdevil/lousho studio` renders it (see [Agent Forge](./agent-forge.md#screens)):
+`npx @linuxdevil/studio` renders it (see [Lousho Studio](./agent-forge.md#screens)):
 Traces and Trace (trace trees with latency waterfalls), Threads, Monitoring
 (a live fleet monitor with heartbeat-derived status — a crashed agent's open
 sessions flip to `interrupted` — over per-agent charts of runs, p95 latency,

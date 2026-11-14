@@ -2,7 +2,7 @@
 
 Installing the package also installs the `@linuxdevil/lousho` command. It scaffolds
 projects, checks your setup, runs an agent locally, serves it over MCP, runs
-evals, shows saved traces, builds a deployable artifact and launches the Agent Forge dashboard.
+evals, shows saved traces, builds a deployable artifact and opens Lousho Studio.
 Run it with `npx @linuxdevil/lousho <command>` inside a project that has the SDK installed.
 
 | Command | What it does | Details |
@@ -17,7 +17,9 @@ Run it with `npx @linuxdevil/lousho <command>` inside a project that has the SDK
 | `lousho eval [globs...]` | Run `*.eval.ts` files under vitest; print a summary and write JUnit/JSON reports. | [Evals](./evals.md#lousho-eval) |
 | `lousho traces [id]` | List the recent runs saved by `fileTraceExporter()` (duration, model and tool calls, tokens, cost), or print one run as a span tree. | [Observability](./observability.md#local-traces) |
 | `lousho build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](./deployment.md) |
-| `lousho studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](./agent-forge.md) |
+| `lousho studio` | Open Lousho Studio (the separate `@linuxdevil/studio` package) on this project. | [Lousho Studio](./agent-forge.md) |
+| `lousho bridge` | Speak Studio's bridge protocol on stdio; started by Studio, not run by hand. | [Below](#lousho-bridge) |
+| `lousho observe <sub>` | Run the local collector every agent reports to when `LOUSHO_OBSERVE` is set: `start`, `status`, `stop`, `rebuild-rollups`, `prune`, `export`, `failures`, `score`, `token`. | [Below](#lousho-observe) |
 | `lousho improve <path> --check <module>` | Experimental. Run one self-healing cycle on an agent directory: propose edits to its instructions and skills from failed runs in your local observe database, gate them, replay them on fresh runs, and apply (auto mode, the default) or queue (manual mode) one that passes. `--watch` keeps it running; `pause`, `status`, `rollback`, `approve` and the other subcommands manage it. `--dry-run` prints the review card and applies nothing. | [Below](#lousho-improve) |
 
 Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
@@ -33,6 +35,7 @@ lousho acp <spec.yaml|spec.json|agent-dir|agent.ts> [--model provider/model]
 lousho add <name> [--registry <url-or-path>] [--dir <agent-dir>] [--yes] [--allow <list>] [--overwrite] [--dry-run]    (or --list)
 lousho build <agent-dir|spec|agent.ts> --target=<node-server|cloudflare-worker|docker> [--out=<dir>]    (or --agent=<path>)
 lousho studio [--port N] [--host H] [--prod|--dev]
+lousho bridge
 lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]
 lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]
 lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judge] [--record | --replay | --drift [--drift-usage]] [--url <base> [--token <bearer>]] [--config vitest.config.ts] [--timeout <ms>]
@@ -267,13 +270,27 @@ npx @linuxdevil/lousho studio            # prints http://127.0.0.1:4750/?token=<
 npx @linuxdevil/lousho studio --port 5000
 ```
 
-Starts one local server for the Agent Forge API and UI. Agents and run state
-are stored under `.lousho/` in the current directory. The app has a left
-navigation: Agents (the builder) and Playground, then Traces, Threads and
-Monitoring, Evaluations (Scores, Datasets, Evaluators, Annotation queues),
-Prompts, Context Hub and Settings; everything past the Playground reads the
-`lousho observe` daemon. See [Agent Forge](./agent-forge.md) for the screens
+Opens Lousho Studio on this project. Studio is a separate package
+(`@linuxdevil/studio`): install it with `npm i -g @linuxdevil/studio` (or run
+`npx @linuxdevil/studio`); this command finds it and opens the current folder
+as a workspace. When no Studio is installed it prints
+`Studio is a separate install: npx @linuxdevil/studio` and exits.
+
+Options: `--port N` and `--host H` pass through to Studio (defaults 4750 and
+`127.0.0.1`). `--prod` and `--dev` only apply inside the SDK's own repository
+checkout. See [Lousho Studio](./agent-forge.md) for workspaces, the screens
 and the walkthrough.
+
+## `lousho bridge`
+
+```bash
+lousho bridge
+```
+
+Speaks Studio's bridge protocol (NDJSON) on stdin/stdout so Studio can build
+and run agents with this project's own SDK. Studio starts it for each
+workspace that has `@linuxdevil/lousho` installed; you do not run it
+yourself.
 
 ## `lousho observe`
 
