@@ -28,6 +28,8 @@ import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
 import { StudioEventBus } from '../events/eventBus';
 import { InProcessAgentHost } from '../host/inProcessAgentHost';
+import { WorkspaceHostSelector, envCollector, type SelectHostDeps } from '../host/hostSelector';
+import { hostStatusOf } from '../host/hostStatus';
 import type { AgentHost } from '../host/agentHost';
 import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
@@ -40,6 +42,8 @@ import { attachFailureStreak } from '../lifecycle/failureStreak';
 import { attachVersionSummaries } from '../passes/versionSummary';
 import { attachDraftReviews } from '../passes/draftReview';
 import { createTriggerRuntime } from '../triggers/runtime';
+import { attachChainTriggers } from '../triggers/chainTriggers';
+import type { ChannelTriggers } from '../triggers/channelTriggers';
 import type { CronTriggers } from '../triggers/cronTriggers';
 import type { TriggerHost } from '../triggers/triggerHost';
 
@@ -66,6 +70,12 @@ export interface WorkspaceContext {
   suggestions: SuggestionStore;
   /** The host this workspace's agent runs execute through (InProcessAgentHost on Studio's SDK; a bridge host when the project has its own). */
   host: AgentHost;
+  /**
+   * How `host` was chosen (host/hostSelector.ts, W11b): the synchronous
+   * disk decision plus the post-handshake mode/banner W11c surfaces.
+   * `host === hostSelector.host` always.
+   */
+  hostSelector: WorkspaceHostSelector;
   runs: RunManager;
   /** `'chat'` → `ChatTriggerAdapter(runs)`; `POST /agents/:id/message` goes through it (chatTriggerAdapter.ts). */
   chatTriggers: TriggerRegistry;
@@ -85,28 +95,43 @@ export interface WorkspaceContext {
   /**
    * This workspace's inbox (inbox/inboxService.ts, R02a): the
    * approvals/questions/drafts/suggestions/alerts union `GET /inbox`
-   * lists and `inbox.count` counts. Built and `start()`ed here; `stop()`
-   * has no caller until a context dispose exists (same caveat as the
-   * pass attaches above - `startStudioServer`'s `close()` stops the
-   * launch context's).
+   * lists and `inbox.count` counts. Built and `start()`ed here;
+   * `stop()` runs on `dispose()` (and `startStudioServer`'s `close()` for
+   * the launch context).
    */
   inbox: InboxService;
   /**
    * This workspace's trigger host (triggers/triggerHost.ts, R08a): the
    * per-agent trigger queue webhook/channel/cron dispatches run through.
-   * Built and `start()`ed here like the inbox; `stop()` is called by
-   * `startStudioServer`'s `close()` for the launch context (same caveat
-   * as the pass attaches for non-launch contexts until W02a dispose).
+   * Built and `start()`ed here like the inbox; `stop()` runs on
+   * `dispose()` (and `startStudioServer`'s `close()` for the launch
+   * context).
    */
   triggers: TriggerHost;
   /**
    * This workspace's cron scheduler (triggers/cronTriggers.ts, R08c):
    * fires each agent's `cron` triggers through `triggers` on schedule.
    * Built and `start()`ed here; `stop()` is called by
-   * `startStudioServer`'s `close()` for the launch context (same caveat
-   * as `triggers` for non-launch contexts until W02a dispose).
+   * `startStudioServer`'s `close()` for the launch context and by
+   * `dispose()` for every context.
    */
   cron: CronTriggers;
+  /**
+   * Stops background work (the pass-attach subscriptions, the idle
+   * versioner's pending captures, the inbox's recount subscriptions, the
+   * trigger host and the cron scheduler) and closes nothing on disk.
+   * Idempotent - `WorkspaceManager` calls it once per disposal and
+   * `startStudioServer`'s `close()` may call the pieces again.
+   */
+  dispose(): Promise<void>;
+  /**
+   * This workspace's channel mounts (triggers/channelTriggers.ts, R08b):
+   * serves each agent's `channel` triggers at
+   * `/hooks/<agentId>/channel/<kind>` through the SDK's channel
+   * handlers. Mounted by the host's reload hook; passive like the host
+   * (no stop() - handlers are per-request lookups).
+   */
+  channels: ChannelTriggers;
 }
 
 /**
@@ -122,6 +147,12 @@ export interface WorkspaceResolver {
    */
   resolve(id: string | undefined): Promise<WorkspaceContext | undefined>;
   defaultId(): string;
+  /**
+   * Keeps `id` warm until the returned release runs (open sockets, W02b).
+   * `singleWorkspace` returns a no-op release - its one context is never
+   * a disposal candidate anyway.
+   */
+  retain(id: string): () => void;
 }
 
 /** A resolver that serves exactly `ctx` - the launch folder, whatever id came in that names it. */
@@ -130,6 +161,7 @@ export function singleWorkspace(ctx: WorkspaceContext): WorkspaceResolver {
     resolve: (id) =>
       Promise.resolve(id === undefined || id === ALL_WORKSPACES || id === ctx.ref.id ? ctx : undefined),
     defaultId: () => ctx.ref.id,
+    retain: () => () => {},
   };
 }
 
@@ -139,12 +171,31 @@ export interface WorkspaceServices {
   settingsStore: SettingsStore;
   /** Report runs to the observe daemon (`true` in the studio, `false` in embeddings/tests). */
   observe: boolean;
+  /** The Studio collector run reporting reads `url()`/`token()` from (collector.ts); absent falls back to env. Bridge children get the same daemon through the host selector's env. */
+  collector?: import('../collector').CollectorSource;
   /** The app's one PassRunner, stamped onto every context this builds. */
   passRunner: PassRunner;
   /** The app's one spend log (R01b): auto-approval decisions append `auto_approval` records to it directly, off the PassRunner. */
   spendLog: SpendLog;
   /** The Studio-global inbox alert store (L12) every workspace's failure-streak pass writes to. */
   alerts: AlertStore;
+  /** Studio's own SDK `VERSION`, for host-selection banners and `hello.client`. */
+  studioVersion: string;
+  /**
+   * Test seam: builds the `WorkspaceHostSelector` (W11b) - production
+   * always uses the default; tests inject one whose `clientOptions`/
+   * `extraEnv` reach the fake bridge child.
+   */
+  selectHost?: (ref: WorkspaceRef, deps: SelectHostDeps) => WorkspaceHostSelector;
+}
+
+/** Adapts the app's CollectorSource to the `() => { url, token? }` thunk the host selector calls per bridge spawn. */
+function collectorSourceThunk(source: import('../collector').CollectorSource): () => { url: string; token?: string } {
+  return () => {
+    const url = source.url();
+    const token = source.token();
+    return token === undefined ? { url } : { url, token };
+  };
 }
 
 /**
@@ -174,14 +225,29 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // checkpoints and approval pauses).
   const checkpointStore = new FileCheckpointStore(ref.root);
   const approvalStore = new FileApprovalStore(ref.root);
-  const host = new InProcessAgentHost({
-    baseDir: ref.root,
-    checkpointStore,
-    approvalStore,
+  // The host decision is synchronous-from-disk (W11b): a workspace with no
+  // usable project SDK gets Studio's in-process host; one with a built,
+  // new-enough SDK gets a BridgeAgentHost whose handshake finishes in the
+  // background below. `inProcess` is only invoked on rows 1-2 (and lazily
+  // for a read-only workspace's catalog fallback), so bridge workspaces
+  // never build the in-process host's run machinery.
+  const hostSelector = (services.selectHost ?? ((r, d) => new WorkspaceHostSelector(r, d)))(ref, {
+    inProcess: () =>
+      new InProcessAgentHost({
+        baseDir: ref.root,
+        checkpointStore,
+        approvalStore,
+        secretsStore: services.secretsStore,
+        settings: services.settingsStore,
+        spend: services.spendLog,
+      }),
     secretsStore: services.secretsStore,
-    settings: services.settingsStore,
-    spend: services.spendLog,
+    // W12's CollectorManager feeds bridge children the same daemon Studio
+    // reports to; without one the pre-W12 env fallback applies.
+    collector: services.collector ? collectorSourceThunk(services.collector) : envCollector,
+    studioVersion: services.studioVersion,
   });
+  const host = hostSelector.host;
   const runs = new RunManager({
     baseDir: ref.root,
     checkpointStore,
@@ -198,14 +264,29 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     secretsStore: services.secretsStore,
     settingsStore: services.settingsStore,
     // Builder runs report to the observe daemon, so "Open trace" resolves.
-    ...(services.observe ? { observe: true as const } : {}),
+    // A bridge host reports through its own child (LOUSHO_OBSERVE_* env),
+    // so RunManager adds no second reporter for it.
+    ...(services.observe && hostSelector.reportsToObserve ? { observe: true as const } : {}),
+    ...(services.collector ? { collector: services.collector } : {}),
   });
+  // Rows 3-7: kick the handshake now so the banner settles early; ready()
+  // never rejects (every outcome - bridge, read-only, crash - is a
+  // selection), the catch is belt-and-braces for a synchronous throw.
+  if (host.kind === 'bridge') void hostSelector.ready().catch(() => undefined);
   const events = new StudioEventBus();
+  // W11c: every selection settle AND every bridge client state change
+  // publishes the workspace's `host.status` - the banner (onChange) and
+  // the child lifecycle (onStateChange, e.g. ready->failed on a crash)
+  // both move the status the UI shows.
+  const publishHostStatus = (): void => {
+    events.publish({ type: 'host.status', payload: hostStatusOf(ref, hostSelector, services.studioVersion) });
+  };
+  hostSelector.onChange(publishHostStatus);
+  hostSelector.client?.onStateChange(publishHostStatus);
   const drafts = new DraftStore(repo);
   // The version-summary pass (L04): every written version enqueues its
-  // `version_summary` job on the app's one PassRunner; the returned
-  // unsubscribe has no caller until W02a's context dispose().
-  attachVersionSummaries({
+  // `version_summary` job on the app's one PassRunner.
+  const detachVersionSummaries = attachVersionSummaries({
     versions,
     passRunner: services.passRunner,
     events,
@@ -214,8 +295,8 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     workspaceId: ref.id,
   });
   // The draft auto-review pass (L11a): every created/restated pending
-  // draft enqueues its `draft_review` job; same dispose() caveat as above.
-  attachDraftReviews({
+  // draft enqueues its `draft_review` job.
+  const detachDraftReviews = attachDraftReviews({
     drafts,
     repo,
     passRunner: services.passRunner,
@@ -227,8 +308,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // The triggered-run failure streak (L12): five consecutive failed
   // 'trigger' runs auto-disable the agent and raise an inbox alert; the
   // AlertStore is Studio-global, everything else is this workspace's.
-  // Same dispose() caveat as the attaches above.
-  attachFailureStreak({ runManager: runs, repo, alerts: services.alerts, events, workspaceId: ref.id });
+  const detachFailureStreak = attachFailureStreak({ runManager: runs, repo, alerts: services.alerts, events, workspaceId: ref.id });
   // The inbox (R02a): one service per workspace over this context's own
   // stores plus the Studio-global alert list (filtered to ref.id). It
   // `start()`s its recount subscriptions here; `close()` stops the
@@ -247,16 +327,40 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // The trigger host (R08a) + cron scheduler (R08c): webhook/cron
   // dispatches queue through this workspace's RunManager; trigger-phase
   // log lines land on the same run-log stream RunManager's entries use.
-  const { triggers, cron } = createTriggerRuntime({ baseDir: ref.root, repo, runManager: runs, events });
+  const { triggers, cron, channels } = createTriggerRuntime({
+    baseDir: ref.root,
+    repo,
+    runManager: runs,
+    events,
+    // Channel turns build through the same stores the run host gets.
+    studio: {
+      baseDir: ref.root,
+      checkpointStore,
+      approvalStore,
+      secretsStore: services.secretsStore,
+      settings: services.settingsStore,
+      spend: services.spendLog,
+    },
+    ...(services.observe ? { observe: true as const } : {}),
+  });
+  const idleVersioner = createIdleVersioner(versions);
+  const detachPasses = [detachVersionSummaries, detachDraftReviews, detachFailureStreak];
+  let disposed = false;
+  // Agent chain triggers (R07): a finished run of A dispatches every
+  // `after: 'A'` trigger through the host - host runs via onRunEnd,
+  // manual test runs via the RunManager status stream. Same dispose()
+  // caveat as the attaches above.
+  attachChainTriggers({ host: triggers, repo, runManager: runs, log: (a, m, l) => triggers.log(a, m, l) });
   return {
     ref,
     repo,
     agentStore,
     versions,
     drafts,
-    idleVersioner: createIdleVersioner(versions),
+    idleVersioner,
     suggestions,
     host,
+    hostSelector,
     runs,
     chatTriggers: chatTriggersFor(runs),
     events,
@@ -264,5 +368,19 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     inbox,
     triggers,
     cron,
+    channels,
+    dispose: async () => {
+      if (disposed) return;
+      disposed = true;
+      for (const detach of detachPasses) detach();
+      inbox.stop();
+      triggers.stop();
+      cron.stop();
+      // Abort live runs and stop the bridge child (a no-op in-process).
+      await host.dispose();
+      // Flush pending idle-version captures before the stores go quiet -
+      // the same graceful stop `startStudioServer`'s `close()` performs.
+      await idleVersioner.flushAll();
+    },
   };
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
-    "src/cli/{dev,chat,build,studio,mcp,doctor,init,eval,observe,prompt}.ts",
+    "src/cli/{dev,chat,build,studio,mcp,doctor,init,eval,observe,prompt,workspace,bridge}.ts",
     "**/*.test-d.ts",
     "**/*.{test,spec}.{ts,tsx}",
     "**/*.eval.ts",
@@ -35,6 +35,7 @@
     "src/observe/__fixtures__/*.mts",
     "src/spec/v2/__fixtures__/**/*.{ts,js}",
     "src/workspaces/__fixtures__/*/**/*.ts",
+    "examples/workspace-marketing/workspace/**/*.ts",
     "examples/agent-dir/tools/*.ts",
     "registry/**/*.ts"
   ],

@@ -99,6 +99,7 @@
 - [support-desk](https://github.com/LinuxDevil/lousho/blob/main/examples/support-desk/README.md): The production support archetype (OpenAI Swarm's shape) built on `createAgent({ handoffs })`: a triage agent classifies the request and hands the *whole conversation* to a specialist, which replies to the customer itself and owns every later turn until it hands back.
 - [waves](https://github.com/LinuxDevil/lousho/blob/main/examples/waves/README.md): Waves — Workers · Aggregate · Verify · Extend — the bounded-parallel pattern from the community "waves" workflows (rayfernando-skills, Wave-Engineering/claudecode-workflow).
 - [workflow-router](https://github.com/LinuxDevil/lousho/blob/main/examples/workflow-router/README.md): An agent that classifies an incoming request into one of a fixed set of categories (`billing`/`technical`/`sales`), built with `createAgent()`.
+- [workspace-marketing](https://github.com/LinuxDevil/lousho/blob/main/examples/workspace-marketing/README.md): One Marketing workspace with two pages, `instagram-videos` and `facebook-videos`. Both attach the same three agents (`script-maker`, `video-maker`, `voice-maker`) from `workspace/agents/`; nothing is copied per page. What differs is each page's harness: its platform and audience profiles, its task text and its output contract. Both pages use `execution.type: single`.
 
 ## Optional
 

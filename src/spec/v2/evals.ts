@@ -27,11 +27,26 @@ export interface EvalJudgeGate {
  * answer against a rubric.
  */
 export type EvalGate =
-  | { calledTool: string }
-  | { notCalledTool: string }
-  | { maxCostUsd: number }
-  | { maxSteps: number }
-  | { judge: EvalJudgeGate };
+  | {
+      /** The run must call a tool with this name at least once. */
+      calledTool: string;
+    }
+  | {
+      /** The run must not call a tool with this name. */
+      notCalledTool: string;
+    }
+  | {
+      /** The run's model spend must stay under this USD amount. */
+      maxCostUsd: number;
+    }
+  | {
+      /** The run must finish within this many model steps. */
+      maxSteps: number;
+    }
+  | {
+      /** A model grades the answer against a rubric; the score must reach `minScore`. */
+      judge: EvalJudgeGate;
+    };
 
 /**
  * One `spec.evals` entry: the observe dataset every example comes from, the

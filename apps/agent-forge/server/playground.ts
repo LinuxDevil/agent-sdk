@@ -114,6 +114,8 @@ export interface PlaygroundOptions {
   baseDir: string;
   /** Reporter overrides (tests: `fetchFn`, `registerExitHooks`, `flushIntervalMs`); the agent name stays `playground`. */
   observe?: Partial<ObserveExporterOptions>;
+  /** The Studio collector (collector.ts): its `url()`/`token()` are read per exporter. */
+  collector?: import('./collector').CollectorSource;
 }
 
 /** The SSE response of one run; `send` stops after the first terminal (`done` / `error`) event. */
@@ -234,7 +236,12 @@ function failStream(res: Response, stream: SseStream, error: unknown, next: (err
 
 /** Registers `POST /playground/run`. */
 export function registerPlaygroundRoute(app: Express, options: PlaygroundOptions): void {
-  const reporting = observeReporting({ agentName: PLAYGROUND_AGENT_NAME, baseDir: options.baseDir, overrides: options.observe });
+  const reporting = observeReporting({
+    agentName: PLAYGROUND_AGENT_NAME,
+    baseDir: options.baseDir,
+    overrides: options.observe,
+    ...(options.collector ? { collector: options.collector } : {}),
+  });
   app.post('/playground/run', (req, res, next) => {
     const parsed = parsePlaygroundRequest(req.body);
     if (typeof parsed === 'string') {

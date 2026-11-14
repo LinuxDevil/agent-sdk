@@ -19,6 +19,7 @@ import {
   type TraceExporter,
 } from 'lousho/traces';
 import { observeTarget } from './observeProxy';
+import type { CollectorSource } from './collector';
 
 /** One agent name's reporter and whether its runs may capture content. */
 export interface ObserveReporting {
@@ -39,6 +40,12 @@ export interface ObserveReportingOptions {
    * agent name stays `agentName`.
    */
   overrides?: Partial<ObserveExporterOptions>;
+  /**
+   * The Studio collector (collector.ts): its `url()`/`token()` are read per
+   * exporter, so a Settings → Collector change repoints new runs without a
+   * restart. Overrides still win for tests.
+   */
+  collector?: Pick<CollectorSource, 'url' | 'token'>;
 }
 
 /** True for a `127.0.0.1` / `localhost` / `[::1]` URL. */
@@ -59,8 +66,9 @@ function envTargetIsLoopback(): boolean {
 /** The observe reporting for runs under `options.agentName`. */
 export function observeReporting(options: ObserveReportingOptions): ObserveReporting {
   let own: TraceExporter | undefined;
-  const { agentName, overrides } = options;
-  const url = () => overrides?.url ?? observeTarget();
+  const { agentName, overrides, collector } = options;
+  const url = () => overrides?.url ?? collector?.url() ?? observeTarget();
+  const token = () => (collector ? collector.token() : process.env.LOUSHO_OBSERVE_TOKEN);
   const fromEnv = () => (overrides ? undefined : observeExporterFromEnv({ agentName }));
   return {
     exporter: () =>
@@ -68,7 +76,7 @@ export function observeReporting(options: ObserveReportingOptions): ObserveRepor
       (own ??= observeExporter({
         cwd: options.baseDir,
         // Parity with the LOUSHO_OBSERVE reporter: a daemon bound beyond loopback demands the bearer.
-        ...(process.env.LOUSHO_OBSERVE_TOKEN ? { token: process.env.LOUSHO_OBSERVE_TOKEN } : {}),
+        ...(token() ? { token: token() } : {}),
         ...overrides,
         url: url(),
         agentName,

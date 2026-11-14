@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { RuntimeClient, RuntimeApiError } from '../runtimeClient';
+import { setLaunchWorkspace } from '../../workspace/activeWorkspace';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -324,6 +325,37 @@ describe('RuntimeClient agent methods', () => {
     expect(init.method).toBe('GET');
   });
 
+  it('listAllAgentItems GETs /agents?ws=all pinned to the all-workspaces header', async () => {
+    window.location.hash = '#/w/proj-def456/agents';
+    const body = { items: [], skipped: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, body));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listAllAgentItems()).resolves.toEqual(body);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents?ws=all');
+    expect(init.method).toBe('GET');
+    const headers = new Headers(init.headers);
+    expect(headers.get('x-lousho-workspace')).toBe('all');
+    window.location.hash = '';
+  });
+
+  it('listAllInbox and allInboxCount hit the aggregate inbox routes pinned to all (W09a)', async () => {
+    window.location.hash = '#/w/proj-def456/inbox';
+    const fetchMock = vi.fn(async (url: unknown) =>
+      jsonResponse(200, String(url).includes('/count') ? { count: 7 } : [])
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listAllInbox()).resolves.toEqual([]);
+    await expect(client.allInboxCount()).resolves.toBe(7);
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0][0]).toBe('/inbox?ws=all');
+    expect(calls[1][0]).toBe('/inbox/count?ws=all');
+    for (const [, init] of calls) {
+      expect(new Headers(init.headers).get('x-lousho-workspace')).toBe('all');
+    }
+    window.location.hash = '';
+  });
+
   it('loadAgent GETs /agents/:id and resolves undefined on a 404', async () => {
     const record = { id: 'a1', spec: { version: 2 }, latestVersion: 3 };
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, record)));
@@ -472,6 +504,7 @@ describe('RuntimeClient workspace methods', () => {
     isLaunch: false,
     available: true,
     agentCount: 2,
+    observeProject: 'default',
   };
 
   /** The last fetch call's [path, init]. */
@@ -507,6 +540,48 @@ describe('RuntimeClient workspace methods', () => {
     const [path, init] = lastCall(fetchMock);
     expect(path).toBe('/workspaces/proj-abc123');
     expect(init.method).toBe('DELETE');
+  });
+
+  it('loadCodeAgentSpec GETs /workspace/agent-dirs/spec with the path query-encoded', async () => {
+    const spec = { path: 'agents/a b', spec: { version: 2 }, warnings: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, spec));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.loadCodeAgentSpec('agents/a b')).resolves.toEqual(spec);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspace/agent-dirs/spec?path=agents%2Fa%20b');
+    expect(init.method).toBe('GET');
+  });
+
+  it('workspaceScan GETs /workspaces/:id/scan bound to that workspace (W08a)', async () => {
+    const scan = { workspaceId: 'proj-abc123', scannedAt: '2026-01-01T00:00:00.000Z', patterns: ['agents/*/'], agents: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, scan));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.workspaceScan('proj-abc123')).resolves.toEqual(scan);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspaces/proj-abc123/scan');
+    expect(init.method).toBe('GET');
+    expect((init.headers as Headers).get('x-lousho-workspace')).toBe('proj-abc123');
+  });
+
+  it('scanWorkspace POSTs /workspaces/:id/scan with agentDirs when given (W08a)', async () => {
+    const scan = { workspaceId: 'proj-abc123', scannedAt: '2026-01-01T00:00:00.000Z', patterns: ['tools/*/'], agents: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, scan));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.scanWorkspace('proj-abc123', ['tools/*/'])).resolves.toEqual(scan);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/workspaces/proj-abc123/scan');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({ agentDirs: ['tools/*/'] });
+    expect((init.headers as Headers).get('x-lousho-workspace')).toBe('proj-abc123');
+  });
+
+  it('scanWorkspace POSTs an empty body when agentDirs is omitted (W08a)', async () => {
+    const scan = { workspaceId: 'proj-abc123', scannedAt: '2026-01-01T00:00:00.000Z', patterns: ['agents/*/'], agents: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, scan));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.scanWorkspace('proj-abc123')).resolves.toEqual(scan);
+    const [, init] = lastCall(fetchMock);
+    expect(JSON.parse(String(init.body))).toEqual({});
   });
 });
 
@@ -597,5 +672,145 @@ describe('RuntimeClient author settings methods', () => {
       status: 400,
       code: 'INVALID_INPUT',
     });
+  });
+});
+
+describe('RuntimeClient workspace targeting (W04a)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.location.hash = '';
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+
+  /** The workspace header of the last fetch call. */
+  function lastWorkspaceHeader(fetchMock: { mock: { calls: unknown[][] } }): string | null {
+    const init = fetchMock.mock.calls.at(-1)?.[1] as RequestInit | undefined;
+    return new Headers(init?.headers).get('x-lousho-workspace');
+  }
+
+  /** Records every WebSocket url the client opens. */
+  class WsStub {
+    static urls: string[] = [];
+    readyState = 0;
+    constructor(url: string) {
+      WsStub.urls.push(url);
+    }
+    addEventListener(): void {}
+    close(): void {}
+  }
+
+  it('omits x-lousho-workspace before any workspace is known (no launch id, plain hash)', async () => {
+    // First in the file: no setLaunchWorkspace call has happened yet.
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.listAgents();
+    expect(lastWorkspaceHeader(fetchMock)).toBeNull();
+  });
+
+  it('sends the launch id once setLaunchWorkspace ran', async () => {
+    setLaunchWorkspace('launch-abc123');
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.listAgents();
+    expect(lastWorkspaceHeader(fetchMock)).toBe('launch-abc123');
+  });
+
+  it('prefers the #/w/<id>/… hash over the launch id', async () => {
+    window.location.hash = '#/w/proj-def456/agents';
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.listAgents();
+    expect(lastWorkspaceHeader(fetchMock)).toBe('proj-def456');
+  });
+
+  it('forWorkspace(id) pins the header regardless of the URL', async () => {
+    window.location.hash = '#/w/proj-def456/agents';
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    vi.stubGlobal('fetch', fetchMock);
+    await client.forWorkspace('other-fff000').listAgents();
+    expect(lastWorkspaceHeader(fetchMock)).toBe('other-fff000');
+  });
+
+  it('subscribe and subscribeEvents put ws=<id> next to token in the socket URL', () => {
+    WsStub.urls = [];
+    vi.stubGlobal('WebSocket', WsStub);
+    window.location.hash = '#/w/proj-def456/agents';
+    client.subscribe('a1', () => {});
+    client.subscribeEvents(() => {});
+    expect(WsStub.urls[0]).toContain('/agents/a1/stream?');
+    expect(WsStub.urls[0]).toContain('token=t');
+    expect(WsStub.urls[0]).toContain('ws=proj-def456');
+    expect(WsStub.urls[1]).toContain('/events?');
+    expect(WsStub.urls[1]).toContain('ws=proj-def456');
+  });
+
+  it('forWorkspace sockets carry their own ws= even on a plain hash', () => {
+    WsStub.urls = [];
+    vi.stubGlobal('WebSocket', WsStub);
+    window.location.hash = '';
+    client.forWorkspace('other-fff000').subscribeEvents(() => {});
+    expect(WsStub.urls[0]).toContain('ws=other-fff000');
+  });
+
+  it('subscribeAllEvents opens /events with ws=all regardless of the URL workspace (W09a)', () => {
+    WsStub.urls = [];
+    vi.stubGlobal('WebSocket', WsStub);
+    window.location.hash = '#/w/proj-def456/inbox';
+    client.subscribeAllEvents(() => {});
+    expect(WsStub.urls[0]).toContain('/events?');
+    expect(WsStub.urls[0]).toContain('ws=all');
+    window.location.hash = '';
+  });
+});
+
+describe('RuntimeClient serve methods (X02a)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+  const STATUS = {
+    agentId: 'ops',
+    enabled: true,
+    allowedOrigins: ['https://app.example'],
+    publishedVersion: 3,
+    tokenMasked: 'abcd…wxyz',
+    baseUrl: '/serve/ops',
+  };
+
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit | undefined];
+    return [path, init ?? {}];
+  }
+
+  it('getServe GETs /agents/:id/serve', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, STATUS));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.getServe('ops')).resolves.toEqual(STATUS);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/ops/serve');
+    expect(init?.method ?? 'GET').toBe('GET');
+  });
+
+  it('putServe PUTs the patch to /agents/:id/serve', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { ...STATUS, enabled: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.putServe('ops', { enabled: false })).resolves.toMatchObject({ enabled: false });
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/ops/serve');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ enabled: false });
+  });
+
+  it('serveToken GETs /agents/:id/serve/token and rotateServeToken POSTs rotate-token', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { token: 'raw-token' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.serveToken('ops')).resolves.toEqual({ token: 'raw-token' });
+    expect(lastCall(fetchMock)[0]).toBe('/agents/ops/serve/token');
+    await expect(client.rotateServeToken('ops')).resolves.toEqual({ token: 'raw-token' });
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/ops/serve/rotate-token');
+    expect(init.method).toBe('POST');
   });
 });

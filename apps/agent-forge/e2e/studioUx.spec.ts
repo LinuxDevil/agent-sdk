@@ -27,7 +27,8 @@ async function agentIds(page: Page): Promise<string[]> {
  * saved agent's canvas tab, or the unsaved default's when none are saved yet.
  */
 async function builderHash(page: Page): Promise<string> {
-  return `#/agents/${(await agentIds(page))[0] ?? 'untitled-agent'}/canvas`;
+  const ws = ((await (await page.request.get('/workspace', API)).json()) as { workspace: { id: string } }).workspace.id;
+  return `#/w/${ws}/agents/${(await agentIds(page))[0] ?? 'untitled-agent'}/canvas`;
 }
 
 test('a new agent is named what you typed; a finished run says done and labels its input', async ({ page }) => {

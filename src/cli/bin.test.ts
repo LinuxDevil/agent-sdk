@@ -31,6 +31,7 @@ describe('bin/lousho.js', () => {
     expect(banner).toContain('[--allowed-hosts a,b]');
     expect(banner).toContain('2 usage error');
     expect(banner).toContain('lousho improve <agent-dir|agent.ts> --check <module>');
+    expect(banner).toContain('lousho bridge');
   });
 
   it('exits 2 for `version` with an argument instead of ignoring it', () => {

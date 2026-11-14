@@ -2,15 +2,21 @@ import { matchRoute } from '../../router/router';
 import { agentTabPath } from './agentTabs';
 
 /**
- * The agent id any agents URL names - `/agents/:id`, `/agents/:id/canvas` and
- * `/agents/:id/:tab` all carry it. `undefined` for bare `/agents` (the list)
- * and every other route.
+ * The agent id any agents URL names - `/agents/:id`, `/agents/:id/:tab`
+ * (legacy, redirected into a workspace) and `/w/:ws/agents/:id`,
+ * `/w/:ws/agents/:id/:tab` all carry it. `undefined` for the lists
+ * (`/agents`, `/w/:ws/agents`) and every other route.
  */
 export function agentRouteId(hash: string): string | undefined {
-  return matchRoute(hash, ['/agents/:id', '/agents/:id/:tab'])?.params.id;
+  return matchRoute(hash, [
+    '/agents/:id',
+    '/agents/:id/:tab',
+    '/w/:ws/agents/:id',
+    '/w/:ws/agents/:id/:tab',
+  ])?.params.id;
 }
 
-/** The builder URL for an agent: always its canvas tab, including the unsaved `untitled-agent`. */
+/** The builder URL for an agent: always its canvas tab, workspace-scoped like every agents link (W04b). */
 export function agentPath(agentId: string): string {
   return agentTabPath(agentId, 'canvas');
 }
@@ -30,7 +36,7 @@ export function routeSyncAction(
   loaded: boolean,
 ): RouteSync {
   if (!loaded || routeId === undefined || routeId === agentId) return { kind: 'none' };
-  // Deleted or mistyped: back to #/agents (the list) and whatever is open, no error screen.
+  // Deleted or mistyped: back to the agents list and whatever is open, no error screen.
   if (!agents.some((a) => a.id === routeId)) return { kind: 'fallback' };
   return { kind: 'switch', id: routeId };
 }

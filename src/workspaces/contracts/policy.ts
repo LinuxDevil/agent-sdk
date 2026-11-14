@@ -93,7 +93,7 @@ export const workspacePolicySchema: z.ZodType<WorkspacePolicy> = workspacePolicy
 
 type Covers = (outer: string, inner: string) => boolean;
 
-const toolCovers: Covers = (outer, inner) => outer === inner || outer === '*' || (outer.endsWith('*') && inner.startsWith(outer.slice(0, -1)));
+export const toolCovers: Covers = (outer, inner) => outer === inner || outer === '*' || (outer.endsWith('*') && inner.startsWith(outer.slice(0, -1)));
 
 const hostCovers: Covers = (outer, inner) => matchesHost([outer], inner);
 
@@ -111,7 +111,7 @@ function narrowHosts(ceiling: readonly string[] | undefined, workspace: readonly
   return intersect(ceiling, workspace, hostCovers);
 }
 
-function secretKey(ref: SecretRef): string {
+export function secretKey(ref: SecretRef): string {
   return 'env' in ref ? `env:${ref.env}` : `secret:${ref.secret}`;
 }
 

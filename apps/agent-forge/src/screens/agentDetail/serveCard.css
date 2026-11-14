@@ -1,0 +1,102 @@
+/* The Serve card on the Code tab (X02b). Tokens only. */
+.serve-card {
+  margin-top: var(--space-4);
+  max-width: 720px;
+}
+.serve-card .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.serve-card-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.serve-card-toggle {
+  gap: var(--space-2);
+}
+.serve-card-switch-label {
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+.serve-card-version {
+  margin-left: auto;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+.serve-card-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+}
+.serve-card-facts[data-disabled='true'] {
+  opacity: 0.55;
+}
+.serve-card-fact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+.serve-card-fact dt {
+  flex: 0 0 64px;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+.serve-card-fact dd {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+.serve-card-code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.serve-card-origins {
+  min-height: 64px;
+}
+.serve-card-mcp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.serve-card-subhead {
+  margin: 0;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.serve-card-hint {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+.serve-card-snippet {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+.serve-card-snippet summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+}
+.serve-card-pre {
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  color: var(--text);
+  overflow-x: auto;
+  white-space: pre;
+}

@@ -11,8 +11,12 @@ import { AgentsScreen } from './agents/AgentsScreen';
 import { AgentListScreen } from './agentList/AgentListScreen';
 import { InboxScreen } from './inbox/InboxScreen';
 import { AgentDetailRoute } from './agentDetail/AgentDetailRoute';
+import { ObservedAgentRoute } from './observed/ObservedAgentScreen';
+import { CodeAgentRoute } from './codeAgent/CodeAgentScreen';
 import { TemplatesScreen } from './templates/TemplatesScreen';
 import { agentRedirect } from './agents/agentTabs';
+import { codeAgentRedirect } from './codeAgent/codeAgentRoute';
+import { useWorkspaces } from '../workspace/WorkspacesProvider';
 import { TraceScreen } from './traces/TraceScreen';
 import { MonitoringScreen } from './monitoring/MonitoringScreen';
 import { ScoresScreen } from './scores/ScoresScreen';
@@ -42,12 +46,22 @@ export function screenFor(hash: string): ScreenId | null {
 export function useScreen(): ScreenId {
   const { path } = useRoute();
   const screen = screenFor(`#${path}`);
-  const redirect = agentRedirect(window.location.hash);
+  // Legacy '/agents/:id…' URLs redirect into the launch workspace; until
+  // GET /workspaces answers (launchId undefined) agentRedirect returns
+  // null and the builder shows meanwhile, exactly as before W04b.
+  const { launchId } = useWorkspaces();
+  // Legacy '/agents/:id…' and '/code-agents/:path' URLs redirect into the
+  // launch workspace; until GET /workspaces answers (launchId undefined)
+  // the redirects return null and the target screen shows meanwhile.
+  const redirect = agentRedirect(window.location.hash, launchId) ?? codeAgentRedirect(window.location.hash, launchId);
   useEffect(() => {
     if (redirect !== null) navigate(redirect, { replace: true });
     else if (screen === null) navigate('/agents', { replace: true });
   }, [redirect, screen]);
-  if (redirect !== null) return 'agents';
+  // The pre-redirect screen shows meanwhile: the builder for legacy
+  // '/agents/:id…' links, the code-agent screen (which falls back to the
+  // launch workspace) for legacy '/code-agents/:path' links.
+  if (redirect !== null) return screen ?? 'agents';
   return screen ?? 'agentList';
 }
 
@@ -75,6 +89,8 @@ function ScreenFrame({ children }: { children: ReactNode }) {
 /** The screens that render with no props, by id (Agents and Settings are handled in `Screens`). */
 const SCREENS: Partial<Record<ScreenId, () => ReactNode>> = {
   agentList: AgentListScreen,
+  observedAgent: ObservedAgentRoute,
+  codeAgent: CodeAgentRoute,
   inbox: InboxScreen,
   templates: TemplatesScreen,
   traces: TracesScreen,
