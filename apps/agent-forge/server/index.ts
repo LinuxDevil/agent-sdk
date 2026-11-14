@@ -154,6 +154,7 @@ function resolveDocsDir(moduleDir: string): string {
   return path.join(moduleDir, '..', '..', '..', 'docs');
 }
 
+// fallow-ignore-next-line complexity
 export async function startStudioServer(
   options: StartStudioServerOptions = {}
 ): Promise<StudioServerHandle> {

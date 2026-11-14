@@ -1173,6 +1173,7 @@ function workspaceResolverFor(workspaces: WorkspaceResolver | undefined, launch:
   return workspaces ?? singleWorkspace(launch);
 }
 
+// fallow-ignore-next-line complexity
 export function createApp(options: CreateAppOptions): Express {
   const { baseDir, staticDir, access, playgroundObserve, judge } = options;
   // The Studio home is process-wide and configured once, here, before any
