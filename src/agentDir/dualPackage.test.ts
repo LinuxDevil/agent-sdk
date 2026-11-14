@@ -52,7 +52,7 @@ function project(): string {
   dirs.push(dir);
   mkdirSync(path.join(dir, 'node_modules', '@linuxdevil'), { recursive: true });
   // 'junction' makes a directory link without the symlink privilege on Windows; other platforms ignore the type.
-  symlinkSync(ROOT, path.join(dir, 'node_modules', '@linuxdevil', 'lousho'), 'junction');
+  symlinkSync(ROOT, path.join(dir, 'node_modules', '@linuxdevil', '@linuxdevil/lousho'), 'junction');
   symlinkSync(path.join(ROOT, 'node_modules', 'zod'), path.join(dir, 'node_modules', 'zod'), 'junction');
   writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'dual', private: true }));
   const agent = path.join(dir, 'simple');

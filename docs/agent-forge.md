@@ -16,7 +16,15 @@ This doc covers: installation, the `lousho studio` quickstart, the
 authoring, time travel (replaying a run from a past step), the playground
 endpoint, and how settings/secrets/deploy wiring works.
 
-![The Agents screen: nav, agent rail, the fitted canvas with the Inspector folded, and the bottom drawer](./images/studio-agents.png)
+Three features have their own pages: [the visual
+builder](./forge-builder.md) — the canvas, Inspector, Configure tab,
+in-place testing and Code tab — [the Agent
+Author](./forge-author.md) — the chat that drafts agents as proposals you
+review before anything is saved — and [versions, triggers and
+publishing](./forge-lifecycle.md) — the working copy, drafts, the inbox,
+the eval gate, Serve and Deploy.
+
+![The builder: nav, agent rail, the fitted canvas with the Inspector folded, and the bottom drawer](./images/studio-agents.png)
 
 ## Installation
 
@@ -42,20 +50,22 @@ npx @linuxdevil/lousho studio
 
 This starts one local server and prints its URL (default
 `http://127.0.0.1:4750/?token=<random>`). Open that exact URL in a browser.
-It lands on the Agents screen (`#/agents`): the left navigation, the build
-toolbar (the agent's name and run status, the model badge, then Debug, Stop,
-Run, Import, Export and Save), the
-agent rail (your saved agents plus a node/hook palette), the canvas, the
-Inspector (right), and a bottom drawer with Chat, Logs, Trace, Output,
-History and Settings tabs. An agent opens with nothing selected and the
-whole graph fitted in view; the Inspector stays folded away until you
-select a node, or press the **Inspector** button at the canvas's
-top-right (its accessible name is "Show inspector"), which is remembered. The other screens are one click away in the
-navigation; see [Navigation](#navigation).
+It lands on the Agents list (`#/agents`): your saved agents as cards, plus
+a **New agent** menu. Opening or creating one takes you to its Canvas tab
+(`#/agents/<id>/canvas`) — the builder: the build toolbar (the agent's name
+and run status, the model badge, then Debug, Stop, Run, Import, Export and
+Save), the agent rail (your saved agents plus a node/hook palette), the
+canvas, the Inspector (right), and a bottom drawer with Test, Problems,
+Logs, Trace, Output, History and Settings tabs. An agent opens with
+nothing selected and the whole graph fitted in view; the Inspector stays
+folded away until you select a node, or press the **Inspector** button at
+the canvas's top-right (its accessible name is "Show inspector"), which is
+remembered. The other screens are one click away in the navigation; see
+[Navigation](#navigation).
 
 Below 860px wide the navigation becomes a drawer opened from the
 **Navigation** (menu) button at the top; picking a screen, the scrim or Esc
-closes it. On the Agents screen the agent rail and the Inspector become
+closes it. On the builder the agent rail and the Inspector become
 slide-over panels you open from the top bar; Run (or Stop) and Save stay in
 the bar, and Debug, Import, Export and the model badge move into its **More
 actions** (`⋯`) menu.
@@ -107,7 +117,7 @@ checkpoints and approvals alongside them) - the same `.lousho/` layout
 [Agent spec v2](./agent-spec.md) documents, which that page explains field
 by field.
 
-The Agents screen's agent rail lists exactly the agents in that `.lousho/agents/`: a YAML
+The agents list and the builder's agent rail show exactly the agents in that `.lousho/agents/`: a YAML
 file you add there shows up, and an agent you create in the studio is
 written there at once (autosave and **Save** both write the file), so it
 can be chatted with straight away. Another project, opened in its own
@@ -141,7 +151,9 @@ The left navigation lists every screen, grouped:
 
 | Group | Item | Screen |
 | --- | --- | --- |
-| Build | **Agents** | The builder: canvas, Inspector, bottom drawer. The build toolbar (Run, Stop, Debug, Import, Export, Save, model badge) shows only here. |
+| Build | **Agents** | The agents list; an agent opens on tabs — Canvas (the builder), Overview, Configure, Code, Runs, Versions, Suggestions. The build toolbar (Run, Stop, Debug, Import, Export, Save, model badge) shows on the Canvas tab. |
+| Build | **Inbox** | Pending approvals, questions, drafts, suggestions and notices, one row each with inline actions. |
+| Build | **Templates** | Agent templates you can start from. |
 | Build | **Playground** | Try messages against a model without editing an agent. |
 | Build | **Workspaces** | Workspaces in this project: their pages, problems, drafts and revisions. |
 | Observe | **Traces** | Every run the observe daemon holds, filtered and sorted; a row opens the trace. |
@@ -152,7 +164,7 @@ The left navigation lists every screen, grouped:
 | Assets | **Context Hub** | Shared key-values agents publish to the daemon. |
 | | **Settings** | Appearance, provider keys, settings profiles, deploy, collector and shortcuts. |
 
-Off the Agents screen a page header names the screen and keeps the live run
+Off the builder a page header names the screen and keeps the live run
 status pill at the end of its title row, after any chips the screen adds (a
 prompt's labels, say). Under Settings, a small card shows the collector status (see
 [The collector](#the-collector-observe-daemon)). The button beside the
@@ -173,7 +185,9 @@ unknown hash goes to `#/agents` (the `?token=` stays).
 
 | Route | Screen | Query keys |
 | --- | --- | --- |
-| `#/agents`, `#/agents/<agent id>` | Agents, with that agent open | |
+| `#/agents` | Agents list | |
+| `#/agents/<agent id>/canvas` | The builder for that agent | |
+| `#/agents/<agent id>/<tab>` | One agent tab: `overview`, `configure`, `code`, `runs`, `versions`, `suggestions` | |
 | `#/playground` | Playground | `trace` + `fromObs`, or `prompt` (see [Playground](#playground)) |
 | `#/traces` | Traces list | `agent`, `status`, `model`, `project`, `q`, `prompt` (`<name>` or `<name>@<version>`), `from` + `to` (ms epoch, half-open), `sort` (`duration`, `tokens`, `cost`) + `order` (`asc`, `desc`), `offset` |
 | `#/traces/<trace id>` | One trace | `obs` (the selected step) |
@@ -210,6 +224,9 @@ for each saved agent, and **Toggle theme** (light/dark, remembered in the
 browser); type to filter. Paste a trace id (8 or more hex digits and
 dashes) and the first entry is **Open trace** for it. Arrow keys move,
 Enter runs.
+
+The builder's own shortcuts — save version, undo/redo, palette search,
+node delete — are listed in [the visual builder](./forge-builder.md#keyboard-shortcuts).
 
 ![The command palette over the Traces screen](./images/studio-command-palette.png)
 
@@ -253,18 +270,24 @@ The collector card at the bottom of the nav says whether the daemon answers:
 **Checking collector…** until the first probe, then **Collector running**
 or **Collector unreachable**, with the daemon URL underneath. The probe keeps polling. While the daemon is down, each
 daemon screen shows the command to start it instead of an error, keeps its
-URL, and swaps the data back in by itself once the daemon answers. The
-Agents screen and Playground runs do not need the daemon.
+URL, and swaps the data back in by itself once the daemon answers. Builder
+and Playground runs do not need the daemon.
 
 ## Screens
 
 ### Agents
 
-The builder: see the [First-agent walkthrough](#first-agent-walkthrough).
-`#/agents/<id>` opens that agent; leaving the screen (or switching agents)
-with unsaved changes asks first. Runs started here report to the observe
-daemon, and the Run status pill's **Open trace** link opens the run on the
-Trace screen.
+`#/agents` is the agents list: a card per agent in `.lousho/agents/`, a
+**New agent** menu (**Blank agent**, **From template**,
+**Describe with AI** — see [the Agent Author](./forge-author.md) — or
+**Import from file…**), and search and label filters.
+Opening a card goes to its Canvas tab, the builder — see
+[the visual builder](./forge-builder.md) and the
+[first-agent walkthrough](#first-agent-walkthrough). `#/agents/<id>` (the
+legacy builder URL) redirects to `#/agents/<id>/canvas`. Leaving the
+builder with unsaved changes asks first. Runs started there report to the
+observe daemon, and the Run status pill's **Open trace** link opens the
+run on the Trace screen.
 
 ### Playground
 
@@ -531,27 +554,28 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
 
 ## First-agent walkthrough
 
-1. **Create an agent.** In the agent rail's **Agents** tab, click
-   **New agent**, give it a name, and pick a starting template - **Blank graph** (a single
-   LLM node using the built-in `mock` provider) is the fastest way to try
-   things out without any API keys. Agent Forge creates the agent under that
-   name (`.lousho/agents/<name>.yaml`, with `name: <name>` in the spec) and
+1. **Create an agent.** On the agents list (`#/agents`) click **New agent**
+   and pick **Blank agent** - it starts from an empty canvas, which is the
+   fastest way to try things out without any API keys (**From template**
+   offers ready-made starting points instead). Agent Forge creates the agent
+   (`.lousho/agents/<id>.yaml`, with `name:` in the spec) and
    opens it on the canvas. The open agent's card has **Rename** and
    **Delete**. Rename moves the spec to the new name; earlier chats, traces
    and checkpoints stay under the old one.
-2. **Look at the graph.** A blank agent is one `llm` node. Drag more nodes
-   in from the rail's **Nodes** tab (**Trigger**, **LLM step**, **Tool
-   call**, **Approval gate**, **Response / output**), or click (or press
+2. **Look at the graph.** A blank agent is a single agent node. Drag more
+   nodes in from the rail's **Nodes** tab (a **Tool**, an **MCP server**,
+   a **Guardrail**, a **Chat** trigger, an **Output schema** — the full
+   list is in [the visual builder](./forge-builder.md#the-canvas)), or
+   click (or press
    Enter on) a Nodes item to add it at the centre of the canvas, and
    connect them by
-   dragging between their handles. Each node card shows its name, an LLM
-   node's `provider/model` chip and tool count, and the node's status in the
+   dragging between their handles. Each node card shows its name, an agent
+   node's `provider/model` chip, and the node's status in the
    current run (`idle` until a run reaches it). Click a node to edit its
-   settings (prompt, provider/model, tools, breakpoints) in the Inspector on
-   the right; its **Node**, **Debug** and **Hooks** sections collapse, and
-   each stays the way you left it. An agent whose canvas has no nodes shows
-   the templates on the canvas: choosing one fills the canvas (unsaved until
-   it autosaves, like any edit) and keeps the agent's name.
+   settings in the Inspector on
+   the right; its **Problems**, **Settings** and **Debug** sections
+   collapse, and
+   each stays the way you left it.
 3. **Run it.** Click **Run** in the top bar. With the `mock` provider
    there's nothing to configure - it returns deterministic canned output,
    which is exactly the point for trying the rest of the UI without needing
@@ -565,7 +589,7 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
    twice), a daemon that is down only drops events and never fails the run,
    and message content is sent only to a loopback daemon (never to the
    trace files or the live Trace tab). Run sends a fixed
-   prompt, which the Chat tab shows
+   prompt, which the Test tab's chat shows
    as a **Run input** bubble instead of a message from you. If the studio
    server goes away, a banner says the connection was lost and the studio
    reconnects when it is back.
@@ -604,52 +628,53 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
    tool content. The server reads traces only from that folder (an id with
    a path separator is a 400) and never sends the file path to the browser.
    Keep `.lousho/` out of version control.
-5. **Chat with it.** The **Chat** tab is a separate conversational
+5. **Chat with it.** The chat in the bottom drawer's **Test** tab is a
+   separate conversational
    transport (`POST /agents/:id/message`, streamed back over the same
    WebSocket as everything else) - send it a message and it replies in the
    thread, independent of the graph "Run" button above. Each agent keeps
    its own chat history (`+ New chat` starts a fresh session; old ones stay
    browsable).
-6. **Approve a paused tool call.** Add a **Tool call** node, open it in the
+6. **Approve a paused tool call.** Add a **Tool** node, open it in the
    Inspector, and pick a tool - some tools (or an agent's own policy) can
    require human approval before running. When a run or chat hits one, an
    inline approval card appears (in the top bar for a graph run, or as a
-   message bubble in the Chat thread) showing the tool name and its
+   message bubble in the chat thread) showing the tool name and its
    arguments. Click **Approve** to let it proceed or **Reject** to abort
    that call; the run resumes automatically either way.
 
 ## Hooks
 
 Hooks are small, sandboxed functions that run immediately before or
-after a tool call or an LLM `generate` - the same mechanism the SDK core
+after a tool call or a model call - the same mechanism the SDK core
 exposes as `HookRegistry`/`AgentHook` (see
-[API Overview](./api-overview.md)), but authored visually and attached to a
-specific canvas node.
+[API Overview](./api-overview.md)), authored visually as `hooks[]` entries
+on the agent.
 
-To attach one:
+To add one:
 
-1. Select an `llm` or `tool` node on the canvas (hooks only apply to these -
-   they're the two points `AgentExecutor` actually calls out to).
-2. Open the Inspector's **Hooks** section. Drag a **Pre-hook** or
-   **Post-hook** entry from the rail's **Nodes** tab onto the node (or drop
-   it directly in the Hooks section), or click the palette entry while the
-   node is selected, to attach a new one; you'll get a
-   choice of starter templates (`redact-pii`, `rate-limit`, `audit-log`,
-   `inject-context`) as an editable starting point.
-3. Click the hook's chip to select it, then edit its code in the CodeMirror
-   editor. The code is the **body** of an async function invoked as
+1. Drag a **Hook** entry from the rail's **Nodes** tab (Safety group) onto
+   the canvas, or click it while the agent is open; it attaches to the
+   agent as a node. Each spec `hooks` entry is one node.
+2. Click the hook node and edit its fields in the Inspector: an id, a
+   name, the **Source** (**Code here** for an inline body, or **File** for
+   a `.ts`/`.js` file inside the agent folder), the **Runs** point -
+   *Before/After each tool call* or *Before/After each model call* - the
+   on switch, and the code itself in a CodeMirror editor, with starter
+   templates (`redact-pii`, `rate-limit`, `audit-log`, `inject-context`)
+   filtered to the current point.
+3. The code is the **body** of an async function invoked as
    `hook(ctx)` inside a sandboxed subprocess (`server/hookSandbox.ts`) -
    never in the browser or the API server process itself:
-   - For a tool-call hook, `ctx` is `{ toolName, args, result?, error? }`.
+   - For a tool-call point, `ctx` is `{ toolName, args, result?, error? }`.
      A pre-hook can mutate `ctx.args`; a post-hook can inspect/mutate
      `ctx.result`/`ctx.error`. Return `ctx`.
-   - For an LLM-generate hook, `ctx` is `{ messages, model }`. Mutate/push
+   - For a model-call point, `ctx` is `{ messages, model }`. Mutate/push
      onto `ctx.messages` and return `ctx`.
    - **Throwing aborts the step** - a rate-limit hook, for example, throws
      to block the tool call outright rather than letting it run.
-4. Toggle the switch on a hook's chip to enable/disable it without removing
-   it, or use its **x** to remove it entirely. Only enabled hooks are
-   compiled into the run.
+4. Switch a hook off without removing it, or delete its node; only enabled
+   hooks are compiled into the run.
 
 Example: a redact-PII pre-hook on a tool node (this is the `redact-pii`
 starter template) -
@@ -664,7 +689,7 @@ for (const key of Object.keys(ctx.args || {})) {
 return ctx;
 ```
 
-Saving the agent persists these as `spec.policy.hooks` in the agent's YAML;
+Saving the agent persists these as `hooks` entries in the agent's YAML;
 the server compiles enabled hooks into a real `HookRegistry` for the run
 (`server/compileHooks.ts`), routed through the same `SandboxAdapter` a
 sandboxed tool uses.
@@ -683,7 +708,7 @@ and replay it next to the original, with
 
 ### The History tab
 
-1. Run the agent (Topbar **Run**, or a Chat message).
+1. Run the agent (Topbar **Run**, or a chat message).
 2. Open the bottom drawer's **History** tab. It lists the run's steps:
    step number, status, the model's finish reason, the tool calls made,
    and the tokens and cost of the step's model call when known.
@@ -857,7 +882,7 @@ at a server-local `demo-approval` tool (always `needsApproval: true` -
 see `server/buildAgent.ts`'s doc comment for why this exists, since none
 of the SDK's spec-resolvable built-in tools require approval), sends it a
 chat message that triggers the mock provider's tool-call heuristic, waits
-for the run to pause on the approval gate, approves it via the Chat tab's
+for the run to pause on the approval gate, approves it via the Test tab's
 inline approval card, and asserts the run completes. Run it with:
 
 ```bash

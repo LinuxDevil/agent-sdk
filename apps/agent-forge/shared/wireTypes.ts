@@ -533,6 +533,8 @@ export interface DeployResult {
   stdout: string;
   stderr: string;
   command: string;
+  /** The published version `lousho build` ran against (X05). */
+  version: number;
 }
 
 /**
@@ -639,6 +641,27 @@ export interface WorkspaceList {
 /** `POST /workspaces`'s body: the folder path goes in the body, never in a URL (it can name a user's home directory). */
 export interface AddWorkspaceRequest {
   root: string;
+}
+
+/** The global-state files a workspace's old project-level `.lousho/` can still hold (W03a's one-time import). */
+export type LegacyImportItem = 'settings' | 'secrets';
+
+/**
+ * `GET /workspaces/:ws/legacy-import`'s response: which old files the
+ * workspace's `.lousho/` still has that the Studio home lacks, and
+ * whether the offer was already handled (`null` while it still can be).
+ */
+export interface LegacyImportStatus {
+  workspaceId: string;
+  found: LegacyImportItem[];
+  handled: 'imported' | 'skipped' | null;
+}
+
+/** `POST /workspaces/:ws/legacy-import`'s response: how many entries were copied (existing home values are never overwritten). */
+export interface LegacyImportResult {
+  profiles: number;
+  providerKeys: number;
+  namedSecrets: number;
 }
 
 /** One `POST /playground/run` message (server/playground.ts; the Playground screen's editor rows). */
@@ -884,6 +907,57 @@ export interface PublishState {
   publishedAt: string | null;
 }
 
+/** One dataset example's eval-gate outcome (X01a/X01b). */
+export interface EvalExampleResult {
+  exampleId: string;
+  passed: boolean;
+  /** Plain sentences, one per failed gate; empty when passed. */
+  failures: string[];
+  /** Trace id of the example run when the observe reporter produced one. */
+  traceId?: string;
+}
+
+/** One `spec.evals` entry's outcome over its dataset. */
+export interface EvalGateSetResult {
+  dataset: string;
+  /** 0..1, rounded to 4 decimals; 0 when the dataset is missing or empty. */
+  passRate: number;
+  minPassRate: number;
+  /** `passRate >= minPassRate && examples.length > 0`. */
+  passed: boolean;
+  examples: EvalExampleResult[];
+  /** Set when the whole set could not run. */
+  error?: string;
+}
+
+/** The whole eval gate's outcome: every set passed, the per-set detail, when it ran. */
+export interface EvalGateResult {
+  passed: boolean;
+  gates: EvalGateSetResult[];
+  /** ISO. */
+  ranAt: string;
+}
+
+/** `POST /agents/:id/publish`'s body. */
+export interface PublishRequest {
+  version?: number;
+}
+
+/** `POST /agents/:id/publish`'s 200 body: the pinned version, plus the eval gate's result when the spec has `evals`. */
+export interface PublishResponse {
+  publishedVersion: number;
+  evalResult?: EvalGateResult;
+}
+
+/** `POST /agents/:id/publish`'s 409 eval-gate-failure body (`LOUSHO_EVAL_GATE_FAILED`). */
+export interface PublishGateFailure {
+  error: 'Eval gate failed';
+  code: 'LOUSHO_EVAL_GATE_FAILED';
+  /** The version that was not published - the dialog's `v<n>`. */
+  version: number;
+  details: EvalGateResult;
+}
+
 /**
  * The serve switch's editable half (X02a): whether `/serve/<id>/*` answers
  * and which browser origins may call it. The bearer token is never part of
@@ -902,6 +976,8 @@ export interface ServeStatus extends ServeAgentConfig {
   publishedVersion: number | null;
   /** Masked: first 4 chars + '…' + last 4 - never the raw token. */
   tokenMasked: string;
+  /** Masked widget key (X04b), `null` until the user creates one - never the raw key. */
+  widgetKeyMasked: string | null;
   /** `/serve/<id>` - the client prefixes `location.origin`. */
   baseUrl: string;
 }
@@ -909,6 +985,19 @@ export interface ServeStatus extends ServeAgentConfig {
 /** `GET /agents/:id/serve/token` and `POST .../serve/rotate-token`'s body. */
 export interface ServeTokenReveal {
   token: string;
+}
+
+/**
+ * `GET/POST/DELETE /agents/:id/serve/mcp`'s body (X03): the agent's MCP
+ * server state. `url`/`port` are `null` while stopped; `version` is the
+ * published version the running server pinned.
+ */
+export interface McpServeStatus {
+  running: boolean;
+  url: string | null;
+  port: number | null;
+  version: number | null;
+  toolName: string | null;
 }
 
 /**

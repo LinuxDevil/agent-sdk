@@ -107,11 +107,12 @@ import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import type { AbortRunRequest, ApproveRequest, EvalGateResult, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
 import { pinsProblem } from './pins';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
-import { configureStudioHome, type StudioPaths } from './workspace/studioPaths';
+import { configureStudioHome, defaultStudioHome, type StudioPaths } from './workspace/studioPaths';
+import { LegacyImportService } from './workspace/legacyImport';
 import { workspaceRefFor } from './workspace/workspaceId';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 import { CodeAgentCache } from './workspace/codeAgentScan';
@@ -125,7 +126,7 @@ import {
   readAgentTrace,
   traceDirExists,
 } from './traceStore';
-import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
+import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy, writePublishedSpec } from './deployRunner';
 import { checkApiAccess, checkHostAndOrigin, checkHostOnly, type StudioAccessOptions } from './auth';
 import { registerObserveProxy } from './observeProxy';
 import { CollectorManager } from './collector';
@@ -158,12 +159,14 @@ import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
 import { AuthorTurnRunner } from './author/turnRunner';
 import { createAuthorServices } from './author/services';
+import { loadAuthorScript } from './author/authorScript';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
 import { registerImportRoutes } from './lifecycle/import';
 import { registerPortabilityRoutes } from './passes/portabilityRoutes';
-import { registerPublishRoutes } from './lifecycle/publish';
+import { readPublishedSpec, registerPublishRoutes } from './lifecycle/publish';
+import type { EvalGateDeps } from './evals/gateRunner';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
@@ -177,7 +180,8 @@ import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { ServeConfigStore } from './serve/serveConfigStore';
-import { createServeSurface, type ServeAgentBuilder } from './serve/serveRoutes';
+import { createServeSurface, buildServeAgent, type ServeAgentBuilder } from './serve/serveRoutes';
+import { McpServerManager, type McpServeManager } from './serve/mcpServers';
 import { sdkRootDir } from './sdkRoot';
 
 interface CreateAppBaseOptions {
@@ -186,8 +190,9 @@ interface CreateAppBaseOptions {
   /**
    * The Studio home directory every Studio-global file lives under
    * (settings, secrets, Author sessions, … - see workspace/studioPaths.ts).
-   * Defaults to `<baseDir>/.lousho` today, which keeps every file exactly
-   * where it was; a later change moves the default to `~/.lousho/studio`.
+   * Defaults to `defaultStudioHome()` (`LOUSHO_STUDIO_HOME` or
+   * `~/.lousho/studio`); tests pass a temp dir so they never touch a
+   * real home.
    */
   studioHome?: string;
   /** Defaults to `new SecretsStore(studioPaths())` when omitted. */
@@ -234,6 +239,14 @@ interface CreateAppBaseOptions {
    * `src/cli/studio.ts`.
    */
   staticDir?: string;
+  /**
+   * Directory holding the built `<forge-chat>` widget bundle
+   * (`forge-chat.js`, the output of `vite build -c vite.widget.config.ts`,
+   * normally `<staticDir>/widget`). `GET /serve/:id/widget.js` (X04b)
+   * serves it; defaults to `path.join(staticDir, 'widget')` when
+   * `staticDir` is set.
+   */
+  widgetDir?: string;
   /**
    * The per-launch token (and extra allowed hosts) every API
    * request must present - see auth.ts. `startStudioServer()` always passes
@@ -308,6 +321,13 @@ interface CreateAppBaseOptions {
    */
   inbox?: InboxService;
   /**
+   * The publish eval gate's runner (X01b, lifecycle/publish.ts) - a test
+   * seam like `passRunner`: inject a stub `EvalGateResult` producer so
+   * publish-route tests never reach the observe daemon. Defaults to
+   * `runEvalGates`.
+   */
+  evalGateRunner?: (spec: AgentSpecV2, deps: EvalGateDeps) => Promise<EvalGateResult>;
+  /**
    * The `/serve/<id>` switch's store (X02a, serve/serveConfigStore.ts) -
    * Studio-global like the other `studioPaths()` stores. Defaults to
    * `new ServeConfigStore(studioPaths().serve)`.
@@ -319,6 +339,13 @@ interface CreateAppBaseOptions {
    * `buildRunnableAgent` compile. Defaults to the real builder.
    */
   serveAgentBuilder?: ServeAgentBuilder;
+  /**
+   * The MCP server manager behind `/agents/:id/serve/mcp*` (X03,
+   * serve/mcpServers.ts). Defaults to one over the launch workspace's
+   * repo/versions and the app's serve config store; index.ts injects the
+   * instance it subscribes to `agent.changed` and closes on shutdown.
+   */
+  mcpServers?: McpServeManager;
 }
 
 /**
@@ -1003,18 +1030,26 @@ function registerDeployRoutes(app: Express): void {
         return;
       }
       const ws = workspaceOf(req);
-      const saved = await ws.agentStore.load(paramId(req));
+      const id = paramId(req);
+      const saved = await ws.agentStore.load(id);
       if (!saved) {
-        res.status(404).json({ error: `No saved agent '${paramId(req)}' to deploy - save it first` });
+        res.status(404).json({ error: `No agent '${id}'` });
         return;
       }
+      // X05: deploy builds the PUBLISHED snapshot, never the working copy.
+      const published = await readPublishedSpec(id, { repo: ws.repo, versions: ws.versions });
+      if (published === undefined) {
+        sendError(res, 409, 'Publish a version before deploying', 'LOUSHO_NOT_PUBLISHED');
+        return;
+      }
+      const specPath = await writePublishedSpec(ws.ref.root, id, published.spec);
       // W11c: a bridge workspace builds with the project's own SDK bin;
       // in-process/read-only keep Studio's (`<ws>/bin/lousho.js` - the
       // launch workspace IS the SDK checkout there, and read-only never
       // reaches this line: the /agents write gate refused it).
       const selection = ws.hostSelector.current();
       const cliEntry = selection.mode === 'bridge' && selection.sdk !== undefined ? selection.sdk.binPath : undefined;
-      const result = await runDeploy(ws.ref.root, paramId(req), adapter, cliEntry);
+      const result = await runDeploy(ws.ref.root, id, adapter, { version: published.version, specPath }, {}, cliEntry);
       res.status(result.exitCode === 0 ? 200 : 422).json(result);
     })
   );
@@ -1219,6 +1254,10 @@ function createStudioStores(options: CreateAppOptions, paths: StudioPaths) {
   // The app's one code-agent scan cache (W08a): shared by the scan
   // routes, `/workspace/agent-dirs` and the aggregate agent list.
   const codeAgentCache = options.codeAgentCache ?? new CodeAgentCache();
+  // The one-time old-settings/secrets import (W03a): reads each
+  // workspace's project-level `.lousho/` files, copies what the home
+  // lacks, records the outcome in `paths.legacyImports`.
+  const legacyImport = new LegacyImportService({ file: paths.legacyImports, settings, secrets, home: paths });
   // The app's one spend log and pass runner (passes/): Studio-global, so
   // they live next to the other studioPaths() stores rather than per
   // workspace. `passRunner` defaults to one over this `spendLog`.
@@ -1227,16 +1266,10 @@ function createStudioStores(options: CreateAppOptions, paths: StudioPaths) {
     options.passRunner ??
     new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
   const alerts = options.alerts ?? new AlertStore(paths.alerts);
-  // The `/serve/<id>` surface (X02a): one config store (Studio-global,
-  // `studioPaths().serve`) + one cached-handler map shared by the early
-  // `/serve` router and the `/agents/:id/serve*` management routes.
-  const serve = createServeSurface({
-    config: options.serveConfig ?? new ServeConfigStore(paths.serve),
-    secretsStore: secrets,
-    settings,
-    spendLog,
-    ...(options.serveAgentBuilder !== undefined ? { buildAgent: options.serveAgentBuilder } : {}),
-  });
+  // The `/serve/<id>` surface's config store (X02a, Studio-global
+  // `studioPaths().serve`): shared by the HTTP surface and the X03 MCP
+  // manager, which `createApp` builds once the workspace exists.
+  const serveConfig = options.serveConfig ?? new ServeConfigStore(paths.serve);
   // One catalog for both the `/templates` routes and the `POST /agents`
   // template branch - Studio-global state, not per-workspace.
   const templates = options.templateCatalog ?? new TemplateCatalog();
@@ -1263,11 +1296,12 @@ function createStudioStores(options: CreateAppOptions, paths: StudioPaths) {
     spendLog,
     passRunner,
     alerts,
-    serve,
+    serveConfig,
     templates,
     probeDeps,
     collector,
     codeAgentCache,
+    legacyImport,
   };
 }
 
@@ -1277,6 +1311,8 @@ function createAuthorRunner(
   workspaceResolver: WorkspaceResolver,
 ) {
   const { sessions, settings, secrets, templates } = stores;
+  // X08: the e2e hook installs once here - a bad script file fails startup.
+  const authorScript = loadAuthorScript();
   return (
     options.authorRunner ??
     createAuthorServices({
@@ -1287,6 +1323,7 @@ function createAuthorRunner(
       docsDir: options.docsDir ?? path.join(sdkRootDir(), 'docs'),
       workspaceResolver,
       ...(options.mcpConnect ? { mcpConnect: options.mcpConnect } : {}),
+      ...(authorScript !== undefined ? { scriptedProvider: authorScript } : {}),
     }).runner
   );
 }
@@ -1296,7 +1333,7 @@ export function createApp(options: CreateAppOptions): Express {
   // The Studio home is process-wide and configured once, here, before any
   // request is served; request handlers never call studioPaths() - the
   // stores below close over the paths resolved now.
-  const paths = configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
+  const paths = configureStudioHome(options.studioHome ?? defaultStudioHome());
   const {
     secrets,
     settings,
@@ -1305,11 +1342,12 @@ export function createApp(options: CreateAppOptions): Express {
     spendLog,
     passRunner,
     alerts,
-    serve,
+    serveConfig,
     templates,
     probeDeps,
     collector,
     codeAgentCache,
+    legacyImport,
   } = createStudioStores(options, paths);
   const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog }, secrets);
   // One resolver for the middleware below and the Author tools' per-call
@@ -1317,6 +1355,30 @@ export function createApp(options: CreateAppOptions): Express {
   // `startStudioServer` provides one, `singleWorkspace` otherwise.
   const workspaceResolver: WorkspaceResolver = workspaceResolverFor(options.workspaces, workspace);
   const authorRunner = createAuthorRunner(options, { secrets, settings, sessions, templates }, workspaceResolver);
+  // The `/serve/<id>` surface (X02a) plus its X03 MCP half: the manager
+  // needs the workspace's repo/versions, so both are built here rather
+  // than in createStudioStores. `options.mcpServers` is the test/embedding
+  // seam - index.ts injects the instance it also subscribes to events
+  // and closes on shutdown.
+  const serveAgentBuilder = options.serveAgentBuilder ?? buildServeAgent;
+  const serveServices = { secretsStore: secrets, settings, spendLog };
+  const mcpServers =
+    options.mcpServers ??
+    new McpServerManager({
+      repo: workspace.repo,
+      versions: workspace.versions,
+      serveConfig,
+      buildAgent: (spec, agentId) => serveAgentBuilder(spec, agentId, workspace, serveServices),
+    });
+  const serve = createServeSurface({
+    config: serveConfig,
+    secretsStore: secrets,
+    settings,
+    spendLog,
+    buildAgent: serveAgentBuilder,
+    mcpServers,
+    widgetDir: options.widgetDir ?? (staticDir !== undefined ? path.join(staticDir, 'widget') : undefined),
+  });
 
   const app = express();
   // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`
@@ -1469,8 +1531,14 @@ export function createApp(options: CreateAppOptions): Express {
   // export.ts - the repo comes from workspaceOf(req), the workspace seam).
   registerExportRoutes(app);
   // Publish pointer: `POST /agents/:id/publish` (lifecycle/publish.ts -
-  // stores come from workspaceOf(req), the workspace seam).
-  registerPublishRoutes(app);
+  // stores come from workspaceOf(req), the workspace seam; the eval gate's
+  // global services are the app's own, X01b).
+  registerPublishRoutes(app, {
+    secretsStore: secrets,
+    settings,
+    alerts,
+    ...(options.evalGateRunner !== undefined && { runGates: options.evalGateRunner }),
+  });
   // The serve switch's management routes (X02a): `GET/PUT
   // /agents/:id/serve`, `GET .../serve/token`, `POST .../serve/rotate-token`.
   // The `/serve/<id>/*` data router mounted before express.json() above.
@@ -1491,6 +1559,7 @@ export function createApp(options: CreateAppOptions): Express {
     // plain resolver needs no `forget`.
     forget: forgetWorkspace(options.workspaces),
     scanCache: codeAgentCache,
+    legacyImport,
   });
   // W11c: `GET /workspaces/:ws/host` + `POST /workspaces/:ws/host/restart`
   // - the `:ws` path param resolves through the same resolver the

@@ -8,7 +8,9 @@ import { StudioEventBus } from '../../events/eventBus';
 import { AgentRepo } from '../../storage/agentRepo';
 import { specHash } from '../../storage/specHash';
 import { VersionStore } from '../../storage/versionStore';
+import { parse as parseYaml } from 'yaml';
 import { PublishError, publishAgent, publishStateOf, readPublishedSpec } from '../publish';
+import { publishedSpecPath } from '../../deployRunner';
 
 const AGENT = 'ops';
 const SPEC_A: AgentSpecV2 = { version: 2, name: 'ops', model: 'mock/mock-1', instructions: 'Check the queues.' };
@@ -29,7 +31,7 @@ describe('publishAgent', () => {
   let versions: VersionStore;
   let events: StudioEventBus;
   let published: StudioEvent[];
-  let deps: { repo: AgentRepo; versions: VersionStore; events: StudioEventBus };
+  let deps: { repo: AgentRepo; versions: VersionStore; events: StudioEventBus; baseDir: string };
 
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-l14a-publish-'));
@@ -38,7 +40,7 @@ describe('publishAgent', () => {
     events = new StudioEventBus();
     published = [];
     events.subscribe((event) => published.push(event));
-    deps = { repo, versions, events };
+    deps = { repo, versions, events, baseDir: dir };
   });
 
   afterEach(() => {
@@ -85,6 +87,23 @@ describe('publishAgent', () => {
     expect(metaEvents()).toHaveLength(2);
   });
 
+  it('writes published.yaml for the pinned snapshot and rewrites it when the pointer moves back', async () => {
+    // The v1 projection drops v2-only fields, so the drafts differ in
+    // `instructions` (which projects to the v1 `prompt`).
+    const first: AgentSpecV2 = { version: 2, name: 'ops', model: 'mock/mock-1', instructions: 'First published.' };
+    const second: AgentSpecV2 = { ...first, instructions: 'Second published.' };
+    const snapshotPath = publishedSpecPath(dir, AGENT);
+    await seedVersions(repo, versions, [first, second]);
+
+    await publishAgent(AGENT, { version: 2 }, deps);
+    let fed = parseYaml(fs.readFileSync(snapshotPath, 'utf8')) as Record<string, unknown>;
+    expect(fed).toMatchObject({ name: 'ops', prompt: 'Second published.' });
+
+    await publishAgent(AGENT, { version: 1 }, deps);
+    fed = parseYaml(fs.readFileSync(snapshotPath, 'utf8')) as Record<string, unknown>;
+    expect(fed).toMatchObject({ name: 'ops', prompt: 'First published.' });
+  });
+
   it('keeps concurrent publishes consistent', async () => {
     await seedVersions(repo, versions, [SPEC_A, SPEC_B]);
     await repo.writeSpec(AGENT, SPEC_C);
@@ -128,7 +147,7 @@ describe('readPublishedSpec', () => {
 
   it('returns the pinned snapshot, not the drifted working copy', async () => {
     await seedVersions(repo, versions, [SPEC_A, SPEC_B]);
-    await publishAgent(AGENT, { version: 1 }, { repo, versions, events: new StudioEventBus() });
+    await publishAgent(AGENT, { version: 1 }, { repo, versions, events: new StudioEventBus(), baseDir: dir });
     await repo.writeSpec(AGENT, SPEC_C);
     const published = await readPublishedSpec(AGENT, { repo, versions });
     const v1 = await versions.get(AGENT, 1);

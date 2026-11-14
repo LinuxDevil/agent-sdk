@@ -85,7 +85,7 @@ export async function runMcp(rest: string[]): Promise<number> {
     return 0;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(message.startsWith('lousho') ? message : `lousho mcp: ${message}`);
+    console.error(message.startsWith('@linuxdevil/lousho') ? message : `lousho mcp: ${message}`);
     return exitCodeFor(error);
   }
 }

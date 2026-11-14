@@ -415,7 +415,7 @@ export interface AgentSpecV2 {
     codeMode?: boolean | CodeModeOptions;
     compaction?: boolean | AgentSpecV2Compaction;
     description?: string;
-    evals?: never;
+    evals?: EvalGateSpec[];
     fallbackModels?: string[];
     flow?: AgentFlow;
     guardrails?: GuardrailSpec[];
@@ -2487,11 +2487,38 @@ export interface EvalConfig extends Partial<Omit<ExecuteOptions, 'agent' | 'inpu
 }
 
 // @public
+type EvalGate = {
+    calledTool: string;
+} | {
+    notCalledTool: string;
+} | {
+    maxCostUsd: number;
+} | {
+    maxSteps: number;
+} | {
+    judge: EvalJudgeGate;
+};
+
+// @public
+interface EvalGateSpec {
+    dataset: string;
+    gates: EvalGate[];
+    minPassRate: number;
+}
+
+// @public
 export interface EvalJudgeConfig {
     model?: string;
     provider: LLMProvider;
     // (undocumented)
     temperature?: number;
+}
+
+// @public
+interface EvalJudgeGate {
+    minScore: number;
+    model: string;
+    rubric: string;
 }
 
 // @public

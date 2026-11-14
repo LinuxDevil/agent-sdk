@@ -36,7 +36,7 @@ describe('sdkRootDir', () => {
 
   it('finds the SDK from an installed node_modules/@linuxdevil/studio layout', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-sdkroot-'));
-    const sdkDir = path.join(tmp, 'node_modules', '@linuxdevil', 'lousho');
+    const sdkDir = path.join(tmp, 'node_modules', '@linuxdevil', '@linuxdevil/lousho');
     const studioDir = path.join(tmp, 'node_modules', '@linuxdevil', 'studio');
     fs.mkdirSync(path.join(sdkDir, 'dist'), { recursive: true });
     fs.mkdirSync(path.join(studioDir, 'dist-server'), { recursive: true });

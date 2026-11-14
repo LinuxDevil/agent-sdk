@@ -2,7 +2,7 @@ import { ChevronRight, TriangleAlert } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import type { AgentSpecV2 } from '@linuxdevil/lousho/spec';
 
-import type { ChannelTriggerStatus, TraceSummaryPayload } from '../../../shared/wireTypes';
+import type { AgentMeta, ChannelTriggerStatus, TraceSummaryPayload } from '../../../shared/wireTypes';
 import { agentTabPath, BUILT_AGENT_TABS } from '../agents/agentTabs';
 import { fmtAge, fmtDateTime, fmtDuration } from '../../observe/format';
 import { Card } from '../../ui/Card';
@@ -158,11 +158,34 @@ function CapabilitiesCard({ rows }: { rows: CapabilityRow[] }): JSX.Element {
   );
 }
 
+/**
+ * The off-state note (R09): shown when `meta.enabled` is false and the
+ * agent has triggers that would fire - auto-disabled agents get the
+ * failure-streak copy instead. Em dashes are part of the contract copy.
+ */
+function triggersOffNote(meta: AgentMeta): string {
+  return meta.disabledReason === 'auto_failure_streak'
+    ? 'Turned off after 5 failed triggered runs in a row. Fix the cause, then turn it back on.'
+    : 'Off — triggers won\'t fire. Turn the agent on to start them.';
+}
+
 /** The Triggers card: one icon + line per trigger (webhooks and channels also show their URL), or the empty copy. */
-function TriggersCard({ agentId, triggers }: { agentId: string; triggers: TriggerSpec[] }): JSX.Element {
+function TriggersCard({
+  agentId,
+  triggers,
+  meta,
+}: {
+  agentId: string;
+  triggers: TriggerSpec[];
+  meta: AgentMeta;
+}): JSX.Element {
   const channelStatuses = useChannelStatuses(agentId);
+  const hasFirableTriggers = triggers.some((trigger) => trigger.type !== 'chat');
   return (
     <Card title="Triggers">
+      {meta.enabled === false && hasFirableTriggers && (
+        <p className="triggers-off-note">{triggersOffNote(meta)}</p>
+      )}
       {triggers.length > 0 ? (
         <ul className="agent-overview-list">
           {triggers.map((trigger) => {
@@ -320,7 +343,7 @@ export function AgentOverviewTab() {
         )}
       </Card>
       <CapabilitiesCard rows={capabilityRows(spec)} />
-      <TriggersCard agentId={record.id} triggers={spec.triggers ?? []} />
+      <TriggersCard agentId={record.id} triggers={spec.triggers ?? []} meta={record.meta} />
       <SafetyCard safety={safetySummary(spec)} />
       <RecentRunsCard agentId={record.id} />
     </div>

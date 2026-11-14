@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import * as os from 'node:os';
 import * as path from 'node:path';
-import { configureStudioHome, studioPaths, studioPathsFor } from '../studioPaths';
+import { configureStudioHome, defaultStudioHome, studioPaths, studioPathsFor } from '../studioPaths';
 
 describe('studioPathsFor', () => {
   it('derives every Studio-global file under the home directory', () => {
@@ -14,7 +15,26 @@ describe('studioPathsFor', () => {
       spend: path.join('/h', 'passes', 'spend.jsonl'),
       alerts: path.join('/h', 'inbox', 'alerts.json'),
       serve: path.join('/h', 'serve.json'),
+      legacyImports: path.join('/h', 'legacy-imports.json'),
     });
+  });
+});
+
+describe('defaultStudioHome', () => {
+  const ENV = 'LOUSHO_STUDIO_HOME';
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is ~/.lousho/studio when LOUSHO_STUDIO_HOME is unset', () => {
+    vi.stubEnv(ENV, '');
+    delete process.env[ENV];
+    expect(defaultStudioHome()).toBe(path.join(os.homedir(), '.lousho', 'studio'));
+  });
+
+  it('is path.resolve(LOUSHO_STUDIO_HOME) when set', () => {
+    vi.stubEnv(ENV, 'relative/home');
+    expect(defaultStudioHome()).toBe(path.resolve('relative/home'));
   });
 });
 

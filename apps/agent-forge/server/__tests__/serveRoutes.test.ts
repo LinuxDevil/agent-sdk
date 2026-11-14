@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -16,7 +16,9 @@ import { SettingsStore } from '../settingsStore';
 import { SpendLog } from '../passes/spendLog';
 import { studioPathsFor } from '../workspace/studioPaths';
 import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
-import type { ServeStatus } from '../../shared/wireTypes';
+import type { McpServeManager } from '../serve/mcpServers';
+import { McpNotPublishedError } from '../serve/mcpServers';
+import type { McpServeStatus, ServeStatus } from '../../shared/wireTypes';
 import { buildServeAgent, type ServeAgentBuilder } from '../serve/serveRoutes';
 
 const SPEC: AgentSpecV2 = { version: 2, name: 'ops', model: 'mock/mock-1', instructions: 'Check the queues.' };
@@ -28,6 +30,7 @@ describe('/serve/<id> published-agent surface (X02a)', () => {
   let runManager: RunManager;
   let repo: AgentRepo;
   let builds: number;
+  let mcpStub: McpServeManager;
   // One app per test: each createApp() gets a fresh serve-handler cache, so
   // tests that assert rebuild/caching behaviour must reuse the instance.
   let instance: ReturnType<typeof createApp> | undefined;
@@ -40,6 +43,15 @@ describe('/serve/<id> published-agent surface (X02a)', () => {
   beforeEach(async () => {
     builds = 0;
     instance = undefined;
+    const stopped: McpServeStatus = { running: false, url: null, port: null, version: null, toolName: null };
+    mcpStub = {
+      status: vi.fn(() => stopped),
+      start: vi.fn(async () => ({ ...stopped, running: true, url: 'http://127.0.0.1:41000/mcp', port: 41000, version: 1, toolName: 'ask_ops' })),
+      stop: vi.fn(async () => stopped),
+      restart: vi.fn(async () => {}),
+      refresh: vi.fn(async () => {}),
+      closeAll: vi.fn(async () => {}),
+    };
     baseDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lou-x02a-serve-'));
     studioHome = path.join(baseDir, '.lousho');
     agentStore = createFsAgentStore(baseDir);
@@ -70,6 +82,7 @@ describe('/serve/<id> published-agent surface (X02a)', () => {
       settingsStore: new SettingsStore(paths()),
       spendLog: new SpendLog(paths().spend),
       serveAgentBuilder: countingBuilder,
+      mcpServers: mcpStub,
     }));
 
   /** Writes the spec, publishes it (v1), enables serving and returns the raw token. */
@@ -230,5 +243,51 @@ describe('/serve/<id> published-agent surface (X02a)', () => {
     // Express decodes %2F - the id segment can't smuggle a slash, but a bad
     // token still 400s through isValidAgentId inside the router.
     expect([400, 404]).toContain(res.status);
+  });
+
+  describe('/agents/:id/serve/mcp (X03)', () => {
+    it('GET reports the manager status', async () => {
+      const res = await request(app()).get('/agents/ops/serve/mcp');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ running: false, url: null, port: null, version: null, toolName: null });
+      expect(mcpStub.status).toHaveBeenCalledWith('ops');
+    });
+
+    it('POST starts the server and answers its status', async () => {
+      const res = await request(app()).post('/agents/ops/serve/mcp').send({});
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ running: true, url: 'http://127.0.0.1:41000/mcp', port: 41000, version: 1 });
+      expect(mcpStub.start).toHaveBeenCalledWith('ops');
+    });
+
+    it('POST maps an unpublished agent to 409 LOUSHO_NOT_PUBLISHED', async () => {
+      vi.mocked(mcpStub.start).mockRejectedValueOnce(new McpNotPublishedError('ops'));
+      const res = await request(app()).post('/agents/ops/serve/mcp').send({});
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: 'Publish a version first', code: 'LOUSHO_NOT_PUBLISHED' });
+    });
+
+    it('POST maps a missing MCP peer to 422 LOUSHO_MCP_PEER_MISSING', async () => {
+      const { ConfigurationError } = await import('@linuxdevil/lousho');
+      vi.mocked(mcpStub.start).mockRejectedValueOnce(
+        new ConfigurationError('serveMcp: optional peer @modelcontextprotocol/sdk is not installed', 'mcp')
+      );
+      const res = await request(app()).post('/agents/ops/serve/mcp').send({});
+      expect(res.status).toBe(422);
+      expect(res.body.code).toBe('LOUSHO_MCP_PEER_MISSING');
+    });
+
+    it('DELETE stops the server', async () => {
+      const res = await request(app()).delete('/agents/ops/serve/mcp');
+      expect(res.status).toBe(200);
+      expect(res.body.running).toBe(false);
+      expect(mcpStub.stop).toHaveBeenCalledWith('ops');
+    });
+
+    it('rotate-token restarts a running MCP server', async () => {
+      await enableServing();
+      await request(app()).post('/agents/ops/serve/rotate-token').send({});
+      expect(mcpStub.restart).toHaveBeenCalledWith('ops');
+    });
   });
 });

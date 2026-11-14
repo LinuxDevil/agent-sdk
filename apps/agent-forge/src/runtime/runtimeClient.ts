@@ -46,6 +46,8 @@ import type {
   PassSettings,
   PassSettingsPatch,
   PassSpendSummary,
+  PublishRequest,
+  PublishResponse,
   RatingRequest,
   McpServerSpecV2,
   PatchAgentMetaRequest,
@@ -56,6 +58,7 @@ import type {
   RunComparisonPayload,
   RunHistoryPayload,
   SecretStatus,
+  McpServeStatus,
   ServeAgentConfig,
   ServeStatus,
   ServeTokenReveal,
@@ -72,6 +75,8 @@ import type {
   TemplateSummary,
   ToolPin,
   TraceDetailPayload,
+  LegacyImportResult,
+  LegacyImportStatus,
   TraceSummaryPayload,
   HostStatus,
   VersionListItem,
@@ -122,7 +127,7 @@ function apiError(
   fallback: string,
   status: number
 ): RuntimeApiError {
-  return new RuntimeApiError(body?.error || fallback, status, body?.code, body?.details);
+  return new RuntimeApiError(body?.error || fallback, status, body?.code, body?.details, body);
 }
 
 export class RuntimeApiError extends Error {
@@ -132,7 +137,9 @@ export class RuntimeApiError extends Error {
     /** The server's `{ code }` when it sent one (e.g. 'STALE_PROPOSAL'). */
     public readonly code?: string,
     /** The server's `{ details }` payload when it sent one (e.g. `{ latestProposalId }`). */
-    public readonly details?: unknown
+    public readonly details?: unknown,
+    /** The whole parsed error body, for codes whose payload sits outside `details` (e.g. the publish gate's `version`, X01b). */
+    public readonly body?: unknown
   ) {
     super(message);
   }
@@ -396,14 +403,17 @@ class RuntimeClient implements AgentApi {
   // -------------------------------------------------------------------
 
   /**
-   * Pins `version` (or the working copy's new `publish` version) as the
-   * agent's published spec and answers the pinned version number. Idempotent:
-   * pinning the already-published version is a no-op.
+   * Pins `body.version` (or the working copy's new `publish` version) as the
+   * agent's published spec and answers the pinned version plus the eval
+   * gate's result when the spec declares `evals` (X01b). Idempotent:
+   * pinning the already-published version is a no-op. A failing gate throws
+   * `RuntimeApiError` 409 `LOUSHO_EVAL_GATE_FAILED` whose `details` is the
+   * `EvalGateResult`.
    */
-  async publish(agentId: string, version?: number): Promise<{ publishedVersion: number }> {
+  async publish(agentId: string, body: PublishRequest = {}): Promise<PublishResponse> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/publish`, {
       method: 'POST',
-      body: JSON.stringify(version === undefined ? {} : { version }),
+      body: JSON.stringify(body),
     });
   }
 
@@ -433,6 +443,31 @@ class RuntimeClient implements AgentApi {
   /** Mints a new bearer - the old one stops working at once (`POST .../serve/rotate-token`). */
   async rotateServeToken(agentId: string): Promise<ServeTokenReveal> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/serve/rotate-token`, { method: 'POST' });
+  }
+
+  /** The agent's MCP server state (`GET /agents/:id/serve/mcp`, X03). */
+  async mcpStatus(agentId: string): Promise<McpServeStatus> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/mcp`);
+  }
+
+  /** Starts the MCP server for the published version (`POST .../serve/mcp`); 409 when unpublished. */
+  async startMcp(agentId: string): Promise<McpServeStatus> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/mcp`, { method: 'POST' });
+  }
+
+  /** Stops the MCP server (`DELETE .../serve/mcp`). */
+  async stopMcp(agentId: string): Promise<McpServeStatus> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/mcp`, { method: 'DELETE' });
+  }
+
+  /** Creates or rotates the widget key and returns the raw `fwk_` key once (`POST .../serve/widget-key`, X04b). */
+  async createWidgetKey(agentId: string): Promise<{ widgetKey: string }> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/widget-key`, { method: 'POST' });
+  }
+
+  /** Revokes the widget key (`DELETE .../serve/widget-key`, X04b). */
+  async revokeWidgetKey(agentId: string): Promise<void> {
+    await this.request(`/agents/${encodeURIComponent(agentId)}/serve/widget-key`, { method: 'DELETE' });
   }
 
   /** Records a 1-5 human rating on a run's trace (`POST /agents/:id/rating`, R04a). */
@@ -572,6 +607,29 @@ class RuntimeClient implements AgentApi {
    */
   async restartHost(id: string): Promise<HostStatus> {
     return this.forWorkspace(id).request(`/workspaces/${encodeURIComponent(id)}/host/restart`, { method: 'POST' });
+  }
+
+  // -------------------------------------------------------------------
+  // `/workspaces/:ws/legacy-import` - the one-time old-settings/secrets
+  // import offer (W03a; server/workspace/legacyImport.ts).
+  // -------------------------------------------------------------------
+
+  /** Which old project-level files `ws` still offers to import, and whether the offer was handled. */
+  // fallow-ignore-next-line unused-class-member -- contract surface: the import-offer UI lands in a later wave; the route + client ship together here
+  async legacyImportStatus(ws: string): Promise<LegacyImportStatus> {
+    return this.request(`/workspaces/${encodeURIComponent(ws)}/legacy-import`, { method: 'GET' });
+  }
+
+  /** Copies the missing settings/secrets into the Studio home; 409s `LOUSHO_LEGACY_IMPORT_EMPTY` when there is nothing. */
+  // fallow-ignore-next-line unused-class-member -- contract surface: the import-offer UI lands in a later wave; the route + client ship together here
+  async importLegacy(ws: string): Promise<LegacyImportResult> {
+    return this.request(`/workspaces/${encodeURIComponent(ws)}/legacy-import`, { method: 'POST' });
+  }
+
+  /** Dismisses the import offer for `ws`. */
+  // fallow-ignore-next-line unused-class-member -- contract surface: the import-offer UI lands in a later wave; the route + client ship together here
+  async skipLegacyImport(ws: string): Promise<void> {
+    await this.request(`/workspaces/${encodeURIComponent(ws)}/legacy-import/skip`, { method: 'POST' });
   }
 
   async run(

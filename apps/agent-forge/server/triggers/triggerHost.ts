@@ -98,6 +98,8 @@ const END_STATUSES = new Set(['done', 'error', 'stopped']);
 export class TriggerHost {
   private readonly queueCap: number;
   private readonly agents = new Map<string, AgentTriggers>();
+  /** `meta.enabled` per agent, refreshed on every reload (R09); absent means enabled. */
+  private readonly enabled = new Map<string, boolean>();
   private readonly endListeners = new Set<(end: RunEnd) => void>();
   private unsubscribers: Array<() => void> = [];
   private stopped = false;
@@ -137,6 +139,7 @@ export class TriggerHost {
       const triggers = (spec as AgentSpecV2 | undefined)?.triggers ?? [];
       const state = this.stateFor(id);
       state.triggers = triggers;
+      await this.refreshEnabled(id, state);
       const known = new Set(triggers.map((t) => t.id));
       const dropped = state.queue.filter((run) => !known.has(run.triggerId));
       if (dropped.length > 0) {
@@ -158,10 +161,39 @@ export class TriggerHost {
     return this.agents.get(agentId)?.triggers ?? [];
   }
 
+  /**
+   * `meta.enabled` for the agent (R09): false rejects every trigger
+   * dispatch while manual runs stay untouched. Unknown agents read as
+   * enabled, matching `defaultMeta`.
+   */
+  isEnabled(agentId: string): boolean {
+    return this.enabled.get(agentId) ?? true;
+  }
+
+  /**
+   * Re-reads `meta.enabled` into the cache; on a transition to disabled
+   * every queued host run is dropped (a running one finishes - R09).
+   */
+  private async refreshEnabled(agentId: string, state: AgentTriggers): Promise<void> {
+    // Test fakes may omit readMeta; a missing meta reads as enabled.
+    const meta =
+      this.deps.repo.readMeta === undefined
+        ? undefined
+        : await this.deps.repo.readMeta(agentId).catch(() => undefined);
+    const nowEnabled = meta?.enabled ?? true;
+    const wasEnabled = this.enabled.get(agentId) ?? true;
+    this.enabled.set(agentId, nowEnabled);
+    if (wasEnabled && !nowEnabled && state.queue.length > 0) {
+      const dropped = state.queue.splice(0);
+      this.deps.log(agentId, `Dropped ${dropped.length} queued runs: the agent was turned off`, 'warn');
+    }
+  }
+
   /** Accepts a trigger request: enqueues FIFO, starts immediately when the agent is free. */
   dispatch(req: DispatchRequest): DispatchResult {
-    // R09 seam: the enabled-only gate lands here - reject with 'disabled'
-    // when the agent's meta.enabled is false before touching the queue.
+    // R09: a turned-off agent starts no triggered run (webhook/channel map
+    // this to their own skip responses; cron/chain log the skip).
+    if (!this.isEnabled(req.agentId)) return { ok: false, reason: 'disabled' };
     const trigger = this.triggersOf(req.agentId).find((t) => t.id === req.triggerId);
     if (!trigger) return { ok: false, reason: 'unknown_trigger' };
 

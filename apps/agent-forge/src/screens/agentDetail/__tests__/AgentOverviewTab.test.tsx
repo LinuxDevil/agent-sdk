@@ -28,7 +28,7 @@ function meta(): AgentRecord['meta'] {
   };
 }
 
-function record(over: { spec?: Partial<AgentSpecV2>; requirements?: Requirement[] } = {}): AgentRecord {
+function record(over: { spec?: Partial<AgentSpecV2>; requirements?: Requirement[]; meta?: Partial<AgentRecord['meta']> } = {}): AgentRecord {
   return {
     id: 'support-bot',
     spec: {
@@ -38,7 +38,7 @@ function record(over: { spec?: Partial<AgentSpecV2>; requirements?: Requirement[
       instructions: 'Be helpful.',
       ...over.spec,
     } as AgentSpecV2,
-    meta: meta(),
+    meta: { ...meta(), ...over.meta },
     layout: { schemaVersion: 1, nodes: {}, notes: [] },
     updatedAt: '2026-10-29T10:00:00Z',
     latestVersion: null,
@@ -205,6 +205,43 @@ describe('AgentOverviewTab', () => {
       'Channel github needs token',
     );
     expect(triggersCard.textContent).toContain('Channel runs show up in Runs and Traces.');
+  });
+
+  it('shows the off note on the Triggers card for a disabled agent with firable triggers (R09)', async () => {
+    const triggers: AgentSpecV2['triggers'] = [
+      { id: 't1', type: 'chat' },
+      { id: 't2', type: 'cron', cron: '0 9 * * *', prompt: 'x' },
+    ];
+    const host = renderTab(record({ spec: { triggers }, meta: { enabled: false } }));
+    await flush();
+
+    const note = card(host, 'Triggers').querySelector('.triggers-off-note');
+    expect(note?.textContent).toBe("Off — triggers won't fire. Turn the agent on to start them.");
+  });
+
+  it('shows the auto-disabled copy when the streak turned the agent off (R09)', async () => {
+    const triggers: AgentSpecV2['triggers'] = [{ id: 't2', type: 'cron', cron: '0 9 * * *', prompt: 'x' }];
+    const host = renderTab(
+      record({ spec: { triggers }, meta: { enabled: false, disabledReason: 'auto_failure_streak' } }),
+    );
+    await flush();
+
+    expect(card(host, 'Triggers').querySelector('.triggers-off-note')?.textContent).toBe(
+      'Turned off after 5 failed triggered runs in a row. Fix the cause, then turn it back on.',
+    );
+  });
+
+  it('hides the off note for an enabled agent or one with only a chat trigger (R09)', async () => {
+    const cron: AgentSpecV2['triggers'] = [{ id: 't2', type: 'cron', cron: '0 9 * * *', prompt: 'x' }];
+    const enabled = renderTab(record({ spec: { triggers: cron } }));
+    await flush();
+    expect(card(enabled, 'Triggers').querySelector('.triggers-off-note')).toBeNull();
+
+    const chatOnly = renderTab(
+      record({ spec: { triggers: [{ id: 't1', type: 'chat' }] }, meta: { enabled: false } }),
+    );
+    await flush();
+    expect(card(chatOnly, 'Triggers').querySelector('.triggers-off-note')).toBeNull();
   });
 
   it('shows permission-rule counts by action in the Safety card', async () => {

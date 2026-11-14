@@ -388,6 +388,14 @@ export class ChannelTriggers {
       return;
     }
 
+    // R09: a turned-off agent's channels answer 200 skipped so platforms
+    // do not retry; the SDK handler (which would run the agent) is never
+    // called, and abort listeners do not run either.
+    if (!this.deps.host.isEnabled(route.agentId)) {
+      res.status(200).json({ ok: true, skipped: 'disabled' });
+      return;
+    }
+
     let body: Buffer;
     try {
       body = await readBody(req);

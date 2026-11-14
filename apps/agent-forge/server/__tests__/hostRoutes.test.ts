@@ -29,7 +29,7 @@ const FAKE_BRIDGE = fileURLToPath(new URL('../host/__tests__/fakeBridge.mjs', im
 
 /** A workspace whose node_modules SDK's `bin/lousho.js` IS the fake bridge. */
 function sdkWorkspace(root: string): void {
-  const pkgDir = path.join(root, 'node_modules', '@linuxdevil', 'lousho');
+  const pkgDir = path.join(root, 'node_modules', '@linuxdevil', '@linuxdevil/lousho');
   fs.mkdirSync(path.join(pkgDir, 'bin'), { recursive: true });
   fs.mkdirSync(path.join(pkgDir, 'dist', 'cli'), { recursive: true });
   fs.writeFileSync(path.join(pkgDir, 'package.json'), JSON.stringify({ name: '@linuxdevil/lousho', version: '9.9.9-test' }));

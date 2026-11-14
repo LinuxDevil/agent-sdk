@@ -114,6 +114,7 @@ describe('WS /assistant/stream (startStudioServer)', () => {
       judge: false,
       staticDir: false,
       token: TOKEN,
+      studioHome: home,
       authorRunner: runner,
     });
     origin = `http://127.0.0.1:${handle.port}`;

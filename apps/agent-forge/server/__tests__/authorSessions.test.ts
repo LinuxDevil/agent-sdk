@@ -47,7 +47,7 @@ describe('author session routes', () => {
       loadSpec: (id) => repo.readSpec(id),
       saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
-    app = createApp({ agentStore, runManager, baseDir, staticDir, access: { token: TOKEN } });
+    app = createApp({ agentStore, runManager, baseDir, studioHome: path.join(baseDir, '.lousho'), staticDir, access: { token: TOKEN } });
   });
 
   afterEach(() => {
@@ -178,7 +178,7 @@ describe('author session routes', () => {
       loadSpec: (id) => repo.readSpec(id),
       saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
-    const busyApp = createApp({ agentStore, runManager, baseDir, staticDir, access: { token: TOKEN }, sessions, authorRunner: runner });
+    const busyApp = createApp({ agentStore, runManager, baseDir, studioHome: path.join(baseDir, '.lousho'), staticDir, access: { token: TOKEN }, sessions, authorRunner: runner });
 
     const created = await request(busyApp).post('/assistant/sessions').set(STUDIO_TOKEN_HEADER, TOKEN).send({});
     expect(created.status).toBe(201);

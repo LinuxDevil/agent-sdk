@@ -127,7 +127,7 @@ describe('MCP servers with OAuth', () => {
     expect(params.get('redirect_uri')).toBe(REDIRECT);
     expect(server.registrations).toBe(1);
     expect(JSON.parse(server.requests.find((request) => request.path === '/register')?.body ?? '{}')).toMatchObject({
-      client_name: 'lousho',
+      client_name: '@linuxdevil/lousho',
       redirect_uris: [REDIRECT],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],

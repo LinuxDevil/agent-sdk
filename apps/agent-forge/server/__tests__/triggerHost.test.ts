@@ -46,21 +46,26 @@ class FakeRuns extends EventEmitter {
   }
 }
 
-function repoWith(specs: Record<string, AgentSpecV2 | undefined>): AgentRepo {
+function repoWith(specs: Record<string, AgentSpecV2 | undefined>, metas: Record<string, { enabled: boolean } | undefined> = {}): AgentRepo {
   return {
     listIds: () => Object.keys(specs),
     readSpec: async (id: string) => specs[id],
+    readMeta: async (id: string) => ({ enabled: metas[id]?.enabled ?? true }) as never,
   } as unknown as AgentRepo;
 }
 
 const made: TriggerHost[] = [];
 
-function makeHost(specs: Record<string, AgentSpecV2 | undefined>, queueCap?: number) {
+function makeHost(
+  specs: Record<string, AgentSpecV2 | undefined>,
+  queueCap?: number,
+  metas: Record<string, { enabled: boolean } | undefined> = {}
+) {
   const runs = new FakeRuns();
   const events = new StudioEventBus();
   const logs: string[] = [];
   const host = new TriggerHost({
-    repo: repoWith(specs),
+    repo: repoWith(specs, metas),
     runManager: runs as unknown as RunManager,
     events,
     log: (_agentId, message) => logs.push(message),
@@ -242,5 +247,58 @@ describe('TriggerHost', () => {
     expect(abort).toHaveBeenCalledWith('a', 'test');
     expect(d2.ok).toBe(true);
     expect(host.cancel('missing:key', 'x')).toBeUndefined();
+  });
+
+  it('rejects dispatches for a disabled agent and isEnabled reflects meta (R09)', async () => {
+    const metas = { a: { enabled: false } };
+    const { host, runs } = makeHost({ a: specWith([WEBHOOK]) }, undefined, metas);
+    await host.start();
+
+    expect(host.isEnabled('a')).toBe(false);
+    expect(host.isEnabled('missing')).toBe(true);
+    expect(host.dispatch({ agentId: 'a', triggerId: 't1', input: 'x', event: {} })).toEqual({
+      ok: false,
+      reason: 'disabled',
+    });
+    expect(host.runsOf('a')).toHaveLength(0);
+    expect(runs.calls).toHaveLength(0);
+  });
+
+  it('drops queued runs and logs the count when the agent turns off; the running run finishes (R09)', async () => {
+    const metas = { a: { enabled: true } };
+    const { host, runs, logs } = makeHost({ a: specWith([WEBHOOK, CRON]) }, undefined, metas);
+    await host.start();
+
+    host.dispatch({ agentId: 'a', triggerId: 't1', input: 'one', event: {} });
+    host.dispatch({ agentId: 'a', triggerId: 'c1', input: 'two', event: {} });
+    host.dispatch({ agentId: 'a', triggerId: 'c1', input: 'three', event: {} });
+    await flush();
+    expect(host.runsOf('a').map((r) => r.status)).toEqual(['running', 'queued', 'queued']);
+
+    metas.a.enabled = false;
+    await host.reload('a');
+
+    expect(host.isEnabled('a')).toBe(false);
+    // Only the in-flight run survives; both queued requests are gone.
+    expect(host.runsOf('a').map((r) => r.status)).toEqual(['running']);
+    expect(logs).toContain('Dropped 2 queued runs: the agent was turned off');
+    expect(runs.calls).toHaveLength(1);
+
+    // The running run still ends normally and reports its RunEnd.
+    const ends: RunEnd[] = [];
+    host.onRunEnd((end) => ends.push(end));
+    runs.emitStatus('a', 'done', { resultText: 'ok' });
+    expect(ends).toHaveLength(1);
+    expect(ends[0].status).toBe('done');
+  });
+
+  it('does not re-drop or re-log while the agent stays disabled (R09)', async () => {
+    const metas = { a: { enabled: false } };
+    const { host, logs } = makeHost({ a: specWith([WEBHOOK]) }, undefined, metas);
+    await host.start();
+    await host.reload('a');
+    await host.reload('a');
+
+    expect(logs.filter((m) => m.includes('turned off'))).toHaveLength(0);
   });
 });

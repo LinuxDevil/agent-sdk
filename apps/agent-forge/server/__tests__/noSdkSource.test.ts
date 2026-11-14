@@ -1,6 +1,6 @@
 /**
  * W14 (PLAN §19.7): Studio imports the SDK through its package exports only.
- * Exercises the `@linuxdevil/lousho/no-sdk-source` ESLint rule the `lint:imports` gate runs.
+ * Exercises the `lousho/no-sdk-source` ESLint rule the `lint:imports` gate runs.
  */
 import { RuleTester } from 'eslint';
 import tseslint from 'typescript-eslint';

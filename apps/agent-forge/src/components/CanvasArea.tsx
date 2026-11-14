@@ -97,6 +97,8 @@ interface NodeDecor {
   openNodeSpans?: (nodeId: string) => void;
   /** Node ids with a pinned tool result (T04); their cards show the Pin badge. */
   pinnedNodeIds?: ReadonlySet<string>;
+  /** `meta.enabled` of the open agent (R09); false dims non-chat trigger nodes. Absent reads enabled. */
+  agentEnabled?: boolean;
   /** X06b: the canvas does not own this graph — node affordances that write through AppState stay disabled. */
   readOnly?: boolean;
 }
@@ -190,7 +192,7 @@ function groupSizes(graph: Graph, measured: MeasuredSizes): Map<string, { width:
  * the parent React Flow would re-lay them at absolute coordinates).
  */
 export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSizes = {}): Node<CanvasNodeData>[] {
-  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems, openNodeSpans, pinnedNodeIds, readOnly } = decor;
+  const { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems, openNodeSpans, pinnedNodeIds, agentEnabled, readOnly } = decor;
   const sizes = groupSizes(graph, measured);
   return canvasNodeOrder(graph).map((n) => {
     const group = isGroupNode(n);
@@ -214,6 +216,7 @@ export function toRfNodes(graph: Graph, decor: NodeDecor, measured: MeasuredSize
         problems: problems?.get(n.id) ?? [],
         onViewSpans: openNodeSpans,
         pinned: pinnedNodeIds?.has(n.id) === true,
+        agentEnabled,
         readOnly,
         insideCount: group ? descendantCount(graph, n.id) : undefined,
       },
@@ -1074,6 +1077,7 @@ function useCanvasElements() {
     agentId,
     graph,
     displayGraph,
+    agents,
     proposal,
     hideProposal,
     setGraph,
@@ -1104,6 +1108,9 @@ function useCanvasElements() {
   // The canvas node ids (`tool:<key>`) carrying at least one pinned tool
   // result - their cards show the Pin badge (T04).
   const pinnedNodeIds = useMemo(() => new Set(pins.map((pin) => pin.nodeId)), [pins]);
+  // R09: the list item's `enabled` dims non-chat trigger nodes; an agent
+  // missing from the list (just created, mid-delete) reads enabled.
+  const agentEnabled = useMemo(() => agents.find((a) => a.id === agentId)?.enabled ?? true, [agents, agentId]);
   const problemsByNode = useMemo(() => {
     const map = new Map<string, Problem[]>();
     for (const problem of problems) {
@@ -1117,10 +1124,10 @@ function useCanvasElements() {
     () =>
       toRfNodes(
         displayGraph,
-        { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems: problemsByNode, openNodeSpans, pinnedNodeIds },
+        { selectedNodeId, highlightedNodeId, breakpoints, statuses, problems: problemsByNode, openNodeSpans, pinnedNodeIds, agentEnabled },
         measured
       ),
-    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, problemsByNode, openNodeSpans, pinnedNodeIds, measured]
+    [displayGraph, selectedNodeId, highlightedNodeId, breakpointsKey, statuses, problemsByNode, openNodeSpans, pinnedNodeIds, agentEnabled, measured]
   );
   const [selectedEdgeId, setSelectedEdgeId] = useAgentEdgeSelection(agentId);
   // Edges derive from the DISPLAY graph so proposal nodes are wired in;

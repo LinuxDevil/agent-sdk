@@ -93,7 +93,7 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
 
       const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
       expect(pkg.dependencies['@linuxdevil/lousho']).toMatch(/^file:\.\/.*\.tgz$/);
-      expect(fs.existsSync(path.join(dir, 'node_modules', '@linuxdevil', 'lousho'))).toBe(true);
+      expect(fs.existsSync(path.join(dir, 'node_modules', '@linuxdevil', '@linuxdevil/lousho'))).toBe(true);
 
       npm(['run', 'typecheck'], dir);
       const testOutput = npm(['test'], dir);
@@ -101,7 +101,7 @@ describe('end-to-end scaffold + install + typecheck + test', () => {
 
       const sdkPkg = JSON.parse(fs.readFileSync(path.join(SDK_ROOT, 'package.json'), 'utf8'));
       const installed = JSON.parse(
-        fs.readFileSync(path.join(dir, 'node_modules', '@linuxdevil', 'lousho', 'package.json'), 'utf8')
+        fs.readFileSync(path.join(dir, 'node_modules', '@linuxdevil', '@linuxdevil/lousho', 'package.json'), 'utf8')
       );
       expect(installed.version).toBe(sdkPkg.version);
 

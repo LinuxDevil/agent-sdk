@@ -19,6 +19,10 @@
     // The packaged Studio's `lousho-studio` bin and its pack-time SDK-range pin.
     "apps/agent-forge/server/cli.ts",
     "apps/agent-forge/scripts/pin-sdk-range.mjs"
+    // The <forge-chat> widget bundle (X04b): vite.widget.config.ts's
+    // lib.entry is not visible to the import graph.
+    "apps/agent-forge/src/widget/entry.ts",
+    "apps/agent-forge/vite.widget.config.ts"
   ],
   "ignorePatterns": [
     ".claude/**"

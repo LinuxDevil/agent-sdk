@@ -1774,6 +1774,14 @@ This doc covers: installation, the `lousho studio` quickstart, the
 authoring, time travel (replaying a run from a past step), the playground
 endpoint, and how settings/secrets/deploy wiring works.
 
+Three features have their own pages: [the visual
+builder](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-builder.md) — the canvas, Inspector, Configure tab,
+in-place testing and Code tab — [the Agent
+Author](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-author.md) — the chat that drafts agents as proposals you
+review before anything is saved — and [versions, triggers and
+publishing](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-lifecycle.md) — the working copy, drafts, the inbox,
+the eval gate, Serve and Deploy.
+
 ## Installation
 
 Agent Forge ships inside `lousho` itself - there's no
@@ -1798,20 +1806,22 @@ npx @linuxdevil/lousho studio
 
 This starts one local server and prints its URL (default
 `http://127.0.0.1:4750/?token=<random>`). Open that exact URL in a browser.
-It lands on the Agents screen (`#/agents`): the left navigation, the build
-toolbar (the agent's name and run status, the model badge, then Debug, Stop,
-Run, Import, Export and Save), the
-agent rail (your saved agents plus a node/hook palette), the canvas, the
-Inspector (right), and a bottom drawer with Chat, Logs, Trace, Output,
-History and Settings tabs. An agent opens with nothing selected and the
-whole graph fitted in view; the Inspector stays folded away until you
-select a node, or press the **Inspector** button at the canvas's
-top-right (its accessible name is "Show inspector"), which is remembered. The other screens are one click away in the
-navigation; see [Navigation](#navigation).
+It lands on the Agents list (`#/agents`): your saved agents as cards, plus
+a **New agent** menu. Opening or creating one takes you to its Canvas tab
+(`#/agents/<id>/canvas`) — the builder: the build toolbar (the agent's name
+and run status, the model badge, then Debug, Stop, Run, Import, Export and
+Save), the agent rail (your saved agents plus a node/hook palette), the
+canvas, the Inspector (right), and a bottom drawer with Test, Problems,
+Logs, Trace, Output, History and Settings tabs. An agent opens with
+nothing selected and the whole graph fitted in view; the Inspector stays
+folded away until you select a node, or press the **Inspector** button at
+the canvas's top-right (its accessible name is "Show inspector"), which is
+remembered. The other screens are one click away in the navigation; see
+[Navigation](#navigation).
 
 Below 860px wide the navigation becomes a drawer opened from the
 **Navigation** (menu) button at the top; picking a screen, the scrim or Esc
-closes it. On the Agents screen the agent rail and the Inspector become
+closes it. On the builder the agent rail and the Inspector become
 slide-over panels you open from the top bar; Run (or Stop) and Save stay in
 the bar, and Debug, Import, Export and the model badge move into its **More
 actions** (`⋯`) menu.
@@ -1863,7 +1873,7 @@ checkpoints and approvals alongside them) - the same `.lousho/` layout
 [Agent spec v2](https://github.com/LinuxDevil/lousho/blob/main/docs/agent-spec.md) documents, which that page explains field
 by field.
 
-The Agents screen's agent rail lists exactly the agents in that `.lousho/agents/`: a YAML
+The agents list and the builder's agent rail show exactly the agents in that `.lousho/agents/`: a YAML
 file you add there shows up, and an agent you create in the studio is
 written there at once (autosave and **Save** both write the file), so it
 can be chatted with straight away. Another project, opened in its own
@@ -1897,7 +1907,9 @@ The left navigation lists every screen, grouped:
 
 | Group | Item | Screen |
 | --- | --- | --- |
-| Build | **Agents** | The builder: canvas, Inspector, bottom drawer. The build toolbar (Run, Stop, Debug, Import, Export, Save, model badge) shows only here. |
+| Build | **Agents** | The agents list; an agent opens on tabs — Canvas (the builder), Overview, Configure, Code, Runs, Versions, Suggestions. The build toolbar (Run, Stop, Debug, Import, Export, Save, model badge) shows on the Canvas tab. |
+| Build | **Inbox** | Pending approvals, questions, drafts, suggestions and notices, one row each with inline actions. |
+| Build | **Templates** | Agent templates you can start from. |
 | Build | **Playground** | Try messages against a model without editing an agent. |
 | Build | **Workspaces** | Workspaces in this project: their pages, problems, drafts and revisions. |
 | Observe | **Traces** | Every run the observe daemon holds, filtered and sorted; a row opens the trace. |
@@ -1908,7 +1920,7 @@ The left navigation lists every screen, grouped:
 | Assets | **Context Hub** | Shared key-values agents publish to the daemon. |
 | | **Settings** | Appearance, provider keys, settings profiles, deploy, collector and shortcuts. |
 
-Off the Agents screen a page header names the screen and keeps the live run
+Off the builder a page header names the screen and keeps the live run
 status pill at the end of its title row, after any chips the screen adds (a
 prompt's labels, say). Under Settings, a small card shows the collector status (see
 [The collector](#the-collector-observe-daemon)). The button beside the
@@ -1929,7 +1941,9 @@ unknown hash goes to `#/agents` (the `?token=` stays).
 
 | Route | Screen | Query keys |
 | --- | --- | --- |
-| `#/agents`, `#/agents/<agent id>` | Agents, with that agent open | |
+| `#/agents` | Agents list | |
+| `#/agents/<agent id>/canvas` | The builder for that agent | |
+| `#/agents/<agent id>/<tab>` | One agent tab: `overview`, `configure`, `code`, `runs`, `versions`, `suggestions` | |
 | `#/playground` | Playground | `trace` + `fromObs`, or `prompt` (see [Playground](#playground)) |
 | `#/traces` | Traces list | `agent`, `status`, `model`, `project`, `q`, `prompt` (`<name>` or `<name>@<version>`), `from` + `to` (ms epoch, half-open), `sort` (`duration`, `tokens`, `cost`) + `order` (`asc`, `desc`), `offset` |
 | `#/traces/<trace id>` | One trace | `obs` (the selected step) |
@@ -1966,6 +1980,9 @@ for each saved agent, and **Toggle theme** (light/dark, remembered in the
 browser); type to filter. Paste a trace id (8 or more hex digits and
 dashes) and the first entry is **Open trace** for it. Arrow keys move,
 Enter runs.
+
+The builder's own shortcuts — save version, undo/redo, palette search,
+node delete — are listed in [the visual builder](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-builder.md#keyboard-shortcuts).
 
 In an annotation queue's review, Enter submits the scores and `S` skips
 the item (see [Annotation queues](#annotation-queues)).
@@ -2007,18 +2024,24 @@ The collector card at the bottom of the nav says whether the daemon answers:
 **Checking collector…** until the first probe, then **Collector running**
 or **Collector unreachable**, with the daemon URL underneath. The probe keeps polling. While the daemon is down, each
 daemon screen shows the command to start it instead of an error, keeps its
-URL, and swaps the data back in by itself once the daemon answers. The
-Agents screen and Playground runs do not need the daemon.
+URL, and swaps the data back in by itself once the daemon answers. Builder
+and Playground runs do not need the daemon.
 
 ## Screens
 
 ### Agents
 
-The builder: see the [First-agent walkthrough](#first-agent-walkthrough).
-`#/agents/<id>` opens that agent; leaving the screen (or switching agents)
-with unsaved changes asks first. Runs started here report to the observe
-daemon, and the Run status pill's **Open trace** link opens the run on the
-Trace screen.
+`#/agents` is the agents list: a card per agent in `.lousho/agents/`, a
+**New agent** menu (**Blank agent**, **From template**,
+**Describe with AI** — see [the Agent Author](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-author.md) — or
+**Import from file…**), and search and label filters.
+Opening a card goes to its Canvas tab, the builder — see
+[the visual builder](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-builder.md) and the
+[first-agent walkthrough](#first-agent-walkthrough). `#/agents/<id>` (the
+legacy builder URL) redirects to `#/agents/<id>/canvas`. Leaving the
+builder with unsaved changes asks first. Runs started there report to the
+observe daemon, and the Run status pill's **Open trace** link opens the
+run on the Trace screen.
 
 ### Playground
 
@@ -2263,27 +2286,28 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
 
 ## First-agent walkthrough
 
-1. **Create an agent.** In the agent rail's **Agents** tab, click
-   **New agent**, give it a name, and pick a starting template - **Blank graph** (a single
-   LLM node using the built-in `mock` provider) is the fastest way to try
-   things out without any API keys. Agent Forge creates the agent under that
-   name (`.lousho/agents/<name>.yaml`, with `name: <name>` in the spec) and
+1. **Create an agent.** On the agents list (`#/agents`) click **New agent**
+   and pick **Blank agent** - it starts from an empty canvas, which is the
+   fastest way to try things out without any API keys (**From template**
+   offers ready-made starting points instead). Agent Forge creates the agent
+   (`.lousho/agents/<id>.yaml`, with `name:` in the spec) and
    opens it on the canvas. The open agent's card has **Rename** and
    **Delete**. Rename moves the spec to the new name; earlier chats, traces
    and checkpoints stay under the old one.
-2. **Look at the graph.** A blank agent is one `llm` node. Drag more nodes
-   in from the rail's **Nodes** tab (**Trigger**, **LLM step**, **Tool
-   call**, **Approval gate**, **Response / output**), or click (or press
+2. **Look at the graph.** A blank agent is a single agent node. Drag more
+   nodes in from the rail's **Nodes** tab (a **Tool**, an **MCP server**,
+   a **Guardrail**, a **Chat** trigger, an **Output schema** — the full
+   list is in [the visual builder](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-builder.md#the-canvas)), or
+   click (or press
    Enter on) a Nodes item to add it at the centre of the canvas, and
    connect them by
-   dragging between their handles. Each node card shows its name, an LLM
-   node's `provider/model` chip and tool count, and the node's status in the
+   dragging between their handles. Each node card shows its name, an agent
+   node's `provider/model` chip, and the node's status in the
    current run (`idle` until a run reaches it). Click a node to edit its
-   settings (prompt, provider/model, tools, breakpoints) in the Inspector on
-   the right; its **Node**, **Debug** and **Hooks** sections collapse, and
-   each stays the way you left it. An agent whose canvas has no nodes shows
-   the templates on the canvas: choosing one fills the canvas (unsaved until
-   it autosaves, like any edit) and keeps the agent's name.
+   settings in the Inspector on
+   the right; its **Problems**, **Settings** and **Debug** sections
+   collapse, and
+   each stays the way you left it.
 3. **Run it.** Click **Run** in the top bar. With the `mock` provider
    there's nothing to configure - it returns deterministic canned output,
    which is exactly the point for trying the rest of the UI without needing
@@ -2297,7 +2321,7 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
    twice), a daemon that is down only drops events and never fails the run,
    and message content is sent only to a loopback daemon (never to the
    trace files or the live Trace tab). Run sends a fixed
-   prompt, which the Chat tab shows
+   prompt, which the Test tab's chat shows
    as a **Run input** bubble instead of a message from you. If the studio
    server goes away, a banner says the connection was lost and the studio
    reconnects when it is back.
@@ -2336,52 +2360,53 @@ and deploy cards; see [Settings, secrets and deploy wiring](#settings-secrets-an
    tool content. The server reads traces only from that folder (an id with
    a path separator is a 400) and never sends the file path to the browser.
    Keep `.lousho/` out of version control.
-5. **Chat with it.** The **Chat** tab is a separate conversational
+5. **Chat with it.** The chat in the bottom drawer's **Test** tab is a
+   separate conversational
    transport (`POST /agents/:id/message`, streamed back over the same
    WebSocket as everything else) - send it a message and it replies in the
    thread, independent of the graph "Run" button above. Each agent keeps
    its own chat history (`+ New chat` starts a fresh session; old ones stay
    browsable).
-6. **Approve a paused tool call.** Add a **Tool call** node, open it in the
+6. **Approve a paused tool call.** Add a **Tool** node, open it in the
    Inspector, and pick a tool - some tools (or an agent's own policy) can
    require human approval before running. When a run or chat hits one, an
    inline approval card appears (in the top bar for a graph run, or as a
-   message bubble in the Chat thread) showing the tool name and its
+   message bubble in the chat thread) showing the tool name and its
    arguments. Click **Approve** to let it proceed or **Reject** to abort
    that call; the run resumes automatically either way.
 
 ## Hooks
 
 Hooks are small, sandboxed functions that run immediately before or
-after a tool call or an LLM `generate` - the same mechanism the SDK core
+after a tool call or a model call - the same mechanism the SDK core
 exposes as `HookRegistry`/`AgentHook` (see
-[API Overview](https://github.com/LinuxDevil/lousho/blob/main/docs/api-overview.md)), but authored visually and attached to a
-specific canvas node.
+[API Overview](https://github.com/LinuxDevil/lousho/blob/main/docs/api-overview.md)), authored visually as `hooks[]` entries
+on the agent.
 
-To attach one:
+To add one:
 
-1. Select an `llm` or `tool` node on the canvas (hooks only apply to these -
-   they're the two points `AgentExecutor` actually calls out to).
-2. Open the Inspector's **Hooks** section. Drag a **Pre-hook** or
-   **Post-hook** entry from the rail's **Nodes** tab onto the node (or drop
-   it directly in the Hooks section), or click the palette entry while the
-   node is selected, to attach a new one; you'll get a
-   choice of starter templates (`redact-pii`, `rate-limit`, `audit-log`,
-   `inject-context`) as an editable starting point.
-3. Click the hook's chip to select it, then edit its code in the CodeMirror
-   editor. The code is the **body** of an async function invoked as
+1. Drag a **Hook** entry from the rail's **Nodes** tab (Safety group) onto
+   the canvas, or click it while the agent is open; it attaches to the
+   agent as a node. Each spec `hooks` entry is one node.
+2. Click the hook node and edit its fields in the Inspector: an id, a
+   name, the **Source** (**Code here** for an inline body, or **File** for
+   a `.ts`/`.js` file inside the agent folder), the **Runs** point -
+   *Before/After each tool call* or *Before/After each model call* - the
+   on switch, and the code itself in a CodeMirror editor, with starter
+   templates (`redact-pii`, `rate-limit`, `audit-log`, `inject-context`)
+   filtered to the current point.
+3. The code is the **body** of an async function invoked as
    `hook(ctx)` inside a sandboxed subprocess (`server/hookSandbox.ts`) -
    never in the browser or the API server process itself:
-   - For a tool-call hook, `ctx` is `{ toolName, args, result?, error? }`.
+   - For a tool-call point, `ctx` is `{ toolName, args, result?, error? }`.
      A pre-hook can mutate `ctx.args`; a post-hook can inspect/mutate
      `ctx.result`/`ctx.error`. Return `ctx`.
-   - For an LLM-generate hook, `ctx` is `{ messages, model }`. Mutate/push
+   - For a model-call point, `ctx` is `{ messages, model }`. Mutate/push
      onto `ctx.messages` and return `ctx`.
    - **Throwing aborts the step** - a rate-limit hook, for example, throws
      to block the tool call outright rather than letting it run.
-4. Toggle the switch on a hook's chip to enable/disable it without removing
-   it, or use its **x** to remove it entirely. Only enabled hooks are
-   compiled into the run.
+4. Switch a hook off without removing it, or delete its node; only enabled
+   hooks are compiled into the run.
 
 Example: a redact-PII pre-hook on a tool node (this is the `redact-pii`
 starter template) -
@@ -2396,7 +2421,7 @@ for (const key of Object.keys(ctx.args || {})) {
 return ctx;
 ```
 
-Saving the agent persists these as `spec.policy.hooks` in the agent's YAML;
+Saving the agent persists these as `hooks` entries in the agent's YAML;
 the server compiles enabled hooks into a real `HookRegistry` for the run
 (`server/compileHooks.ts`), routed through the same `SandboxAdapter` a
 sandboxed tool uses.
@@ -2415,7 +2440,7 @@ and replay it next to the original, with
 
 ### The History tab
 
-1. Run the agent (Topbar **Run**, or a Chat message).
+1. Run the agent (Topbar **Run**, or a chat message).
 2. Open the bottom drawer's **History** tab. It lists the run's steps:
    step number, status, the model's finish reason, the tool calls made,
    and the tokens and cost of the step's model call when known.
@@ -2589,7 +2614,7 @@ at a server-local `demo-approval` tool (always `needsApproval: true` -
 see `server/buildAgent.ts`'s doc comment for why this exists, since none
 of the SDK's spec-resolvable built-in tools require approval), sends it a
 chat message that triggers the mock provider's tool-call heuristic, waits
-for the run to pause on the approval gate, approves it via the Chat tab's
+for the run to pause on the approval gate, approves it via the Test tab's
 inline approval card, and asserts the run completes. Run it with:
 
 ```bash
@@ -12320,6 +12345,774 @@ Failure behaviour is unchanged: a `oneOf` condition that cannot be evaluated
 counts as not matched (`false`), and an `evaluator` expression that cannot be
 evaluated fails the flow with `Failed to evaluate expression: ...`, including
 the `ExpressionError` detail.
+
+# The Agent Author
+
+Source: docs/forge-author.md
+
+The Agent Author is a chat panel in [Agent Forge](https://github.com/LinuxDevil/lousho/blob/main/docs/agent-forge.md) that
+drafts agents and changes to them. Describe what you want in plain words;
+it reads your workspace's agents, specs and catalogs, and answers with
+**proposals** — cards that show exactly what would change. Nothing is
+written until you apply a card, and even then a new agent is saved switched
+off until you enable it.
+
+This page covers opening the Author, how proposals and the save gate
+work, the tools it can call, secrets, the draft review, its settings, and
+the eval that measures it.
+
+## Open the Author
+
+- **Ctrl/Cmd+J** toggles the panel, from anywhere — even while typing in a
+  field. The nav rail's **Agent Author** button and the command palette's
+  **Open Agent Author** do the same.
+- **Describe with AI** on the agents list, **Describe it to the Agent
+  Author** on an agent's empty canvas, and **Change with AI** on an
+  agent's header all open it with the right focus already set.
+- A **focus chip** above the composer shows what the Author is working on:
+  **New agent**, or **Editing: \<agent id\>** for the agent you are
+  viewing. Its clear button ("Start a new agent instead") drops the edit
+  focus.
+- A new chat starts on "What should we build?" with a few suggestion
+  buttons; **New chat** and **Chat history** sit in the panel header.
+
+The Author runs on a model, so it needs a provider key like any other
+feature: with none configured the panel shows "Add an API key to use the
+Agent Author" with a link to Settings (see [Settings](#settings)).
+
+## Proposals, not writes
+
+Every change the Author wants to make comes back as a proposal card in
+the chat — the model's own tools cannot write an agent directly.
+
+- A **new agent** card is headed "New agent" with the proposed name and
+  its enabled state; an **update** card is headed "Change" and lists
+  "What changes · n fields" — a field-by-field diff of the spec (added,
+  removed and edited fields, with the instructions as a line diff).
+  **Show full configuration** expands the whole proposed spec.
+- **Nothing is written until you apply.** The card's **Save agent** (new)
+  or **Apply changes** (update) button is the only way a proposal becomes
+  an agent; **Saving…** shows while the write is in flight. The Author
+  can also save in a later turn once you have confirmed — the same gate
+  applies.
+- While an update proposal is open, the canvas shows the proposed graph
+  read-only: proposed additions, changes and removals draw as dashed
+  nodes, a banner counts them ("Showing a proposed change: a added, e
+  changed, r removed."), and a toolbar pill ("Proposed change · review in
+  the Author") jumps back to the card, and the banner's **Hide** button
+  dismisses the overlay so you can edit the real graph again.
+- A card can fold in your earlier unsaved proposals for the same agent;
+  it says so ("Your earlier change was never saved, so it is included
+  here…") and applying saves everything shown.
+- Cards list **requirements** — missing provider keys, secrets, MCP
+  servers or tools — each with a fix button (**Add secret**, **Open
+  Settings**, **Check**). They never block a save; a new agent just stays
+  off until they are met.
+
+If a save is refused, the card says why in plain words — for example
+"A newer proposal replaced this one, and only the newest proposal can be
+saved." or "This agent changed after the proposal was made." The full set
+of refusals is enforced in code: an unknown, stale, discarded, already
+saved or wrong-agent proposal, a proposal from the current unanswered
+turn, or one that no longer passes the spec schema.
+
+After a save the canvas reloads with the new version ("Canvas updated
+with the Author's change."); if you have unsaved edits of your own it
+warns first and offers **Reload**.
+
+## What it can do
+
+The Author's tools fall into three groups: reads of your workspace and
+catalogs, proposals and gated writes, and a few client-side actions. It
+cannot run or edit anything else.
+
+| Tool | What it does |
+| --- | --- |
+| `getCurrentSpec` | Read an agent's saved spec, enabled state and latest version. |
+| `listAgents` | List the workspace's agents with name, description and enabled state. |
+| `listModels` | The model catalog with capabilities and which providers have a key. |
+| `listTools` | The built-in tools an agent can call. |
+| `listGuardrails` | The guardrail types and their option schemas. |
+| `listTriggerTypes` | The trigger types and the fields each takes. |
+| `listSkills` | The skills available to attach. |
+| `listKits` | The kits (bundled agent parts) available. |
+| `listTemplates` | The agent templates that can seed a new agent. |
+| `listMcpServers` | MCP servers configured in any agent plus registry entries — secret fields reduced to key names. |
+| `probeMcpServer` | Connect to an MCP server spec and list the tools it exposes. |
+| `searchDocs` | Search the bundled SDK docs and return matching excerpts. |
+| `getTrace` | Read a run's trace as condensed steps with cost. |
+| `runDraft` | Run the agent's saved working copy once (60-second cap) and report the result — it cannot run an unsaved proposal. |
+| `openPage` | Navigate the Studio to one of its screens. |
+| `proposeAgent` | Return a proposal card for a new agent. Writes nothing. |
+| `proposeAgentUpdate` | Return a proposal card patching an existing agent. Writes nothing. |
+| `saveAgent` / `saveAgentUpdate` | Save the newest confirmed proposal — gated: refused unless you have seen and confirmed the card. |
+| `discardPendingChanges` | Drop unsaved proposal cards; never touches saved agents. |
+| `setAgentEnabled` | Switch an agent on or off — only when you explicitly asked for it in the same message. |
+| `requestSecret` | Ask you for a secret value in a card (see [Secrets](#secrets)). |
+
+## Secrets
+
+When a draft needs a key — an MCP server's token, a provider key — the
+Author calls `requestSecret`, and a card appears in the chat: "Enter
+\<name\>", a password field, **Save secret** and **Skip**. The value goes
+straight to Studio's secrets store on this machine; it never lands in the
+chat transcript, the stream or browser storage, and the Author itself
+never sees it — the tool only learns that the name is set. Provider key
+names that belong in Settings (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and
+the like) are refused here and pointed at Settings instead. Skipping is
+fine: the proposal still saves, and the requirement row stays until the
+secret exists.
+
+## Review before you see a card
+
+Before a proposal card reaches you, a second, smaller model gives the
+draft a once-over — five yes/no questions:
+
+1. **runs** — can this agent run as configured (catalog ids valid, MCP
+   servers reachable, no literal secrets)?
+2. **fulfillsIntent** — does the draft do what you asked?
+3. **toolsComplete** — does every step in the instructions have a way to
+   happen?
+4. **guardrailsFit** — do the guardrails and approvals fit the risk?
+5. **triggersFit** — do the triggers match when you want the agent to run?
+
+A "no" sends the draft back to the Author to fix, for at most three
+rounds; after that the card is shown anyway. The check fails open — an
+unavailable review model, a timeout or a missing verdict all pass — and
+you never see it: it is not mentioned in the chat.
+
+## Settings
+
+`#/settings` has an **Agent Author** card: the **Author model** (default
+`anthropic/claude-sonnet-5-5`) that writes proposals, the **Review model**
+(default `anthropic/claude-haiku-5-5`) that checks each draft, and a
+**Review drafts** switch to turn the check off. The card's pill shows
+**Ready** or **Needs a key** (with **Add key** jumping to Provider keys);
+models without a configured key are listed but disabled.
+
+## Evaluating the Author
+
+The Author ships with a scenario eval in the SDK repo:
+`npm run eval:author -w apps/agent-forge` runs the scripted scenarios in
+`apps/agent-forge/evals/author/scenarios/` through the real server path —
+hard checks (including safety checks such as ignoring pasted
+credentials) plus a rubric judged by the review model. Useful flags:
+`--mock` for a scripted pass with no rubric, `--only <names>` for a
+subset, `--no-review` to skip the draft review, and `--update-baseline`
+to record the run's pass rate as the new baseline.
+
+Results land in `evals/author/results/<date>.json` (not committed). A run
+fails when its pass rate drops more than 5 points below
+`evals/author/baseline.json`, when any scenario errors, or when a safety
+check fails; a missing baseline passes until you write one with
+`--update-baseline`.
+
+# The visual builder
+
+Source: docs/forge-builder.md
+
+The builder is the canvas at the heart of
+[Agent Forge](https://github.com/LinuxDevil/lousho/blob/main/docs/agent-forge.md): you assemble an agent's graph by dragging
+nodes onto a canvas, edit their fields in the Inspector or the Configure
+tab, and run the agent in place to watch what it does. Everything it edits
+is the same [Agent spec v2](https://github.com/LinuxDevil/lousho/blob/main/docs/agent-spec.md) document the rest of the SDK
+reads, stored as YAML under `.lousho/agents/`.
+
+This page covers what the builder edits, the canvas and its node kinds,
+the Inspector and Configure tab, testing a run without leaving the screen,
+the Code tab, and the keyboard shortcuts. For launching Studio and the
+other screens see [Agent Forge](https://github.com/LinuxDevil/lousho/blob/main/docs/agent-forge.md).
+
+## What the builder edits
+
+An agent's spec lives in `.lousho/agents/<id>.yaml`. Three surfaces edit
+that one document and nothing else:
+
+- **The canvas** — nodes and edges are a view of the spec's sections
+  (tools, triggers, guardrails, flow steps and so on).
+- **The Configure tab** (`#/agents/<id>/configure`) — the same spec as a
+  stack of schema-driven forms.
+- **The Code tab's YAML view** (`#/agents/<id>/code`) — the spec itself,
+  read-only.
+
+Canvas-only state — node positions, which groups are collapsed, sticky
+notes and the last viewport — lives in a separate
+`.lousho/agents/<id>/layout.json`, so rearranging the canvas never changes
+what the agent does. Edits autosave to the working copy; **Save** (or
+Ctrl/Cmd+S) additionally writes an entry in the agent's version history —
+the **Versions** tab lists them.
+
+## The canvas
+
+The graph is agent-centred: an agent node sits at the centre and the
+things it uses — tools, skills, memory, guardrails — attach to it. When
+the spec has a `flow`, its steps form a separate chain. An agent with
+subagents shows each one as a collapsible group containing that
+subagent's own capability nodes.
+
+The left rail's **Nodes** tab is the palette, grouped **Start**, **Agents**,
+**Capabilities**, **Safety**, **Output**, **Flow** and **Canvas**. Drag an
+entry onto the canvas, or click it (or press Enter on it) to add it at the
+centre of the view; `/` jumps to the palette's search. Edges are derived
+from the spec — they show what uses what and are not stored separately.
+
+| Node kind | What it sets in the spec |
+| --- | --- |
+| Trigger | One `triggers[]` entry — chat, a cron schedule, a webhook, a channel (Slack, Telegram, GitHub and more) or another agent finishing. |
+| Agent | The agent itself: name, description, model, instructions and the root fields. An inline subagent appears as an agent node inside its group's canvas. |
+| Subagent | One `subagents` entry that delegates to another agent in the workspace or to a remote URL. |
+| Handoff | One `handoffs[]` entry — passes the conversation to another agent, optionally filtered. |
+| Tool | One `tools[]` entry — a built-in, registry, file, integration, OpenAPI or hosted tool. |
+| MCP server | One `mcpServers` entry — a stdio or HTTP MCP server whose tools the agent can call. |
+| Skill | One `skills[]` entry — instructions loaded on demand from a directory, the registry or inline. |
+| Memory | One `memory[]` entry — what the agent remembers across turns, and its scope. |
+| Guardrail | One `guardrails[]` entry — checks input or output and can block, warn or rewrite. |
+| Permission rule | One `permissions[]` entry — allows, denies, asks or auto-approves tool calls matching a pattern. |
+| Hook | One `hooks[]` entry — sandboxed code run before or after a tool call or a model call. |
+| Output schema | The agent's `output` — a JSON Schema for a structured result. |
+| Abort listener | One `abortListeners[]` entry — cancels runs when a trigger fires. |
+| Flow step | One step of `flow` — sequence, router, loop, evaluate, model call, agent step, approval, tool call, set variable or end. |
+| Note | Nothing — a sticky comment stored in `layout.json`, never in the spec. |
+
+The toolbar has **Undo**/**Redo**, **Duplicate**, **Auto layout** (an
+elkjs pass that repositions the whole graph) and **Fit view**; the
+React Flow controls at the bottom-left zoom and fit, and the minimap at
+the bottom-right shows the whole graph. `Backspace`/`Delete` removes the
+selected nodes; Ctrl/Cmd+D duplicates them.
+
+## Inspector and Configure tab
+
+Click a node and the Inspector on the right opens with its kind, a
+**Settings** section of schema-driven fields (the same fields the node's
+kind defines — a tool node's picker and options, a trigger's type and
+schema fields, and so on), and a **Debug** section for breakpoints while
+debug mode is on. A **Problems (n)** section lists everything
+`validateGraph` flags for that node; clicking a problem scrolls to and
+focuses the offending field. The **View spans** button (enabled once the
+node has run) opens the node's spans sheet — see
+[Testing in place](#testing-in-place).
+
+Node cards carry small badges: a problem count when validation flags the
+node, a pin badge on a tool node whose result is pinned for replay, and an
+"edited" chip while an [Author proposal](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-author.md) is overlaid on
+the canvas.
+
+The **Configure** tab is the spec as a form: eight stacked cards —
+Identity, Model, Instructions, Tools, Knowledge, Safety, Triggers, and
+Output and limits — generated from the spec's JSON schema, with a sticky
+index that marks changed sections and counts issues. A dirty bar at the
+bottom shows how many sections changed with **Discard** and **Save**;
+**Save** is disabled while the spec has errors. The
+`version`, `flow` and `evals` sections are not editable here — flow lives
+on the canvas, versions and evals on their own tabs.
+
+The drawer's **Problems** tab lists every graph problem in one table —
+severity, node, message and field — errors first; opening a row selects
+the node on the canvas.
+
+## Testing in place
+
+The bottom drawer's **Test** tab runs the agent without leaving the
+builder. Its run bar shows the run status pill, the provider and model,
+a ticking elapsed time, an **Open trace** link once the run reports to
+the observe daemon, and a rating control when the run finishes.
+
+While a run is going:
+
+- **Node status overlay** — each card shows its state in the current run:
+  a running ring, "awaiting approval" while the run waits on a person,
+  done, or failed. Edges leaving a running node animate. Clicking a
+  node's status pill opens its spans sheet.
+- **Steering** — the box above the composer ("Message the running agent")
+  queues a message onto the live run; each message shows whether it was
+  **Queued**, **Delivered** or **Undelivered** when the run ended first.
+- **Stop** — aborts the run (the button reads "Stopping…" in flight).
+- **Inline approvals and questions** — a tool call that needs approval
+  shows an approval card ("Approve <tool>?" with its arguments) with a
+  "Decide within <time>" deadline; a question from the agent shows its
+  options or a free-text answer with an "Answer within <time>" deadline.
+  The first answer wins; an expired question resolves as unanswered.
+
+The **spans sheet** (from a node's status pill or its Inspector) lists the
+node's spans from the last run — model calls, tool calls, errors, cost —
+with an **Open trace** link. On a `tool` node it also offers replay
+controls: **Pin this result** records the tool's result so the next run
+replays it instead of calling the tool, **Run from here** re-runs the
+agent from its newest user message with the pinned results, and each
+recorded tool call has **Fork from here**, which opens the replay editor
+(forking needs a checkpointed run — see
+[Time travel](https://github.com/LinuxDevil/lousho/blob/main/docs/agent-forge.md#time-travel)).
+
+## Code tab
+
+`#/agents/<id>/code` shows the spec three ways, generated on demand:
+
+- **TypeScript** — a readable `.ts` rendering of the agent
+  (`<id>.agent.ts` on download).
+- **YAML** — the spec document itself (`<id>.yaml` on download).
+- **Agent directory** — a file-tree preview of the agent's on-disk
+  directory.
+
+Every view has **Copy** and **Download** (Download is disabled on the
+directory view — copy files one at a time from the tree). The tab is
+read-only by design: "Generated from the spec. Read-only — edit on the
+canvas or in Configure."
+
+## Keyboard shortcuts
+
+| Keys | Does | Where |
+| --- | --- | --- |
+| `Ctrl/Cmd+K` | Open the command palette | Everywhere |
+| `Ctrl/Cmd+J` | Open or close the Agent Author | Everywhere, even while typing |
+| `?` | Show the keyboard shortcuts | Everywhere (not while typing) |
+| `Ctrl/Cmd+S` | Save a version of the agent | The builder |
+| `Ctrl/Cmd+Z` | Undo the last canvas edit | The canvas |
+| `Ctrl/Cmd+Shift+Z` or `Ctrl/Cmd+Y` | Redo the last undone edit | The canvas |
+| `Ctrl/Cmd+D` | Duplicate the selected node(s) | The canvas |
+| `Backspace` / `Delete` | Delete the selected node(s) | The canvas |
+| `/` | Focus the palette's search | The canvas |
+| `j` / `k` / `Enter` | Next / previous / open the selected row | Tables and lists |
+| `Esc` | Close the palette, the shortcut sheet, a dialog or the narrow nav drawer | Everywhere |
+
+The `?` sheet lists most of these; Ctrl/Cmd+D, Ctrl/Cmd+Y,
+Backspace/Delete and `/` work on the canvas but are not on the sheet.
+
+# Versions, triggers and publishing
+
+Source: docs/forge-lifecycle.md
+
+Agent Forge keeps an agent's spec as a working copy on disk and grows an
+append-only version history beside it. This page covers that lifecycle:
+when a version is written, drafts and suggestions, export and import,
+templates, the on/off switch and labels, the trigger kinds Studio runs,
+the inbox, model-decided approvals, ratings, the publish eval gate,
+serving and deploying a published version, and where everything is
+stored.
+
+The canvas, Inspector and Author have their own pages —
+[the visual builder](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-builder.md) and
+[the Agent Author](https://github.com/LinuxDevil/lousho/blob/main/docs/forge-author.md). For the screens around the agent
+detail page see [Agent Forge](https://github.com/LinuxDevil/lousho/blob/main/docs/agent-forge.md).
+
+## Working copy, versions and publish
+
+The working copy is `.lousho/agents/<id>.yaml` — the Agent spec v2
+document every Studio surface edits. Versions are snapshots of it (plus
+the agent's labels) under `.lousho/agents/<id>/versions/`, listed on the
+detail page's **Versions** tab.
+
+A version is written when:
+
+- You press **Save** (or Ctrl/Cmd+S). Edits autosave to the working copy
+  continuously, but autosave alone never writes a version.
+- The Agent Author applies a proposal, a pending draft is approved, or a
+  prompt suggestion is applied.
+- You restore an old version, import an agent, or create one from a
+  template or by copying.
+- You publish — publishing first captures the working copy as a
+  `publish` version when needed (see
+  [Publish and the eval gate](#publish-and-the-eval-gate)).
+- The working copy sits unchanged for 60 seconds after the last edit —
+  a background "idle" capture makes sure long editing sessions still
+  land in history.
+
+Two rules keep history honest:
+
+- **No-op saves write nothing.** A capture whose spec and labels match
+  the latest version is skipped, so pressing Save twice does not grow
+  the list. The Versions tab calls this out rather than showing a
+  duplicate.
+- **External edits become `baseline` versions.** If the YAML file changes
+  outside Studio (an editor, a script, git), the next Studio read notices
+  the file's hash no longer matches what Studio last wrote and captures
+  the file's content as a `baseline` version attributed to
+  `external_file_edit` — Studio adopts what is on disk instead of
+  silently overwriting it.
+
+Every version carries a one-line summary when the background summary pass
+has run (it is skipped for restores and baselines). Restoring a version
+writes a new `restore` version pointing at the old content — history is
+never rewritten — and **never changes the agent's On/Off state**: a
+restore of a version saved while the agent was on does not re-enable an
+agent you turned off.
+
+## Drafts and suggestions
+
+Studio never lets a background change touch the spec silently. Proposals
+from the Agent Author, imports and other sources land as **drafts**: one
+pending draft per agent, shown as a "Pending change" card with its
+origin, reason, a field-by-field change list, and **Approve**/**Reject**
+buttons. Approving writes the spec and a version; rejecting records the
+draft in history.
+
+Every draft gets an automatic review pass covering three things:
+
+- **Safety** — a verdict on whether the change looks risky.
+- **Routine vs gated fields** — edits to routine fields (instructions,
+  description, labels, skills) are skimmable; edits to gated fields
+  (model, tools' permissions, triggers, hooks, subagents and anything
+  unclassified) are always flagged "Needs your approval". The
+  classification fails closed: a spec field nobody classified is gated.
+- **Trigger reach** — whether the change alters who or what can start
+  the agent.
+
+The verdict is advisory: approving always takes your click, and a
+missing model key or a failed review leaves the draft pending and
+approvable rather than blocking it. If the agent's spec moves on while a
+draft waits, a drift banner appears — "The agent changed since this
+draft was made (v3 → v5)" — and approving still applies the draft on top
+of the current version.
+
+**Prompt suggestions** are the trace-driven half of the same idea: rate a
+run poorly or pick **Suggest a fix**, and a background pass reads the
+run's trace and proposes one anchored edit to the agent's instructions.
+The proposal is deliberately small — at most 15 changed lines, replacing
+an `oldText` segment that must occur exactly once in the instructions.
+Applying it is guarded twice: the instructions must still hash to the
+`expectedPromptHash` the suggestion was computed against, and the anchor
+must still be unique. If either check fails the suggestion is marked
+`conflict` instead of corrupting the prompt. Open suggestions appear in
+the Inbox and on the agent's **Suggestions** tab.
+
+## Export, import and portability
+
+`GET /agents/<id>/export` offers two formats:
+
+- **`yaml`** — the working-copy spec verbatim, under a Studio-export
+  header comment. This is the file to hand to `lousho build`, commit to a
+  repo, or diff.
+- **`bundle`** — a `lousho.agent-bundle` JSON document: the spec, the
+  agent's labels, its registered prompts, and the examples of any eval
+  datasets its gates reference, pulled from the observe daemon. Bundle
+  prompts the daemon cannot serve degrade to a warning, not a failure.
+
+**Secrets are never exported.** Specs carry secret *references* (a named
+secret or an env var), never values; the bundle and the YAML both keep
+them as references, so an export is safe to share — but the recipient
+must supply the referenced secrets themselves.
+
+`POST /agents/import` (with a preview step first) accepts pasted YAML, a
+JSON spec or a bundle — v1 specs are upgraded to v2 on the way in — and
+commits in one of three modes:
+
+- **`new`** and **`copy`** create a fresh agent, start it disabled, and
+  record a `create` version.
+- **`replace`** overwrites an existing agent's spec, keeps its On/Off and
+  publish state, and records an `update` version (skipped as a no-op when
+  nothing changed).
+
+Before sharing, the **portability check** pass scans the instructions for
+machine-specific details — repository names, email addresses, channels,
+paths, hosts, pasted secrets — and rewrites them with `[YOUR REPO]`,
+`[YOUR EMAIL]`, `[YOUR PATH]`-style placeholders you fill in per
+deployment. It needs a model key; without one you can still export, the
+check just does not run.
+
+## Templates
+
+The Templates screen (`#/templates`) starts a new agent from a shipped
+spec. Six templates ship with Studio:
+
+| Template | What it is for |
+| --- | --- |
+| `support-triage` | Routes incoming support requests to the right handler. |
+| `pr-reviewer` | Reviews pull requests against a checklist. |
+| `research-assistant` | Gathers and summarises sources on a topic. |
+| `inbox-triage` | Sorts and prioritises an inbox of items. |
+| `incident-responder` | Works an incident from alert to mitigation notes. |
+| `docs-qa` | Answers questions about a documentation set. |
+
+Creating from a template writes the spec, a `create` version attributed
+to `template`, and any tags the template carries become the agent's
+labels (subject to the label rules below).
+
+## On, off and labels
+
+Every agent has an **Enabled** switch on its detail header — the UI calls
+it On/Off ("On. Triggers can start it." / "Turned off. Triggers won't
+start it."). Only *Studio-run* triggers respect it: webhook, cron,
+channel and agent-chain dispatch all skip or refuse a disabled agent,
+while chat, the test pane and manual runs are unaffected — you can always
+talk to an agent that is off.
+
+Turning an agent off also drops its queued trigger runs; a run already in
+flight finishes. Turning it back on resumes normal dispatch.
+
+A safety net backs the switch: **five consecutive failed triggered runs
+auto-disable the agent** (`disabledReason: 'auto_failure_streak'`), raise
+an `auto_disabled` inbox alert, and show an "Auto-off" note explaining
+what happened. A triggered run that finishes `done` resets the streak; a
+cancelled or manually-run failure does not count.
+
+**Labels** are the Agents list's filter facets. Rules, enforced on every
+write (PATCH meta, draft approve, template create): at most **20 labels**,
+each at most **32 characters**, trimmed, lowercased, inner whitespace
+collapsed and deduplicated. A label that breaks the rules is a 400, not a
+silent drop.
+
+## Triggers in Studio
+
+A spec's `triggers[]` list can hold chat (at most one per agent), cron,
+webhook, channel and agent entries. Studio mounts and runs all of them
+while it is up; the canvas dims non-chat trigger nodes when the agent is
+off.
+
+**Webhook** triggers answer `POST /hooks/<agentId>/<path>` where `path`
+is the trigger's configured path. With no `secret` configured the route
+only accepts loopback calls; with a secret it requires an HMAC signature
+— header `x-signature-256: sha256=<hex>` over the raw request body,
+checked with a constant-time compare. A bad signature is a 401, an
+unknown path a 404, and a successful dispatch answers 202.
+
+**Channel** triggers mount the SDK's channel handlers at
+`POST /hooks/<agentId>/channel/<kind>` (plus
+`…/channel/<kind>/approvals/<id>` for approval callbacks). Each platform
+verifies its own way — Slack's `x-slack-signature`, Telegram's
+`x-telegram-bot-api-secret-token`, GitHub's `x-hub-signature-256`, a
+Teams JWT, Discord's Ed25519 pair — and every failure answers a uniform
+401. An agent can mount at most one trigger per channel kind; a second is
+a mount error surfaced on the Overview card. Channel bodies are capped at
+1 MB.
+
+**Cron** triggers fire on a schedule with a fixed prompt; per-trigger
+fire cursors live in the agent's `triggers/state.json` so a restart does
+not re-fire a missed window.
+
+**Agent** triggers chain agents: `{ after, on, promptTemplate }` starts
+the target agent when the named agent finishes — `on` is `done`, `error`
+or `any`. Chains are capped at **3 agents deep** and cannot cycle: saving
+a spec that would loop (A → B → A) or exceed the depth fails with
+`LOUSHO_CHAIN_INVALID` (400), and the runtime skips any chain that would
+loop anyway. The prompt template can interpolate
+`{{run.status}}`, `{{run.resultText}}` (capped at 8000 characters) and
+`{{run.traceId}}`.
+
+**Abort listeners** are the inverse: `abortListeners[]` entries watch
+webhook and channel triggers only (at most 20) and cancel queued or
+running runs when an event matches. Each entry has `triggerId` (which
+trigger's runs are candidates), `when` and `match` (safe expressions over
+the event — and for `match`, the candidate run — that must evaluate to
+strictly `true`), and `scope` (`queued`, `running` or `both`). Every
+inbound webhook or channel event evaluates all of the agent's listeners
+*before* that event's own filter and dispatch, so a listener can cancel
+the very run the event would have started — but never itself, since the
+delivering run does not exist yet. Chat and cron events do not evaluate
+listeners.
+
+## Inbox
+
+The **Inbox** screen (`#/inbox`) collects everything waiting on you across
+agents, and the nav badge counts open items. Rows come in five kinds:
+
+- **approvals** and **questions** — a run paused for a tool-call decision
+  or an `ask_question`; they expire, and the row carries the countdown.
+- **drafts** — pending change drafts (see above), with gated-field flags.
+- **suggestions** — open prompt-edit suggestions.
+- **alerts** — `auto_disabled` (the failure streak), `publish_failed`
+  (the eval gate refused a publish), and `low_rating` (a run rated 2 or
+  lower).
+
+Alert rows act inline: a `low_rating` alert offers **Add to dataset
+`<agentId>-regressions`** (copies the trace into the agent's regression
+dataset), **Suggest a fix** (starts the prompt-suggestion pass on that
+trace) and **Dismiss**; the other alerts offer **Dismiss**. Approval and
+question rows answer in place.
+
+## Approvals decided by a model
+
+A permission rule's `action` can be `allow`, `deny`, `ask` or `auto`.
+`auto` compiles to `ask` and is then decided by a cheap model scoring the
+*exact* tool call about to run: it sees the call and its arguments, not
+the agent's general behaviour.
+
+The rule is deliberately one-directional:
+
+- A safety score **≥ 0.8** returned **within 8 seconds** approves the
+  call.
+- A lower score, a timeout, an error or a truncated reply does not deny —
+  it **escalates to you**, and the run pauses for a normal approval.
+- The model can never deny on its own, and the approval binds to that
+  exact call: a different call asks again.
+
+## Ratings
+
+Runs, traces and test runs carry a 1–5 rating (Poor, Fair, Good, Great,
+Excellent). `POST /agents/<id>/rating` records it as a `rating` score on
+the run's trace in the observe daemon — the same place eval datasets and
+traces live — and a rating of **2 or lower** also raises a `low_rating`
+inbox alert (see above). From the alert you can copy the trace into the
+agent's `<agentId>-regressions` dataset or start a prompt suggestion on
+it, which is how a bad run becomes a regression test or a prompt fix.
+
+## Publish and the eval gate
+
+The publish pill on the builder pins a version as the agent's *live*
+spec — the version triggers, Serve and Deploy run. `POST
+/agents/<id>/publish` accepts an optional `{ "version": n }`; without it
+the working copy is captured as a `publish` version first (skipped when
+nothing changed, so an unchanged agent just re-pins the latest).
+
+When the target version's spec declares `evals`, the **eval gate** runs
+each dataset's examples through the candidate version before the pin
+lands:
+
+```yaml
+evals:
+  - dataset: support-triage-gold
+    minPassRate: 0.8
+    gates:
+      - calledTool: lookup_order
+      - notCalledTool: delete_account
+      - maxCostUsd: 0.05
+      - maxSteps: 12
+      - judge:
+          model: anthropic/claude-haiku-4-5
+          rubric: The answer cites the order status and offers a next step.
+          minScore: 0.7
+```
+
+Each entry names an observe `dataset` (up to 50 examples are fetched,
+each run capped at 60 seconds), 1–20 `gates` every example must pass, and
+a `minPassRate` (0–1) of examples that must pass for the set to count. A
+spec may carry up to 20 eval entries. Gate kinds:
+
+- `calledTool` / `notCalledTool` — the run's tool calls must (not) include
+  the named tool.
+- `maxCostUsd` / `maxSteps` — bounds on the run's cost and step count.
+- `judge` — a model grades the answer against a `rubric` and must reach
+  `minScore` (0–1).
+
+A passing gate pins the version and reports the publish. A failing one
+answers **409 `LOUSHO_EVAL_GATE_FAILED`** with the full per-set result —
+pass rates, failing examples (first 10 shown, then "+n more") with their
+failure sentences and `Open trace` links — and Studio shows the "Eval
+gate failed" dialog ("v3 was not published. Fix the failures or change
+the gate, then publish again."). There is no "publish anyway". The
+captured `publish` version stays in history, simply unpinned, and a
+`publish_failed` inbox alert is raised. A second publish while a gate is
+running answers 409 `LOUSHO_EVAL_GATE_BUSY`.
+
+## Serve while Studio runs
+
+With a version published, the **Serve** card on the Code tab exposes the
+agent over HTTP while Studio runs: `POST <origin><baseUrl>/chat`, an SSE
+stream of the run's events. Enable it with the "Serve the published
+version" switch — it stays disabled until something is published.
+
+Callers authenticate with a **bearer token**: 32 base64url characters,
+shown masked (first four and last four) in the card. Reveal shows it for
+30 seconds; copy puts it straight on the clipboard; rotate invalidates the
+old one everywhere, including a running MCP server (which restarts on a
+new port). Treat the token like a password — anyone holding it can run
+the agent, spend its budget and see its sessions. Keep it server-side;
+never commit it or put it in client-side code.
+
+**Allowed origins** is the CORS list for browser callers, one origin per
+line (e.g. `http://localhost:3000`). Empty means server-side callers
+only. Requests from an unlisted `Origin` get no CORS headers — and the
+chat widget refuses them outright.
+
+```bash
+curl -N http://127.0.0.1:41234/serve/my-agent/chat \
+  -H "Authorization: Bearer $LOUSHO_SERVE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"sessionId":"demo","input":"Hello"}'
+```
+
+Serve routes enforce a loopback `Host` check: they answer only requests
+addressed to Studio's own host. The snippets assume Studio on
+`127.0.0.1` — if you started it with `--host`, substitute the real host
+in the endpoint, the MCP URL and the widget snippet.
+
+**MCP**: the card can also start the published agent as an MCP server on
+an ephemeral loopback port. Add it to Claude Code with:
+
+```bash
+claude mcp add --transport http my-agent http://127.0.0.1:41234/mcp \
+  --header "Authorization: Bearer $LOUSHO_SERVE_TOKEN"
+```
+
+(The card prints the exact command with the live URL.) For a server that
+outlives Studio, the stdio form runs the published snapshot directly —
+`lousho mcp .lousho/agents/<id>/published.yaml` — which exists once the
+agent has been published (a deploy also writes it).
+
+**Embeddable chat**: the widget bundle is served at
+`<baseUrl>/widget.js` and mounts a `<forge-chat>` element. It uses a
+separate **widget key** (`fwk_…`) that is narrower than the serve token —
+it can only call chat, and only from an origin on the allowed-origins
+list (a page elsewhere gets 403 `LOUSHO_WIDGET_ORIGIN`). Embed it with:
+
+```html
+<script src="http://127.0.0.1:41234/serve/my-agent/widget.js" defer></script>
+<forge-chat endpoint="http://127.0.0.1:41234/serve/my-agent/chat" token="fwk_YOUR_KEY" title="my-agent"></forge-chat>
+```
+
+The widget derives its endpoint from `location.origin`, so the snippet's
+host must be the Studio host the visitor's browser can reach — the
+loopback default works for local demos, not for a public site.
+
+## Deploy
+
+**Deploy** (Settings → Deploy, or the deploy section) builds the
+*published* version into a runnable artifact — never the working copy.
+Publishing writes `.lousho/agents/<id>/published.yaml`, the snapshot
+deploy consumes, and deploy runs the real CLI:
+
+```
+node bin/lousho.js build --target=<adapter> --agent=<published.yaml> --out=<baseDir>/.lousho/build/<adapter>/<id>
+```
+
+Three adapters ship: `node-server`, `cloudflare-worker` and `docker`.
+Deploying an agent with nothing published answers 409
+`LOUSHO_NOT_PUBLISHED` — "Publish a version before deploying".
+
+One caveat worth knowing: `published.yaml` holds the spec's **v1
+projection**, not the raw v2 document, because `lousho build` and
+`lousho mcp` still load spec files through the v1 loader. A v2-only
+field that does not project into v1 will not reach the deployed artifact.
+
+## Where things are stored
+
+Studio state lives under the workspace's `.lousho/` directory. Per agent,
+`.lousho/agents/<id>/` is a sidecar folder next to the spec:
+
+```
+.lousho/
+  agents/
+    <id>.yaml                     # the spec v2 working copy
+    <id>/
+      meta.json                   # enabled, disabledReason, failureStreak, labels, publish pointer, createdFrom
+      layout.json                 # canvas positions, collapsed groups, notes, viewport
+      working.json                # Studio-write marker (spec hash) for external-edit detection
+      published.yaml              # v1 projection of the published version (deploy/mcp/serve)
+      versions/
+        index.jsonl               # one line per version, newest facts first
+        000001.json …             # full snapshots (spec + labels)
+      drafts/
+        current.json              # the one pending draft
+        history/<draftId>.json    # resolved drafts
+      suggestions/<id>.json       # prompt-edit and portability records
+      triggers/state.json         # cron fire cursors
+      checkpoints/<sessionId>.json        # resumable run state
+      checkpoint-history/<sessionId>.json # finished checkpoints
+      approvals/<approvalId>.json        # paused tool-call decisions
+  passes/spend.jsonl              # append-only pass model spend log
+  inbox/alerts.json               # auto_disabled / publish_failed / low_rating records
+  serve.json                      # per-agent serve switches, tokens refs, allowed origins
+  secrets.json                    # encrypted provider keys and named secrets
+  secrets.key                     # the encryption key for secrets.json
+  workspaces.json                 # the workspace registry
+  settings.json                   # settings profiles
+  assistant/sessions/             # Agent Author session files
+```
+
+`versions/` is append-only: the full record is written before its
+`index.jsonl` line, so a crash mid-capture cannot leave a dangling index
+entry. Pass records — version summaries, draft reviews, portability
+checks, prompt suggestions, eval judges, auto-approvals — write their
+results back onto the draft, suggestion or version they belong to, and
+their model spend lands in `passes/spend.jsonl`.
 
 # Guardrails and sandboxing
 

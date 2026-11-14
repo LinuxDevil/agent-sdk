@@ -87,7 +87,7 @@ describe('WorkspaceHostSelector', () => {
   it('row 2: the SDK checkout itself, unbuilt -> in-process with the build hint', () => {
     const root = path.join(dir, 'sdk-src');
     fs.mkdirSync(path.join(root, 'bin'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'lousho', version: '9.9.9' }));
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: '@linuxdevil/lousho', version: '9.9.9' }));
     fs.writeFileSync(path.join(root, 'bin', 'lousho.js'), '// bin\n');
     const selector = new WorkspaceHostSelector(refFor(root), deps(root));
     expect(selector.host).toBeInstanceOf(InProcessAgentHost);

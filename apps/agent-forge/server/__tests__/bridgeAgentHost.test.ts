@@ -286,7 +286,7 @@ async function realBridge(turns: unknown): Promise<RealBridge> {
   const nm = path.join(root, 'node_modules');
   fs.mkdirSync(nm, { recursive: true });
   fs.mkdirSync(path.join(nm, '@linuxdevil'), { recursive: true });
-  fs.symlinkSync(REPO_ROOT, path.join(nm, '@linuxdevil', 'lousho'), 'junction');
+  fs.symlinkSync(REPO_ROOT, path.join(nm, '@linuxdevil', '@linuxdevil/lousho'), 'junction');
   const sdk = findWorkspaceSdk(root);
   if (sdk === undefined) throw new Error('junction workspace did not resolve the SDK');
   const client = new BridgeClient(

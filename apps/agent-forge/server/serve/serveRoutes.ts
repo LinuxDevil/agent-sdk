@@ -21,16 +21,18 @@
  * version and rebuilt when the publish pointer moves; rotating the token
  * drops the cached handler so the old bearer dies immediately.
  */
+import fs from 'node:fs';
 import path from 'node:path';
 import { Router, type Express, type Request as ExpressRequest, type Response as ExpressResponse } from 'express';
 import {
+  ConfigurationError,
   createRouteHandler,
   FileSessionStore,
   type AgentSpecV2,
   type SimpleAgent,
 } from '@linuxdevil/lousho';
 import { fileTraceExporter } from '@linuxdevil/lousho/traces';
-import type { ServeAgentConfig, ServeStatus, ServeTokenReveal } from '../../shared/wireTypes';
+import type { McpServeStatus, ServeAgentConfig, ServeStatus, ServeTokenReveal } from '../../shared/wireTypes';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { isValidAgentId } from '../types';
 import type { SecretsStore } from '../secretsStore';
@@ -45,6 +47,7 @@ import { workspaceOf } from '../workspace/middleware';
 import type { WorkspaceContext } from '../workspace/context';
 import { ServeConfigInvalidError, type ServeConfigStore, type ServeAgentEntry } from './serveConfigStore';
 import { sendFetchResponse, toFetchRequest } from './fetchBridge';
+import { McpNotPublishedError, type McpServeManager } from './mcpServers';
 
 /** What the default agent builder needs beyond the workspace itself (all Studio-global stores). */
 export interface ServeBuildServices {
@@ -65,6 +68,10 @@ export interface ServeDeps extends ServeBuildServices {
   config: ServeConfigStore;
   /** Test seam - defaults to `buildRunnableAgent` + a `FileSessionStore` under `.lousho/agents/<id>/serve-sessions`. */
   buildAgent?: ServeAgentBuilder;
+  /** The MCP server manager behind `/agents/:id/serve/mcp*` (X03); absent in tests that don't exercise it. */
+  mcpServers?: McpServeManager;
+  /** Directory holding the built `forge-chat.js` widget bundle (X04b); `GET /serve/:id/widget.js` 404s `LOUSHO_WIDGET_MISSING` without it. */
+  widgetDir?: string;
 }
 
 interface CachedHandler {
@@ -102,6 +109,34 @@ function maskToken(token: string): string {
   return token.length <= 8 ? '…' : `${token.slice(0, 4)}…${token.slice(-4)}`;
 }
 
+/** The bearer an `Authorization: Bearer …` header carries, or `undefined`. */
+function bearerOf(req: ExpressRequest): string | undefined {
+  const header = req.headers.authorization;
+  return header?.startsWith('Bearer ') ? header.slice('Bearer '.length) : undefined;
+}
+
+/**
+ * The widget key (X04b) is narrower than the serve token: chat only, and
+ * only from an origin on the agent's allowedOrigins list. Answers the
+ * request itself on a scope/origin denial (`true`); on acceptance it
+ * rewrites the bearer to the full-access token - the bridge then runs as
+ * that caller - and returns `false` so routing continues.
+ */
+function applyWidgetKey(req: ExpressRequest, res: ExpressResponse, entry: ServeAgentEntry): boolean {
+  if (entry.widgetKey === null || bearerOf(req) !== entry.widgetKey) return false;
+  if (req.method !== 'POST' || req.path !== '/chat') {
+    sendError(res, 401, 'This key only works for the chat widget.', 'LOUSHO_WIDGET_KEY_SCOPE');
+    return true;
+  }
+  const origin = req.headers.origin;
+  if (origin === undefined || !entry.allowedOrigins.includes(origin.toLowerCase())) {
+    sendError(res, 403, 'This page is not allowed to use the widget. Add its origin in Serve settings.', 'LOUSHO_WIDGET_ORIGIN');
+    return true;
+  }
+  req.headers.authorization = `Bearer ${entry.token}`;
+  return false;
+}
+
 /** `GET /agents/:id/serve`'s body from the stored entry + the publish pointer. */
 async function statusOf(agentId: string, entry: ServeAgentEntry, workspace: WorkspaceContext): Promise<ServeStatus> {
   const published = await readPublishedSpec(agentId, { repo: workspace.repo, versions: workspace.versions });
@@ -111,6 +146,7 @@ async function statusOf(agentId: string, entry: ServeAgentEntry, workspace: Work
     allowedOrigins: entry.allowedOrigins,
     publishedVersion: published?.version ?? null,
     tokenMasked: maskToken(entry.token),
+    widgetKeyMasked: entry.widgetKey === null ? null : maskToken(entry.widgetKey),
     baseUrl: `/serve/${agentId}`,
   };
 }
@@ -189,6 +225,32 @@ export function createServeSurface(deps: ServeDeps): ServeSurface {
   }
 
   const router = Router();
+  // GET /serve/:id/widget.js (X04b) - the public widget bundle. No bearer:
+  // a plain <script src> sends no Authorization; only `enabled` gates it,
+  // and the file is the same for every agent.
+  router.get(
+    '/:agentId/widget.js',
+    asyncRoute(async (req: ExpressRequest, res: ExpressResponse) => {
+      const agentId = String(req.params.agentId);
+      if (!isValidAgentId(agentId)) {
+        sendError(res, 400, 'Invalid agent id', 'LOUSHO_AGENT_ID_INVALID');
+        return;
+      }
+      const entry = await deps.config.get(agentId);
+      if (!entry.enabled) {
+        sendError(res, 404, 'Not served', 'LOUSHO_NOT_SERVED');
+        return;
+      }
+      const file = deps.widgetDir === undefined ? undefined : path.join(deps.widgetDir, 'forge-chat.js');
+      if (file === undefined || !fs.existsSync(file)) {
+        sendError(res, 404, 'Widget not built. Run npm run build:studio.', 'LOUSHO_WIDGET_MISSING');
+        return;
+      }
+      res.set('Content-Type', 'application/javascript; charset=utf-8');
+      res.set('Cache-Control', 'public, max-age=300');
+      res.sendFile(file);
+    })
+  );
   router.use(
     '/:agentId',
     asyncRoute(async (req: ExpressRequest, res: ExpressResponse) => {
@@ -218,6 +280,7 @@ export function createServeSurface(deps: ServeDeps): ServeSurface {
         await sendFetchResponse(res, preflightResponse(origin ?? 'null'));
         return;
       }
+      if (applyWidgetKey(req, res, entry)) return;
       if (origin !== undefined && cors === undefined) {
         sendError(res, 403, 'Forbidden origin', 'LOUSHO_REQUEST_FORBIDDEN');
         return;
@@ -284,10 +347,71 @@ export function createServeSurface(deps: ServeDeps): ServeSurface {
           // The cached handler still carries the OLD bearer - drop it so the
           // next request rebuilds with the new token.
           cache.delete(workspaceOf(req).ref.id, id);
+          // A running MCP server holds the old bearer too - restart it so
+          // the rotated token is the one it checks. A restart failure must
+          // not fail the rotation itself.
+          try {
+            await deps.mcpServers?.restart(id);
+          } catch (error) {
+            console.warn(`[serve] MCP restart after token rotation failed for ${id}: ${error instanceof Error ? error.message : String(error)}`);
+          }
           const reveal: ServeTokenReveal = { token };
           res.json(reveal);
         })
       );
+      // The widget key (X04b): create-or-rotate returns the raw `fwk_` key
+      // once; DELETE revokes it. Neither touches the serve token.
+      app.post(
+        '/agents/:id/serve/widget-key',
+        asyncRoute(async (req, res) => {
+          const widgetKey = await deps.config.createWidgetKey(paramId(req));
+          res.json({ widgetKey });
+        })
+      );
+      app.delete(
+        '/agents/:id/serve/widget-key',
+        asyncRoute(async (req, res) => {
+          await deps.config.revokeWidgetKey(paramId(req));
+          res.status(204).end();
+        })
+      );
+      // The MCP server lifecycle (X03): status, start, stop. The manager
+      // reads the same published spec + serve token the HTTP surface uses.
+      if (deps.mcpServers !== undefined) {
+        const mcp = deps.mcpServers;
+        const mcpStatus = (id: string): McpServeStatus => mcp.status(id);
+        app.get(
+          '/agents/:id/serve/mcp',
+          asyncRoute(async (req, res) => {
+            res.json(mcpStatus(paramId(req)));
+          })
+        );
+        app.post(
+          '/agents/:id/serve/mcp',
+          asyncRoute(async (req, res) => {
+            const id = paramId(req);
+            try {
+              res.json(await mcp.start(id));
+            } catch (error) {
+              if (error instanceof McpNotPublishedError) {
+                sendError(res, 409, 'Publish a version first', error.code);
+                return;
+              }
+              if (error instanceof ConfigurationError) {
+                sendError(res, 422, error.message, 'LOUSHO_MCP_PEER_MISSING');
+                return;
+              }
+              throw error;
+            }
+          })
+        );
+        app.delete(
+          '/agents/:id/serve/mcp',
+          asyncRoute(async (req, res) => {
+            res.json(await mcp.stop(paramId(req)));
+          })
+        );
+      }
     },
   };
 }

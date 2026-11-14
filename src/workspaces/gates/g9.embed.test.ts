@@ -561,7 +561,7 @@ describe('G9 static checks', () => {
     expect(findings).toEqual([]);
   });
 
-  it('lousho/workspaces/client pulls in no crypto and no quickjs', () => {
+  it('@linuxdevil/lousho/workspaces/client pulls in no crypto and no quickjs', () => {
     const graph = moduleGraph([join(REPO, 'src/workspaces/client/index.ts')]);
     expect([...graph.bare].filter((spec) => /^(?:node:)?crypto$|quickjs/.test(spec))).toEqual([]);
     expect([...graph.files].map((file) => relative(REPO, file)).filter((file) => file.startsWith('apps/'))).toEqual([]);
