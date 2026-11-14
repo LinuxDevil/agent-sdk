@@ -7,6 +7,7 @@ import { errorMessage } from './errorMessage';
 import { AgentAuthorSection, AppearanceSection, CollectorSection, ShortcutsSection } from './SettingsAppSections';
 import { PassesSection } from './PassesSection';
 import { SettingsCard, TonePill } from './SettingsCard';
+import { WorkspacesSection } from './SettingsWorkspacesSection';
 
 type KeyedProviderId = 'openai' | 'anthropic';
 
@@ -412,6 +413,7 @@ export function SettingsPanel({ variant = 'drawer' }: { variant?: 'drawer' | 'sc
   return (
     <div className={screen ? 'settings-panel settings-panel-screen' : 'settings-panel'}>
       {screen && <AppearanceSection />}
+      {screen && <WorkspacesSection />}
       <ProviderKeysSection />
       {screen && <AgentAuthorSection />}
       <ProfileSection profiles={profiles} />
