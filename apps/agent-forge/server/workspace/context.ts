@@ -43,6 +43,7 @@ import { attachVersionSummaries } from '../passes/versionSummary';
 import { attachDraftReviews } from '../passes/draftReview';
 import { createTriggerRuntime } from '../triggers/runtime';
 import { attachChainTriggers } from '../triggers/chainTriggers';
+import type { ChannelTriggers } from '../triggers/channelTriggers';
 import type { CronTriggers } from '../triggers/cronTriggers';
 import type { TriggerHost } from '../triggers/triggerHost';
 
@@ -123,6 +124,14 @@ export interface WorkspaceContext {
    * `startStudioServer`'s `close()` may call the pieces again.
    */
   dispose(): Promise<void>;
+  /**
+   * This workspace's channel mounts (triggers/channelTriggers.ts, R08b):
+   * serves each agent's `channel` triggers at
+   * `/hooks/<agentId>/channel/<kind>` through the SDK's channel
+   * handlers. Mounted by the host's reload hook; passive like the host
+   * (no stop() - handlers are per-request lookups).
+   */
+  channels: ChannelTriggers;
 }
 
 /**
@@ -318,7 +327,22 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // The trigger host (R08a) + cron scheduler (R08c): webhook/cron
   // dispatches queue through this workspace's RunManager; trigger-phase
   // log lines land on the same run-log stream RunManager's entries use.
-  const { triggers, cron } = createTriggerRuntime({ baseDir: ref.root, repo, runManager: runs, events });
+  const { triggers, cron, channels } = createTriggerRuntime({
+    baseDir: ref.root,
+    repo,
+    runManager: runs,
+    events,
+    // Channel turns build through the same stores the run host gets.
+    studio: {
+      baseDir: ref.root,
+      checkpointStore,
+      approvalStore,
+      secretsStore: services.secretsStore,
+      settings: services.settingsStore,
+      spend: services.spendLog,
+    },
+    ...(services.observe ? { observe: true as const } : {}),
+  });
   const idleVersioner = createIdleVersioner(versions);
   const detachPasses = [detachVersionSummaries, detachDraftReviews, detachFailureStreak];
   let disposed = false;
@@ -344,6 +368,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     inbox,
     triggers,
     cron,
+    channels,
     dispose: async () => {
       if (disposed) return;
       disposed = true;

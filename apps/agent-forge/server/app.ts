@@ -26,7 +26,8 @@
  *   GET  /inbox/count                -> InboxCount
  *   POST /inbox/alerts/:alertId/dismiss -> 204 | 404
  *   POST /hooks/:agentId/<path>       -> webhook trigger fire (triggers/webhookRoute.ts, R08a);
- *                                        public - HMAC or loopback-only, no studio token
+ *   ALL  /hooks/:agentId/channel/<kind> -> channel trigger (triggers/channelTriggers.ts, R08b);
+ *                                        public - platform-signed, no studio token
  *   GET  /workspace                  -> { baseDir, workspace } - the workspace Studio was launched in
  *   GET  /workspace/agent-dirs       -> CodeAgentDir[] - agent dirs found under the workspace root (workspace/agentDirRoutes.ts, X06a)
  *   GET  /workspace/agent-dirs/spec  -> CodeAgentSpecResponse for ?path=<rel> (400 escape, 404 unlisted, 422 unreadable config)
@@ -1080,12 +1081,21 @@ function legacyWorkspaceContext(
   });
   inbox.start();
   // The legacy pair gets the same trigger stack the real context builds
-  // (R08a host + R08c cron) - webhook routes read it through workspaceOf(req).
-  const { triggers, cron } = createTriggerRuntime({
+  // (R08a host + R08c cron + R08b channels) - webhook routes read it
+  // through workspaceOf(req).
+  const { triggers, cron, channels } = createTriggerRuntime({
     baseDir: options.baseDir,
     repo,
     runManager: options.runManager,
     events,
+    studio: {
+      baseDir: options.baseDir,
+      checkpointStore: new FileCheckpointStore(options.baseDir),
+      approvalStore: new FileApprovalStore(options.baseDir),
+      secretsStore: options.secretsStore,
+      settings: autoApproval.settings,
+      spend: autoApproval.spendLog,
+    },
   });
   const idleVersioner = createIdleVersioner(versions);
   // Same host selection a real context gets (W11b) - the legacy pair's
@@ -1130,6 +1140,7 @@ function legacyWorkspaceContext(
     inbox,
     triggers,
     cron,
+    channels,
     // Idempotent stop of this context's background services - the same
     // pieces `startStudioServer`'s `close()` stops for the launch one.
     // (A caller's `inbox`/`idleVersioner` test seams replace the fields
@@ -1243,18 +1254,29 @@ export function createApp(options: CreateAppOptions): Express {
     }
     next();
   });
+  // Resolve every request's workspace before the first route so handlers
+  // read their per-workspace stores from workspaceOf(req), never a
+  // closed-over singleton. Mounted ahead of the body parsers: it reads
+  // only headers/query (`x-lousho-workspace` or `?ws=`; the injected
+  // `WorkspaceManager` builds contexts lazily, W02a), and the channel
+  // route below needs workspaceOf before `express.raw` can consume the
+  // stream (R08b).
+  app.use(workspaceMiddleware(workspaceResolver));
+  // Channel triggers (triggers/channelTriggers.ts, R08b): `ALL
+  // /hooks/:agentId/channel/<kind>` is served by the SDK's own channel
+  // handlers, which read the raw request stream for platform signature
+  // checks - so this route MUST sit before the `express.raw` mount on
+  // `/hooks` (and before express.json). Channel requests carry the
+  // platform's signature, not a studio token; the /hooks gate exemption
+  // already covers them.
+  app.all('/hooks/:agentId/channel/*splat', (req, res, next) => {
+    workspaceOf(req).channels.handler()(req, res, next);
+  });
   // Raw bytes for `/hooks/**` BEFORE the JSON parser: webhook HMACs sign
   // the exact body, and `express.raw` sets `req._body` so the JSON parser
   // below leaves it alone. Every other route keeps `express.json`.
   app.use('/hooks', express.raw({ type: () => true, limit: '1mb' }));
   app.use(express.json({ limit: '2mb' }));
-  // Resolve every request's workspace before the first route so handlers
-  // read their per-workspace stores from workspaceOf(req), never a
-  // closed-over singleton. Requests pick a workspace via
-  // `x-lousho-workspace` or `?ws=`; the injected `WorkspaceManager`
-  // builds contexts lazily (W02a), `singleWorkspace` serves only the
-  // launch folder.
-  app.use(workspaceMiddleware(workspaceResolver));
 
   app.get('/health', (_req, res) => res.status(200).send('ok'));
 

@@ -26,7 +26,12 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('../../../runtime/runtimeClient', () => ({
-  runtimeClient: { loadAgent: mocks.loadAgent, listTraces: mocks.listTraces, getDraft: vi.fn(async () => undefined) },
+  runtimeClient: {
+    loadAgent: mocks.loadAgent,
+    listTraces: mocks.listTraces,
+    getDraft: vi.fn(async () => undefined),
+    channelTriggerStatus: vi.fn(async () => []),
+  },
   RuntimeApiError: mocks.MockRuntimeApiError,
 }));
 

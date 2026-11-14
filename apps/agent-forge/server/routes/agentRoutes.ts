@@ -353,6 +353,17 @@ export function registerAgentRoutes(app: Express, deps: AgentRouteDeps): void {
     })
   );
 
+  // The agent's channel-trigger mount status (R08b): one row per
+  // `channel` trigger with its public URL and mount error (missing
+  // secret, duplicate kind), for the Overview Triggers card.
+  app.get(
+    '/agents/:id/triggers/status',
+    asyncRoute(async (req, res) => {
+      const ws = workspaceOf(req);
+      res.json(ws.channels.status(paramId(req)));
+    })
+  );
+
   app.put(
     '/agents/:id',
     asyncRoute(async (req, res) => {
