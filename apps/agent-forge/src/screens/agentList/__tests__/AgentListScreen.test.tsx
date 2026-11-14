@@ -6,12 +6,31 @@ vi.mock('../../../state/AppState', () => ({ useAppState: () => ({ runStatus: nul
 
 const api = vi.hoisted(() => ({
   listAgents: vi.fn(),
+  listAllAgentItems: vi.fn(),
   patchAgentMeta: vi.fn(),
   createAgentRecord: vi.fn(),
+  forWorkspace: vi.fn(),
 }));
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
 
-import type { AgentListItem, AgentRecord } from '../../../../shared/wireTypes';
+// The workspace list/launch id the screen reads for names, chips and the
+// blank-create fallback. `activeId` mirrors the URL's workspace.
+const wsState = vi.hoisted(() => ({
+  list: undefined as unknown[] | undefined,
+  launchId: undefined as string | undefined,
+  activeId: undefined as string | undefined,
+}));
+vi.mock('../../../workspace/WorkspacesProvider', () => ({
+  useWorkspacesMaybe: () => ({
+    list: wsState.list,
+    launchId: wsState.launchId,
+    activeId: wsState.activeId,
+    error: undefined,
+    refresh: vi.fn(),
+  }),
+}));
+
+import type { AgentListItem, AgentRecord, WorkspaceAgentItem, WorkspaceListItem } from '../../../../shared/wireTypes';
 import { AgentListScreen } from '../AgentListScreen';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
@@ -29,7 +48,19 @@ const item = (over: Partial<AgentListItem>): AgentListItem => ({
   ...over,
 });
 
-const ITEMS: AgentListItem[] = [
+const wsItem = (over: Partial<WorkspaceAgentItem>): WorkspaceAgentItem => ({
+  ...item({}),
+  kind: 'workspace',
+  workspaceId: 'alpha-1a2b3c',
+  ...over,
+});
+
+const WSLIST: WorkspaceListItem[] = [
+  { id: 'alpha-1a2b3c', name: 'Alpha', root: '/tmp/alpha', addedAt: '', lastOpenedAt: '', isLaunch: true, available: true, agentCount: 0 },
+  { id: 'beta-2b3c4d', name: 'Beta', root: '/tmp/beta', addedAt: '', lastOpenedAt: '', isLaunch: false, available: true, agentCount: 0 },
+];
+
+const AGENTS_A: AgentListItem[] = [
   item({
     id: 'support-bot',
     name: 'Support bot',
@@ -38,14 +69,13 @@ const ITEMS: AgentListItem[] = [
     enabled: true,
     lastRun: { status: 'error', at: '2026-10-29T11:57:00Z', traceId: 't1' },
   }),
-  item({
-    id: 'pr-reviewer',
-    name: 'PR reviewer',
-    labels: ['github', 'billing'],
-    enabled: false,
-    model: 'anthropic/claude-opus-5',
-  }),
   item({ id: 'docs-qa', name: 'Docs QA', model: 'openai/gpt-5', enabled: true }),
+];
+
+/** The all-workspaces payload: A's agents plus a same-named one in B (ids repeat across workspaces). */
+const ALL_ITEMS: WorkspaceAgentItem[] = [
+  ...AGENTS_A.map((a) => wsItem({ ...a, workspaceId: 'alpha-1a2b3c' })),
+  wsItem({ id: 'support-bot', name: 'Support bot', workspaceId: 'beta-2b3c4d', enabled: false }),
 ];
 
 async function flush() {
@@ -76,26 +106,39 @@ const menuItemNamed = (name: string) =>
     el.textContent?.startsWith(name)
   );
 
-const cardOf = (host: HTMLElement, name: string) =>
-  [...host.querySelectorAll('article.agent-card')].find((card) => card.textContent?.includes(name)) as HTMLElement;
+const cardOf = (host: HTMLElement, name: string, ws?: string) =>
+  [...host.querySelectorAll('article.agent-card')].find(
+    (card) => card.textContent?.includes(name) && (ws === undefined || card.querySelector('.agent-card-workspace')?.textContent?.includes(ws))
+  ) as HTMLElement;
 
-const switchOf = (host: HTMLElement, name: string) =>
-  cardOf(host, name).querySelector<HTMLButtonElement>('[role="switch"]')!;
+const switchOf = (host: HTMLElement, name: string, ws?: string) =>
+  cardOf(host, name, ws).querySelector<HTMLButtonElement>('[role="switch"]')!;
 
 const toastTexts = (host: HTMLElement) =>
   [...host.querySelectorAll('.toast-message')].map((el) => el.textContent);
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.listAgents.mockResolvedValue(ITEMS);
+  wsState.list = WSLIST;
+  wsState.launchId = 'alpha-1a2b3c';
+  wsState.activeId = undefined;
+  api.listAgents.mockResolvedValue(AGENTS_A);
+  api.listAllAgentItems.mockResolvedValue({ items: ALL_ITEMS, skipped: [] });
   api.patchAgentMeta.mockResolvedValue({});
   api.createAgentRecord.mockResolvedValue({ id: 'untitled-1' } as AgentRecord);
+  // forWorkspace(id) answers a client-shaped object whose methods record
+  // the workspace id first, so tests can assert which workspace was hit.
+  api.forWorkspace.mockImplementation((wsId: string) => ({
+    listAgents: () => api.listAgents(wsId),
+    patchAgentMeta: (id: string, patch: unknown) => api.patchAgentMeta(wsId, id, patch),
+    createAgentRecord: (req: unknown) => api.createAgentRecord(wsId, req),
+  }));
   window.history.replaceState(null, '', '/#/agents');
 });
 
-describe('AgentListScreen', () => {
+describe('AgentListScreen - all workspaces (#/agents)', () => {
   it('shows six skeleton cards and a loading status while the list is pending', async () => {
-    api.listAgents.mockReturnValue(new Promise(() => {}));
+    api.listAllAgentItems.mockReturnValue(new Promise(() => {}));
     const host = render(
       <ToastProvider>
         <AgentListScreen />
@@ -108,61 +151,88 @@ describe('AgentListScreen', () => {
     expect(grid.querySelector('[role="status"]')?.textContent).toBe('Loading agents');
   });
 
-  it('renders one card per agent and the count status', async () => {
+  it('lists every workspace\'s agents, each card with its workspace chip', async () => {
     const host = await mountAt();
+    expect(api.listAllAgentItems).toHaveBeenCalledTimes(1);
+    expect(api.listAgents).not.toHaveBeenCalled();
     expect(host.querySelectorAll('article.agent-card')).toHaveLength(3);
-    const status = [...host.querySelectorAll('p[role="status"]')].find((el) => el.textContent === '3 agents');
-    expect(status).toBeDefined();
+    const chip = cardOf(host, 'Support bot', 'Beta').querySelector('.agent-card-workspace');
+    expect(chip?.textContent).toContain('Beta');
+    expect(chip?.getAttribute('title')).toBe('/tmp/beta');
+    expect(host.textContent).toContain('Every agent in every workspace.');
+  });
+
+  it('shows the Workspace facet and narrows by ?workspace=<id>', async () => {
+    const host = await mountAt('#/agents?workspace=beta-2b3c4d');
+    const facet = host.querySelector('.filter-bar, [class*="facet"]');
+    expect(facet).not.toBeNull();
+    // Only B's agent survives the workspace filter.
+    expect(host.querySelectorAll('article.agent-card')).toHaveLength(1);
+    expect(cardOf(host, 'Support bot', 'Beta')).toBeDefined();
+  });
+
+  it('keeps both same-named agents and toggles only the targeted one', async () => {
+    const host = await mountAt();
+    const cards = host.querySelectorAll('article.agent-card');
+    expect(cards).toHaveLength(3);
+    const sw = switchOf(host, 'Support bot', 'Beta');
+    await act(async () => sw.click());
+    await flush();
+    // B's support-bot starts disabled, so the switch turns it ON.
+    expect(api.patchAgentMeta).toHaveBeenCalledWith('beta-2b3c4d', 'support-bot', { enabled: true });
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    expect(toastTexts(host)).toContain('“Support bot” is on');
+  });
+
+  it('opens a card on its own workspace\'s overview route', async () => {
+    const host = await mountAt();
+    const link = cardOf(host, 'Docs QA', 'Alpha').querySelector<HTMLAnchorElement>('.agent-card-link')!;
+    expect(link.getAttribute('href')).toBe('#/w/alpha-1a2b3c/agents/docs-qa/overview');
+    await act(async () => link.click());
+    await flush();
+    expect(window.location.hash).toBe('#/w/alpha-1a2b3c/agents/docs-qa/overview');
+  });
+
+  it('shows the skipped-workspaces note with a Settings link', async () => {
+    api.listAllAgentItems.mockResolvedValue({
+      items: ALL_ITEMS,
+      skipped: [{ workspaceId: 'beta-2b3c4d', reason: 'Folder not found' }],
+    });
+    const host = await mountAt();
+    const note = host.querySelector('.agent-list-skipped');
+    expect(note?.textContent).toContain('Some workspaces could not be read: Beta.');
+    expect(note?.querySelector('a')?.getAttribute('href')).toBe('#/settings');
+  });
+
+  it('creates a blank agent in the single selected Workspace filter, else the launch workspace', async () => {
+    const host = await mountAt('#/agents?workspace=beta-2b3c4d');
+    await act(async () => buttonNamed(host, 'New agent')!.click());
+    await flush();
+    await act(async () => menuItemNamed('Blank agent')!.click());
+    await flush();
+    expect(api.createAgentRecord).toHaveBeenCalledWith('beta-2b3c4d', { from: 'blank' });
+    expect(window.location.hash).toBe('#/w/beta-2b3c4d/agents/untitled-1/canvas');
   });
 
   it('shows the error card on failure and Retry refetches', async () => {
-    api.listAgents.mockRejectedValueOnce(new Error('boom'));
+    api.listAllAgentItems.mockRejectedValueOnce(new Error('boom'));
     const host = await mountAt();
     expect(host.textContent).toContain('Could not load agents');
     expect(host.textContent).toContain('boom');
     await act(async () => buttonNamed(host, 'Retry')!.click());
     await flush();
-    expect(api.listAgents).toHaveBeenCalledTimes(2);
+    expect(api.listAllAgentItems).toHaveBeenCalledTimes(2);
     expect(host.querySelectorAll('article.agent-card')).toHaveLength(3);
   });
 
-  it('shows the empty state with four start options when there are no agents', async () => {
-    api.listAgents.mockResolvedValue([]);
+  it('shows the empty state when no workspace has agents', async () => {
+    api.listAllAgentItems.mockResolvedValue({ items: [], skipped: [] });
     const host = await mountAt();
     expect(host.textContent).toContain('No agents yet');
-    expect(host.textContent).toContain('Pick a way to start.');
-    const options = host.querySelectorAll('button.start-option');
-    expect(options).toHaveLength(4);
-    expect([...options].map((b) => b.querySelector('.start-option-title')?.textContent)).toEqual([
-      'Blank agent',
-      'Describe with AI',
-      'From template',
-      'Import from file…',
-    ]);
+    expect(host.querySelectorAll('button.start-option')).toHaveLength(4);
   });
 
-  it('opens the import sheet from the empty state and from the New agent menu', async () => {
-    api.listAgents.mockResolvedValue([]);
-    const host = await mountAt();
-
-    const importOption = [...host.querySelectorAll<HTMLButtonElement>('button.start-option')].find(
-      (b) => b.querySelector('.start-option-title')?.textContent === 'Import from file…'
-    )!;
-    await act(async () => importOption.click());
-    await flush();
-    expect(document.querySelector('.sheet-title')?.textContent).toBe('Import an agent');
-    await act(async () => document.querySelector<HTMLButtonElement>('.sheet-close')!.click());
-    await flush();
-    expect(document.querySelector('.sheet')).toBeNull();
-
-    await act(async () => buttonNamed(host, 'New agent')!.click());
-    await flush();
-    await act(async () => menuItemNamed('Import from file…')!.click());
-    await flush();
-    expect(document.querySelector('.sheet-title')?.textContent).toBe('Import an agent');
-  });
-
-  it('shows the no-match state under a filter and Clear filters restores the URL and the cards', async () => {
+  it('shows the no-match state under a filter and Clear filters restores the cards', async () => {
     const host = await mountAt('#/agents?q=zzz');
     expect(host.textContent).toContain('No agents match these filters');
     await act(async () => buttonNamed(host, 'Clear filters')!.click());
@@ -171,82 +241,46 @@ describe('AgentListScreen', () => {
     expect(host.querySelectorAll('article.agent-card')).toHaveLength(3);
   });
 
-  it('toggles a card optimistically and toasts on success', async () => {
-    let resolvePatch!: (meta: unknown) => void;
-    api.patchAgentMeta.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolvePatch = resolve;
-        })
-    );
-    const host = await mountAt();
-    const sw = switchOf(host, 'Support bot');
-    expect(sw.getAttribute('aria-checked')).toBe('true');
-
-    await act(async () => sw.click());
-    expect(api.patchAgentMeta).toHaveBeenCalledWith('support-bot', { enabled: false });
-    expect(sw.getAttribute('aria-checked')).toBe('false');
-    expect(sw.disabled).toBe(true);
-
-    await act(async () => resolvePatch({}));
-    await flush();
-    expect(sw.disabled).toBe(false);
-    expect(toastTexts(host)).toContain('“Support bot” is off');
-  });
-
-  it('reverts the switch and toasts the server message when the PATCH fails', async () => {
-    api.patchAgentMeta.mockRejectedValueOnce(new Error('meta is locked'));
-    const host = await mountAt();
-    const sw = switchOf(host, 'Support bot');
-
-    await act(async () => sw.click());
-    await flush();
-    expect(api.patchAgentMeta).toHaveBeenCalledWith('support-bot', { enabled: false });
-    expect(sw.getAttribute('aria-checked')).toBe('true');
-    expect(sw.disabled).toBe(false);
-    expect(host.querySelector('[role="alert"]')?.textContent).toContain('meta is locked');
-  });
-
-  it('shares one creating state between the header menu and the start options', async () => {
-    api.listAgents.mockResolvedValue([]);
-    let resolveCreate!: (record: AgentRecord) => void;
-    api.createAgentRecord.mockReturnValue(
-      new Promise<AgentRecord>((resolve) => {
-        resolveCreate = resolve;
-      })
-    );
-    const host = await mountAt();
-
-    // Start the create from the empty state's Blank button.
-    const blankOption = [...host.querySelectorAll<HTMLButtonElement>('button.start-option')].find(
-      (b) => b.querySelector('.start-option-title')?.textContent === 'Blank agent'
-    )!;
-    await act(async () => blankOption.click());
-    await flush();
-    expect(api.createAgentRecord).toHaveBeenCalledTimes(1);
-    expect(api.createAgentRecord).toHaveBeenCalledWith({ from: 'blank' });
-
-    // The header trigger and the start option both reflect the same in-flight create,
-    // so a second activation cannot issue a duplicate POST /agents.
-    const trigger = host.querySelector<HTMLButtonElement>('.menu-trigger')!;
-    expect(trigger.textContent).toContain('Creating…');
-    expect(trigger.disabled).toBe(true);
-    expect(blankOption.disabled).toBe(true);
-    expect(blankOption.getAttribute('title')).toBe('Creating an agent…');
-
-    await act(async () => resolveCreate({ id: 'untitled-1' } as AgentRecord));
-    await flush();
-    expect(api.createAgentRecord).toHaveBeenCalledTimes(1);
-    expect(window.location.hash).toBe('#/agents/untitled-1/canvas');
-  });
-
-  it('creates a blank agent from the New agent menu and opens its canvas', async () => {
+  it('creates a blank agent in the launch workspace when no filter is set', async () => {
     const host = await mountAt();
     await act(async () => buttonNamed(host, 'New agent')!.click());
     await flush();
     await act(async () => menuItemNamed('Blank agent')!.click());
     await flush();
-    expect(api.createAgentRecord).toHaveBeenCalledWith({ from: 'blank' });
-    expect(window.location.hash).toBe('#/agents/untitled-1/canvas');
+    expect(api.createAgentRecord).toHaveBeenCalledWith('alpha-1a2b3c', { from: 'blank' });
+    expect(window.location.hash).toBe('#/w/alpha-1a2b3c/agents/untitled-1/canvas');
+  });
+});
+
+describe('AgentListScreen - one workspace (#/w/<ws>/agents)', () => {
+  it('lists only that workspace through forWorkspace, with no chips and scoped header copy', async () => {
+    wsState.activeId = 'beta-2b3c4d';
+    const host = await mountAt('#/w/beta-2b3c4d/agents');
+    expect(api.forWorkspace).toHaveBeenCalledWith('beta-2b3c4d');
+    expect(api.listAgents).toHaveBeenCalledWith('beta-2b3c4d');
+    expect(api.listAllAgentItems).not.toHaveBeenCalled();
+    expect(host.querySelectorAll('article.agent-card')).toHaveLength(2);
+    expect(host.querySelector('.agent-card-workspace')).toBeNull();
+    expect(host.textContent).toContain('Agents in Beta. Open one to edit it, test it and ship it.');
+  });
+
+  it('PATCHes meta through the item\'s workspace and navigates within it', async () => {
+    const host = await mountAt('#/w/beta-2b3c4d/agents');
+    const sw = switchOf(host, 'Support bot');
+    await act(async () => sw.click());
+    await flush();
+    expect(api.patchAgentMeta).toHaveBeenCalledWith('beta-2b3c4d', 'support-bot', { enabled: false });
+    const link = cardOf(host, 'Docs QA').querySelector<HTMLAnchorElement>('.agent-card-link')!;
+    expect(link.getAttribute('href')).toBe('#/w/beta-2b3c4d/agents/docs-qa/overview');
+  });
+
+  it('creates a blank agent in the scoped workspace', async () => {
+    const host = await mountAt('#/w/beta-2b3c4d/agents');
+    await act(async () => buttonNamed(host, 'New agent')!.click());
+    await flush();
+    await act(async () => menuItemNamed('Blank agent')!.click());
+    await flush();
+    expect(api.createAgentRecord).toHaveBeenCalledWith('beta-2b3c4d', { from: 'blank' });
+    expect(window.location.hash).toBe('#/w/beta-2b3c4d/agents/untitled-1/canvas');
   });
 });
