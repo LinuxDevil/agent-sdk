@@ -41,7 +41,7 @@ describe('author settings routes', () => {
       loadSpec: (id) => repo.readSpec(id),
       saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
-    app = createApp({ agentStore, runManager, baseDir, access: { token: TOKEN } });
+    app = createApp({ agentStore, runManager, baseDir, studioHome: path.join(baseDir, '.lousho'), access: { token: TOKEN } });
     for (const key of ENV_KEYS) {
       savedEnv[key] = process.env[key];
       delete process.env[key];

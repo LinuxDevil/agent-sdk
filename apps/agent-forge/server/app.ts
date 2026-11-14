@@ -111,7 +111,8 @@ import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, 
 import { pinsProblem } from './pins';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
-import { configureStudioHome, type StudioPaths } from './workspace/studioPaths';
+import { configureStudioHome, defaultStudioHome, type StudioPaths } from './workspace/studioPaths';
+import { LegacyImportService } from './workspace/legacyImport';
 import { workspaceRefFor } from './workspace/workspaceId';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 import { CodeAgentCache } from './workspace/codeAgentScan';
@@ -187,8 +188,9 @@ interface CreateAppBaseOptions {
   /**
    * The Studio home directory every Studio-global file lives under
    * (settings, secrets, Author sessions, … - see workspace/studioPaths.ts).
-   * Defaults to `<baseDir>/.lousho` today, which keeps every file exactly
-   * where it was; a later change moves the default to `~/.lousho/studio`.
+   * Defaults to `defaultStudioHome()` (`LOUSHO_STUDIO_HOME` or
+   * `~/.lousho/studio`); tests pass a temp dir so they never touch a
+   * real home.
    */
   studioHome?: string;
   /** Defaults to `new SecretsStore(studioPaths())` when omitted. */
@@ -1228,6 +1230,10 @@ function createStudioStores(options: CreateAppOptions, paths: StudioPaths) {
   // The app's one code-agent scan cache (W08a): shared by the scan
   // routes, `/workspace/agent-dirs` and the aggregate agent list.
   const codeAgentCache = options.codeAgentCache ?? new CodeAgentCache();
+  // The one-time old-settings/secrets import (W03a): reads each
+  // workspace's project-level `.lousho/` files, copies what the home
+  // lacks, records the outcome in `paths.legacyImports`.
+  const legacyImport = new LegacyImportService({ file: paths.legacyImports, settings, secrets, home: paths });
   // The app's one spend log and pass runner (passes/): Studio-global, so
   // they live next to the other studioPaths() stores rather than per
   // workspace. `passRunner` defaults to one over this `spendLog`.
@@ -1277,6 +1283,7 @@ function createStudioStores(options: CreateAppOptions, paths: StudioPaths) {
     probeDeps,
     collector,
     codeAgentCache,
+    legacyImport,
   };
 }
 
@@ -1308,7 +1315,7 @@ export function createApp(options: CreateAppOptions): Express {
   // The Studio home is process-wide and configured once, here, before any
   // request is served; request handlers never call studioPaths() - the
   // stores below close over the paths resolved now.
-  const paths = configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
+  const paths = configureStudioHome(options.studioHome ?? defaultStudioHome());
   const {
     secrets,
     settings,
@@ -1322,6 +1329,7 @@ export function createApp(options: CreateAppOptions): Express {
     probeDeps,
     collector,
     codeAgentCache,
+    legacyImport,
   } = createStudioStores(options, paths);
   const workspace = defaultWorkspaceContext(options, passRunner, alerts, { settings, spendLog }, secrets);
   // One resolver for the middleware below and the Author tools' per-call
@@ -1503,6 +1511,7 @@ export function createApp(options: CreateAppOptions): Express {
     // plain resolver needs no `forget`.
     forget: forgetWorkspace(options.workspaces),
     scanCache: codeAgentCache,
+    legacyImport,
   });
   // W11c: `GET /workspaces/:ws/host` + `POST /workspaces/:ws/host/restart`
   // - the `:ws` path param resolves through the same resolver the

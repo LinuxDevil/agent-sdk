@@ -20,9 +20,9 @@ import { startJudgeLoop, type JudgeLoopOptions } from './judge';
 import { CollectorManager } from './collector';
 import type { IdleVersioner } from './storage/idleVersioner';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
-import { createWorkspaceContext, type WorkspaceServices } from './workspace/context';
+import { createWorkspaceContext, type WorkspaceContext, type WorkspaceServices } from './workspace/context';
 import { WorkspaceManager } from './workspace/workspaceManager';
-import { configureStudioHome, studioPaths } from './workspace/studioPaths';
+import { configureStudioHome, defaultStudioHome, studioPaths } from './workspace/studioPaths';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 import { AUTHOR_STREAM_PATH } from '../shared/authorWire';
 import { AuthorSessionStore } from './author/sessionStore';
@@ -109,10 +109,11 @@ export interface StartStudioServerOptions {
    */
   idleVersioner?: IdleVersioner;
   /**
-   * The Studio home directory (`configureStudioHome`'s argument - every
-   * Studio-global store derives its files from it). Defaults to
-   * `<baseDir>/.lousho`, where the launch folder's files already live;
-   * tests pass a temp dir so they never touch a real home (W02b).
+   * The Studio home directory every Studio-global file lives under
+   * (settings, secrets, Author sessions, the workspace registry, …).
+   * Defaults to `defaultStudioHome()` - `LOUSHO_STUDIO_HOME` when set,
+   * else `~/.lousho/studio`; tests pass a temp dir so they never touch a
+   * real home (W03a).
    */
   studioHome?: string;
   /**
@@ -154,54 +155,31 @@ function resolveDocsDir(moduleDir: string): string {
   return path.join(moduleDir, '..', '..', '..', 'docs');
 }
 
-// fallow-ignore-next-line complexity
-export async function startStudioServer(
-  options: StartStudioServerOptions = {}
-): Promise<StudioServerHandle> {
-  const baseDir = options.baseDir ?? process.cwd();
-  const port = options.port ?? 4750;
-  const host = options.host ?? '127.0.0.1';
-  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-  const staticDir = resolveStaticDir(options.staticDir, moduleDir);
-
-  // The Studio home keeps every file where it was (the launch folder's
-  // `.lousho/`); moving it to `~/.lousho/studio` is a later change of this
-  // one default - every store below already reads its paths from it.
-  configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
-  const paths = studioPaths();
-  const secretsStore = new SecretsStore(paths);
-  const settingsStore = new SettingsStore(paths);
-  // The one collector every daemon client follows (collector.ts): attach
-  // to a running daemon, start one on a loopback URL, or report a remote
-  // one down. `LOUSHO_STUDIO_COLLECTOR=0` / `collector: false` only ever
-  // attaches - nothing is spawned in this process.
-  const collector =
-    options.collector !== undefined && options.collector !== false
-      ? options.collector
-      : new CollectorManager({
-          settings: settingsStore,
-          secrets: secretsStore,
-          ...(options.collector === false ? { autoStart: false } : {}),
-        });
-
+/**
+ * The launch workspace's registry entry plus the warm launch context and
+ * the `WorkspaceManager` every other registered workspace resolves
+ * through - extracted from `startStudioServer` so the boot function stays
+ * a flat wiring list.
+ */
+async function buildWorkspaceStack(
+  options: StartStudioServerOptions,
+  paths: ReturnType<typeof studioPaths>,
+  deps: {
+    baseDir: string;
+    secretsStore: SecretsStore;
+    settingsStore: SettingsStore;
+    spendLog: SpendLog;
+    passRunner: PassRunner;
+    alerts: AlertStore;
+    collector: CollectorManager;
+  }
+): Promise<{ registry: WorkspaceRegistry; workspace: WorkspaceContext; workspaces: WorkspaceManager }> {
+  const { baseDir, secretsStore, settingsStore, spendLog, passRunner, alerts, collector } = deps;
   // The launch folder is added to the workspace registry on every start
   // (`ensure` keeps one entry and bumps lastOpenedAt on a restart) and
   // its stored ref is the launch context's identity.
   const registry = new WorkspaceRegistry(paths.workspaces);
   const launchRef = await registry.ensure(baseDir);
-  // The app's one pass runner + spend log (passes/): Studio-global, shared
-  // by every workspace context through WorkspaceServices, and the same
-  // instances the spend route and `close()` use.
-  const spendLog = new SpendLog(paths.spend);
-  const passRunner = new PassRunner({
-    baseDir,
-    spendLog,
-    isEnabled: (kind) => settingsStore.passes().enabled[kind],
-  });
-  // The Studio-global inbox alert store (L12): the failure-streak pass
-  // writes `auto_disabled` alerts here per workspace; R02a's inbox routes
-  // read the same instance off the app options.
-  const alerts = new AlertStore(paths.alerts);
   // The Studio-global stores every workspace context shares (W02a): the
   // manager's `build` reuses this exact object, so a lazily-built context
   // gets the same passRunner/spendLog/alerts/secrets/settings as launch.
@@ -226,6 +204,62 @@ export async function startStudioServer(
   // A test-injected versioner replaces the context's default one before the
   // app and `close()` below both read `workspace.idleVersioner`.
   if (options.idleVersioner !== undefined) workspace.idleVersioner = options.idleVersioner;
+  return { registry, workspace, workspaces };
+}
+
+// fallow-ignore-next-line complexity
+export async function startStudioServer(
+  options: StartStudioServerOptions = {}
+): Promise<StudioServerHandle> {
+  const baseDir = options.baseDir ?? process.cwd();
+  const port = options.port ?? 4750;
+  const host = options.host ?? '127.0.0.1';
+  const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+  const staticDir = resolveStaticDir(options.staticDir, moduleDir);
+
+  // Global state lives in the Studio home (`LOUSHO_STUDIO_HOME` or
+  // `~/.lousho/studio`), shared across every workspace Studio opens; a
+  // workspace's old project-level `.lousho/` settings/secrets can be
+  // imported once through `POST /workspaces/:ws/legacy-import`.
+  configureStudioHome(options.studioHome ?? defaultStudioHome());
+  const paths = studioPaths();
+  const secretsStore = new SecretsStore(paths);
+  const settingsStore = new SettingsStore(paths);
+  // The one collector every daemon client follows (collector.ts): attach
+  // to a running daemon, start one on a loopback URL, or report a remote
+  // one down. `LOUSHO_STUDIO_COLLECTOR=0` / `collector: false` only ever
+  // attaches - nothing is spawned in this process.
+  const collector =
+    options.collector !== undefined && options.collector !== false
+      ? options.collector
+      : new CollectorManager({
+          settings: settingsStore,
+          secrets: secretsStore,
+          ...(options.collector === false ? { autoStart: false } : {}),
+        });
+
+  // The app's one pass runner + spend log (passes/): Studio-global, shared
+  // by every workspace context through WorkspaceServices, and the same
+  // instances the spend route and `close()` use.
+  const spendLog = new SpendLog(paths.spend);
+  const passRunner = new PassRunner({
+    baseDir,
+    spendLog,
+    isEnabled: (kind) => settingsStore.passes().enabled[kind],
+  });
+  // The Studio-global inbox alert store (L12): the failure-streak pass
+  // writes `auto_disabled` alerts here per workspace; R02a's inbox routes
+  // read the same instance off the app options.
+  const alerts = new AlertStore(paths.alerts);
+  const { registry, workspace, workspaces } = await buildWorkspaceStack(options, paths, {
+    baseDir,
+    secretsStore,
+    settingsStore,
+    spendLog,
+    passRunner,
+    alerts,
+    collector,
+  });
 
   const token = options.token ?? (process.env[STUDIO_TOKEN_ENV] || mintStudioToken());
   const allowedOrigins = (process.env[STUDIO_ALLOWED_ORIGINS_ENV] ?? '').split(',').filter(Boolean);

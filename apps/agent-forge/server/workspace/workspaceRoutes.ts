@@ -18,12 +18,20 @@
  */
 import { promises as fsPromises } from 'node:fs';
 import type { Express, Request, Response } from 'express';
-import type { AddWorkspaceRequest, WorkspaceList, WorkspaceListItem, WorkspaceScanResult } from '../../shared/wireTypes';
+import type {
+  AddWorkspaceRequest,
+  LegacyImportResult,
+  LegacyImportStatus,
+  WorkspaceList,
+  WorkspaceListItem,
+  WorkspaceScanResult,
+} from '../../shared/wireTypes';
 import { WORKSPACE_ID_RE, type WorkspaceRef } from '../../shared/workspace';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { AgentRepo } from '../storage/agentRepo';
 import { observeProjectOf } from '../observed/observeProject';
 import { isAgentDirPattern, type CodeAgentCache } from './codeAgentScan';
+import type { LegacyImportService } from './legacyImport';
 import {
   WorkspaceExistsError,
   WorkspaceInUseError,
@@ -50,6 +58,8 @@ export interface WorkspaceRegistryRouteDeps {
    * drops the removed workspace's cached scan.
    */
   scanCache?: CodeAgentCache;
+  /** The one-time old-settings/secrets import service (W03a; `legacy-imports.json` under the Studio home). */
+  legacyImport: LegacyImportService;
 }
 
 /**
@@ -78,7 +88,15 @@ function byNameThenId(a: WorkspaceListItem, b: WorkspaceListItem): number {
 
 /** Registers the three registry routes on `app`; mounted next to `registerWorkspaceRoute` in `createApp`. */
 export function registerWorkspaceRegistryRoutes(app: Express, deps: WorkspaceRegistryRouteDeps): void {
-  const { registry, launchId, forget, scanCache } = deps;
+  const { registry, launchId, forget, scanCache, legacyImport } = deps;
+
+  /** `:ws` resolved to its registry ref; answers the shared 404 and yields `undefined` when unregistered. */
+  const workspaceRef = async (req: Request, res: Response): Promise<WorkspaceRef | undefined> => {
+    const id = paramId(req, 'ws');
+    const ref = await registry.get(id);
+    if (ref === undefined) sendError(res, 404, `No workspace '${id}'`, 'LOUSHO_WORKSPACE_NOT_FOUND');
+    return ref;
+  };
 
   // The workspace switcher's/Settings card's list: every registered
   // workspace plus the per-request availability facts, `defaultId` naming
@@ -146,66 +164,107 @@ export function registerWorkspaceRegistryRoutes(app: Express, deps: WorkspaceReg
     })
   );
 
-  if (scanCache === undefined) return;
-
-  /** The registered entry for `:ws`, or the 404 already sent. */
-  async function scanEntry(req: Request, res: Response): Promise<WorkspaceEntry | undefined> {
-    const ws = paramId(req, 'ws');
-    if (!WORKSPACE_ID_RE.test(ws)) {
-      sendError(res, 400, 'Invalid workspace id', 'LOUSHO_WORKSPACE_ID_INVALID');
-      return undefined;
-    }
-    const entry = await registry.get(ws);
-    if (entry === undefined) {
-      sendError(res, 404, `No workspace '${ws}'`, 'LOUSHO_WORKSPACE_NOT_FOUND');
-      return undefined;
-    }
-    return entry;
-  }
-
   // W08a: the workspace's cached code-agent scan - scans on first read,
   // then serves the stored result until a POST or a DELETE refreshes it.
+  // Registered only when the app wired a scan cache.
+  if (scanCache !== undefined) {
+    /** The registered entry for `:ws`, or the 404 already sent. */
+    async function scanEntry(req: Request, res: Response): Promise<WorkspaceEntry | undefined> {
+      const ws = paramId(req, 'ws');
+      if (!WORKSPACE_ID_RE.test(ws)) {
+        sendError(res, 400, 'Invalid workspace id', 'LOUSHO_WORKSPACE_ID_INVALID');
+        return undefined;
+      }
+      const entry = await registry.get(ws);
+      if (entry === undefined) {
+        sendError(res, 404, `No workspace '${ws}'`, 'LOUSHO_WORKSPACE_NOT_FOUND');
+        return undefined;
+      }
+      return entry;
+    }
+
+    app.get(
+      '/workspaces/:ws/scan',
+      asyncRoute(async (req, res) => {
+        const entry = await scanEntry(req, res);
+        if (entry === undefined) return;
+        const result = scanCache.get(entry.id) ?? (await scanCache.scan(entry));
+        res.json(result satisfies WorkspaceScanResult);
+      })
+    );
+
+    // W08a: rescan with optional new `agentDirs` patterns (1-20 valid
+    // globs), persisted on the registry entry before the scan runs.
+    app.post(
+      '/workspaces/:ws/scan',
+      asyncRoute(async (req, res) => {
+        const entry = await scanEntry(req, res);
+        if (entry === undefined) return;
+        const { agentDirs } = (req.body ?? {}) as { agentDirs?: unknown };
+        if (agentDirs !== undefined) {
+          const valid =
+            Array.isArray(agentDirs) &&
+            agentDirs.length >= 1 &&
+            agentDirs.length <= 20 &&
+            agentDirs.every((p) => typeof p === 'string' && isAgentDirPattern(p));
+          if (!valid) {
+            sendError(
+              res,
+              400,
+              "Each pattern is a folder path like agents/*/ (no '..' or '**').",
+              'LOUSHO_AGENT_DIRS_INVALID'
+            );
+            return;
+          }
+          const updated = await registry.setAgentDirs(entry.id, agentDirs as string[]);
+          if (updated === undefined) {
+            sendError(res, 404, `No workspace '${entry.id}'`, 'LOUSHO_WORKSPACE_NOT_FOUND');
+            return;
+          }
+          entry.agentDirs = updated.agentDirs;
+        }
+        res.json(await scanCache.scan(entry));
+      })
+    );
+  }
+
+  // W03a's one-time import offer: which old project-level settings/secrets
+  // the workspace's `.lousho/` still holds that the Studio home lacks.
   app.get(
-    '/workspaces/:ws/scan',
+    '/workspaces/:ws/legacy-import',
     asyncRoute(async (req, res) => {
-      const entry = await scanEntry(req, res);
-      if (entry === undefined) return;
-      const result = scanCache.get(entry.id) ?? (await scanCache.scan(entry));
-      res.json(result satisfies WorkspaceScanResult);
+      const ref = await workspaceRef(req, res);
+      if (ref === undefined) return;
+      const body: LegacyImportStatus = await legacyImport.status(ref);
+      res.json(body);
     })
   );
 
-  // W08a: rescan with optional new `agentDirs` patterns (1-20 valid
-  // globs), persisted on the registry entry before the scan runs.
+  // Copies what is missing into the home (never overwriting); 409 when
+  // the folder has nothing left to offer.
   app.post(
-    '/workspaces/:ws/scan',
+    '/workspaces/:ws/legacy-import',
     asyncRoute(async (req, res) => {
-      const entry = await scanEntry(req, res);
-      if (entry === undefined) return;
-      const { agentDirs } = (req.body ?? {}) as { agentDirs?: unknown };
-      if (agentDirs !== undefined) {
-        const valid =
-          Array.isArray(agentDirs) &&
-          agentDirs.length >= 1 &&
-          agentDirs.length <= 20 &&
-          agentDirs.every((p) => typeof p === 'string' && isAgentDirPattern(p));
-        if (!valid) {
-          sendError(
-            res,
-            400,
-            "Each pattern is a folder path like agents/*/ (no '..' or '**').",
-            'LOUSHO_AGENT_DIRS_INVALID'
-          );
-          return;
-        }
-        const updated = await registry.setAgentDirs(entry.id, agentDirs as string[]);
-        if (updated === undefined) {
-          sendError(res, 404, `No workspace '${entry.id}'`, 'LOUSHO_WORKSPACE_NOT_FOUND');
-          return;
-        }
-        entry.agentDirs = updated.agentDirs;
+      const ref = await workspaceRef(req, res);
+      if (ref === undefined) return;
+      const status = await legacyImport.status(ref);
+      if (status.found.length === 0) {
+        sendError(res, 409, 'Nothing to import from this folder.', 'LOUSHO_LEGACY_IMPORT_EMPTY');
+        return;
       }
-      res.json(await scanCache.scan(entry));
+      const body: LegacyImportResult = await legacyImport.importFrom(ref);
+      res.json(body);
+    })
+  );
+
+  // Dismisses the offer for this workspace.
+  app.post(
+    '/workspaces/:ws/legacy-import/skip',
+    asyncRoute(async (req, res) => {
+      const ref = await workspaceRef(req, res);
+      if (ref === undefined) return;
+      await legacyImport.skip(ref);
+      res.status(204).end();
     })
   );
 }

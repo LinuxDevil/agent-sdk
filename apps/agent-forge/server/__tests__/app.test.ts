@@ -332,7 +332,7 @@ describe('settings/secrets HTTP routes', () => {
       loadSpec: (id) => repo.readSpec(id),
       saveSpec: (id, spec) => repo.writeSpec(id, spec),
     });
-    app = createApp({ agentStore, runManager, baseDir });
+    app = createApp({ agentStore, runManager, baseDir, studioHome: path.join(baseDir, '.lousho') });
   });
 
   afterEach(() => {
