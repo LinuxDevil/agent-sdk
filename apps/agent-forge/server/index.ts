@@ -19,7 +19,8 @@ import { SettingsStore } from './settingsStore';
 import { startJudgeLoop, type JudgeLoopOptions } from './judge';
 import type { IdleVersioner } from './storage/idleVersioner';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
-import { createWorkspaceContext, singleWorkspace } from './workspace/context';
+import { createWorkspaceContext, type WorkspaceServices } from './workspace/context';
+import { WorkspaceManager } from './workspace/workspaceManager';
 import { configureStudioHome, studioPaths } from './workspace/studioPaths';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 import { AUTHOR_STREAM_PATH } from '../shared/authorWire';
@@ -168,14 +169,23 @@ export async function startStudioServer(
   // writes `auto_disabled` alerts here per workspace; R02a's inbox routes
   // read the same instance off the app options.
   const alerts = new AlertStore(paths.alerts);
-  const workspace = createWorkspaceContext(launchRef, {
+  // The Studio-global stores every workspace context shares (W02a): the
+  // manager's `build` reuses this exact object, so a lazily-built context
+  // gets the same passRunner/spendLog/alerts/secrets/settings as launch.
+  const services: WorkspaceServices = {
     secretsStore,
     settingsStore,
     observe: options.observe !== false,
     passRunner,
     spendLog,
     alerts,
-  });
+  };
+  const workspace = createWorkspaceContext(launchRef, services);
+  // Every registered workspace resolves over HTTP through this manager:
+  // contexts build lazily on first use, stay warm up to the cap, and idle
+  // ones dispose - the launch context is always warm and never a
+  // candidate (workspace/workspaceManager.ts).
+  const workspaces = new WorkspaceManager({ registry, launch: workspace, build: (ref) => createWorkspaceContext(ref, services) });
   // A test-injected versioner replaces the context's default one before the
   // app and `close()` below both read `workspace.idleVersioner`.
   if (options.idleVersioner !== undefined) workspace.idleVersioner = options.idleVersioner;
@@ -200,7 +210,7 @@ export async function startStudioServer(
       secrets: secretsStore,
       templates: templateCatalog,
       docsDir,
-      workspaceResolver: singleWorkspace(workspace),
+      workspaceResolver: workspaces,
     });
   const app = createApp({
     workspace,
@@ -209,6 +219,7 @@ export async function startStudioServer(
     secretsStore,
     settingsStore,
     workspaceRegistry: registry,
+    workspaces,
     staticDir,
     docsDir,
     access,
@@ -249,10 +260,14 @@ export async function startStudioServer(
       // Abort in-flight passes and settle queued ones; running jobs get the
       // abort signal and their records land if they settle before exit.
       passRunner.close();
-      // Flush pending idle-version captures before the socket stops taking writes.
+      // Dispose every warm workspace context (launch included) - each
+      // flushes its idle-version captures and stops its inbox/triggers/
+      // cron - before the socket stops taking writes.
+      await workspaces.close();
+      // The explicit launch stops stay for the `options.idleVersioner`
+      // test seam, which replaces `workspace.idleVersioner` after the
+      // context built its own (dispose flushes the original).
       await workspace.idleVersioner.flushAll();
-      // Stop the launch workspace's inbox recount subscriptions (R02a)
-      // and its trigger host's run-status subscriptions (R08a).
       workspace.inbox.stop();
       workspace.triggers.stop();
       workspace.cron.stop();

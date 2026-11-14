@@ -34,6 +34,13 @@ export interface WorkspaceRegistryRouteDeps {
   registry: WorkspaceRegistry;
   /** The launch workspace's id - `GET`'s `defaultId` and the one entry `DELETE` refuses. */
   launchId: string;
+  /**
+   * Drops the removed workspace's warm context (WorkspaceManager.forget,
+   * W02a) - called after a successful `registry.remove`, never awaited
+   * into the response beyond a best-effort await. Omitted when the app
+   * resolves through `singleWorkspace` (no warm contexts to drop).
+   */
+  forget?: (id: string) => Promise<void>;
 }
 
 /**
@@ -59,7 +66,7 @@ function byNameThenId(a: WorkspaceListItem, b: WorkspaceListItem): number {
 
 /** Registers the three registry routes on `app`; mounted next to `registerWorkspaceRoute` in `createApp`. */
 export function registerWorkspaceRegistryRoutes(app: Express, deps: WorkspaceRegistryRouteDeps): void {
-  const { registry, launchId } = deps;
+  const { registry, launchId, forget } = deps;
 
   // The workspace switcher's/Settings card's list: every registered
   // workspace plus the per-request availability facts, `defaultId` naming
@@ -118,6 +125,10 @@ export function registerWorkspaceRegistryRoutes(app: Express, deps: WorkspaceReg
         sendError(res, 404, `No workspace '${ws}'`, 'LOUSHO_WORKSPACE_NOT_FOUND');
         return;
       }
+      // The registry entry is gone; drop the warm context too so the next
+      // request for the id 404s instead of serving a zombie. Best-effort:
+      // the manager's own dispose swallows/logs failures.
+      if (forget !== undefined) await forget(ws);
       res.status(204).end();
     })
   );

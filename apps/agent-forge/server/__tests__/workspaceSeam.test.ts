@@ -133,6 +133,7 @@ describe('workspace seam', () => {
       inbox: {} as InboxService,
       triggers: {} as TriggerHost,
       cron: {} as CronTriggers,
+      dispose: async () => {},
     };
     const app = createApp({ workspace, baseDir });
 

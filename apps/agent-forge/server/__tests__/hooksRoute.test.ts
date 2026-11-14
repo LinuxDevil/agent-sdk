@@ -94,6 +94,7 @@ function appWith(
     inbox: {} as InboxService,
     triggers: host,
     cron: {} as CronTriggers,
+    dispose: async () => {},
   };
   const secrets = new SecretsStore(baseDir);
   secrets.setSecret('wh', SECRET);
