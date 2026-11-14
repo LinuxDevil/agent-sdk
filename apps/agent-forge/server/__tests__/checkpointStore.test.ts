@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { FileCheckpointStore } from '../checkpointStore';
 import type { Checkpoint } from '@linuxdevil/lousho';
-// eslint-disable-next-line lousho/no-sdk-source -- the SDK's shared CheckpointStore contract suite; this test runs only in the SDK repo
+// eslint-disable-next-line @linuxdevil/lousho/no-sdk-source -- the SDK's shared CheckpointStore contract suite; this test runs only in the SDK repo
 import { describeCheckpointHistoryContract } from '../../../../src/execution/__fixtures__/checkpointHistoryContract';
 
 const dirs: string[] = [];

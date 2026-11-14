@@ -13,7 +13,7 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     files: ['{src,server,shared,e2e}/**/*.{ts,tsx,mjs}'],
-    plugins: { lousho: { rules: { 'no-sdk-source': noSdkSource } } },
+    plugins: { '@linuxdevil/lousho': { rules: { 'no-sdk-source': noSdkSource } } },
     rules: { '@linuxdevil/lousho/no-sdk-source': 'error' },
   },
   {

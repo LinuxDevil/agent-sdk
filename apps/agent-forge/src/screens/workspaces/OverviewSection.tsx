@@ -1,4 +1,5 @@
 import { useState } from 'react';
+// eslint-disable-next-line @linuxdevil/lousho/no-sdk-source -- the generated workspace JSON schema lives at the repo root's schemas/, not in the app
 import workspaceJsonSchema from '../../../../../schemas/lousho.workspace.v1.json';
 import type { ProblemView } from '@linuxdevil/lousho/workspaces/client';
 import { SchemaForm } from '../../ui/schemaForm/SchemaForm';

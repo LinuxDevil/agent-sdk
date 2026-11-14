@@ -9,6 +9,7 @@
 import { agentSpecV2Schema } from '@linuxdevil/lousho/spec';
 // The same deep seam `specTypes.ts` uses: `UNSUPPORTED_PREFIX` is not on a
 // published subpath, and it is a constant, so importing the module is cheap.
+// eslint-disable-next-line @linuxdevil/lousho/no-sdk-source -- deliberate seam until the SDK exports the marker prefix
 import { UNSUPPORTED_PREFIX } from '../../../../../src/spec/v2/unsupported';
 import type { AgentSpecV2 } from './specTypes';
 import type { Problem } from './types';
