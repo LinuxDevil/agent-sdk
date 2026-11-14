@@ -164,6 +164,7 @@ import { InboxService } from './inbox/inboxService';
 import { registerInboxRoutes } from './inbox/inboxRoutes';
 import { registerWebhookRoutes } from './triggers/webhookRoute';
 import { createTriggerRuntime } from './triggers/runtime';
+import { attachChainTriggers } from './triggers/chainTriggers';
 import { registerRatingRoutes } from './ratings';
 import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
@@ -1105,6 +1106,13 @@ function legacyWorkspaceContext(
     studioVersion: VERSION,
   });
   if (hostSelector.host.kind === 'bridge') void hostSelector.ready().catch(() => undefined);
+  // Agent chain triggers (R07), same as the real context.
+  attachChainTriggers({
+    host: triggers,
+    repo,
+    runManager: options.runManager,
+    log: (a, m, l) => triggers.log(a, m, l),
+  });
   return {
     ref,
     repo,
