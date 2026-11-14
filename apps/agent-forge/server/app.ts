@@ -158,6 +158,7 @@ import { registerAuthorRoutes } from './author/routes';
 import { registerAuthorSettingsRoutes } from './author/settings';
 import { AuthorTurnRunner } from './author/turnRunner';
 import { createAuthorServices } from './author/services';
+import { loadAuthorScript } from './author/authorScript';
 import { registerSecretRoutes } from './routes/secretRoutes';
 import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
@@ -1277,6 +1278,8 @@ function createAuthorRunner(
   workspaceResolver: WorkspaceResolver,
 ) {
   const { sessions, settings, secrets, templates } = stores;
+  // X08: the e2e hook installs once here - a bad script file fails startup.
+  const authorScript = loadAuthorScript();
   return (
     options.authorRunner ??
     createAuthorServices({
@@ -1287,6 +1290,7 @@ function createAuthorRunner(
       docsDir: options.docsDir ?? path.join(sdkRootDir(), 'docs'),
       workspaceResolver,
       ...(options.mcpConnect ? { mcpConnect: options.mcpConnect } : {}),
+      ...(authorScript !== undefined ? { scriptedProvider: authorScript } : {}),
     }).runner
   );
 }

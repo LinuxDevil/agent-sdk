@@ -29,6 +29,7 @@ import { AuthorSessionStore } from './author/sessionStore';
 import { createAuthorUpgradeHandler } from './author/authorStream';
 import { AuthorTurnRunner } from './author/turnRunner';
 import { createAuthorRunner } from './author/wiring';
+import { loadAuthorScript } from './author/authorScript';
 import { TemplateCatalog } from './templates/templateCatalog';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
@@ -238,6 +239,9 @@ export async function startStudioServer(
   // reads. Both are handed to createApp so it uses these, not fresh ones.
   const authorSessions = new AuthorSessionStore(paths.sessions);
   const templateCatalog = new TemplateCatalog();
+  // X08: the e2e hook's scripted provider wins over key resolution; a bad
+  // script file fails startup here, before the server listens.
+  const authorScript = loadAuthorScript();
   const authorRunner =
     options.authorRunner ??
     createAuthorRunner({
@@ -247,6 +251,7 @@ export async function startStudioServer(
       templates: templateCatalog,
       docsDir,
       workspaceResolver: workspaces,
+      ...(authorScript !== undefined ? { scriptedProvider: authorScript } : {}),
     });
   const app = createApp({
     workspace,
