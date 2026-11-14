@@ -14,7 +14,7 @@
  */
 import { useCallback, useMemo, useState } from 'react';
 import { Bot, SearchX } from 'lucide-react';
-import type { WorkspaceAgentItem } from '../../../shared/wireTypes';
+import type { ObservedAgentItem, WorkspaceAgentItem } from '../../../shared/wireTypes';
 import { labelFacetOptions } from '../../../shared/labels';
 import { matchRoute, navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
@@ -29,7 +29,8 @@ import { LoadErrorCard, LoadingGrid } from '../listStates';
 import { agentTabPath } from '../agents/agentTabs';
 import { ImportSheet } from '../agents/import/ImportSheet';
 import { AgentCard } from './AgentCard';
-import { filterAgents, useAgentListFilter, workspaceOptions, type AgentListFilter } from './agentListUrl';
+import { ObservedAgentCard } from './ObservedAgentCard';
+import { filterAgents, filterObserved, useAgentListFilter, workspaceOptions, type AgentListFilter } from './agentListUrl';
 import { NewAgentMenu, StartOptions } from './NewAgentMenu';
 import { useNewAgentActions, type NewAgentActions } from './newAgent';
 import { pendingKey, useAgentList, type AgentListScope, type AgentListState } from './useAgentList';
@@ -66,9 +67,10 @@ function SkeletonCard() {
   );
 }
 
-/** The loaded grid: one AgentCard per visible item, keyed `<workspaceId>/<id>` (ids repeat across workspaces). */
+/** The loaded grid: one AgentCard per visible workspace item, then the observed items placed in a workspace (W07b), keyed `<workspaceId>/<id>` / `observed/<id>` (ids repeat across workspaces and daemons). */
 function AgentGrid({
   items,
+  observed,
   pendingIds,
   allMode,
   workspaceNameOf,
@@ -77,6 +79,7 @@ function AgentGrid({
   onToggle,
 }: {
   items: WorkspaceAgentItem[];
+  observed: ObservedAgentItem[];
   pendingIds: ReadonlySet<string>;
   allMode: boolean;
   workspaceNameOf(id: string): string | undefined;
@@ -98,6 +101,13 @@ function AgentGrid({
           toggling={pendingIds.has(pendingKey(item))}
         />
       ))}
+      {observed.map((item) => (
+        <ObservedAgentCard
+          key={`observed/${item.id}`}
+          agent={item}
+          workspaceName={allMode && item.workspaceId !== null ? workspaceNameOf(item.workspaceId) : undefined}
+        />
+      ))}
     </ul>
   );
 }
@@ -106,6 +116,10 @@ interface ListBodyProps {
   list: AgentListState;
   items: WorkspaceAgentItem[];
   visible: WorkspaceAgentItem[];
+  /** Observed items placed in a workspace (main grid, after the workspace's own agents). */
+  observedPlaced: ObservedAgentItem[];
+  /** Observed items under "Elsewhere" (all-workspaces mode only; empty in workspace mode). */
+  observedElsewhere: ObservedAgentItem[];
   allMode: boolean;
   workspaceNameOf(id: string): string | undefined;
   workspaceRootOf(id: string): string | undefined;
@@ -127,15 +141,28 @@ function SkippedNote({ skipped, nameOf }: { skipped: AgentListState['skipped']; 
   );
 }
 
-/** Exactly one of: error card, loading grid, empty state, no-match state, card grid. */
-function AgentListBody({ list, items, visible, allMode, workspaceNameOf, workspaceRootOf, newAgent, onClearFilters, onOpen, onToggle }: ListBodyProps) {
+/** Exactly one of: error card, loading grid, empty state, no-match state, card grid (+ the Elsewhere group, W07b). */
+function AgentListBody({
+  list,
+  items,
+  visible,
+  observedPlaced,
+  observedElsewhere,
+  allMode,
+  workspaceNameOf,
+  workspaceRootOf,
+  newAgent,
+  onClearFilters,
+  onOpen,
+  onToggle,
+}: ListBodyProps) {
   if (list.error !== undefined && list.items === undefined) {
     return <LoadErrorCard title="Could not load agents" error={list.error} onRetry={list.refresh} />;
   }
   if (list.items === undefined) {
     return <LoadingGrid className="agent-grid" label="Agents" status="Loading agents" skeleton={SkeletonCard} />;
   }
-  if (items.length === 0) {
+  if (items.length === 0 && observedPlaced.length + observedElsewhere.length === 0) {
     return (
       <EmptyState
         icon={Bot}
@@ -145,7 +172,7 @@ function AgentListBody({ list, items, visible, allMode, workspaceNameOf, workspa
       />
     );
   }
-  if (visible.length === 0) {
+  if (visible.length === 0 && observedPlaced.length + observedElsewhere.length === 0) {
     return (
       <EmptyState
         icon={SearchX}
@@ -160,15 +187,29 @@ function AgentListBody({ list, items, visible, allMode, workspaceNameOf, workspa
     );
   }
   return (
-    <AgentGrid
-      items={visible}
-      pendingIds={list.pendingIds}
-      allMode={allMode}
-      workspaceNameOf={workspaceNameOf}
-      workspaceRootOf={workspaceRootOf}
-      onOpen={onOpen}
-      onToggle={onToggle}
-    />
+    <>
+      <AgentGrid
+        items={visible}
+        observed={observedPlaced}
+        pendingIds={list.pendingIds}
+        allMode={allMode}
+        workspaceNameOf={workspaceNameOf}
+        workspaceRootOf={workspaceRootOf}
+        onOpen={onOpen}
+        onToggle={onToggle}
+      />
+      {observedElsewhere.length > 0 && (
+        <section aria-label="Elsewhere">
+          <h2 className="agent-list-group">Elsewhere</h2>
+          <p className="agent-list-group-hint">Reported to the collector from projects that are not in Studio.</p>
+          <ul className="agent-grid" aria-label="Elsewhere agents">
+            {observedElsewhere.map((item) => (
+              <ObservedAgentCard key={`observed/${item.id}`} agent={item} />
+            ))}
+          </ul>
+        </section>
+      )}
+    </>
   );
 }
 
@@ -241,13 +282,21 @@ export function AgentListScreen() {
         : launchId;
   const newAgent = useNewAgentActions(() => setImportOpen(true), createWorkspace);
 
-  const items = list.items ?? [];
+  const allItems = list.items ?? [];
+  // W07b: workspace items feed the grid/filters/facets; observed items get
+  // their own (search + Workspace-facet only) pass and split into the
+  // workspace-placed group and "Elsewhere".
+  const items = useMemo(() => allItems.filter((item): item is WorkspaceAgentItem => item.kind === 'workspace'), [allItems]);
+  const observedItems = useMemo(() => allItems.filter((item): item is ObservedAgentItem => item.kind === 'observed'), [allItems]);
   // The `workspace` query key only applies in all-workspaces mode.
   const effectiveFilter = useMemo<AgentListFilter>(
     () => (allMode ? filter : { ...filter, workspaces: [] }),
     [allMode, filter]
   );
   const visible = useMemo(() => filterAgents(items, effectiveFilter), [items, effectiveFilter]);
+  const visibleObserved = useMemo(() => filterObserved(observedItems, effectiveFilter), [observedItems, effectiveFilter]);
+  const observedElsewhere = visibleObserved.filter((item) => item.workspaceId === null);
+  const observedPlaced = visibleObserved.filter((item) => item.workspaceId !== null);
   const filtered =
     effectiveFilter.q !== '' || effectiveFilter.labels.length > 0 || effectiveFilter.enabled !== undefined || effectiveFilter.workspaces.length > 0;
   const patch = useCallback((next: Partial<AgentListFilter>) => setFilter({ ...filter, ...next }), [filter, setFilter]);
@@ -284,10 +333,17 @@ export function AgentListScreen() {
           </p>
         )}
         {allMode && <SkippedNote skipped={list.skipped} nameOf={wsNameOf} />}
+        {list.observed === 'unavailable' && list.items !== undefined && (
+          <p className="agent-list-skipped" role="note">
+            The collector is not running, so agents deployed elsewhere are not shown.
+          </p>
+        )}
         <AgentListBody
           list={list}
           items={items}
           visible={visible}
+          observedPlaced={observedPlaced}
+          observedElsewhere={observedElsewhere}
           allMode={allMode}
           workspaceNameOf={wsNameOf}
           workspaceRootOf={wsRootOf}

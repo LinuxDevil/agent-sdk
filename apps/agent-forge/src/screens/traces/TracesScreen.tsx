@@ -15,10 +15,10 @@ import { Radio, RefreshCw, SearchX, X } from 'lucide-react';
 import { navigate } from '../../router/router';
 import { useRoute } from '../../router/useRoute';
 import { useAgents, useDaemonDown, useDaemonHealth, useTraces } from '../../observe/useObserve';
-import { ObserveDaemonDown, ObserveError } from '../../observe/chrome';
+import { ObserveDaemonDown, ObserveError, TraceTokens } from '../../observe/chrome';
 import type { TraceSort } from '../../observe/observeClient';
 import type { ObserveAgentRow, ObserveTraceRow } from '../../observe/types';
-import { fmtCost, fmtDuration, fmtInt, fmtStarted } from '../../observe/format';
+import { fmtCost, fmtDuration, fmtStarted } from '../../observe/format';
 import { Card } from '../../ui/Card';
 import { DataTable, ErrorCell, type Column, type TableSort } from '../../ui/DataTable';
 import { FilterBar } from '../../ui/FilterBar';
@@ -105,11 +105,7 @@ function columns(now: number): Column<ObserveTraceRow>[] {
       sortable: true,
       width: 86,
       hideBelow: 600,
-      render: (t) => (
-        <span title={`${fmtInt(t.input_tokens)} in / ${fmtInt(t.output_tokens)} out`}>
-          {fmtInt(t.input_tokens + t.output_tokens)}
-        </span>
-      ),
+      render: (t) => <TraceTokens trace={t} />,
     },
     { key: 'cost', header: 'Cost', align: 'right', sortable: true, width: 84, hideBelow: 600, render: (t) => fmtCost(t.cost_usd) },
   ];

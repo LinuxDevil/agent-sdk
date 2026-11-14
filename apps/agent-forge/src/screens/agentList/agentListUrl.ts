@@ -7,7 +7,7 @@
  * its tests share; label rules come from `shared/labels.ts`.
  */
 import { useCallback } from 'react';
-import type { WorkspaceAgentItem, WorkspaceListItem } from '../../../shared/wireTypes';
+import type { ObservedAgentItem, WorkspaceAgentItem, WorkspaceListItem } from '../../../shared/wireTypes';
 import { workspaceLabel } from '../../workspace/workspaceLabels';
 import { matchesLabels, normalizeLabels } from '../../../shared/labels';
 import { navigate, parseHash } from '../../router/router';
@@ -122,6 +122,25 @@ export function filterAgents(items: WorkspaceAgentItem[], filter: AgentListFilte
         a.id.localeCompare(b.id) ||
         a.workspaceId.localeCompare(b.workspaceId)
     );
+}
+
+/**
+ * The observed items the current filter keeps (W07b): the label and
+ * on/off facets don't apply (an observed agent has neither), so only `q`
+ * (name or project substring) and the Workspace facet narrow them - and
+ * the facet hides "Elsewhere" (`workspaceId: null`) whenever it is set.
+ * Order is the aggregate's (name, then project).
+ */
+export function filterObserved(items: ObservedAgentItem[], filter: AgentListFilter): ObservedAgentItem[] {
+  const q = filter.q.trim().toLowerCase();
+  return items.filter((item) => {
+    if (q !== '') {
+      const haystack = `${item.name}\n${item.project ?? ''}`.toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+    if (filter.workspaces.length > 0 && (item.workspaceId === null || !filter.workspaces.includes(item.workspaceId))) return false;
+    return true;
+  });
 }
 
 /**
