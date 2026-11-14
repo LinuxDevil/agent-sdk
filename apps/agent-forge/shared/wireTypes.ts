@@ -976,6 +976,8 @@ export interface ServeStatus extends ServeAgentConfig {
   publishedVersion: number | null;
   /** Masked: first 4 chars + '…' + last 4 - never the raw token. */
   tokenMasked: string;
+  /** Masked widget key (X04b), `null` until the user creates one - never the raw key. */
+  widgetKeyMasked: string | null;
   /** `/serve/<id>` - the client prefixes `location.origin`. */
   baseUrl: string;
 }

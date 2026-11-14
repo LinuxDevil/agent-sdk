@@ -16,11 +16,12 @@
     "server:start": "tsx server/index.ts",
     "server:build": "tsup --config server/tsup.config.ts",
     "server:start:prod": "node dist-server/index.cjs",
-    "build:studio": "npm run build && npm run server:build",
+    "build:studio": "npm run build && npm run build:widget && npm run server:build",
     "test:server": "vitest run -c server/vitest.config.ts",
     "typecheck:server": "tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p evals/tsconfig.json",
     "eval:author": "tsx evals/author/run.ts",
-    "test:e2e:studio": "npm run build:studio && playwright test"
+    "test:e2e:studio": "npm run build:studio && playwright test",
+    "build:widget": "vite build -c vite.widget.config.ts"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.5",

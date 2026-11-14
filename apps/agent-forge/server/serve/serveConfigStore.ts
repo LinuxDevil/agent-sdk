@@ -20,6 +20,12 @@ import type { ServeAgentConfig } from '../../shared/wireTypes';
 export interface ServeAgentEntry extends ServeAgentConfig {
   /** The bearer `/serve/<id>/*` callers present; `auth: token` on the SDK route handler. */
   token: string;
+  /**
+   * The widget key (X04b): a narrower credential the `<forge-chat>` embed
+   * carries - `fwk_`-prefixed, accepted only on `POST /serve/<id>/chat`
+   * from an allowed origin. `null` until the user creates one.
+   */
+  widgetKey: string | null;
 }
 
 /** The on-disk shape: schema-versioned so a later migration has a marker. */
@@ -40,6 +46,16 @@ export class ServeConfigInvalidError extends Error {}
 /** A fresh serve bearer, same entropy as the studio token. */
 function mintServeToken(): string {
   return randomBytes(24).toString('base64url');
+}
+
+/** A fresh widget key (X04b): `fwk_`-prefixed so logs and users can tell it from the serve token. */
+function mintWidgetKey(): string {
+  return `fwk_${randomBytes(24).toString('base64url')}`;
+}
+
+/** The entry a never-configured agent starts from. */
+function freshEntry(): ServeAgentEntry {
+  return { enabled: false, token: mintServeToken(), allowedOrigins: [], widgetKey: null };
 }
 
 /**
@@ -83,7 +99,12 @@ export class ServeConfigStore {
 
   private async readAll(): Promise<ServeFile> {
     const file = await readJsonFile<ServeFile>(this.file);
-    return file ?? { schemaVersion: 1, agents: {} };
+    const data = file ?? { schemaVersion: 1, agents: {} };
+    // Entries written before X04b have no `widgetKey`; normalize on read.
+    for (const entry of Object.values(data.agents)) {
+      entry.widgetKey ??= null;
+    }
+    return data;
   }
 
   /**
@@ -95,7 +116,7 @@ export class ServeConfigStore {
       const file = await this.readAll();
       const existing = file.agents[agentId];
       if (existing !== undefined) return existing;
-      const entry: ServeAgentEntry = { enabled: false, token: mintServeToken(), allowedOrigins: [] };
+      const entry = freshEntry();
       file.agents[agentId] = entry;
       await writeJsonAtomic(this.file, file);
       return entry;
@@ -106,11 +127,12 @@ export class ServeConfigStore {
   async put(agentId: string, patch: Partial<ServeAgentConfig>): Promise<ServeAgentEntry> {
     return withAgentLock(SERVE_LOCK, async () => {
       const file = await this.readAll();
-      const current = file.agents[agentId] ?? { enabled: false, token: mintServeToken(), allowedOrigins: [] };
+      const current = file.agents[agentId] ?? freshEntry();
       const next: ServeAgentEntry = {
         enabled: typeof patch.enabled === 'boolean' ? patch.enabled : current.enabled,
         token: current.token,
         allowedOrigins: patch.allowedOrigins !== undefined ? checkedOrigins(patch.allowedOrigins) : current.allowedOrigins,
+        widgetKey: current.widgetKey ?? null,
       };
       file.agents[agentId] = next;
       await writeJsonAtomic(this.file, file);
@@ -118,15 +140,49 @@ export class ServeConfigStore {
     });
   }
 
-  /** Replaces the agent's bearer and returns the new raw token. */
-  async rotateToken(agentId: string): Promise<string> {
+  /**
+   * The locked read-modify-write `rotateToken`/`createWidgetKey` share:
+   * `change` sees the stored (or fresh) entry and returns the entry to
+   * persist plus the raw secret to hand back.
+   */
+  private async rotateSecret(
+    agentId: string,
+    change: (current: ServeAgentEntry) => { entry: ServeAgentEntry; secret: string }
+  ): Promise<string> {
     return withAgentLock(SERVE_LOCK, async () => {
       const file = await this.readAll();
-      const current = file.agents[agentId] ?? { enabled: false, token: mintServeToken(), allowedOrigins: [] };
-      const token = mintServeToken();
-      file.agents[agentId] = { ...current, token };
+      const current = file.agents[agentId] ?? freshEntry();
+      const { entry, secret } = change(current);
+      file.agents[agentId] = entry;
       await writeJsonAtomic(this.file, file);
-      return token;
+      return secret;
+    });
+  }
+
+  /** Replaces the agent's bearer and returns the new raw token. */
+  async rotateToken(agentId: string): Promise<string> {
+    return this.rotateSecret(agentId, (current) => {
+      const token = mintServeToken();
+      return { entry: { ...current, token }, secret: token };
+    });
+  }
+
+  /** Creates or rotates the agent's widget key and returns the raw `fwk_` key (X04b). */
+  async createWidgetKey(agentId: string): Promise<string> {
+    return this.rotateSecret(agentId, (current) => {
+      const widgetKey = mintWidgetKey();
+      return { entry: { ...current, widgetKey }, secret: widgetKey };
+    });
+  }
+
+  /** Revokes the agent's widget key; the entry stays otherwise untouched. */
+  async revokeWidgetKey(agentId: string): Promise<void> {
+    await withAgentLock(SERVE_LOCK, async () => {
+      const file = await this.readAll();
+      const current = file.agents[agentId];
+      if (current === undefined || current.widgetKey === null) return;
+      file.agents[agentId] = { ...current, widgetKey: null };
+      await writeJsonAtomic(this.file, file);
     });
   }
 }

@@ -460,6 +460,16 @@ class RuntimeClient implements AgentApi {
     return this.request(`/agents/${encodeURIComponent(agentId)}/serve/mcp`, { method: 'DELETE' });
   }
 
+  /** Creates or rotates the widget key and returns the raw `fwk_` key once (`POST .../serve/widget-key`, X04b). */
+  async createWidgetKey(agentId: string): Promise<{ widgetKey: string }> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/widget-key`, { method: 'POST' });
+  }
+
+  /** Revokes the widget key (`DELETE .../serve/widget-key`, X04b). */
+  async revokeWidgetKey(agentId: string): Promise<void> {
+    await this.request(`/agents/${encodeURIComponent(agentId)}/serve/widget-key`, { method: 'DELETE' });
+  }
+
   /** Records a 1-5 human rating on a run's trace (`POST /agents/:id/rating`, R04a). */
   async rateRun(agentId: string, body: RatingRequest): Promise<void> {
     await this.request(`/agents/${encodeURIComponent(agentId)}/rating`, {

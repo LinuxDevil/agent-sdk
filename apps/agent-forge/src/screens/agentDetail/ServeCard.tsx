@@ -161,6 +161,170 @@ function CurlSnippet({ endpoint, onCopy }: CurlSnippetProps): JSX.Element {
   );
 }
 
+/** The `<script>` + `<forge-chat>` embed lines (X04b); `key` is `YOUR_WIDGET_KEY` or the real `fwk_` key. */
+function embedSnippet(origin: string, baseUrl: string, agentId: string, key: string): string {
+  return [
+    `<script src="${origin}${baseUrl}/widget.js" defer></script>`,
+    `<forge-chat endpoint="${origin}${baseUrl}/chat" token="${key}" title="${agentId}"></forge-chat>`,
+  ].join('\n');
+}
+
+interface ServeToggleRowProps {
+  published: boolean;
+  publishedVersion: number | null;
+  enabled: boolean;
+  toggling: boolean;
+  onToggle(enabled: boolean): void;
+}
+
+/** The enable switch + publish state (X02b): disabled with a title until a version is published. */
+function ServeToggleRow({ published, publishedVersion, enabled, toggling, onToggle }: ServeToggleRowProps): JSX.Element {
+  return (
+    <div className="serve-card-row serve-card-toggle">
+      <Switch
+        id="serve-enabled"
+        checked={enabled}
+        disabled={!published || toggling}
+        title={published ? undefined : 'Publish a version first'}
+        label="Serve the published version"
+        onChange={(next) => onToggle(next)}
+      />
+      <label className="serve-card-switch-label" htmlFor="serve-enabled">
+        Serve the published version
+      </label>
+      <span className="serve-card-version">{published ? `v${publishedVersion}` : 'Not published'}</span>
+    </div>
+  );
+}
+
+interface WidgetEmbedProps {
+  agentId: string;
+  status: ServeStatus;
+  onCopy(text: string): void;
+  onChanged(): Promise<void>;
+}
+
+interface EmbedCreateProps {
+  canCreate: boolean;
+  busy: boolean;
+  onCreate(): void;
+}
+
+/** The no-key state: one button, disabled with the reason until an origin exists. */
+function EmbedCreate({ canCreate, busy, onCreate }: EmbedCreateProps): JSX.Element {
+  return (
+    <div className="serve-card-row">
+      <button
+        type="button"
+        className="btn btn-secondary btn-sm"
+        disabled={!canCreate || busy}
+        title={canCreate ? undefined : 'Add an allowed origin first'}
+        onClick={onCreate}
+      >
+        {busy ? 'Creating…' : 'Create widget key'}
+      </button>
+    </div>
+  );
+}
+
+interface EmbedWithKeyProps {
+  placeholder: string;
+  hasRawKey: boolean;
+  busy: 'create' | 'revoke' | null;
+  onCopyWithKey(): void;
+  onMint(): void;
+  onRevoke(): void;
+}
+
+/** The keyed state: placeholder snippet + Copy with key / Rotate / Revoke. */
+function EmbedWithKey({ placeholder, hasRawKey, busy, onCopyWithKey, onMint, onRevoke }: EmbedWithKeyProps): JSX.Element {
+  return (
+    <>
+      <pre className="serve-card-pre">{placeholder}</pre>
+      <div className="serve-card-row">
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={!hasRawKey}
+          title={hasRawKey ? undefined : 'Rotate the key to copy it'}
+          onClick={onCopyWithKey}
+        >
+          Copy with key
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={onMint}>
+          {busy === 'create' ? 'Rotating…' : 'Rotate key'}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy !== null} onClick={onRevoke}>
+          {busy === 'revoke' ? 'Revoking…' : 'Revoke'}
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * The "Embed on a page" details (X04b): the widget key is the only
+ * credential the snippet ever carries - the serve token stays
+ * server-to-server. The raw key lives in component state only, returned
+ * once by create/rotate; the masked form comes from `ServeStatus`.
+ */
+function WidgetEmbed({ agentId, status, onCopy, onChanged }: WidgetEmbedProps): JSX.Element {
+  const toast = useToast();
+  const [rawKey, setRawKey] = useState<string | null>(null);
+  const [busy, setBusy] = useState<'create' | 'revoke' | null>(null);
+  const hasKey = status.widgetKeyMasked !== null;
+  const canCreate = status.allowedOrigins.length > 0;
+  const placeholder = embedSnippet(location.origin, status.baseUrl, agentId, 'YOUR_WIDGET_KEY');
+
+  const act = async (kind: 'create' | 'revoke', call: () => Promise<unknown>) => {
+    setBusy(kind);
+    try {
+      await call();
+      await onChanged();
+    } catch (err) {
+      toast.show({ message: errorMessage(err), tone: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  /** Create-or-rotate: the endpoint mints a fresh `fwk_` key either way. */
+  const mint = () =>
+    act('create', async () => {
+      const { widgetKey } = await runtimeClient.createWidgetKey(agentId);
+      setRawKey(widgetKey);
+    });
+  const revoke = () =>
+    act('revoke', async () => {
+      await runtimeClient.revokeWidgetKey(agentId);
+      setRawKey(null);
+    });
+  const copyWithKey = () => {
+    if (rawKey !== null) onCopy(embedSnippet(location.origin, status.baseUrl, agentId, rawKey));
+  };
+
+  return (
+    <details className="serve-card-snippet serve-card-embed">
+      <summary>Embed on a page</summary>
+      {hasKey ? (
+        <EmbedWithKey
+          placeholder={placeholder}
+          hasRawKey={rawKey !== null}
+          busy={busy}
+          onCopyWithKey={copyWithKey}
+          onMint={() => void mint()}
+          onRevoke={() => void revoke()}
+        />
+      ) : (
+        <EmbedCreate canCreate={canCreate} busy={busy === 'create'} onCreate={() => void mint()} />
+      )}
+      <p className="serve-card-note">
+        The widget key can only chat with this agent, and only from the allowed origins. Rotate or revoke it here at any time.
+      </p>
+    </details>
+  );
+}
+
 interface ServeActionsDeps {
   agentId: string;
   refresh(): Promise<void>;
@@ -421,20 +585,13 @@ export function ServeCard({ agentId }: { agentId: string }): JSX.Element {
 
   return (
     <Card title="Serve" description="Call the published version from apps on this machine while Studio runs." className="serve-card">
-      <div className="serve-card-row serve-card-toggle">
-        <Switch
-          id="serve-enabled"
-          checked={status.enabled}
-          disabled={!published || toggling}
-          title={published ? undefined : 'Publish a version first'}
-          label="Serve the published version"
-          onChange={(enabled) => void toggle(enabled)}
-        />
-        <label className="serve-card-switch-label" htmlFor="serve-enabled">
-          Serve the published version
-        </label>
-        <span className="serve-card-version">{published ? `v${status.publishedVersion}` : 'Not published'}</span>
-      </div>
+      <ServeToggleRow
+        published={published}
+        publishedVersion={status.publishedVersion}
+        enabled={status.enabled}
+        toggling={toggling}
+        onToggle={(enabled) => void toggle(enabled)}
+      />
       {published ? (
         <>
           <ServeFacts
@@ -449,6 +606,9 @@ export function ServeCard({ agentId }: { agentId: string }): JSX.Element {
           />
           <OriginsEditor agentId={agentId} allowedOrigins={status.allowedOrigins} onSaved={setStatus} />
           {status.enabled ? <CurlSnippet endpoint={endpoint} onCopy={(text) => void copy(text)} /> : null}
+          {status.enabled ? (
+            <WidgetEmbed agentId={agentId} status={status} onCopy={(text) => void copy(text)} onChanged={refresh} />
+          ) : null}
         </>
       ) : null}
       {/* The MCP section stays visible unpublished too: its Start button is

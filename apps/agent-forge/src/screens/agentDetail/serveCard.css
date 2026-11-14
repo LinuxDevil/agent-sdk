@@ -79,6 +79,11 @@
   font-size: var(--fs-meta);
   color: var(--text-faint);
 }
+.serve-card-note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+}
 .serve-card-snippet {
   border: 1px solid var(--border);
   border-radius: var(--radius);
