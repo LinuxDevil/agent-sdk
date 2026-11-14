@@ -441,6 +441,9 @@ describe('settings/secrets HTTP routes', () => {
 
   it('POST /agents/:id/deploy shells out to `lousho build` and reports a non-zero exit when the SDK has not been built', async () => {
     await request(app).put('/agents/deploy-me-2').send(SPEC);
+    // X05: deploy builds the published snapshot, so publish first.
+    const publish = await request(app).post('/agents/deploy-me-2/publish').send({});
+    expect(publish.status).toBe(200);
     const res = await request(app).post('/agents/deploy-me-2/deploy').send({ adapter: 'node-server' });
     // This test environment may or may not have `dist/` built - either way
     // the route must resolve (never hang/throw) and report SOME exit code

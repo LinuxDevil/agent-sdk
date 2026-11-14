@@ -20,15 +20,18 @@ import type { StudioEventBus } from '../events/eventBus';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import type { AgentRepo } from '../storage/agentRepo';
 import { withAgentLock } from '../storage/atomic';
+import { writePublishedSpec } from '../deployRunner';
 import { specHash } from '../storage/specHash';
 import type { VersionStore } from '../storage/versionStore';
 import { workspaceOf } from '../workspace/middleware';
 
-/** What `publishAgent`/`readPublishedSpec` need: the workspace's repo, versions and event bus. */
+/** What `publishAgent`/`readPublishedSpec` need: the workspace's repo, versions, event bus and root. */
 export interface PublishDeps {
   repo: AgentRepo;
   versions: VersionStore;
   events: StudioEventBus;
+  /** Workspace root - `published.yaml` lands in `<baseDir>/.lousho/agents/<id>/` (X05). */
+  baseDir: string;
 }
 
 /** A publish failure with its HTTP status and wire `code`. */
@@ -81,11 +84,27 @@ export async function publishAgent(
         target = written;
       }
     }
-    if (target === meta.publishedVersion) return { publishedVersion: target };
-    await deps.repo.writeMeta(id, { ...meta, publishedVersion: target, updatedAt: new Date().toISOString() });
-    deps.events.publish({ type: 'agent.changed', agentId: id, reason: 'meta' });
+    if (target !== meta.publishedVersion) {
+      await deps.repo.writeMeta(id, { ...meta, publishedVersion: target, updatedAt: new Date().toISOString() });
+      deps.events.publish({ type: 'agent.changed', agentId: id, reason: 'meta' });
+    }
+    await writePublishedSnapshot(id, deps);
     return { publishedVersion: target };
   });
+}
+
+/**
+ * X05: keep `.lousho/agents/<id>/published.yaml` - the file `lousho build`
+ * and `lousho mcp` read - in step with the pointer. Best effort: a write
+ * failure logs and never fails the publish.
+ */
+async function writePublishedSnapshot(id: string, deps: PublishDeps): Promise<void> {
+  try {
+    const published = await readPublishedSpec(id, deps);
+    if (published !== undefined) await writePublishedSpec(deps.baseDir, id, published.spec);
+  } catch (error) {
+    console.warn(`[agent-forge] published.yaml write for '${id}' failed:`, error);
+  }
 }
 
 /**
@@ -148,6 +167,7 @@ export function registerPublishRoutes(app: Express): void {
           repo: ws.repo,
           versions: ws.versions,
           events: ws.events,
+          baseDir: ws.ref.root,
         });
         res.json(result);
       } catch (error) {

@@ -125,7 +125,7 @@ import {
   readAgentTrace,
   traceDirExists,
 } from './traceStore';
-import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy } from './deployRunner';
+import { DEPLOY_ADAPTERS, isDeployAdapter, runDeploy, writePublishedSpec } from './deployRunner';
 import { checkApiAccess, checkHostAndOrigin, checkHostOnly, type StudioAccessOptions } from './auth';
 import { registerObserveProxy } from './observeProxy';
 import { CollectorManager } from './collector';
@@ -164,7 +164,7 @@ import { registerSuggestionRoutes } from './routes/suggestionRoutes';
 import { registerExportRoutes } from './lifecycle/export';
 import { registerImportRoutes } from './lifecycle/import';
 import { registerPortabilityRoutes } from './passes/portabilityRoutes';
-import { registerPublishRoutes } from './lifecycle/publish';
+import { readPublishedSpec, registerPublishRoutes } from './lifecycle/publish';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
@@ -1004,18 +1004,26 @@ function registerDeployRoutes(app: Express): void {
         return;
       }
       const ws = workspaceOf(req);
-      const saved = await ws.agentStore.load(paramId(req));
+      const id = paramId(req);
+      const saved = await ws.agentStore.load(id);
       if (!saved) {
-        res.status(404).json({ error: `No saved agent '${paramId(req)}' to deploy - save it first` });
+        res.status(404).json({ error: `No agent '${id}'` });
         return;
       }
+      // X05: deploy builds the PUBLISHED snapshot, never the working copy.
+      const published = await readPublishedSpec(id, { repo: ws.repo, versions: ws.versions });
+      if (published === undefined) {
+        sendError(res, 409, 'Publish a version before deploying', 'LOUSHO_NOT_PUBLISHED');
+        return;
+      }
+      const specPath = await writePublishedSpec(ws.ref.root, id, published.spec);
       // W11c: a bridge workspace builds with the project's own SDK bin;
       // in-process/read-only keep Studio's (`<ws>/bin/lousho.js` - the
       // launch workspace IS the SDK checkout there, and read-only never
       // reaches this line: the /agents write gate refused it).
       const selection = ws.hostSelector.current();
       const cliEntry = selection.mode === 'bridge' && selection.sdk !== undefined ? selection.sdk.binPath : undefined;
-      const result = await runDeploy(ws.ref.root, paramId(req), adapter, cliEntry);
+      const result = await runDeploy(ws.ref.root, id, adapter, { version: published.version, specPath }, {}, cliEntry);
       res.status(result.exitCode === 0 ? 200 : 422).json(result);
     })
   );
