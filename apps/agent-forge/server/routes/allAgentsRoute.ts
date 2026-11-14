@@ -16,20 +16,23 @@
 import { statSync } from 'node:fs';
 import type { Express, NextFunction, Request, Response } from 'express';
 import { ALL_WORKSPACES, type WorkspaceRef } from '../../shared/workspace';
-import type { AgentListItem, AllAgentsResponse, AnyAgentItem } from '../../shared/wireTypes';
+import type { AgentListItem, AllAgentsResponse, AnyAgentItem, CodeAgentItem } from '../../shared/wireTypes';
 import { sendError } from '../http/routeUtils';
 import { AgentRepo } from '../storage/agentRepo';
 import { buildAgentListItems } from './agentListItems';
 import { fetchDaemonAgents, toObservedItems, type WorkspaceMatch } from '../observed/observedAgents';
 import { observeProjectOf } from '../observed/observeProject';
 import { requestedWorkspaceId } from '../workspace/middleware';
+import type { CodeAgentCache } from '../workspace/codeAgentScan';
 import type { WorkspaceContext } from '../workspace/context';
-import type { WorkspaceRegistry } from '../workspace/workspaceRegistry';
+import type { WorkspaceEntry, WorkspaceRegistry } from '../workspace/workspaceRegistry';
 
 export interface AllAgentsDeps {
   registry: WorkspaceRegistry;
   /** The warm contexts (`WorkspaceManager.warm()`); the launch context is always among them. */
   warm: () => WorkspaceContext[];
+  /** The app's one code-agent scan cache (W08a); each listed workspace contributes its scanned code agents. */
+  codeAgents: CodeAgentCache;
 }
 
 interface WorkspaceRead {
@@ -60,7 +63,48 @@ async function readWorkspace(ref: WorkspaceRef, warm: Map<string, WorkspaceConte
   }
 }
 
-/** The aggregate list (W07a/W08a extend it with the other agent kinds). */
+/**
+ * The aggregate's code agents (W08a): each successfully-read workspace's
+ * cached-or-fresh pattern scan contributes `CodeAgentItem`s. A code dir
+ * whose `name` equals a Studio agent id in the same workspace is omitted
+ * - the Studio copy wins. A failed scan drops that workspace's code
+ * items only (warned, never fatal to the list).
+ */
+async function codeAgentItems(
+  matches: WorkspaceMatch[],
+  entries: Map<string, WorkspaceEntry>,
+  nameOf: Map<string, string>,
+  cache: CodeAgentCache
+): Promise<CodeAgentItem[]> {
+  const items: CodeAgentItem[] = [];
+  for (const match of matches) {
+    const entry = entries.get(match.id);
+    if (entry === undefined) continue;
+    try {
+      const scan = cache.get(entry.id) ?? (await cache.scan(entry));
+      for (const dir of scan.agents) {
+        if (match.agentIds.has(dir.name)) continue;
+        items.push({
+          kind: 'code',
+          id: dir.path,
+          name: dir.name,
+          workspaceId: entry.id,
+          configFile: dir.configFile,
+          configKind: dir.configKind,
+        });
+      }
+    } catch (error) {
+      console.warn(`[agent-forge] skipping code agents for workspace '${entry.id}' in the aggregate agent list: ${(error as Error).message}`);
+    }
+  }
+  return items.sort((a, b) => {
+    const byWs = (nameOf.get(a.workspaceId) ?? '').localeCompare(nameOf.get(b.workspaceId) ?? '');
+    if (byWs !== 0) return byWs;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+/** The aggregate list (W07a/W08a: workspace + observed + code agents). */
 // fallow-ignore-next-line unused-export -- W06a contract export; W06b's aggregate screen and W07a/W08a consume it
 export async function listAllAgents(deps: AllAgentsDeps): Promise<AllAgentsResponse> {
   const refs = await deps.registry.list();
@@ -115,7 +159,11 @@ export async function listAllAgents(deps: AllAgentsDeps): Promise<AllAgentsRespo
     if (byWs !== 0) return byWs;
     return a.name.toLowerCase().localeCompare(b.name.toLowerCase()) || a.id.localeCompare(b.id);
   });
-  return { items: [...items, ...placed, ...elsewhere], skipped, observed: observedRows === undefined ? 'unavailable' : 'ok' };
+
+  // Code agents (W08a) sort after the workspace's own and observed items.
+  const entries = new Map(refs.map((ref) => [ref.id, ref]));
+  const codeItems = await codeAgentItems(matches, entries, nameOf, deps.codeAgents);
+  return { items: [...items, ...placed, ...elsewhere, ...codeItems], skipped, observed: observedRows === undefined ? 'unavailable' : 'ok' };
 }
 
 /**
