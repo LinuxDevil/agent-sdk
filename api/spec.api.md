@@ -95,7 +95,7 @@ export interface AgentSpecV2 {
     codeMode?: boolean | CodeModeOptions;
     compaction?: boolean | AgentSpecV2Compaction;
     description?: string;
-    evals?: never;
+    evals?: EvalGateSpec[];
     fallbackModels?: string[];
     flow?: AgentFlow;
     guardrails?: GuardrailSpec[];
@@ -244,6 +244,42 @@ interface EndNode extends NodeRunOptions {
     // (undocumented)
     value?: unknown;
 }
+
+// @public
+export type EvalGate = {
+    calledTool: string;
+} | {
+    notCalledTool: string;
+} | {
+    maxCostUsd: number;
+} | {
+    maxSteps: number;
+} | {
+    judge: EvalJudgeGate;
+};
+
+// @public
+export const evalGateSchema: z.ZodType<EvalGate>;
+
+// @public
+export interface EvalGateSpec {
+    dataset: string;
+    gates: EvalGate[];
+    minPassRate: number;
+}
+
+// @public
+export const evalGateSpecSchema: z.ZodType<EvalGateSpec>;
+
+// @public
+export interface EvalJudgeGate {
+    minScore: number;
+    model: string;
+    rubric: string;
+}
+
+// @public
+export const evalSpecListSchema: z.ZodType<EvalGateSpec[]>;
 
 // @public (undocumented)
 interface EvaluatorNode {

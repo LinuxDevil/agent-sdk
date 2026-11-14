@@ -34,6 +34,10 @@ export function useAgentRouteSync(): void {
   useEffect(() => {
     if (agentsWorkspaceId !== undefined && agentsWorkspaceId !== activeWorkspace()) return;
     const { agentId: openId, agents: saved, dirty: unsaved, switchAgent: open, toast: notify } = latest.current;
+    // `agents` is a dep (not only read through `latest`): a list refresh that
+    // lands after the hash changed - an Author Apply's agent.changed event is
+    // debounced - must re-run the sync, or a just-created agent's deep link
+    // falls back against the stale list and never retries.
     const action = routeSyncAction(routeId, openId, saved, agentsLoaded);
     if (action.kind === 'fallback') {
       navigate(agentListPath(activeWorkspace()), { replace: true });
@@ -48,7 +52,7 @@ export function useAgentRouteSync(): void {
       notify.show({ tone: 'error', message: `Could not open agent ${action.id}: ${err instanceof Error ? err.message : String(err)}` });
       navigate(agentListPath(activeWorkspace()), { replace: true });
     });
-  }, [routeId, agentsLoaded, agentsWorkspaceId]);
+  }, [routeId, agentsLoaded, agents, agentsWorkspaceId]);
 
   // The agent the URL last agreed with; `undefined` until the list has loaded.
   const synced = useRef<string | undefined>(undefined);

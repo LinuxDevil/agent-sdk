@@ -61,6 +61,12 @@ export default defineConfig({
       // No daemon here: keep the LLM-judge loop (server/judge.ts) from polling it.
       LOUSHO_STUDIO_JUDGE: '0',
       LOUSHO_STUDIO_HOME: studioHome,
+      // X08: the Agent Author runs a scripted mockModel (server/author/
+      // authorScript.ts) so forgeBuilder.spec.ts needs no provider key.
+      // The e2e flag keeps the hook live under the prod server's
+      // NODE_ENV=production; no other spec touches the Author.
+      LOUSHO_STUDIO_E2E: '1',
+      LOUSHO_FORGE_AUTHOR_SCRIPT: path.join(moduleDir, 'e2e', 'fixtures', 'authorScript.json'),
     },
     url: `http://127.0.0.1:${port}/health`,
     reuseExistingServer: false,

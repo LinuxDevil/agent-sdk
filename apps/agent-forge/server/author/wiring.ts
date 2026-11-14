@@ -74,6 +74,8 @@ export interface CreateAuthorRunnerDeps {
   mcpConnect?: typeof connectMcp;
   /** Test seam: resolves the turn provider without the stored/env key lookup. */
   providerFor?: (model: string) => LLMProvider;
+  /** X08 e2e hook: the scripted provider `LOUSHO_FORGE_AUTHOR_SCRIPT` installed at startup. */
+  scriptedProvider?: LLMProvider;
   /** The draft review propose tools run before showing a card (PLAN §8.4); defaults to AA12's `createReviewDraft`. */
   reviewDraft?: ReviewDraft;
 }
@@ -139,5 +141,6 @@ export function createAuthorRunner(deps: CreateAuthorRunnerDeps): AuthorTurnRunn
       now,
     }),
     ...(deps.providerFor ? { providerFor: deps.providerFor } : {}),
+    ...(deps.scriptedProvider ? { scriptedProvider: deps.scriptedProvider } : {}),
   });
 }

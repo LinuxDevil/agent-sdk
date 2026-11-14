@@ -14,6 +14,7 @@ import type { ReasoningOption } from '../../providers/reasoning';
 import type { BackoffOptions } from '../../providers/resilience';
 import type { SubagentOptions } from '../../subagents/backgroundTasks';
 import type { AbortListenerSpec } from './abortListeners';
+import type { EvalGateSpec } from './evals';
 import type { AgentFlow } from '../../types/flow';
 import type { GuardrailSpec } from './guardrails';
 import type { HandoffSpec } from './handoffs';
@@ -107,8 +108,8 @@ export interface AgentSpecV2 {
   abortListeners?: AbortListenerSpec[]; // R03a
   /** A flow the run follows instead of a plain agent loop (S21): executable step shapes only, each with an explicit id. */
   flow?: AgentFlow; // S21
-  /** Eval gates the publish gate runs (X01); not supported yet. */
-  evals?: never; // X01
+  /** Eval gates the publish gate runs over observe datasets (X01); Studio executes them, the agent runtime ignores them. */
+  evals?: EvalGateSpec[]; // X01
 }
 
 /** A sub-agent written inline: an AgentSpecV2 without the keys only a top-level agent has. `description` is required. */

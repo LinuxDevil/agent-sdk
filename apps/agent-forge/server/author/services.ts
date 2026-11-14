@@ -39,6 +39,8 @@ export interface CreateAuthorServicesOptions {
   mcpConnect?: typeof connectMcp;
   /** Test/eval seam: resolves the turn provider without the stored/env key lookup. */
   providerFor?: (model: string) => LLMProvider;
+  /** X08 e2e hook: the scripted provider `LOUSHO_FORGE_AUTHOR_SCRIPT` installed at startup. */
+  scriptedProvider?: LLMProvider;
   /**
    * The draft review propose tools run before showing a card (PLAN §8.4).
    * Defaults to `passReview` (always-approve) like `createApp`'s wiring;
@@ -75,6 +77,7 @@ export function createAuthorServices(deps: CreateAuthorServicesOptions): AuthorS
       workspaceResolver: deps.workspaceResolver,
       ...(deps.mcpConnect ? { mcpConnect: deps.mcpConnect } : {}),
       ...(deps.providerFor ? { providerFor: deps.providerFor } : {}),
+      ...(deps.scriptedProvider ? { scriptedProvider: deps.scriptedProvider } : {}),
       ...(deps.reviewDraft ? { reviewDraft: deps.reviewDraft } : {}),
     }),
     applyCard: (session, proposalId) =>
