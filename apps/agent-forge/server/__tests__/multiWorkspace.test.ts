@@ -134,7 +134,7 @@ describe('multi-workspace Studio (WorkspaceManager over HTTP)', () => {
       passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
       spendLog,
       alerts,
-      collector: () => ({ url: 'http://127.0.0.1:7777' }),
+      collector: { url: () => 'http://127.0.0.1:7777', token: () => undefined },
       studioVersion: 'test',
     };
     registry = new WorkspaceRegistry(path.join(studioDir, 'workspaces.json'));

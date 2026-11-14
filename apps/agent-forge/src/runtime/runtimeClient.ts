@@ -27,6 +27,8 @@ import type {
   ChatSessionRecord,
   ChatStatePayload,
   CodeAgentSpecResponse,
+  CollectorStatus,
+  CollectorUpdate,
   CreateAgentRequest,
   CreateDraftRequest,
   DebugStatePayload,
@@ -787,6 +789,16 @@ class RuntimeClient implements AgentApi {
   /** Switches the active profile. */
   async activateSettingsProfile(profileId: string): Promise<SettingsFile> {
     return this.request(`/settings/profiles/${encodeURIComponent(profileId)}/activate`, { method: 'POST' });
+  }
+
+  /** The collector (observe daemon) status; `probe` re-checks the URL against the daemon first. */
+  async collectorStatus(probe = false): Promise<CollectorStatus> {
+    return this.request(`/settings/collector${probe ? '?probe=1' : ''}`, { method: 'GET' });
+  }
+
+  /** Persists a Settings → Collector change (`token` undefined keeps, null removes, a string sets the named secret). */
+  async updateCollector(update: CollectorUpdate): Promise<CollectorStatus> {
+    return this.request('/settings/collector', { method: 'PUT', body: JSON.stringify(update) });
   }
 
   /** R2: deploy-target names this app's Settings dropdown offers - see server/deployRunner.ts's DEPLOY_ADAPTERS. */

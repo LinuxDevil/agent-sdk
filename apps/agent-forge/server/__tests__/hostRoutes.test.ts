@@ -78,7 +78,7 @@ describe('host routes (W11c)', () => {
       passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
       spendLog,
       alerts,
-      collector: () => ({ url: 'http://127.0.0.1:9' }),
+      collector: { url: () => 'http://127.0.0.1:9', token: () => undefined },
       studioVersion: '9.9.9-studio',
       selectHost: (ref, deps) =>
         new WorkspaceHostSelector(ref, {

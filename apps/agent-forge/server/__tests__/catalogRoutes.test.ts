@@ -52,7 +52,7 @@ describe('catalog routes', () => {
       passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
       spendLog,
       alerts: new AlertStore(path.join(studioDir, 'alerts.json')),
-      collector: () => ({ url: 'http://127.0.0.1:1' }),
+      collector: { url: () => 'http://127.0.0.1:1', token: () => undefined },
       studioVersion: 'test',
     };
     ctx = createWorkspaceContext(workspaceRefFor(baseDir), services);

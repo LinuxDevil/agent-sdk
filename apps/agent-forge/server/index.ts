@@ -17,6 +17,7 @@ import { RunManager } from './runRegistry';
 import { SecretsStore } from './secretsStore';
 import { SettingsStore } from './settingsStore';
 import { startJudgeLoop, type JudgeLoopOptions } from './judge';
+import { CollectorManager } from './collector';
 import type { IdleVersioner } from './storage/idleVersioner';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
 import { createWorkspaceContext, type WorkspaceServices } from './workspace/context';
@@ -32,7 +33,6 @@ import { TemplateCatalog } from './templates/templateCatalog';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
-import { envCollector } from './host/hostSelector';
 import { VERSION } from 'lousho';
 
 export interface StudioServerHandle {
@@ -49,6 +49,8 @@ export interface StudioServerHandle {
   token: string;
   /** The URL to open: the studio's own origin with `?token=` appended. */
   url: string;
+  /** The app's collector (collector.ts): `close()` already stopped a Studio-started daemon. */
+  collector: CollectorManager;
   close: () => Promise<void>;
 }
 
@@ -112,6 +114,14 @@ export interface StartStudioServerOptions {
    * tests pass a temp dir so they never touch a real home (W02b).
    */
   studioHome?: string;
+  /**
+   * The collector (observe daemon) manager - `false` never starts one in
+   * this process (`LOUSHO_STUDIO_COLLECTOR=0` does the same; the e2e server
+   * uses it against its observe stub), a `CollectorManager` is used as-is
+   * (tests), and the default builds one over the app's settings/secrets
+   * stores and `start()`s it before `listen` (collector.ts).
+   */
+  collector?: false | CollectorManager;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -159,6 +169,18 @@ export async function startStudioServer(
   const paths = studioPaths();
   const secretsStore = new SecretsStore(paths);
   const settingsStore = new SettingsStore(paths);
+  // The one collector every daemon client follows (collector.ts): attach
+  // to a running daemon, start one on a loopback URL, or report a remote
+  // one down. `LOUSHO_STUDIO_COLLECTOR=0` / `collector: false` only ever
+  // attaches - nothing is spawned in this process.
+  const collector =
+    options.collector !== undefined && options.collector !== false
+      ? options.collector
+      : new CollectorManager({
+          settings: settingsStore,
+          secrets: secretsStore,
+          ...(options.collector === false ? { autoStart: false } : {}),
+        });
 
   // The launch folder is added to the workspace registry on every start
   // (`ensure` keeps one entry and bumps lastOpenedAt on a restart) and
@@ -188,9 +210,9 @@ export async function startStudioServer(
     passRunner,
     spendLog,
     alerts,
-    // W11b: bridge children report to the same daemon Studio reads; W12's
-    // CollectorManager replaces envCollector behind the same shape.
-    collector: envCollector,
+    // W12: the one CollectorManager feeds run reporting here and bridge
+    // children through the host selector's env (context.ts adapts it).
+    collector,
     studioVersion: VERSION,
   };
   const workspace = createWorkspaceContext(launchRef, services);
@@ -244,6 +266,7 @@ export async function startStudioServer(
     spendLog,
     passRunner,
     alerts,
+    collector,
   });
   const server = http.createServer(app);
   // One upgrade listener for every WS endpoint: the shared Host/Origin/
@@ -265,9 +288,14 @@ export async function startStudioServer(
     createAuthorUpgradeHandler({ runner: authorRunner, sessions: authorSessions })
   );
 
+  // The collector resolves (attach or in-process start) before the API
+  // listens, so the first `/observe` request already has a target.
+  await collector.start();
+
   await listen(server, port, host);
   const judgeOption = options.judge ?? (options.observe === false ? false : {});
-  const judgeLoop = judgeOption === false ? undefined : startJudgeLoop({ ...judgeOption, secretsStore });
+  const judgeLoop =
+    judgeOption === false ? undefined : startJudgeLoop({ ...judgeOption, secretsStore, collector });
   const boundPort = (server.address() as { port: number }).port;
   const urlHost = host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host.includes(':') ? `[${host}]` : host;
 
@@ -278,6 +306,7 @@ export async function startStudioServer(
     upgradeRouter,
     token,
     url: `http://${urlHost}:${boundPort}/?token=${encodeURIComponent(token)}`,
+    collector,
     close: async () => {
       judgeLoop?.stop();
       // Abort in-flight passes and settle queued ones; running jobs get the
@@ -294,6 +323,8 @@ export async function startStudioServer(
       workspace.inbox.stop();
       workspace.triggers.stop();
       workspace.cron.stop();
+      // A daemon this Studio started stops with it; an attached one is left alone.
+      await collector.stop();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     },
   };
@@ -325,8 +356,23 @@ if (isMainModule) {
   startStudioServer({ port, host, baseDir, staticDir, judge })
     .then((handle) => {
       console.log(`[lousho studio] API server listening on http://${host ?? '127.0.0.1'}:${handle.port}`);
+      const collector = handle.collector.status();
+      if (collector.mode === 'started') {
+        console.log(`[lousho studio] Collector: started on ${collector.url} (stops with Studio)`);
+      } else if (collector.mode === 'attached') {
+        console.log(`[lousho studio] Collector: attached to ${collector.url}`);
+      } else if (collector.mode === 'remote') {
+        console.log(`[lousho studio] Collector: remote ${collector.url}`);
+      } else {
+        console.log(`[lousho studio] Collector: not reachable (${collector.error ?? 'unknown'})`);
+      }
       // `lousho studio` mints the token itself and prints this URL; only print it when launched directly.
       if (!process.env[STUDIO_TOKEN_ENV]) console.log(`[lousho studio] Agent Forge: ${handle.url}`);
+      const shutdown = () => {
+        void handle.close().finally(() => process.exit(0));
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
     })
     .catch((error) => {
       console.error(error instanceof Error ? error.message : String(error));

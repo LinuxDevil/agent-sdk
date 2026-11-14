@@ -38,10 +38,16 @@ vi.mock('../../runtime/runtimeClient', () => ({
     }),
     savePassSettings: async (patch: unknown) => patch,
     getPassSpend: async () => ({ month: '2026-11', totalUsd: 0, calls: 0, byKind: {} }),
+    collectorStatus: async () => ({
+      mode: 'down',
+      url: 'http://127.0.0.1:7777',
+      configuredUrl: null,
+      lockedByEnv: false,
+      hasToken: false,
+      daemonVersion: null,
+      error: 'No collector answered at http://127.0.0.1:7777.',
+    }),
   },
-}));
-vi.mock('../../shell/DaemonStatus', () => ({
-  useCollectorStatus: () => ({ state: 'down', target: undefined }),
 }));
 
 async function mount(variant?: 'drawer' | 'screen') {
@@ -51,6 +57,7 @@ async function mount(variant?: 'drawer' | 'screen') {
     </ToastProvider>
   );
   await act(async () => {
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -150,11 +157,10 @@ describe('SettingsPanel', () => {
     expect(host.textContent).toContain("Tables use each screen's default until you pick one.");
   });
 
-  it('the collector card says how to start a daemon that is down, and lists every shortcut', async () => {
+  it('the collector card reports an unreachable daemon and lists every shortcut', async () => {
     const host = await mount('screen');
     const collector = host.querySelector('section[aria-label="Collector"]')!;
-    expect(collector.querySelector('[role="status"]')?.textContent).toContain('Unreachable');
-    expect(collector.textContent).toContain('lousho observe start');
+    expect(collector.querySelector('[role="status"]')?.textContent).toContain('Not reachable');
     const shortcuts = host.querySelector('section[aria-label="Keyboard shortcuts"]')!;
     expect([...shortcuts.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual([
       'Ctrl/Cmd+K',
