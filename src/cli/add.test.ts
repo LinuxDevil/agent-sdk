@@ -208,9 +208,9 @@ describe('lousho add', () => {
     const dist = path.join(__dirname, '..', '..', 'registry', 'dist');
     const [bare, vPrefixed, main] = DEFAULT_REGISTRY_FALLBACKS;
     // The release tag as named today (bare), then the v-prefixed older form, then main.
-    expect(bare).toBe(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/${VERSION}/registry/dist/index.json`);
-    expect(vPrefixed).toBe(`https://raw.githubusercontent.com/LinuxDevil/agent-sdk/v${VERSION}/registry/dist/index.json`);
-    expect(main).toBe('https://raw.githubusercontent.com/LinuxDevil/agent-sdk/main/registry/dist/index.json');
+    expect(bare).toBe(`https://raw.githubusercontent.com/LinuxDevil/lousho/${VERSION}/registry/dist/index.json`);
+    expect(vPrefixed).toBe(`https://raw.githubusercontent.com/LinuxDevil/lousho/v${VERSION}/registry/dist/index.json`);
+    expect(main).toBe('https://raw.githubusercontent.com/LinuxDevil/lousho/main/registry/dist/index.json');
     const baseOf = (url: string) => url.replace(/index\.json$/, '');
     const stubWhere = (live: string | undefined, seen: string[]) =>
       (async (input: string | URL | Request) => {

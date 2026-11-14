@@ -1,0 +1,24 @@
+/* Permission rule Inspector (src/canvas/kinds/permission/*) — the when-matcher rows. */
+
+/* One row per when entry: argument input, operator select, operand input, remove button. */
+.when-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.when-row {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 3fr) auto;
+  gap: var(--space-2);
+  align-items: start;
+}
+.when-row .select {
+  min-width: 0;
+}
+.when-remove {
+  margin-top: 4px;
+}
+.when-add {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+}

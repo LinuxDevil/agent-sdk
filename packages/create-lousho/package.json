@@ -1,12 +1,12 @@
 {
   "name": "create-lousho",
-  "version": "0.1.2-alpha.10",
+  "version": "0.1.2-alpha.96",
   "description": "npm create lousho: scaffold a new lousho project (runs `lousho init`)",
   "license": "MIT",
   "homepage": "https://lousho.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/LinuxDevil/agent-sdk.git",
+    "url": "https://github.com/LinuxDevil/lousho.git",
     "directory": "packages/create-lousho"
   },
   "keywords": [
@@ -33,7 +33,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@linuxdevil/lousho": "^1.0.0-alpha.31",
+    "@linuxdevil/lousho": "^1.0.0-alpha.117",
     "prompts": "^2.4.2"
   },
   "devDependencies": {

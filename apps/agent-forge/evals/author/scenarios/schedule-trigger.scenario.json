@@ -1,0 +1,3 @@
+{ "name": "schedule-trigger", "turns": ["Create an agent that every weekday at 8am Berlin time checks https://status.example.com and tells me if anything is down."],
+  "expect": { "tools": ["proposeAgent"], "mustNot": ["saveAgent"],
+    "rubric": "The proposal has a cron trigger for weekdays at 08:00 with timezone Europe/Berlin and a prompt, keeps a chat trigger, and uses web_fetch to read the status page." } }

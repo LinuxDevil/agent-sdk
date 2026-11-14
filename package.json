@@ -1,6 +1,6 @@
 {
   "name": "@linuxdevil/lousho",
-  "version": "1.0.0-alpha.31",
+  "version": "1.0.0-alpha.117",
   "description": "TypeScript AI agent SDK with tools, MCP, durable sessions, human approvals, and OpenTelemetry. Runs in your own Node process.",
   "workspaces": [
     "apps/*",
@@ -10,7 +10,7 @@
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "bin": {
-    "lousho": "bin/lousho.js"
+    "@linuxdevil/lousho": "bin/lousho.js"
   },
   "exports": {
     ".": {
@@ -183,6 +183,36 @@
         "default": "./dist/improve/index.js"
       }
     },
+    "./goals": {
+      "import": {
+        "types": "./dist/goals/index.d.mts",
+        "default": "./dist/goals/index.mjs"
+      },
+      "require": {
+        "types": "./dist/goals/index.d.ts",
+        "default": "./dist/goals/index.js"
+      }
+    },
+    "./workspaces": {
+      "import": {
+        "types": "./dist/workspaces/index.d.mts",
+        "default": "./dist/workspaces/index.mjs"
+      },
+      "require": {
+        "types": "./dist/workspaces/index.d.ts",
+        "default": "./dist/workspaces/index.js"
+      }
+    },
+    "./workspaces/client": {
+      "import": {
+        "types": "./dist/workspaces/client/index.d.mts",
+        "default": "./dist/workspaces/client/index.mjs"
+      },
+      "require": {
+        "types": "./dist/workspaces/client/index.d.ts",
+        "default": "./dist/workspaces/client/index.js"
+      }
+    },
     "./traces": {
       "import": {
         "types": "./dist/traces/index.d.mts",
@@ -332,7 +362,8 @@
     "LICENSE",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
-    "SECURITY.md"
+    "SECURITY.md",
+    "schemas/*.json"
   ],
   "sideEffects": [
     "./src/providers/index.ts",
@@ -367,6 +398,9 @@
     "example:slack-notifier": "tsx examples/slack-notifier/index.ts",
     "example:heal-benchmark": "tsx examples/heal-benchmark/index.ts",
     "example:heal-benchmark:improve": "tsx examples/heal-benchmark/improve.ts",
+    "example:heal-benchmark:replay": "tsx examples/heal-benchmark/replay.ts",
+    "example:heal-benchmark:experiment": "tsx examples/heal-benchmark/experiment.ts",
+    "example:heal-benchmark:simulate": "tsx examples/heal-benchmark/simulate.ts",
     "example:support-desk": "tsx examples/support-desk/index.ts",
     "example:deep-research": "tsx examples/deep-research/index.ts",
     "example:data-analyst": "tsx examples/data-analyst/index.ts",
@@ -387,6 +421,7 @@
     "docs:verify-snippets": "tsx scripts/verify-docs-snippets.ts",
     "api:update": "tsx scripts/api-report.ts",
     "api:check": "tsx scripts/api-report.ts --check",
+    "gen:workspace-wire-fixtures": "tsx scripts/gen-workspace-wire-fixtures.ts",
     "docs:llms": "tsx scripts/generate-llms-txt.ts",
     "docs:llms:check": "tsx scripts/generate-llms-txt.ts --check",
     "fallow": "fallow",
@@ -394,11 +429,13 @@
     "example:openrouter": "tsx examples/openrouter/index.ts",
     "size-check": "tsx scripts/size-check.ts",
     "pack-smoke": "tsx scripts/pack-smoke.ts",
-    "pack-smoke:studio": "tsx scripts/pack-smoke-studio.ts",
     "registry:build": "tsx scripts/build-registry.ts",
     "registry:check": "tsx scripts/build-registry.ts --check",
+    "workspaces:schema": "tsx scripts/workspaces-schema.ts",
+    "workspaces:schema:check": "tsx scripts/workspaces-schema.ts --check",
     "registry-smoke": "tsx scripts/registrySmoke.ts",
-    "prepare": "husky"
+    "prepare": "husky",
+    "pack-smoke:studio": "tsx scripts/pack-smoke-studio.ts"
   },
   "keywords": [
     "typescript",
@@ -413,16 +450,16 @@
     "ollama",
     "opentelemetry",
     "vercel-ai-sdk",
-    "lousho"
+    "@linuxdevil/lousho"
   ],
   "author": "Ali Mohammad",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LinuxDevil/agent-sdk.git"
+    "url": "git+https://github.com/LinuxDevil/lousho.git"
   },
   "bugs": {
-    "url": "https://github.com/LinuxDevil/agent-sdk/issues"
+    "url": "https://github.com/LinuxDevil/lousho/issues"
   },
   "homepage": "https://lousho.com/introduction",
   "engines": {
@@ -441,6 +478,7 @@
     "isolated-vm": "^6.2.0 || ^7.0.0",
     "ollama-ai-provider": "^1.2.0",
     "ollama-ai-provider-v2": "^2.0.0 || ^3.0.0 || ^4.0.0",
+    "pg": "^8.0.0",
     "prompts": "^2.4.2",
     "quickjs-emscripten": "^0.32.0",
     "react": "^18 || ^19",
@@ -482,6 +520,9 @@
     "ollama-ai-provider-v2": {
       "optional": true
     },
+    "pg": {
+      "optional": true
+    },
     "prompts": {
       "optional": true
     },
@@ -507,6 +548,7 @@
     "@ai-sdk/openai": "^0.0.42",
     "@earendil-works/pi-ai": "^1.0.3",
     "@earendil-works/pi-coding-agent": "^1.0.2",
+    "@electric-sql/pglite": "^0.5.16",
     "@microsoft/api-extractor": "^7.59.3",
     "@modelcontextprotocol/sdk": "^1.31.0",
     "@opentelemetry/api": "^1.9.1",
@@ -514,6 +556,7 @@
     "@opentelemetry/sdk-trace-node": "^2.11.0",
     "@types/dockerode": "^4.0.1",
     "@types/node": "^20",
+    "@types/pg": "^8.23.1",
     "@types/prompts": "^2.4.9",
     "@types/react": "^18.3.31",
     "@types/react-test-renderer": "^18.3.1",
@@ -526,6 +569,7 @@
     "eslint": "^10.11.0",
     "fallow": "^3.31.0",
     "husky": "^9.1.7",
+    "pg": "^8.23.1",
     "prompts": "^2.4.2",
     "quickjs-emscripten": "^0.32.0",
     "react": "^18.3.1",

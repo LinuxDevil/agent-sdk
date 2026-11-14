@@ -92,17 +92,18 @@ Find a code by area:
 | [Providers and peers](#providers-and-peers) | [`LOUSHO_PROVIDER_SPEC_INVALID`](#lousho_provider_spec_invalid), [`LOUSHO_PROVIDER_UNKNOWN`](#lousho_provider_unknown), [`LOUSHO_PROVIDER_MISSING_API_KEY`](#lousho_provider_missing_api_key), [`LOUSHO_PROVIDER_REQUEST_FAILED`](#lousho_provider_request_failed), [`LOUSHO_PROVIDER_RATE_LIMITED`](#lousho_provider_rate_limited), [`LOUSHO_PEER_MISSING`](#lousho_peer_missing), [`LOUSHO_HOSTED_TOOL_UNSUPPORTED`](#lousho_hosted_tool_unsupported), [`LOUSHO_UNSUPPORTED_CONTENT`](#lousho_unsupported_content) | Resolving a model string, a missing API key or peer package, a failed or rate-limited model request, a hosted tool the provider cannot run, a file the provider cannot send. |
 | [Agent spec files](#agent-spec-files) | [`LOUSHO_SPEC_NOT_FOUND`](#lousho_spec_not_found), [`LOUSHO_SPEC_INVALID`](#lousho_spec_invalid), [`LOUSHO_SPEC_UNKNOWN_FIELD`](#lousho_spec_unknown_field), [`LOUSHO_SPEC_UNSUPPORTED_FORMAT`](#lousho_spec_unsupported_format), [`LOUSHO_SPEC_UNSUPPORTED`](#lousho_spec_unsupported), [`LOUSHO_SPEC_SECRET_MISSING`](#lousho_spec_secret_missing) | Loading an `AgentSpec` file with `loadSpec()` or `specToAgent()`. |
 | [Tools](#tools) | [`LOUSHO_TOOL_NOT_FOUND`](#lousho_tool_not_found), [`LOUSHO_TOOL_NEEDS_CREDENTIALS`](#lousho_tool_needs_credentials), [`LOUSHO_TOOL_EXECUTION_FAILED`](#lousho_tool_execution_failed), [`LOUSHO_TOOL_ARGS_INVALID`](#lousho_tool_args_invalid), [`LOUSHO_MCP_START_FAILED`](#lousho_mcp_start_failed), [`LOUSHO_MCP_CALL_FAILED`](#lousho_mcp_call_failed) | A tool the model called is unknown, needs credentials, threw, or got invalid arguments; a stdio MCP server did not start or a call to one failed. |
-| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_DECISION_INVALID`](#lousho_approval_decision_invalid), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated), [`LOUSHO_RUN_NO_PROGRESS`](#lousho_run_no_progress) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
+| [Approvals and sessions](#approvals-and-sessions) | [`LOUSHO_APPROVAL_STORE_MISSING`](#lousho_approval_store_missing), [`LOUSHO_APPROVAL_NOT_FOUND`](#lousho_approval_not_found), [`LOUSHO_APPROVAL_ORPHANED`](#lousho_approval_orphaned), [`LOUSHO_APPROVAL_CONFLICT`](#lousho_approval_conflict), [`LOUSHO_APPROVAL_FORBIDDEN`](#lousho_approval_forbidden), [`LOUSHO_APPROVAL_DECISION_INVALID`](#lousho_approval_decision_invalid), [`LOUSHO_APPROVAL_KIND_MISMATCH`](#lousho_approval_kind_mismatch), [`LOUSHO_AUTO_APPROVAL_INVALID`](#lousho_auto_approval_invalid), [`LOUSHO_SESSION_FORBIDDEN`](#lousho_session_forbidden), [`LOUSHO_SESSION_AWAITING_APPROVAL`](#lousho_session_awaiting_approval), [`LOUSHO_SESSION_ID_INVALID`](#lousho_session_id_invalid), [`LOUSHO_SESSION_FILE_CORRUPT`](#lousho_session_file_corrupt), [`LOUSHO_SESSION_BUSY`](#lousho_session_busy), [`LOUSHO_SESSION_TURN_PENDING`](#lousho_session_turn_pending), [`LOUSHO_SESSION_TURN_FAILED`](#lousho_session_turn_failed), [`LOUSHO_SESSION_STREAM_UNSUPPORTED`](#lousho_session_stream_unsupported), [`LOUSHO_SESSION_STEP_NOT_FOUND`](#lousho_session_step_not_found), [`LOUSHO_SESSION_EXISTS`](#lousho_session_exists), [`LOUSHO_SESSION_FORK_UNSUPPORTED`](#lousho_session_fork_unsupported), [`LOUSHO_REMOTE_UNAUTHORIZED`](#lousho_remote_unauthorized), [`LOUSHO_REMOTE_REQUEST_FAILED`](#lousho_remote_request_failed), [`LOUSHO_SUBAGENT_TASK_NOT_FOUND`](#lousho_subagent_task_not_found), [`LOUSHO_SUBAGENT_TASK_BUSY`](#lousho_subagent_task_busy), [`LOUSHO_CHECKPOINT_NOT_FOUND`](#lousho_checkpoint_not_found), [`LOUSHO_CHECKPOINT_CORRUPT`](#lousho_checkpoint_corrupt), [`LOUSHO_AGENT_DRIFT`](#lousho_agent_drift), [`LOUSHO_RESUME_TOOL_MISSING`](#lousho_resume_tool_missing), [`LOUSHO_RUN_ALREADY_ITERATED`](#lousho_run_already_iterated), [`LOUSHO_RUN_NO_PROGRESS`](#lousho_run_no_progress) | Approvals, sessions, checkpoints and resume, remote agents and sub-agent tasks. |
 | [Schedules](#schedules) | [`LOUSHO_SCHEDULE_INVALID`](#lousho_schedule_invalid), [`LOUSHO_SCHEDULE_RUN_INCOMPLETE`](#lousho_schedule_run_incomplete) | Defining or loading a schedule, or a scheduled turn that did not finish. |
 | [Channels](#channels) | [`LOUSHO_CHANNEL_INVALID`](#lousho_channel_invalid), [`LOUSHO_MEMORY_INVALID`](#lousho_memory_invalid) | Defining a channel or a memory slot. |
 | [Registry](#registry) | [`LOUSHO_REGISTRY_UNREACHABLE`](#lousho_registry_unreachable), [`LOUSHO_REGISTRY_ITEM_NOT_FOUND`](#lousho_registry_item_not_found), [`LOUSHO_REGISTRY_INVALID`](#lousho_registry_invalid), [`LOUSHO_REGISTRY_UNSAFE_PATH`](#lousho_registry_unsafe_path), [`LOUSHO_REGISTRY_FILE_EXISTS`](#lousho_registry_file_exists), [`LOUSHO_REGISTRY_MANIFEST_MISMATCH`](#lousho_registry_manifest_mismatch) | `lousho add` fetching or copying from a registry. |
 | [Sandbox](#sandbox) | [`LOUSHO_SANDBOX_EGRESS_UNSUPPORTED`](#lousho_sandbox_egress_unsupported), [`LOUSHO_SANDBOX_PATH_DENIED`](#lousho_sandbox_path_denied), [`LOUSHO_SANDBOX_FAILED`](#lousho_sandbox_failed) | Asking a sandbox for something it cannot do on the current platform, writing outside its root, or a code-sandbox boundary (timeout / OOM / driver) failing a run. |
 | [Agent directories, skills and flows](#agent-directories-skills-and-flows) | [`LOUSHO_AGENT_DIR_INVALID`](#lousho_agent_dir_invalid), [`LOUSHO_SKILL_INVALID`](#lousho_skill_invalid), [`LOUSHO_FLOW_INVALID`](#lousho_flow_invalid), [`LOUSHO_FLOW_TOOL_DENIED`](#lousho_flow_tool_denied), [`LOUSHO_FLOW_CHANGED`](#lousho_flow_changed) | Loading an agent directory, a skill, or a flow definition, and gating a flow's tool calls. |
-| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a trigger, a channel request, `lousho build` or the built server's start-up. |
+| [Storage, deployment and integrations](#storage-deployment-and-integrations) | [`LOUSHO_STORAGE_FAILED`](#lousho_storage_failed), [`LOUSHO_STORAGE_BUSY`](#lousho_storage_busy), [`LOUSHO_ARTIFACT_FORBIDDEN`](#lousho_artifact_forbidden), [`LOUSHO_ARTIFACT_TOO_LARGE`](#lousho_artifact_too_large), [`LOUSHO_ARTIFACT_EXISTS`](#lousho_artifact_exists), [`LOUSHO_ARTIFACT_UNSAFE_PATH`](#lousho_artifact_unsafe_path), [`LOUSHO_TRIGGER_INVALID`](#lousho_trigger_invalid), [`LOUSHO_CHANNEL_REQUEST_FAILED`](#lousho_channel_request_failed), [`LOUSHO_DEPLOY_FAILED`](#lousho_deploy_failed), [`LOUSHO_SERVER_UNPROTECTED`](#lousho_server_unprotected) | A storage backend, a workspace artifact store, a trigger, a channel request, `lousho build` or the built server's start-up. |
 | [Tests and evals](#tests-and-evals) | [`LOUSHO_EVALS_INVALID`](#lousho_evals_invalid), [`LOUSHO_DATASET_UNAVAILABLE`](#lousho_dataset_unavailable), [`LOUSHO_TEST_FAILED`](#lousho_test_failed), [`LOUSHO_CASSETTE_INVALID`](#lousho_cassette_invalid) | `defineEval()`, `mockModel` and cassettes. |
 | [General](#general) | [`LOUSHO_GENERIC_ERROR`](#lousho_generic_error), [`LOUSHO_AGENT_EXECUTION_FAILED`](#lousho_agent_execution_failed), [`LOUSHO_FLOW_EXECUTION_FAILED`](#lousho_flow_execution_failed), [`LOUSHO_VALIDATION_FAILED`](#lousho_validation_failed), [`LOUSHO_OPERATION_TIMEOUT`](#lousho_operation_timeout), [`LOUSHO_OUTPUT_INVALID`](#lousho_output_invalid), [`LOUSHO_BUDGET_EXCEEDED`](#lousho_budget_exceeded), [`LOUSHO_GUARDRAIL_TRIPPED`](#lousho_guardrail_tripped) | Run-level failures: a timeout, a budget or guardrail stop, invalid output, and the catch-all codes. |
 | [Auth](#auth) | [`LOUSHO_AUTH_CONFIG_INVALID`](#lousho_auth_config_invalid) | A route auth helper (`jwt()`, `oidc()`, `basic()`, `apiToken()`) got options it cannot verify with. |
 | [OAuth](#oauth) | [`LOUSHO_TOKEN_KEY_MISSING`](#lousho_token_key_missing), [`LOUSHO_TOKEN_DECRYPT_FAILED`](#lousho_token_decrypt_failed), [`LOUSHO_OAUTH_PRINCIPAL_REQUIRED`](#lousho_oauth_principal_required), [`LOUSHO_OAUTH_APP_SIGNIN_REQUIRED`](#lousho_oauth_app_signin_required), [`LOUSHO_OAUTH_STORE_MISSING`](#lousho_oauth_store_missing), [`LOUSHO_OAUTH_STATE_INVALID`](#lousho_oauth_state_invalid), [`LOUSHO_SIGNIN_PENDING`](#lousho_signin_pending), [`LOUSHO_OAUTH_TOKEN_EXCHANGE_FAILED`](#lousho_oauth_token_exchange_failed), [`LOUSHO_MCP_AUTH_REQUIRED`](#lousho_mcp_auth_required) | Storing or reading OAuth tokens in a file, SQLite or KV store, sign-in and token exchange for OAuth tools and MCP servers. |
+| [Workspaces](#workspaces) | [`LOUSHO_WORKSPACE_STALE_REVISION`](#lousho_workspace_stale_revision), [`LOUSHO_WORKSPACE_NO_CHANGE`](#lousho_workspace_no_change), [`LOUSHO_WORKSPACE_PATH_INVALID`](#lousho_workspace_path_invalid), [`LOUSHO_WORKSPACE_REVISION_UNKNOWN`](#lousho_workspace_revision_unknown), [`LOUSHO_WORKSPACE_SOURCE_LIMIT`](#lousho_workspace_source_limit), [`LOUSHO_WORKSPACE_SOURCE_CORRUPT`](#lousho_workspace_source_corrupt), [`LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED`](#lousho_workspace_content_unsupported), [`LOUSHO_WORKSPACE_INVALID`](#lousho_workspace_invalid), [`LOUSHO_WORKSPACE_AGENT_UNRESOLVED`](#lousho_workspace_agent_unresolved), [`LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING`](#lousho_workspace_main_harness_text_missing), [`LOUSHO_WORKSPACE_CAPABILITY_MISSING`](#lousho_workspace_capability_missing), [`LOUSHO_WORKSPACE_ENGINE_UNKNOWN`](#lousho_workspace_engine_unknown), [`LOUSHO_WORKSPACE_PAGE_UNKNOWN`](#lousho_workspace_page_unknown), [`LOUSHO_WORKSPACE_NO_MAIN_AGENT`](#lousho_workspace_no_main_agent), [`LOUSHO_WORKSPACE_HOST_INVALID`](#lousho_workspace_host_invalid), [`LOUSHO_WORKSPACE_RUNTIME_CLOSED`](#lousho_workspace_runtime_closed), [`LOUSHO_WORKSPACE_RUN_ACTIVE`](#lousho_workspace_run_active) | Reading or writing a workspace through a `WorkspaceSource` (`folderSource()`, `memorySource()`, `sqliteWorkspaceSource()`, `postgresWorkspaceSource()`), loading it with `loadWorkspace()`, resolving page agents with `resolveAttachments()`, assembling prompts with `assembleMainInstructions()`, applying the policy at page start with `pagePolicy()`, running a page with `runPage()`, and running a workspace session with `openWorkspaceSession()`, and running a workspace through `createWorkspaceRuntime()`. |
 
 ## Configuration
 
@@ -564,6 +565,19 @@ pending pause's `approvalKind`.
 
 **Example:** posting `{ "approved": true }` to a pause that waits for the
 model's `ask_question` answer.
+
+### LOUSHO_AUTO_APPROVAL_INVALID
+
+**Means:** `modelAutoApprover` (the model-scored approver behind
+`createAutoApprove`) could not read a verdict from the model's reply: no JSON
+object, a `safety` that is not a number in [0, 1], or no `reason` string.
+
+**Fix:** check the auto approver's model and prompt — its reply must be a
+JSON object `{ "safety": <0..1>, "reason": "<text>" }`; prose around it is
+fine. See [Approvals](./approvals.md#model-decided-approvals).
+
+**Example:** `createAutoApprove({ autoApprover: modelAutoApprover({ provider }), isAuto })`
+with a model that answers `"safe"` instead of the JSON verdict.
 
 ### LOUSHO_SESSION_FORBIDDEN
 
@@ -1115,6 +1129,47 @@ file-based store), and create a new store after closing one.
 
 **Example:** two processes saving to the same `agent.db` while one runs a multi-second transaction.
 
+### LOUSHO_ARTIFACT_FORBIDDEN
+
+**Means:** a workspace artifact store's `get(uri, scope)` was asked for an artifact
+outside the caller's scope: another workspace, or another run whose uri did not come
+back to this run as a ref. A page cannot read another page's artifacts.
+
+**Fix:** read only the run's own artifacts, or pass the artifact's uri to this run in
+`scope.refs` (through the main agent).
+
+**Example:** the run `run-b` asking for `artifact://marketing/run-a/post.md`.
+
+### LOUSHO_ARTIFACT_TOO_LARGE
+
+**Means:** an artifact was larger than the store's `maxArtifactBytes` (200 MiB by
+default). Nothing was stored.
+
+**Fix:** write a smaller artifact, or raise `maxArtifactBytes` on the store.
+
+**Example:** `fileArtifactStore(root, { maxArtifactBytes: 1024 })` given a 2 KB file.
+
+### LOUSHO_ARTIFACT_EXISTS
+
+**Means:** an artifact name was stored again in the same run with other content or
+another media type. A stored artifact never changes; the same content again is
+accepted and returns the stored ref.
+
+**Fix:** store the new content under a new name.
+
+**Example:** `put(scope, 'post.md', 'v2', 'text/markdown')` after `'v1'` was stored as `post.md`.
+
+### LOUSHO_ARTIFACT_UNSAFE_PATH
+
+**Means:** `fileArtifactStore` found a symlink, or something other than a plain folder
+or file, where it reads or writes under its root (a workspace, `runs`, run,
+`artifacts` or `artifact-meta` folder, or an artifact file). Nothing was read or written
+through it.
+
+**Fix:** remove the entry the message names from the store's folder.
+
+**Example:** `<root>/marketing/runs` replaced by a symlink to another folder.
+
 ### LOUSHO_TRIGGER_INVALID
 
 **Means:** a trigger adapter got invalid options: a cron adapter without exactly
@@ -1288,6 +1343,218 @@ See [Budgets](./configuration.md#budgets).
 `onTripped: 'throw'`. See [Input and output guardrails](./guardrails.md#input-and-output-guardrails).
 
 **Example:** `createAgent({ provider, guardrails: { input: [maxLengthGuardrail({ maxChars: 10 })], onTripped: 'throw' } })` sent a longer message.
+
+## Workspaces
+
+### LOUSHO_WORKSPACE_STALE_REVISION
+
+**Means:** a write to a workspace source named an `expectedRevision` that is no
+longer the current revision: someone else wrote first, or the folder was edited
+by hand. Nothing was written. The error is a `StaleRevisionError` with
+`expectedRevision` and `currentRevision`.
+
+**Fix:** read the workspace again at the current revision, apply your change to
+it, and write with that revision as `expectedRevision`.
+
+**Example:** two editors open revision `a1…` and both save; the second save is
+refused.
+
+### LOUSHO_WORKSPACE_NO_CHANGE
+
+**Means:** a write to a workspace source would leave every file as it is, so
+the tree would keep its current revision id. No revision is recorded. The error
+is a `NoChangeError` with the current `revision`.
+
+**Fix:** drop the write, or change at least one file. A rollback that restores
+older content is a real change and is written as a new revision.
+
+**Example:** saving a page's harness prose without editing it.
+
+### LOUSHO_WORKSPACE_PATH_INVALID
+
+**Means:** a workspace source was given a path that is not a plain relative
+path inside the workspace (an absolute path, a backslash, an empty, `.` or `..`
+segment, or a path under `.lousho/`, `.git/` or `node_modules/`), or the folder
+source found a symlink that resolves outside the folder or to a folder, or the
+folder itself does not exist.
+
+**Fix:** use forward-slash paths relative to the workspace root, and replace
+symlinks that leave the workspace with the files themselves.
+
+**Example:** `source.read('../secrets.env')`, or `pages/x` symlinked to
+`/etc`.
+
+### LOUSHO_WORKSPACE_REVISION_UNKNOWN
+
+**Means:** a read or list named a revision the source has never recorded, or an
+old revision whose snapshot the folder source has pruned (it keeps the last
+`keep` revisions, 50 by default).
+
+**Fix:** pick a revision from `source.history()`, or raise `keep` on
+`folderSource()` to keep older snapshots readable.
+
+**Example:** `source.read('workspace.json', { revision: 'f…f' })`.
+
+### LOUSHO_WORKSPACE_SOURCE_CORRUPT
+
+**Means:** the folder source found `.lousho/revisions/index.json` or the
+write journal `pending.json` in a shape it did not write, or it could not
+finish an interrupted write. A journal it could not finish is renamed to
+`pending.failed-<time>.json`, the files it named are put back as they were
+before that write where the snapshot allows, and only the call that found it
+fails; later calls work.
+
+**Fix:** look at the file the message names. Check the workspace, then delete
+the set-aside journal. A damaged index is not set aside: fix or delete
+`<workspace folder>/.lousho/revisions/index.json` by hand (deleting it empties
+`history()`; the files and snapshots stay as they are).
+
+**Example:** a journal cut short by a full disk.
+
+### LOUSHO_WORKSPACE_SOURCE_LIMIT
+
+**Means:** the folder source refused to read a file larger than
+`maxFileBytes` (1 MiB by default), a folder with more than `maxFiles` files
+(5000), or a tree or snapshot larger than `maxTreeBytes` (32 MiB).
+
+**Fix:** move large or generated files out of the workspace folder, or raise
+the limit the message names on `folderSource()`.
+
+**Example:** a 20 MB video left in `pages/launch/`.
+
+### LOUSHO_WORKSPACE_CONTENT_UNSUPPORTED
+
+**Means:** a database workspace source (`sqliteWorkspaceSource()`,
+`postgresWorkspaceSource()`) refused a write or seed file whose content has a
+NUL character (`\u0000`). SQLite would cut the text at it and Postgres rejects
+it, so the stored tree would not match its revision id. Nothing is written.
+
+**Fix:** remove the NUL characters from the file the message names; a
+database workspace source stores text only.
+
+**Example:** `source.write({ 'notes.md': 'a\u0000b' }, …)`.
+
+### LOUSHO_WORKSPACE_INVALID
+
+**Means:** `loadWorkspace()` read a workspace from its source and
+`validateWorkspace` found at least one error. The error is a
+`WorkspaceValidationError`; `problems` lists every error with its `PRDnnn`
+code, file and field path. Nothing is returned, so a broken workspace never
+runs.
+
+**Fix:** fix the files the problems name, then load again. Warnings and notes
+do not throw; they come back in `problems` of the loaded workspace.
+
+**Example:** `workspace.json` lists a page whose `pages/<id>/` folder is
+missing.
+
+### LOUSHO_WORKSPACE_AGENT_UNRESOLVED
+
+**Means:** `resolveAttachments()` could not find an agent a page attaches. A
+`workspace:` or `local:` ref names a folder the loaded workspace does not
+have, a `global:` ref was given no `globalRegistry`, or the registry has no
+version in the ref's range. The page id may also be missing from
+`workspace.json`.
+
+**Fix:** check the ref in the page's `agents.json`. Add the agent folder, or
+pass a `globalRegistry` (`projectAgentRegistry(root)` or
+`sourceAgentRegistry(source)`) that holds a version in range.
+
+**Example:** `global:fact-checker@^2` when the registry only has `1.0.0`.
+
+### LOUSHO_WORKSPACE_MAIN_HARNESS_TEXT_MISSING
+
+**Means:** `assembleMainInstructions()` was given a `main-harness.json` that
+lists an instruction file, but the `texts` map has no entry for it, under
+either `main-agent/harness/<file>` or the bare file name. The prompt would
+silently lose that section, so the call throws.
+
+**Fix:** pass the text of every listed file, or remove the name from
+`instructions` in `main-harness.json`.
+
+**Example:** `instructions: ['routing.md']` with `texts: {}`.
+
+### LOUSHO_WORKSPACE_CAPABILITY_MISSING
+
+**Means:** `pagePolicy()` stopped a page at start (`capability-missing`): the
+harness's `capabilities.require` names a capability that no tool in the page's
+effective toolsets provides. A tool counts only when an attached agent has it,
+the host registry supplies it, the workspace policy and host ceiling allow
+it, and no ceiling or workspace rule denies it outright. A capability never
+grants a tool.
+
+**Fix:** give an attached agent a host tool that declares the capability and
+that the policy allows, or remove the capability from `capabilities.require`.
+
+**Example:** the harness requires `image.generate`, and the only tool that
+provides it is not in `shared/policies/policy.json` `tools.allow`.
+
+### LOUSHO_WORKSPACE_ENGINE_UNKNOWN
+
+**Means:** `runPage()` or `engineFor()` found no engine for the page's
+`execution.type` (`engine-unknown`). The runtime ships the `single` engine;
+each other execution type runs once its engine is in the registry.
+
+**Fix:** set `execution.type` in `page.json` to a type the runtime has an
+engine for, or pass an `engines` registry that has one.
+
+**Example:** a page with `execution.type: 'workflow'` on a runtime whose
+registry has only `single`.
+
+### LOUSHO_WORKSPACE_PAGE_UNKNOWN
+
+**Means:** `runPage()` was given a `pageId` that the loaded workspace does
+not list in `workspace.json` `pages`, or that has no `pages/<id>/page.json`
+(`page-unknown`).
+
+**Fix:** pass one of the workspace's page ids; the message lists them.
+
+**Example:** `runPage(workspace, { pageId: 'nope', task: '' }, ctx)` on a
+workspace whose pages are `fix` and `review`.
+
+### LOUSHO_WORKSPACE_NO_MAIN_AGENT
+
+**Means:** `WorkspaceSession.run()` got a message without a `pageId` on a
+workspace whose `workspace.json` sets `mainAgent` to `null` (`no-main-agent`).
+Without a main agent there is no router, so nothing can pick the page. The
+session returns a `WorkspaceRunError` with this code instead of throwing.
+
+**Fix:** pass `{ pageId }` to `run()`, or call `runPage()` directly; or give the
+workspace a main agent in `main-agent/`.
+
+**Example:** `session.run('Summarise today')` on the `ops-desk` workspace.
+
+### LOUSHO_WORKSPACE_HOST_INVALID
+
+**Means:** `createWorkspaceRuntime(source, host)` got a host that misses a
+dependency (the message names the field, such as `host.stores.threads`), or a
+`limits.maxConcurrentRuns` that is not a positive integer. At run time it also
+means a tool's scope grants secrets, limits it to network hosts or requires a
+sandbox, and the host gave no `bindTool` to enforce that.
+
+**Fix:** pass the named field; pass `bindTool` whenever the policy grants a
+tool secrets or hosts, or sets `sandbox.required`.
+
+**Example:** a host built without `stores.threads`.
+
+### LOUSHO_WORKSPACE_RUNTIME_CLOSED
+
+**Means:** `run()`, `runPage()` or `explain()` was called on a workspace
+runtime after its `close()`.
+
+**Fix:** create a new runtime with `createWorkspaceRuntime()`.
+
+**Example:** a request handled while the service shuts down.
+
+### LOUSHO_WORKSPACE_RUN_ACTIVE
+
+**Means:** `run()` or `runPage()` got a `runId` that a run of the same
+runtime is still using. The runtime refuses it, so `cancel()` and `close()`
+keep reaching the run that holds the id.
+
+**Fix:** pass a new run id, or leave `runId` out so the runtime makes one.
+
+**Example:** two requests that both pass `runId: 'job-1'` while the first runs.
 
 ## Auth
 

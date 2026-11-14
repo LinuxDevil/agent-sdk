@@ -1,0 +1,20 @@
+{
+  "permissions": [],
+  "tools": {
+    "allow": [
+      "render_video",
+      "synthesize_voice",
+      "search_facts",
+      "publish_*"
+    ]
+  },
+  "secrets": [],
+  "approvals": {
+    "require": [
+      "publish_*"
+    ]
+  },
+  "sandbox": {
+    "required": true
+  }
+}

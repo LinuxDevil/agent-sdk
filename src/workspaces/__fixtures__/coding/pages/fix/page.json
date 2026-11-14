@@ -1,0 +1,18 @@
+{
+  "schema": "lousho.page/1",
+  "id": "fix",
+  "name": "Fix",
+  "description": "Fixes a bug and proves it with a test.",
+  "domain": "coding",
+  "harness": {
+    "extends": [
+      "workspace:audiences/engineers"
+    ]
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "agent"
+    }
+  }
+}

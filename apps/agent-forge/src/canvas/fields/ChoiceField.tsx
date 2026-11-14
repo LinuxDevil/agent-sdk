@@ -4,7 +4,7 @@
  * given) maps to `undefined`. Option values are positional, so any string
  * - including '' - is a valid `T`.
  */
-import type { ChangeEvent } from 'react';
+import type { ChangeEvent, ReactNode } from 'react';
 import { Field } from '../../ui/Field';
 import { Select } from '../../ui/controls';
 import './fields.css';
@@ -16,15 +16,21 @@ export interface ChoiceFieldProps<T extends string> {
   /** Field label text. */
   label: string;
   value: T | undefined;
-  /** Choices in order; each `value` is a `T`, each `label` its display text. */
-  options: { value: T; label: string }[];
+  /** Choices in order; each `value` is a `T`, each `label` its display text. `disabled` greys the option out and `title` says why. */
+  options: { value: T; label: string; disabled?: boolean; title?: string }[];
   onChange(value: T | undefined): void;
   /** Adds a first option that selects `undefined`. */
   allowUnset?: boolean;
   /** The unset option's text (default 'Default'). */
   unsetLabel?: string;
   /** Muted help under the control. */
-  help?: string;
+  help?: ReactNode;
+  /** Danger text under the control; marks it `aria-invalid`. */
+  error?: string;
+  /** Draws the required marker on the label. */
+  required?: boolean;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 /** The select's internal value for `undefined` (option values are their 1-based index). */
@@ -43,11 +49,19 @@ export function ChoiceField<T extends string>({
   allowUnset = false,
   unsetLabel = 'Default',
   help,
+  error,
+  required = false,
+  fieldPath,
 }: ChoiceFieldProps<T>): JSX.Element {
   const selected = value === undefined ? UNSET : String(options.findIndex((option) => option.value === value) + 1);
   const selectOptions = [
     ...(allowUnset ? [{ value: UNSET, label: unsetLabel }] : []),
-    ...options.map((option, index) => ({ value: String(index + 1), label: option.label })),
+    ...options.map((option, index) => ({
+      value: String(index + 1),
+      label: option.label,
+      disabled: option.disabled,
+      title: option.title,
+    })),
   ];
 
   const onSelect = (event: ChangeEvent<HTMLSelectElement>) => {
@@ -56,7 +70,7 @@ export function ChoiceField<T extends string>({
   };
 
   return (
-    <Field id={id} label={label} hint={help}>
+    <Field id={id} label={label} hint={help} error={error} required={required} fieldPath={fieldPath}>
       <Select options={selectOptions} value={selected} onChange={onSelect} />
     </Field>
   );

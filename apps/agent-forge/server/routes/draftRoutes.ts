@@ -17,9 +17,11 @@
 import type { Express, Response } from 'express';
 import { agentSpecV2Schema } from '@linuxdevil/lousho';
 import { computeChangedFields, SPEC_FIELD_ORDER } from '../../shared/specFields';
+import { LabelError, normalizeLabels } from '../../shared/labels';
 import type {
   CreateDraftRequest,
   DraftOrigin,
+  DraftView,
   SettleDraftRequest,
   SpecPatch,
   SpecSnapshot,
@@ -28,6 +30,7 @@ import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { workspaceOf } from '../workspace/middleware';
 import { withAgentLock } from '../storage/atomic';
 import { applySpecPatch, DraftMismatchError, NoDraftError } from '../storage/draftStore';
+import { diffSpecs } from '../diff/specChange';
 import { specHash } from '../storage/specHash';
 
 const DRAFT_ORIGINS: readonly DraftOrigin[] = ['author', 'suggestion', 'manual'];
@@ -129,7 +132,10 @@ async function pendingDraft(ws: ReturnType<typeof workspaceOf>, agentId: string,
  * a second workspace is a second context, not a second registration.
  */
 export function registerDraftRoutes(app: Express): void {
-  // The pending draft: 200 ChangeDraft, 204 when there is none, 404 for an unknown agent.
+  // The pending draft as a DraftView (L11b): the draft record plus the
+  // patch's diff over today's working copy and the latest version number,
+  // so the Suggestions tab never diffs against a stale base. 204 when
+  // there is none, 404 for an unknown agent.
   app.get(
     '/agents/:id/draft',
     asyncRoute(async (req, res) => {
@@ -144,7 +150,14 @@ export function registerDraftRoutes(app: Express): void {
         res.status(204).end();
         return;
       }
-      res.json(draft);
+      const spec = await ws.repo.readSpec(id);
+      let changes: DraftView['changes'] = [];
+      if (spec !== undefined) {
+        const snapshot: SpecSnapshot = { spec, labels: (await ws.repo.readMeta(id)).labels };
+        changes = diffSpecs(snapshot, applySpecPatch(snapshot, draft.patch));
+      }
+      const view: DraftView = { ...draft, changes, currentVersion: (await ws.versions.latest(id))?.version ?? 0 };
+      res.json(view);
     })
   );
 
@@ -238,11 +251,26 @@ export function registerDraftRoutes(app: Express): void {
             sendInvalidDraft(res, validation.error.issues);
             return;
           }
-          await ws.repo.writeSpec(id, next.spec);
+          // Draft patches are not label-validated at creation, so the
+          // write path normalises (L13) BEFORE the spec lands: a bad list
+          // is a 400, not a half-applied draft.
+          let labels: string[] | undefined;
           if ('labels' in cur.patch) {
-            await ws.repo.writeMeta(id, { ...meta, labels: next.labels, updatedAt: new Date().toISOString() });
+            try {
+              labels = normalizeLabels(next.labels);
+            } catch (error) {
+              if (error instanceof LabelError) {
+                sendError(res, 400, error.message, 'LOUSHO_LABELS_INVALID');
+                return;
+              }
+              throw error;
+            }
           }
-          await ws.versions.capture(id, { kind: 'update', source: 'draft' });
+          await ws.repo.writeSpec(id, next.spec);
+          if (labels !== undefined) {
+            await ws.repo.writeMeta(id, { ...meta, labels, updatedAt: new Date().toISOString() });
+          }
+          await ws.versions.capture(id, { kind: 'update', source: 'draft', requestText: cur.reason });
           const settled = await ws.drafts.settle(id, 'approved', { draftId: cur.id, note: parsed.note });
           res.json(settled);
           ws.events.publish({ type: 'draft.changed', agentId: id, draftId: settled.id, status: settled.status });

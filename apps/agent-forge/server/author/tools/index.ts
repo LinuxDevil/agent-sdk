@@ -41,6 +41,8 @@ import { proposeAgentUpdateTool } from './proposeAgentUpdateTool';
 import { saveAgentTool, saveAgentUpdateTool } from './saveTools';
 import { requestSecretTool } from './requestSecretTool';
 import { discardPendingChangesTool, setAgentEnabledTool } from './stateTools';
+import { runDraftTool } from './runDraftTool';
+import { getTraceTool } from './getTraceTool';
 
 /**
  * A registry-index item that names an MCP server (`type: 'mcp'`,
@@ -95,8 +97,8 @@ export interface AuthorToolDeps {
   docsDir: string;
   /**
    * The draft review a propose tool runs before showing its card (PLAN
-   * §8.4): AA12's review-model pass; `createApp` wires `passReview` (the
-   * always-approve default) until then.
+   * §8.4): AA12's `createReviewDraft` judge pass; tests wire `passReview`
+   * (the always-approve double).
    */
   reviewDraft: ReviewDraft;
   /**
@@ -141,6 +143,8 @@ export const AUTHOR_TOOL_FACTORIES: readonly AuthorToolFactory[] = [
   requestSecretTool,
   discardPendingChangesTool,
   setAgentEnabledTool,
+  runDraftTool,
+  getTraceTool,
 ];
 
 /** The call name a `ToolDescriptor` carries (`defineTool`/loader results), else its display name. */

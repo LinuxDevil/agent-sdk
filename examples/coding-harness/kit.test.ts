@@ -5,7 +5,7 @@
  * proven from the installed files instead of one createAgent() call.
  *
  * The scratch agent directory (in the OS temp dir) gets a `node_modules`
- * link to the repository's so the kit's `lousho` imports
+ * link to the repository's so the kit's `@linuxdevil/lousho` imports
  * resolve, and the directory is loaded
  * through the package itself (dist/) - the kit's files import the SDK by
  * name and a defineTool() tool is only recognized by the same copy of it.
@@ -97,7 +97,7 @@ const systemOf = (call: { messages: readonly { role: string; content: unknown }[
   String(call.messages.find((m) => m.role === 'system')?.content);
 
 beforeEach(async () => {
-  // The node_modules link lets the kit's `lousho` imports
+  // The node_modules link lets the kit's `@linuxdevil/lousho` imports
   // resolve (the SDK is a workspace self-link), like defaultRegistry.test.ts.
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-coding-kit-'));
   fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');

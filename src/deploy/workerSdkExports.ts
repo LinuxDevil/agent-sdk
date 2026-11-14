@@ -1,6 +1,6 @@
 /**
  * The names an agent directory's files may import from
- * 'lousho' in a cloudflare-worker build: the exports of
+ * '@linuxdevil/lousho' in a cloudflare-worker build: the exports of
  * src/deploy/workerSdk.ts (a test keeps the two equal). In its own module so
  * the adapter (adapters/cloudflare.ts) and the build-time module evaluation
  * (./evalModule.ts) can share it without a circular import.

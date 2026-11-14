@@ -1,0 +1,10 @@
+/* ObservedAgentCard (W07b): the A03 card's look, read-only - a dashed
+   border marks it as reported-by-the-collector rather than authored here. */
+
+.agent-card--observed {
+  border-style: dashed;
+}
+
+/* `.agent-card-project` is a marker only (the project chip wears the shared
+   `.agent-card-label` pill look) so `.agent-card-workspace` keeps meaning
+   "the owning workspace". */

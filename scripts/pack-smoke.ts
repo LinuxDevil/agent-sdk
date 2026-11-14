@@ -70,18 +70,19 @@ const REPO_ROOT = path.resolve(__dirname, '..');
  * CI counted 853 entries on 2026-10-29 (online evaluators); entry budget
  * raised to 940 (~10% headroom). The spec-v2 sections shipped since then
  * brought the count to 930; the templates/ folder (+18 starter-agent files)
- * takes it to 948. Entry budget raised to 1040 (~10% headroom).
+ * takes it to 948. Entry budget raised to 1040 (~10% headroom), then to 1150 at 1041 entries (M4 S6), then to 1300 at 1153 entries (workspace runtime P1).
  * The `@linuxdevil/lousho/spec` subpath (S23: dist/spec/{index.js,index.mjs,index.d.ts,
  * index.d.mts}) pushed the packed size to 5,276,320 bytes (~5.03 MiB);
  * packed budget raised to 5.5 MiB (~9% headroom).
- * Studio left the SDK tarball (2026-11-13, W13b): measured 1016 entries /
- * 15,289,389 bytes unpacked / 4,393,121 bytes packed; budgets ~10% headroom.
- * The entry count still sits under the existing 1040 budget (new subpath
- * entries offset Studio's removal), so MAX_ENTRIES stays put.
+ * CI measured 25,175,308 bytes (~24.0 MiB) unpacked / 6.9 MB packed at
+ * 1186 entries on the trigger-host stack (R08a webhook host + R08c cron,
+ * 2026-11-12); unpacked budget raised to 26 MiB (~8% headroom).
+ * Studio left the SDK tarball (2026-11-13, W13b); the entry count still
+ * sits under the existing 1300 budget, so MAX_ENTRIES stays put.
  */
-const MAX_ENTRIES = 1040;
-const MAX_UNPACKED_BYTES = 17 * 1024 * 1024;
-const MAX_PACKED_BYTES = 5 * 1024 * 1024;
+const MAX_ENTRIES = 1300;
+const MAX_UNPACKED_BYTES = 26 * 1024 * 1024;
+const MAX_PACKED_BYTES = 7 * 1024 * 1024;
 
 const DEFAULT_PEERS = 'ai@7 zod@4 @ai-sdk/openai@4 react@19 vue@3 @opentelemetry/api@1';
 const FORBIDDEN_PATHS = [

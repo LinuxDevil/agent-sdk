@@ -7,11 +7,13 @@ import {
   CornerDownLeft,
   Keyboard,
   Search,
+  Sparkles,
   SunMoon,
   TextSearch,
   X,
   type LucideIcon,
 } from 'lucide-react';
+import { CREATE_AGENT_DRAFT, openAuthor } from '../author/authorEntry';
 import { navigate } from '../router/router';
 import { agentTabPath } from '../screens/agents/agentTabs';
 import { NAV_ITEMS } from '../shell/NavRail';
@@ -49,6 +51,21 @@ function baseCommands(agents: AgentRef[], openAgent: (id: string) => void): Comm
       icon: item.icon,
     })),
     ...agents.map((a) => ({ id: `agent:${a.id}`, label: `Open agent ${a.name}`, run: () => openAgent(a.id), group: 'Agents', icon: Bot })),
+    {
+      id: 'author',
+      label: 'Open Agent Author',
+      run: () => openAuthor({ source: 'palette' }),
+      group: 'Actions',
+      icon: Sparkles,
+    },
+    {
+      id: 'author-describe',
+      label: 'Describe a new agent with AI',
+      run: () =>
+        openAuthor({ source: 'agents-list', focus: { mode: 'create' }, draft: CREATE_AGENT_DRAFT, newChat: true }),
+      group: 'Actions',
+      icon: Sparkles,
+    },
     { id: 'theme', label: 'Toggle theme', run: toggleTheme, group: 'Actions', icon: SunMoon },
   ];
 }
@@ -322,7 +339,7 @@ function ShortcutSheet({ onClose }: { onClose: () => void }) {
 export function CommandPalette() {
   const { agents } = useAppState();
   const [open, setOpen] = useState<'palette' | 'help' | null>(null);
-  const agentRefs = useMemo(() => agents.map((a) => ({ id: a.id, name: a.spec.name || a.id })), [agents]);
+  const agentRefs = useMemo(() => agents.map((a) => ({ id: a.id, name: a.name || a.id })), [agents]);
   // The hash drives selection (screens/agents/useAgentRouteSync.ts): it asks about unsaved changes and reports a failed open.
   const openAgent = useCallback((id: string) => navigate(agentTabPath(id, 'overview')), []);
 
@@ -330,6 +347,8 @@ export function CommandPalette() {
     const onKeyDown = (e: KeyboardEvent) => {
       const id = matchShortcut(e);
       if (!id || e.repeat) return;
+      // The AppShell owns the Author toggle (AA19); leave the key alone here.
+      if (id === 'author') return;
       e.preventDefault();
       setOpen((o) => (id === 'palette' && o === 'palette' ? null : id));
     };

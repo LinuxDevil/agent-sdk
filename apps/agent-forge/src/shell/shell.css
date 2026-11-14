@@ -91,6 +91,23 @@
   background: var(--accent-solid);
   color: var(--on-accent);
 }
+.nav-workspace {
+  padding: var(--space-2) var(--space-2) var(--space-1);
+}
+.nav-workspace .btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+.nav-workspace .btn > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-rail[data-collapsed] .nav-workspace .btn {
+  width: auto;
+  justify-content: center;
+}
 .nav-rail ul {
   list-style: none;
   margin: 0;
@@ -167,6 +184,39 @@
   outline-offset: 2px;
 }
 
+/* The Agent Author trigger (AA19): a nav-item-shaped button in the footer group. */
+.nav-rail .author-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.nav-rail .author-trigger:hover {
+  background: light-dark(var(--surface), var(--surface-2));
+  color: var(--text);
+}
+.nav-rail .author-trigger:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.nav-rail[data-collapsed] .author-trigger {
+  justify-content: center;
+  padding: 0;
+}
+
 /* Collector status card, pinned under Settings. */
 .nav-daemon {
   position: relative;
@@ -226,6 +276,29 @@
 }
 .nav-rail[data-collapsed] .nav-label {
   display: none;
+}
+/* The Inbox waiting-count badge (R02b): a solid accent pill; the collapsed rail shows only a dot. */
+.nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent-solid);
+  color: var(--on-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+.nav-badge-dot {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: var(--accent-solid);
 }
 .nav-rail[data-collapsed] .nav-daemon {
   justify-content: center;

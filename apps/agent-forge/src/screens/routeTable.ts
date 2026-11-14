@@ -2,7 +2,11 @@
 export type ScreenId =
   | 'agents'
   | 'agentList'
+  | 'codeAgent'
+  | 'inbox'
   | 'agentDetail'
+  | 'observedAgent'
+  | 'templates'
   | 'playground'
   | 'traces'
   | 'trace'
@@ -14,6 +18,8 @@ export type ScreenId =
   | 'evaluators'
   | 'prompts'
   | 'hub'
+  | 'workspaces'
+  | 'workspace'
   | 'settings';
 
 /** One hash route: its pattern, the screen it shows, and a concrete path that exercises it. */
@@ -29,11 +35,24 @@ export interface RouteEntry {
  * Kept free of React so the Playwright specs can import it.
  */
 export const ROUTES: readonly RouteEntry[] = [
-  { pattern: '/agents', screen: 'agentList', example: '/agents' },
-  { pattern: '/agents/:id', screen: 'agents', example: '/agents/e2e-agent' }, // legacy, redirected
-  // Keep '/agents/:id/canvas' above '/agents/:id/:tab': 'canvas' is a tab name too.
-  { pattern: '/agents/:id/canvas', screen: 'agents', example: '/agents/e2e-agent/canvas' },
-  { pattern: '/agents/:id/:tab', screen: 'agentDetail', example: '/agents/e2e-agent/overview' },
+  { pattern: '/agents', screen: 'agentList', example: '/agents' }, // every workspace (W06b fills it)
+  // Pre-W04b links: '/agents/:id…' redirects (replace) into the launch workspace.
+  { pattern: '/agents/:id', screen: 'agents', example: '/agents/e2e-agent' },
+  { pattern: '/agents/:id/:tab', screen: 'agents', example: '/agents/e2e-agent/canvas' },
+  // Keep '/w/:ws/agents/:id/canvas' above '/w/:ws/agents/:id/:tab': 'canvas' is a tab name too.
+  { pattern: '/w/:ws/agents', screen: 'agentList', example: '/w/e2e-000000/agents' }, // one workspace's list
+  { pattern: '/w/:ws/agents/:id', screen: 'agents', example: '/w/e2e-000000/agents/e2e-agent' }, // → canvas
+  { pattern: '/w/:ws/agents/:id/canvas', screen: 'agents', example: '/w/e2e-000000/agents/e2e-agent/canvas' },
+  { pattern: '/w/:ws/agents/:id/:tab', screen: 'agentDetail', example: '/w/e2e-000000/agents/e2e-agent/overview' },
+  { pattern: '/observed/:agentId', screen: 'observedAgent', example: '/observed/e2e-observed' }, // read-only daemon agent (W07b)
+  // Code agents (X06b/W08b): the path is one segment - the CodeAgentDir.path
+  // encodeURIComponent'd ('agents%2Fsupport' decodes to 'agents/support').
+  // The bare '/code-agents/:path' row is the pre-W08b link; it redirects.
+  { pattern: '/code-agents/:path', screen: 'codeAgent', example: '/code-agents/agents%2Fsupport' },
+  { pattern: '/w/:ws/code-agents/:path', screen: 'codeAgent', example: '/w/e2e-000000/code-agents/agents%2Fsupport' },
+  { pattern: '/inbox', screen: 'inbox', example: '/inbox' }, // every workspace (W09b)
+  { pattern: '/w/:ws/inbox', screen: 'inbox', example: '/w/e2e-000000/inbox' }, // one workspace's inbox
+  { pattern: '/templates', screen: 'templates', example: '/templates' },
   { pattern: '/playground', screen: 'playground', example: '/playground' },
   { pattern: '/traces', screen: 'traces', example: '/traces' },
   { pattern: '/traces/:traceId', screen: 'trace', example: '/traces/e2e-trace' },
@@ -51,5 +70,8 @@ export const ROUTES: readonly RouteEntry[] = [
   { pattern: '/prompts/:name', screen: 'prompts', example: '/prompts/e2e-prompt' },
   { pattern: '/hub', screen: 'hub', example: '/hub' },
   { pattern: '/hub/:namespace', screen: 'hub', example: '/hub/e2e-namespace' },
+  { pattern: '/workspaces', screen: 'workspaces', example: '/workspaces' },
+  { pattern: '/workspaces/:id', screen: 'workspace', example: '/workspaces/e2e-workspace' },
+  { pattern: '/workspaces/:id/:section', screen: 'workspace', example: '/workspaces/e2e-workspace/pages' },
   { pattern: '/settings', screen: 'settings', example: '/settings' },
 ];

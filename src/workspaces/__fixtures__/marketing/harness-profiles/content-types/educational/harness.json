@@ -1,0 +1,23 @@
+{
+  "schema": "lousho.harness/1",
+  "id": "educational",
+  "version": "1.0.0",
+  "instructions": [
+    "teach.md"
+  ],
+  "constraints": [
+    {
+      "id": "one-idea",
+      "text": "Teach one idea per video."
+    }
+  ],
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "teaches-one-idea",
+        "description": "The video teaches exactly one idea.",
+        "rubric": "One idea, explained simply with one example."
+      }
+    ]
+  }
+}

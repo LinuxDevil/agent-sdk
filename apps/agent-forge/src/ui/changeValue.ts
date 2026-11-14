@@ -5,6 +5,7 @@
  * over its line diff. Declared here (not imported from server/) so the
  * server's `SpecChange` / `LineDiff` only need to be assignable to it.
  */
+import type { LineDiff, SpecChange } from '../../shared/wireTypes';
 
 /** One line of a precomputed text diff (the server's `LineDiff` shape). */
 export interface ChangeLine {
@@ -23,6 +24,29 @@ export interface ChangeItem {
   after?: unknown;
   /** Present for long text (instructions): the line diff to show under the counts. */
   lines?: ChangeLine[];
+}
+
+/**
+ * A server `LineDiff` row onto {@link ChangeLine}: 'add'/'del'/'context'
+ * map onto 'added'/'removed'/'same'; a collapsed 'gap' run draws as one
+ * quiet context row naming the hidden line count.
+ */
+function toChangeLine(line: LineDiff): ChangeLine {
+  if (line.kind === 'gap') {
+    return { kind: 'same', text: `··· ${line.count} unchanged ${line.count === 1 ? 'line' : 'lines'}` };
+  }
+  if (line.kind === 'add') return { kind: 'added', text: line.text };
+  if (line.kind === 'del') return { kind: 'removed', text: line.text };
+  return { kind: 'same', text: line.text };
+}
+
+/**
+ * A server `SpecChange` onto the {@link ChangeItem} ChangeList draws; only
+ * `lines` needs the `LineDiff` → `ChangeLine` kind mapping.
+ */
+export function toChangeItem(change: SpecChange): ChangeItem {
+  const { lines, ...rest } = change;
+  return lines === undefined ? rest : { ...rest, lines: lines.map(toChangeLine) };
 }
 
 /** How one change is drawn: struck scalars, chips per collection item, or counts + a diff. */

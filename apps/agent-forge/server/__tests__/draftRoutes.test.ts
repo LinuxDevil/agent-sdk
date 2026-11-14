@@ -11,9 +11,9 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import { DraftStore } from '../storage/draftStore';
-import type { ChangeDraft } from '../../shared/wireTypes';
+import type { ChangeDraft, DraftView } from '../../shared/wireTypes';
 
 const V1_SPEC: AgentSpec = {
   name: 'ops',
@@ -30,7 +30,7 @@ const V1_SPEC: AgentSpec = {
  */
 describe('draft routes', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
 
@@ -100,7 +100,11 @@ describe('draft routes', () => {
     expect(draft.baseSpecHash).toMatch(/^sha256:/);
     expect(draft.baseVersion).toBeNull();
 
-    expect((await request(app()).get('/agents/ops/draft')).body).toEqual(draft);
+    // GET answers the DraftView (L11b): the draft plus its live diff and
+    // the latest version number.
+    const view = (await request(app()).get('/agents/ops/draft')).body as DraftView;
+    expect(view).toMatchObject({ ...draft, currentVersion: 0 });
+    expect(view.changes.length).toBeGreaterThan(0);
     // The working copy was not edited and no version was written.
     const spec = await repo.readSpec('ops');
     expect(spec?.description).toBeUndefined();
@@ -189,8 +193,9 @@ describe('draft routes', () => {
 
   it('approve applies the patch over the CURRENT spec and writes one source:draft version', async () => {
     await saveAgent();
-    const draft = (await createDraft('ops', { patch: { description: 'From draft.' }, origin: 'author', reason: 'x' }))
-      .body as ChangeDraft;
+    const draft = (
+      await createDraft('ops', { patch: { description: 'From draft.' }, origin: 'author', reason: 'Tighten the ops prompt.' })
+    ).body as ChangeDraft;
 
     // The working copy moved on after the draft was made: approve must keep this edit too.
     await saveAgent('ops', { ...V1_SPEC, prompt: 'Edited instructions.' });
@@ -204,7 +209,7 @@ describe('draft routes', () => {
 
     const items = indexLines('ops');
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ kind: 'update', source: 'draft' });
+    expect(items[0]).toMatchObject({ kind: 'update', source: 'draft', requestText: 'Tighten the ops prompt.' });
     expect(items[0].changedFields).toContain('description');
   });
 

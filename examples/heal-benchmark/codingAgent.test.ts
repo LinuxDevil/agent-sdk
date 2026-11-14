@@ -62,6 +62,14 @@ describe('codingAgent', () => {
     expect(taskOf('page-count', extra).task.check('')).toBe(false);
   });
 
+  it('starts from extra project files without counting them as changes', () => {
+    const start = { 'src/months.js': `// a note\n${codingAgent().files['src/months.js']}` };
+    const build = codingAgent(FIXES['page-count'], start);
+    expect(build.files['src/months.js']).toBe(start['src/months.js']);
+    expect(taskOf('page-count', build).task.check('')).toBe(true);
+    expect(taskOf('add-months', codingAgent(FIXES['add-months'], start)).task.check('')).toBe(true);
+  });
+
   it('reports real test results through its run_tests tool', () => {
     expect(runProjectTests(codingAgent().files, 'test/pages.test.js').exitCode).not.toBe(0);
     expect(runProjectTests(codingAgent(FIXES['page-count']).files, 'test/pages.test.js').exitCode).toBe(0);

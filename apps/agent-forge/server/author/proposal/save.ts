@@ -14,7 +14,6 @@
  */
 import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import type {
-  AuthorMessage,
   AuthorToolFailure,
   ProposalOutput,
 } from '../../../shared/authorWire';
@@ -33,9 +32,6 @@ import {
   writeFailedFailure,
 } from './failures';
 import type { ProposalIdentity } from './turnState';
-
-/** The longest `requestText` a write stamps on its version (PLAN §4, 400 chars). */
-const REQUEST_TEXT_MAX = 400;
 
 /**
  * The stores and per-save facts `writeProposal` needs. `agents`,
@@ -58,31 +54,6 @@ export interface WriteContext {
 export type SaveResult =
   | { ok: true; agentId: string; version: number; name: string; enabled: boolean }
   | AuthorToolFailure;
-
-/**
- * The last non-empty user text before the assistant message holding
- * `proposalId`, cut to 400 chars ('…' when cut). `uiEvent` user messages
- * are skipped - they are app-written save/secret markers, not something
- * the user asked for. `null` when no card carries the id or no user text
- * precedes it.
- */
-export function requestTextFor(messages: readonly AuthorMessage[], proposalId: string): string | null {
-  let lastUserText: string | null = null;
-  for (const message of messages) {
-    if (message.role === 'user') {
-      if (message.uiEvent === undefined && message.text.trim() !== '') lastUserText = message.text;
-      continue;
-    }
-    const holdsCard = message.parts.some((part) => part.type === 'tool' && part.toolCallId === proposalId);
-    if (holdsCard) {
-      if (lastUserText === null) return null;
-      return lastUserText.length > REQUEST_TEXT_MAX
-        ? `${lastUserText.slice(0, REQUEST_TEXT_MAX - 1)}…`
-        : lastUserText;
-    }
-  }
-  return null;
-}
 
 /** The `{ ok: true }` half of a save: the version number (a no-op update re-uses the latest) and the bus event. */
 async function savedResult(

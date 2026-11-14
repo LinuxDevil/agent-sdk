@@ -1,0 +1,49 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "audience": {
+    "description": "The support team."
+  },
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "report": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "report"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "ranking": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "ranking"
+      ]
+    }
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "ranking-present",
+        "description": "The ranking is not empty.",
+        "check": "harness/checks/ranking-present.ts"
+      }
+    ]
+  },
+  "context": {
+    "resources": [
+      "resources/urgency-guide.md"
+    ]
+  }
+}

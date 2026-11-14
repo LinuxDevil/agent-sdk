@@ -21,13 +21,9 @@
  * handshake first, so the socket is always accepted, then maybe closed.
  */
 import { WebSocketServer, WebSocket, type RawData } from 'ws';
-import {
-  type AuthorClientMessage,
-  type AuthorFocus,
-  type AuthorServerEvent,
-} from '../../shared/authorWire';
-import { isValidAgentId } from '../../shared/agentId';
+import { type AuthorClientMessage, type AuthorServerEvent } from '../../shared/authorWire';
 import type { UpgradeHandler } from '../ws/upgradeRouter';
+import { parseFocus } from './parseFocus';
 import type { AuthorSessionStore } from './sessionStore';
 import type { AuthorTurnRunner } from './turnRunner';
 import { ReplayBuffer } from './replayBuffer';
@@ -60,18 +56,6 @@ function send(ws: WebSocket, event: AuthorServerEvent): void {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(event));
   }
-}
-
-/** A `chat.send`'s optional `focus`, checked field by field like the REST route's parseFocus. */
-function parseFocus(value: unknown): { ok: true; focus?: AuthorFocus } | { ok: false } {
-  if (value === undefined) return { ok: true };
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return { ok: false };
-  const candidate = value as { mode?: unknown; agentId?: unknown };
-  if (candidate.mode === 'create') return { ok: true, focus: { mode: 'create' } };
-  if (candidate.mode === 'edit' && typeof candidate.agentId === 'string' && isValidAgentId(candidate.agentId)) {
-    return { ok: true, focus: { mode: 'edit', agentId: candidate.agentId } };
-  }
-  return { ok: false };
 }
 
 /**

@@ -1,19 +1,23 @@
 import type { CSSProperties, ReactElement } from 'react';
-import { Activity, Braces, History, MessageSquare, ScrollText, Settings, type LucideIcon } from 'lucide-react';
+import { Activity, Braces, FlaskConical, History, ScrollText, Settings, TriangleAlert, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import type { DrawerTab } from '../state/AppState';
 import { LogsPanel } from './debug/LogsPanel';
 import { TracePanel } from './debug/TracePanel';
 import { OutputPanel } from './debug/OutputPanel';
 import { HistoryPanel } from './debug/HistoryPanel';
+import { ProblemsPanel } from './debug/ProblemsPanel';
 import { DebugBar } from './debug/DebugBar';
-import { ChatPanel } from './ChatPanel';
+import { TestPane } from './test/TestPane';
+import { StopButton } from './test/StopButton';
+import { SteerBox } from './test/SteerBox';
 import { SettingsPanel } from './SettingsPanel';
 import { tabIds, tabListKeyDown } from './tabs';
 import { DrawerResizeHandle, useDrawerHeight } from './drawerHeight';
 
 const TABS: { id: DrawerTab; label: string; Icon: LucideIcon }[] = [
-  { id: 'chat', label: 'Chat', Icon: MessageSquare },
+  { id: 'test', label: 'Test', Icon: FlaskConical },
+  { id: 'problems', label: 'Problems', Icon: TriangleAlert },
   { id: 'logs', label: 'Logs', Icon: ScrollText },
   { id: 'trace', label: 'Trace', Icon: Activity },
   { id: 'output', label: 'Output', Icon: Braces },
@@ -23,7 +27,8 @@ const TABS: { id: DrawerTab; label: string; Icon: LucideIcon }[] = [
 const TAB_IDS = TABS.map((t) => t.id);
 
 const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
-  chat: () => <ChatPanel />,
+  test: () => <TestPane runActions={<StopButton />} aboveComposer={<SteerBox />} />,
+  problems: () => <ProblemsPanel />,
   logs: () => <LogsPanel />,
   trace: () => <TracePanel />,
   output: () => <OutputPanel />,
@@ -32,16 +37,17 @@ const TAB_PANELS: Record<DrawerTab, () => ReactElement> = {
 };
 
 // Every tab except Output and History manages its own padding/scrolling.
-const FLUSH_TABS: ReadonlySet<DrawerTab> = new Set<DrawerTab>(['logs', 'trace', 'chat', 'settings']);
+const FLUSH_TABS: ReadonlySet<DrawerTab> = new Set<DrawerTab>(['logs', 'trace', 'test', 'settings']);
 const FLUSH_BODY_STYLE: CSSProperties = { padding: 0, overflow: 'hidden' };
 
 type DrawerCounts = Partial<Record<DrawerTab, number>>;
 
-/** The live counts shown on the Chat (messages), Logs (lines) and Trace (spans) tabs. */
+/** The live counts shown on the Test (messages), Problems (errors + warnings), Logs (lines) and Trace (spans) tabs. */
 function useDrawerCounts(): DrawerCounts {
-  const { chat, logs, spans } = useAppState();
+  const { chat, logs, spans, problems } = useAppState();
   return {
-    chat: chat.messages.filter((m) => m.role !== 'system').length,
+    test: chat.messages.filter((m) => m.role !== 'system').length,
+    problems: (problems ?? []).length,
     logs: logs.length,
     trace: spans.length,
   };
@@ -62,8 +68,9 @@ function TabCount({ count }: { count: number | undefined }) {
  * feed), `TracePanel` (the run's spans in the shared trace viewer) and `OutputPanel` (a
  * collapsible JSON tree of the final/paused ExecutionResult). `DebugBar`
  * surfaces above Trace whenever debug mode is on or a run is paused
- * at a breakpoint. Chat and Settings are still later
- * epics' jobs. Its top edge resizes it; the height is remembered per viewer
+ * at a breakpoint. The Test tab (TestPane: a run bar over the chat
+ * thread) and Settings are styled by their own panels. Its top edge
+ * resizes it; the height is remembered per viewer
  * (see drawerHeight.tsx).
  */
 export function BottomDrawer() {

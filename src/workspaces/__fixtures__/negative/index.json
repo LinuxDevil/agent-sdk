@@ -1,0 +1,166 @@
+{
+  "base": "_base",
+  "cases": [
+    {
+      "name": "harness-permissions",
+      "code": "PRD001",
+      "checkedBy": "schema",
+      "file": "pages/main/harness/harness.json",
+      "expect": "the runtime enforces permissions (R13)"
+    },
+    {
+      "name": "harness-execution-key",
+      "code": "PRD002",
+      "checkedBy": "schema",
+      "file": "pages/main/harness/harness.json",
+      "expect": "execution lives in page.json (R18)"
+    },
+    {
+      "name": "harness-duplicate-constraint-id",
+      "code": "PRD003",
+      "checkedBy": "schema",
+      "file": "pages/main/harness/harness.json",
+      "expect": "constraints.1.id: duplicate id 'tone'"
+    },
+    {
+      "name": "base-harness-has-extends",
+      "code": "PRD004",
+      "checkedBy": "schema",
+      "file": "harness/harness.json",
+      "expect": "a base harness has no 'extends'"
+    },
+    {
+      "name": "attachment-tools-add",
+      "code": "PRD005",
+      "checkedBy": "schema",
+      "file": "pages/main/agents.json",
+      "expect": "agent-owned settings live in the agent, not the attachment (R13)"
+    },
+    {
+      "name": "attachment-duplicate-alias",
+      "code": "PRD006",
+      "checkedBy": "schema",
+      "file": "pages/main/agents.json",
+      "expect": "duplicate alias 'helper'"
+    },
+    {
+      "name": "attachment-ref-no-prefix",
+      "code": "PRD007",
+      "checkedBy": "schema",
+      "file": "pages/main/agents.json",
+      "expect": "needs a prefix"
+    },
+    {
+      "name": "page-goal-without-lead",
+      "code": "PRD008",
+      "checkedBy": "schema",
+      "file": "pages/main/page.json",
+      "expect": "execution.goal.lead"
+    },
+    {
+      "name": "page-nested-pages",
+      "code": "PRD009",
+      "checkedBy": "schema",
+      "file": "pages/main/page.json",
+      "expect": "nested pages are not supported in v1"
+    },
+    {
+      "name": "ui-html-prop",
+      "code": "PRD010",
+      "checkedBy": "schema",
+      "file": "pages/main/ui/page.ui.json",
+      "expect": "html is not allowed (R15)"
+    },
+    {
+      "name": "main-harness-no-main-agent",
+      "code": "PRD011",
+      "checkedBy": "helper",
+      "file": "main-agent/harness/main-harness.json",
+      "expect": "a main harness needs a main agent"
+    },
+    {
+      "name": "ui-bind-missing-input",
+      "code": "PRD012",
+      "checkedBy": "helper",
+      "file": "pages/main/ui/page.ui.json",
+      "expect": "UI001"
+    },
+    {
+      "name": "profile-cycle",
+      "code": "PRD013",
+      "checkedBy": "helper",
+      "file": "pages/main/page.json",
+      "expect": "harness extends cycle"
+    },
+    {
+      "name": "rubric-only-improvable",
+      "code": "PRD017",
+      "checkedBy": "helper",
+      "file": "pages/main/harness/harness.json",
+      "expect": "PRD017"
+    },
+    {
+      "name": "policy-outside-shared",
+      "code": "PRD014",
+      "checkedBy": "validateWorkspace",
+      "file": "pages/main/policy.json",
+      "expect": "policy appears only in shared/policies/policy.json"
+    },
+    {
+      "name": "main-harness-route-missing-page",
+      "code": "PRD015",
+      "checkedBy": "validateWorkspace",
+      "file": "main-agent/harness/main-harness.json",
+      "expect": "route names page 'ghost', which workspace.json does not list"
+    },
+    {
+      "name": "goal-check-missing-criterion",
+      "code": "PRD016",
+      "checkedBy": "validateWorkspace",
+      "file": "pages/main/goal.json",
+      "expect": "check names criterion 'no-such-criterion', which no layer defines"
+    },
+    {
+      "name": "goal-rubric-only",
+      "code": "PRD033",
+      "checkedBy": "validateWorkspace",
+      "file": "pages/main/goal.json",
+      "expect": "every criterion this goal names is rubric-only"
+    },
+    {
+      "name": "inactive-block-unknown-alias",
+      "code": "PRD018",
+      "checkedBy": "validateWorkspace",
+      "file": "pages/main/page.json",
+      "expect": "execution.multiAgent.lead names alias 'ghost', which agents.json does not define"
+    },
+    {
+      "name": "workflow-unknown-alias",
+      "code": "PRD019",
+      "checkedBy": "validateWorkspace",
+      "file": "pages/main/workflow.json",
+      "expect": "step 'work' names alias 'ghost', which agents.json does not define"
+    },
+    {
+      "name": "workspace-ref-missing-folder",
+      "code": "PRD020",
+      "checkedBy": "validateWorkspace",
+      "file": "pages/main/agents.json",
+      "expect": "workspace:ghost-agent has no folder agents/ghost-agent"
+    },
+    {
+      "name": "page-folder-not-listed",
+      "code": "PRD021",
+      "checkedBy": "validateWorkspace",
+      "file": "pages/extra/page.json",
+      "expect": "page folder 'extra' is not listed in workspace.json pages"
+    },
+    {
+      "name": "page-listed-missing-folder",
+      "code": "PRD022",
+      "checkedBy": "validateWorkspace",
+      "file": "workspace.json",
+      "expect": "page 'ghost' is listed in workspace.json but pages/ghost has no folder"
+    }
+  ]
+}

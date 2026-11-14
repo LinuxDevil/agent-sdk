@@ -1,0 +1,15 @@
+{
+  "schema": "lousho.goal/1",
+  "goal": "Find facts that answer the question, each with a source.",
+  "checks": [
+    {
+      "criterion": "findings-present"
+    }
+  ],
+  "stop": {
+    "maxIterations": 5,
+    "maxDurationMs": 600000,
+    "maxCostUsd": 2,
+    "onStall": "stop"
+  }
+}

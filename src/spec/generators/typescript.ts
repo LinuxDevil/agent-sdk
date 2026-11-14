@@ -158,11 +158,11 @@ function renderGuardrails(spec: AgentSpecV2, ctx: RenderContext): string | undef
   return `guardrailsFromSpec(${toTsLiteral(spec.guardrails, 2)})`;
 }
 
-/** `spec.permissions` → `permissionsFromSpec(<list>)` (synchronous, no await). */
+/** `spec.permissions` → `permissionsFromSpec(<list>).rules` (synchronous, no await; `.rules` because the resolver also returns the `isAuto` predicate a `createAutoApprove` host wires separately). */
 function renderPermissions(spec: AgentSpecV2, ctx: RenderContext): string | undefined {
   if (spec.permissions === undefined) return undefined;
   ctx.imports.add('permissionsFromSpec');
-  return `permissionsFromSpec(${toTsLiteral(spec.permissions, 2)})`;
+  return `permissionsFromSpec(${toTsLiteral(spec.permissions, 2)}).rules`;
 }
 
 /** `spec.hooks` → `await hooksFromSpec(<list>, host)`. */
@@ -299,7 +299,7 @@ function specKeysTrailer(spec: AgentSpecV2): string[] | undefined {
  * Deterministic: two calls with the same spec return identical strings, and
  * the option order follows KEY_ORDER regardless of the input's key order.
  * `options.packageName` overrides the specifier the SDK is imported from
- * (default 'lousho').
+ * (default '@linuxdevil/lousho').
  */
 export function specToCode(spec: AgentSpecV2, options?: SpecToCodeOptions): string {
   const packageName = options?.packageName ?? '@linuxdevil/lousho';

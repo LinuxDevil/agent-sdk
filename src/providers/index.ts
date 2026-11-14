@@ -28,7 +28,7 @@ export { MissingPeerDependencyError } from './optionalPeer';
 // factories only construct provider objects; each provider loads its
 // optional peer SDK on first use, so this registration
 // never loads (or requires) a peer package. Every other entry point (deep
-// imports, the `lousho` CLI, deploy bundles) gets the same registrations
+// imports, the `@linuxdevil/lousho` CLI, deploy bundles) gets the same registrations
 // lazily: LLMProviderRegistry.create() calls ensureBuiltinProviders() on a
 // miss.
 import { LLMProviderRegistry } from './llm';

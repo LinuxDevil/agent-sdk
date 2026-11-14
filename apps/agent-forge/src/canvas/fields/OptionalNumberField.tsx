@@ -4,10 +4,15 @@
  * number, `min`/`max` range). Invalid text stays in the draft and is
  * never emitted; an empty input emits `undefined`.
  */
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import type { ChangeEvent } from 'react';
 import { Field } from '../../ui/Field';
 import { Input } from '../../ui/controls';
+import { useSyncedDraft } from './useSyncedDraft';
 import './fields.css';
+
+function numberText(value: number | undefined): string {
+  return value === undefined ? '' : String(value);
+}
 
 /** Props for {@link OptionalNumberField}. */
 export interface OptionalNumberFieldProps {
@@ -19,6 +24,10 @@ export interface OptionalNumberFieldProps {
   onChange(value: number | undefined): void;
   min?: number;
   max?: number;
+  /** Replaces the generated message when `min` is violated (e.g. 'At least 30 seconds'). */
+  minMessage?: string;
+  /** Replaces the generated message when `max` is violated. */
+  maxMessage?: string;
   /** Native `step` attribute (e.g. `0.1` for temperature). */
   step?: number;
   /** Non-integers show 'Enter a whole number'. */
@@ -27,6 +36,8 @@ export interface OptionalNumberFieldProps {
   help?: string;
   /** Unit suffix drawn after the input ('ms', 'tokens'). */
   unit?: string;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 /** `n`'s range error message for the bounds that are actually set. */
@@ -39,14 +50,13 @@ function rangeError(min: number | undefined, max: number | undefined): string {
 /** `text`'s error under the field's rules, or `undefined` when it is an emittable number. */
 function validate(
   text: string,
-  props: Pick<OptionalNumberFieldProps, 'min' | 'max' | 'integer'>,
+  props: Pick<OptionalNumberFieldProps, 'min' | 'max' | 'minMessage' | 'maxMessage' | 'integer'>,
 ): string | undefined {
   const num = Number(text);
   if (!Number.isFinite(num)) return 'Enter a number';
   if (props.integer === true && !Number.isInteger(num)) return 'Enter a whole number';
-  if ((props.min !== undefined && num < props.min) || (props.max !== undefined && num > props.max)) {
-    return rangeError(props.min, props.max);
-  }
+  if (props.min !== undefined && num < props.min) return props.minMessage ?? rangeError(props.min, props.max);
+  if (props.max !== undefined && num > props.max) return props.maxMessage ?? rangeError(props.min, props.max);
   return undefined;
 }
 
@@ -61,44 +71,33 @@ export function OptionalNumberField({
   onChange,
   min,
   max,
+  minMessage,
+  maxMessage,
   step,
   integer,
   help,
   unit,
+  fieldPath,
 }: OptionalNumberFieldProps): JSX.Element {
-  const [draft, setDraft] = useState(() => (value === undefined ? '' : String(value)));
-  const [error, setError] = useState<string | undefined>();
-  // The last value this field emitted, so an external change can be told
-  // apart from the echo of our own onChange (which must not clobber the
-  // draft the user is still typing, e.g. a trailing '0.').
-  const emitted = useRef<number | undefined>(value);
-  useEffect(() => {
-    if (Object.is(value, emitted.current)) return;
-    emitted.current = value;
-    setDraft(value === undefined ? '' : String(value));
-    setError(undefined);
-  }, [value]);
+  const { draft, setDraft, error, setError, emit } = useSyncedDraft(value, numberText, onChange);
 
   const onText = (event: ChangeEvent<HTMLInputElement>) => {
     const text = event.target.value;
     setDraft(text);
     if (text.trim() === '') {
-      setError(undefined);
-      emitted.current = undefined;
-      onChange(undefined);
+      emit(undefined);
       return;
     }
-    const problem = validate(text, { min, max, integer });
-    setError(problem);
-    if (problem === undefined) {
-      const num = Number(text);
-      emitted.current = num;
-      onChange(num);
+    const problem = validate(text, { min, max, minMessage, maxMessage, integer });
+    if (problem !== undefined) {
+      setError(problem);
+      return;
     }
+    emit(Number(text));
   };
 
   return (
-    <Field id={id} label={label} error={error} hint={help}>
+    <Field id={id} label={label} error={error} hint={help} fieldPath={fieldPath}>
       <div className="numfield-row">
         <Input type="number" value={draft} onChange={onText} min={min} max={max} step={step} />
         {unit !== undefined ? <span className="field-unit">{unit}</span> : null}

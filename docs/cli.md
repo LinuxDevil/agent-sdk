@@ -1,6 +1,6 @@
 # CLI
 
-Installing the package also installs the `lousho` command. It scaffolds
+Installing the package also installs the `@linuxdevil/lousho` command. It scaffolds
 projects, checks your setup, runs an agent locally, serves it over MCP, runs
 evals, shows saved traces, builds a deployable artifact and launches the Agent Forge dashboard.
 Run it with `npx @linuxdevil/lousho <command>` inside a project that has the SDK installed.
@@ -18,6 +18,7 @@ Run it with `npx @linuxdevil/lousho <command>` inside a project that has the SDK
 | `lousho traces [id]` | List the recent runs saved by `fileTraceExporter()` (duration, model and tool calls, tokens, cost), or print one run as a span tree. | [Observability](./observability.md#local-traces) |
 | `lousho build --target=<t> --agent=<spec>` | Build a deployable Node server, Docker image or Cloudflare Worker. | [Deployment](./deployment.md) |
 | `lousho studio` | Launch Agent Forge, the visual dashboard, on one local port. | [Agent Forge](./agent-forge.md) |
+| `lousho improve <path> --check <module>` | Experimental. Run one self-healing cycle on an agent directory: propose edits to its instructions and skills from failed runs in your local observe database, gate them, replay them on fresh runs, and apply (auto mode, the default) or queue (manual mode) one that passes. `--watch` keeps it running; `pause`, `status`, `rollback`, `approve` and the other subcommands manage it. `--dry-run` prints the review card and applies nothing. | [Below](#lousho-improve) |
 
 Every command that takes a `<spec>` reads an agent spec file (`.yaml`,
 `.yml` or `.json`, see [Configuration](./configuration.md#agent-spec-files-agentspec)).
@@ -38,6 +39,8 @@ lousho eval [globs...] [--tag t] [--junit path] [--json path] [--strict] [--judg
 lousho traces [traceId|prefix] [--dir D] [--limit N] [--json] [--content]
 lousho observe <start|status|stop|rebuild-rollups|prune|export|failures|token> [--port N] [--db path] [--host H] [--require-token] [--project X] [--webhook URL] [--retention-days N] [--session-idle-minutes N] [--older-than <N>d] [--since <N>d|<N>h|<N>m] [--agent X] [--out file]
 lousho prompt <push <file|->|list|get <name[@version|@label]>|label <name> <label> <version>> [--url U] [--port N] [--token T] [--json] [--name N] [--labels a,b] [--variables x,y]
+lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d|<N>h|<N>m] [--agent X] [--protect traceId]... [--read-only tool]... [--max-tokens n] [--out file] [--with-recoveries] [--approval auto|manual] [--proposers 1-4] [--mode agg|seq] [--select] [--no-parallel-editors] [--dry-run] [--watch [--interval 15m]]
+lousho improve <revisions|rollback|audit|pending|approve|reject|pause|resume|status> <agent-dir> ...
 lousho --version
 ```
 
@@ -73,7 +76,7 @@ not the shared `LOUSHO_CONFIG_INVALID` path. The only short flags besides
 instead of the generated one; globs then narrow that config's files as vitest
 filters.
 
-`npm create lousho my-agent` runs `lousho init` with the same arguments.
+`npm create @linuxdevil/lousho my-agent` runs `lousho init` with the same arguments.
 To scaffold against an unreleased build of the SDK, pass `--sdk-path` (see
 [Installing from a local build](./installation.md#installing-from-a-local-build)).
 
@@ -283,6 +286,7 @@ npx @linuxdevil/lousho observe prune --older-than 30d       # delete finished ru
 npx @linuxdevil/lousho observe export --since 7d --out runs.jsonl # traces as JSONL, one per line
 npx @linuxdevil/lousho observe failures --since 7d          # recurring tool and model failures, by agent
 npx @linuxdevil/lousho observe failures --traces .lousho/traces --json # the same from trace files, no database
+npx @linuxdevil/lousho observe score --agent support        # continuous score, pass rate and trajectory gate state
 npx @linuxdevil/lousho observe token create --project myapp # bearer key for non-loopback auth
 ```
 
@@ -356,3 +360,238 @@ resolve them with `createAgent({ prompt: 'mira@latest' })` (or a label,
   one version, so this takes it off the one that held it, and prints
   `mira@prod -> 3 (was 2)` (or `(was unset)` for a new label). A label is a
   name without whitespace, `@` or `/`, and not `latest` or all digits. See [The observe daemon](./observability.md#the-observe-daemon).
+
+## `lousho improve`
+
+Experimental, like the [`improveAgent()`](./improve.md) it runs.
+
+```bash
+npx @linuxdevil/lousho improve ./my-agent --check ./check.mjs --since 7d --out proposal.md
+```
+
+```js
+export default (input, answer) => !answer.includes('I cannot help');
+```
+
+It takes the failed runs in your local observe database (default
+`~/.lousho/observe.db`, or `--db`), replays each recorded input through the
+agent, scores each answer with your check, and prints the review card from
+`formatImproveResult()`. On an agent directory it then runs one self-healing
+cycle with `healOnce()`: only failed runs of the current harness revision count,
+a proposal that passes the gate is replayed on fresh runs (the canary), and in
+auto mode (the default) it is written to `instructions.md` and
+`skills/<name>/SKILL.md`, after which the corpus guard replays the protected
+cases and rolls back on a regression. In manual mode it is queued for
+`lousho improve approve`. Every step is audited, and `improve.json`'s daily caps,
+the cooldown after a rollback and the `.lousho/improve.stop` kill switch apply.
+`--dry-run` keeps the old behaviour: every failed run counts, the card is
+printed, and nothing is written. An agent module, or an agent whose instructions
+don't live in `instructions.md`, always runs dry.
+
+- `<path>` is an agent directory or a `.ts`/`.js` agent module whose
+  instructions are plain text. Editors may change only the instructions and
+  skills.
+- `--check <module>` is required. Its default export is a `CaseCheck`,
+  `(input, answer) => boolean | null | { passed, failure? }`; `null` means the
+  answer can't be scored. Return `{ passed: false, failure }` to name the check
+  a failed answer missed: the editors read it in that run's record, and without
+  it a failed run whose answer looks right gives them nothing to fix.
+  `input` is the user's message for a one-message run, else the recorded
+  messages as JSON text.
+- `--since` and `--agent` pick which failed runs become cases, as for
+  `lousho observe export`.
+- `--protect <traceId>` names a run that went well. It joins the gate only
+  after it passes 6 of 6 fresh runs; otherwise stderr says why it was left out.
+  A trace that is also a failed run stays a case to learn from.
+- Tools are simulated during replays, except `load_skill` and
+  `read_skill_file`. `--read-only <tool>` lets a tool that is safe to call
+  again run for real. Replays aren't traced: `LOUSHO_OBSERVE`, the agent's
+  `exporter` and `onEvent` are off while it runs, so they never reach your
+  database.
+- `--model` runs the agent on another model; `--editor` picks the editors'
+  model (default `--model`, else the agent's own).
+- `--out file` also writes the card, or the JSON result for a `.json` path. It
+  must be a new file, outside the agent's files.
+- `--max-tokens <n>` passes `maxTokens` to `improveAgent()`: it stops once `n`
+  tokens are spent on agent runs and editor calls. The total is checked after
+  each run or editor call, so the last one can go over. The card and the JSON
+  then report `budget-exceeded` with the reason, nothing is proposed, and
+  stderr suggests raising it. `n` must be a positive integer; anything else is
+  a usage error (exit 2). It is unset by default, so there is no cap. The runs
+  that admit `--protect` traces happen before and don't count toward it.
+- `--with-recoveries` also shows the editors, for each failed run, the
+  `<id>.heal` fork from `agent.recover()` that finished and whose answer passes
+  `--check`, if there is one. It's evidence only: it never counts as a run and
+  never protects a case, and a fork you `--protect` is left out. See
+  [Recovery forks as evidence](./improve.md#recovery-forks-as-evidence).
+- `--approval auto|manual` sets the approval mode, over the
+  `LOUSHO_IMPROVE_APPROVAL` variable, which wins over `"approval"` in
+  `improve.json` beside the agent. The default is `auto`. In `manual` mode an
+  edit that quotes a failed check word for word is kept and flagged on the card
+  for the person who approves it; in `auto` mode it is sent back to the editor
+  once and then dropped. An `improve.json` that doesn't validate stops the
+  run. See [Approval modes](./improve.md#approval-modes).
+- `--proposers <1-4>`, `--mode agg|seq`, `--select` and
+  `--no-parallel-editors` set the cycle's
+  [Harness² options](./improve.md#harness-options), over the `editors` block in
+  `improve.json`. `--select` can only turn the selector on and
+  `--no-parallel-editors` can only turn parallel off. `--proposers k` runs k invariant and k domain editors (or k
+  rounds with `--mode seq`), and costs about k times the editor sessions and
+  proposal runs. `--select` gates every candidate and lets the advisory selector
+  choose among those that pass. `--no-parallel-editors` runs the editors and
+  their probes one at a time, for a rate-limited model. They apply to dry runs
+  and `--watch` too.
+- `--dry-run` writes nothing: no apply, no queue, no audit entry. It reads
+  every failed run whatever its revision, and ignores the kill switch and the
+  daily caps.
+- `--watch` keeps running cycles on a timer; `--interval` (default `15m`, as
+  `<N>s`, `<N>m` or `<N>h`) sets the spacing. It needs an agent directory, takes
+  its budget from `improve.json`, and can't be combined with `--dry-run`,
+  `--max-tokens` or `--out`. See below.
+
+Before it starts, a cycle prints its approval mode and whether it applies or
+queues; a dry run prints how many runs it will make at least, and the token
+budget if any. Every run and every editor call is billed to your models.
+`--max-tokens` caps one cycle within `improve.json`'s daily caps.
+It exits 1 on an `outage`: no run could be scored, or the editors' provider
+failed. A `budget-exceeded` run exits 0, since you set the cap. Each run's error goes to
+stderr. It reads nothing but your own database. See [Improving an agent](./improve.md#from-the-command-line).
+
+### Revisions, rollback and the audit log
+
+Every change to an agent directory's `instructions.md` and
+`skills/<name>/SKILL.md` made through `applyProposal()` is saved as a revision
+under `.lousho/revisions/` and recorded in the hash-chained
+`.lousho/audit.jsonl`. Three subcommands read and undo that history:
+
+```bash
+npx @linuxdevil/lousho improve revisions ./my-agent
+npx @linuxdevil/lousho improve rollback ./my-agent --by ali --reason "answers got worse"
+npx @linuxdevil/lousho improve audit ./my-agent --verify
+```
+
+- `revisions <dir> [--json]` lists the saved revisions, newest first, with their
+  source (`baseline`, `apply` or `rollback`), who made them and when. `*` marks
+  the one the directory holds now.
+- `rollback <dir> --by <name> [--to <revision>] [--reason text]` restores a
+  saved revision through the same writer as an apply: it changes only
+  instructions and skills, makes a new revision and writes one `rollback` audit
+  entry. It never rewrites history. Without `--to` it goes to the parent of the
+  current revision. It refuses instead when the current revision came from a
+  rollback, or when the directory holds hand edits that match no revision; pass
+  `--to` then. A hand edit that a rollback replaces is saved as a revision
+  first. `--to` takes an id or a unique prefix of at least 4 characters. `--by`
+  is required. If an apply lands between your command and the write, the
+  rollback is refused as stale.
+- `audit <dir> [--verify] [--json]` prints the audit log, oldest first.
+  `--verify` checks the hash chain and exits 1 at the first edited, removed or
+  truncated line.
+
+A directory literally named `revisions`, `rollback`, `audit`, `pending`,
+`approve`, `reject`, `pause`, `resume` or `status` must be passed as
+`./revisions` and so on.
+
+### Pending proposals (manual mode)
+
+In manual mode a proposal that passed the gate waits in
+`.lousho/proposals/<id>.json` until a person decides:
+
+```bash
+npx @linuxdevil/lousho improve pending ./my-agent
+npx @linuxdevil/lousho improve approve ./my-agent 3f9c0a1b2d4e --by ali --check ./check.mjs
+npx @linuxdevil/lousho improve reject ./my-agent 3f9c0a1b2d4e --by ali --reason "too broad"
+```
+
+- `pending <dir> [--show <id>] [--json]` lists the queue, newest first, marking
+  stale and refused entries. The id is the first 12 characters of the proposed
+  harness's hash, and a file whose content doesn't match its id is left out.
+  `--show <id>` prints that proposal's review card.
+- `approve <dir> <id> --by <name> [--check <module>] [--model provider/model]
+  [--read-only tool]... [--no-guard] [--db path]` applies the proposal through
+  `applyProposal()` as that person's approval and removes it from the queue.
+  With `canary.traffic` set, it starts the
+  [traffic canary](./improve.md#live-traffic-canary-opt-in) instead and writes
+  nothing yet, reading the observe database at `--db` (default
+  `~/.lousho/observe.db`); the proposal is applied as that approval when the
+  canary passes, and the watcher guards it then. A
+  proposal whose agent directory changed since it was made is refused and
+  marked stale; run improve again. Any other refusal is recorded on the entry
+  and shown by `pending`. Right after the write it runs the corpus guard, as an
+  automatic apply does: `guard.runs` fresh runs of every corpus case, scored by
+  `--check`, with tools simulated unless `--read-only` names them. If a case
+  regressed or the guard can't judge (a run that errors counts as unscored, and
+  its error goes to stderr), the edit is rolled back to the approved
+  revision's parent and `approve` exits 1. If the directory changed between the
+  write and the guard, the guard doesn't run and `approve` exits 1 too. The guard's tokens count toward
+  today's budget. With cases in the corpus, `--check` is required, and the
+  agent and the check are loaded before anything is written. `--no-guard`
+  skips the guard and leaves it to a watcher's next scheduled guard. An empty
+  corpus needs neither.
+- `reject <dir> <id> --by <name> [--reason text]` records a `reject` audit entry
+  and moves the file to `.lousho/proposals/rejected/`. A rejected proposal is
+  never queued again.
+
+### Watching, pausing and status
+
+`--watch` keeps the loop running on an agent directory:
+
+```bash
+npx @linuxdevil/lousho improve ./my-agent --check ./check.mjs --watch --interval 15m
+npx @linuxdevil/lousho improve pause ./my-agent --reason "release freeze" --by ali
+npx @linuxdevil/lousho improve resume ./my-agent --by ali
+```
+
+Each tick checks the kill switch (`.lousho/improve.stop`, `LOUSHO_IMPROVE=off`
+or `"enabled": false`, audited once as `pause`), takes a lease so only one
+watcher runs per directory, runs the post-apply monitor, replays the corpus
+every `guard.everyHours`, and then runs one cycle within the daily caps. A tick
+with the same failures as the last one and no new failed run is skipped.
+Three outages in a row write the stop file. Editor calls are limited to
+`rateLimit.rpm` a minute. Ctrl-C stops after the current step. `pause` writes
+the stop file and `resume` removes it; both are audited. `resume` doesn't
+undo `LOUSHO_IMPROVE=off` or `"enabled": false`. While the loop is paused, the
+monitor doesn't run either, so nothing is rolled back automatically. Only a
+watcher runs the monitor: a single `lousho improve` cycle doesn't. See
+[Running it continuously](./improve.md#running-it-continuously).
+
+`lousho improve status <dir> [--json]` prints the mode and active revision, the
+last 5 audit entries, pending proposals, the monitor's verdict (with a warning
+while it waits for runs or kept an edit unverified), what is left of today's
+budget, the cooldown, the kill switch, the canary and the editor options a
+cycle uses (from `improve.json` and the defaults). The watcher's events go
+to the `alerts.json` webhooks beside the observe db (see
+[Observability](./observability.md)).
+
+### `improve.json`
+
+Self-healing settings live in `improve.json` beside the agent. Every key is
+optional, and an unknown key or a bad value is an error
+(`LOUSHO_CONFIG_INVALID`):
+
+```json
+{
+  "approval": "auto",
+  "budget": { "maxTokensPerDay": 2000000, "maxCyclesPerDay": 4, "maxAppliesPerDay": 1 },
+  "trigger": { "minNewFailures": 3, "requireRecurring": true },
+  "canary": { "replayRuns": 6 },
+  "monitor": { "minRuns": 20, "window": 20, "maxDrop": 0.05, "autoRollback": true, "giveUpDays": 7 },
+  "guard": { "runs": 3, "everyHours": 24, "maxCases": 30 },
+  "cooldownHours": 24,
+  "rateLimit": { "rpm": 20 },
+  "library": { "enabled": true },
+  "editors": { "proposers": 1, "mode": "agg", "select": false, "parallel": true }
+}
+```
+
+These are the defaults. Counts are whole numbers of 1 or more, and `maxDrop` is
+between 0 and 1, and `editors.proposers` is 1 to 4. `requireRecurring`
+defaults to `false` in manual mode.
+`"enabled": false` stops the loop for this agent. `budget.maxTokensPerCycle`,
+`canary.traffic` (`share` up to 0.25, `sessions` up to 50) and `library.domain`
+are unset unless you set them. With `canary.traffic` set, a proposal that
+passes the replay canary (in auto mode), or that a person approves (in manual
+mode), starts the
+[live traffic canary](./improve.md#live-traffic-canary-opt-in), which serves it
+to real sessions, instead of being written.
+`loadImproveSettings()` reads the file. See
+[Settings](./improve.md#settings) for what each key does.

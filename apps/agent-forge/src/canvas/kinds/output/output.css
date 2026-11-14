@@ -1,0 +1,46 @@
+/* Output schema Inspector (src/canvas/kinds/output/*) — the top-level field table. */
+
+/* One bordered row per field: head line (name, type, required, remove), description below. */
+.output-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.output-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.output-field-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 6.5rem) auto auto;
+  gap: var(--space-2);
+  align-items: center;
+}
+.output-field-head .input,
+.output-field-head .select {
+  min-width: 0;
+}
+.output-field-remove {
+  margin-top: 0;
+}
+.output-field-desc {
+  width: 100%;
+}
+.output-field-readonly {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+.output-field-name-text {
+  font-weight: 600;
+}
+.output-field-type-text {
+  color: var(--text-muted);
+}
+.output-fields-add {
+  align-self: flex-start;
+}

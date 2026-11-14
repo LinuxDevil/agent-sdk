@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
-import type { AgentSpec } from '@linuxdevil/lousho';
+import type { AgentSpecV2 } from '@linuxdevil/lousho';
 import { runtimeClient, RuntimeApiError } from '../runtime/runtimeClient';
 import type {
   AgentRunStatusPayload,
@@ -12,18 +12,20 @@ import type {
   SpanEvent,
 } from '../../shared/wireTypes';
 import type { ChatState } from './chatReducer';
+import type { NodeStates } from './nodeStateReducer';
 
 interface RunControlDeps {
   agentId: string;
-  spec: AgentSpec;
+  spec: AgentSpecV2;
   runStatus: AgentRunStatusPayload | undefined;
   setLogs: Dispatch<SetStateAction<LogEntry[]>>;
   setSpans: Dispatch<SetStateAction<SpanEvent[]>>;
+  setNodeStates: Dispatch<SetStateAction<NodeStates>>;
   setDebugState: Dispatch<SetStateAction<DebugStatePayload | undefined>>;
 }
 
 /** Run/stop/approve and the step-debugger actions for `agentId`. */
-export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, setDebugState }: RunControlDeps) {
+export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, setNodeStates, setDebugState }: RunControlDeps) {
   const [debugMode, setDebugMode] = useState(false);
 
   const runAgent = useCallback(
@@ -34,6 +36,7 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
       // preferable to conflating it with the aborted run's).
       setLogs([]);
       setSpans([]);
+      setNodeStates({});
       await runtimeClient.run(agentId, input, spec);
     },
     [agentId, spec]
@@ -57,8 +60,11 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
     setDebugState(next);
   }, [agentId]);
 
+  // Stop/abort: /agents/:id/abort cancels a running OR approval-paused run
+  // and records the reason on the status payload; /stop delegates to it
+  // server-side with the default 'user' reason.
   const stopAgent = useCallback(async () => {
-    await runtimeClient.stop(agentId);
+    await runtimeClient.abort(agentId);
   }, [agentId]);
 
   const approveAgent = useCallback(
@@ -72,13 +78,31 @@ export function useRunControls({ agentId, spec, runStatus, setLogs, setSpans, se
     [agentId, runStatus]
   );
 
-  return { debugMode, setDebugMode, runAgent, setBreakpoints, continueDebug, stepDebug, stopAgent, approveAgent };
+  // `POST /agents/:id/steer` - pushes `message` into the live run's input
+  // queue. Rejects (the caller's SteerBox shows it inline) on a 409
+  // LOUSHO_NO_ACTIVE_RUN / LOUSHO_STEER_UNSUPPORTED.
+  const steerRun = useCallback(async (message: string) => {
+    await runtimeClient.steer(agentId, message);
+  }, [agentId]);
+
+  const answerQuestion = useCallback(
+    async (answer: string) => {
+      const approvalId = runStatus?.pendingApproval?.approvalId;
+      if (!approvalId) {
+        throw new Error('answerQuestion: no pending question for this agent');
+      }
+      await runtimeClient.answer(agentId, approvalId, answer);
+    },
+    [agentId, runStatus]
+  );
+
+  return { debugMode, setDebugMode, runAgent, setBreakpoints, continueDebug, stepDebug, stopAgent, approveAgent, steerRun, answerQuestion };
 }
 
 interface ChatControlDeps {
   agentId: string;
   /** Sent with each message so chat runs the canvas as it is now. */
-  spec: AgentSpec;
+  spec: AgentSpecV2;
   setChat: Dispatch<SetStateAction<ChatState>>;
   setChatActionError: Dispatch<SetStateAction<string | undefined>>;
   setChatSessions: Dispatch<SetStateAction<ChatSessionMeta[]>>;

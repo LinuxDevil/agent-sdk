@@ -198,7 +198,7 @@ describe('deployed node server auth list', () => {
     expect((await chat({ Authorization: 'Bearer env-token' }, 's-svc')).status).toBe(200);
     const denied = await chat(basicHeader('ops', 'wrong'));
     expect(denied.status).toBe(401);
-    expect(denied.headers.get('www-authenticate')).toBe('Basic realm="lousho", charset="UTF-8", Bearer');
+    expect(denied.headers.get('www-authenticate')).toBe('Basic realm="@linuxdevil/lousho", charset="UTF-8", Bearer');
     expect(seen.map((p) => `${p?.authenticator}:${p?.id}`)).toEqual(['basic:ops', 'api-token:api-token']);
   });
 

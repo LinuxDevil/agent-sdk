@@ -25,6 +25,10 @@ const USAGE = [
   '      Bundle an agent for deployment (default output: .lousho/build/<target>).',
   '  lousho studio [--port N] [--host H]',
   '      Open Lousho Studio on this project (a separate install: npm i -g @linuxdevil/studio).',
+  '  lousho bridge',
+  '      Speak Studio\'s bridge protocol on stdio (Lousho Studio starts it in a project).',
+  '  lousho workspace <init|ls|show|validate|run> [args] [--source <dir> | --service <url>]',
+  '      Create, inspect, validate and run a workspace from a folder or a running service.',
   '  lousho mcp <agent.yaml|json|agent-dir|agent.ts> [--http --port N --host H]',
   '      Serve an agent as an MCP server (stdio by default).',
   '  lousho doctor [agent.yaml|json|agent-dir|agent.ts] [--json] [--ping]',
@@ -37,10 +41,12 @@ const USAGE = [
   '      Run the observability collector agents emit to when LOUSHO_OBSERVE=1.',
   '  lousho prompt <push|list|get> [args] [--url U | --port N] [--token T] [--json]',
   '      Manage the prompt registry the collector serves: push a file as a new version, list, or get name[@version].',
+  '  lousho improve <agent-dir|agent.ts> --check <module> [--model provider/model] [--editor provider/model] [--db path] [--since <N>d] [--agent X] [--protect traceId]... [--read-only tool]... [--out file]',
+  '      Experimental. Propose instruction and skill edits from failed runs in your local observe database; applies nothing.',
   '  lousho --version',
   '      Print the package version.',
   '',
-  'The agent commands (dev, chat, acp, mcp, doctor, eval, build) load ./.env when it exists; variables already set win.',
+  'The agent commands (dev, chat, acp, mcp, doctor, eval, build, improve) load ./.env when it exists; variables already set win.',
   'Exit codes: 0 success, 1 failure, 2 usage error (unknown command, bad flag or argument).',
 ].join('\n');
 
@@ -70,6 +76,9 @@ const COMMANDS = new Map([
   // apps/agent-forge) and opens this folder as a workspace; inside the
   // checkout, --prod/--dev pick the launch mode - see src/cli/studio.ts.
   ['studio', { module: 'studio', run: 'runStudio' }],
+  // Speaks Studio's NDJSON bridge protocol on stdio; see src/cli/bridge.ts.
+  ['bridge', { module: 'bridge', run: 'runBridge', env: true }],
+  ['workspace', { module: 'workspace', run: 'runWorkspace', env: true }],
   // Serves an agent spec over MCP (stdio by default). The server keeps the
   // process alive; see src/cli/mcp.ts.
   ['mcp', { module: 'mcp', run: 'runMcp', env: true }],
@@ -82,6 +91,7 @@ const COMMANDS = new Map([
   ['observe', { module: 'observe', run: 'runObserve' }],
   // The prompt registry client of the observe daemon (src/observe); see src/cli/prompt.ts.
   ['prompt', { module: 'prompt', run: 'runPrompt' }],
+  ['improve', { module: 'improve', run: 'runImprove', env: true }],
 ]);
 
 const BYTE_ORDER_MARK = 0xfeff;

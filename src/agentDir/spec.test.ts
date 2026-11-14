@@ -47,6 +47,26 @@ describe('specToAgentDir / agentDirToSpec', () => {
     expect(result).toEqual({ spec, dropped: [] });
   });
 
+  it("writes an 'auto' permission rule as 'ask' and reports the degradation", async () => {
+    const spec: AgentSpecV2 = {
+      version: 2,
+      name: 'auto-rule',
+      model: MODEL,
+      instructions: 'x',
+      permissions: [{ id: 'p1', tool: 'github_create_issue', action: 'auto', ttlMs: 30_000 }],
+    };
+    const { files, dropped } = specToAgentDir(spec);
+    expect(dropped).toEqual([
+      { field: 'permissions.0.action', reason: "agent directories cannot express 'auto' approvals; written as 'ask'" },
+    ]);
+    const yaml = files.find((f) => f.path === 'agent.yaml')?.content ?? '';
+    expect(yaml).toContain('action: ask');
+    expect(yaml).not.toMatch(/action: auto/);
+    const result = await agentDirToSpec(writeDir(files));
+    expect(result.dropped).toEqual([]);
+    expect(result.spec.permissions).toEqual([{ id: 'p1', tool: 'github_create_issue', action: 'ask', ttlMs: 30_000 }]);
+  });
+
   it('round-trips a rich spec: every directory-expressible key', async () => {
     const spec: AgentSpecV2 = {
       version: 2,

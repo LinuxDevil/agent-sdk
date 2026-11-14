@@ -92,7 +92,7 @@ async function fauxPi(stateDir: string) {
 }
 
 beforeEach(async () => {
-  // The node_modules link lets the kit's `lousho` imports resolve.
+  // The node_modules link lets the kit's `@linuxdevil/lousho` imports resolve.
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-coding-pi-'));
   fs.symlinkSync(path.join(REPO_ROOT, 'node_modules'), path.join(root, 'node_modules'), 'junction');
   const result = await add(['coding-pi', '--registry', INDEX, '--dir', '.', '--yes', '--allow', 'exec,fs-write,network,env']);

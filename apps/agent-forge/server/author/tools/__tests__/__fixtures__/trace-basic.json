@@ -1,0 +1,103 @@
+[
+  {
+    "id": "root-1",
+    "name": "invoke_agent support",
+    "startTime": 1000,
+    "endTime": 5000,
+    "attributes": {
+      "gen_ai.operation.name": "invoke_agent",
+      "gen_ai.agent.name": "support"
+    },
+    "status": { "code": "ok" }
+  },
+  {
+    "id": "span-1",
+    "name": "chat anthropic/claude-sonnet-5-5",
+    "parentId": "root-1",
+    "startTime": 1100,
+    "endTime": 2000,
+    "kind": "client",
+    "attributes": {
+      "gen_ai.operation.name": "chat",
+      "gen_ai.request.model": "anthropic/claude-sonnet-5-5",
+      "gen_ai.usage.input_tokens": 120,
+      "gen_ai.usage.output_tokens": 40,
+      "lousho.cost_usd": 0.0042
+    },
+    "status": { "code": "ok" }
+  },
+  {
+    "id": "span-2",
+    "name": "execute_tool lookup_order",
+    "parentId": "root-1",
+    "startTime": 2100,
+    "endTime": 2300,
+    "attributes": {
+      "gen_ai.operation.name": "execute_tool",
+      "gen_ai.tool.name": "lookup_order",
+      "gen_ai.tool.call.arguments": "{\"orderId\":\"42\"}",
+      "gen_ai.tool.call.result": "{\"status\":\"shipped\"}"
+    },
+    "status": { "code": "ok" }
+  },
+  {
+    "id": "span-3",
+    "name": "chat anthropic/claude-sonnet-5-5",
+    "parentId": "root-1",
+    "startTime": 2400,
+    "endTime": 3200,
+    "kind": "client",
+    "attributes": {
+      "gen_ai.operation.name": "chat",
+      "gen_ai.request.model": "anthropic/claude-sonnet-5-5",
+      "gen_ai.usage.input_tokens": 210,
+      "gen_ai.usage.output_tokens": 60,
+      "lousho.cost_usd": 0.0031
+    },
+    "status": { "code": "ok" }
+  },
+  {
+    "id": "span-4",
+    "name": "execute_tool charge_card",
+    "parentId": "root-1",
+    "startTime": 3300,
+    "endTime": 3900,
+    "attributes": {
+      "gen_ai.operation.name": "execute_tool",
+      "gen_ai.tool.name": "charge_card",
+      "gen_ai.tool.call.arguments": "{\"amount\":19}",
+      "error.type": "ToolExecutionError"
+    },
+    "status": { "code": "error", "message": "card declined" }
+  },
+  {
+    "id": "span-5",
+    "name": "invoke_agent shipping",
+    "parentId": "root-1",
+    "startTime": 4000,
+    "endTime": 4800,
+    "attributes": {
+      "gen_ai.operation.name": "invoke_agent",
+      "lousho.subagent.name": "shipping"
+    },
+    "status": { "code": "ok" }
+  },
+  {
+    "id": "span-6",
+    "name": "handoff to shipping",
+    "parentId": "root-1",
+    "startTime": 4850,
+    "endTime": 4900,
+    "attributes": {},
+    "status": { "code": "ok" }
+  },
+  {
+    "id": "span-7",
+    "name": "guardrail pii_check",
+    "parentId": "root-1",
+    "startTime": 4950,
+    "endTime": 4980,
+    "attributes": {},
+    "status": { "code": "ok" }
+  }
+]

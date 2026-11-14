@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to @linuxdevil/lousho will be documented in this file.
 
@@ -7,9 +7,186 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- **Breaking:** the package is renamed from `lousho` to `@linuxdevil/lousho`. Update imports from `'lousho'` / `'lousho/…'` to `'@linuxdevil/lousho'` / `'@linuxdevil/lousho/…'` and dependencies from `"lousho"` to `"@linuxdevil/lousho"`. The `lousho` binary name is unchanged, so `npx @linuxdevil/lousho …` and `lousho …` commands keep working.
+- **Breaking:** the package is renamed from `@linuxdevil/lousho` to `@linuxdevil/lousho`. Update imports from `'@linuxdevil/lousho'` / `'lousho/…'` to `'@linuxdevil/lousho'` / `'@linuxdevil/lousho/…'` and dependencies from `"@linuxdevil/lousho"` to `"@linuxdevil/lousho"`. The `@linuxdevil/lousho` binary name is unchanged, so `npx @linuxdevil/lousho …` and `lousho …` commands keep working.
 - **Breaking:** Studio is now the separate package `@linuxdevil/studio`; the SDK tarball no longer contains `apps/agent-forge`. `lousho studio` finds an installed `@linuxdevil/studio` (local, next to the SDK, or global) and opens the current folder as a workspace, or prints `Studio is a separate install: npx @linuxdevil/studio` when it is missing. Inside the SDK checkout it keeps its dev/prod modes (`--prod`/`--dev`). Install Studio with `npm i -g @linuxdevil/studio` (or `npx @linuxdevil/studio`).
 - New `@linuxdevil/lousho/observe` subpath: `startObserveDaemon`, `probeHealth`, `isObserveDaemon`, `defaultDbPath`, `OBSERVE_DEFAULT_PORT` and the daemon option/retention defaults, so a host process (Studio) can run and probe the collector through public exports.
+- Install docs use the public npm packages again (`npm install @linuxdevil/lousho`, `npm create lousho`).
+- `@linuxdevil/lousho/improve` (experimental): `improveAgent()` proposes tested edits to an agent's instructions and skills, offline, gated against the current harness and held-out cases. It applies nothing. See [Improving an agent](docs/improve.md).
+- `lousho bridge`: a new command that speaks Studio's bridge protocol (NDJSON on stdin/stdout, protocol 1) so Lousho Studio can build and run a project's agents with that project's own SDK and dependencies. It answers `hello`, `catalog`, `compile` and `shutdown`, and runs agents: `run`/`chat` start a run or chat turn, `steer`/`abort` control it, `resolveApproval`/`answerQuestion` resume a paused run, and every `AgentEvent`, trace span, steer join and run settle arrives as a pushed event (flows are refused with `LOUSHO_HOST_UNSUPPORTED`).
+- Model strings resolve any official AI SDK provider: `mistral/...`, `groq/...`, `xai/...`, `bedrock/...`, `vertex/...`, `azure/...` and 13 more load `@ai-sdk/<vendor>` on the first call, and `ai-sdk/<vendor>/<model>` loads any other `@ai-sdk/*` package. The package reads its own credentials. See [Providers](docs/providers.md#any-ai-sdk-vendor-by-name).
+
+## [1.0.0-alpha.117] - 2026-11-09
+
+## [1.0.0-alpha.116] - 2026-11-09
+
+## [1.0.0-alpha.115] - 2026-11-09
+
+## [1.0.0-alpha.114] - 2026-11-09
+
+## [1.0.0-alpha.113] - 2026-11-09
+
+## [1.0.0-alpha.112] - 2026-11-09
+
+## [1.0.0-alpha.111] - 2026-11-09
+
+## [1.0.0-alpha.110] - 2026-11-09
+
+## [1.0.0-alpha.109] - 2026-11-09
+
+## [1.0.0-alpha.108] - 2026-11-09
+
+## [1.0.0-alpha.107] - 2026-11-09
+
+## [1.0.0-alpha.106] - 2026-11-09
+
+## [1.0.0-alpha.105] - 2026-11-09
+
+## [1.0.0-alpha.104] - 2026-11-09
+
+## [1.0.0-alpha.103] - 2026-11-08
+
+## [1.0.0-alpha.102] - 2026-11-08
+
+## [1.0.0-alpha.101] - 2026-11-08
+
+## [1.0.0-alpha.100] - 2026-11-08
+
+## [1.0.0-alpha.99] - 2026-11-08
+
+## [1.0.0-alpha.98] - 2026-11-08
+
+## [1.0.0-alpha.97] - 2026-11-08
+
+## [1.0.0-alpha.96] - 2026-11-08
+
+## [1.0.0-alpha.95] - 2026-11-08
+
+## [1.0.0-alpha.94] - 2026-11-08
+
+## [1.0.0-alpha.93] - 2026-11-08
+
+## [1.0.0-alpha.92] - 2026-11-08
+
+## [1.0.0-alpha.91] - 2026-11-08
+
+## [1.0.0-alpha.90] - 2026-11-08
+
+## [1.0.0-alpha.89] - 2026-11-08
+
+## [1.0.0-alpha.88] - 2026-11-08
+
+## [1.0.0-alpha.87] - 2026-11-08
+
+## [1.0.0-alpha.86] - 2026-11-08
+
+## [1.0.0-alpha.85] - 2026-11-08
+
+## [1.0.0-alpha.84] - 2026-11-08
+
+## [1.0.0-alpha.83] - 2026-11-08
+
+## [1.0.0-alpha.82] - 2026-11-08
+
+## [1.0.0-alpha.81] - 2026-11-08
+
+## [1.0.0-alpha.80] - 2026-11-08
+
+## [1.0.0-alpha.79] - 2026-11-08
+
+## [1.0.0-alpha.78] - 2026-11-08
+
+## [1.0.0-alpha.77] - 2026-11-08
+
+## [1.0.0-alpha.76] - 2026-11-08
+
+## [1.0.0-alpha.75] - 2026-11-08
+
+## [1.0.0-alpha.74] - 2026-11-08
+
+## [1.0.0-alpha.73] - 2026-11-08
+
+## [1.0.0-alpha.72] - 2026-11-08
+
+## [1.0.0-alpha.71] - 2026-11-08
+
+## [1.0.0-alpha.70] - 2026-11-08
+
+## [1.0.0-alpha.69] - 2026-11-08
+
+## [1.0.0-alpha.68] - 2026-11-08
+
+## [1.0.0-alpha.67] - 2026-11-08
+
+## [1.0.0-alpha.66] - 2026-11-08
+
+## [1.0.0-alpha.65] - 2026-11-08
+
+## [1.0.0-alpha.64] - 2026-11-08
+
+## [1.0.0-alpha.63] - 2026-11-08
+
+## [1.0.0-alpha.62] - 2026-11-08
+
+## [1.0.0-alpha.61] - 2026-11-08
+
+## [1.0.0-alpha.60] - 2026-11-08
+
+## [1.0.0-alpha.59] - 2026-11-08
+
+## [1.0.0-alpha.58] - 2026-11-08
+
+## [1.0.0-alpha.57] - 2026-11-08
+
+## [1.0.0-alpha.56] - 2026-11-08
+
+## [1.0.0-alpha.55] - 2026-11-08
+
+## [1.0.0-alpha.54] - 2026-11-08
+
+## [1.0.0-alpha.53] - 2026-11-07
+
+## [1.0.0-alpha.52] - 2026-11-07
+
+## [1.0.0-alpha.51] - 2026-11-07
+
+## [1.0.0-alpha.50] - 2026-11-07
+
+## [1.0.0-alpha.49] - 2026-11-07
+
+## [1.0.0-alpha.48] - 2026-11-07
+
+## [1.0.0-alpha.47] - 2026-11-07
+
+## [1.0.0-alpha.46] - 2026-11-07
+
+## [1.0.0-alpha.45] - 2026-11-07
+
+## [1.0.0-alpha.44] - 2026-11-07
+
+## [1.0.0-alpha.43] - 2026-11-07
+
+## [1.0.0-alpha.42] - 2026-11-07
+
+## [1.0.0-alpha.41] - 2026-11-07
+
+## [1.0.0-alpha.40] - 2026-11-07
+
+## [1.0.0-alpha.39] - 2026-11-07
+
+## [1.0.0-alpha.38] - 2026-11-07
+
+## [1.0.0-alpha.37] - 2026-11-07
+
+## [1.0.0-alpha.36] - 2026-11-07
+
+## [1.0.0-alpha.35] - 2026-11-07
+
+## [1.0.0-alpha.34] - 2026-11-07
+
+## [1.0.0-alpha.33] - 2026-11-07
+
+## [1.0.0-alpha.32] - 2026-11-07
+
 - Install docs use the public npm packages again (`npm install @linuxdevil/lousho`, `npm create lousho`).
 - `@linuxdevil/lousho/improve` (experimental): `improveAgent()` proposes tested edits to an agent's instructions and skills, offline, gated against the current harness and held-out cases. It applies nothing. See [Improving an agent](docs/improve.md).
 - `agent.recover({ retryWithDiagnosis: true })` gives a run that reached `maxAttempts` one fork told why it failed, before quarantining it. `createOutputCheck()` is a new hook that runs your check after a tool succeeds and tells the model what it found. A fork no longer inherits `lastError` and `attempts` from its source.
@@ -22,7 +199,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0-alpha.31] - 2026-11-01
 
-- **Behavior change:** the package is renamed from `@lousho/build-ai-agent` to `lousho`, and the scaffolder from `create-lousho-agent` to `create-lousho` (`npm create lousho`). Update imports from `@lousho/build-ai-agent` to `lousho` (subpaths such as `@linuxdevil/lousho/testing` keep their names). Install with `npm install @linuxdevil/lousho` or `npm create lousho` (no token needed). The packages are also mirrored to GitHub Packages as `@linuxdevil/lousho` and `@linuxdevil/create-lousho` for the repository's Packages tab.
+- **Behavior change:** the package is renamed from `@lousho/build-ai-agent` to `@linuxdevil/lousho`, and the scaffolder from `create-lousho-agent` to `create-lousho` (`npm create lousho`). Update imports from `@lousho/build-ai-agent` to `@linuxdevil/lousho` (subpaths such as `@linuxdevil/lousho/testing` keep their names). Install with `npm install @linuxdevil/lousho` or `npm create lousho` (no token needed). The packages are also mirrored to GitHub Packages as `@linuxdevil/lousho` and `@linuxdevil/create-lousho` for the repository's Packages tab.
 
 ## [1.0.0-alpha.30] - 2026-10-31
 
@@ -121,7 +298,7 @@ opt-out.
 - **Behavior change:** the built node-server (and the Docker image) now guards `POST /channels/<name>` and its approvals route for a channel without `verify` with `LOUSHO_API_TOKEN` / `auth.ts`, the same as `/chat`. Before, such a channel answered anyone even with a token set. Channels that verify their own requests (Slack, Discord, Telegram, GitHub, Teams, `webhookChannel` with a secret, any channel with `verify`) are unchanged, and the start-up log lists each channel route's guard (`self-verified`, `server-auth` or `open`).
 - **Behavior change:** `webhookChannel` replies with `{ sessionId, text, finishReason, approval? }` (plus `approvalPrompt` on a pause), as `httpChannel` does, instead of the full `ExecutionResult`. The full result echoed the system prompt and the whole transcript to the caller. `fullResult: true` restores the old body.
 - Channels answer a turn on a session that another process or replica is running (`LOUSHO_SESSION_BUSY`) with `409` and `Retry-After: 2` instead of a `500`, and report a turn that fails before the request is acknowledged to `onError` with stage `'turn'` (it said `'parse'`).
-- README and [Comparison](docs/comparison.md) no longer list ACP and MCP as differentiators, and describe Agent Forge as a local visual console.
+- README and [Comparison](https://github.com/LinuxDevil/agent-sdk/blob/995e21b7a835a4c869c1ae0b427fc92b0ee9c000/docs/comparison.md) no longer list ACP and MCP as differentiators, and describe Agent Forge as a local visual console.
 
 - CI is one workflow with two jobs: `ci` (type checks, lint, build, tests with coverage, docs, API and fallow gates, pack-smoke, size check, and a zod 4 type check) and `compat` (the newest peers, `ai` 7 with zod 4, plus the real-Docker sandbox tests). The separate Docker Engine, Agent Forge E2E and weekly registry-smoke workflows and the `ai` 6 / zod 3 matrix entries are gone; `npm run registry-smoke` and `npm run test:e2e:studio` still run locally. When the fallow gate fails, CI now prints its full health and duplication reports.
 
@@ -164,7 +341,7 @@ opt-out.
 - A decision on an approval whose winning decision is still streaming is a `409` (`LOUSHO_APPROVAL_CONFLICT`), as docs/auth.md says, instead of a `404`.
 - The session routes' `400` bodies carry a `code`: `LOUSHO_REQUEST_INVALID` (invalid JSON, missing or empty fields), `LOUSHO_APPROVAL_DECISION_INVALID` (an approval body with neither `approved` nor `answer`), `LOUSHO_SESSION_ID_INVALID`.
 - `lousho chat` prints a failed turn with its error code, the provider's failure category and HTTP status, and the fix (`error: User not found. (auth-failure, HTTP 401)` then `[LOUSHO_PROVIDER_REQUEST_FAILED] ...`), as docs/cli.md says, instead of the bare provider message. The terminal chat of a project scaffolded by `lousho init` / `create-lousho-agent` does the same.
-- A `.env` saved with a UTF-8 byte order mark (PowerShell 5.1's `Set-Content -Encoding utf8`) no longer loses its first variable: the `lousho` commands and the scaffolded `src/index.ts` drop the mark before parsing. Variables already set in the environment still win.
+- A `.env` saved with a UTF-8 byte order mark (PowerShell 5.1's `Set-Content -Encoding utf8`) no longer loses its first variable: the `@linuxdevil/lousho` commands and the scaffolded `src/index.ts` drop the mark before parsing. Variables already set in the environment still win.
 - `lousho doctor src/agent.ts` loads a `.ts`/`.js` agent module the way `lousho dev` does instead of failing with `LOUSHO_SPEC_UNSUPPORTED_FORMAT`, and a missing key for the module's provider is a failure. A scaffolded project's `npm run doctor` now runs `lousho doctor src/agent.ts`, so it fails when the agent's key is missing.
 - `lousho doctor --ping` checks OpenRouter at `/api/v1/key`, which needs the key (its `/models` answers without one, so a wrong key passed); a key the provider rejects is now a failure, and a ping of a custom `OPENAI_BASE_URL` says it shows reachability only.
 - `lousho doctor` fix lines use PowerShell syntax (`$env:NAME="<your key>"`) on Windows.
@@ -375,7 +552,7 @@ create-lousho-agent 0.1.2-alpha.5.
 - A run that re-pauses on several approvals after a resume persists every pending approval id in its checkpoint: `markAwaitingApproval()` wrote only `approvalId`, so durable discovery (`pausedApprovalIds`, `agent.approvals.list()`) named 1 of N approvals; it now carries the group's `approvalIds` like `markGroupPending()` does.
 - The `inbox-triage` registry kit loads under `lousho dev`, `chat`, `acp`, `mcp` and `doctor`: its relative imports carry the `.ts` extension Node's type stripping needs (only bundlers resolved them). A test now installs every registry kit and loads it in a plain `node` process, as the CLI does. An extensionless relative import in an agent directory gets a hint naming the specifier to write (`'./lib/store.ts'`), and on a Node without built-in type stripping (before 22.18) the `.ts` load error says Node 22.19+ is required.
 - `OPENAI_BASE_URL` (and `ANTHROPIC_BASE_URL`) is used with `@ai-sdk/openai` 1.x (`@ai-sdk/anthropic` 1.x), the line that pairs with `ai` 4: the provider passes it when no `baseURL` is configured. Before, `model: 'openai/...'` called api.openai.com while `lousho doctor --ping` reported the custom endpoint.
-- `PropagatingToolError`, `McpToolError` and `WorkspaceError` pass `instanceof` across the ESM and CJS copies of the SDK, so a `.cjs` tool's "do not retry" error stops the run under the ESM `lousho` CLI instead of being handed to the model (and retried).
+- `PropagatingToolError`, `McpToolError` and `WorkspaceError` pass `instanceof` across the ESM and CJS copies of the SDK, so a `.cjs` tool's "do not retry" error stops the run under the ESM `@linuxdevil/lousho` CLI instead of being handed to the model (and retried).
 - `lousho dev` re-evaluates the local helper files an edited tool or agent module imports (the `?t=` cache-bust is passed on to relative imports), instead of logging "reloaded" while serving the stale helper; editor temp files no longer show in the "changed:" list.
 - `lousho eval`: a case that vitest fails after the case finished (it ran past its time limit) is reported as that case failing, not as a pass plus an extra `vitest` row; a run that records no case at all (a mistyped `--tag`) exits 1 like a glob that matches nothing.
 - The yarn scaffold's `yarn test` works: the templates list `vite`, vitest's peer, which yarn 1 does not install. The README's "Next 3 commands" lists three, and the tools template's README counts its three tools.
@@ -507,7 +684,7 @@ See the 1.0.0-alpha.19 section, which covers everything from 1.0.0-alpha.15 thro
 - `SlackTriggerAdapter`, `CronTriggerAdapter` and `WebhookTriggerAdapter` (`@lousho/build-ai-agent/triggers`) are deprecated and will be removed in a future major version. Use `slackChannel()` for Slack (sessions per thread, approval buttons), `defineSchedule()` with `startSchedules()` for cron (or `schedules/` in an agent directory, or cron triggers in a spec file), and `webhookChannel()` for webhooks, each mounted with `mountChannels()`. `verifySlackSignature()`, the `WebhookAuth` helpers, `parseCronExpression()`, `TriggerAdapter` and `TriggerRegistry` are not deprecated. Their options types (`SlackTriggerAdapterOptions`, `CronTriggerAdapterOptions` with `CronIntervalOptions` and `CronExpressionOptions`, `WebhookTriggerAdapterOptions`) and `WebhookTriggerHandle` carry `@deprecated` too. Nothing changes at run time. See docs/triggers.md.
 
 ### Fixed
-- `lousho` CLI surface: `lousho dev`/`lousho chat --traces` now writes traces for a `.ts`/`.js` module that exports an already-built `createAgent()` agent - the module's export could not take the flag's exporter after the fact, so nothing was written. `createAgent()` remembers the config it was built with (readable via the internal `createAgentConfigOf()`), and the loader rebuilds the agent with the flag's exporter (the module's own `exporter` is replaced while the flag is set; a module exporting an agent not made by `createAgent()` prints a warning and keeps its own). A spec path that does not exist (e.g. `lousho chat missing.yaml`) now fails with the coded `LOUSHO_SPEC_NOT_FOUND` instead of a raw ENOENT. `lousho add --dry-run` no longer fails when a target file already exists; it prints the file list with an "(exists - a real install needs --overwrite)" marker and exits 0 (the symlink checks still run). Top-level `lousho --help` lists the implemented flags again: `--no-schedules`/`--traces` on `dev` and `chat`, `eval`'s record/replay/drift/`--config` flags, `init`'s `--sdk-path`, and `build`'s positional form.
+- `@linuxdevil/lousho` CLI surface: `lousho dev`/`lousho chat --traces` now writes traces for a `.ts`/`.js` module that exports an already-built `createAgent()` agent - the module's export could not take the flag's exporter after the fact, so nothing was written. `createAgent()` remembers the config it was built with (readable via the internal `createAgentConfigOf()`), and the loader rebuilds the agent with the flag's exporter (the module's own `exporter` is replaced while the flag is set; a module exporting an agent not made by `createAgent()` prints a warning and keeps its own). A spec path that does not exist (e.g. `lousho chat missing.yaml`) now fails with the coded `LOUSHO_SPEC_NOT_FOUND` instead of a raw ENOENT. `lousho add --dry-run` no longer fails when a target file already exists; it prints the file list with an "(exists - a real install needs --overwrite)" marker and exits 0 (the symlink checks still run). Top-level `lousho --help` lists the implemented flags again: `--no-schedules`/`--traces` on `dev` and `chat`, `eval`'s record/replay/drift/`--config` flags, `init`'s `--sdk-path`, and `build`'s positional form.
 - A cassette failure keeps its type through `agent.send()`: a replay mismatch (or a missing cassette raised by the provider-interception seam that `lousho eval` installs) was compacted into a generic `CompactedLLMProviderError`, losing the cassette path, the call number and the re-record hint. `CassetteMismatchError` is now an `SDKError` with code `LOUSHO_CASSETTE_INVALID` (docs/errors.md already claimed cassette errors carry it), and the run loop rethrows cassette errors untouched instead of compacting them, so `send()` rejects with the `CassetteMismatchError` itself (`.cassette`, `.callNumber`). `setProviderInterceptor()` and the `ProviderInterceptor` type are now exported from `@lousho/build-ai-agent/testing`, the public entry for the model-boundary seam docs/evals.md describes.
 - A tool call approved with `agent.approvals.resolve()` (or `resumeAfterApproval()`) now has its `execute_tool` span. It ran before the continued run started, outside any span, so OpenTelemetry and `fileTraceExporter()` showed the continued run's `invoke_agent` and `chat` spans but not the approved tool. The continued run's `invoke_agent` span now opens first and the approved call runs inside it: its `execute_tool` span is a child of it (a `run_code` call's inner calls and a sub-agent the tool starts are children of the tool span), with the same `captureContent` / `redactContent` rules as any tool span, and no span is made for a rejected call. A pause that happens again (sign-in) leaves the `invoke_agent` span with the tool span and no `chat`.
 - A tool that returns `undefined` (or an async generator that yields nothing) no longer writes a `tool` message with `content: undefined` into the transcript. Its result is now `null` everywhere: the transcript and the next model request carry `"null"`, and `tool.done`, approval resumes, `run_code` and flows see `null`. Providers, session stores and checkpoints get a valid string.
@@ -601,7 +778,7 @@ See the 1.0.0-alpha.19 section, which covers everything from 1.0.0-alpha.15 thro
 ### Added
 - Remote sub-agent approvals go through the lead run (LOU-Y7.3): a `remoteAgent()` task whose remote run pauses for a tool approval now pauses the lead run the way a local sub-agent does (it used to fail with `LOUSHO_SESSION_AWAITING_APPROVAL`): the lead's pending approval (`agent.approvals.list()`, channel buttons, the dev chat, ACP permission requests) has the remote tool's name and input and `subagentPath: [<remote agent>]`, and a remote `ask_question` arrives as a question. Deciding it on the lead (`resolve`, `streamResolve`, `answer`) posts the decision to the remote `POST <url>/chat/:sessionId/approvals/:id` and the continuation's final answer is the `task` result; a further pause pauses the lead again. The lead's approval snapshot stores the remote session id, the remote approval id, the `taskId` and the agent name (never the token), so a fresh lead process on the same store can decide it. Failures while deciding (401, other non-2xx including the remote's 404 for an approval no longer pending, network) are the `task` call's structured tool error with `LOUSHO_REMOTE_UNAUTHORIZED` / `LOUSHO_REMOTE_REQUEST_FAILED`. A remote agent with an `output` schema now returns its object as JSON with the footer (the V4.2 shape), read from `run.done`'s `object`. `RemoteSubagent.run()` takes `pausable` and `decision` (type `RemoteRunOptions`); the internal session client gains `resolveRemoteApproval()` and `SessionTurnSummary.object`. Only a lead run without an approval store keeps the old `LOUSHO_SESSION_AWAITING_APPROVAL` error. See docs/sub-agents.md#remote-approvals.
 - Structured output for sessions and sub-agents, typed for either zod major (LOU-V4.2): `createAgent({ output })` and `ExecuteOptions.output` accept a zod 3 schema, a zod 4 schema (`zod/v4` on zod 3.25, or zod 4) or a Standard Schema that can produce JSON Schema, and `result.object` is inferred from each without a cast (`InferSchemaOutput`, as `defineTool`). `AgentSession` is generic (`AgentSession<TObject = unknown>`): `agent.session().send()` and `.stream()` results carry the typed `object`. A sub-agent with its own `output` returns its validated object as JSON (then the `taskId` footer) as the `task` and `agent_await` result; its `output-invalid` finish is a structured tool error. Sub-agents do not inherit the lead's `output`; `remoteAgent()` returns text only. The exported spec schemas (`agentSpecSchema`, ...) are typed as `SpecSchema<T>` / `SpecObjectSchema<T>`, so the published `schema-*.d.ts` no longer depends on zod 3 generics (`skipLibCheck: false` projects on zod 4). The Ollama missing-peer note now says `ollama-ai-provider-v2` needs zod 4 (`npm install zod@^4.0.0`). See docs/structured-output.md.
-- Publish readiness (LOU-D49): `npm run pack-smoke` (scripts/pack-smoke.ts, a CI job) packs the SDK and `create-lousho-agent`, checks the tarball (no `.env`, tests or secret-looking strings; entry count and size caps), runs `npm publish --dry-run` for both (nothing is published), installs the tarballs plus peers from the registry into a fresh project and verifies ESM and CJS loads of every `exports` entry, a mock-model agent turn, the `lousho` bin (`--help`, `doctor`) and `tsc` with `moduleResolution` bundler and node16.
+- Publish readiness (LOU-D49): `npm run pack-smoke` (scripts/pack-smoke.ts, a CI job) packs the SDK and `create-lousho-agent`, checks the tarball (no `.env`, tests or secret-looking strings; entry count and size caps), runs `npm publish --dry-run` for both (nothing is published), installs the tarballs plus peers from the registry into a fresh project and verifies ESM and CJS loads of every `exports` entry, a mock-model agent turn, the `@linuxdevil/lousho` bin (`--help`, `doctor`) and `tsc` with `moduleResolution` bundler and node16.
 - One event system (LOU-D41): `AgentEvent` listeners for callers who do not iterate a run. `createAgent({ onEvent: (event: AgentEvent) => void })` and the new `ExecuteOptions.onAgentEvent` (also taken by `AgentExecutor.stream()` and `resumeAfterApproval()`) are called synchronously with every `AgentEvent` of the run, on `send()` / `execute()` as on `stream()`, sub-agents' events included: the same events in the same order as the stream yields (a non-streamed run generates each model step whole, so its text is one `text.delta` per step). A run with a listener also reports hook events, permission decisions, budgets and guardrails to it when it is not streamed. A non-streamed `resumeAfterApproval()` with a listener now reports the decided call (`run.start`, `tool.start`, `tool.done`) like a streamed one. See docs/streaming.md#listening-without-iterating.
 - Reasoning (LOU-V13): new `reasoning` option on `createAgent()`, `send()` / `stream()` (per call, overriding the agent's), `ExecuteOptions` and `GenerateOptions`: `'none' | 'minimal' | 'low' | 'medium' | 'high'` or `{ effort?, budgetTokens?, summary?: 'auto' | 'none', force? }` (types `ReasoningOption`, `ReasoningEffort`, `ReasoningSettings`). The built-in providers send it through `providerOptions` on `ai` 4.3 and 6/7: OpenAI `reasoningEffort` (+ `reasoningSummary`), Anthropic `thinking: { type: 'enabled', budgetTokens }` (effort table 1024 / 2048 / 8192 / 24576 tokens), Ollama `think` (`ollama-ai-provider-v2` only; ignored with one warning on `ai` 4), and OpenRouter's unified `reasoning` body field (`effort` or `max_tokens`). It is only sent to model families known to accept it (`force: true` overrides); `'none'` sends nothing. New events `reasoning.start`, `reasoning.delta` (`text`) and `reasoning.done` (`text`, `tokens?`) in the `AgentEvent` union, emitted inside the step before its first text or tool call, from `ai` v4 `reasoning` parts and v6/v7 `reasoning-start/delta/end`; `ExecutionResult.reasoning` holds the run's reasoning text and `GenerateResult.reasoning` a call's blocks (new type `ReasoningBlock`); new stream chunk types `reasoning-delta` / `reasoning-end` (`StreamChunk.reasoning`). Reasoning is not written to the transcript as text; an assistant tool-call turn keeps Anthropic's signed or redacted thinking blocks in the new `Message.reasoning`, which the Anthropic provider sends back unmodified (it survives checkpoints and resumes). The UI reducer keeps `UIMessage.reasoning`, `toUIMessageStream()` emits `reasoning-start` / `reasoning-delta` / `reasoning-end`, `lousho acp` sends `agent_thought_chunk`, `lousho chat` prints reasoning dimmed, and `chat` spans carry `lousho.usage.reasoning_tokens`. Cassettes record the reasoning chunks. See docs/reasoning.md.
 - Tools know their session (LOU-D23.2): `ToolExecutionContext.sessionId` is now set whenever the run has one: `AgentExecutor.execute({ sessionId })`, `send({ sessionId })`, every `agent.session()` turn (the session id; a checkpointed turn's own `<id>.turn-<n>`, as hooks see it), approval resumes (the paused run's), and sub-agents (`<parent session>/<task tool call id>`). A session turn's run now carries the session id even without a checkpoint store (no checkpoint is written), so hooks and the `invoke_agent` span's conversation id see it too.
@@ -632,7 +809,7 @@ See the 1.0.0-alpha.19 section, which covers everything from 1.0.0-alpha.15 thro
 - Svelte store (LOU-P3): new `@lousho/build-ai-agent/svelte` subpath with `loushoAgent(source, options?)`. It returns a Svelte store (`subscribe(run) => unsubscribe`, so `$agent` works in Svelte 4 and 5) whose value is the same state as the React hook and the Vue composable (`messages`, `status`, `pendingApproval`, `error`, `usage`, `lastEvent`), plus `send()`, `stop()`, `approve()`, `reject()`, `answer()` and `reset()`. The run in flight is aborted by `stop()` and when the last subscriber unsubscribes. The store contract is implemented by hand: the entry imports nothing from `svelte`, so there is no new peer dependency. See docs/svelte.md.
 - Per-run dynamic config (LOU-V15): `createAgent()`'s `model`, `instructions` / `prompt` and `tools` each also take a function of the run, `(ctx) => value | Promise<value>` (new types `PerRun<T>` and `RunConfigContext` = `{ sessionId?, input, metadata? }`), resolved once at the start of each run and of each session turn, before the first model call. `fallbackModels`, `retry`, `projectInstructions`, memory, MCP tools, sub-agents, permissions, approvals and guardrails apply to the resolved values; a dynamic agent used as a sub-agent resolves with the task prompt as `input`. `session.send()` / `session.stream()` gain the `metadata` option (`send()` / `stream()` already had it, and now pass it to these functions too). A function that throws fails the run with the new `LOUSHO_CONFIG_RESOLVER_FAILED` (`field` names the option, `cause` is the error); a session keeps its transcript. A run paused for approval stores its `ctx` and resolved model in the approval snapshot (`agent.metadata.loushoRunConfig`): resuming it uses that model and re-resolves the tools with the same `ctx`; a crash resume from a checkpoint resolves with `input: []`. Static options behave and type as before. `SessionRunner` / `SessionStreamRunner` take an optional fourth `call` argument (new type `SessionTurnCall`). See docs/api-overview.md#dynamic-config.
 - Vue composable (LOU-P2): new `@lousho/build-ai-agent/vue` subpath with `useLoushoAgent(source, options?)` for Vue 3. It takes the same sources and options as the React hook (either may be a `ref`, read when a turn starts) and returns `messages`, `status`, `pendingApproval`, `error`, `usage` and `lastEvent` as read-only refs, plus `send()`, `stop()`, `approve()`, `reject()`, `answer()` and a new `reset()` (aborts, forgets the in-process session, clears the chat). The run in flight is aborted by `stop()` and when the owning scope is disposed (`onScopeDispose`: component unmount, `effectScope().stop()`). `vue` (`^3`) is an optional peer dependency, loaded by no other entry. To share the logic, the reducer and the stream parser moved from `src/react/` to a framework-neutral `src/ui/`, together with the run logic extracted from the React hook (`createAgentRunner()`); the `./react` exports are unchanged, and the reducer gains an additive `ui.reset` action. See docs/vue.md.
-- One flag parser for the `lousho` CLI (LOU-U21): every command (`dev`, `chat`, `eval`, `build`, `mcp`, `doctor`, `studio`; `init` already did) parses its flags with `node:util` `parseArgs` in strict mode through `src/cli/args.ts`. `--flag value` and `--flag=value` work everywhere, `--` ends the flags, `-h` / `--help` prints the usage and exits 0, and an unknown flag, a flag without its value or an extra argument fails with `LOUSHO_CONFIG_INVALID` and the command's usage as the hint. **Behaviour change (migration):** `dev`, `studio`, `mcp`, `build` and `doctor` used to ignore unknown flags, and a flag missing its value could take the next flag or a prefix match (`--portx 1` read as `--port`); they now fail with exit 1 and the usage line, so remove typos from scripts. A value that starts with `-` must be written `--flag=-x` (a bare `--flag -x` is a missing value); `--port` must be an integer from 0 to 65535 for `dev`, `studio` and `mcp`; `dev`, `mcp` and `doctor` reject a second path; `studio --prod --dev` is rejected instead of preferring `--prod`. `lousho dev` and `lousho studio` parsing moved from `bin/lousho.js` into `src/cli/dev.ts` / `src/cli/studio.ts` (`parseDevArgs`, `runDev`, `parseStudioArgs`, `runStudio`). See docs/cli.md.
+- One flag parser for the `@linuxdevil/lousho` CLI (LOU-U21): every command (`dev`, `chat`, `eval`, `build`, `mcp`, `doctor`, `studio`; `init` already did) parses its flags with `node:util` `parseArgs` in strict mode through `src/cli/args.ts`. `--flag value` and `--flag=value` work everywhere, `--` ends the flags, `-h` / `--help` prints the usage and exits 0, and an unknown flag, a flag without its value or an extra argument fails with `LOUSHO_CONFIG_INVALID` and the command's usage as the hint. **Behaviour change (migration):** `dev`, `studio`, `mcp`, `build` and `doctor` used to ignore unknown flags, and a flag missing its value could take the next flag or a prefix match (`--portx 1` read as `--port`); they now fail with exit 1 and the usage line, so remove typos from scripts. A value that starts with `-` must be written `--flag=-x` (a bare `--flag -x` is a missing value); `--port` must be an integer from 0 to 65535 for `dev`, `studio` and `mcp`; `dev`, `mcp` and `doctor` reject a second path; `studio --prod --dev` is rejected instead of preferring `--prod`. `lousho dev` and `lousho studio` parsing moved from `bin/lousho.js` into `src/cli/dev.ts` / `src/cli/studio.ts` (`parseDevArgs`, `runDev`, `parseStudioArgs`, `runStudio`). See docs/cli.md.
 - `sqliteMemory(store, { maxItems? })` (LOU-W6.2, exported from `@lousho/build-ai-agent/sqlite`) keeps `defineMemory` slots in the agent's `SqliteStore` file: a new `memory_items` table (migration 3, one JSON array per scope key, with the same serialization, `maxItems` and query rules as `fileMemory`). An existing database gains the table on open and keeps its sessions and checkpoints. The memory provider contract tests now run against the in-memory, file and SQLite providers. See docs/memory.md#sqlite.
 - Slack channel (LOU-P5): `slackChannel({ signingSecret, botToken, name?, fetch? })` (new export, with types `SlackChannelOptions`, `SlackChannelEvent`, `SlackThread`) serves a Slack app's Events API and interactivity requests through `mountChannels()`. It verifies the `v0` request signature with Web Crypto (no `node:*` import; the timestamp and header checks are shared with `verifySlackSignature()`), answers the `url_verification` challenge, and acknowledges every request before the turn runs. Each Slack thread is one session (team + channel + thread root `ts`): a mention starts or continues it, and later messages in a thread the bot was mentioned in continue it. Retries (`X-Slack-Retry-Num`) and bot messages are skipped. Replies go to the thread with `chat.postMessage` over `fetch`; a tool approval is posted as Approve / Deny buttons whose click resumes the session, and an `ask_question` as text answered by the next thread message. The channel contract gains two additive hooks for this: `parse(req, respond)` may call `respond` to answer the request before the turn runs, and may return `{ decision }` (new type `ChannelDecision`; `ChannelApprovalDecision` now lives in `defineChannel.ts`, same public export) to resolve a pause instead of starting a turn. See docs/channels.md#slack.
 - Remote sub-agents (LOU-Y7): `remoteAgent({ url, auth?, name?, description?, headers?, fetch? })` (new export, with types `RemoteAgentOptions` and `RemoteSubagent`) makes a deployed agent usable wherever a local sub-agent is: in `createAgent({ subagents })` records and `SubagentCatalog.resolve()`, delegated to by the `task` tool and by `background: true` tasks. Each task opens a fresh session on the remote agent over `POST <url>/chat` (bearer `auth`: a string or a function, called per task), reads the SSE stream to the end and returns the remote agent's final text; the lead run's abort signal aborts the request. Failures (network, 401 or other non-2xx, malformed stream, remote run error) are structured tool errors with the new code `LOUSHO_REMOTE_AGENT_FAILED`, and the token never appears in errors or events; a remote run that pauses for approval fails with `LOUSHO_SESSION_AWAITING_APPROVAL` naming the remote session (proxying approvals is a follow-up). Worker-safe (`fetch` only). See docs/sub-agents.md#remote-sub-agents.
@@ -719,7 +896,7 @@ See the 1.0.0-alpha.19 section, which covers everything from 1.0.0-alpha.15 thro
 - README revamped into a short front page (LOU-D52); the details it dropped moved to `docs/` (new pages: tools, approvals, providers, cli, flows, guardrails, utilities).
 
 ### Renamed
-- The project is now **lousho** (it was `loushy`), before the first npm release, so nothing was ever published under the old name. Everything that carried the name changed with it, and this changelog uses the new names throughout, including in older entries: the package `@lousho/build-ai-agent` (was `@loushy/build-ai-agent`), the `lousho` CLI (was `loushy`), `create-lousho-agent` (was `create-loushy-agent`), the exports `useLoushoAgent`, `loushoAgent`, `LoushoAgentSource`, `LoushoUIMessageChunk` and the other `Lousho*` types, every `LOUSHO_*` error code and environment variable (`LOUSHO_MODEL`, `LOUSHO_API_TOKEN`, `LOUSHO_STORE`, ...), the `.lousho/` directory, the `lousho.*` span attributes and the `data-lousho-approval` stream part. Migration for a checkout that used the old name: replace `loushy` with `lousho` (keeping the case) in imports, scripts, environment variables and config, and rename an existing `.loushy/` directory to `.lousho/`.
+- The project is now **lousho** (it was `loushy`), before the first npm release, so nothing was ever published under the old name. Everything that carried the name changed with it, and this changelog uses the new names throughout, including in older entries: the package `@lousho/build-ai-agent` (was `@loushy/build-ai-agent`), the `@linuxdevil/lousho` CLI (was `loushy`), `create-lousho-agent` (was `create-loushy-agent`), the exports `useLoushoAgent`, `loushoAgent`, `LoushoAgentSource`, `LoushoUIMessageChunk` and the other `Lousho*` types, every `LOUSHO_*` error code and environment variable (`LOUSHO_MODEL`, `LOUSHO_API_TOKEN`, `LOUSHO_STORE`, ...), the `.lousho/` directory, the `lousho.*` span attributes and the `data-lousho-approval` stream part. Migration for a checkout that used the old name: replace `loushy` with `@linuxdevil/lousho` (keeping the case) in imports, scripts, environment variables and config, and rename an existing `.loushy/` directory to `.lousho/`.
 
 ### Published
 - `@lousho/build-ai-agent` and `create-lousho-agent` are on npm. The README and the installation, quick start, CLI and Agent Forge docs no longer say the package is unpublished; "Installing before the first release" is now "Installing from a local build" (docs/installation.md#installing-from-a-local-build) and covers trying an unreleased commit. The hint printed after a failed `lousho init` install no longer mentions a 404; it points to `--sdk-path`. The docs site moved to https://lousho.com.

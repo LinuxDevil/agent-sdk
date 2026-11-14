@@ -1,5 +1,5 @@
 /**
- * Chat with a running agent - the Chat tab's real content, replacing
+ * Chat with a running agent - the Test tab's real content, replacing
  * BottomDrawer's former placeholder. Renders `AppState.chat` (the server's
  * real `Message[]` history, reconciled and streamed over the existing
  * `WS /agents/:id/stream` channel - see runRegistry.ts/chatReconcile.ts)
@@ -15,10 +15,12 @@
  * real `status: 'running'` from the runtime server rather than a fake timeout.
  */
 import { useEffect, useRef } from 'react';
-import { Play, Plus, Sparkles, User, Wrench, type LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { CornerDownRight, Play, Plus, Sparkles, User, Wrench, type LucideIcon } from 'lucide-react';
 import { useAppState } from '../state/AppState';
 import type { ChatMessage } from '../../shared/wireTypes';
 import { ApprovalCard } from './ApprovalCard';
+import { QuestionCard } from './test/QuestionCard';
 import { ChatComposer } from './ChatComposer';
 import { formatTime } from './formatTime';
 
@@ -110,12 +112,20 @@ function MessageContent({ kind, message }: { kind: BubbleKind; message: ChatMess
 function Bubble({ message, toolResults }: { message: ChatMessage; toolResults: Map<string, ChatMessage> }) {
   const kind = bubbleKindOf(message);
   const fromRun = message.source === 'run';
+  const fromSteer = message.source === 'steer';
+  const sourced = fromRun || fromSteer;
   const { Icon, speaker } = BUBBLE_KINDS[kind];
+  const AvatarIcon = fromRun ? Play : fromSteer ? CornerDownRight : Icon;
+  const sourceLabel = fromRun ? 'Run input' : fromSteer ? 'Steered' : undefined;
   return (
-    <div className={`chat-msg ${kind}${fromRun ? ' run-input' : ''}`}>
-      <Avatar Icon={fromRun ? Play : Icon} />
+    <div className={`chat-msg ${kind}${sourced ? ' run-input' : ''}`}>
+      <Avatar Icon={AvatarIcon} />
       <div className="chat-msg-body">
-        {fromRun ? <div className="chat-run-label">Run input</div> : <Speaker name={speaker} />}
+        {sourceLabel !== undefined ? (
+          <div className="chat-run-label">{sourceLabel}</div>
+        ) : (
+          <Speaker name={speaker} />
+        )}
         {message.content && <MessageContent kind={kind} message={message} />}
         {message.toolCalls?.map((tc) => (
           <div className="chat-bubble chat-bubble-tool" key={tc.id}>
@@ -214,11 +224,20 @@ function ApprovalBubble({ pendingApproval }: { pendingApproval: PendingApproval 
       <Avatar Icon={Sparkles} />
       <div className="chat-msg-body">
         <Speaker name="Agent" />
-        <ApprovalCard
-          className="chat-approval-card"
-          toolName={pendingApproval.toolName}
-          args={pendingApproval.args}
-        />
+        {pendingApproval.kind === 'question' && pendingApproval.question !== undefined ? (
+          <QuestionCard
+            className="chat-question-card"
+            question={pendingApproval.question}
+            deadline={pendingApproval.deadline}
+          />
+        ) : (
+          <ApprovalCard
+            className="chat-approval-card"
+            toolName={pendingApproval.toolName}
+            args={pendingApproval.args}
+            deadline={pendingApproval.deadline}
+          />
+        )}
       </div>
     </div>
   );
@@ -232,7 +251,7 @@ interface MessageListProps {
 
 function EmptyChatNotice({ count, isRunning }: { count: number; isRunning: boolean }) {
   return count === 0 && !isRunning ? (
-    <div className="chat-empty">Send a message to start chatting with this agent.</div>
+    <div className="chat-empty">Send a message to test this agent. Nodes light up on the canvas as it runs.</div>
   ) : null;
 }
 
@@ -258,7 +277,11 @@ function MessageList({ messages, isRunning, pendingApproval }: MessageListProps)
   );
 }
 
-export function ChatPanel() {
+/**
+ * `aboveComposer` is the Test pane's middle slot (T05's steer box, T07's
+ * pending question): rendered between the error notice and the composer.
+ */
+export function ChatPanel({ aboveComposer }: { aboveComposer?: ReactNode }) {
   const { chat, chatActionError, viewedChatSession, runStatus } = useAppState();
 
   const viewing = viewedChatSession !== undefined;
@@ -277,9 +300,12 @@ export function ChatPanel() {
         </div>
       )}
 
+      {aboveComposer}
+
       <ChatComposer
         viewing={viewing}
         isPausedForApproval={!!pendingApproval}
+        pausedForQuestion={pendingApproval?.kind === 'question'}
         inputDisabled={isInputDisabled(viewing, liveRunState)}
       />
     </div>

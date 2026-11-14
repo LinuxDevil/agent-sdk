@@ -401,7 +401,7 @@ function readme(config: ProjectConfig): string {
       : `- \`src/agent.ts\` - the agent and ${tools}\n- \`src/agent.test.ts\` - tests with a scripted model, offline\n- \`src/index.ts\` - a tiny terminal chat`;
   return `# ${config.name}
 
-An agent built with [lousho](https://github.com/LinuxDevil/agent-sdk).
+An agent built with [lousho](https://github.com/LinuxDevil/lousho).
 
 ## Next 3 commands
 

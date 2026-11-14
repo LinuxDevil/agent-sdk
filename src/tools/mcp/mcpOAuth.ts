@@ -166,7 +166,7 @@ export function storeOAuthProvider(server: string, spec: McpOAuthServerSpec, sto
   return {
     redirectUrl: oauth.redirectUri,
     clientMetadata: {
-      client_name: oauth.clientName ?? 'lousho',
+      client_name: oauth.clientName ?? '@linuxdevil/lousho',
       redirect_uris: [oauth.redirectUri],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],

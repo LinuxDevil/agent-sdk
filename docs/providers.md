@@ -31,6 +31,32 @@ The `google/` prefix needs the optional `@ai-sdk/google` package (`^1.2.0` with
 `ai` 4, `^3.0.0` with `ai` 6, `^4.0.0` with `ai` 7) and reads
 `GOOGLE_GENERATIVE_AI_API_KEY`, the variable `@ai-sdk/google` itself uses.
 
+### Any AI SDK vendor by name
+
+Every official `@ai-sdk/*` provider resolves from a model string too. Install
+the vendor's package (`^1.0.0` with `ai` 4, `^3.0.0` with `ai` 6, `^4.0.0` with
+`ai` 7); it is loaded on the first call and reads its own credentials
+(`MISTRAL_API_KEY`, `GROQ_API_KEY`, the AWS chain for Bedrock, and so on).
+
+```ts no-run
+import { createAgent } from '@linuxdevil/lousho';
+
+createAgent({ model: 'mistral/mistral-large-latest' });   // @ai-sdk/mistral
+createAgent({ model: 'bedrock/anthropic.claude-sonnet' }); // @ai-sdk/amazon-bedrock
+createAgent({ model: 'vertex/gemini-2.5-pro' });           // @ai-sdk/google-vertex
+createAgent({ model: 'ai-sdk/cohere/command-r' });         // any @ai-sdk/<vendor>
+```
+
+The named prefixes are `azure`, `bedrock` (or `amazon-bedrock`), `vertex` (or
+`google-vertex`), `mistral`, `groq`, `xai`, `deepseek`, `cerebras`, `together`
+(or `togetherai`), `fireworks`, `deepinfra`, `cohere`, `perplexity`, `baseten`,
+`huggingface` and `vercel`. `ai-sdk/<vendor>/<model>` loads `@ai-sdk/<vendor>`
+for any other vendor, including ones newer than your Lousho version. A missing
+package fails on the first call with
+[`LOUSHO_PEER_MISSING`](./errors.md#lousho_peer_missing) and the install
+command. A provider you add with `LLMProviderRegistry.register()` under the
+same name wins over the AI SDK package.
+
 ### Vendors without a prefix
 
 A prefix the SDK does not know fails with

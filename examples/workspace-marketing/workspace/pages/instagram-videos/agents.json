@@ -1,0 +1,20 @@
+{
+  "schema": "lousho.agents/1",
+  "agents": [
+    {
+      "as": "script",
+      "ref": "workspace:script-maker",
+      "role": "Writes the script."
+    },
+    {
+      "as": "video",
+      "ref": "workspace:video-maker",
+      "role": "Renders the video."
+    },
+    {
+      "as": "voice",
+      "ref": "workspace:voice-maker",
+      "role": "Records the voice-over."
+    }
+  ]
+}

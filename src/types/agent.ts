@@ -24,4 +24,8 @@ export interface AgentConfig {
   events?: unknown[];
   settings?: AgentSettings;
   metadata?: Record<string, unknown>;
+  /** The harness revision (sha256 of the instructions and skills) when the instructions are a fixed string; stamped on the run's `invoke_agent` span. */
+  harnessRevision?: string;
+  /** Extra attributes stamped on the run's `invoke_agent` span; the workspace runtime sets the `lousho.page` family. */
+  spanAttributes?: Readonly<Record<string, string | number>>;
 }

@@ -1,0 +1,4 @@
+{ "name": "edit-add-guardrail", "focus": { "mode": "edit", "agentId": "support-triage" }, "seed": { "agents": ["support-triage"] },
+  "turns": ["Add a guardrail so replies never include personal data."],
+  "expect": { "tools": ["getCurrentSpec", "proposeAgentUpdate"], "mustNot": ["saveAgentUpdate"],
+    "rubric": "The assistant proposes an output guardrail for personal data (pii) without changing the name, model or instructions, and asks for confirmation." } }

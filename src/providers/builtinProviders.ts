@@ -4,7 +4,7 @@
  * `LLMProviderRegistry.create()` calls {@link ensureBuiltinProviders} when a
  * lookup misses, so the built-in providers resolve from EVERY import path -
  * a deep `import { createAgent }`, `resolveProvider()`, `specToAgent()`, the
- * `lousho` CLI and generated deploy servers alike - without `src/index.ts`
+ * `@linuxdevil/lousho` CLI and generated deploy servers alike - without `src/index.ts`
  * (or this module) having been imported for its side effects first.
  *
  * Laziness is preserved: importing this module loads only
@@ -29,6 +29,7 @@ import { GoogleProvider, type GoogleProviderConfig } from './GoogleProvider';
 import { OllamaProvider, type OllamaProviderConfig } from './OllamaProvider';
 import { PiProvider, type PiProviderConfig } from './pi/PiProvider';
 import { MockLLMProvider, type MockProviderConfig } from './mock';
+import { AiSdkPackageProvider, type AiSdkPackageProviderConfig } from './AiSdkPackageProvider';
 
 /** `name -> factory` for every built-in provider (providerSpec.ts's order, plus 'pi' and 'mock'). */
 const BUILTIN_FACTORIES: ReadonlyArray<readonly [string, ProviderFactory]> = [
@@ -41,6 +42,7 @@ const BUILTIN_FACTORIES: ReadonlyArray<readonly [string, ProviderFactory]> = [
   // loadOptionalPeer() on first use, like every other optional peer.
   ['pi', (config) => new PiProvider(config as PiProviderConfig)],
   ['mock', (config) => new MockLLMProvider(config as MockProviderConfig)],
+  ['ai-sdk', (config) => new AiSdkPackageProvider(config as AiSdkPackageProviderConfig)],
 ];
 
 /**

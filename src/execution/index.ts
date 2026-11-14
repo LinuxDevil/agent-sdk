@@ -53,6 +53,7 @@ export {
 } from './checkpoint';
 export * from './tracing';
 export * from './semconv';
+export * from './autoApproval';
 export * from './logger';
 // The patch checks (formerly "patch guardrails") run against a proposed
 // diff; SECRET_PATTERNS lives in a Node-free module so ioGuardrails - and so

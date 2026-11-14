@@ -53,7 +53,7 @@ function entryPoints(): EntryPoint[] {
     if (!types) throw new Error(`exports entry "${subpath}" has no "require.types"`);
     return {
       subpath,
-      name: subpath === '.' ? 'index' : subpath.replace(/^\.\//, ''),
+      name: subpath === '.' ? 'index' : subpath.replace(/^\.\//, '').replace(/\//g, '-'),
       typesPath: path.resolve(REPO_ROOT, types),
     };
   });

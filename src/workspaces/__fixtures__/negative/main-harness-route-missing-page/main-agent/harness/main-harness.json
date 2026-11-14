@@ -1,0 +1,13 @@
+{
+  "schema": "lousho.main-harness/1",
+  "routes": [
+    {
+      "page": "main",
+      "when": "The user wants a report."
+    },
+    {
+      "page": "ghost",
+      "when": "The user wants something else."
+    }
+  ]
+}

@@ -18,7 +18,7 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import type { AgentListItem, AgentRecord } from '../../shared/wireTypes';
 
 const V1_SPEC: AgentSpec = {
@@ -37,7 +37,7 @@ const V2_SPEC: AgentSpecV2 = {
 
 describe('agent routes v2', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let repo: AgentRepo;
 
@@ -97,6 +97,20 @@ describe('agent routes v2', () => {
       expect(ann).not.toHaveProperty('lastRun');
     });
 
+    it('carries meta.disabledReason on the list item (L12)', async () => {
+      await putV2('ops');
+      const meta = await repo.readMeta('ops');
+      await repo.writeMeta('ops', {
+        ...meta,
+        enabled: false,
+        disabledAt: '2026-01-01T00:00:00.000Z',
+        disabledReason: 'auto_failure_streak',
+      });
+      const res = await request(app()).get('/agents');
+      expect(res.status).toBe(200);
+      expect((res.body as AgentListItem[])[0]).toMatchObject({ enabled: false, disabledReason: 'auto_failure_streak' });
+    });
+
     it('skips a spec file it cannot read instead of failing the list', async () => {
       await putV2('good');
       fs.mkdirSync(repo.agentsDir(), { recursive: true });
@@ -125,7 +139,7 @@ describe('agent routes v2', () => {
       });
     });
 
-    it('?view=legacy keeps the AgentStoreEntry list shape', async () => {
+    it('?view=legacy keeps the LegacyAgentStoreEntry list shape', async () => {
       await putV2('ops');
       const res = await request(app()).get('/agents?view=legacy');
       expect(res.status).toBe(200);

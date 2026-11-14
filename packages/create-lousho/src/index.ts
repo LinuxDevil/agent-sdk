@@ -6,10 +6,10 @@ import path from 'node:path';
  *
  * The generator lives in the SDK (`src/cli/init.ts`) so there is exactly one
  * copy of it; this package only depends on the SDK (same version line) and
- * runs its `lousho` binary. `lousho init --help` lists the options.
+ * runs its `@linuxdevil/lousho` binary. `lousho init --help` lists the options.
  */
 
-/** Absolute path of the `lousho` bin of the installed `lousho`. */
+/** Absolute path of the `@linuxdevil/lousho` bin of the installed `@linuxdevil/lousho`. */
 export function loushoBin(): string {
   // The package's "exports" map hides package.json, but the "." entry
   // (<root>/dist/index.js) is resolvable and bin/ is its sibling of dist/.

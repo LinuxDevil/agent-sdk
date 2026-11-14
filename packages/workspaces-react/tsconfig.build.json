@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@linuxdevil/lousho/workspaces/client": ["../../dist/workspaces/client/index.d.mts"],
+      "@linuxdevil/lousho/workspaces": ["../../dist/workspaces/index.d.mts"]
+    },
+    "types": []
+  },
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/**/*.test.tsx", "src/__tests__/**"]
+}

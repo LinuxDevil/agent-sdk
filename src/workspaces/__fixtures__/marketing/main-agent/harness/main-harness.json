@@ -1,0 +1,38 @@
+{
+  "schema": "lousho.main-harness/1",
+  "instructions": [
+    "routing.md"
+  ],
+  "routes": [
+    {
+      "page": "instagram-videos",
+      "when": "The user wants an Instagram video."
+    },
+    {
+      "page": "facebook-videos",
+      "when": "The user wants a Facebook video."
+    },
+    {
+      "page": "content-research",
+      "when": "The user wants research on a topic before making a video."
+    }
+  ],
+  "clarify": {
+    "askWhen": [
+      "The channel is not named.",
+      "The topic is missing."
+    ],
+    "runImmediatelyWhen": [
+      "The channel and the topic are both clear."
+    ]
+  },
+  "presentation": {
+    "style": "Short and friendly.",
+    "followUps": "Offer one next step.",
+    "revisions": "Ask what to change."
+  },
+  "limits": {
+    "maxConcurrentPages": 2
+  },
+  "onPageFailure": "ask"
+}

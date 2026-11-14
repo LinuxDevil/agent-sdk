@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-`lousho` is in the 1.0.0 alpha line on npm. Until 1.0 ships,
+`@linuxdevil/lousho` is in the 1.0.0 alpha line on npm. Until 1.0 ships,
 only the latest alpha release receives security fixes. If you are on an older
 alpha, upgrade before reporting, and confirm the issue still reproduces.
 
@@ -18,7 +18,7 @@ problem.
 
 Use GitHub private vulnerability reporting: open the repository's **Security**
 tab and choose **Report a vulnerability**, or go straight to
-<https://github.com/LinuxDevil/agent-sdk/security/advisories/new>.
+<https://github.com/LinuxDevil/lousho/security/advisories/new>.
 
 Please include:
 

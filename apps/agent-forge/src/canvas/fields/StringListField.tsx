@@ -24,6 +24,15 @@ export interface StringListFieldProps {
   help?: string;
   /** Per-item validation; the returned message becomes the field error and the item is not added. */
   validateItem?(item: string): string | undefined;
+  /**
+   * A `<datalist>` of completions for the draft input (id `<id>-suggestions`),
+   * e.g. the owner's tool names for a permission rule's tool list.
+   */
+  suggestions?: string[];
+  /** An external error that wins over the item checks — for "the list itself is invalid" rules like a required non-empty list. */
+  error?: string;
+  /** Spec-path suffix for `data-field-path` (Inspector Problems focus, C19). */
+  fieldPath?: string;
 }
 
 /**
@@ -38,10 +47,14 @@ export function StringListField({
   placeholder,
   help,
   validateItem,
+  suggestions,
+  error,
+  fieldPath,
 }: StringListFieldProps): JSX.Element {
   const [draft, setDraft] = useState('');
-  const [error, setError] = useState<string | undefined>();
+  const [itemError, setItemError] = useState<string | undefined>();
   const items = value ?? [];
+  const listId = `${id}-suggestions`;
 
   const emit = (next: string[]) => {
     onChange(next.length === 0 ? undefined : next);
@@ -54,10 +67,10 @@ export function StringListField({
     if (items.includes(trimmed)) return true; // duplicates are ignored, silently
     const problem = validateItem?.(trimmed);
     if (problem !== undefined) {
-      setError(problem);
+      setItemError(problem);
       return false;
     }
-    setError(undefined);
+    setItemError(undefined);
     emit([...items, trimmed]);
     return true;
   };
@@ -85,7 +98,7 @@ export function StringListField({
       if (problem !== undefined) break;
       next.push(trimmed);
     }
-    setError(problem);
+    setItemError(problem);
     if (next.length !== items.length) emit(next);
     setDraft([...parts.slice(consumed), tail].join(','));
   };
@@ -101,7 +114,7 @@ export function StringListField({
   };
 
   return (
-    <Field id={id} label={label} error={error} hint={help}>
+    <Field id={id} label={label} error={error ?? itemError} hint={help} fieldPath={fieldPath}>
       <div className="stringlist">
         {items.map((item) => (
           <span key={item} className="chip">
@@ -116,7 +129,20 @@ export function StringListField({
             </button>
           </span>
         ))}
-        <Input value={draft} onChange={onText} onKeyDown={onKeyDown} placeholder={placeholder} />
+        <Input
+          value={draft}
+          onChange={onText}
+          onKeyDown={onKeyDown}
+          placeholder={placeholder}
+          list={suggestions === undefined ? undefined : listId}
+        />
+        {suggestions !== undefined && (
+          <datalist id={listId}>
+            {suggestions.map((suggestion) => (
+              <option key={suggestion} value={suggestion} />
+            ))}
+          </datalist>
+        )}
       </div>
     </Field>
   );

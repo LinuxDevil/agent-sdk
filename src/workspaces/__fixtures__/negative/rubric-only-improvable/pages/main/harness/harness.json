@@ -1,0 +1,41 @@
+{
+  "schema": "lousho.harness/1",
+  "instructions": [
+    "harness/task.md"
+  ],
+  "inputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "task"
+      ]
+    }
+  },
+  "outputs": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "report": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "report"
+      ]
+    }
+  },
+  "evaluation": {
+    "criteria": [
+      {
+        "id": "tone-ok",
+        "description": "The tone is polite.",
+        "rubric": "Polite and short."
+      }
+    ]
+  }
+}

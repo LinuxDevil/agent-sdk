@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { IngestEvent } from './envelope';
-import { failureReportFromDb, failureReportFromTraces, formatFailureReport, groupFailures, type FailureSample } from './failures';
+import { failedTraceIdsFromDb, failureReportFromDb, failureReportFromTraces, formatFailureReport, groupFailures, type FailureSample } from './failures';
 import { ingestBatch, interruptAgentWork, openDb } from './store';
 
 const T0 = 1_790_000_000_000;
@@ -104,6 +104,16 @@ describe('failureReportFromDb', () => {
     const db = openDb(':memory:');
     ingestBatch(db, [failed('o1', 't1', 'old'), failed('o2', 't2', 'new', {}, { start: T0 + 1000 }), failed('o3', 't3', 'other agent', {}, { agent_id: 'billing', start: T0 + 1000 })]);
     expect(failureReportFromDb(db, { since: T0 + 500, agent: 'support' }).groups.map((g) => g.example)).toEqual(['new']);
+    db.close();
+  });
+
+  it('filters by trace ids, for failed calls and low scores alike', () => {
+    const db = openDb(':memory:');
+    const lowScore = (id: string, trace: string): IngestEvent => ({ type: 'score', data: { score_id: id, trace_id: trace, name: 'accuracy', value: 0, source: 'online', ts: T0 } }) as IngestEvent;
+    ingestBatch(db, [failed('o1', 't1', 'boom'), failed('o2', 't2', 'bang'), lowScore('s1', 't3'), lowScore('s2', 't4')]);
+    expect([...failedTraceIdsFromDb(db, { traceIds: ['t2', 't4', 't9'] })].sort()).toEqual(['t2', 't4']);
+    expect(failedTraceIdsFromDb(db, { traceIds: [] }).size).toBe(0);
+    expect(failureReportFromDb(db, { traceIds: ['t1'] }).scanned).toMatchObject({ traces: 1, failed: 1, lowScores: 0 });
     db.close();
   });
 

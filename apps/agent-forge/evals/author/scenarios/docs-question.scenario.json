@@ -1,0 +1,3 @@
+{ "name": "docs-question", "turns": ["How do handoffs differ from subagents in lousho?"],
+  "expect": { "tools": ["searchDocs"], "mustNot": ["proposeAgent"],
+    "rubric": "The assistant explains that a handoff passes the conversation to another agent while a subagent runs a delegated task and returns, grounded in the docs it names." } }

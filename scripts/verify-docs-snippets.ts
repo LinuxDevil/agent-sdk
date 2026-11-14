@@ -24,7 +24,7 @@
  *
  *   A. SOURCE CHECK - every ```ts / ```typescript block in README.md and
  *      docs/*.md (all of them, not just the quick start) is type-checked
- *      against the real SDK SOURCE: `lousho` and its subpaths
+ *      against the real SDK SOURCE: `@linuxdevil/lousho` and its subpaths
  *      are resolved to `src/` through `paths` derived from package.json
  *      `exports`, so a docs example can never drift from the code (wrong
  *      argument order, methods that do not exist, ...). Types only; nothing

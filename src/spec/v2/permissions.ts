@@ -12,7 +12,6 @@ import type { WhenArgMatcher } from '../../agentDir/validateConfig';
 import { APPROVAL_TTL_RULE, isApprovalTtl } from '../../execution/approvalTtl';
 import { anyError } from '../../utils/zodCompat';
 import { refineUniqueIds, specIdSchema } from './common';
-import { addUnsupportedIssue } from './unsupported';
 
 /** One `spec.permissions` entry (the SDK's serializable rule form plus a stable `id`). */
 export interface PermissionRuleSpec {
@@ -22,11 +21,11 @@ export interface PermissionRuleSpec {
   tool: string | string[];
   /** Argument name → regular expression (string) or operator object; every entry must hold. */
   when?: Record<string, string | WhenArgMatcher>;
-  /** 'auto' (model-decided) is not supported yet (R01). */
+  /** 'auto' compiles to 'ask' and is model-decided when the host supplies an approver (R01). */
   action: 'allow' | 'deny' | 'ask' | 'auto';
   /** Why the rule decides as it does, shown with a `deny` or kept with an `ask`. */
   reason?: string;
-  /** Only with action 'ask'. */
+  /** Only with action 'ask' or 'auto' (auto compiles to ask). */
   ttlMs?: number;
 }
 
@@ -71,19 +70,16 @@ const toolPattern = z.string().regex(/^[A-Za-z0-9_*?-]{1,128}$/, "must be a tool
 
 /** The `spec.permissions` entry checks a single rule schema cannot express. */
 function refineRule(rule: PermissionRuleSpec, ctx: z.RefinementCtx): void {
-  if (rule.ttlMs !== undefined && rule.action !== 'ask') {
+  if (rule.ttlMs !== undefined && rule.action !== 'ask' && rule.action !== 'auto') {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: "only 'ask' rules wait for a decision; remove ttlMs",
+      message: "only 'ask' and 'auto' rules wait for a decision; remove ttlMs",
       path: ['ttlMs'],
     });
   }
-  if (rule.action === 'auto') {
-    addUnsupportedIssue(ctx, "action 'auto' (model-decided approvals)", ['action']);
-  }
 }
 
-/** One `spec.permissions` entry (zod): strict, `ttlMs` only on 'ask' rules, 'auto' not supported yet. */
+/** One `spec.permissions` entry (zod): strict, `ttlMs` only on 'ask' rules. */
 // fallow-ignore-next-line unused-export -- composed by permissionListSchema; exported for section schemas that embed it
 export const permissionRuleSchema = z
   .object({

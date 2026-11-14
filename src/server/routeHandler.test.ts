@@ -169,7 +169,7 @@ describe('createRouteHandler', () => {
       const { handler } = createRouteHandler(agentWithPrincipal(['x']), { auth: [apiToken('t'), basic({ users: { a: 'b' } })] });
       const denied = await handler(post('/api/agent/chat', { sessionId: 'p3', input: 'hi' }));
       expect(denied.status).toBe(401);
-      expect(denied.headers.get('www-authenticate')).toBe('Bearer, Basic realm="lousho", charset="UTF-8"');
+      expect(denied.headers.get('www-authenticate')).toBe('Bearer, Basic realm="@linuxdevil/lousho", charset="UTF-8"');
       expect(await denied.json()).toEqual({ error: 'Unauthorized' });
       expect(await (await handler(get('/api/agent/health'))).text()).toBe('ok');
       const { handler: closed } = createRouteHandler(agentWithPrincipal(['x']), { auth: [forbidden] });

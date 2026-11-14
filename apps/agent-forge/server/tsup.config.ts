@@ -5,7 +5,7 @@ import { defineConfig } from 'tsup';
  *
  * `server:dev`/`server:start` run this server straight off its
  * TypeScript source via `tsx`, which is fine for local development but not
- * for a published npm package: a consumer installing `lousho`
+ * for a published npm package: a consumer installing `@linuxdevil/lousho`
  * has neither `tsx` nor this app's devDependencies (vite, vitest, jsdom, ...)
  * available, and shipping raw `.ts` server source that needs a TS loader at
  * runtime would make `lousho studio` depend on tooling nobody asked to
@@ -13,7 +13,7 @@ import { defineConfig } from 'tsup';
  * one plain ESM `.js` file under `dist-server/`, the same way the SDK's own
  * root `tsup.config.ts` builds `src/**` into `dist/**`.
  *
- * `lousho` itself is left external rather than bundled: at
+ * `@linuxdevil/lousho` itself is left external rather than bundled: at
  * runtime this file always lives inside an install of that very package
  * (either the workspace symlink in this monorepo, or
  * `node_modules/lousho` for anyone who installed the
@@ -31,7 +31,7 @@ import { defineConfig } from 'tsup';
  * `package.json` dependencies.
  *
  * `yaml` is the one exception: it's left external (like
- * `lousho`) because the root package already depends on it
+ * `@linuxdevil/lousho`) because the root package already depends on it
  * directly (see the root `package.json`), so it's always available via
  * normal node_modules resolution wherever this server runs - and, more
  * importantly, esbuild's CJS-in-ESM interop for yaml's own bundled build

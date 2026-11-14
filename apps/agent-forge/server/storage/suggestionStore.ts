@@ -49,12 +49,13 @@ export function promptHash(instructions: string): string {
 }
 
 /**
- * The file name a `specHash`'s portability analysis lives under:
- * `'portability-' + specHash.slice('sha256:'.length, 'sha256:'.length + 16)`
+ * The file name (and record id) a `specHash`'s portability analysis lives
+ * under: `'portability-' + specHash.slice('sha256:'.length, 'sha256:'.length + 16)`
  * (64 bits of the digest - collision-safe per agent, readable in a
- * listing).
+ * listing). Exported for the portability pass, which stamps the same id
+ * on the records it writes.
  */
-function portabilityId(specHash: string): string {
+export function portabilityId(specHash: string): string {
   return `portability-${specHash.slice('sha256:'.length, 'sha256:'.length + 16)}`;
 }
 
@@ -128,18 +129,26 @@ export class SuggestionStore {
 
   /**
    * Stamps `status` + `updatedAt` on a `prompt_edit` record and returns
-   * the updated record. `undefined` - nothing written - when the record
-   * is missing, the id is invalid, or the record is a portability
-   * analysis (statuses belong to the suggestion lifecycle only).
+   * the updated record. `patch` merges lifecycle fields the caller owns
+   * (`resolvedAt`, `appliedVersion`); `status`/`updatedAt` always win.
+   * `undefined` - nothing written - when the record is missing, the id is
+   * invalid, or the record is a portability analysis (statuses belong to
+   * the suggestion lifecycle only).
    */
   async setStatus(
     agentId: string,
     id: string,
-    status: SuggestionStatus
+    status: SuggestionStatus,
+    patch: Partial<PromptSuggestion> = {}
   ): Promise<PromptSuggestion | undefined> {
     const item = await this.get(agentId, id);
     if (item === undefined || item.kind !== 'prompt_edit') return undefined;
-    const updated: PromptSuggestion = { ...item, status, updatedAt: this.clock().toISOString() };
+    const updated: PromptSuggestion = {
+      ...item,
+      ...patch,
+      status,
+      updatedAt: this.clock().toISOString(),
+    };
     await writeJsonAtomic(this.suggestionPath(agentId, id), updated);
     return updated;
   }

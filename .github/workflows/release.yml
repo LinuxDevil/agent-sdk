@@ -1,8 +1,8 @@
 name: Release
 on:
-  pull_request:
-    types: [closed]
-    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'
 concurrency:
   group: release
   cancel-in-progress: false
@@ -10,8 +10,39 @@ permissions:
   contents: write
   packages: write
 jobs:
+  plan:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.check.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.19.0'
+      - name: Check for changes since the last tag
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = workflow_dispatch ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          RELEASE=$(node scripts/release-notes.mjs check "$TAG")
+          echo "Last tag: ${TAG:-none}. Release: $RELEASE"
+          echo "release=$RELEASE" >> "$GITHUB_OUTPUT"
   release:
-    if: github.event.pull_request.merged == true && !contains(github.event.pull_request.labels.*.name, 'norelease')
+    needs: plan
+    if: needs.plan.outputs.release == 'true'
     runs-on: ubuntu-latest
     env:
       NODE_OPTIONS: --max-old-space-size=12288
@@ -41,8 +72,14 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
       - run: npm run build
       - run: npm run api:update
+      # llms.txt / llms-full.txt ship in the package; regenerate so they match this build.
+      - run: npm run docs:llms
       - run: npm run build -w create-lousho
       - name: Push version bump
+        # The husky pre-commit hook re-runs the full static suite (and fails on
+        # drift merged by others); the release commit only carries generated files.
+        env:
+          HUSKY: '0'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
@@ -63,13 +100,16 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Mirror to GitHub Packages
+        # Best effort: npm is the source of truth, so a mirror failure must not skip the GitHub release.
+        continue-on-error: true
         run: node scripts/publish-github-packages.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TAG: latest
       - name: GitHub release
         run: |
-          awk -v h="## [$VERSION]" 'index($0,h)==1{f=1;next} /^## \[/{f=0} f' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
-          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --prerelease --notes-file "$RUNNER_TEMP/notes.md" --generate-notes
+          TAG=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          node scripts/release-notes.mjs notes "$TAG" "$VERSION" > "$RUNNER_TEMP/notes.md"
+          gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --latest --notes-file "$RUNNER_TEMP/notes.md"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

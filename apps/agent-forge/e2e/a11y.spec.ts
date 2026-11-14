@@ -49,9 +49,9 @@ test('drawer and rail tabs are tablists driven by the arrow keys', async ({ page
   await openBuilder(page);
   const drawerTabs = page.getByRole('tablist', { name: 'Run panels' });
   await expect(drawerTabs.getByRole('tab')).toHaveCount(6);
-  const chat = drawerTabs.getByRole('tab', { name: 'Chat' });
-  await expect(chat).toHaveAttribute('aria-selected', 'true');
-  await chat.focus();
+  const testTab = drawerTabs.getByRole('tab', { name: 'Test' });
+  await expect(testTab).toHaveAttribute('aria-selected', 'true');
+  await testTab.focus();
   await page.keyboard.press('ArrowRight');
   const logs = drawerTabs.getByRole('tab', { name: 'Logs' });
   await expect(logs).toHaveAttribute('aria-selected', 'true');
@@ -176,11 +176,18 @@ const ITEM_H1: Record<string, string> = {
   '/evals/queues/:id': 'support-review',
   '/evals/evaluators/:id': 'answered',
 };
-for (const { label, path } of SCANS) {
+/** The launch workspace's id - the `e2e-000000` placeholder in route examples stands for it (W04b). */
+async function launchWorkspaceId(page: Page): Promise<string> {
+  const res = await page.request.get('/workspace', { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } });
+  return ((await res.json()) as { workspace: { id: string } }).workspace.id;
+}
+
+for (const { label, path: example } of SCANS) {
   test(`${label} keeps the landmarks and passes axe`, async ({ page }) => {
+    const path = example.includes('e2e-000000') ? example.replaceAll('e2e-000000', await launchWorkspaceId(page)) : example;
     // The agent routes land on the builder, which needs the id to be saved -
     // an unknown one falls back to the list.
-    if (path.startsWith('/agents/')) {
+    if (path.includes('/agents/')) {
       await page.request.put('/agents/e2e-agent', {
         headers: { 'x-lousho-studio-token': 'e2e-studio-token' },
         data: { name: 'e2e-agent', prompt: 'You are a helpful agent.', provider: { type: 'mock', model: 'mock-1' } },
@@ -198,7 +205,9 @@ for (const { label, path } of SCANS) {
     // The builder (`/agents/<id>` and its tabs, which land on canvas) keeps its visually hidden "Agent Forge"
     // h1; `/agents` is the agents list whose h1 is the PageHeader title like every other screen's (the nav
     // label, or the item's name on an ITEM_H1 detail screen).
-    const h1 = path.startsWith('/agents/') ? 'Agent Forge' : (ITEM_H1[label] ?? (await current.innerText()));
+    // Agent detail tabs name the agent; every other agents URL is the builder ('Agent Forge').
+    const agentDetailTab = /\/agents\/[^/]+\/(overview|configure|code|runs|versions|suggestions)$/.test(path);
+    const h1 = agentDetailTab ? 'e2e-agent' : path.includes('/agents/') ? 'Agent Forge' : (ITEM_H1[label] ?? (await current.innerText()));
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(h1);
     await expectNoSeriousAxeViolations(page, path);
   });

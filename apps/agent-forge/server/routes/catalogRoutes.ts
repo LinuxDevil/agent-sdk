@@ -17,13 +17,13 @@
  *
  * Tools, guardrails, trigger types and the parsed registry index are
  * memoised per `registerCatalogRoutes` call (static until the next
- * `lousho` upgrade); models are computed per request because stored keys
+ * `@linuxdevil/lousho` upgrade); models are computed per request because stored keys
  * change at runtime. `/catalog/mcp/probe` is a later ticket.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Express } from 'express';
-import { listBuiltinTools, listGuardrails, listModels, listTriggerTypes } from '@linuxdevil/lousho';
+import { listBuiltinTools, listGuardrails, listTriggerTypes } from '@linuxdevil/lousho';
 import type {
   CatalogGuardrail,
   CatalogKit,
@@ -35,6 +35,7 @@ import type {
 import { asyncRoute, sendError } from '../http/routeUtils';
 import { sdkRootDir } from '../sdkRoot';
 import { isSecretProvider, type SecretsStore } from '../secretsStore';
+import { workspaceOf } from '../workspace/middleware';
 
 /** Deps for {@link registerCatalogRoutes}. */
 export interface CatalogRouteDeps {
@@ -49,7 +50,7 @@ export interface CatalogRouteDeps {
  * filter. `command`/`url` are the (optional) fields an item of
  * `type: 'mcp'` would carry; the index has none today.
  */
-export interface RegistryItem {
+interface RegistryItem {
   name: string;
   type: string;
   description: string;
@@ -70,7 +71,7 @@ function isRegistryItem(value: unknown): value is RegistryItem {
  * (author/tools/catalogService.ts), which reads skills, kits and any
  * `type: 'mcp'` entries from the same index.
  */
-export async function readRegistryIndex(indexPath: string): Promise<RegistryItem[]> {
+async function readRegistryIndex(indexPath: string): Promise<RegistryItem[]> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(await fs.promises.readFile(indexPath, 'utf8'));
@@ -110,37 +111,70 @@ function parseProvider(query: unknown): { provider?: string; error?: string } {
   return { provider: query };
 }
 
+interface StaticCatalog {
+  registryItems: Promise<RegistryItem[]>;
+  tools: CatalogTool[];
+  guardrails: CatalogGuardrail[];
+  triggerTypes: CatalogTriggerType[];
+}
+
+export function loadStaticCatalog(registryIndexPath?: string): StaticCatalog {
+  const indexPath = registryIndexPath ?? path.join(sdkRootDir(), 'registry', 'dist', 'index.json');
+  return {
+    registryItems: readRegistryIndex(indexPath),
+    tools: listBuiltinTools(),
+    guardrails: listGuardrails(),
+    triggerTypes: listTriggerTypes(),
+  };
+}
+
 /**
  * Registers the six catalog routes. `deps.secretsStore` only decides the
  * `available` flag on models - keys are never placed in a response body.
  */
 export function registerCatalogRoutes(app: Express, deps: CatalogRouteDeps): void {
-  const indexPath = deps.registryIndexPath ?? path.join(sdkRootDir(), 'registry', 'dist', 'index.json');
-  const registryItems = readRegistryIndex(indexPath);
-  const tools: CatalogTool[] = listBuiltinTools();
-  const guardrails: CatalogGuardrail[] = listGuardrails();
-  const triggerTypes: CatalogTriggerType[] = listTriggerTypes();
+  const { registryItems } = loadStaticCatalog(deps.registryIndexPath);
 
-  app.get('/catalog/models', (req, res) => {
-    const parsed = parseProvider(req.query.provider);
-    if (parsed.error !== undefined) {
-      sendError(res, 400, parsed.error, 'LOUSHO_QUERY_INVALID');
-      return;
-    }
-    res.json(withStoredKeyAvailability(listModels(parsed.provider === undefined ? {} : { provider: parsed.provider }), deps.secretsStore));
-  });
+  // W11c: models/tools/guardrails/triggers come from the request
+  // workspace's AgentHost - a bridge workspace answers with the PROJECT
+  // SDK's catalog, in-process with Studio's (identical lists today).
+  // `/catalog/skills|kits` stay on the registry index: they are not
+  // SDK-versioned.
+  app.get(
+    '/catalog/models',
+    asyncRoute(async (req, res) => {
+      const parsed = parseProvider(req.query.provider);
+      if (parsed.error !== undefined) {
+        sendError(res, 400, parsed.error, 'LOUSHO_QUERY_INVALID');
+        return;
+      }
+      const { models } = await workspaceOf(req).host.catalog();
+      const filtered =
+        parsed.provider === undefined ? models : models.filter((model) => model.provider === parsed.provider);
+      res.json(withStoredKeyAvailability(filtered, deps.secretsStore));
+    })
+  );
 
-  app.get('/catalog/tools', (_req, res) => {
-    res.json(tools);
-  });
+  app.get(
+    '/catalog/tools',
+    asyncRoute(async (req, res) => {
+      res.json((await workspaceOf(req).host.catalog()).tools);
+    })
+  );
 
-  app.get('/catalog/guardrails', (_req, res) => {
-    res.json(guardrails);
-  });
+  app.get(
+    '/catalog/guardrails',
+    asyncRoute(async (req, res) => {
+      res.json((await workspaceOf(req).host.catalog()).guardrails);
+    })
+  );
 
-  app.get('/catalog/triggers', (_req, res) => {
-    res.json(triggerTypes);
-  });
+  app.get(
+    '/catalog/triggers',
+    asyncRoute(async (req, res) => {
+      res.json((await workspaceOf(req).host.catalog()).triggers);
+    })
+  );
 
   app.get(
     '/catalog/skills',

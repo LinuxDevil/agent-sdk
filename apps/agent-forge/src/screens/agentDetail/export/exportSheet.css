@@ -1,0 +1,65 @@
+/* ExportSheet (L09b): format fieldset, the adapt toggle row and the
+   secrets footnote inside the export sheet body. */
+
+.export-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.export-format {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.export-format legend {
+  padding: 0 var(--space-1);
+  font-size: var(--fs-overline);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.export-format-option {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.export-format-option input[type='radio'] {
+  accent-color: var(--accent);
+}
+
+.export-format-text {
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+.export-format-text .hint {
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}
+
+.export-adapt {
+  display: flex;
+}
+
+.export-error {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--danger);
+}
+
+.export-secrets {
+  margin: 0;
+  font-size: var(--fs-meta);
+  color: var(--text-faint);
+}

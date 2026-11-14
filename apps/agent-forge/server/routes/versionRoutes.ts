@@ -20,6 +20,7 @@ import { diffSpecs } from '../diff/specChange';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { withAgentLock } from '../storage/atomic';
 import { flattenSpecIssues } from '../storage/agentRepo';
+import { specHash } from '../storage/specHash';
 import { workspaceOf } from '../workspace/middleware';
 import type { SpecSnapshot } from '../../shared/wireTypes';
 
@@ -38,6 +39,11 @@ function sendVersionInvalid(res: Response): void {
 
 function sendVersionNotFound(res: Response, id: string, n: number): void {
   sendError(res, 404, `No version ${n} of '${id}'`, 'LOUSHO_VERSION_NOT_FOUND');
+}
+
+/** Same labels in the same order - label order is meaningful. */
+function sameLabels(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((label, index) => label === b[index]);
 }
 
 /** The snapshot `n` diffs against: the explicit `against`, else the highest version below `n`, else none (all adds). */
@@ -186,8 +192,20 @@ export function registerVersionRoutes(app: Express): void {
           );
           return;
         }
-        await ws.repo.writeSpec(id, parsed.data);
+        // A restore that would change nothing - the working copy already
+        // holds this spec and its labels - is a 409 no-op rather than a
+        // meaningless extra version.
+        const current = await ws.repo.readSpec(id);
         const meta = await ws.repo.readMeta(id);
+        if (
+          current !== undefined &&
+          specHash(current) === rec.specHash &&
+          sameLabels(meta.labels, rec.snapshot.labels)
+        ) {
+          sendError(res, 409, `v${n} is already the current version.`, 'LOUSHO_RESTORE_NOOP');
+          return;
+        }
+        await ws.repo.writeSpec(id, parsed.data);
         await ws.repo.writeMeta(id, { ...meta, labels: rec.snapshot.labels, updatedAt: new Date().toISOString() });
         const item = await ws.versions.capture(id, {
           kind: 'restore',

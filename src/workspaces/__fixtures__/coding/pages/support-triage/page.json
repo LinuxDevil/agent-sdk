@@ -1,0 +1,16 @@
+{
+  "schema": "lousho.page/1",
+  "id": "support-triage",
+  "name": "Support triage",
+  "description": "Ranks customer reports by urgency.",
+  "domain": "support",
+  "harness": {
+    "extends": []
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "agent"
+    }
+  }
+}

@@ -224,7 +224,10 @@ export function buildAgentFromSpec(
  * exactly like it always has.
  */
 export function extractFlowFromSpec(spec: AgentSpec): AgentFlow | undefined {
-  const raw = spec.policy?.flow;
+  return asAgentFlow(spec.policy?.flow);
+}
+
+export function asAgentFlow(raw: unknown): AgentFlow | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const candidate = raw as Partial<AgentFlow>;
   if (typeof candidate.code !== 'string' || typeof candidate.name !== 'string' || !candidate.flow) {

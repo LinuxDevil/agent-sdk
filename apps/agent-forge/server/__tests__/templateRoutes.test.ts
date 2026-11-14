@@ -16,7 +16,7 @@ import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
 import { newTestHost } from './testHost';
-import type { AgentStore } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore } from '../../src/persistence/AgentStore';
 import { sdkRootDir } from '../sdkRoot';
 import { TemplateCatalog } from '../templates/templateCatalog';
 import type { TemplateDetail, TemplateSummary } from '../../shared/wireTypes';
@@ -64,7 +64,7 @@ function writeTemplate(
 describe('/templates routes', () => {
   let baseDir: string;
   let templatesDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
   let catalog: TemplateCatalog;
 

@@ -15,7 +15,7 @@
  *
  * `@opentelemetry/api` is an OPTIONAL peer dependency (see package.json) -
  * it is only required at runtime by consumers who import this subpath.
- * Importing `lousho` (or any other subpath) never loads
+ * Importing `@linuxdevil/lousho` (or any other subpath) never loads
  * this module and never requires `@opentelemetry/api` to be installed.
  * If it isn't installed, importing `@linuxdevil/lousho/otel` throws a
  * clear module-not-found error at that import site, not at package-import
@@ -54,7 +54,7 @@ import { Span, TraceExporter } from './tracing';
 export interface OtelTraceExporterOptions {
   /**
    * Name passed to `trace.getTracer(tracerName, tracerVersion)`. Defaults
-   * to `'lousho'`. Ignored when `tracer` is supplied.
+   * to `'@linuxdevil/lousho'`. Ignored when `tracer` is supplied.
    */
   tracerName?: string;
   /**
@@ -143,7 +143,7 @@ const LEGACY_KEYS: ReadonlySet<string> = new Set(Object.values(LegacyAttr));
  */
 export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}): TraceExporter {
   const tracer =
-    options.tracer ?? trace.getTracer(options.tracerName ?? 'lousho', options.tracerVersion);
+    options.tracer ?? trace.getTracer(options.tracerName ?? '@linuxdevil/lousho', options.tracerVersion);
 
   // Our Span.id -> the OTel span + context it was started in, so a child
   // Span (matched by parentId) can be started as a child of the right
@@ -227,7 +227,7 @@ export function createOtelTraceExporter(options: OtelTraceExporterOptions = {}):
 /** The metrics recorder for `options`: a no-op when `metrics` is `false`. */
 function resolveMetricsRecorder(options: OtelTraceExporterOptions): (span: Span) => void {
   if (options.metrics === false) return () => undefined;
-  const name = options.tracerName ?? 'lousho';
+  const name = options.tracerName ?? '@linuxdevil/lousho';
   return createMetricsRecorder(options.meter ?? otelMetrics.getMeter(name, options.tracerVersion));
 }
 

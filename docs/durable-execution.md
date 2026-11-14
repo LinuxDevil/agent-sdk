@@ -308,6 +308,8 @@ without a checkpoint store. With a custom store that has no leases
 (`acquireLease`), nothing stops it from resuming a run another process is
 still running: run it in one process only.
 
+For an overview of recovery alongside the progress guard and `improveAgent()`, see [Self-healing and self-improvement](./self-healing.md).
+
 ## Run leases
 
 While a checkpointed run executes (a session turn, a `send(msg, { sessionId })`

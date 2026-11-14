@@ -1,67 +1,15 @@
 import { useState } from 'react';
-import type { DragEvent } from 'react';
-import { useStoreApi } from '@xyflow/react';
-import { Pencil, Plus, Trash2, Webhook, type LucideIcon } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { useAppState } from '../state/AppState';
-import { PALETTE_DRAG_MIME, HOOK_DRAG_MIME } from '../canvas/dnd';
 import { AGENT_TEMPLATES, type TemplateId } from '../canvas/templates';
-import { addHookToNode, addNode } from '../canvas/graphMutations';
-import { pickHookTemplate, viewportCentrePosition } from '../canvas/paletteActions';
-import { NODE_KINDS, type KindTone } from '../canvas/nodeKinds';
+import { NodePalette } from '../canvas/palette/NodePalette';
 import { StatusPill, statusTone } from '../ui/StatusPill';
 import { navigate } from '../router/router';
 import { agentPath } from '../screens/agents/agentRoute';
 import { errorMessage } from './errorMessage';
 import { tabIds, tabListKeyDown } from './tabs';
 import { agentIdProblem } from '../../shared/agentId';
-import type { AgentGraphNodeType, AgentNodeHookPhase } from '../graph/types';
-
-interface PaletteEntry {
-  label: string;
-  description: string;
-  nodeType: AgentGraphNodeType;
-}
-
-const NODE_PALETTE: { section: string; items: PaletteEntry[] }[] = [
-  {
-    section: 'Trigger',
-    items: [{ label: 'Input trigger', description: 'Starts a run', nodeType: 'trigger' }],
-  },
-  {
-    section: 'Reasoning',
-    items: [{ label: 'LLM step', description: 'Calls the model', nodeType: 'llm' }],
-  },
-  {
-    section: 'Tools',
-    items: [
-      { label: 'Tool call', description: 'Runs a tool', nodeType: 'tool' },
-      { label: 'Approval gate', description: 'Waits for a human', nodeType: 'approval' },
-    ],
-  },
-  // Router/condition node - drag onto the canvas, then wire 2+
-  // outgoing edges from it (each becomes a branch, edited in the Inspector)
-  // to make the graph actually branch instead of following one fixed path.
-  {
-    section: 'Routing',
-    items: [{ label: 'Router / condition', description: 'Branches by condition', nodeType: 'router' }],
-  },
-  {
-    section: 'Output',
-    items: [{ label: 'Response / output', description: 'Returns the answer', nodeType: 'output' }],
-  },
-];
-
-/**
- * Hooks (pre/post) palette entries. Unlike NODE_PALETTE's items,
- * dropping one of these does NOT add a new `AgentGraphNode` - it attaches
- * an `AgentNodeHookInstance` onto whichever node the drop lands on (see
- * dnd.ts's HOOK_DRAG_MIME and CanvasArea.tsx's onDrop), so this list is
- * kept separate rather than folded into NODE_PALETTE.
- */
-const HOOK_PALETTE: { label: string; description: string; tone: KindTone; phase: AgentNodeHookPhase }[] = [
-  { label: 'Pre-hook', description: 'Before an LLM/tool call', tone: 'info', phase: 'pre' },
-  { label: 'Post-hook', description: 'After an LLM/tool call', tone: 'accent', phase: 'post' },
-];
+import type { AgentListItem } from '../../shared/wireTypes';
 
 /** Up to two letters for an agent's avatar tile: the first letters of its first two words (`support-bot` -> `SB`). */
 export function agentInitials(id: string): string {
@@ -113,21 +61,17 @@ function UnsavedAgentCard() {
     <div className="agent-card selected">
       {/* "unsaved" is a warning, not a green "all good". */}
       <div className="agent-card-main">
-        <AgentRowBody name={spec.name} meta={`${spec.provider.model} · ${graph.nodes.length} nodes`} status="unsaved" />
+        <AgentRowBody name={spec.name} meta={`${spec.model} · ${graph.nodes.length} nodes`} status="unsaved" />
       </div>
     </div>
   );
 }
 
-type AgentEntry = ReturnType<typeof useAppState>['agents'][number];
+type AgentEntry = AgentListItem;
 type AgentStatuses = ReturnType<typeof useAppState>['agentStatuses'];
 
 function agentStatusOf(agentStatuses: AgentStatuses, id: string): string {
   return agentStatuses[id]?.status ?? 'idle';
-}
-
-function toolCountOf(entry: AgentEntry): number {
-  return entry.spec.tools?.length ?? 0;
 }
 
 /** Inline rename of a saved agent, validated against the server's id rule. */
@@ -254,7 +198,7 @@ function AgentCard({ entry }: { entry: AgentEntry }) {
         // The hash drives selection (screens/agents/agentRoute.ts), so back/forward and reload follow it.
         onClick={() => navigate(agentPath(entry.id))}
       >
-        <AgentRowBody name={entry.id} meta={`${entry.spec.provider.model} · ${toolCountOf(entry)} tools`} status={status} />
+        <AgentRowBody name={entry.id} meta={entry.model} status={status} />
       </button>
       {selected &&
         (renaming ? (
@@ -378,128 +322,6 @@ function AgentsTab({ draft }: { draft: NewAgentDraft }) {
   );
 }
 
-interface PaletteItemProps {
-  id: string;
-  label: string;
-  description: string;
-  tone: KindTone;
-  Icon: LucideIcon;
-  title: string;
-  onDragStart: (e: DragEvent<HTMLButtonElement>) => void;
-  onActivate: () => void;
-}
-
-/**
- * A palette entry is a real button - drag it onto the canvas as
- * before, or activate it (click, Enter, Space) to add it without a mouse.
- * A card: the kind's icon tile, its name, and a one-line description.
- */
-function PaletteItem({ id, label, description, tone, Icon, title, onDragStart, onActivate }: PaletteItemProps) {
-  const descriptionId = `palette-${id}-desc`;
-  return (
-    <button
-      type="button"
-      className="node-palette-item"
-      draggable
-      onDragStart={onDragStart}
-      onClick={onActivate}
-      title={title}
-      // The card's name stays the bare label; the one-line description is its description.
-      aria-label={label}
-      aria-describedby={descriptionId}
-    >
-      <span className={`node-kind kind-${tone}`} aria-hidden="true">
-        <Icon size={14} strokeWidth={1.75} />
-      </span>
-      <span className="palette-text">
-        <span className="palette-name">{label}</span>
-        <span className="palette-desc" id={descriptionId}>
-          {description}
-        </span>
-      </span>
-    </button>
-  );
-}
-
-function startPaletteDrag(e: DragEvent<HTMLButtonElement>, mime: string, payload: string) {
-  e.dataTransfer.setData(mime, payload);
-  e.dataTransfer.effectAllowed = 'move';
-}
-
-/** Click/keyboard equivalents of the palette's drag-and-drop. */
-function usePaletteActions() {
-  const { graph, setGraph, selectedNodeId, setSelectedNodeId } = useAppState();
-  const flow = useStoreApi();
-  const [notice, setNotice] = useState<string | undefined>(undefined);
-
-  function addAtViewportCentre(nodeType: AgentGraphNodeType, label: string) {
-    const { transform, width, height } = flow.getState();
-    const position = viewportCentrePosition(transform, width, height);
-    const next = addNode(graph, nodeType, position);
-    const added = next.nodes[next.nodes.length - 1];
-    setGraph(() => next);
-    setSelectedNodeId(added.id);
-    setNotice(`Added ${label} to the canvas.`);
-  }
-
-  function attachHook(phase: AgentNodeHookPhase, label: string) {
-    const target = graph.nodes.find((n) => n.id === selectedNodeId);
-    if (!target || (target.type !== 'llm' && target.type !== 'tool')) {
-      setNotice(`Select an LLM or tool node first, then add the ${label}.`);
-      return;
-    }
-    setGraph((g) => addHookToNode(g, target.id, pickHookTemplate(target.type as 'llm' | 'tool', phase)));
-    setNotice(`Attached a ${label} to ${target.label}.`);
-  }
-
-  return { notice, addAtViewportCentre, attachHook };
-}
-
-function NodesTab() {
-  const { notice, addAtViewportCentre, attachHook } = usePaletteActions();
-  return (
-    <div className="rail-body">
-      {NODE_PALETTE.map((group) => (
-        <div key={group.section} className="palette-group">
-          <div className="rail-section-title overline">{group.section}</div>
-          {group.items.map((item) => (
-            <PaletteItem
-              key={item.label}
-              id={item.nodeType}
-              label={item.label}
-              description={item.description}
-              tone={NODE_KINDS[item.nodeType].tone}
-              Icon={NODE_KINDS[item.nodeType].Icon}
-              title="Drag onto the canvas, or press to add at the centre"
-              onDragStart={(e) => startPaletteDrag(e, PALETTE_DRAG_MIME, item.nodeType)}
-              onActivate={() => addAtViewportCentre(item.nodeType, item.label)}
-            />
-          ))}
-        </div>
-      ))}
-      <div className="palette-group">
-        <div className="rail-section-title overline">Hooks</div>
-        {HOOK_PALETTE.map((item) => (
-          <PaletteItem
-            key={item.label}
-            id={`hook-${item.phase}`}
-            label={item.label}
-            description={item.description}
-            tone={item.tone}
-            Icon={Webhook}
-            title="Drag onto a node, or press to attach to the selected LLM/tool node"
-            onDragStart={(e) => startPaletteDrag(e, HOOK_DRAG_MIME, item.phase)}
-            onActivate={() => attachHook(item.phase, item.label.toLowerCase())}
-          />
-        ))}
-      </div>
-      <div className="hint palette-notice" role="status">
-        {notice}
-      </div>
-    </div>
-  );
-}
-
 const RAIL_TABS = [
   { id: 'agents', label: 'Agents' },
   { id: 'nodes', label: 'Nodes' },
@@ -544,7 +366,7 @@ export function LeftRail() {
       </div>
 
       <div className="rail-panel" id={ids.panel} role="tabpanel" aria-labelledby={ids.tab}>
-        {railTab === 'agents' ? <AgentsTab draft={draft} /> : <NodesTab />}
+        {railTab === 'agents' ? <AgentsTab draft={draft} /> : <NodePalette />}
       </div>
     </nav>
   );

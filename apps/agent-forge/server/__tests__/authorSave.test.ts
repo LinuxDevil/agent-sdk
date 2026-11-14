@@ -164,8 +164,12 @@ describe('POST /assistant/sessions/:id/save', () => {
     expect(last.id).toBe(body.message.id);
     const version = JSON.parse(
       fs.readFileSync(path.join(baseDir, '.lousho', 'agents', 'card-bot', 'versions', '000001.json'), 'utf8')
-    ) as { requestText: string | null; source: string };
-    expect(version).toMatchObject({ source: 'author', requestText: 'build me a card bot' });
+    ) as { requestText: string | null; authorSessionId: string | null; source: string };
+    expect(version).toMatchObject({
+      source: 'author',
+      requestText: 'build me a card bot',
+      authorSessionId: session.id,
+    });
   });
 
   it('a second Apply of the same card -> 400 ALREADY_SAVED', async () => {

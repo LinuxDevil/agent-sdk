@@ -52,6 +52,20 @@ describe('nodeStateFor', () => {
     expect(nodeStateFor(wait, 'start', NOW)?.state).toBe('waiting');
   });
 
+  it('an approval.wait span end yields no frame - the zero-length marker must not clobber waiting with done', () => {
+    const wait = span({
+      name: `${APPROVAL_WAIT_SPAN_NAME} current_date`,
+      endTime: 1,
+      attributes: {
+        [SdkAttr.NODE_ID]: 'tool:current_date',
+        [SdkAttr.APPROVAL_ID]: 'appr-1',
+      },
+    });
+    expect(nodeStateFor(wait, 'end', NOW)).toBeUndefined();
+    // A real span's end still frames normally.
+    expect(nodeStateFor(span({ endTime: 2 }), 'end', NOW)?.state).toBe('done');
+  });
+
   it('a span end without an error status yields state "done"', () => {
     expect(nodeStateFor(span({ endTime: 2 }), 'end', NOW)?.state).toBe('done');
     expect(

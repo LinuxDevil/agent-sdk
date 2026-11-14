@@ -214,7 +214,7 @@ describe('githubChannel', () => {
     ]);
     expect(t.userTexts(0)).toEqual(['what are widgets?']);
     expect(t.userTexts(1)[1]).toMatch(/^hey\s+and the second\?$/);
-    expect(t.calls[0].headers).toMatchObject({ accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': 'lousho' });
+    expect(t.calls[0].headers).toMatchObject({ accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28', 'user-agent': '@linuxdevil/lousho' });
   });
 
   it('runs the turn with the commenter as its principal, which a memory scope sees', async () => {

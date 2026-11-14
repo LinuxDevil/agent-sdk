@@ -131,6 +131,28 @@ describe('/workspaces routes', () => {
     expect((await registry.list()).map((r) => r.id)).toContain(item.id);
   });
 
+  it('GET /workspaces items carry observeProject - the package.json name, else default (W09a)', async () => {
+    const savedEnv = process.env.LOUSHO_OBSERVE_PROJECT;
+    delete process.env.LOUSHO_OBSERVE_PROJECT;
+    try {
+      const named = workspaceFolder('named');
+      fs.writeFileSync(path.join(named, 'package.json'), JSON.stringify({ name: 'named-pkg' }));
+      const plain = workspaceFolder('plain');
+      await registry.add(named);
+      await registry.add(plain);
+      const res = await authed(request(app).get('/workspaces'));
+      expect(res.status).toBe(200);
+      const items = (res.body as WorkspaceList).workspaces;
+      expect(items.find((w) => w.root === named)?.observeProject).toBe('named-pkg');
+      expect(items.find((w) => w.root === plain)?.observeProject).toBe('default');
+      // The launch folder has no package.json either.
+      expect(items.find((w) => w.id === launchId)?.observeProject).toBe('default');
+    } finally {
+      if (savedEnv === undefined) delete process.env.LOUSHO_OBSERVE_PROJECT;
+      else process.env.LOUSHO_OBSERVE_PROJECT = savedEnv;
+    }
+  });
+
   it('POST /workspaces of a registered folder answers 409 LOUSHO_WORKSPACE_EXISTS (also with a trailing separator)', async () => {
     const b = workspaceFolder('beta');
     const first = await authed(request(app).post('/workspaces').send({ root: b }));

@@ -1,12 +1,12 @@
 import type { AgentSpec } from '@linuxdevil/lousho';
-import type { AgentStore, AgentStoreEntry } from './AgentStore';
+import type { LegacyAgentStore, LegacyAgentStoreEntry } from './AgentStore';
 import { AgentRepo } from '../../server/storage/agentRepo';
 import { mergeLegacySave, toLegacySpec } from '../../server/storage/legacySpec';
 import { withAgentLock } from '../../server/storage/atomic';
 import { VersionStore } from '../../server/storage/versionStore';
 
 /**
- * Filesystem-backed `AgentStore` - a v1 facade over `AgentRepo`, which owns
+ * Filesystem-backed `LegacyAgentStore` - a v1 facade over `AgentRepo`, which owns
  * `<baseDir>/.lousho/agents/<id>.yaml` as an AgentSpec v2 working copy plus
  * the `meta.json` / `layout.json` / `working.json` sidecars.
  *
@@ -23,16 +23,16 @@ import { VersionStore } from '../../server/storage/versionStore';
  * `.lousho/agents/` of the directory `lousho studio` was started in.
  */
 /**
- * The `AgentStore` over `baseDir`'s `.lousho/agents`. `repo` is the
+ * The `LegacyAgentStore` over `baseDir`'s `.lousho/agents`. `repo` is the
  * `AgentRepo` for the same workspace root - the workspace context passes
  * its own so every per-workspace store shares one repo; it defaults to a
  * fresh `AgentRepo(baseDir)` for callers that only want the store.
  */
-export function createFsAgentStore(baseDir: string, repo: AgentRepo = new AgentRepo(baseDir)): AgentStore {
+export function createFsAgentStore(baseDir: string, repo: AgentRepo = new AgentRepo(baseDir)): LegacyAgentStore {
   const versions = new VersionStore(repo);
   return {
-    async list(): Promise<AgentStoreEntry[]> {
-      const entries: AgentStoreEntry[] = [];
+    async list(): Promise<LegacyAgentStoreEntry[]> {
+      const entries: LegacyAgentStoreEntry[] = [];
       for (const id of repo.listIds()) {
         // The studio lists this directory now, so one hand-edited
         // file that no longer parses is skipped instead of failing the

@@ -4,8 +4,14 @@ import { render } from '../../ui/__tests__/render';
 
 const appState = vi.hoisted(() => ({
   approveAgent: vi.fn(async () => {}),
+  railTab: 'agents',
+  setRailTab: vi.fn(),
+  graph: { version: 2, nodes: [], emptySections: [], unplaced: [] },
+  setGraph: vi.fn(),
+  selectedNodeId: undefined,
+  setSelectedNodeId: vi.fn(),
   sendChatMessage: vi.fn(async () => {}),
-  drawerTab: 'chat',
+  drawerTab: 'test',
   setDrawerTab: vi.fn(),
   chat: {
     sessionId: 's1',
@@ -136,13 +142,13 @@ describe('BottomDrawer tabs', () => {
   it('show icons and counts while each tab keeps its bare label as its name', () => {
     const container = render(<BottomDrawer />);
     const tabs = [...container.querySelectorAll('[role="tab"]')];
-    expect(tabs.map(nameOf)).toEqual(['Chat', 'Logs', 'Trace', 'Output', 'History', 'Settings']);
+    expect(tabs.map(nameOf)).toEqual(['Test', 'Problems', 'Logs', 'Trace', 'Output', 'History', 'Settings']);
     // The label is its own span (icon-only tabs at phone widths) and the tooltip.
     expect(tabs.map((t) => [t.querySelector('.drawer-tab-label')?.textContent, t.getAttribute('title')])).toEqual(
-      ['Chat', 'Logs', 'Trace', 'Output', 'History', 'Settings'].map((l) => [l, l]),
+      ['Test', 'Problems', 'Logs', 'Trace', 'Output', 'History', 'Settings'].map((l) => [l, l]),
     );
     // System messages are not counted; an empty count is not drawn.
-    expect(tabs.map((t) => t.querySelector('.count')?.textContent ?? '')).toEqual(['2', '3', '', '', '', '']);
+    expect(tabs.map((t) => t.querySelector('.count')?.textContent ?? '')).toEqual(['2', '', '3', '', '', '', '']);
     expect(tabs.every((t) => t.querySelector('svg[aria-hidden="true"]'))).toBe(true);
     expect(container.querySelector('[role="separator"] svg.drawer-grip')).not.toBeNull();
   });
@@ -171,5 +177,143 @@ describe('ToolbarMoreMenu', () => {
     });
     expect(container.querySelector('[role="menu"]')).toBeNull();
     expect(document.activeElement).toBe(button);
+  });
+});
+
+describe('NodesTab palette', () => {
+  const fakeView = {
+    label: 'Tool',
+    tone: 'info',
+    Icon: (() => null) as never,
+    title: () => 'http',
+    rows: () => [],
+    ports: { in: true, out: true },
+    Fields: (() => null) as never,
+    palette: [
+      {
+        id: 'tool',
+        group: 'Capabilities',
+        label: 'Tool call',
+        description: 'Runs a tool',
+        kind: 'tool',
+        create: () => ({ kind: 'tool', data: { item: { builtin: 'new' } } }),
+      },
+    ],
+  } as const;
+
+  it('shows the hint while KIND_VIEWS has no registered views', async () => {
+    const { LeftRail } = await import('../LeftRail');
+    const { KIND_VIEWS } = await import('../../canvas/kinds');
+    const { ReactFlowProvider } = await import('@xyflow/react');
+    // Registered kind views now ship palette entries (C03/C04); stash them
+    // so the empty-palette hint can still be exercised.
+    const saved = { ...KIND_VIEWS };
+    for (const key of Object.keys(KIND_VIEWS)) delete KIND_VIEWS[key as keyof typeof KIND_VIEWS];
+    try {
+      appState.railTab = 'nodes';
+      const container = render(
+        <ReactFlowProvider>
+          <LeftRail />
+        </ReactFlowProvider>,
+      );
+      expect(container.querySelector('.hint')?.textContent).toBe('Node types arrive with the next updates.');
+    } finally {
+      Object.assign(KIND_VIEWS, saved);
+      appState.railTab = 'agents';
+    }
+  });
+
+  it('renders palette entries grouped by PaletteGroup and drags the entry id', async () => {
+    const { LeftRail } = await import('../LeftRail');
+    const { KIND_VIEWS } = await import('../../canvas/kinds');
+    const { ReactFlowProvider } = await import('@xyflow/react');
+    KIND_VIEWS.tool = fakeView as never;
+    try {
+      appState.railTab = 'nodes';
+      const container = render(
+        <ReactFlowProvider>
+          <LeftRail />
+        </ReactFlowProvider>,
+      );
+      // The registered views contribute the Start (triggers), Agents (C04),
+      // Safety (C11's permission rule, C13's hook), Output (C14's output
+      // schema), Flow (C15's steps) and Canvas (C13's note) groups; the fake
+      // view adds Capabilities.
+      expect(
+        [...container.querySelectorAll('.palette-group-head .palette-group-name')].map((g) => g.textContent),
+      ).toEqual(['Start', 'Agents', 'Capabilities', 'Safety', 'Output', 'Flow', 'Canvas']);
+      const item = [...container.querySelectorAll<HTMLElement>('.node-palette-item')].find(
+        (el) => el.getAttribute('aria-label') === 'Tool call',
+      )!;
+      expect(item).toBeDefined();
+      const dataTransfer = { setData: vi.fn(), effectAllowed: '' };
+      const event = new Event('dragstart', { bubbles: true });
+      Object.defineProperty(event, 'dataTransfer', { value: dataTransfer });
+      act(() => item.dispatchEvent(event));
+      expect(dataTransfer.setData).toHaveBeenCalledWith('application/agent-forge-node-type', 'tool');
+    } finally {
+      delete KIND_VIEWS.tool;
+      appState.railTab = 'agents';
+    }
+  });
+
+  it('disables the output palette entry with its reason when the agent already has an output schema', async () => {
+    const { LeftRail } = await import('../LeftRail');
+    const { ReactFlowProvider } = await import('@xyflow/react');
+    const savedGraph = appState.graph;
+    const savedSelection = appState.selectedNodeId;
+    try {
+      appState.selectedNodeId = undefined;
+      appState.graph = { version: 2, nodes: [], emptySections: [], unplaced: [] } as never;
+      appState.railTab = 'nodes';
+      const { render: mount, cleanup } = await import('../../ui/__tests__/render');
+      const enabled = mount(
+        <ReactFlowProvider>
+          <LeftRail />
+        </ReactFlowProvider>,
+      );
+      const find = (c: HTMLElement) =>
+        [...c.querySelectorAll<HTMLButtonElement>('.node-palette-item')].find(
+          (el) => el.getAttribute('aria-label') === 'Output schema',
+        )!;
+      expect(find(enabled).getAttribute('aria-disabled')).toBeNull();
+      expect(find(enabled).draggable).toBe(true);
+      cleanup();
+
+      appState.graph = {
+        version: 2,
+        emptySections: [],
+        unplaced: [],
+        nodes: [
+          {
+            id: 'agent',
+            kind: 'agent',
+            owner: null,
+            position: { x: 0, y: 0 },
+            data: { fields: {}, extra: {} },
+          },
+          {
+            id: 'output',
+            kind: 'output',
+            owner: 'agent',
+            position: { x: 0, y: 0 },
+            data: { item: { jsonSchema: { type: 'object' } } },
+          },
+        ],
+      } as never;
+      const disabled = mount(
+        <ReactFlowProvider>
+          <LeftRail />
+        </ReactFlowProvider>,
+      );
+      const item = find(disabled);
+      expect(item.getAttribute('aria-disabled')).toBe('true');
+      expect(item.draggable).toBe(false);
+      expect(item.title).toBe('This agent already has an output schema');
+    } finally {
+      appState.graph = savedGraph;
+      appState.selectedNodeId = savedSelection;
+      appState.railTab = 'agents';
+    }
   });
 });

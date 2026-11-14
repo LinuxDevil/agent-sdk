@@ -36,9 +36,11 @@ export function slugAgentId(text: string): string {
  * Whether `id` is unusable for a new agent: its spec file exists, or its
  * `<id>/` sidecar dir does - a deleted agent keeps its history
  * (`versions/`, `traces/`, ...) under that dir, so reusing the id would
- * merge the new agent into the old one's history.
+ * merge the new agent into the old one's history. Exported for the
+ * import id resolvers (lifecycle/agentIds.ts), which take it as their
+ * `exists` predicate.
  */
-function agentIdTaken(repo: AgentRepo, id: string): boolean {
+export function agentIdTaken(repo: AgentRepo, id: string): boolean {
   return repo.exists(id) || fs.existsSync(repo.sidecarDir(id));
 }
 
@@ -54,12 +56,3 @@ export function uniqueAgentId(repo: AgentRepo, base: string): string {
   }
 }
 
-/** `<id>-copy`, else `<id>-copy-2`, `<id>-copy-3`, ... - the same availability rule as {@link uniqueAgentId}. */
-export function copyAgentId(repo: AgentRepo, sourceId: string): string {
-  const base = `${sourceId}-copy`;
-  if (!agentIdTaken(repo, base)) return base;
-  for (let n = 2; ; n++) {
-    const id = `${base}-${n}`;
-    if (!agentIdTaken(repo, id)) return id;
-  }
-}

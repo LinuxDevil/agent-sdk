@@ -4,6 +4,8 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { AgentRepo } from '../agentRepo';
 import { DraftStore, DraftMismatchError, NoDraftError, type NewDraftInput } from '../draftStore';
+import { draftFingerprint } from '../../lifecycle/draftFields';
+import type { ChangeDraft } from '../../../shared/wireTypes';
 
 const INPUT: NewDraftInput = {
   patch: { description: 'Triage faster.' },
@@ -162,5 +164,98 @@ describe('DraftStore', () => {
     const b = (await store.create('billing', INPUT)).draft;
     expect(await store.current('ops')).toEqual(a);
     expect(await store.current('billing')).toEqual(b);
+  });
+
+  it('update restates patch/reason in place, clears autoReview, and notifies listeners', async () => {
+    const { draft } = await store.create('ops', INPUT);
+    const seen: string[] = [];
+    store.onDraftWritten((agentId) => seen.push(agentId));
+
+    // Give the draft a verdict first, the way the review pass would.
+    const fp = draftFingerprint(draft);
+    await store.setAutoReview('ops', draft.id, {
+      outcome: 'clear',
+      safe: true,
+      rationale: 'ok',
+      concerns: [],
+      fingerprint: fp,
+      model: 'm',
+      checkedAt: NOW.toISOString(),
+    }, fp);
+    expect((await store.current('ops'))!.autoReview).not.toBeNull();
+
+    const updated = await store.update('ops', draft.id, { reason: 'A better reason.' });
+    expect(updated.id).toBe(draft.id);
+    expect(updated.reason).toBe('A better reason.');
+    expect(updated.patch).toEqual(draft.patch);
+    expect(updated.autoReview).toBeNull();
+    expect(await store.current('ops')).toEqual(updated);
+    expect(seen).toEqual(['ops']);
+  });
+
+  it('update with unchanged content writes nothing and does not notify', async () => {
+    const { draft } = await store.create('ops', INPUT);
+    const before = await store.current('ops');
+    const listener = vi.fn();
+    store.onDraftWritten(listener);
+
+    const same = await store.update('ops', draft.id, { reason: draft.reason });
+    expect(same).toEqual(before);
+    expect(listener).not.toHaveBeenCalled();
+    await expect(store.update('ops', 'wrong-id', { reason: 'x' })).rejects.toBeInstanceOf(DraftMismatchError);
+    await expect(store.update('ghost', draft.id, { reason: 'x' })).rejects.toBeInstanceOf(NoDraftError);
+  });
+
+  it('onDraftWritten fires on create and unsubscribe detaches it', async () => {
+    const seen: ChangeDraft[] = [];
+    const off = store.onDraftWritten((_agentId, draft) => seen.push(draft));
+    const { draft } = await store.create('ops', INPUT);
+    expect(seen).toEqual([draft]);
+    off();
+    await store.create('ops', { ...INPUT, reason: 'second' });
+    expect(seen).toHaveLength(1);
+  });
+
+  it('setReviewInput stamps classes only while the fingerprint matches', async () => {
+    const { draft } = await store.create('ops', INPUT);
+    const fp = draftFingerprint(draft);
+    const classes = { routine: ['description'], gated: [] };
+
+    const stamped = await store.setReviewInput('ops', draft.id, classes, fp);
+    expect(stamped).toMatchObject({ classes, autoReview: null });
+    expect((await store.current('ops'))!.classes).toEqual(classes);
+
+    // A stale fingerprint (the draft was restated) refuses the write.
+    expect(await store.setReviewInput('ops', draft.id, { routine: [], gated: ['x'] }, 'deadbeef')).toBeUndefined();
+    expect((await store.current('ops'))!.classes).toEqual(classes);
+
+    // A settled draft takes no more review bookkeeping.
+    await store.settle('ops', 'approved');
+    expect(await store.setReviewInput('ops', draft.id, classes, fp)).toBeUndefined();
+  });
+
+  it('setAutoReview writes only while pending and the fingerprint matches', async () => {
+    const { draft } = await store.create('ops', INPUT);
+    const fp = draftFingerprint(draft);
+    const review = {
+      outcome: 'clear' as const,
+      safe: true,
+      rationale: 'ok',
+      concerns: [],
+      fingerprint: fp,
+      model: 'm',
+      checkedAt: NOW.toISOString(),
+    };
+
+    expect(await store.setAutoReview('ops', draft.id, review, 'wrong-fingerprint')).toBe(false);
+    expect((await store.current('ops'))!.autoReview).toBeNull();
+
+    expect(await store.setAutoReview('ops', draft.id, review, fp)).toBe(true);
+    expect((await store.current('ops'))!.autoReview).toEqual(review);
+
+    // Restating changes the fingerprint: the old verdict can never land again.
+    await store.update('ops', draft.id, { reason: 'changed' });
+    expect(await store.setAutoReview('ops', draft.id, review, fp)).toBe(false);
+    expect((await store.current('ops'))!.autoReview).toBeNull();
   });
 });

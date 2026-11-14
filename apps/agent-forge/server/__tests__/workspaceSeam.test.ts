@@ -12,7 +12,7 @@ import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
 import { createFsAgentStore } from '../../src/persistence/fsAgentStore';
 import { AgentRepo } from '../storage/agentRepo';
-import type { AgentStore, AgentStoreEntry } from '../../src/persistence/AgentStore';
+import type { LegacyAgentStore, LegacyAgentStoreEntry } from '../../src/persistence/AgentStore';
 import { WORKSPACE_ID_RE } from '../../shared/workspace';
 import { workspaceIdFor, workspaceRefFor } from '../workspace/workspaceId';
 import { DraftStore } from '../storage/draftStore';
@@ -20,7 +20,12 @@ import { IdleVersioner } from '../storage/idleVersioner';
 import { SuggestionStore } from '../storage/suggestionStore';
 import { VersionStore } from '../storage/versionStore';
 import { StudioEventBus } from '../events/eventBus';
+import { PassRunner } from '../passes/passRunner';
+import type { InboxService } from '../inbox/inboxService';
+import type { TriggerHost } from '../triggers/triggerHost';
+import type { CronTriggers } from '../triggers/cronTriggers';
 import type { WorkspaceContext } from '../workspace/context';
+import type { WorkspaceHostSelector } from '../host/hostSelector';
 
 const SPEC: AgentSpec = {
   name: 'stub-agent',
@@ -37,7 +42,7 @@ const SPEC: AgentSpec = {
  */
 describe('workspace seam', () => {
   let baseDir: string;
-  let agentStore: AgentStore;
+  let agentStore: LegacyAgentStore;
   let runManager: RunManager;
 
   beforeEach(() => {
@@ -73,19 +78,26 @@ describe('workspace seam', () => {
     expect(res.body.workspace.id).toMatch(WORKSPACE_ID_RE);
   });
 
-  it('serves the default workspace for no id, its id, ?ws=all and the header', async () => {
+  it('serves the default workspace for no id, its id and the header', async () => {
     const app = createApp({ agentStore, runManager, baseDir });
     const id = workspaceIdFor(baseDir);
     for (const req of [
       request(app).get('/agents'),
       request(app).get(`/agents?ws=${id}`),
-      request(app).get('/agents?ws=all'),
       request(app).get('/agents').set('x-lousho-workspace', id),
     ]) {
       const res = await req;
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body)).toBe(true);
     }
+  });
+
+  it('?ws=all answers the aggregate envelope, not the single-workspace array (W06a)', async () => {
+    const app = createApp({ agentStore, runManager, baseDir });
+    const res = await request(app).get('/agents?ws=all');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(Array.isArray(res.body.skipped)).toBe(true);
   });
 
   it('rejects an unknown workspace id 404 and a malformed one 400', async () => {
@@ -105,7 +117,7 @@ describe('workspace seam', () => {
   });
 
   it('createApp({ workspace }) routes read the given context, not a closed-over store', async () => {
-    const entries: AgentStoreEntry[] = [{ id: 'stub-agent', spec: SPEC, updatedAt: 't' }];
+    const entries: LegacyAgentStoreEntry[] = [{ id: 'stub-agent', spec: SPEC, updatedAt: 't' }];
     const status = vi.fn().mockReturnValue({ agentId: 'x', status: 'idle', updatedAt: 't' });
     const repo = new AgentRepo(baseDir);
     const workspace: WorkspaceContext = {
@@ -122,9 +134,15 @@ describe('workspace seam', () => {
       idleVersioner: new IdleVersioner({ capture: async () => {} }),
       suggestions: new SuggestionStore(repo),
       host: newTestHost(baseDir),
+      hostSelector: {} as WorkspaceHostSelector,
       runs: { status } as unknown as RunManager,
       chatTriggers: new TriggerRegistry(),
       events: new StudioEventBus(),
+      passes: new PassRunner({ baseDir }),
+      inbox: {} as InboxService,
+      triggers: {} as TriggerHost,
+      cron: {} as CronTriggers,
+      dispose: async () => {},
     };
     const app = createApp({ workspace, baseDir });
 

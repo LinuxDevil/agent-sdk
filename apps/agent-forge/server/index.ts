@@ -21,7 +21,8 @@ import { startJudgeLoop, type JudgeLoopOptions } from './judge';
 import { CollectorManager } from './collector';
 import type { IdleVersioner } from './storage/idleVersioner';
 import { STUDIO_ALLOWED_ORIGINS_ENV, STUDIO_TOKEN_ENV, allowedHostsFor, mintStudioToken } from './auth';
-import { createWorkspaceContext, singleWorkspace } from './workspace/context';
+import { createWorkspaceContext, type WorkspaceServices } from './workspace/context';
+import { WorkspaceManager } from './workspace/workspaceManager';
 import { configureStudioHome, studioPaths } from './workspace/studioPaths';
 import { WorkspaceRegistry } from './workspace/workspaceRegistry';
 import { AUTHOR_STREAM_PATH } from '../shared/authorWire';
@@ -31,6 +32,10 @@ import { AuthorTurnRunner } from './author/turnRunner';
 import { createAuthorRunner } from './author/wiring';
 import { TemplateCatalog } from './templates/templateCatalog';
 import { sdkRootDir } from './sdkRoot';
+import { PassRunner } from './passes/passRunner';
+import { SpendLog } from './passes/spendLog';
+import { AlertStore } from './inbox/alertStore';
+import { VERSION } from '@linuxdevil/lousho';
 
 export interface StudioServerHandle {
   server: http.Server;
@@ -112,6 +117,13 @@ export interface StartStudioServerOptions {
    * stores and `start()`s it before `listen` (collector.ts).
    */
   collector?: false | CollectorManager;
+  /**
+   * The Studio home directory (`configureStudioHome`'s argument - every
+   * Studio-global store derives its files from it). Defaults to
+   * `<baseDir>/.lousho`, where the launch folder's files already live;
+   * tests pass a temp dir so they never touch a real home (W02b).
+   */
+  studioHome?: string;
 }
 
 async function listen(server: http.Server, port: number, host: string): Promise<void> {
@@ -157,7 +169,7 @@ export async function startStudioServer(
   // The Studio home keeps every file where it was (the launch folder's
   // `.lousho/`); moving it to `~/.lousho/studio` is a later change of this
   // one default - every store below already reads its paths from it.
-  configureStudioHome(path.join(baseDir, '.lousho'));
+  configureStudioHome(options.studioHome ?? path.join(baseDir, '.lousho'));
   const paths = studioPaths();
   const secretsStore = new SecretsStore(paths);
   const settingsStore = new SettingsStore(paths);
@@ -179,12 +191,38 @@ export async function startStudioServer(
   // its stored ref is the launch context's identity.
   const registry = new WorkspaceRegistry(paths.workspaces);
   const launchRef = await registry.ensure(baseDir);
-  const workspace = createWorkspaceContext(launchRef, {
+  // The app's one pass runner + spend log (passes/): Studio-global, shared
+  // by every workspace context through WorkspaceServices, and the same
+  // instances the spend route and `close()` use.
+  const spendLog = new SpendLog(paths.spend);
+  const passRunner = new PassRunner({
+    baseDir,
+    spendLog,
+    isEnabled: (kind) => settingsStore.passes().enabled[kind],
+  });
+  // The Studio-global inbox alert store (L12): the failure-streak pass
+  // writes `auto_disabled` alerts here per workspace; R02a's inbox routes
+  // read the same instance off the app options.
+  const alerts = new AlertStore(paths.alerts);
+  // The Studio-global stores every workspace context shares (W02a): the
+  // manager's `build` reuses this exact object, so a lazily-built context
+  // gets the same passRunner/spendLog/alerts/secrets/settings as launch.
+  const services: WorkspaceServices = {
     secretsStore,
     settingsStore,
     observe: options.observe !== false,
     collector,
-  });
+    passRunner,
+    spendLog,
+    alerts,
+    studioVersion: VERSION,
+  };
+  const workspace = createWorkspaceContext(launchRef, services);
+  // Every registered workspace resolves over HTTP through this manager:
+  // contexts build lazily on first use, stay warm up to the cap, and idle
+  // ones dispose - the launch context is always warm and never a
+  // candidate (workspace/workspaceManager.ts).
+  const workspaces = new WorkspaceManager({ registry, launch: workspace, build: (ref) => createWorkspaceContext(ref, services) });
   // A test-injected versioner replaces the context's default one before the
   // app and `close()` below both read `workspace.idleVersioner`.
   if (options.idleVersioner !== undefined) workspace.idleVersioner = options.idleVersioner;
@@ -209,7 +247,7 @@ export async function startStudioServer(
       secrets: secretsStore,
       templates: templateCatalog,
       docsDir,
-      workspaceResolver: singleWorkspace(workspace),
+      workspaceResolver: workspaces,
     });
   const app = createApp({
     workspace,
@@ -218,6 +256,8 @@ export async function startStudioServer(
     secretsStore,
     settingsStore,
     workspaceRegistry: registry,
+    workspaces,
+    warm: () => workspaces.warm(),
     staticDir,
     docsDir,
     access,
@@ -226,13 +266,25 @@ export async function startStudioServer(
     authorRunner,
     templateCatalog,
     collector,
+    spendLog,
+    passRunner,
+    alerts,
   });
   const server = http.createServer(app);
   // One upgrade listener for every WS endpoint: the shared Host/Origin/
   // token gate runs in the router, then the first registered route wins.
   const upgradeRouter = createUpgradeRouter(server, access);
-  attachWebSocketServer(upgradeRouter, workspace.runs);
-  attachEventsWebSocket(upgradeRouter, workspace.events);
+  attachWebSocketServer(upgradeRouter, workspaces);
+  // `WS /events?ws=all` (W09a): every warm context's events tagged by
+  // workspace plus the Studio-wide inbox count; onBuilt/onDisposed keep
+  // the socket's subscription set following lazily-built contexts.
+  attachEventsWebSocket(upgradeRouter, workspaces, {
+    registry,
+    warm: () => workspaces.warm(),
+    alerts,
+    onBuilt: (listener) => workspaces.onBuilt(listener),
+    onDisposed: (listener) => workspaces.onDisposed(listener),
+  });
   upgradeRouter.register(
     AUTHOR_STREAM_PATH,
     createAuthorUpgradeHandler({ runner: authorRunner, sessions: authorSessions })
@@ -259,10 +311,22 @@ export async function startStudioServer(
     collector,
     close: async () => {
       judgeLoop?.stop();
-      // Flush pending idle-version captures before the socket stops taking writes.
+      // Abort in-flight passes and settle queued ones; running jobs get the
+      // abort signal and their records land if they settle before exit.
+      passRunner.close();
+      // Dispose every warm workspace context (launch included) - each
+      // flushes its idle-version captures and stops its inbox/triggers/
+      // cron - before the socket stops taking writes.
+      await workspaces.close();
+      // The explicit launch stops stay for the `options.idleVersioner`
+      // test seam, which replaces `workspace.idleVersioner` after the
+      // context built its own (dispose flushes the original).
       await workspace.idleVersioner.flushAll();
       // A daemon this Studio started stops with it; an attached one is left alone.
       await collector.stop();
+      workspace.inbox.stop();
+      workspace.triggers.stop();
+      workspace.cron.stop();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
     },
   };

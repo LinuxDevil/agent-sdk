@@ -79,6 +79,8 @@ const PAIRS: [text: string, background: string][] = [
   ['text-muted', 'nav-bg'],
   ['text-faint', 'nav-bg'],
   ['accent', 'nav-bg'],
+  // The Author dock's connection note draws --warning text on the card's --surface (AA15b).
+  ['warning', 'surface'],
   // Tinted toasts (U12) draw the message in --text and the close button in --text-muted on each -soft tint.
   ['text', 'success-soft'],
   ['text', 'danger-soft'],
@@ -88,6 +90,10 @@ const PAIRS: [text: string, background: string][] = [
   ['text-muted', 'danger-soft'],
   ['text-muted', 'warning-soft'],
   ['text-muted', 'info-soft'],
+  // The SuccessCard's missing-requirements warning draws --warning on the card's --success-soft (AA18).
+  ['warning', 'success-soft'],
+  // The proposal overlay's "edited" chip draws --warning on the neutral chip tint --surface-2 (C21).
+  ['warning', 'surface-2'],
 ];
 
 describe('theme contrast', () => {

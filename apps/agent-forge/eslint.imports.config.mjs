@@ -17,6 +17,6 @@ export default [
     // The plugin is registered (not its rules) so inline
     // `eslint-disable @typescript-eslint/...` comments still resolve.
     plugins: { '@typescript-eslint': tseslint.plugin, lousho: { rules: { 'no-sdk-source': noSdkSource } } },
-    rules: { 'lousho/no-sdk-source': 'error' },
+    rules: { '@linuxdevil/lousho/no-sdk-source': 'error' },
   },
 ];

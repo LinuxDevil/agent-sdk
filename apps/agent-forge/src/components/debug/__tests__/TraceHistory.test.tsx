@@ -124,7 +124,8 @@ describe('TracePanel with trace history', () => {
     mocks.appState.highlightedNodeId = undefined;
     mocks.appState.setHighlightedNodeId = vi.fn();
     mocks.appState.setDrawerTab = vi.fn();
-    mocks.appState.graph = { nodes: [], edges: [] };
+    mocks.appState.graph = { version: 2, nodes: [], emptySections: [], unplaced: [] };
+    mocks.appState.nodeIdMap = {};
   });
 
   it('lists the agent traces and shows the selected one in the shared trace viewer with kind and error status', async () => {
@@ -155,14 +156,19 @@ describe('TracePanel with trace history', () => {
   });
 
   it('selecting a step inspects it and highlights its canvas node', async () => {
-    mocks.appState.graph = { nodes: [{ id: 'llm-node', type: 'llm', position: { x: 0, y: 0 }, data: {} }], edges: [] };
+    mocks.appState.graph = {
+      version: 2,
+      nodes: [{ id: 'agent', kind: 'agent', owner: null, position: { x: 0, y: 0 }, data: { fields: {}, extra: {} } }],
+      emptySections: [],
+      unplaced: [],
+    };
     const container = render(<TracePanel />);
     await flush();
     act(() => (container.querySelectorAll('[role=option]')[0] as HTMLElement).click());
     await flush();
     const chat = container.querySelector('[data-obs-id="c1"] .run-row-main') as HTMLElement;
     act(() => chat.click());
-    expect(mocks.appState.setHighlightedNodeId).toHaveBeenLastCalledWith('llm-node');
+    expect(mocks.appState.setHighlightedNodeId).toHaveBeenLastCalledWith('agent');
     expect(container.querySelector('.run-inspector')?.getAttribute('data-obs-id')).toBe('c1');
     // A past trace stays in the Trace tab.
     expect(mocks.appState.setDrawerTab).not.toHaveBeenCalled();

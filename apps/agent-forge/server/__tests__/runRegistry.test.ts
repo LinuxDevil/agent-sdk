@@ -5,15 +5,15 @@ import * as os from 'node:os';
 import * as http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { WebSocket } from 'ws';
-import { upgradeSpec, type AgentSpecV2 } from '@linuxdevil/lousho';
+import { upgradeSpec, type AgentSpec, type AgentSpecV2 } from '@linuxdevil/lousho';
 import { RunManager } from '../runRegistry';
 import { newTestHost } from './testHost';
+import { deferred, resetSteerGate, setSteerGateScript } from './steerGate';
 import { attachWebSocketServer } from '../wsServer';
 import { createUpgradeRouter } from '../ws/upgradeRouter';
+import { singleWorkspace, type WorkspaceContext } from '../workspace/context';
 import { FileCheckpointStore } from '../checkpointStore';
 import { FileApprovalStore } from '../approvalStore';
-import { graphToSpec } from '../../src/graph/graphToSpec';
-import type { AgentGraphSpec } from '../../src/graph/types';
 
 const SPEC: AgentSpecV2 = {
   version: 2,
@@ -21,6 +21,14 @@ const SPEC: AgentSpecV2 = {
   model: 'mock/mock-1',
   instructions: 'You are a helpful agent.',
   tools: [{ builtin: 'current_date' }],
+};
+
+/** Parks its first model call on a test-released gate so the run stays 'running' while asserted. */
+const STEER_SPEC: AgentSpecV2 = {
+  version: 2,
+  name: 'steer-agent',
+  model: 'steergate/steer-1',
+  instructions: 'You are a test agent.',
 };
 
 function waitForStatus(
@@ -69,6 +77,22 @@ describe('RunManager', () => {
   it('reports idle status for an agent that has never run', () => {
     const status = runManager.status('nope');
     expect(status.status).toBe('idle');
+  });
+
+  it('hasActiveRun is false while idle and true while a run is in flight (W02a)', async () => {
+    resetSteerGate();
+    expect(runManager.hasActiveRun()).toBe(false);
+
+    const gate = deferred();
+    setSteerGateScript({ blockCalls: 1, mode: 'before-output', gate: gate.promise });
+    const running = runManager.run('agent-active', 'hi', STEER_SPEC);
+    await waitForStatus(runManager, 'agent-active', (s) => s.status === 'running');
+    expect(runManager.hasActiveRun()).toBe(true);
+
+    gate.resolve();
+    await running;
+    await waitForStatus(runManager, 'agent-active', (s) => s.status === 'done');
+    expect(runManager.hasActiveRun()).toBe(false);
   });
 
   it('runs an agent to completion and reports the result text', async () => {
@@ -130,7 +154,8 @@ describe('RunManager', () => {
 
   it('streams each model step over the WebSocket: several text.delta, one text.done per step', async () => {
     const server = http.createServer();
-    const wss = attachWebSocketServer(createUpgradeRouter(server), runManager);
+    const ctx = { ref: { id: 'ws-abc123', name: 'ws', root: baseDir, addedAt: '', lastOpenedAt: '' }, runs: runManager } as unknown as WorkspaceContext;
+    const wss = attachWebSocketServer(createUpgradeRouter(server), singleWorkspace(ctx));
     await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
     const { port } = server.address() as AddressInfo;
     const ws = new WebSocket(`ws://127.0.0.1:${port}/agents/agent-ws/stream`);
@@ -250,42 +275,45 @@ describe('RunManager', () => {
   });
 
   describe('branching graphs run through FlowExecutor', () => {
-    function branchingGraph(): AgentGraphSpec {
+    // The equivalent of the old v1 canvas's router graph, as spec.policy.flow
+    // directly (the v1 canvas -> graphToSpec pipeline is gone: C24 cut the
+    // builder over to spec v2). The mock provider's fixed default response
+    // text - see SPEC's runs above ('This is a mock response.') - makes the
+    // conditioned branch deterministically true end-to-end through the real
+    // server plumbing.
+    function branchingSpec(): AgentSpec {
       return {
-        version: 1,
-        nodes: [
-          {
-            id: 'llm-1',
-            type: 'llm',
-            position: { x: 0, y: 0 },
-            label: 'classify',
-            data: { name: 'classify', prompt: 'classify this', provider: { type: 'mock', model: 'mock-1' } },
+        name: 'branch-agent',
+        prompt: 'classify this',
+        provider: { type: 'mock', model: 'mock-1' },
+        tools: ['current-date'],
+        policy: {
+          flow: {
+            code: 'branch-agent',
+            name: 'branch-agent',
+            flow: {
+              type: 'sequence',
+              steps: [
+                { type: 'llmCall', prompt: 'classify this', outputVariable: 'classify' },
+                {
+                  type: 'oneOf',
+                  options: [
+                    {
+                      condition: "'{{classify}}' === 'This is a mock response.'",
+                      step: { type: 'toolCall', tool: 'current-date', arguments: {} },
+                    },
+                    { step: { type: 'end', value: 'default branch' } },
+                  ],
+                },
+              ],
+            },
           },
-          { id: 'router-1', type: 'router', position: { x: 200, y: 0 }, label: 'Router', data: {} },
-          { id: 'tool-1', type: 'tool', position: { x: 400, y: -40 }, label: 'current-date', data: { toolName: 'current-date' } },
-          { id: 'out-1', type: 'output', position: { x: 600, y: -40 }, label: 'Output', data: {} },
-          { id: 'out-2', type: 'output', position: { x: 400, y: 40 }, label: 'Output (default)', data: {} },
-        ],
-        edges: [
-          { id: 'e1', source: 'llm-1', target: 'router-1' },
-          // The mock provider's fixed default response text - see SPEC's
-          // runs above ('This is a mock response.') - makes this branch
-          // deterministically true end-to-end through the real server
-          // plumbing (buildAgentFromSpec's mock provider has no per-spec
-          // `responses` override), proving the compiled-spec -> RunManager
-          // -> FlowExecutor wiring actually runs a router branch's tool
-          // step. graph/__tests__/graphToFlow.test.ts is where BOTH branches
-          // of the same graph are proven reachable, with a directly
-          // controlled MockLLMProvider.
-          { id: 'e2', source: 'router-1', target: 'tool-1', condition: "'{{classify}}' === 'This is a mock response.'" },
-          { id: 'e3', source: 'tool-1', target: 'out-1' },
-          { id: 'e4', source: 'router-1', target: 'out-2' },
-        ],
-      };
+        },
+      } as unknown as AgentSpec;
     }
 
-    it('compiles a router graph to spec.policy.flow and runs it to completion via FlowExecutor, not AgentExecutor', async () => {
-      const spec = graphToSpec(branchingGraph());
+    it('runs a spec.policy.flow to completion via FlowExecutor, not AgentExecutor', async () => {
+      const spec = branchingSpec();
       expect((spec.policy as { flow?: unknown })?.flow).toBeDefined();
 
       await runManager.run('branch-agent', 'unused for a flow run', upgradeSpec(spec));

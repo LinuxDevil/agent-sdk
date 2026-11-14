@@ -59,7 +59,7 @@ export interface DevOptions {
   schedules?: boolean;
   /** Overrides for the scheduler (clock, timers, error sink); mainly for tests. */
   scheduler?: StartSchedulesOptions;
-  /** The `lousho` command loading the target, named in its errors. Default 'dev'. */
+  /** The `@linuxdevil/lousho` command loading the target, named in its errors. Default 'dev'. */
   command?: string;
   /** `--allowed-hosts`: host names the `Host` header may carry besides loopback ones (and, off loopback, IP addresses); `'*'` for any. */
   allowedHosts?: string[];
@@ -81,7 +81,7 @@ function log(message: string): void {
   console.log(`[lousho dev] ${message}`);
 }
 
-/** Picks the target kind from the path (`command` names the calling `lousho` command in errors): a directory, a spec by extension, or a module by extension. */
+/** Picks the target kind from the path (`command` names the calling `@linuxdevil/lousho` command in errors): a directory, a spec by extension, or a module by extension. */
 export function detectTarget(rawPath: string, command = 'dev'): DevTarget {
   const file = path.resolve(rawPath);
   const ext = path.extname(file).toLowerCase();

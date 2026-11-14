@@ -58,7 +58,7 @@ The Cloudflare Worker target builds a directory's config, `instructions.md`,
 provider the Worker lacks, and the other features the Worker column of
 [What works and what does not](./cloudflare-workers.md#what-works-and-what-does-not)
 leaves out, naming what to remove. Tools run inside the Worker with its rights, and may import
-only a Worker-safe part of `lousho`
+only a Worker-safe part of `@linuxdevil/lousho`
 ([Cloudflare Workers](./cloudflare-workers.md#build-and-deploy) has the details):
 
 ```bash
@@ -368,7 +368,7 @@ never needs one you do not use. The generated `package.json` already lists the
 ones the agent needs where the server runs - the provider package the spec names (at the
 range pairing with the build's `ai` major, e.g. `@ai-sdk/openai` for an OpenAI
 agent) and `@modelcontextprotocol/sdk` when the spec has `mcpServers` - and
-nothing else: `lousho`, `ai` and `zod` are inside the bundle, so the
+nothing else: `@linuxdevil/lousho`, `ai` and `zod` are inside the bundle, so the
 docker image's `npm install --omit=dev` or a `npm install` next to the
 node-server output installs them. Anything else (an agent directory's own
 imports, `dockerode` for sandboxed tools) you add yourself; a code path that
