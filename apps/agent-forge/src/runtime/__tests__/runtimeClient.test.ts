@@ -722,3 +722,54 @@ describe('RuntimeClient workspace targeting (W04a)', () => {
     window.location.hash = '';
   });
 });
+
+describe('RuntimeClient serve methods (X02a)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const client = new RuntimeClient({ token: 't' });
+  const STATUS = {
+    agentId: 'ops',
+    enabled: true,
+    allowedOrigins: ['https://app.example'],
+    publishedVersion: 3,
+    tokenMasked: 'abcd…wxyz',
+    baseUrl: '/serve/ops',
+  };
+
+  function lastCall(fetchMock: { mock: { calls: unknown[][] } }): [string, RequestInit] {
+    const [path, init] = fetchMock.mock.calls.at(-1) as [string, RequestInit | undefined];
+    return [path, init ?? {}];
+  }
+
+  it('getServe GETs /agents/:id/serve', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, STATUS));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.getServe('ops')).resolves.toEqual(STATUS);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/ops/serve');
+    expect(init?.method ?? 'GET').toBe('GET');
+  });
+
+  it('putServe PUTs the patch to /agents/:id/serve', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { ...STATUS, enabled: false }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.putServe('ops', { enabled: false })).resolves.toMatchObject({ enabled: false });
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/ops/serve');
+    expect(init.method).toBe('PUT');
+    expect(JSON.parse(String(init.body))).toEqual({ enabled: false });
+  });
+
+  it('serveToken GETs /agents/:id/serve/token and rotateServeToken POSTs rotate-token', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { token: 'raw-token' }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.serveToken('ops')).resolves.toEqual({ token: 'raw-token' });
+    expect(lastCall(fetchMock)[0]).toBe('/agents/ops/serve/token');
+    await expect(client.rotateServeToken('ops')).resolves.toEqual({ token: 'raw-token' });
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents/ops/serve/rotate-token');
+    expect(init.method).toBe('POST');
+  });
+});
