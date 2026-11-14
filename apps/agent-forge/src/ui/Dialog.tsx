@@ -104,6 +104,8 @@ export interface ConfirmDialogProps {
   pending?: boolean;
   /** Failure from the last attempt, shown above the footer in danger text. */
   error?: string;
+  /** Extra body content between the error line and the footer (e.g. an overwrite checkbox). */
+  children?: ReactNode;
   onConfirm(): void;
   onCancel(): void;
 }
@@ -122,6 +124,7 @@ export function ConfirmDialog({
   tone = 'danger',
   pending = false,
   error,
+  children,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps): JSX.Element | null {
@@ -162,6 +165,7 @@ export function ConfirmDialog({
           {error}
         </p>
       ) : null}
+      {children}
     </Dialog>
   );
 }

@@ -13,12 +13,13 @@
  */
 import type { Express, Request, Response } from 'express';
 import type { AgentSpecV2 } from '@linuxdevil/lousho';
-import { asyncRoute, paramId, sendError } from '../http/routeUtils';
+import { asyncRoute, sendError } from '../http/routeUtils';
 import { ImportError, parseImportText } from '../lifecycle/import';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
 import type { WorkspaceContext } from '../workspace/context';
 import { workspaceOf } from '../workspace/middleware';
+import { readSpecOr404 } from '../workspace/specLookup';
 import { checkPortability, PortabilityError, type PortabilityDeps } from './portability';
 
 /** The Studio-global stores the portability routes need (per-workspace stores come from `workspaceOf(req)`). */
@@ -103,13 +104,9 @@ export function registerPortabilityRoutes(app: Express, deps: PortabilityRouteDe
   app.post(
     '/agents/:id/portability',
     asyncRoute(async (req: Request, res: Response) => {
-      const ws = workspaceOf(req);
-      const id = paramId(req);
-      const spec = await ws.repo.readSpec(id);
-      if (spec === undefined) {
-        sendError(res, 404, `No agent '${id}'`, 'LOUSHO_AGENT_NOT_FOUND');
-        return;
-      }
+      const input = await readSpecOr404(req, res, (id) => `No agent '${id}'`);
+      if (input === undefined) return;
+      const { ws, id, spec } = input;
       await sendAnalysis(res, spec, id, ws, deps);
     })
   );

@@ -1475,3 +1475,14 @@ export interface HostStatus {
   banner: HostBanner | null;
   recentStderr?: string[];
 }
+
+/**
+ * `POST /agents/:id/eject` (A08b): the agent directory `specToAgentDir`
+ * wrote under `agents/<id>/` in the workspace, and the file paths written.
+ */
+export interface EjectResult {
+  /** The directory, relative to the workspace root (`agents/<id>`). */
+  dir: string;
+  /** Paths of the files written, relative to `dir`, '/'-separated. */
+  files: string[];
+}

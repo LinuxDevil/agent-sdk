@@ -140,6 +140,7 @@ import { envCollector, WorkspaceHostSelector } from './host/hostSelector';
 import { HostReadOnlyError, HostStartError } from './host/bridgeAgentHost';
 import { HostUnsupportedError } from './host/hostStatus';
 import { registerAgentRoutes } from './routes/agentRoutes';
+import { registerEjectRoutes } from './ejectRoute';
 import { registerAllAgentsRoute } from './routes/allAgentsRoute';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
@@ -1318,6 +1319,9 @@ export function createApp(options: CreateAppOptions): Express {
   // wire shapes, with ?view=legacy for the still-v1 canvas; stores come
   // from workspaceOf(req), the workspace seam).
   registerAgentRoutes(app, { templates, secrets });
+  // Eject to project (A08b): POST /agents/:id/eject writes the agent
+  // directory form under <workspace>/agents/<id>/ (workspaceOf seam).
+  registerEjectRoutes(app);
   // Draft routes: get/create/withdraw/approve/reject the per-agent pending
   // ChangeDraft (server/routes/draftRoutes.ts - stores come from
   // workspaceOf(req), the workspace seam).

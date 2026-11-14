@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from 'react';
-import { CircleAlert, Copy, Download, FileText, Folder } from 'lucide-react';
+import { CircleAlert, Copy, Download, FileText, Folder, FolderOutput } from 'lucide-react';
 import { stringify as stringifyYaml } from 'yaml';
 // `@linuxdevil/lousho/spec` is the SDK's browser-safe spec entry (S23): `specToCode`
 // (S18) and `specToAgentDir` (S19) are both pure renderers, so the Code tab
@@ -9,9 +9,12 @@ import { specToAgentDir, specToCode, type AgentSpecV2 } from '@linuxdevil/lousho
 import { errorMessage } from '../../../components/errorMessage';
 import { downloadText } from '../../../persistence/importExport';
 import { useQueryState } from '../../../router/useRoute';
+import { runtimeClient, RuntimeApiError } from '../../../runtime/runtimeClient';
 import { Card } from '../../../ui/Card';
+import { ConfirmDialog } from '../../../ui/Dialog';
 import { EmptyState } from '../../../ui/EmptyState';
 import { useToast } from '../../../ui/Toast';
+import { Checkbox } from '../../../ui/controls';
 import { useAgentDetail } from '../AgentDetailContext';
 import { buildTree, CODE_VIEW_LABELS, downloadName, parseCodeView, type CodeView, type TreeNode } from './codeViews';
 import '../../../ui/filterBar.css';
@@ -237,6 +240,11 @@ export function CodeTab(): JSX.Element {
   const toast = useToast();
   const [view, setView] = useQueryState<CodeView>('view', parseCodeView, (v) => (v === 'ts' ? null : v));
   const [file, setFile] = useQueryState<string | null>('file', (s) => s, (v) => v);
+  const [ejectOpen, setEjectOpen] = useState(false);
+  const [ejectBusy, setEjectBusy] = useState(false);
+  const [ejectError, setEjectError] = useState<string>();
+  const [ejectExists, setEjectExists] = useState<number>();
+  const [overwrite, setOverwrite] = useState(false);
 
   // `record.updatedAt` is the spec's change signal: the same timestamp means
   // the same spec, so the generated text can be memoized on it.
@@ -260,6 +268,42 @@ export function CodeTab(): JSX.Element {
   };
 
   const name = record.spec.name ?? record.id;
+
+  // The eject dialog's file count: the same pure generator the dir view
+  // runs, memoized on the spec's change signal. A spec that cannot render
+  // as a directory shows 0 - the server reports the real error on confirm.
+  const ejectCount = useMemo(() => {
+    try {
+      return specToAgentDir(record.spec).files.length;
+    } catch {
+      return 0;
+    }
+  }, [record.updatedAt]);
+
+  const closeEject = () => {
+    setEjectOpen(false);
+    setEjectError(undefined);
+    setEjectExists(undefined);
+    setOverwrite(false);
+  };
+
+  const confirmEject = async () => {
+    setEjectBusy(true);
+    setEjectError(undefined);
+    try {
+      await runtimeClient.ejectAgent(record.id, overwrite);
+      closeEject();
+      toast.show({ message: `Ejected to agents/${record.id}/`, tone: 'success' });
+    } catch (err) {
+      setEjectError(errorMessage(err));
+      if (err instanceof RuntimeApiError && err.status === 409 && err.code === 'LOUSHO_EJECT_EXISTS') {
+        const files = (err.details as { files?: unknown } | undefined)?.files;
+        setEjectExists(Array.isArray(files) ? files.length : 0);
+      }
+    } finally {
+      setEjectBusy(false);
+    }
+  };
 
   return (
     <div className="code-tab">
@@ -286,6 +330,10 @@ export function CodeTab(): JSX.Element {
             <Download size={14} strokeWidth={1.75} aria-hidden="true" />
             Download
           </button>
+          <button type="button" className="btn btn-sm" onClick={() => setEjectOpen(true)}>
+            <FolderOutput size={14} strokeWidth={1.75} aria-hidden="true" />
+            Eject to project
+          </button>
         </div>
       </div>
       <p className="code-note">Generated from the spec. Read-only — edit on the canvas or in Configure.</p>
@@ -295,6 +343,28 @@ export function CodeTab(): JSX.Element {
         selectedPath={selectedPath}
         onSelect={setFile}
       />
+      <ConfirmDialog
+        open={ejectOpen}
+        tone="primary"
+        title="Eject to project?"
+        description={`Writes ${ejectCount} files to agents/${record.id}/ in this workspace. The Studio keeps editing .lousho/agents/${record.id}.yaml; the ejected copy won’t follow later changes.`}
+        confirmLabel="Eject"
+        pendingLabel="Ejecting…"
+        pending={ejectBusy}
+        error={ejectError}
+        onConfirm={() => void confirmEject()}
+        onCancel={closeEject}
+      >
+        {ejectExists !== undefined ? (
+          <Checkbox
+            label="Overwrite existing files"
+            description={`${ejectExists} files will be replaced.`}
+            checked={overwrite}
+            disabled={ejectBusy}
+            onChange={(event) => setOverwrite(event.target.checked)}
+          />
+        ) : null}
+      </ConfirmDialog>
     </div>
   );
 }
