@@ -31,6 +31,8 @@ import { ImportSheet } from '../agents/import/ImportSheet';
 import { AgentCard } from './AgentCard';
 import { CodeAgentCard } from './CodeAgentCard';
 import { ObservedAgentCard } from './ObservedAgentCard';
+import { HostBanner } from '../../components/HostBanner';
+import { useHostStatus } from '../../state/useHostStatus';
 import { filterAgents, filterCode, filterObserved, useAgentListFilter, workspaceOptions, type AgentListFilter } from './agentListUrl';
 import { NewAgentMenu, StartOptions } from './NewAgentMenu';
 import { useNewAgentActions, type NewAgentActions } from './newAgent';
@@ -278,6 +280,9 @@ export function AgentListScreen() {
   const scope = useMemo(() => scopeForHash(`#${route.path}${route.query.size > 0 ? `?${route.query}` : ''}`), [route]);
   const allMode = scope.kind === 'all';
   const list = useAgentList(scope);
+  // W11c: the scoped workspace's host banner (which SDK runs its agents);
+  // the all-workspaces list has no single host to report.
+  const host = useHostStatus(scope.kind === 'workspace' ? scope.workspaceId : undefined);
   const workspacesState = useWorkspacesMaybe();
   const workspaces = workspacesState?.list;
   const launchId = workspacesState?.launchId;
@@ -365,6 +370,9 @@ export function AgentListScreen() {
         }
       />
       <div className="agent-list-screen">
+        {scope.kind === 'workspace' && (
+          <HostBanner status={host.status} restarting={host.restarting} restartError={host.restartError} onRestart={() => void host.restart()} />
+        )}
         <FilterBar
           search={{ value: filter.q, onChange: (q) => patch({ q }), placeholder: 'Search agents' }}
           facets={facets}

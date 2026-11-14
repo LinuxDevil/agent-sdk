@@ -23,7 +23,6 @@ import type { SecretsStore } from '../secretsStore';
 /** A host call refused because the workspace's SDK cannot host runs (selector read-only rows). */
 export class HostReadOnlyError extends Error {
   /** Stable code RunManager/routes map to a 4xx. */
-  // fallow-ignore-next-line unused-class-member -- read as error.code under instanceof narrowing once W11c's routes land; the graph only sees the throw today
   readonly code = 'LOUSHO_WORKSPACE_READ_ONLY';
 }
 

@@ -40,6 +40,7 @@ import { FlowExecutor, type AgentFlow } from 'lousho/flows';
 import { buildAgentFromSpec, extractFlowFromSpec } from './buildAgent';
 import { toLegacySpec } from './storage/legacySpec';
 import { HostRunNotActiveError, type AgentHost, type HostEvent, type HostRunResult } from './host/agentHost';
+import { HostUnsupportedError } from './host/hostStatus';
 import { withAbortSignal, RunAbortedError } from './abortableProvider';
 import { FileApprovalStore } from './approvalStore';
 import { approvalDeadline, EXPIRED_APPROVAL_NOTE, NO_ANSWER_TEXT } from './approvalDeadline';
@@ -711,6 +712,14 @@ export class RunManager extends EventEmitter {
     const legacySpec = toLegacySpec(resolvedSpec);
     const flow = extractFlowFromSpec(legacySpec);
     if (flow) {
+      // W11c: the flow path is Studio's own in-process FlowExecutor - on a
+      // bridge workspace that would silently bypass the project's SDK, so
+      // refuse until the bridge protocol carries flows (protocol 2).
+      if (this.opts.host.kind === 'bridge') {
+        throw new HostUnsupportedError(
+          "Flow runs need Studio's built-in SDK for now. Remove the project's SDK from this workspace or run the flow from code."
+        );
+      }
       return this.startFlowRun(agentId, flow, resolvedSpec, legacySpec, existing, options);
     }
     return this.startAgentRun(agentId, input, resolvedSpec, existing, options);

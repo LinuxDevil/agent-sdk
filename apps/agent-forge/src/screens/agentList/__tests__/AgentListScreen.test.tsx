@@ -12,6 +12,8 @@ const api = vi.hoisted(() => ({
   forWorkspace: vi.fn(),
   workspaceScan: vi.fn(),
   scanWorkspace: vi.fn(),
+  hostStatus: vi.fn(),
+  restartHost: vi.fn(),
 }));
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
 
@@ -150,7 +152,11 @@ beforeEach(() => {
     listAgents: () => api.listAgents(wsId),
     patchAgentMeta: (id: string, patch: unknown) => api.patchAgentMeta(wsId, id, patch),
     createAgentRecord: (req: unknown) => api.createAgentRecord(wsId, req),
+    // W11c host banner: no status resolves -> the banner renders nothing.
+    subscribeEvents: () => () => undefined,
+    hostStatus: () => api.hostStatus(wsId),
   }));
+  api.hostStatus.mockRejectedValue(new Error('no host status in this test'));
   window.history.replaceState(null, '', '/#/agents');
 });
 

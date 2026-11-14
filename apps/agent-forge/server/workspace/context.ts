@@ -28,7 +28,8 @@ import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
 import { StudioEventBus } from '../events/eventBus';
 import { InProcessAgentHost } from '../host/inProcessAgentHost';
-import { WorkspaceHostSelector } from '../host/hostSelector';
+import { WorkspaceHostSelector, type SelectHostDeps } from '../host/hostSelector';
+import { hostStatusOf } from '../host/hostStatus';
 import type { AgentHost } from '../host/agentHost';
 import { RunManager } from '../runRegistry';
 import type { SecretsStore } from '../secretsStore';
@@ -170,6 +171,12 @@ export interface WorkspaceServices {
   collector: () => { url: string; token?: string };
   /** Studio's own SDK `VERSION`, for host-selection banners and `hello.client`. */
   studioVersion: string;
+  /**
+   * Test seam: builds the `WorkspaceHostSelector` (W11b) - production
+   * always uses the default; tests inject one whose `clientOptions`/
+   * `extraEnv` reach the fake bridge child.
+   */
+  selectHost?: (ref: WorkspaceRef, deps: SelectHostDeps) => WorkspaceHostSelector;
 }
 
 /**
@@ -205,7 +212,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // background below. `inProcess` is only invoked on rows 1-2 (and lazily
   // for a read-only workspace's catalog fallback), so bridge workspaces
   // never build the in-process host's run machinery.
-  const hostSelector = new WorkspaceHostSelector(ref, {
+  const hostSelector = (services.selectHost ?? ((r, d) => new WorkspaceHostSelector(r, d)))(ref, {
     inProcess: () =>
       new InProcessAgentHost({
         baseDir: ref.root,
@@ -245,6 +252,15 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
   // selection), the catch is belt-and-braces for a synchronous throw.
   if (host.kind === 'bridge') void hostSelector.ready().catch(() => undefined);
   const events = new StudioEventBus();
+  // W11c: every selection settle AND every bridge client state change
+  // publishes the workspace's `host.status` - the banner (onChange) and
+  // the child lifecycle (onStateChange, e.g. ready->failed on a crash)
+  // both move the status the UI shows.
+  const publishHostStatus = (): void => {
+    events.publish({ type: 'host.status', payload: hostStatusOf(ref, hostSelector, services.studioVersion) });
+  };
+  hostSelector.onChange(publishHostStatus);
+  hostSelector.client?.onStateChange(publishHostStatus);
   const drafts = new DraftStore(repo);
   // The version-summary pass (L04): every written version enqueues its
   // `version_summary` job on the app's one PassRunner.

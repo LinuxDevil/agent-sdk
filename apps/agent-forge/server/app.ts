@@ -135,11 +135,14 @@ import { FileCheckpointStore } from './checkpointStore';
 import { FileApprovalStore } from './approvalStore';
 import { InProcessAgentHost } from './host/inProcessAgentHost';
 import { envCollector, WorkspaceHostSelector } from './host/hostSelector';
+import { HostReadOnlyError, HostStartError } from './host/bridgeAgentHost';
+import { HostUnsupportedError } from './host/hostStatus';
 import { registerAgentRoutes } from './routes/agentRoutes';
 import { registerAllAgentsRoute } from './routes/allAgentsRoute';
 import { registerDraftRoutes } from './routes/draftRoutes';
 import { registerVersionRoutes } from './routes/versionRoutes';
 import { registerCatalogRoutes } from './routes/catalogRoutes';
+import { registerHostRoutes } from './routes/hostRoutes';
 import { registerMcpProbeRoute } from './routes/mcpProbe';
 import { AuthorSessionStore } from './author/sessionStore';
 import { registerAuthorRoutes } from './author/routes';
@@ -665,9 +668,19 @@ function registerTraceRoutes(app: Express): void {
 
 /** Time travel: a run's step history, forking it from a step, and comparing two runs. */
 function registerTimeTravelRoutes(app: Express): void {
+  // W11c: history/compare/fork read Studio's own checkpoint store - a
+  // bridge workspace's runs checkpoint inside the project SDK's process,
+  // so these refuse instead of answering "no checkpoint".
+  const refuseBridgeTimeTravel = (req: Request): void => {
+    if (workspaceOf(req).host.kind === 'bridge') {
+      throw new HostUnsupportedError('Time travel is not available yet for projects that run their own SDK.');
+    }
+  };
+
   app.get(
     '/runs/compare',
     asyncRoute(async (req, res) => {
+      refuseBridgeTimeTravel(req);
       const { a, b } = req.query;
       if (typeof a !== 'string' || typeof b !== 'string' || !isValidAgentId(a) || !isValidAgentId(b)) {
         res.status(400).json({ error: "Query must include valid run ids 'a' and 'b'" });
@@ -685,6 +698,7 @@ function registerTimeTravelRoutes(app: Express): void {
   app.get(
     '/runs/:id/history',
     asyncRoute(async (req, res) => {
+      refuseBridgeTimeTravel(req);
       const steps = await workspaceOf(req).runs.history(paramId(req));
       if (!steps) {
         res.status(404).json({ error: `No checkpoint history for run '${paramId(req)}'` });
@@ -697,6 +711,7 @@ function registerTimeTravelRoutes(app: Express): void {
   app.post(
     '/runs/:id/fork',
     asyncRoute(async (req, res) => {
+      refuseBridgeTimeTravel(req);
       const parsed = parseForkRequest(req.body as Partial<ForkRunRequest> | undefined);
       if (typeof parsed === 'string') {
         res.status(400).json({ error: parsed });
@@ -802,6 +817,12 @@ function registerDebugRoutes(app: Express): void {
       if (!Array.isArray(breakpoints) || !breakpoints.every((b) => typeof b === 'string')) {
         res.status(400).json({ error: "Request body must include a 'breakpoints' string array" });
         return;
+      }
+      // W11c: breakpoints drive the in-process debugger's agent hooks; a
+      // bridge run has none, so refuse rather than silently store them.
+      // Clearing ([] ) stays allowed.
+      if (breakpoints.length > 0 && workspaceOf(req).host.kind === 'bridge') {
+        throw new HostUnsupportedError("Breakpoints need Studio's built-in SDK for now.");
       }
       const runs = workspaceOf(req).runs;
       runs.setBreakpoints(paramId(req), breakpoints);
@@ -943,7 +964,13 @@ function registerDeployRoutes(app: Express): void {
         res.status(404).json({ error: `No saved agent '${paramId(req)}' to deploy - save it first` });
         return;
       }
-      const result = await runDeploy(ws.ref.root, paramId(req), adapter);
+      // W11c: a bridge workspace builds with the project's own SDK bin;
+      // in-process/read-only keep Studio's (`<ws>/bin/lousho.js` - the
+      // launch workspace IS the SDK checkout there, and read-only never
+      // reaches this line: the /agents write gate refused it).
+      const selection = ws.hostSelector.current();
+      const cliEntry = selection.mode === 'bridge' && selection.sdk !== undefined ? selection.sdk.binPath : undefined;
+      const result = await runDeploy(ws.ref.root, paramId(req), adapter, cliEntry);
       res.status(result.exitCode === 0 ? 200 : 422).json(result);
     })
   );
@@ -1224,6 +1251,33 @@ export function createApp(options: CreateAppOptions): Express {
     next();
   });
 
+  // W11c read-only gate: a workspace whose project SDK cannot host runs
+  // (too old, newer protocol, no bridge command) refuses every write under
+  // `/agents` - saves, drafts, runs, deploys - with the selection's warning
+  // banner as the message. Reads (GET/HEAD) and Studio-global routes
+  // (`/settings`, `/catalog`, `/inbox`, ...) are never gated. In-process
+  // workspaces resolve `ready()` at once, so this costs nothing there.
+  app.use((req, res, next) => {
+    if (req.method === 'GET' || req.method === 'HEAD') {
+      next();
+      return;
+    }
+    if (req.path !== '/agents' && !req.path.startsWith('/agents/')) {
+      next();
+      return;
+    }
+    workspaceOf(req)
+      .hostSelector.ready()
+      .then((selection) => {
+        if (selection.mode === 'read-only') {
+          sendError(res, 409, selection.banner?.text ?? 'This workspace is read-only.', 'LOUSHO_WORKSPACE_READ_ONLY');
+          return;
+        }
+        next();
+      })
+      .catch(next);
+  });
+
   // Agent import: `POST /agents/import/preview` + `POST /agents/import`
   // (lifecycle/import.ts). Registered BEFORE the `/agents/:id` routes so
   // `import` is never read as an agent id; stores come from
@@ -1284,6 +1338,10 @@ export function createApp(options: CreateAppOptions): Express {
     forget: forgetWorkspace(options.workspaces),
     scanCache: codeAgentCache,
   });
+  // W11c: `GET /workspaces/:ws/host` + `POST /workspaces/:ws/host/restart`
+  // - the `:ws` path param resolves through the same resolver the
+  // middleware uses, so a warm context's hostSelector answers.
+  registerHostRoutes(app, { resolver: workspaceResolver, studioVersion: VERSION });
   registerRunRoutes(app);
   registerChatRoutes(app);
   registerDebugRoutes(app);
@@ -1346,6 +1404,25 @@ export function createApp(options: CreateAppOptions): Express {
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+    // W11c host errors map to their contract statuses/codes wherever they
+    // surface (run/message/approve/steer/abort rethrow through
+    // respondWithMappedError; the guards throw straight into asyncRoute).
+    if (err instanceof HostReadOnlyError) {
+      sendError(res, 409, err.message, err.code);
+      return;
+    }
+    if (err instanceof HostUnsupportedError) {
+      sendError(res, 409, err.message, err.code);
+      return;
+    }
+    if (err instanceof HostStartError) {
+      // A bridge-side failure is a 503 (the project's process, not the
+      // request); a spec the bridge refused to compile stays a 422 like
+      // ConfigurationError.
+      const status = err.code.startsWith('LOUSHO_BRIDGE_') ? 503 : 422;
+      sendError(res, status, err.message, err.code);
+      return;
+    }
     res.status(500).json({ error: err.message });
   });
 
