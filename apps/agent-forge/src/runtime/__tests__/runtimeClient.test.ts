@@ -284,6 +284,20 @@ describe('RuntimeClient agent methods', () => {
     expect(init.method).toBe('GET');
   });
 
+  it('listAllAgentItems GETs /agents?ws=all pinned to the all-workspaces header', async () => {
+    window.location.hash = '#/w/proj-def456/agents';
+    const body = { items: [], skipped: [] };
+    const fetchMock = vi.fn(async () => jsonResponse(200, body));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(client.listAllAgentItems()).resolves.toEqual(body);
+    const [path, init] = lastCall(fetchMock);
+    expect(path).toBe('/agents?ws=all');
+    expect(init.method).toBe('GET');
+    const headers = new Headers(init.headers);
+    expect(headers.get('x-lousho-workspace')).toBe('all');
+    window.location.hash = '';
+  });
+
   it('loadAgent GETs /agents/:id and resolves undefined on a 404', async () => {
     const record = { id: 'a1', spec: { version: 2 }, latestVersion: 3 };
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, record)));

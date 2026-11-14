@@ -227,6 +227,7 @@ export async function startStudioServer(
     settingsStore,
     workspaceRegistry: registry,
     workspaces,
+    warm: () => workspaces.warm(),
     staticDir,
     docsDir,
     access,
