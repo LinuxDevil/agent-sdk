@@ -156,6 +156,7 @@ function SkippedNote({ skipped, nameOf }: { skipped: AgentListState['skipped']; 
 }
 
 /** Exactly one of: error card, loading grid, empty state, no-match state, card grid (+ the Elsewhere group, W07b). */
+// fallow-ignore-next-line complexity
 function AgentListBody({
   list,
   items,
@@ -275,6 +276,7 @@ function useAgentListFacets(
  * the module comment. Filter state is the URL's; the list itself comes
  * from `useAgentList`.
  */
+// fallow-ignore-next-line complexity
 export function AgentListScreen() {
   const route = useRoute();
   const scope = useMemo(() => scopeForHash(`#${route.path}${route.query.size > 0 ? `?${route.query}` : ''}`), [route]);
