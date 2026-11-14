@@ -70,7 +70,9 @@ import type {
   WorkspaceList,
   WorkspaceListItem,
 } from '../../shared/wireTypes';
+import { WORKSPACE_HEADER, WORKSPACE_QUERY } from '../../shared/workspace';
 import { STUDIO_TOKEN_HEADER, loadStudioToken } from './studioToken';
+import { activeWorkspace } from '../workspace/activeWorkspace';
 import {
   AUTHOR_STREAM_PATH,
   type AuthorFocus,
@@ -92,6 +94,14 @@ interface RuntimeClientOptions {
   baseUrl?: string;
   /** The per-launch API token; defaults to the one in the page URL (see studioToken.ts). */
   token?: string;
+  /**
+   * The workspace this client is bound to (W04a): when set, every request
+   * carries `x-lousho-workspace: <id>` and every socket `?ws=<id>`
+   * regardless of the URL's `#/w/…` segment. `forWorkspace(id)` builds
+   * such a client; the default client leaves it unset and follows
+   * `activeWorkspace()` instead.
+   */
+  workspaceId?: string;
 }
 
 /** Builds the error for a non-ok response: the server's `{ error }` message when present, else `fallback`, keeping `code` and `details`. */
@@ -125,16 +135,35 @@ export interface StreamConnectionHandlers {
 class RuntimeClient implements AgentApi {
   private readonly baseUrl: string;
   private readonly token: string | undefined;
+  private readonly workspaceId: string | undefined;
 
   constructor(options: RuntimeClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? DEFAULT_BASE_URL;
     this.token = options.token ?? loadStudioToken();
+    this.workspaceId = options.workspaceId;
   }
 
-  /** `fetch` against the studio API, carrying the per-launch token. */
+  /**
+   * A client bound to workspace `id` (W04a): same base URL and token, but
+   * the `x-lousho-workspace` header (and the sockets' `?ws=`) is always
+   * `id` - for code that must talk to a workspace other than the one the
+   * URL names, like the all-agents list (W06a).
+   */
+  forWorkspace(id: string): RuntimeClient {
+    return new RuntimeClient({ baseUrl: this.baseUrl, token: this.token, workspaceId: id });
+  }
+
+  /** The workspace this request/socket targets: the bound id, else the URL's/launch workspace (`undefined` before `GET /workspaces` answers). */
+  private targetWorkspace(): string | undefined {
+    return this.workspaceId ?? activeWorkspace();
+  }
+
+  /** `fetch` against the studio API, carrying the per-launch token and the active workspace's `x-lousho-workspace` header. */
   private fetch(path: string, init?: RequestInit): Promise<Response> {
     const headers = new Headers(init?.headers);
     if (this.token) headers.set(STUDIO_TOKEN_HEADER, this.token);
+    const ws = this.targetWorkspace();
+    if (ws) headers.set(WORKSPACE_HEADER, ws);
     return fetch(`${this.baseUrl}${path}`, { ...init, headers });
   }
 
@@ -152,24 +181,28 @@ class RuntimeClient implements AgentApi {
     connection?: StreamConnectionHandlers,
     onError?: (event: Event) => void
   ): () => void {
-    const query = this.token ? `?${new URLSearchParams({ token: this.token })}` : '';
-    const ws = new WebSocket(`${this.wsBaseUrl()}${path}${query}`);
+    const params = new URLSearchParams();
+    if (this.token) params.set('token', this.token);
+    const ws = this.targetWorkspace();
+    if (ws) params.set(WORKSPACE_QUERY, ws);
+    const query = params.size > 0 ? `?${params}` : '';
+    const socket = new WebSocket(`${this.wsBaseUrl()}${path}${query}`);
     let closedByCaller = false;
-    ws.addEventListener('message', (event) => {
+    socket.addEventListener('message', (event) => {
       try {
         onFrame(JSON.parse(event.data as string) as T);
       } catch {
         return;
       }
     });
-    if (onError) ws.addEventListener('error', onError);
-    if (connection?.onOpen) ws.addEventListener('open', connection.onOpen);
-    ws.addEventListener('close', () => {
+    if (onError) socket.addEventListener('error', onError);
+    if (connection?.onOpen) socket.addEventListener('open', connection.onOpen);
+    socket.addEventListener('close', () => {
       if (!closedByCaller) connection?.onLost?.();
     });
     return () => {
       closedByCaller = true;
-      ws.close();
+      socket.close();
     };
   }
 
