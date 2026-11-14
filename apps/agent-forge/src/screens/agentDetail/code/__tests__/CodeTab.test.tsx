@@ -25,6 +25,29 @@ vi.mock('lousho/spec', () => ({
   specToAgentDir: () => mocks.specToAgentDir(),
 }));
 
+// The Serve card (X02b) loads `/agents/:id/serve` on mount and subscribes
+// to `/events`; the tab's assertions are about the code views, so both are
+// stubbed to an unpublished, disabled status.
+vi.mock('../../../../runtime/runtimeClient', () => ({
+  runtimeClient: {
+    getServe: vi.fn(async () => ({
+      agentId: 'support-bot',
+      enabled: false,
+      allowedOrigins: [],
+      publishedVersion: null,
+      tokenMasked: 'tok…tok',
+      baseUrl: '/serve/support-bot',
+    })),
+    putServe: vi.fn(),
+    serveToken: vi.fn(),
+    rotateServeToken: vi.fn(),
+  },
+}));
+
+vi.mock('../../../../state/useStudioEvents', () => ({
+  useStudioEvents: () => {},
+}));
+
 import { AgentDetailContext } from '../../AgentDetailContext';
 import { CodeTab } from '../CodeTab';
 

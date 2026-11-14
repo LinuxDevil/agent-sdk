@@ -13,6 +13,7 @@ import { Card } from '../../../ui/Card';
 import { EmptyState } from '../../../ui/EmptyState';
 import { useToast } from '../../../ui/Toast';
 import { useAgentDetail } from '../AgentDetailContext';
+import { ServeCard } from '../ServeCard';
 import { buildTree, CODE_VIEW_LABELS, downloadName, parseCodeView, type CodeView, type TreeNode } from './codeViews';
 import '../../../ui/filterBar.css';
 import './code.css';
@@ -295,6 +296,7 @@ export function CodeTab(): JSX.Element {
         selectedPath={selectedPath}
         onSelect={setFile}
       />
+      <ServeCard agentId={record.id} />
     </div>
   );
 }
