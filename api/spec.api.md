@@ -441,24 +441,13 @@ export interface InlineHookSpec {
 }
 
 // @public
-export const INTEGRATION_CREDENTIALS: {
-    readonly github: {
-        readonly required: readonly ["token", "owner", "repo"];
-        readonly optional: readonly [];
-    };
-    readonly jira: {
-        readonly required: readonly ["baseUrl", "email", "apiToken"];
-        readonly optional: readonly [];
-    };
-    readonly email: {
-        readonly required: readonly ["apiKey"];
-        readonly optional: readonly ["apiUrl", "defaultFrom"];
-    };
-    readonly slack: {
-        readonly required: readonly ["webhookUrl"];
-        readonly optional: readonly [];
-    };
-};
+export const INTEGRATION_CREDENTIALS: Record<IntegrationName, IntegrationCredentialKeys>;
+
+// @public
+interface IntegrationCredentialKeys {
+    optional: readonly string[];
+    required: readonly string[];
+}
 
 // @public
 export type IntegrationName = 'github' | 'jira' | 'slack' | 'email';

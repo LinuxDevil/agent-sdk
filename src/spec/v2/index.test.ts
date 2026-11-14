@@ -34,8 +34,17 @@ describe('lousho/spec (S23)', () => {
 
   it('exports the merged spec-v2 surface by name', () => {
     expect(Object.keys(spec).sort()).toEqual([
+      'CHANNEL_SECRET_KEYS',
+      'EXECUTABLE_TYPES',
+      'INTEGRATION_CREDENTIALS',
+      'MAX_APPROVAL_TTL_MS',
+      'MCP_SERVER_NAME',
+      'REWRITABLE_GUARDRAILS',
+      'SECRET_CREDENTIALS',
       'SPEC_FIELD_DESCRIPTIONS',
+      'SPEC_ID_PATTERN',
       'TOOL_REF_KINDS',
+      'UNSUPPORTED_PREFIX',
       'abortListenerListSchema',
       'abortListenerSpecSchema',
       'agentSpecSchema',
@@ -43,7 +52,9 @@ describe('lousho/spec (S23)', () => {
       'agentSpecV2Schema',
       'flowProblems',
       'flowSpecSchema',
+      'guardrailSidesOf',
       'isNodeIdExporter',
+      'isSafeRelativePath',
       'isSecretRef',
       'jsonSchemaToStandardSchema',
       'listGuardrails',
