@@ -24,8 +24,6 @@ export type { AgentSpecV2, SubagentSpec } from '@linuxdevil/lousho/spec';
 export type { ToolRef, IntegrationName, OpenApiToolRefOptions } from '@linuxdevil/lousho/spec';
 export { INTEGRATION_CREDENTIALS, SECRET_CREDENTIALS } from '@linuxdevil/lousho/spec';
 export { isSafeRelativePath, SPEC_ID_PATTERN } from '@linuxdevil/lousho/spec';
-/** A reference to an env var or a named Studio secret. */
-export type { SecretRef } from '@linuxdevil/lousho/spec';
 /** One `spec.skills` entry. */
 export type { SkillRef } from '@linuxdevil/lousho/spec';
 /** One `spec.memory` entry, plus its `scope`/`provider` union members for the Inspector's sub-forms. */

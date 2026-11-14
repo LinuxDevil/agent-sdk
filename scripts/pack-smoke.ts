@@ -31,9 +31,8 @@
  */
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 import * as path from 'node:path';
-import { IS_WIN, SDK_NAME, checkBin, checkModuleLoads, createReporter, dryRunPublish, listExports, mustRun as mustRunIn, run } from './smokeKit';
+import { checkTarballContents, cleanSmokeDir, IS_WIN, packTarball, reportSmoke, SDK_NAME, checkBin, checkModuleLoads, dryRunPublish, listExports, run, smokeDirs, smokeSetup, type PackEntry, type TarballLimits } from './smokeKit';
 
 const REPO_ROOT = path.resolve(__dirname, '..');
 
@@ -117,37 +116,18 @@ const REQUIRED_PATHS = [
 ];
 const SECRET_PATTERNS = [/sk-[A-Za-z0-9]{32,}/, /AKIA[0-9A-Z]{16}/, /ghp_[A-Za-z0-9]{30,}/, /-----BEGIN [A-Z ]*PRIVATE KEY-----/, /_authToken\s*=/];
 
-const args = new Set(process.argv.slice(2));
-const rep = createReporter('pack-smoke');
-const { log, fail, failures } = rep;
-const mustRun = (label: string, cmd: string, argv: string[], cwd: string, env?: NodeJS.ProcessEnv) => mustRunIn(rep, label, cmd, argv, cwd, env);
+const { args, rep, log, fail, mustRun } = smokeSetup('pack-smoke');
 
-interface PackEntry {
-  filename: string;
-  entryCount: number;
-  size: number;
-  unpackedSize: number;
-  files: { path: string }[];
-}
-
-function pack(label: string, cwd: string, dest: string): { entry: PackEntry; tarball: string } {
-  const res = mustRun(`npm pack ${label}`, 'npm', ['pack', '--json', '--pack-destination', dest], cwd);
-  const entry = (JSON.parse(res.stdout) as PackEntry[])[0];
-  return { entry, tarball: path.join(dest, entry.filename) };
-}
+const TARBALL_LIMITS: TarballLimits = {
+  maxEntries: MAX_ENTRIES,
+  maxUnpackedBytes: MAX_UNPACKED_BYTES,
+  maxPackedBytes: MAX_PACKED_BYTES,
+  requiredPaths: REQUIRED_PATHS,
+  forbiddenPatterns: FORBIDDEN_PATHS,
+};
 
 function checkTarball(entry: PackEntry, tarball: string): void {
-  log(`tarball ${entry.filename}: ${entry.entryCount} entries, ${(entry.unpackedSize / 1048576).toFixed(1)} MB unpacked, ${(entry.size / 1048576).toFixed(1)} MB packed`);
-  if (entry.entryCount > MAX_ENTRIES) fail(`tarball has ${entry.entryCount} entries (max ${MAX_ENTRIES})`);
-  if (entry.unpackedSize > MAX_UNPACKED_BYTES) fail(`tarball unpacked size ${entry.unpackedSize} exceeds ${MAX_UNPACKED_BYTES}`);
-  if (entry.size > MAX_PACKED_BYTES) fail(`tarball packed size ${entry.size} exceeds ${MAX_PACKED_BYTES}`);
-  const packed = new Set(entry.files.map((f) => f.path));
-  for (const p of REQUIRED_PATHS) {
-    if (!packed.has(p)) fail(`tarball is missing required file ${p}`);
-  }
-  for (const f of entry.files) {
-    if (FORBIDDEN_PATHS.some((re) => re.test(f.path))) fail(`tarball contains forbidden file ${f.path}`);
-  }
+  checkTarballContents(rep, entry, TARBALL_LIMITS);
   const extracted = fs.mkdtempSync(path.join(path.dirname(tarball), 'unpack-'));
   // Relative tarball path: GNU tar (Git Bash) reads "C:" in an absolute Windows path as a remote host.
   const tar = run('tar', ['-xzf', path.relative(extracted, tarball)], extracted);
@@ -296,15 +276,11 @@ function main(): void {
     mustRun('npm run build', 'npm', ['run', 'build'], REPO_ROOT);
     mustRun('npm run build (create-lousho)', 'npm', ['run', 'build', '--workspace=packages/create-lousho'], REPO_ROOT);
   }
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'lousho-pack-smoke-'));
+  const { base, packDir, project } = smokeDirs('lousho-pack-smoke');
   log(`temp dir ${base}`);
-  const packDir = path.join(base, 'tarballs');
-  const project = path.join(base, 'project');
-  fs.mkdirSync(packDir);
-  fs.mkdirSync(project);
   try {
-    const sdk = pack('(sdk)', REPO_ROOT, packDir);
-    const creator = pack('(create-lousho)', path.join(REPO_ROOT, 'packages', 'create-lousho'), packDir);
+    const sdk = packTarball(rep, '(sdk)', REPO_ROOT, packDir);
+    const creator = packTarball(rep, '(create-lousho)', path.join(REPO_ROOT, 'packages', 'create-lousho'), packDir);
     checkTarball(sdk.entry, sdk.tarball);
     dryRunPublish(rep, '(sdk)', sdk.tarball, base);
     dryRunPublish(rep, '(create-lousho)', creator.tarball, base);
@@ -338,14 +314,9 @@ function main(): void {
       else log('create-lousho --help: ok');
     }
   } finally {
-    if (args.has('--keep')) log(`kept ${base}`);
-    else fs.rmSync(base, { recursive: true, force: true });
+    cleanSmokeDir(rep, base, args.has('--keep'));
   }
-  if (failures.length) {
-    console.error(`\n[pack-smoke] ${failures.length} failure(s):\n- ${failures.join('\n- ')}`);
-    process.exit(1);
-  }
-  log('all checks passed');
+  reportSmoke(rep);
 }
 
 main();

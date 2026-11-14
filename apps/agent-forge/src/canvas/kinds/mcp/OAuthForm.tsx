@@ -6,7 +6,7 @@
 import type { ChangeEvent } from 'react';
 import { Field } from '../../../ui/Field';
 import { Input, Switch } from '../../../ui/controls';
-import type { SecretRef } from '../../../graph/v2/specTypes';
+import type { SecretRef } from '../../../../shared/wireTypes';
 import { SecretRefField } from '../../fields/SecretRefField';
 import { StringListField } from '../../fields/StringListField';
 import type { KindFieldsProps } from '../index';

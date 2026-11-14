@@ -34,12 +34,12 @@ import type {
   McpServerSpec,
   MemorySpec,
   PermissionRuleSpec,
-  SecretRef,
   SkillRef,
   SubagentSpec,
   ToolRef,
   TriggerSpec,
 } from '../specTypes';
+import type { SecretRef } from '../../../../shared/wireTypes';
 
 describe('spec key coverage', () => {
   /**
