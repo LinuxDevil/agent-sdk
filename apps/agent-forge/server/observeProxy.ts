@@ -34,6 +34,7 @@
  * API.
  */
 import type { Express, Request } from 'express';
+import type { CollectorSource } from './collector';
 
 const DEFAULT_OBSERVE_URL = 'http://127.0.0.1:7777';
 const PROXY_PREFIX = '/observe';
@@ -89,17 +90,23 @@ function writeBody(req: Request): string | undefined {
   return Buffer.byteLength(body, 'utf8') > MAX_WRITE_BODY_BYTES ? undefined : body;
 }
 
-/** The daemon the Studio reads (and playground runs report to): `LOUSHO_OBSERVE_URL`, default loopback :7777. */
-export function observeTarget(): string {
-  return (process.env.LOUSHO_OBSERVE_URL ?? DEFAULT_OBSERVE_URL).replace(/\/+$/, '');
+/**
+ * The daemon the Studio reads (and playground runs report to): the
+ * collector's effective URL when one is wired in (collector.ts - env
+ * `LOUSHO_OBSERVE_URL` > settings > {@link DEFAULT_OBSERVE_URL}), else
+ * `LOUSHO_OBSERVE_URL`, default loopback :7777.
+ */
+export function observeTarget(source?: Pick<CollectorSource, 'url'>): string {
+  return (source?.url() ?? process.env.LOUSHO_OBSERVE_URL ?? DEFAULT_OBSERVE_URL).replace(/\/+$/, '');
 }
 
 /**
  * Headers for a server-side daemon call: `accept` (plus `content-type` when
- * a JSON body goes with it) and the bearer `LOUSHO_OBSERVE_TOKEN` names.
+ * a JSON body goes with it) and the bearer token the collector names (env
+ * `LOUSHO_OBSERVE_TOKEN` > the named secret when a collector is wired in).
  */
-export function daemonHeaders(jsonBody = true): Record<string, string> {
-  const token = process.env.LOUSHO_OBSERVE_TOKEN;
+export function daemonHeaders(jsonBody = true, source?: Pick<CollectorSource, 'token'>): Record<string, string> {
+  const token = source ? source.token() : process.env.LOUSHO_OBSERVE_TOKEN;
   return {
     accept: 'application/json',
     ...(jsonBody ? { 'content-type': 'application/json' } : {}),
@@ -115,14 +122,14 @@ export function daemonHeaders(jsonBody = true): Record<string, string> {
  * be exactly the target's base path + `routedPath` - so the caller refuses
  * rather than fetching it, whatever the method.
  */
-export function observeUpstreamUrl(routedPath: string, search: string): URL | undefined {
+export function observeUpstreamUrl(routedPath: string, search: string, target: string = observeTarget()): URL | undefined {
   if (!routedPath.startsWith('/') || (search !== '' && !search.startsWith('?'))) return undefined;
   try {
-    const target = new URL(observeTarget());
-    const upstream = new URL(`${observeTarget()}${routedPath}${search}`);
-    const base = target.pathname.replace(/\/+$/, '');
+    const baseUrl = new URL(target);
+    const upstream = new URL(`${target}${routedPath}${search}`);
+    const base = baseUrl.pathname.replace(/\/+$/, '');
     const unchangedPath = upstream.pathname === `${base}${routedPath}`;
-    const sameOrigin = upstream.origin === target.origin && upstream.username === '' && upstream.password === '';
+    const sameOrigin = upstream.origin === baseUrl.origin && upstream.username === '' && upstream.password === '';
     return sameOrigin && unchangedPath ? upstream : undefined;
   } catch {
     return undefined;
@@ -136,7 +143,7 @@ function rawSearch(req: Request): string {
   return start === -1 ? '' : url.slice(start);
 }
 
-export function registerObserveProxy(app: Express): void {
+export function registerObserveProxy(app: Express, source?: Pick<CollectorSource, 'url' | 'token'>): void {
   app.use(PROXY_PREFIX, async (req, res) => {
     const isWrite = req.method !== 'GET';
     if (isWrite && !isAllowedWrite(req)) {
@@ -150,12 +157,13 @@ export function registerObserveProxy(app: Express): void {
       return;
     }
     // Which daemon this proxy points at, so the down state can name the right LOUSHO_OBSERVE value.
+    const target = observeTarget(source);
     if (req.path === '/__target') {
-      res.json({ url: observeTarget() });
+      res.json({ url: target });
       return;
     }
     // req.path is the routed pathname after the mount (an absolute-form line's authority is not in it).
-    const upstream = observeUpstreamUrl(req.path, rawSearch(req));
+    const upstream = observeUpstreamUrl(req.path, rawSearch(req), target);
     if (!upstream) {
       res.status(400).json({ error: 'The observe proxy only forwards to the observe daemon it points at.' });
       return;
@@ -164,7 +172,7 @@ export function registerObserveProxy(app: Express): void {
     try {
       response = await fetch(upstream, {
         method: req.method,
-        headers: daemonHeaders(hasBody),
+        headers: daemonHeaders(hasBody, source),
         body,
         signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
       });

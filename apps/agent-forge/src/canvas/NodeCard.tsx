@@ -34,6 +34,12 @@ export interface CanvasNodeData extends Record<string, unknown> {
   insideCount?: number;
   /** `meta.enabled` of the open agent (R09); false dims non-chat trigger nodes. Absent reads enabled. */
   agentEnabled?: boolean;
+  /**
+   * True on a canvas that shows a graph it does not own (X06b's code-agent
+   * view): node affordances that would write through `AppState.setGraph`
+   * (the group collapse toggle) render disabled.
+   */
+  readOnly?: boolean;
 }
 
 /** The flag-driven class list of a card or a group container ('rf-node' / 'rf-group' + state flags). */

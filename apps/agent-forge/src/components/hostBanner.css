@@ -1,0 +1,70 @@
+/* HostBanner (W11c): the workspace host status strip - tone pairs match
+   StatusBadge's --{tone}/--{tone}-soft/--{tone}-border tokens. */
+.host-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius);
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: var(--fs-table);
+  line-height: 1.4;
+}
+
+.host-banner-warning {
+  border-color: var(--warning-border);
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.host-banner-danger {
+  border-color: var(--danger-border);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.host-banner-icon {
+  flex: none;
+  margin-top: 2px;
+}
+
+.host-banner-text {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.host-banner-restart {
+  flex: none;
+}
+
+.host-banner-error {
+  margin: 0;
+  flex-basis: 100%;
+  color: var(--danger);
+}
+
+.host-banner-output {
+  flex-basis: 100%;
+}
+
+.host-banner-output summary {
+  cursor: pointer;
+  color: inherit;
+}
+
+.host-banner-output pre {
+  max-height: 12rem;
+  overflow: auto;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-meta);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

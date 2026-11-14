@@ -309,6 +309,22 @@ describe('agent routes v2', () => {
       expect(res.body.code).toBe('LOUSHO_BODY_INVALID');
     });
 
+    it('rejects a spec whose agent trigger would loop, with LOUSHO_CHAIN_INVALID and the cycle', async () => {
+      const chain = (after: string) => ({
+        ...V2_SPEC,
+        triggers: [{ id: 'ch', type: 'agent', after, on: 'done', promptTemplate: 'go' }],
+      });
+      expect((await putV2('a')).status).toBe(204);
+      expect((await putV2('b', chain('a'))).status).toBe(204);
+
+      const res = await putV2('a', chain('b'));
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('LOUSHO_CHAIN_INVALID');
+      expect(res.body.details.cycle).toEqual(['a', 'b', 'a']);
+      // The refused write left the working copy untouched.
+      expect(specDoc('a')).not.toMatchObject({ triggers: expect.anything() });
+    });
+
     it('writes a baseline version first when the yaml was edited outside Studio', async () => {
       await putV2('ops');
       // A hand edit: same shape, different content - the file's hash now

@@ -10,6 +10,9 @@
  * A turned-off agent (`meta.enabled === false`, R09) answers 409
  * `LOUSHO_AGENT_DISABLED` right after auth - no event processing beyond it.
  *
+ * `cancelled` lists the runKeys abort listeners (R03b) stopped for this
+ * event, evaluated after signature verification and before the filter.
+ *
  * The request path after `/hooks/:agentId/` must equal a webhook
  * trigger's `path` (the canvas default is `/hooks/<triggerId>`, so the
  * full URL is `/hooks/<agentId>/hooks/<triggerId>`). Raw bytes are read

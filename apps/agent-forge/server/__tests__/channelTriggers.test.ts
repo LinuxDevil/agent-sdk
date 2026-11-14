@@ -29,6 +29,7 @@ import type { RunManager } from '../runRegistry';
 import type { InboxService } from '../inbox/inboxService';
 import type { CronTriggers } from '../triggers/cronTriggers';
 import type { WorkspaceContext } from '../workspace/context';
+import type { WorkspaceHostSelector } from '../host/hostSelector';
 import { workspaceRefFor } from '../workspace/workspaceId';
 import { TriggerRegistry } from 'lousho/triggers';
 import {
@@ -449,6 +450,7 @@ describe('channel route inside createApp', () => {
       idleVersioner: new IdleVersioner({ capture: async () => {} }),
       suggestions: new SuggestionStore(repo),
       host: {} as AgentHost,
+      hostSelector: {} as WorkspaceHostSelector,
       runs: {} as RunManager,
       chatTriggers: new TriggerRegistry(),
       events: new StudioEventBus(),
@@ -457,6 +459,7 @@ describe('channel route inside createApp', () => {
       triggers: {} as TriggerHost,
       cron: {} as CronTriggers,
       channels,
+      dispose: async () => {},
     };
     const app = createApp({ workspace, baseDir });
 

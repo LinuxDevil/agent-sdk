@@ -3,7 +3,8 @@ import { CircleAlert, CircleCheck, CircleDashed, Clock, Cpu, Play, Wrench, Zap, 
 
 import type { AgentRecord, Requirement } from '../../../shared/wireTypes';
 import { fmtAge } from '../../observe/format';
-import { agentTabItems, agentTabPath, type AgentTab } from '../agents/agentTabs';
+import { agentListPath, agentTabItems, agentTabPath, type AgentTab } from '../agents/agentTabs';
+import { activeWorkspace } from '../../workspace/activeWorkspace';
 import { PublishStatePill } from '../../components/PublishPill';
 import { usePendingDraftCount } from '../../state/usePendingDraftCount';
 import { AgentTile } from '../../ui/AgentTile';
@@ -104,6 +105,11 @@ export interface AgentDetailHeaderProps {
   labelsItem?: ReactNode;
   /** Notices under the facts row (A09's auto-disable notice). */
   notices?: ReactNode;
+  /**
+   * W11c: the read-only workspace's banner text - the Test link renders
+   * disabled with it as `title` (runs would be refused anyway).
+   */
+  readOnlyTitle?: string;
 }
 
 /**
@@ -112,7 +118,7 @@ export interface AgentDetailHeaderProps {
  * actions row (enabled state, Test, overflow menu), the facts row and the
  * tab strip with the readiness chips pinned right.
  */
-export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsItem, notices }: AgentDetailHeaderProps): JSX.Element {
+export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsItem, notices, readOnlyTitle }: AgentDetailHeaderProps): JSX.Element {
   const { id, spec, meta } = record;
   const [expanded, setExpanded] = useState(false);
   const description = spec.description ?? '';
@@ -127,7 +133,7 @@ export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsIte
       <nav className="page-header-crumbs" aria-label="Breadcrumb">
         <ol>
           <li>
-            <a href="#/agents">Agents</a>
+            <a href={`#${agentListPath(activeWorkspace())}`}>Agents</a>
           </li>
           <li aria-hidden="true">
             <span className="page-header-crumb-sep">›</span>
@@ -164,10 +170,17 @@ export function AgentDetailHeader({ record, tab, menu, enabledControl, labelsIte
         <div className="agent-detail-actions">
           {enabledControl ?? <StatusBadge status={meta.enabled ? 'enabled' : 'disabled'} />}
           <PublishStatePill state={record.publishState} />
-          <a className="btn btn-primary btn-sm" href={`#${agentTabPath(id, 'canvas')}?test=1`}>
-            <Play size={14} strokeWidth={1.75} aria-hidden="true" />
-            Test
-          </a>
+          {readOnlyTitle === undefined ? (
+            <a className="btn btn-primary btn-sm" href={`#${agentTabPath(id, 'canvas')}?test=1`}>
+              <Play size={14} strokeWidth={1.75} aria-hidden="true" />
+              Test
+            </a>
+          ) : (
+            <button type="button" className="btn btn-primary btn-sm" disabled title={readOnlyTitle}>
+              <Play size={14} strokeWidth={1.75} aria-hidden="true" />
+              Test
+            </button>
+          )}
           {menu}
         </div>
       </div>

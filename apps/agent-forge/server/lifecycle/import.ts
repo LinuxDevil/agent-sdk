@@ -30,6 +30,7 @@ import { asyncRoute, sendError } from '../http/routeUtils';
 import { daemonHeaders, observeTarget } from '../observeProxy';
 import type { SecretsStore } from '../secretsStore';
 import { defaultMeta, flattenSpecIssues } from '../storage/agentRepo';
+import { ChainInvalidError } from '../triggers/chainTriggers';
 import { agentIdTaken } from '../storage/agentIds';
 import { withAgentLock } from '../storage/atomic';
 import type { WorkspaceContext } from '../workspace/context';
@@ -325,10 +326,14 @@ function parseImportBody(body: unknown): ImportRequest | string {
   };
 }
 
-/** Maps an {@link ImportError} onto the response; anything else rethrows to the app's 500 handler. */
+/** Maps an {@link ImportError} (or a refused agent chain, R07) onto the response; anything else rethrows to the app's 500 handler. */
 function sendImportFailure(res: Response, error: unknown): void {
   if (error instanceof ImportError) {
     sendError(res, error.status, error.message, error.code, error.details);
+    return;
+  }
+  if (error instanceof ChainInvalidError) {
+    sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
     return;
   }
   throw error;

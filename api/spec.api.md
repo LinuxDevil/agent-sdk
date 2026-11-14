@@ -193,6 +193,9 @@ interface BestOfAllNode {
 const CHANNEL_KINDS: readonly ["telegram", "slack", "github", "teams", "discord", "http"];
 
 // @public
+export const CHANNEL_SECRET_KEYS: Readonly<Record<ChannelKind, readonly string[]>>;
+
+// @public
 export type ChannelKind = (typeof CHANNEL_KINDS)[number];
 
 // @public
@@ -253,6 +256,9 @@ interface EvaluatorNode {
     // (undocumented)
     type: 'evaluator';
 }
+
+// @public
+export const EXECUTABLE_TYPES: readonly ["sequence", "parallel", "oneOf", "forEach", "evaluator", "llmCall", "agent", "approval", "toolCall", "setVariable", "return", "end", "throw"];
 
 // @public
 interface ExpressionEvaluatorNode extends NodeRunOptions {
@@ -375,6 +381,9 @@ export interface GuardrailCatalogEntry {
 export type GuardrailSide = 'input' | 'output' | 'tools';
 
 // @public
+export function guardrailSidesOf(entry: Pick<GuardrailSpec, 'on'>): GuardrailSide[];
+
+// @public
 export interface GuardrailSpec {
     id: string;
     name: SpecGuardrailName;
@@ -432,10 +441,22 @@ export interface InlineHookSpec {
 }
 
 // @public
+export const INTEGRATION_CREDENTIALS: Record<IntegrationName, IntegrationCredentialKeys>;
+
+// @public
+interface IntegrationCredentialKeys {
+    optional: readonly string[];
+    required: readonly string[];
+}
+
+// @public
 export type IntegrationName = 'github' | 'jira' | 'slack' | 'email';
 
 // @public
 export function isNodeIdExporter(exporter: TraceExporter | undefined): boolean;
+
+// @public
+export function isSafeRelativePath(rel: string): boolean;
 
 // @public
 export function isSecretRef(value: unknown): value is SecretRef;
@@ -496,6 +517,12 @@ interface LoopNode {
     // (undocumented)
     type: 'loop';
 }
+
+// @public
+export const MAX_APPROVAL_TTL_MS: number;
+
+// @public
+export const MCP_SERVER_NAME: RegExp;
 
 // @public
 type McpApproval = 'annotations' | 'always' | 'never' | ((tool: {
@@ -827,6 +854,9 @@ interface ReturnNode extends NodeRunOptions {
 }
 
 // @public
+export const REWRITABLE_GUARDRAILS: readonly SpecGuardrailName[];
+
+// @public
 interface RunLimits {
     maxCostUsd?: number;
     maxDurationMs?: number;
@@ -866,6 +896,9 @@ interface SchemaIssue {
         readonly key: PropertyKey;
     }>;
 }
+
+// @public
+export const SECRET_CREDENTIALS: Record<IntegrationName, readonly string[]>;
 
 // @public
 export type SecretRef = {
@@ -954,6 +987,9 @@ export const SPEC_FIELD_DESCRIPTIONS: Readonly<Record<string, string>>;
 
 // @public
 const SPEC_GUARDRAIL_NAMES: readonly ["max-length", "secret-scan", "regex", "deny-topics", "llm-judge", "pii", "secrets", "prompt-injection", "moderation"];
+
+// @public
+export const SPEC_ID_PATTERN: RegExp;
 
 // @public (undocumented)
 type SpecGuardrailName = (typeof SPEC_GUARDRAIL_NAMES)[number];
@@ -1228,6 +1264,9 @@ interface UIComponentNode {
     // (undocumented)
     type: 'uiComponent';
 }
+
+// @public
+export const UNSUPPORTED_PREFIX = "not supported yet: ";
 
 // @public
 export function upgradeSpec(input: unknown): AgentSpecV2;

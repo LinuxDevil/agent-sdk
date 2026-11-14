@@ -4,9 +4,11 @@ import { useAppState } from '../state/AppState';
 import { runtimeClient } from '../runtime/runtimeClient';
 import type { DeployResult, ProviderKeyStatus, SettingsFile, SettingsProfile } from '../../shared/wireTypes';
 import { errorMessage } from './errorMessage';
-import { AgentAuthorSection, AppearanceSection, CollectorSection, ShortcutsSection } from './SettingsAppSections';
+import { AgentAuthorSection, AppearanceSection, ShortcutsSection } from './SettingsAppSections';
+import { CollectorCard } from './settings/CollectorCard';
 import { PassesSection } from './PassesSection';
 import { SettingsCard, TonePill } from './SettingsCard';
+import { WorkspacesSection } from './SettingsWorkspacesSection';
 
 type KeyedProviderId = 'openai' | 'anthropic';
 
@@ -412,12 +414,13 @@ export function SettingsPanel({ variant = 'drawer' }: { variant?: 'drawer' | 'sc
   return (
     <div className={screen ? 'settings-panel settings-panel-screen' : 'settings-panel'}>
       {screen && <AppearanceSection />}
+      {screen && <WorkspacesSection />}
       <ProviderKeysSection />
       {screen && <AgentAuthorSection />}
       <ProfileSection profiles={profiles} />
       <DeploySection deployAdapter={deployAdapter} onAdapterChange={setDeployAdapter} />
       {screen && <PassesSection />}
-      {screen && <CollectorSection />}
+      {screen && <CollectorCard />}
       {screen && <ShortcutsSection />}
     </div>
   );

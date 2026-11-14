@@ -59,6 +59,7 @@ function resolveForFs(p: string): string {
   return p === ':memory:' ? p : path.resolve(p);
 }
 
+/** Options for {@link startObserveDaemon}; every field is optional. */
 export interface ObserveDaemonOptions {
   /** SQLite file; default `~/.lousho/observe.db` (`:memory:` for tests). */
   dbPath?: string;
@@ -106,14 +107,21 @@ export const OBSERVE_SESSION_IDLE_MINUTES_DEFAULT = 30;
 /** The sweep's idle window in ms from {@link ObserveDaemonOptions.sessionIdleMinutes} (absent = the default). */
 const minutesToMs = (minutes: number = OBSERVE_SESSION_IDLE_MINUTES_DEFAULT): number => minutes * 60_000;
 
+/** A running observe daemon: its bound address, open stores and workers, and `close()`. */
 export interface ObserveDaemon {
+  /** The bound port (`options.port`, or an ephemeral port when `0`). */
   port: number;
+  /** The bound host address. */
   host: string;
+  /** The resolved SQLite file the daemon serves. */
   dbPath: string;
   /** Whether bearer auth is enforced (non-loopback bind implies it). */
   requireToken: boolean;
+  /** The underlying HTTP server. */
   server: http.Server;
+  /** The open SQLite database the routes read and write. */
   db: SqlDatabase;
+  /** Where the pid was written, when `options.pidPath` was given. */
   pidPath?: string;
   /** The resolved alert config (`alerts.json` + `--webhook` flags). */
   alerts: AlertConfig;
@@ -121,6 +129,7 @@ export interface ObserveDaemon {
   sweep: StatusSweep;
   /** The online-evaluator worker: scores each new trace whose root ends (`stop()` is called by `close()`). */
   evaluators: EvaluatorWorker;
+  /** Stops the sweep and evaluator worker, closes the db and the HTTP server, removes the pid file. */
   close(): Promise<void>;
 }
 
@@ -321,9 +330,13 @@ export function urlHost(host: string): string {
   return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
 }
 
+/** The body of `GET /health`: enough for a caller to confirm the listener is this SDK's daemon. */
 export interface HealthProbe {
+  /** The service name the daemon reports (`lousho-observe`). */
   service: string;
+  /** Whether the daemon answered its health check successfully. */
   ok: boolean;
+  /** The SDK version the daemon was started from, when it reports one. */
   version?: string;
   /** Absolute path of the db the daemon serves. */
   db?: string;

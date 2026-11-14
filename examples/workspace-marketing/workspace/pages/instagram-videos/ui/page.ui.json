@@ -1,0 +1,41 @@
+{
+  "schema": "lousho.ui/1",
+  "layout": {
+    "type": "stack",
+    "children": [
+      {
+        "type": "text",
+        "bind": "inputs.topic",
+        "label": "Topic"
+      },
+      {
+        "type": "number",
+        "bind": "inputs.durationSeconds",
+        "label": "Duration in seconds",
+        "min": 5,
+        "max": 90
+      },
+      {
+        "type": "select",
+        "bind": "inputs.tone",
+        "label": "Tone"
+      },
+      {
+        "type": "runButton"
+      },
+      {
+        "type": "runStatus"
+      },
+      {
+        "type": "markdown",
+        "source": "outputs.script",
+        "label": "Script"
+      },
+      {
+        "type": "artifact",
+        "artifact": "video",
+        "label": "Video"
+      }
+    ]
+  }
+}

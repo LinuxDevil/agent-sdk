@@ -1,4 +1,4 @@
-import { Bot, Server, Wrench, type LucideIcon } from 'lucide-react';
+import { Bot, Folder, Server, Wrench, type LucideIcon } from 'lucide-react';
 
 import type { AgentListItem } from '../../../shared/wireTypes';
 import { fmtAge } from '../../observe/format';
@@ -37,6 +37,15 @@ export interface AgentCardProps {
   onToggleEnabled(id: string, enabled: boolean): void;
   /** Disables the switch while a PATCH is in flight. */
   toggling?: boolean;
+  /**
+   * All-workspaces mode only (W06b): the owning workspace's display name -
+   * renders a chip in the meta row - and its root, the chip's `title`.
+   * Also scopes the card link's `agentTabPath` so it opens in that
+   * workspace.
+   */
+  workspaceName?: string;
+  workspaceRoot?: string;
+  workspaceId?: string;
   /** `Date.now()` by default; tests pass a fixed value for stable ages. */
   now?: number;
 }
@@ -105,7 +114,8 @@ function timeText(iso: string, now: number): TimeText | null {
  * last run's status and both timestamps. A disabled agent keeps full text
  * contrast - only the tile goes grey - so the card stays AA-readable.
  */
-export function AgentCard({ agent, onOpen, onToggleEnabled, toggling = false, now = Date.now() }: AgentCardProps): JSX.Element {
+// fallow-ignore-next-line complexity
+export function AgentCard({ agent, onOpen, onToggleEnabled, toggling = false, now = Date.now(), workspaceName, workspaceRoot, workspaceId }: AgentCardProps): JSX.Element {
   const { id, name, description, model, enabled, disabledReason, labels, updatedAt, publishedVersion, lastRun } = agent;
   const nameId = `agent-card-name-${encodeURIComponent(id)}`;
   const caps = capabilityChips(agent.counts);
@@ -126,7 +136,7 @@ export function AgentCard({ agent, onOpen, onToggleEnabled, toggling = false, no
               <h3 className="agent-card-name" id={nameId}>
                 <a
                   className="agent-card-link"
-                  href={`#${agentTabPath(id, 'overview')}`}
+                  href={`#${agentTabPath(id, 'overview', workspaceId)}`}
                   onClick={(event) => {
                     event.preventDefault();
                     onOpen(id);
@@ -139,6 +149,17 @@ export function AgentCard({ agent, onOpen, onToggleEnabled, toggling = false, no
                 <span className="agent-card-model" title={model}>
                   {model}
                 </span>
+                {workspaceName !== undefined && (
+                  <>
+                    <span className="agent-card-sep" aria-hidden="true">
+                      ·
+                    </span>
+                    <span className="chip agent-card-workspace" title={workspaceRoot}>
+                      <Folder size={16} aria-hidden="true" />
+                      {workspaceName}
+                    </span>
+                  </>
+                )}
                 {publishedVersion != null && (
                   <>
                     <span className="agent-card-sep" aria-hidden="true">

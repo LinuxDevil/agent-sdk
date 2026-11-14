@@ -178,7 +178,7 @@ describe('SuccessCard Open in canvas', () => {
   it('navigates to the agent canvas route', () => {
     const c = mount(props());
     act(() => c.querySelector<HTMLButtonElement>('.btn-ghost')!.click());
-    expect(window.location.hash).toBe('#/agents/triage-bot');
+    expect(window.location.hash).toBe('#/agents/triage-bot/canvas');
   });
 
   it('is hidden while that agent is already on screen', () => {

@@ -8,3 +8,4 @@
 .runs-rating svg { color: var(--warning); fill: currentColor; }
 .runs-rating-low { color: var(--danger); }
 .runs-tab a.btn { text-decoration: none; }
+.runs-actions { display: inline-flex; align-items: center; gap: var(--space-2); }

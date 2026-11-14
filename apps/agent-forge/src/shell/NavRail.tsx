@@ -4,6 +4,7 @@ import { useInboxCount } from '../state/useInboxCount';
 import { useRoute } from '../router/useRoute';
 import { DaemonStatus } from './DaemonStatus';
 import { NavBrand } from './NavBrand';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 
 export type NavSection = 'Build' | 'Observe' | 'Evaluate' | 'Assets' | 'Footer';
 
@@ -35,9 +36,11 @@ const SECTION_ORDER: NavSection[] = ['Build', 'Observe', 'Evaluate', 'Assets', '
 
 const firstSegment = (path: string) => path.split('/')[1] ?? '';
 
-/** An item owns every route under its first path segment (`/evals/datasets` -> Evaluations). The bare `/` is Agents. */
+/** An item owns every route under its first path segment (`/evals/datasets` -> Evaluations). The bare `/` is Agents. `/w/<ws>/<section>/…` scopes a screen to a workspace (W04b): the section is the segment after the id. */
 export function isActive(item: NavItem, path: string): boolean {
-  const segment = firstSegment(path) || 'agents';
+  const segments = path.split('/').filter(Boolean);
+  const section = segments[0] === 'w' ? segments[2] : segments[0];
+  const segment = section ?? 'agents';
   return firstSegment(item.href.slice(1)) === segment;
 }
 
@@ -88,6 +91,7 @@ export function NavRail({
   return (
     <nav id="primary-nav" className="nav-rail" aria-label="Primary" data-drawer={drawer} data-collapsed={rail || undefined}>
       <NavBrand collapsed={rail} onToggle={drawer === undefined ? onToggleCollapsed : undefined} />
+      <WorkspaceSwitcher collapsed={rail} />
       {SECTION_ORDER.map((section) => (
         <ul key={section} className={`nav-group${section === 'Footer' ? ' nav-footer' : ''}`}>
           {section !== 'Footer' && (

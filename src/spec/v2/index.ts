@@ -31,13 +31,14 @@ export { upgradeSpec } from './upgrade';
 export { isSecretRef, secretRefSchema, type SecretRef } from './secrets';
 
 // S04a (with S04b/S05 kinds): tool references.
-export { TOOL_REF_KINDS, toolRefSchema, type IntegrationName, type OpenApiToolRefOptions, type ToolRef, type ToolRefKind } from './tools';
+export { TOOL_REF_KINDS, toolRefSchema, INTEGRATION_CREDENTIALS, SECRET_CREDENTIALS, type IntegrationName, type OpenApiToolRefOptions, type ToolRef, type ToolRefKind } from './tools';
 
 // S07: the model catalog Studio's pickers show.
 export { listModels, type ListModelsOptions, type ModelCapabilities, type ModelCatalogEntry } from '../../models/catalog';
 
 // S11: the guardrail catalog.
 export { listGuardrails, type GuardrailCatalogEntry } from '../../execution/guardrailCatalog';
+export { guardrailSidesOf, REWRITABLE_GUARDRAILS } from './guardrails';
 
 // S13: memory slots.
 export { memorySpecSchema, type MemoryProviderSpec, type MemoryScopeSpec, type MemorySpec } from './memory';
@@ -64,13 +65,19 @@ export { specNodeIds, type SpecNodeIds } from './nodeIds';
 export { isNodeIdExporter, nodeIdExporter, nodeIdIndexOf, subAgentNodeIndexes, type NodeIdIndex } from './nodeIdExporter';
 
 // S21b/S21c: the `flow` spec key's schema and validation.
-export { flowProblems, flowSpecSchema, type FlowProblem } from './flow';
+export { flowProblems, flowSpecSchema, EXECUTABLE_TYPES, type FlowProblem } from './flow';
 export type { AgentFlow } from '../../types/flow';
 
 // S22a: triggers schema and catalog.
 export { abortListenerSpecSchema, abortListenerListSchema, type AbortListenerScope, type AbortListenerSpec } from './abortListeners';
-export { triggerSpecSchema, type ChannelKind, type TriggerSpec } from './triggers';
+export { triggerSpecSchema, CHANNEL_SECRET_KEYS, type ChannelKind, type TriggerSpec } from './triggers';
 export { listTriggerTypes, type TriggerTypeInfo } from './triggerCatalog';
+
+// The spec-field bounds and name/id patterns Studio's forms and validators share.
+export { isSafeRelativePath, SPEC_ID_PATTERN } from './common';
+export { UNSUPPORTED_PREFIX } from './unsupported';
+export { MCP_SERVER_NAME } from './mcpServers';
+export { MAX_APPROVAL_TTL_MS } from '../../execution/approvalTtl';
 
 // v1: lets Studio drop its deep `src/spec/schema` import.
 export { agentSpecSchema, type AgentSpec } from '../schema';

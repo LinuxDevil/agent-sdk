@@ -1,0 +1,21 @@
+{
+  "schema": "lousho.harness/1",
+  "id": "facebook",
+  "version": "1.0.0",
+  "instructions": [
+    "platform.md"
+  ],
+  "platform": {
+    "id": "facebook",
+    "requirements": {
+      "aspectRatio": "16:9",
+      "captionMaxChars": 5000
+    }
+  },
+  "constraints": [
+    {
+      "id": "facebook-caption-length",
+      "text": "Keep captions under 5000 characters."
+    }
+  ]
+}

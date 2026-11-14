@@ -392,6 +392,7 @@ function sourcePaths(): Record<string, string[]> {
   const SOURCE_OVERRIDES: Record<string, string[]> = { [`${pkg.name}/spec`]: ['src/spec/v2/index.ts'] };
   const paths: Record<string, string[]> = {};
   for (const [subpath, target] of Object.entries<{ require: { types: string } }>(pkg.exports)) {
+    if (subpath.includes('*')) continue;
     const specifier = subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`;
     paths[specifier] = SOURCE_OVERRIDES[specifier] ?? [
       target.require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts'),

@@ -2,6 +2,7 @@ import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render } from '../../ui/__tests__/render';
 import { installMemoryStorage } from '../../ui/__tests__/memoryStorage';
+import { ToastProvider } from '../../ui/Toast';
 import { SettingsPanel } from '../SettingsPanel';
 import { toggleTheme } from '../../shell/theme';
 import type { ProviderKeyStatus } from '../../../shared/wireTypes';
@@ -37,15 +38,26 @@ vi.mock('../../runtime/runtimeClient', () => ({
     }),
     savePassSettings: async (patch: unknown) => patch,
     getPassSpend: async () => ({ month: '2026-11', totalUsd: 0, calls: 0, byKind: {} }),
+    collectorStatus: async () => ({
+      mode: 'down',
+      url: 'http://127.0.0.1:7777',
+      configuredUrl: null,
+      lockedByEnv: false,
+      hasToken: false,
+      daemonVersion: null,
+      error: 'No collector answered at http://127.0.0.1:7777.',
+    }),
   },
-}));
-vi.mock('../../shell/DaemonStatus', () => ({
-  useCollectorStatus: () => ({ state: 'down', target: undefined }),
 }));
 
 async function mount(variant?: 'drawer' | 'screen') {
-  const host = render(<SettingsPanel variant={variant} />);
+  const host = render(
+    <ToastProvider>
+      <SettingsPanel variant={variant} />
+    </ToastProvider>
+  );
   await act(async () => {
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -77,10 +89,11 @@ describe('SettingsPanel', () => {
     expect(sectionNames(host)).toEqual(['Provider keys', 'Settings profile', 'Deploy target']);
   });
 
-  it('the routed screen adds Appearance, Agent Author, Background passes, Collector and Keyboard shortcuts', async () => {
+  it('the routed screen adds Appearance, Workspaces, Agent Author, Background passes, Collector and Keyboard shortcuts', async () => {
     const host = await mount('screen');
     expect(sectionNames(host)).toEqual([
       'Appearance',
+      'Workspaces',
       'Provider keys',
       'Agent Author',
       'Settings profile',
@@ -144,11 +157,10 @@ describe('SettingsPanel', () => {
     expect(host.textContent).toContain("Tables use each screen's default until you pick one.");
   });
 
-  it('the collector card says how to start a daemon that is down, and lists every shortcut', async () => {
+  it('the collector card reports an unreachable daemon and lists every shortcut', async () => {
     const host = await mount('screen');
     const collector = host.querySelector('section[aria-label="Collector"]')!;
-    expect(collector.querySelector('[role="status"]')?.textContent).toContain('Unreachable');
-    expect(collector.textContent).toContain('lousho observe start');
+    expect(collector.querySelector('[role="status"]')?.textContent).toContain('Not reachable');
     const shortcuts = host.querySelector('section[aria-label="Keyboard shortcuts"]')!;
     expect([...shortcuts.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual([
       'Ctrl/Cmd+K',
