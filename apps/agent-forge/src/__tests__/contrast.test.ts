@@ -94,6 +94,8 @@ const PAIRS: [text: string, background: string][] = [
   ['warning', 'success-soft'],
   // The proposal overlay's "edited" chip draws --warning on the neutral chip tint --surface-2 (C21).
   ['warning', 'surface-2'],
+  // The eval gate dialog's set errors and failure lines draw --danger on its --surface-2 set cards (X01b).
+  ['danger', 'surface-2'],
 ];
 
 describe('theme contrast', () => {

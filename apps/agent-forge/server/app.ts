@@ -107,7 +107,7 @@ import { ChatTriggerAdapter } from './chatTriggerAdapter';
 import { isValidAgentId } from './types';
 import { SecretsStore, isSecretProvider } from './secretsStore';
 import { SettingsStore } from './settingsStore';
-import type { AbortRunRequest, ApproveRequest, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
+import type { AbortRunRequest, ApproveRequest, EvalGateResult, ForkRunRequest, ForkRunResponse, PendingApprovalInfo, RunAgentRequest, SettingsProfile, WorkspaceInfo } from '../shared/wireTypes';
 import { pinsProblem } from './pins';
 import { chatTriggersFor, singleWorkspace, type WorkspaceContext, type WorkspaceResolver } from './workspace/context';
 import { workspaceMiddleware, workspaceOf } from './workspace/middleware';
@@ -166,6 +166,7 @@ import { registerExportRoutes } from './lifecycle/export';
 import { registerImportRoutes } from './lifecycle/import';
 import { registerPortabilityRoutes } from './passes/portabilityRoutes';
 import { readPublishedSpec, registerPublishRoutes } from './lifecycle/publish';
+import type { EvalGateDeps } from './evals/gateRunner';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
@@ -310,6 +311,13 @@ interface CreateAppBaseOptions {
    * `createWorkspaceContext`/`legacyWorkspaceContext`).
    */
   inbox?: InboxService;
+  /**
+   * The publish eval gate's runner (X01b, lifecycle/publish.ts) - a test
+   * seam like `passRunner`: inject a stub `EvalGateResult` producer so
+   * publish-route tests never reach the observe daemon. Defaults to
+   * `runEvalGates`.
+   */
+  evalGateRunner?: (spec: AgentSpecV2, deps: EvalGateDeps) => Promise<EvalGateResult>;
   /**
    * The `/serve/<id>` switch's store (X02a, serve/serveConfigStore.ts) -
    * Studio-global like the other `studioPaths()` stores. Defaults to
@@ -1489,8 +1497,14 @@ export function createApp(options: CreateAppOptions): Express {
   // export.ts - the repo comes from workspaceOf(req), the workspace seam).
   registerExportRoutes(app);
   // Publish pointer: `POST /agents/:id/publish` (lifecycle/publish.ts -
-  // stores come from workspaceOf(req), the workspace seam).
-  registerPublishRoutes(app);
+  // stores come from workspaceOf(req), the workspace seam; the eval gate's
+  // global services are the app's own, X01b).
+  registerPublishRoutes(app, {
+    secretsStore: secrets,
+    settings,
+    alerts,
+    ...(options.evalGateRunner !== undefined && { runGates: options.evalGateRunner }),
+  });
   // The serve switch's management routes (X02a): `GET/PUT
   // /agents/:id/serve`, `GET .../serve/token`, `POST .../serve/rotate-token`.
   // The `/serve/<id>/*` data router mounted before express.json() above.

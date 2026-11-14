@@ -46,6 +46,8 @@ import type {
   PassSettings,
   PassSettingsPatch,
   PassSpendSummary,
+  PublishRequest,
+  PublishResponse,
   RatingRequest,
   McpServerSpecV2,
   PatchAgentMetaRequest,
@@ -124,7 +126,7 @@ function apiError(
   fallback: string,
   status: number
 ): RuntimeApiError {
-  return new RuntimeApiError(body?.error || fallback, status, body?.code, body?.details);
+  return new RuntimeApiError(body?.error || fallback, status, body?.code, body?.details, body);
 }
 
 export class RuntimeApiError extends Error {
@@ -134,7 +136,9 @@ export class RuntimeApiError extends Error {
     /** The server's `{ code }` when it sent one (e.g. 'STALE_PROPOSAL'). */
     public readonly code?: string,
     /** The server's `{ details }` payload when it sent one (e.g. `{ latestProposalId }`). */
-    public readonly details?: unknown
+    public readonly details?: unknown,
+    /** The whole parsed error body, for codes whose payload sits outside `details` (e.g. the publish gate's `version`, X01b). */
+    public readonly body?: unknown
   ) {
     super(message);
   }
@@ -398,14 +402,17 @@ class RuntimeClient implements AgentApi {
   // -------------------------------------------------------------------
 
   /**
-   * Pins `version` (or the working copy's new `publish` version) as the
-   * agent's published spec and answers the pinned version number. Idempotent:
-   * pinning the already-published version is a no-op.
+   * Pins `body.version` (or the working copy's new `publish` version) as the
+   * agent's published spec and answers the pinned version plus the eval
+   * gate's result when the spec declares `evals` (X01b). Idempotent:
+   * pinning the already-published version is a no-op. A failing gate throws
+   * `RuntimeApiError` 409 `LOUSHO_EVAL_GATE_FAILED` whose `details` is the
+   * `EvalGateResult`.
    */
-  async publish(agentId: string, version?: number): Promise<{ publishedVersion: number }> {
+  async publish(agentId: string, body: PublishRequest = {}): Promise<PublishResponse> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/publish`, {
       method: 'POST',
-      body: JSON.stringify(version === undefined ? {} : { version }),
+      body: JSON.stringify(body),
     });
   }
 

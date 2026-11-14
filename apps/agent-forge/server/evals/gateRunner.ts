@@ -19,6 +19,7 @@
  *   passes.
  */
 import type { AgentSpecV2, EvalGate, EvalGateSpec } from 'lousho/spec';
+import type { EvalExampleResult, EvalGateResult, EvalGateSetResult } from '../../shared/wireTypes';
 import type { PassRunner } from '../passes/passRunner';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
@@ -31,37 +32,6 @@ import type { CandidateRun } from './types';
 export { EVAL_MAX_EXAMPLES } from './datasetClient';
 export { EVAL_EXAMPLE_TIMEOUT_MS } from './candidateRun';
 export type { CandidateRun } from './types';
-
-/** One dataset example's gate outcome. */
-export interface EvalExampleResult {
-  exampleId: string;
-  passed: boolean;
-  /** Plain sentences, one per failed gate; empty when passed. */
-  failures: string[];
-  /** Trace id of the example run when the observe reporter produced one. */
-  traceId?: string;
-}
-
-/** One `spec.evals` entry's outcome over its dataset. */
-export interface EvalGateSetResult {
-  dataset: string;
-  /** 0..1, rounded to 4 decimals; 0 when the dataset is missing or empty. */
-  passRate: number;
-  minPassRate: number;
-  /** `passRate >= minPassRate && examples.length > 0`. */
-  passed: boolean;
-  examples: EvalExampleResult[];
-  /** Set when the whole set could not run. */
-  error?: string;
-}
-
-/** The whole gate's outcome: every set passed, the per-set detail, when it ran. */
-export interface EvalGateResult {
-  passed: boolean;
-  gates: EvalGateSetResult[];
-  /** ISO. */
-  ranAt: string;
-}
 
 /** Runs one input on the candidate spec (tests inject a fake). */
 export type RunExampleFn = (spec: AgentSpecV2, input: string, signal: AbortSignal) => Promise<CandidateRun>;
