@@ -34,6 +34,10 @@ import { TemplateCatalog } from './templates/templateCatalog';
 import { PassRunner } from './passes/passRunner';
 import { SpendLog } from './passes/spendLog';
 import { AlertStore } from './inbox/alertStore';
+import { ServeConfigStore } from './serve/serveConfigStore';
+import { buildServeAgent } from './serve/serveRoutes';
+import { McpServerManager } from './serve/mcpServers';
+import type { StudioEvent } from '../shared/wireTypes';
 import { VERSION } from 'lousho';
 
 export interface StudioServerHandle {
@@ -287,6 +291,31 @@ export async function startStudioServer(
       workspaceResolver: workspaces,
       ...(authorScript !== undefined ? { scriptedProvider: authorScript } : {}),
     });
+  // The `/serve/<id>` config store is created here (not left to createApp's
+  // default) so the X03 MCP manager shares the same instance the serve
+  // routes read - token rotations stay consistent without a second file
+  // reader racing the atomic writes.
+  const serveConfig = new ServeConfigStore(paths.serve);
+  // The X03 MCP server manager: one per Studio app, restarted on
+  // `agent.changed` version/meta events and closed on shutdown. The agent
+  // builder is the serve surface's own (`buildServeAgent`) so MCP calls
+  // get the same sessions, approvals and trace export as `/serve/<id>`.
+  const mcpServers = new McpServerManager({
+    repo: workspace.repo,
+    versions: workspace.versions,
+    serveConfig,
+    buildAgent: (spec, agentId) =>
+      buildServeAgent(spec, agentId, workspace, {
+        secretsStore,
+        settings: settingsStore,
+        spendLog,
+      }),
+  });
+  const unsubMcpRefresh = workspace.events.subscribe((event: StudioEvent) => {
+    if (event.type === 'agent.changed' && (event.reason === 'version' || event.reason === 'meta')) {
+      void mcpServers.refresh(event.agentId);
+    }
+  });
   const app = createApp({
     workspace,
     baseDir,
@@ -306,6 +335,8 @@ export async function startStudioServer(
     spendLog,
     passRunner,
     alerts,
+    serveConfig,
+    mcpServers,
     collector,
   });
   const server = http.createServer(app);
@@ -363,6 +394,9 @@ export async function startStudioServer(
       workspace.inbox.stop();
       workspace.triggers.stop();
       workspace.cron.stop();
+      unsubMcpRefresh();
+      // Stop every running MCP server (X03) before the HTTP socket closes.
+      await mcpServers.closeAll();
       // A daemon this Studio started stops with it; an attached one is left alone.
       await collector.stop();
       return new Promise<void>((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));

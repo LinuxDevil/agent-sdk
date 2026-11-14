@@ -180,7 +180,8 @@ import { attachFailureStreak } from './lifecycle/failureStreak';
 import { registerPassRoutes } from './passes/passRoutes';
 import { TemplateCatalog, registerTemplateRoutes } from './templates/templateCatalog';
 import { ServeConfigStore } from './serve/serveConfigStore';
-import { createServeSurface, type ServeAgentBuilder } from './serve/serveRoutes';
+import { createServeSurface, buildServeAgent, type ServeAgentBuilder } from './serve/serveRoutes';
+import { McpServerManager, type McpServeManager } from './serve/mcpServers';
 import { sdkRootDir } from './sdkRoot';
 
 interface CreateAppBaseOptions {
@@ -330,6 +331,13 @@ interface CreateAppBaseOptions {
    * `buildRunnableAgent` compile. Defaults to the real builder.
    */
   serveAgentBuilder?: ServeAgentBuilder;
+  /**
+   * The MCP server manager behind `/agents/:id/serve/mcp*` (X03,
+   * serve/mcpServers.ts). Defaults to one over the launch workspace's
+   * repo/versions and the app's serve config store; index.ts injects the
+   * instance it subscribes to `agent.changed` and closes on shutdown.
+   */
+  mcpServers?: McpServeManager;
 }
 
 /**
@@ -1250,16 +1258,10 @@ function createStudioStores(options: CreateAppOptions, paths: StudioPaths) {
     options.passRunner ??
     new PassRunner({ baseDir, spendLog, isEnabled: (kind) => settings.passes().enabled[kind] });
   const alerts = options.alerts ?? new AlertStore(paths.alerts);
-  // The `/serve/<id>` surface (X02a): one config store (Studio-global,
-  // `studioPaths().serve`) + one cached-handler map shared by the early
-  // `/serve` router and the `/agents/:id/serve*` management routes.
-  const serve = createServeSurface({
-    config: options.serveConfig ?? new ServeConfigStore(paths.serve),
-    secretsStore: secrets,
-    settings,
-    spendLog,
-    ...(options.serveAgentBuilder !== undefined ? { buildAgent: options.serveAgentBuilder } : {}),
-  });
+  // The `/serve/<id>` surface's config store (X02a, Studio-global
+  // `studioPaths().serve`): shared by the HTTP surface and the X03 MCP
+  // manager, which `createApp` builds once the workspace exists.
+  const serveConfig = options.serveConfig ?? new ServeConfigStore(paths.serve);
   // One catalog for both the `/templates` routes and the `POST /agents`
   // template branch - Studio-global state, not per-workspace.
   const templates = options.templateCatalog ?? new TemplateCatalog();
@@ -1286,7 +1288,7 @@ function createStudioStores(options: CreateAppOptions, paths: StudioPaths) {
     spendLog,
     passRunner,
     alerts,
-    serve,
+    serveConfig,
     templates,
     probeDeps,
     collector,
@@ -1332,7 +1334,7 @@ export function createApp(options: CreateAppOptions): Express {
     spendLog,
     passRunner,
     alerts,
-    serve,
+    serveConfig,
     templates,
     probeDeps,
     collector,
@@ -1345,6 +1347,29 @@ export function createApp(options: CreateAppOptions): Express {
   // `startStudioServer` provides one, `singleWorkspace` otherwise.
   const workspaceResolver: WorkspaceResolver = workspaceResolverFor(options.workspaces, workspace);
   const authorRunner = createAuthorRunner(options, { secrets, settings, sessions, templates }, workspaceResolver);
+  // The `/serve/<id>` surface (X02a) plus its X03 MCP half: the manager
+  // needs the workspace's repo/versions, so both are built here rather
+  // than in createStudioStores. `options.mcpServers` is the test/embedding
+  // seam - index.ts injects the instance it also subscribes to events
+  // and closes on shutdown.
+  const serveAgentBuilder = options.serveAgentBuilder ?? buildServeAgent;
+  const serveServices = { secretsStore: secrets, settings, spendLog };
+  const mcpServers =
+    options.mcpServers ??
+    new McpServerManager({
+      repo: workspace.repo,
+      versions: workspace.versions,
+      serveConfig,
+      buildAgent: (spec, agentId) => serveAgentBuilder(spec, agentId, workspace, serveServices),
+    });
+  const serve = createServeSurface({
+    config: serveConfig,
+    secretsStore: secrets,
+    settings,
+    spendLog,
+    buildAgent: serveAgentBuilder,
+    mcpServers,
+  });
 
   const app = express();
   // Express 5 matches routes case-insensitively by default, so `/PLAYGROUND/run`

@@ -8,8 +8,8 @@ import { Field } from '../../ui/Field';
 import { SkeletonRows } from '../../ui/Skeleton';
 import { Switch, Textarea } from '../../ui/controls';
 import { useToast } from '../../ui/Toast';
-import type { ServeStatus } from '../../../shared/wireTypes';
-import { useServeStatus } from './useServeStatus';
+import type { McpServeStatus, ServeStatus } from '../../../shared/wireTypes';
+import { useMcpServeStatus, useServeStatus } from './useServeStatus';
 import './serveCard.css';
 
 /** How long a revealed token stays on screen before it hides itself. */
@@ -265,6 +265,118 @@ function useServeActions({ agentId, refresh, setStatus }: ServeActionsDeps): Ser
   return { revealed, rotating, toggling, reveal, hideRevealed, rotate, toggle, copy, copyToken };
 }
 
+interface McpServeRowsProps {
+  agentId: string;
+  published: boolean;
+  mcp: ReturnType<typeof useMcpServeStatus>;
+  onCopy(text: string): void;
+}
+
+/** Start/stop + the running facts and client snippets (X03). */
+function McpServeRows({ agentId, published, mcp, onCopy }: McpServeRowsProps): JSX.Element {
+  const toast = useToast();
+  const [busy, setBusy] = useState<'starting' | 'stopping' | null>(null);
+  const status = mcp.status;
+
+  const act = async (kind: 'starting' | 'stopping', call: () => Promise<McpServeStatus>) => {
+    setBusy(kind);
+    try {
+      mcp.setStatus(await call());
+    } catch (err) {
+      toast.show({ message: errorMessage(err), tone: 'error' });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const running = status?.running === true;
+  const mcpUrl = status?.url ?? null;
+  const addCommand = mcpUrl === null ? '' : `claude mcp add --transport http ${agentId} ${mcpUrl} --header "Authorization: Bearer $LOUSHO_SERVE_TOKEN"`;
+  const stdioCommand = `lousho mcp .lousho/agents/${agentId}/published.yaml`;
+
+  return (
+    <div className="serve-card-mcp">
+      <h3 className="serve-card-subhead">MCP</h3>
+      <div className="serve-card-row">
+        {running ? (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={busy !== null}
+            onClick={() => void act('stopping', () => runtimeClient.stopMcp(agentId))}
+          >
+            {busy === 'stopping' ? 'Stopping…' : 'Stop MCP server'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            disabled={!published || busy !== null}
+            title={published ? undefined : 'Publish a version first'}
+            onClick={() => void act('starting', () => runtimeClient.startMcp(agentId))}
+          >
+            {busy === 'starting' ? 'Starting…' : 'Start MCP server'}
+          </button>
+        )}
+      </div>
+      {running && status !== undefined ? (
+        <dl className="serve-card-facts">
+          <div className="serve-card-fact">
+            <dt>MCP URL</dt>
+            <dd>
+              <code className="serve-card-code">{status.url}</code>
+              <button
+                type="button"
+                className="btn btn-ghost btn-icon btn-sm"
+                aria-label="Copy MCP URL"
+                onClick={() => status.url !== null && onCopy(status.url)}
+              >
+                <Copy size={14} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </dd>
+          </div>
+          <div className="serve-card-fact">
+            <dt>Tool</dt>
+            <dd>
+              <code className="serve-card-code">{status.toolName}</code>
+            </dd>
+          </div>
+        </dl>
+      ) : null}
+      {running ? (
+        <>
+          <details className="serve-card-snippet">
+            <summary>Add to Claude Code</summary>
+            <pre className="serve-card-pre">{addCommand}</pre>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon btn-sm"
+              aria-label="Copy Claude Code command"
+              onClick={() => onCopy(addCommand)}
+            >
+              <Copy size={14} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </details>
+          <details className="serve-card-snippet">
+            <summary>Run over stdio instead</summary>
+            <pre className="serve-card-pre">{stdioCommand}</pre>
+            <p className="serve-card-hint">Runs outside Studio. Run "Deploy" or publish once so the file exists.</p>
+            <button
+              type="button"
+              className="btn btn-ghost btn-icon btn-sm"
+              aria-label="Copy stdio command"
+              onClick={() => onCopy(stdioCommand)}
+            >
+              <Copy size={14} strokeWidth={1.75} aria-hidden="true" />
+            </button>
+          </details>
+          <p className="serve-card-hint">The port changes each time the server starts.</p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 /**
  * The Serve card (X02b, PLAN §16.3): turns `/serve/<id>` on for the
  * published version, shows the endpoint + masked bearer, and edits the
@@ -273,11 +385,18 @@ function useServeActions({ agentId, refresh, setStatus }: ServeActionsDeps): Ser
  */
 export function ServeCard({ agentId }: { agentId: string }): JSX.Element {
   const { status, loading, error, refresh, setStatus } = useServeStatus(agentId);
+  const mcp = useMcpServeStatus(agentId);
   const { revealed, rotating, toggling, reveal, hideRevealed, rotate, toggle, copy, copyToken } = useServeActions({
     agentId,
     refresh,
     setStatus,
   });
+  // Rotating restarts a running MCP server on a NEW ephemeral port (X03) -
+  // refetch its status so the card shows the fresh URL.
+  const rotateAndRefreshMcp = async () => {
+    await rotate();
+    await mcp.refresh();
+  };
 
   if (loading && status === undefined) {
     return (
@@ -324,7 +443,7 @@ export function ServeCard({ agentId }: { agentId: string }): JSX.Element {
             rotating={rotating}
             onReveal={() => void reveal()}
             onHide={hideRevealed}
-            onRotate={() => void rotate()}
+            onRotate={() => void rotateAndRefreshMcp()}
             onCopyEndpoint={(text) => void copy(text)}
             onCopyToken={() => void copyToken()}
           />
@@ -332,6 +451,9 @@ export function ServeCard({ agentId }: { agentId: string }): JSX.Element {
           {status.enabled ? <CurlSnippet endpoint={endpoint} onCopy={(text) => void copy(text)} /> : null}
         </>
       ) : null}
+      {/* The MCP section stays visible unpublished too: its Start button is
+          the discoverable "publish first" affordance (X03). */}
+      <McpServeRows agentId={agentId} published={published} mcp={mcp} onCopy={(text) => void copy(text)} />
     </Card>
   );
 }

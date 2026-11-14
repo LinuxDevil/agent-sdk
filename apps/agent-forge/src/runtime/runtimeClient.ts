@@ -58,6 +58,7 @@ import type {
   RunComparisonPayload,
   RunHistoryPayload,
   SecretStatus,
+  McpServeStatus,
   ServeAgentConfig,
   ServeStatus,
   ServeTokenReveal,
@@ -442,6 +443,21 @@ class RuntimeClient implements AgentApi {
   /** Mints a new bearer - the old one stops working at once (`POST .../serve/rotate-token`). */
   async rotateServeToken(agentId: string): Promise<ServeTokenReveal> {
     return this.request(`/agents/${encodeURIComponent(agentId)}/serve/rotate-token`, { method: 'POST' });
+  }
+
+  /** The agent's MCP server state (`GET /agents/:id/serve/mcp`, X03). */
+  async mcpStatus(agentId: string): Promise<McpServeStatus> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/mcp`);
+  }
+
+  /** Starts the MCP server for the published version (`POST .../serve/mcp`); 409 when unpublished. */
+  async startMcp(agentId: string): Promise<McpServeStatus> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/mcp`, { method: 'POST' });
+  }
+
+  /** Stops the MCP server (`DELETE .../serve/mcp`). */
+  async stopMcp(agentId: string): Promise<McpServeStatus> {
+    return this.request(`/agents/${encodeURIComponent(agentId)}/serve/mcp`, { method: 'DELETE' });
   }
 
   /** Records a 1-5 human rating on a run's trace (`POST /agents/:id/rating`, R04a). */

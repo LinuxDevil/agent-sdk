@@ -10,7 +10,10 @@ const mocks = vi.hoisted(() => ({
   putServe: vi.fn(),
   serveToken: vi.fn(),
   rotateServeToken: vi.fn(),
-  eventHandler: undefined as ((event: StudioEvent) => void) | undefined,
+  mcpStatus: vi.fn(),
+  startMcp: vi.fn(),
+  stopMcp: vi.fn(),
+  eventHandlers: [] as Array<(event: StudioEvent) => void>,
   writeText: vi.fn(),
 }));
 
@@ -23,13 +26,16 @@ vi.mock('../../../runtime/runtimeClient', async (importOriginal) => {
       putServe: mocks.putServe,
       serveToken: mocks.serveToken,
       rotateServeToken: mocks.rotateServeToken,
+      mcpStatus: mocks.mcpStatus,
+      startMcp: mocks.startMcp,
+      stopMcp: mocks.stopMcp,
     },
   };
 });
 
 vi.mock('../../../state/useStudioEvents', () => ({
   useStudioEvents: (handler: (event: StudioEvent) => void) => {
-    mocks.eventHandler = handler;
+    mocks.eventHandlers.push(handler);
   },
 }));
 
@@ -78,11 +84,20 @@ function switchEl(host: HTMLElement): HTMLButtonElement {
 describe('ServeCard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.eventHandler = undefined;
+    mocks.eventHandlers.length = 0;
     mocks.getServe.mockResolvedValue(status());
     mocks.putServe.mockImplementation(async (_id: string, patch: object) => status({ ...patch } as Partial<ServeStatus>));
     mocks.serveToken.mockResolvedValue({ token: 'raw-token-1234' });
     mocks.rotateServeToken.mockResolvedValue({ token: 'rotated-token' });
+    mocks.mcpStatus.mockResolvedValue({ running: false, url: null, port: null, version: null, toolName: null });
+    mocks.startMcp.mockResolvedValue({
+      running: true,
+      url: 'http://127.0.0.1:41234/mcp',
+      port: 41234,
+      version: 3,
+      toolName: 'support_bot',
+    });
+    mocks.stopMcp.mockResolvedValue({ running: false, url: null, port: null, version: null, toolName: null });
     mocks.writeText.mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText: mocks.writeText }, configurable: true });
   });
@@ -263,17 +278,62 @@ describe('ServeCard', () => {
   it('refreshes when an agent.changed version/meta event arrives for this agent', async () => {
     renderCard();
     await flush();
-    expect(mocks.getServe).toHaveBeenCalledTimes(1);
+    const before = mocks.getServe.mock.calls.length;
     await act(async () => {
-      mocks.eventHandler?.({ type: 'agent.changed', agentId: 'support-bot', reason: 'version' });
+      const event = { type: 'agent.changed' as const, agentId: 'support-bot', reason: 'version' as const };
+      for (const handler of mocks.eventHandlers) handler(event);
     });
     await flush();
-    expect(mocks.getServe).toHaveBeenCalledTimes(2);
+    const after = mocks.getServe.mock.calls.length;
+    expect(after).toBeGreaterThan(before);
     await act(async () => {
-      mocks.eventHandler?.({ type: 'agent.changed', agentId: 'other-agent', reason: 'meta' });
-      mocks.eventHandler?.({ type: 'agent.changed', agentId: 'support-bot', reason: 'draft' });
+      for (const handler of mocks.eventHandlers) handler({ type: 'agent.changed', agentId: 'other-agent', reason: 'meta' });
+      for (const handler of mocks.eventHandlers) handler({ type: 'agent.changed', agentId: 'support-bot', reason: 'draft' });
     });
     await flush();
-    expect(mocks.getServe).toHaveBeenCalledTimes(2);
+    expect(mocks.getServe.mock.calls.length).toBe(after);
+  });
+
+  describe('MCP server (X03)', () => {
+    it('starts the MCP server and shows URL, tool and snippets', async () => {
+      const host = renderCard();
+      await flush();
+      expect(host.textContent).toContain('Start MCP server');
+      await act(async () => {
+        button(host, 'Start MCP server').click();
+      });
+      await flush();
+      expect(mocks.startMcp).toHaveBeenCalledWith('support-bot');
+      expect(host.textContent).toContain('http://127.0.0.1:41234/mcp');
+      expect(host.textContent).toContain('support_bot');
+      expect(host.textContent).toContain('Stop MCP server');
+      const pres = [...host.querySelectorAll('.serve-card-pre')].map((p) => p.textContent ?? '');
+      expect(pres.some((p) => p.includes('claude mcp add --transport http support-bot http://127.0.0.1:41234/mcp'))).toBe(true);
+      expect(pres.some((p) => p.includes('lousho mcp .lousho/agents/support-bot/published.yaml'))).toBe(true);
+      expect(pres.join('\n')).toContain('$LOUSHO_SERVE_TOKEN');
+      expect(pres.join('\n')).not.toContain('raw-token-1234');
+      expect(host.textContent).toContain('The port changes each time the server starts.');
+    });
+
+    it('stops the MCP server', async () => {
+      mocks.mcpStatus.mockResolvedValue({ running: true, url: 'http://127.0.0.1:41234/mcp', port: 41234, version: 3, toolName: 'support_bot' });
+      const host = renderCard();
+      await flush();
+      await act(async () => {
+        button(host, 'Stop MCP server').click();
+      });
+      await flush();
+      expect(mocks.stopMcp).toHaveBeenCalledWith('support-bot');
+      expect(host.textContent).toContain('Start MCP server');
+    });
+
+    it('disables Start with a title when nothing is published', async () => {
+      mocks.getServe.mockResolvedValue(status({ publishedVersion: null, enabled: false }));
+      const host = renderCard();
+      await flush();
+      const start = button(host, 'Start MCP server');
+      expect(start.disabled).toBe(true);
+      expect(start.title).toBe('Publish a version first');
+    });
   });
 });

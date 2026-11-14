@@ -986,6 +986,19 @@ export interface ServeTokenReveal {
 }
 
 /**
+ * `GET/POST/DELETE /agents/:id/serve/mcp`'s body (X03): the agent's MCP
+ * server state. `url`/`port` are `null` while stopped; `version` is the
+ * published version the running server pinned.
+ */
+export interface McpServeStatus {
+  running: boolean;
+  url: string | null;
+  port: number | null;
+  version: number | null;
+  toolName: string | null;
+}
+
+/**
  * `GET /agents/:id` (v2): the working copy plus its `meta.json`/`layout.json`
  * sidecars and the newest version number - the detail header's (A05) and
  * Author's (AA06) one-read view of an agent.
