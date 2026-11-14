@@ -64,10 +64,10 @@ export type { TriggerSpec, ChannelKind } from 'lousho/spec';
 export { CHANNEL_SECRET_KEYS } from 'lousho/spec';
 
 /** One `spec.abortListeners` entry — the SDK's own type (R03a), re-exported like the trigger types. */
-export type { AbortListenerSpec } from '../../../../../src/spec/v2/abortListeners';
+export type { AbortListenerSpec } from 'lousho/spec';
 
 /**
  * The `spec.evals` gate types (X01a): the SDK's own `evals` section, shared
  * with the publish gate runner the same way the trigger/abort types are.
  */
-export type { EvalGateSpec } from '../../../../../src/spec/v2/evals';
+export type { EvalGateSpec } from 'lousho/spec';
