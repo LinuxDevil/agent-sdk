@@ -30,6 +30,7 @@ import { asyncRoute, paramId, sendError } from '../http/routeUtils';
 import { workspaceOf } from '../workspace/middleware';
 import { withAgentLock } from '../storage/atomic';
 import { applySpecPatch, DraftMismatchError, NoDraftError } from '../storage/draftStore';
+import { ChainInvalidError } from '../triggers/chainTriggers';
 import { diffSpecs } from '../diff/specChange';
 import { specHash } from '../storage/specHash';
 
@@ -113,6 +114,10 @@ function sendDraftStoreError(res: Response, error: unknown): void {
   }
   if (error instanceof DraftMismatchError) {
     sendError(res, 409, STALE_DRAFT_MESSAGE, error.code);
+    return;
+  }
+  if (error instanceof ChainInvalidError) {
+    sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
     return;
   }
   throw error;

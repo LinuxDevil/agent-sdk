@@ -1,0 +1,16 @@
+/* CodeAgentCard (W08b): the A03 card's look, read-only - a solid left
+   border marks it as defined in code, distinct from the observed card's
+   dashed border (reported by the collector). */
+
+.agent-card--code {
+  border-left: 3px solid var(--border-strong);
+}
+
+.agent-card-code-path {
+  font: 500 11.5px/18px var(--font-mono);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}

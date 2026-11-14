@@ -86,6 +86,14 @@
   text-decoration: underline;
 }
 
+/* The all-workspaces row chip (W09b): the item's workspace, before the agent name. */
+.inbox-row-workspace {
+  min-height: 20px;
+  padding: 0 8px;
+  font-size: var(--fs-meta);
+  vertical-align: baseline;
+}
+
 .inbox-deadline-soon {
   color: var(--warning);
   font-weight: 600;

@@ -3,10 +3,12 @@ import { useMemo, type CSSProperties } from 'react';
 
 import { useMediaQuery } from '../../components/useMediaQuery';
 import { fmtAge, fmtDuration, fmtInt, fmtPercent } from '../../observe/format';
-import type { ObserveAgentInsights, ObserveAgentRow } from '../../observe/types';
+import type { ObserveAgentRow, ObserveAgentInsights } from '../../observe/types';
 import { DataTable, type Column } from '../../ui/DataTable';
 import { EmptyState } from '../../ui/EmptyState';
 import { StatusPill } from '../../ui/StatusPill';
+import { useWorkspacesMaybe } from '../../workspace/WorkspacesProvider';
+import { projectWorkspaceNames } from '../traces/workspaceProjects';
 
 /** A fleet row: the registry entry plus its last-24h p95 from insights. */
 interface FleetRow {
@@ -85,10 +87,27 @@ function DroppedCell({ dropped }: { dropped: number | null | undefined }) {
  * The fleet columns. Fixed widths for everything but the agent name, which takes the rest;
  * columns drop out as the table narrows, and `compact` (phone widths) slims the ones that stay
  * (health becomes its dot) so the name, health, runs and error rate still fit at 375 px.
+ * `workspaceNames` maps an agent's observe project to its Studio workspace (W09b);
+ * unmapped projects read "Elsewhere".
  */
-function fleetColumns(compact: boolean): Column<FleetRow>[] {
+function fleetColumns(compact: boolean, workspaceNames: ReadonlyMap<string, string>): Column<FleetRow>[] {
   return [
     { key: 'agent', header: 'Agent', render: ({ agent }) => <AgentCell agent={agent} /> },
+    {
+      key: 'workspace',
+      header: 'Workspace',
+      width: 120,
+      hideBelow: 860,
+      render: ({ agent }) => {
+        const name = agent.project === null ? undefined : workspaceNames.get(agent.project);
+        if (name === undefined) return <span className="value-missing">Elsewhere</span>;
+        return (
+          <span className="mon-workspace" title={name}>
+            {name}
+          </span>
+        );
+      },
+    },
     compact
       ? {
           // Dot only: the pill's label stays in the DOM, visually hidden, and is the dot's tooltip.
@@ -165,7 +184,9 @@ export function FleetTable({
   const p95 = new Map((insights ?? []).map((a) => [a.agent_id, a.p95_latency_ms]));
   const rows = agents.map((agent) => ({ agent, p95: p95.get(agent.agent_id) }));
   const compact = useMediaQuery(COMPACT_QUERY);
-  const columns = useMemo(() => fleetColumns(compact), [compact]);
+  const workspaces = useWorkspacesMaybe()?.list;
+  const workspaceNames = useMemo(() => projectWorkspaceNames(workspaces), [workspaces]);
+  const columns = useMemo(() => fleetColumns(compact, workspaceNames), [compact, workspaceNames]);
   return (
     <DataTable
       id="monitoring-fleet"

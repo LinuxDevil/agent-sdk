@@ -1,0 +1,21 @@
+[
+  {
+    "text": "",
+    "toolCalls": [
+      {
+        "id": "call_propose_1",
+        "name": "proposeAgent",
+        "args": {
+          "draft": {
+            "name": "Greeter",
+            "description": "Says hello to the user by name.",
+            "model": "openai/gpt-4o-mini",
+            "instructions": "Greet the user by name in one short sentence."
+          }
+        }
+      }
+    ]
+  },
+  { "text": "I drafted Greeter. Apply it when it looks right." },
+  { "text": "Saved." }
+]

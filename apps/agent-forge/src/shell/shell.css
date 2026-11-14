@@ -91,6 +91,23 @@
   background: var(--accent-solid);
   color: var(--on-accent);
 }
+.nav-workspace {
+  padding: var(--space-2) var(--space-2) var(--space-1);
+}
+.nav-workspace .btn {
+  width: 100%;
+  justify-content: flex-start;
+}
+.nav-workspace .btn > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-rail[data-collapsed] .nav-workspace .btn {
+  width: auto;
+  justify-content: center;
+}
 .nav-rail ul {
   list-style: none;
   margin: 0;

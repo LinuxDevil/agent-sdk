@@ -31,6 +31,7 @@
  */
 import type { Express, Request, Response } from 'express';
 import { asyncRoute, paramId, sendError } from '../http/routeUtils';
+import { ChainInvalidError } from '../triggers/chainTriggers';
 import { withAgentLock } from '../storage/atomic';
 import { SUGGESTION_ID_RE } from '../storage/suggestionStore';
 import type { SecretsStore } from '../secretsStore';
@@ -176,7 +177,16 @@ export function registerSuggestionRoutes(app: Express, globals: SuggestionRouteD
       const id = paramId(req);
       const sid = paramSid(req, res);
       if (sid === undefined) return;
-      const result = await applyPromptSuggestion(passDepsFor(ws, globals), id, sid);
+      let result: Awaited<ReturnType<typeof applyPromptSuggestion>>;
+      try {
+        result = await applyPromptSuggestion(passDepsFor(ws, globals), id, sid);
+      } catch (error) {
+        if (error instanceof ChainInvalidError) {
+          sendError(res, 400, error.message, error.code, error.cycle !== undefined ? { cycle: error.cycle } : undefined);
+          return;
+        }
+        throw error;
+      }
       switch (result.status) {
         case 'applied':
           res.status(201).json(result.version);

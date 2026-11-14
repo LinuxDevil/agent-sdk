@@ -1,0 +1,19 @@
+{
+  "schema": "lousho.page/1",
+  "id": "facebook-videos",
+  "name": "Facebook",
+  "description": "Makes a Facebook video from a topic.",
+  "harness": {
+    "extends": [
+      "workspace:platforms/facebook",
+      "workspace:content-types/educational",
+      "workspace:audiences/young-adults"
+    ]
+  },
+  "execution": {
+    "type": "single",
+    "single": {
+      "agent": "script"
+    }
+  }
+}

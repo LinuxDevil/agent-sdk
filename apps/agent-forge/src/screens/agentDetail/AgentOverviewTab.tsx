@@ -1,8 +1,8 @@
 import { ChevronRight, TriangleAlert } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { AgentSpecV2 } from 'lousho/spec';
 
-import type { TraceSummaryPayload } from '../../../shared/wireTypes';
+import type { AgentMeta, ChannelTriggerStatus, TraceSummaryPayload } from '../../../shared/wireTypes';
 import { agentTabPath, BUILT_AGENT_TABS } from '../agents/agentTabs';
 import { fmtAge, fmtDateTime, fmtDuration } from '../../observe/format';
 import { Card } from '../../ui/Card';
@@ -10,6 +10,7 @@ import { SkeletonRows } from '../../ui/Skeleton';
 import { StatusDot } from '../../ui/StatusBadge';
 import { statusKey } from '../../ui/status';
 import { useAgentDetail } from './AgentDetailContext';
+import { runtimeClient } from '../../runtime/runtimeClient';
 import {
   capabilityRows,
   missingRequirements,
@@ -28,6 +29,58 @@ const INSTRUCTIONS_LINES = 12;
 /** One `spec.triggers` entry, narrowed off the spec. */
 type TriggerSpec = NonNullable<AgentSpecV2['triggers']>[number];
 type WebhookTrigger = Extract<TriggerSpec, { type: 'webhook' }>;
+type ChannelTrigger = Extract<TriggerSpec, { type: 'channel' }>;
+
+/** The public URL a channel trigger listens on: `/hooks/<agentId>/channel/<kind>` (R08b). */
+function channelUrl(agentId: string, trigger: ChannelTrigger): string {
+  return `${window.location.origin}/hooks/${agentId}/channel/${trigger.channel}`;
+}
+
+/** A channel trigger's webhook-settings URL with Copy, plus its mount error when the host could not serve it. */
+function ChannelUrl({
+  agentId,
+  trigger,
+  status,
+}: {
+  agentId: string;
+  trigger: ChannelTrigger;
+  status: ChannelTriggerStatus | undefined;
+}): JSX.Element {
+  const url = channelUrl(agentId, trigger);
+  return (
+    <span className="agent-overview-webhook">
+      <code>{url}</code>
+      <button
+        type="button"
+        className="btn btn-sm btn-ghost"
+        onClick={() => void navigator.clipboard?.writeText(url)}
+      >
+        Copy
+      </button>
+      {status?.error !== null && status?.error !== undefined && (
+        <span className="agent-overview-channel-error">{status.error}</span>
+      )}
+    </span>
+  );
+}
+
+/** The agent's channel-trigger mount rows (`GET /agents/:id/triggers/status`), keyed by trigger id; empty until loaded. */
+function useChannelStatuses(agentId: string): Map<string, ChannelTriggerStatus> {
+  const [statuses, setStatuses] = useState<ChannelTriggerStatus[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    runtimeClient
+      .channelTriggerStatus(agentId)
+      .then((rows) => {
+        if (!cancelled) setStatuses(rows);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [agentId]);
+  return new Map(statuses.map((row) => [row.triggerId, row]));
+}
 
 /** The public URL a webhook trigger listens on: `/hooks/<agentId>` + the trigger's own `path`. */
 function webhookUrl(agentId: string, trigger: WebhookTrigger): string {
@@ -105,10 +158,34 @@ function CapabilitiesCard({ rows }: { rows: CapabilityRow[] }): JSX.Element {
   );
 }
 
-/** The Triggers card: one icon + line per trigger (webhooks also show their URL), or the empty copy. */
-function TriggersCard({ agentId, triggers }: { agentId: string; triggers: TriggerSpec[] }): JSX.Element {
+/**
+ * The off-state note (R09): shown when `meta.enabled` is false and the
+ * agent has triggers that would fire - auto-disabled agents get the
+ * failure-streak copy instead. Em dashes are part of the contract copy.
+ */
+function triggersOffNote(meta: AgentMeta): string {
+  return meta.disabledReason === 'auto_failure_streak'
+    ? 'Turned off after 5 failed triggered runs in a row. Fix the cause, then turn it back on.'
+    : 'Off — triggers won\'t fire. Turn the agent on to start them.';
+}
+
+/** The Triggers card: one icon + line per trigger (webhooks and channels also show their URL), or the empty copy. */
+function TriggersCard({
+  agentId,
+  triggers,
+  meta,
+}: {
+  agentId: string;
+  triggers: TriggerSpec[];
+  meta: AgentMeta;
+}): JSX.Element {
+  const channelStatuses = useChannelStatuses(agentId);
+  const hasFirableTriggers = triggers.some((trigger) => trigger.type !== 'chat');
   return (
     <Card title="Triggers">
+      {meta.enabled === false && hasFirableTriggers && (
+        <p className="triggers-off-note">{triggersOffNote(meta)}</p>
+      )}
       {triggers.length > 0 ? (
         <ul className="agent-overview-list">
           {triggers.map((trigger) => {
@@ -118,12 +195,18 @@ function TriggersCard({ agentId, triggers }: { agentId: string; triggers: Trigge
                 <line.icon size={14} strokeWidth={1.75} aria-hidden="true" />
                 <span>{line.text}</span>
                 {trigger.type === 'webhook' && <WebhookUrl agentId={agentId} trigger={trigger} />}
+                {trigger.type === 'channel' && (
+                  <ChannelUrl agentId={agentId} trigger={trigger} status={channelStatuses.get(trigger.id)} />
+                )}
               </li>
             );
           })}
         </ul>
       ) : (
         <p className="agent-overview-empty">No triggers. Runs start from the Test pane or chat.</p>
+      )}
+      {triggers.some((trigger) => trigger.type === 'channel') && (
+        <p className="agent-overview-empty">Channel runs show up in Runs and Traces.</p>
       )}
     </Card>
   );
@@ -260,7 +343,7 @@ export function AgentOverviewTab() {
         )}
       </Card>
       <CapabilitiesCard rows={capabilityRows(spec)} />
-      <TriggersCard agentId={record.id} triggers={spec.triggers ?? []} />
+      <TriggersCard agentId={record.id} triggers={spec.triggers ?? []} meta={record.meta} />
       <SafetyCard safety={safetySummary(spec)} />
       <RecentRunsCard agentId={record.id} />
     </div>

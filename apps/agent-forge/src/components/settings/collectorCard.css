@@ -1,0 +1,22 @@
+/* Settings → Collector card (W12): the status line and the token row. */
+
+.collector-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collector-status-text {
+  font-size: 13px;
+}
+
+.collector-token-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.collector-token-row .input {
+  flex: 1;
+  min-width: 0;
+}

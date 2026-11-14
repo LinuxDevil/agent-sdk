@@ -9,6 +9,7 @@ import { AgentRepo } from '../../storage/agentRepo';
 import { DraftStore } from '../../storage/draftStore';
 import { StudioEventBus } from '../../events/eventBus';
 import type { AgentHost } from '../../host/agentHost';
+import type { WorkspaceHostSelector } from '../../host/hostSelector';
 import { SuggestionStore } from '../../storage/suggestionStore';
 import { VersionStore } from '../../storage/versionStore';
 import { IdleVersioner } from '../../storage/idleVersioner';
@@ -17,6 +18,7 @@ import { PassRunner } from '../../passes/passRunner';
 import type { InboxService } from '../../inbox/inboxService';
 import type { TriggerHost } from '../../triggers/triggerHost';
 import type { CronTriggers } from '../../triggers/cronTriggers';
+import type { ChannelTriggers } from '../../triggers/channelTriggers';
 import { requestedWorkspaceId, workspaceMiddleware, workspaceOf } from '../middleware';
 
 const emptyStore: LegacyAgentStore = {
@@ -37,6 +39,7 @@ function ctx(id: string): WorkspaceContext {
     idleVersioner: new IdleVersioner({ capture: async () => {} }),
     suggestions: new SuggestionStore(repo),
     host: {} as AgentHost,
+    hostSelector: {} as WorkspaceHostSelector,
     runs: {} as RunManager,
     chatTriggers: new TriggerRegistry(),
     events: new StudioEventBus(),
@@ -44,6 +47,8 @@ function ctx(id: string): WorkspaceContext {
     inbox: {} as InboxService,
     triggers: {} as TriggerHost,
     cron: {} as CronTriggers,
+    dispose: async () => {},
+    channels: {} as ChannelTriggers,
   };
 }
 
@@ -123,6 +128,7 @@ describe('workspaceMiddleware (resolver with a second workspace)', () => {
     const resolver: WorkspaceResolver = {
       resolve: async (id) => (id === 'other-abc123' ? other : id === undefined ? main : undefined),
       defaultId: () => main.ref.id,
+      retain: () => () => {},
     };
     const res = await request(appWith(resolver)).get('/echo?ws=other-abc123');
     expect(res.status).toBe(200);
