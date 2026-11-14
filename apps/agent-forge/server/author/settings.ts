@@ -16,6 +16,7 @@ import { sendError } from '../http/routeUtils';
 import type { SecretsStore } from '../secretsStore';
 import type { SettingsStore } from '../settingsStore';
 import { resolveAuthorProvider } from './provider';
+import { authorScriptActive } from './authorScript';
 
 /** The Author's out-of-the-box model choices (PLAN 16 decision 4). */
 // fallow-ignore-next-line unused-export -- part of the author settings API the AA23 Settings card consumes
@@ -52,7 +53,8 @@ export function writeAuthorSettings(store: SettingsStore, patch: Partial<AuthorS
 function authorSettingsPayload(store: SettingsStore, secrets: SecretsStore): AuthorSettingsPayload {
   const settings = readAuthorSettings(store);
   const resolved = resolveAuthorProvider(settings.model, secrets);
-  return resolved.ok
+  // X08: the e2e script provider needs no key, so the setup card stays hidden.
+  return resolved.ok || authorScriptActive()
     ? { ...settings, ready: true }
     : { ...settings, ready: false, missingKeyFor: resolved.provider };
 }

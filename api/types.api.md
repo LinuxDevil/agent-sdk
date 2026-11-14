@@ -27,6 +27,7 @@ export interface AgentConfig {
     prompt?: string;
     // (undocumented)
     settings?: AgentSettings;
+    spanAttributes?: Readonly<Record<string, string | number>>;
     // (undocumented)
     tools?: Record<string, ToolConfiguration>;
 }

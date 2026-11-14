@@ -17,23 +17,28 @@ import { viewFor } from './kinds';
  */
 
 /** The collapse/expand toggle in the group's head: ChevronDown while expanded, ChevronRight while collapsed. */
-function CollapseButton({ node, collapsed }: { node: GraphNode; collapsed: boolean }): JSX.Element {
+function CollapseButton({ node, collapsed, readOnly }: { node: GraphNode; collapsed: boolean; readOnly?: boolean }): JSX.Element {
   const { setGraph, proposal } = useAppState();
   const key = (node.data as AgentData).subagentKey ?? node.id;
   const Icon = collapsed ? ChevronRight : ChevronDown;
+  // Read-only while the proposal overlay is shown (C21) or on a canvas that
+  // does not own the graph (X06b): collapsing would edit a document that is
+  // not the one on screen.
+  const blocked = proposal !== undefined || readOnly === true;
+  const blockedTitle =
+    proposal !== undefined ? 'Hide the proposal to edit' : readOnly === true ? 'This canvas is read-only' : undefined;
   return (
     <button
       type="button"
       className="btn btn-ghost btn-icon btn-sm rf-group-toggle"
       aria-expanded={!collapsed}
-      // Read-only while the proposal overlay is shown (C21): collapsing would edit the graph.
-      disabled={proposal !== undefined}
-      title={proposal !== undefined ? 'Hide the proposal to edit' : undefined}
+      disabled={blocked}
+      title={blockedTitle}
       aria-label={`${collapsed ? 'Expand' : 'Collapse'} ${key}`}
       onClick={(event) => {
         // Keep the click from selecting the node underneath the button.
         event.stopPropagation();
-        if (proposal !== undefined) return;
+        if (blocked) return;
         setGraph((g) => setCollapsed(g, node.id, !collapsed));
       }}
     >
@@ -46,7 +51,7 @@ function AgentGroupNodeImpl({ data, selected }: NodeProps) {
   const nodeData = data as unknown as CanvasNodeData;
   const { graphNode } = nodeData;
   const collapsed = graphNode.collapsed === true;
-  const toggle = <CollapseButton node={graphNode} collapsed={collapsed} />;
+  const toggle = <CollapseButton node={graphNode} collapsed={collapsed} readOnly={nodeData.readOnly} />;
 
   if (collapsed) {
     const inside = nodeData.insideCount ?? 0;

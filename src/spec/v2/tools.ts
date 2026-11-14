@@ -36,18 +36,26 @@ export interface ToolRefCommon {
 /** The credentialed integrations an `{ integration }` ref names (S05). */
 export type IntegrationName = 'github' | 'jira' | 'slack' | 'email';
 
+/** The credential keys one integration takes: `required` must be set, `optional` may be. */
+export interface IntegrationCredentialKeys {
+  /** Credential keys that must be set for the integration to work. */
+  required: readonly string[];
+  /** Credential keys that may be set. */
+  optional: readonly string[];
+}
+
 /**
  * The credential keys each {@link IntegrationName} takes: `required` keys
  * must be set, `optional` keys may be. A value is a literal string or a
  * SecretRef; {@link refineIntegration} reports every key that is missing or
  * unknown by name.
  */
-export const INTEGRATION_CREDENTIALS = {
+export const INTEGRATION_CREDENTIALS: Record<IntegrationName, IntegrationCredentialKeys> = {
   github: { required: ['token', 'owner', 'repo'], optional: [] },
   jira: { required: ['baseUrl', 'email', 'apiToken'], optional: [] },
   email: { required: ['apiKey'], optional: ['apiUrl', 'defaultFrom'] },
   slack: { required: ['webhookUrl'], optional: [] },
-} as const satisfies Record<IntegrationName, { required: readonly string[]; optional: readonly string[] }>;
+};
 
 /**
  * The credential keys that hold a secret. A literal string there is refused:

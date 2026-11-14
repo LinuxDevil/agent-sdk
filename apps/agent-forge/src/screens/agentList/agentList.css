@@ -39,3 +39,23 @@
   gap: var(--space-2);
   min-width: 0;
 }
+
+/* W06b: the all-workspaces note for workspaces the aggregate could not read. */
+.agent-list-skipped {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* W07b: the "Elsewhere" group heading over observed agents no workspace claims. */
+.agent-list-group {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.agent-list-group-hint {
+  margin: 0 0 var(--space-3);
+  color: var(--text-muted);
+  font-size: 12px;
+}

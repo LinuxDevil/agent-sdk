@@ -51,7 +51,7 @@ function clip(text: string): string {
 type OmitEach<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 /** An item before `agentName` is resolved (the spec read happens once per agent that actually has items). */
-type UnnamedInboxItem = OmitEach<InboxItem, 'agentName'>;
+export type UnnamedInboxItem = OmitEach<InboxItem, 'agentName'>;
 
 /** The `expiresAt` sort key: only approval/question rows carry one; everything else sorts after them. */
 function expiresAtOf(item: InboxItem): string | null {
@@ -59,7 +59,7 @@ function expiresAtOf(item: InboxItem): string | null {
 }
 
 /** Contract order: soonest deadline first (no deadline last), then newest `at` first. */
-function compareInboxItems(a: InboxItem, b: InboxItem): number {
+export function compareInboxItems(a: InboxItem, b: InboxItem): number {
   const ea = expiresAtOf(a);
   const eb = expiresAtOf(b);
   if (ea !== eb) {
@@ -125,15 +125,15 @@ async function approvalItem(
 }
 
 /** The agent's pending draft as an inbox row, or none. */
-async function draftItem(deps: InboxServiceDeps, agentId: string): Promise<UnnamedInboxItem[]> {
-  const draft = await deps.drafts.current(agentId);
+async function draftItem(drafts: DraftStore, workspaceId: string, agentId: string): Promise<UnnamedInboxItem[]> {
+  const draft = await drafts.current(agentId);
   if (draft === undefined || draft.status !== 'pending') return [];
   return [
     {
       id: `draft:${agentId}:${draft.id}`,
       kind: 'draft',
       agentId,
-      workspaceId: deps.workspaceId,
+      workspaceId,
       at: draft.createdAt,
       title: 'Pending change',
       detail: clip(draft.reason),
@@ -145,8 +145,8 @@ async function draftItem(deps: InboxServiceDeps, agentId: string): Promise<Unnam
 }
 
 /** The agent's open `prompt_edit` suggestions as inbox rows. */
-async function suggestionItems(deps: InboxServiceDeps, agentId: string): Promise<UnnamedInboxItem[]> {
-  const stored = await deps.suggestions.list(agentId);
+async function suggestionItems(suggestions: SuggestionStore, workspaceId: string, agentId: string): Promise<UnnamedInboxItem[]> {
+  const stored = await suggestions.list(agentId);
   const promptEdits = stored.filter((item): item is Extract<StoredSuggestion, { kind: 'prompt_edit' }> => item.kind === 'prompt_edit');
   return promptEdits
     .filter((item) => item.status === 'open')
@@ -154,13 +154,50 @@ async function suggestionItems(deps: InboxServiceDeps, agentId: string): Promise
       id: `suggestion:${agentId}:${item.id}`,
       kind: 'suggestion' as const,
       agentId,
-      workspaceId: deps.workspaceId,
+      workspaceId,
       at: item.createdAt,
       title: 'Prompt suggestion',
       detail: clip(item.expectedSaving),
       suggestionId: item.id,
       confidence: item.confidence,
     }));
+}
+
+/** `spec.name` per agent that produced an item; agents whose spec is gone fall back to their id. */
+export async function agentNamesOf(repo: AgentRepo, items: readonly UnnamedInboxItem[]): Promise<Map<string, string>> {
+  const ids = [...new Set(items.map((item) => item.agentId))];
+  const entries = await Promise.all(
+    ids.map(async (id) => [id, (await repo.readSpec(id))?.name ?? id] as const)
+  );
+  return new Map(entries);
+}
+
+/** Names resolved + contract-sorted - the tail every item source shares. */
+async function finishItems(repo: AgentRepo, unnamed: UnnamedInboxItem[]): Promise<InboxItem[]> {
+  const names = await agentNamesOf(repo, unnamed);
+  return unnamed
+    .map((item) => ({ ...item, agentName: names.get(item.agentId) ?? item.agentId }) as InboxItem)
+    .sort(compareInboxItems);
+}
+
+/**
+ * Every pending draft across `repo`'s agents as named inbox rows (W09a):
+ * the disk-only half of the inbox a cold workspace can answer without a
+ * RunManager - `InboxService.list` and the `?ws=all` aggregate share it.
+ */
+export async function draftInboxItems(repo: AgentRepo, drafts: DraftStore, workspaceId: string): Promise<InboxItem[]> {
+  const unnamed = (
+    await Promise.all(repo.listIds().map((agentId) => draftItem(drafts, workspaceId, agentId)))
+  ).flat();
+  return finishItems(repo, unnamed);
+}
+
+/** Every open `prompt_edit` suggestion across `repo`'s agents, named and sorted like {@link draftInboxItems}. */
+export async function suggestionInboxItems(repo: AgentRepo, suggestions: SuggestionStore, workspaceId: string): Promise<InboxItem[]> {
+  const unnamed = (
+    await Promise.all(repo.listIds().map((agentId) => suggestionItems(suggestions, workspaceId, agentId)))
+  ).flat();
+  return finishItems(repo, unnamed);
 }
 
 /** This workspace's undismissed alerts as inbox rows (the store is global; `list()` already drops dismissed). */
@@ -171,7 +208,7 @@ async function alertItems(deps: InboxServiceDeps): Promise<UnnamedInboxItem[]> {
     .map((alert) => alertItem(deps.workspaceId, alert));
 }
 
-function alertItem(workspaceId: string, alert: InboxAlert): UnnamedInboxItem {
+export function alertItem(workspaceId: string, alert: InboxAlert): UnnamedInboxItem {
   return {
     id: `alert:${alert.agentId}:${alert.id}`,
     kind: 'alert',
@@ -197,22 +234,21 @@ export class InboxService {
   /** Every item waiting on the user, contract-sorted; `agentName` resolved from each item's spec (the id itself when the spec is gone). */
   async list(): Promise<InboxItem[]> {
     const agentIds = this.deps.repo.listIds();
-    const perAgent = await Promise.all(
-      agentIds.map(async (agentId) => {
-        const status = this.deps.runManager.status(agentId);
-        const [approvals, drafts, suggestions] = await Promise.all([
-          approvalItem(this.deps, agentId, status),
-          draftItem(this.deps, agentId),
-          suggestionItems(this.deps, agentId),
-        ]);
-        return [...approvals, ...drafts, ...suggestions];
-      })
+    const approvals = (
+      await Promise.all(
+        agentIds.map(async (agentId) => approvalItem(this.deps, agentId, this.deps.runManager.status(agentId)))
+      )
+    ).flat();
+    const [drafts, suggestions, alerts] = await Promise.all([
+      draftInboxItems(this.deps.repo, this.deps.drafts, this.deps.workspaceId),
+      suggestionInboxItems(this.deps.repo, this.deps.suggestions, this.deps.workspaceId),
+      alertItems(this.deps),
+    ]);
+    const names = await agentNamesOf(this.deps.repo, [...approvals, ...alerts]);
+    const named = [...approvals, ...alerts].map(
+      (item) => ({ ...item, agentName: names.get(item.agentId) ?? item.agentId }) as InboxItem
     );
-    const unnamed = [...perAgent.flat(), ...(await alertItems(this.deps))];
-    const names = await this.agentNames(unnamed);
-    return unnamed
-      .map((item) => ({ ...item, agentName: names.get(item.agentId) ?? item.agentId }) as InboxItem)
-      .sort(compareInboxItems);
+    return [...named, ...drafts, ...suggestions].sort(compareInboxItems);
   }
 
   /** `list().length` - what `inbox.count` publishes. */
@@ -277,14 +313,5 @@ export class InboxService {
       void this.refresh().catch(() => undefined);
     }, REFRESH_DEBOUNCE_MS);
     this.timer.unref?.();
-  }
-
-  /** `spec.name` per agent that produced an item; agents whose spec is gone fall back to their id. */
-  private async agentNames(items: readonly UnnamedInboxItem[]): Promise<Map<string, string>> {
-    const ids = [...new Set(items.map((item) => item.agentId))];
-    const entries = await Promise.all(
-      ids.map(async (id) => [id, (await this.deps.repo.readSpec(id))?.name ?? id] as const)
-    );
-    return new Map(entries);
   }
 }

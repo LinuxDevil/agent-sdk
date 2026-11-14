@@ -67,6 +67,12 @@ export interface TriggerHostDeps {
   log: (agentId: string, message: string, level?: 'info' | 'warn' | 'error') => void;
   /** Queued-request cap per agent; the in-flight run does not count. Default 20. */
   queueCap?: number;
+  /**
+   * Called once per agent at the end of every `reload()` pass over it
+   * (R08b: the channel mount follows spec changes). Fire-and-forget -
+   * the hook's own errors are its caller's problem, never the reload's.
+   */
+  onReload?: (agentId: string) => void;
 }
 
 interface AgentTriggers {
@@ -140,6 +146,11 @@ export class TriggerHost {
         }
       }
       // A vanished trigger cannot be the in-flight one (its run already started); leave it.
+      try {
+        this.deps.onReload?.(id);
+      } catch {
+        // A reload hook must never break the host's own reload.
+      }
     }
   }
 

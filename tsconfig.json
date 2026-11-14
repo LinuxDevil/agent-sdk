@@ -33,6 +33,7 @@
       "lousho/workspaces": ["./src/workspaces/index.ts"],
       "lousho/workspaces/client": ["./src/workspaces/client/index.ts"],
       "lousho/mcp": ["./src/tools/mcp/index.ts"],
+      "lousho/observe": ["./src/observe/index.ts"],
       "lousho/types": ["./src/types/index.ts"],
       "lousho/spec": ["./src/spec/v2/index.ts"],
       "lousho/testing": ["./src/testing/index.ts"],

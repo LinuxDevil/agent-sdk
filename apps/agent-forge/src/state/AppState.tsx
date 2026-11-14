@@ -24,6 +24,7 @@ import type { NodeStates } from './nodeStateReducer';
 import { useAgentDocument, type SetGraphOptions } from './useAgentDocument';
 import { useNodeSpans } from './useNodeSpans';
 import { agentRouteId } from '../screens/agents/agentRoute';
+import { useWorkspaces } from '../workspace/WorkspacesProvider';
 import { useAgentStatuses, useAgentStream } from './useAgentStream';
 import { useActiveProfile, useChatControls, useRunControls } from './useAgentControls';
 import { usePins } from './usePins';
@@ -140,6 +141,10 @@ interface AppState {
   agents: AgentListItem[];
   /** False until the first `agents` fetch (and opening the initial agent) has finished, failed included. */
   agentsLoaded: boolean;
+  /** Re-fetches the saved-agent list from the active workspace (W04b calls it on every workspace switch). */
+  refreshAgents: () => Promise<void>;
+  /** The workspace `agents` was fetched for; `undefined` before the first successful fetch (W04b). */
+  agentsWorkspaceId: string | undefined;
   /** Loads a different agent's graph into the canvas - a full state swap, not a visual pan. */
   switchAgent: (id: string) => Promise<void>;
   /** Creates a new agent from a seed template and switches to it. */
@@ -340,6 +345,7 @@ function agentActionsClearing(doc: AgentDocument, hideProposal: () => void) {
   };
 }
 
+// fallow-ignore-next-line complexity
 export function AppStateProvider({ children }: { children: ReactNode }) {
   // Agents live in the server workspace (.lousho/agents/), not the browser.
   const store = useMemo(() => new HttpAgentStore(runtimeClient), []);
@@ -349,6 +355,18 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   const [initialAgentId] = useState(() => agentRouteId(window.location.hash));
   const doc = useAgentDocument(store, initialAgentId);
   const { agentId, spec } = doc;
+  // W04b: the saved-agent list is per workspace - refetch it whenever the
+  // active workspace changes (the URL's `#/w/<id>/…`, else the launch id).
+  // useAgentRouteSync then re-judges the URL against the fresh list and
+  // opens the agent it names (with the usual unsaved-changes guard).
+  const { activeId } = useWorkspaces();
+  const workspaceSeen = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (activeId === undefined) return;
+    if (workspaceSeen.current === activeId) return;
+    workspaceSeen.current = activeId;
+    void doc.refreshAgents();
+  }, [activeId]);
   const nodeSpans = useNodeSpans();
   const overlay = useProposalOverlay(doc);
   const { saveVersion, latestVersionRef } = useSaveVersion(doc);

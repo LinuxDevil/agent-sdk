@@ -77,15 +77,16 @@ class GatedSteerProvider implements LLMProvider {
     this.calls.push(options);
     const block = this.blockCalls > 0;
     if (block) this.blockCalls -= 1;
-    const self = this;
-    const deltas = self.mode === 'after-delta' ? ['Working on it. ', 'All done.'] : ['All done.'];
+    const mode = this.mode;
+    const waitGate = this.waitGate.bind(this);
+    const deltas = mode === 'after-delta' ? ['Working on it. ', 'All done.'] : ['All done.'];
     const fullStream = (async function* (): AsyncGenerator<StreamChunk> {
       let emitted = false;
       for (const delta of deltas) {
         // 'before-output' parks before the first delta; 'after-delta'
         // parks between the first and the rest.
-        if (block && (self.mode === 'before-output' || emitted)) {
-          await self.waitGate(options.signal);
+        if (block && (mode === 'before-output' || emitted)) {
+          await waitGate(options.signal);
         }
         emitted = true;
         yield { type: 'text-delta', textDelta: delta };
@@ -97,7 +98,7 @@ class GatedSteerProvider implements LLMProvider {
       textStream: (async function* () {
         yield* deltas;
       })(),
-      text: Promise.resolve(self.text()),
+      text: Promise.resolve(this.text()),
       usage: Promise.resolve(USAGE),
       finishReason: Promise.resolve('stop'),
       toolCalls: Promise.resolve([]),

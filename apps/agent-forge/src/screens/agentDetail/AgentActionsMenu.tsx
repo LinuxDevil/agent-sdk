@@ -10,7 +10,8 @@ import { errorMessage } from '../../components/errorMessage';
 import { ConfirmDialog } from '../../ui/Dialog';
 import { Menu, type MenuEntry } from '../../ui/Menu';
 import { useToast } from '../../ui/Toast';
-import { agentTabPath } from '../agents/agentTabs';
+import { agentListPath, agentTabPath } from '../agents/agentTabs';
+import { activeWorkspace } from '../../workspace/activeWorkspace';
 import { ExportSheet } from './export/ExportSheet';
 
 /**
@@ -59,7 +60,7 @@ export function AgentActionsMenu({ record }: { record: AgentRecord }): JSX.Eleme
       // The builder must not keep the deleted agent open; 'untitled-agent' is the document's fresh default.
       if (agentId === id) await switchAgent('untitled-agent');
       // Navigate before the toast so the detail screen unmounts without refetching the deleted record.
-      navigate('/agents');
+      navigate(agentListPath(activeWorkspace()));
       toast.show({ message: 'Agent deleted', tone: 'success' });
       setConfirmOpen(false);
     } catch (error) {

@@ -12,21 +12,31 @@ import { HeaderLabels } from './LabelsEditor';
 import { AgentDetailContext, type AgentDetailContextValue } from './AgentDetailContext';
 import { useAgentRecord } from './useAgentRecord';
 import { TAB_SCREENS } from './tabScreens';
-import { isAgentTab, type AgentTab } from '../agents/agentTabs';
+import { isAgentTab, agentListPath, type AgentTab } from '../agents/agentTabs';
+import { activeWorkspace } from '../../workspace/activeWorkspace';
+import { HostBanner } from '../../components/HostBanner';
+import { hostReadOnlyTitle, useHostStatus } from '../../state/useHostStatus';
 
 /**
- * `#/agents/:id/:tab` - the agent detail screen (A05). Renders bare (no
- * ScreenFrame): the detail header is the page's header. `useScreen` has
- * already sent unbuilt or unknown tabs to the canvas URL, so the tab here is
- * always one `TAB_SCREENS` knows; anything else falls back to the overview.
+ * `#/w/:ws/agents/:id/:tab` - the agent detail screen (A05, workspace-scoped
+ * since W04b). Renders bare (no ScreenFrame): the detail header is the
+ * page's header. `useScreen`/`agentRedirect` has already sent unbuilt or
+ * unknown tabs to the canvas URL, so the tab here is always one
+ * `TAB_SCREENS` knows; anything else falls back to the overview.
  */
 export function AgentDetailRoute() {
   const { path } = useRoute();
-  const route = matchRoute(`#${path}`, ['/agents/:id/:tab']);
+  // The legacy '/agents/:id/:tab' shape is in the list too: `agentRedirect`
+  // rewrites it, but a render can land a frame before the redirect does.
+  const route = matchRoute(`#${path}`, ['/w/:ws/agents/:id/:tab', '/agents/:id/:tab']);
   const id = route?.params.id ?? '';
   const tabParam = route?.params.tab;
   const tab: AgentTab = tabParam !== undefined && isAgentTab(tabParam) ? tabParam : 'overview';
   const state = useAgentRecord(id);
+  // W11c: the workspace's host status - the banner under the header and
+  // the read-only title the Run/save controls disable with. Hooks run
+  // before the early returns below.
+  const host = useHostStatus(route?.params.ws ?? activeWorkspace());
 
   if (state.loading && state.record === undefined) {
     return (
@@ -76,7 +86,7 @@ export function AgentDetailRoute() {
             title="Agent not found"
             hint={`No agent called “${id}” in this workspace.`}
             action={
-              <a className="btn" href="#/agents">
+              <a className="btn" href={`#${agentListPath(activeWorkspace())}`}>
                 Back to agents
               </a>
             }
@@ -87,7 +97,8 @@ export function AgentDetailRoute() {
   }
 
   const record = state.record;
-  const context: AgentDetailContextValue = { record, refresh: state.refresh, setRecord: state.setRecord };
+  const readOnlyTitle = hostReadOnlyTitle(host.status);
+  const context: AgentDetailContextValue = { record, refresh: state.refresh, setRecord: state.setRecord, readOnlyTitle };
   const TabScreen = TAB_SCREENS[tab];
   const content: ReactNode = TabScreen ? <TabScreen /> : null;
 
@@ -101,7 +112,9 @@ export function AgentDetailRoute() {
           labelsItem={<HeaderLabels record={record} />}
           notices={<AutoDisableNotice record={record} />}
           menu={<AgentActionsMenu record={record} />}
+          readOnlyTitle={readOnlyTitle}
         />
+        <HostBanner status={host.status} restarting={host.restarting} restartError={host.restartError} onRestart={() => void host.restart()} />
         <main className="screen-main" id="agent-tab-panel">
           {content}
         </main>

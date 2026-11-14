@@ -1,0 +1,75 @@
+/* X06b code-agent screen: banner, warnings and the read-only canvas+inspector row. */
+
+.code-agent-screen {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.code-agent-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  margin: var(--space-3) var(--space-4) 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  color: var(--info);
+  background: var(--info-soft);
+  border: 1px solid var(--info-border);
+  border-radius: var(--radius);
+}
+.code-agent-banner svg {
+  flex: none;
+}
+.code-agent-banner code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.code-agent-warnings {
+  flex: none;
+  margin: var(--space-2) var(--space-4) 0;
+  padding-left: var(--space-5);
+  color: var(--warning);
+  font-size: 13px;
+}
+.code-agent-warnings li + li {
+  margin-top: var(--space-1);
+}
+
+.code-agent-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.code-agent-skeleton {
+  margin: var(--space-4);
+  align-self: flex-start;
+}
+
+/* Canvas + docked Inspector, the builder's `.shell` grid minus the rail. */
+.code-agent-canvas {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 288px;
+}
+.code-agent-canvas .canvas-wrap {
+  min-height: 0;
+}
+
+@media (max-width: 860px) {
+  /* Below the builder's narrow breakpoint the Inspector folds away: the
+     canvas takes the row. Selection still updates nothing visible, which is
+     acceptable for a read-only view. */
+  .code-agent-canvas {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .code-agent-canvas .inspector {
+    display: none;
+  }
+}

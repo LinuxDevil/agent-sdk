@@ -120,6 +120,8 @@ const FILTERS: Record<ScreenId, string> = {
   agents: '',
   agentList: '',
   agentDetail: '',
+  observedAgent: '',
+  codeAgent: '',
   inbox: '',
   // The shipped templates' categories are lowercase slugs ('engineering', 'support', …).
   templates: '?category=engineering',
@@ -239,8 +241,10 @@ const CONTROLS: Record<string, (main: Locator, page: Page) => Promise<void>> = {
 CONTROLS['/hub/:namespace'] = CONTROLS['/hub'];
 // `/agents/:id` redirects to the canvas tab, and an unbuilt `/agents/:id/:tab`
 // does too - both land on the same builder view the crumbs check covers.
-CONTROLS['/agents/:id/canvas'] = CONTROLS['/agents/:id'];
-CONTROLS['/agents/:id/:tab'] = CONTROLS['/agents/:id'];
+// '/agents/:id…' are legacy redirects into the launch workspace; the '/w/' rows land on the
+// same builder/detail views. '/w/:ws/agents' is the per-workspace list (no filters, like '/agents').
+for (const p of ['/agents/:id', '/agents/:id/:tab', '/w/:ws/agents/:id', '/w/:ws/agents/:id/canvas', '/w/:ws/agents/:id/:tab'])
+  CONTROLS[p] = CONTROLS['/agents/:id'];
 
 /**
  * Routes with no filter controls of their own to re-check (the reload still
@@ -248,6 +252,7 @@ CONTROLS['/agents/:id/:tab'] = CONTROLS['/agents/:id'];
  */
 const NO_CONTROLS = new Set([
   '/agents', // the agents list has no filters
+  '/w/:ws/agents', // one workspace's agents list; no filters
   '/threads/:sessionId', // a thread's turns; the list's filters only ride along in the URL
   '/evals/queues/:id', // one queue's review pane; no URL-backed controls beyond the id
   '/prompts', // the registry list has no filters
@@ -268,6 +273,16 @@ async function screenIdentity(page: Page) {
 /** The saved agent `#/agents/e2e-agent` names (an unknown id falls back to `#/agents` by design). */
 const SAVED_AGENT = 'e2e-agent';
 const API = { headers: { 'x-lousho-studio-token': 'e2e-studio-token' } };
+
+/** The launch workspace's id; route examples carry `e2e-000000` as its placeholder (W04b). */
+async function launchWorkspaceId(page: Page): Promise<string> {
+  const res = await page.request.get('/workspace', API);
+  return ((await res.json()) as { workspace: { id: string } }).workspace.id;
+}
+/** `example` with the workspace placeholder swapped for the real launch id. */
+async function scopedExample(page: Page, example: string): Promise<string> {
+  return example.includes('e2e-000000') ? example.replaceAll('e2e-000000', await launchWorkspaceId(page)) : example;
+}
 
 async function ensureSavedAgent(page: Page) {
   const ids = ((await (await page.request.get('/agents', API)).json()) as { id: string }[]).map((a) => a.id);
@@ -292,17 +307,19 @@ for (const { pattern, screen, example } of ROUTES) {
     expect(controls !== undefined && NO_CONTROLS.has(pattern), `route ${pattern} is in both CONTROLS and NO_CONTROLS`).toBe(false);
 
     if (screen === 'agents' || screen === 'agentDetail') await ensureSavedAgent(page);
-    const hash = `#${example}${filters}`;
-    await openApp(page, `${example}${filters}`);
+    const scoped = await scopedExample(page, example);
+    const hash = `#${scoped}${filters}`;
+    await openApp(page, `${scoped}${filters}`);
     const main = page.getByRole('main');
     await controls?.(main, page);
     const before = await screenIdentity(page);
     const settled = new URL(page.url()).hash;
-    // `/agents/:id` (the legacy builder URL) and an unbuilt `/agents/:id/:tab` redirect
-    // (replace) to the canvas tab; every other URL stays as given, filters kept.
-    if (pattern === '/agents/:id') expect(settled).toBe(`#${example}/canvas${filters}`);
-    else if (pattern === '/agents/:id/:tab')
-      expect(settled).toBe(`#${example.slice(0, example.lastIndexOf('/'))}/canvas${filters}`);
+    // Legacy '/agents/:id…' URLs redirect (replace) into the launch workspace; '/w/<ws>/agents/:id'
+    // lands on its canvas tab; every other URL stays as given, filters kept.
+    const ws = await launchWorkspaceId(page);
+    if (pattern === '/agents/:id') expect(settled).toBe(`#${`/w/${ws}`}${example}/canvas${filters}`);
+    else if (pattern === '/agents/:id/:tab') expect(settled).toBe(`#${`/w/${ws}`}${example}${filters}`);
+    else if (pattern === '/w/:ws/agents/:id') expect(settled).toBe(`#${scoped}/canvas${filters}`);
     else expect(settled).toBe(hash);
 
     await page.reload();
@@ -320,7 +337,7 @@ for (const width of [860, 375]) {
   for (const { pattern, example } of ROUTES) {
     test(`${pattern} at ${width}px: nav is a drawer, no sideways scroll`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
-      await openApp(page, example);
+      await openApp(page, await scopedExample(page, example));
       await page.waitForLoadState('networkidle');
       expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBe(0);
 
