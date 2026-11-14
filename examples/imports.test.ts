@@ -38,13 +38,15 @@ describe('example imports', () => {
     // dist/<name> -> src/<name> derivation does not hold for `lousho/spec`:
     // src/spec/index.ts is already the v1 spec barrel, so the browser-safe
     // entry lives at src/spec/v2/index.ts while still building dist/spec/.
-    const SOURCE_OVERRIDES: Record<string, string[]> = { 'lousho/spec': ['./src/spec/v2/index.ts'] };
+    const SOURCE_OVERRIDES: Record<string, string[]> = { [`${pkg.name}/spec`]: ['./src/spec/v2/index.ts'] };
     const expected: Record<string, string[]> = {
       ...Object.fromEntries(
-        Object.entries<{ require: { types: string } }>(pkg.exports).map(([subpath, entry]) => [
-          subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
-          [entry.require.types.replace(/^\.\/dist\//, './src/').replace(/\.d\.ts$/, '.ts')],
-        ])
+        Object.entries<{ require?: { types?: string } }>(pkg.exports)
+          .filter((entry): entry is [string, { require: { types: string } }] => typeof entry[1].require?.types === 'string')
+          .map(([subpath, entry]) => [
+            subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
+            [entry.require.types.replace(/^\.\/dist\//, './src/').replace(/\.d\.ts$/, '.ts')],
+          ])
       ),
       ...SOURCE_OVERRIDES,
     };

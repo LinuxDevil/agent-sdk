@@ -1,0 +1,30 @@
+{
+  "schema": "lousho.workspace/1",
+  "id": "marketing",
+  "name": "Marketing",
+  "version": "1.0.0",
+  "description": "Short videos for social channels.",
+  "domain": "marketing",
+  "mainAgent": {
+    "dir": "./main-agent",
+    "inheritsShared": true
+  },
+  "pages": [
+    "instagram-videos",
+    "facebook-videos"
+  ],
+  "defaults": {
+    "model": "mock/mock-model",
+    "limits": {
+      "maxConcurrentPages": 3,
+      "maxCostUsdPerRun": 5
+    }
+  },
+  "budget": {
+    "mode": "shared"
+  },
+  "improve": {
+    "enabled": true,
+    "healer": "shared"
+  }
+}

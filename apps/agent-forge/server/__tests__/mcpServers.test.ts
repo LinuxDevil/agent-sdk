@@ -80,7 +80,7 @@ describe('McpServerManager (X03)', () => {
   });
 
   async function publish(id = 'ops'): Promise<number> {
-    const { publishedVersion } = await publishAgent(id, {}, { repo, versions, events });
+    const { publishedVersion } = await publishAgent(id, {}, { repo, versions, events, baseDir });
     return publishedVersion;
   }
 

@@ -65,11 +65,13 @@ export function listExports(pkgDir: string): { subpath: string; spec: string; ta
   // Conditions may nest (`import: { types, default }`): every leaf string is a target.
   const leaves = (node: unknown): string[] =>
     typeof node === 'string' ? [node] : node && typeof node === 'object' ? Object.values(node).flatMap(leaves) : [];
-  return Object.entries<unknown>(pkg.exports).map(([subpath, conds]) => ({
-    subpath,
-    spec: subpath === '.' ? SDK_NAME : `${SDK_NAME}/${subpath.slice(2)}`,
-    targets: leaves(conds),
-  }));
+  return Object.entries<unknown>(pkg.exports)
+    .filter(([subpath]) => !subpath.includes('*'))
+    .map(([subpath, conds]) => ({
+      subpath,
+      spec: subpath === '.' ? SDK_NAME : `${SDK_NAME}/${subpath.slice(2)}`,
+      targets: leaves(conds),
+    }));
 }
 
 /** Source of a probe script that loads every spec in one module format and prints JSON results. */

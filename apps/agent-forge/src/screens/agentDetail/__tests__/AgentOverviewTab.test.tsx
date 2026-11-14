@@ -5,10 +5,10 @@ import type { AgentRecord, Requirement, TraceSummaryPayload } from '../../../../
 import { render } from '../../../ui/__tests__/render';
 import type { AgentSpecV2 } from 'lousho/spec';
 
-const mocks = vi.hoisted(() => ({ listTraces: vi.fn() }));
+const mocks = vi.hoisted(() => ({ listTraces: vi.fn(), channelTriggerStatus: vi.fn() }));
 
 vi.mock('../../../runtime/runtimeClient', () => ({
-  runtimeClient: { listTraces: mocks.listTraces },
+  runtimeClient: { listTraces: mocks.listTraces, channelTriggerStatus: mocks.channelTriggerStatus },
 }));
 
 import { AgentDetailContext } from '../AgentDetailContext';
@@ -28,7 +28,7 @@ function meta(): AgentRecord['meta'] {
   };
 }
 
-function record(over: { spec?: Partial<AgentSpecV2>; requirements?: Requirement[] } = {}): AgentRecord {
+function record(over: { spec?: Partial<AgentSpecV2>; requirements?: Requirement[]; meta?: Partial<AgentRecord['meta']> } = {}): AgentRecord {
   return {
     id: 'support-bot',
     spec: {
@@ -38,7 +38,7 @@ function record(over: { spec?: Partial<AgentSpecV2>; requirements?: Requirement[
       instructions: 'Be helpful.',
       ...over.spec,
     } as AgentSpecV2,
-    meta: meta(),
+    meta: { ...meta(), ...over.meta },
     layout: { schemaVersion: 1, nodes: {}, notes: [] },
     updatedAt: '2026-10-29T10:00:00Z',
     latestVersion: null,
@@ -101,6 +101,8 @@ function rowText(cardEl: HTMLElement, label: string): string {
 beforeEach(() => {
   mocks.listTraces.mockReset();
   mocks.listTraces.mockResolvedValue([]);
+  mocks.channelTriggerStatus.mockReset();
+  mocks.channelTriggerStatus.mockResolvedValue([]);
 });
 
 describe('AgentOverviewTab', () => {
@@ -175,6 +177,71 @@ describe('AgentOverviewTab', () => {
     expect(card(emptyHost, 'Triggers').textContent).toContain(
       'No triggers. Runs start from the Test pane or chat.',
     );
+  });
+
+  it('shows a channel trigger URL, its mount error, and the Runs/Traces note (R08b)', async () => {
+    mocks.channelTriggerStatus.mockResolvedValue([
+      {
+        triggerId: 't4',
+        channel: 'github',
+        url: '/hooks/support-bot/channel/github',
+        error: 'Channel github needs token',
+      },
+    ]);
+    const triggers: AgentSpecV2['triggers'] = [
+      { id: 't4', type: 'channel', channel: 'github', secrets: {} },
+    ];
+    const host = renderTab(record({ spec: { triggers } }));
+    await flush();
+    await flush();
+
+    expect(mocks.channelTriggerStatus).toHaveBeenCalledWith('support-bot');
+    const triggersCard = card(host, 'Triggers');
+    const item = triggersCard.querySelector('.agent-overview-list li')!;
+    expect(item.querySelector('.agent-overview-webhook code')?.textContent).toBe(
+      `${window.location.origin}/hooks/support-bot/channel/github`,
+    );
+    expect(item.querySelector('.agent-overview-channel-error')?.textContent).toBe(
+      'Channel github needs token',
+    );
+    expect(triggersCard.textContent).toContain('Channel runs show up in Runs and Traces.');
+  });
+
+  it('shows the off note on the Triggers card for a disabled agent with firable triggers (R09)', async () => {
+    const triggers: AgentSpecV2['triggers'] = [
+      { id: 't1', type: 'chat' },
+      { id: 't2', type: 'cron', cron: '0 9 * * *', prompt: 'x' },
+    ];
+    const host = renderTab(record({ spec: { triggers }, meta: { enabled: false } }));
+    await flush();
+
+    const note = card(host, 'Triggers').querySelector('.triggers-off-note');
+    expect(note?.textContent).toBe("Off — triggers won't fire. Turn the agent on to start them.");
+  });
+
+  it('shows the auto-disabled copy when the streak turned the agent off (R09)', async () => {
+    const triggers: AgentSpecV2['triggers'] = [{ id: 't2', type: 'cron', cron: '0 9 * * *', prompt: 'x' }];
+    const host = renderTab(
+      record({ spec: { triggers }, meta: { enabled: false, disabledReason: 'auto_failure_streak' } }),
+    );
+    await flush();
+
+    expect(card(host, 'Triggers').querySelector('.triggers-off-note')?.textContent).toBe(
+      'Turned off after 5 failed triggered runs in a row. Fix the cause, then turn it back on.',
+    );
+  });
+
+  it('hides the off note for an enabled agent or one with only a chat trigger (R09)', async () => {
+    const cron: AgentSpecV2['triggers'] = [{ id: 't2', type: 'cron', cron: '0 9 * * *', prompt: 'x' }];
+    const enabled = renderTab(record({ spec: { triggers: cron } }));
+    await flush();
+    expect(card(enabled, 'Triggers').querySelector('.triggers-off-note')).toBeNull();
+
+    const chatOnly = renderTab(
+      record({ spec: { triggers: [{ id: 't1', type: 'chat' }] }, meta: { enabled: false } }),
+    );
+    await flush();
+    expect(card(chatOnly, 'Triggers').querySelector('.triggers-off-note')).toBeNull();
   });
 
   it('shows permission-rule counts by action in the Safety card', async () => {

@@ -802,6 +802,10 @@ button.breakpoint-toggle {
 .canvas-wrap .rf-node.running {
   border-color: var(--accent);
 }
+/* R09: a turned-off agent's non-chat trigger nodes dim (the title tooltip says why). */
+.rf-node.node-trigger-off {
+  opacity: 0.6;
+}
 .canvas-wrap .rf-node.running::after {
   content: '';
   position: absolute;

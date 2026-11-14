@@ -9,15 +9,15 @@ const LABELS: Record<CollectorState, string> = {
 };
 
 /** The collector as the shell sees it: the probe's verdict, and the proxy target once it answered. */
-export type CollectorState = 'up' | 'down' | 'checking';
+type CollectorState = 'up' | 'down' | 'checking';
 
 /**
  * Whether the observe daemon behind the `/observe` proxy answers, and where.
  * "checking" only until the first health probe settles; the probe keeps
  * polling, so it flips by itself when `lousho observe start` runs or the
- * daemon dies. Shared by the nav card and the Settings screen's Collector card.
+ * daemon dies.
  */
-export function useCollectorStatus(): { state: CollectorState; target: string | undefined } {
+function useCollectorStatus(): { state: CollectorState; target: string | undefined } {
   const health = useDaemonHealth();
   const up = health.data !== undefined;
   const state: CollectorState = up ? 'up' : health.down ? 'down' : 'checking';

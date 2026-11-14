@@ -1,6 +1,9 @@
 import { useState, type JSX } from 'react';
+import { Loader2 } from 'lucide-react';
 
-import type { PublishState } from '../../shared/wireTypes';
+import type { EvalGateResult, PublishState } from '../../shared/wireTypes';
+import { EvalGateDialog } from './EvalGateDialog';
+import { evalGateFailureOf } from './evalGateFailure';
 import { errorMessage } from './errorMessage';
 import { navigate } from '../router/router';
 import { runtimeClient } from '../runtime/runtimeClient';
@@ -56,28 +59,38 @@ export interface PublishPillProps {
  * trigger showing {@link publishLabel}'s text, opening "Publish current
  * version" (disabled with "Already published" once the working copy
  * matches the pin) and "View versions". While publishing the pill is
- * `aria-busy` and reads "Publishing…"; a dirty editor is saved first, a
- * success toasts `Published v<n>` and calls `onPublished`, a failure
- * toasts `Couldn't publish: <message>`. X01b adds the eval-gate dialog
- * inside `publishCurrent`.
+ * `aria-busy`, spins a Loader2 and reads "Running evals…"; a dirty editor
+ * is saved first, a success toasts `Published v<n>` (plus `· evals passed`
+ * when the gate ran, X01b), a 409 eval-gate failure opens
+ * {@link EvalGateDialog} with the full result, and any other failure
+ * toasts `Couldn't publish: <message>`.
  */
 export function PublishPill({ agentId, state, dirty, onPublished }: PublishPillProps): JSX.Element {
   const { save } = useAppState();
   const toast = useToast();
   const [publishing, setPublishing] = useState(false);
+  const [gateFailure, setGateFailure] = useState<{ version: number; result: EvalGateResult } | null>(null);
   const label = publishLabel(state);
-  const shown = publishing ? { ...label, text: 'Publishing…' } : label;
+  const shown = publishing ? { ...label, text: 'Running evals…' } : label;
 
   async function publishCurrent(): Promise<void> {
     if (publishing) return;
     setPublishing(true);
     try {
       if (dirty) await save();
-      const { publishedVersion } = await runtimeClient.publish(agentId);
-      toast.show({ message: `Published v${publishedVersion}`, tone: 'success' });
+      const { publishedVersion, evalResult } = await runtimeClient.publish(agentId);
+      toast.show({
+        message: evalResult === undefined ? `Published v${publishedVersion}` : `Published v${publishedVersion} · evals passed`,
+        tone: 'success',
+      });
       onPublished(publishedVersion);
     } catch (error) {
-      toast.show({ message: `Couldn't publish: ${errorMessage(error)}`, tone: 'error' });
+      const failure = evalGateFailureOf(error);
+      if (failure !== null) {
+        setGateFailure(failure);
+      } else {
+        toast.show({ message: `Couldn't publish: ${errorMessage(error)}`, tone: 'error' });
+      }
     } finally {
       setPublishing(false);
     }
@@ -88,7 +101,7 @@ export function PublishPill({ agentId, state, dirty, onPublished }: PublishPillP
       id: 'publish-current',
       label: 'Publish current version',
       disabled: state.matchesWorkingCopy || publishing,
-      disabledReason: state.matchesWorkingCopy ? 'Already published' : publishing ? 'Publishing…' : undefined,
+      disabledReason: state.matchesWorkingCopy ? 'Already published' : publishing ? 'Running evals…' : undefined,
       onSelect: () => void publishCurrent(),
     },
     {
@@ -99,22 +112,33 @@ export function PublishPill({ agentId, state, dirty, onPublished }: PublishPillP
   ];
 
   return (
-    <Menu
-      label={`Publish state: ${shown.text}`}
-      items={items}
-      trigger={{
-        className: `status-pill pill-${shown.tone} publish-pill`,
-        content: (
-          <>
-            <span className="dot" aria-hidden="true" />
-            <span className="status-pill-label">{shown.text}</span>
-          </>
-        ),
-        ariaLabel: `Publish state: ${shown.text}`,
-        title: shown.title,
-        busy: publishing,
-      }}
-    />
+    <>
+      <Menu
+        label={`Publish state: ${shown.text}`}
+        items={items}
+        trigger={{
+          className: `status-pill pill-${shown.tone} publish-pill`,
+          content: (
+            <>
+              <span className="dot" aria-hidden="true" />
+              {publishing && <Loader2 size={12} className="spin" aria-hidden="true" />}
+              <span className="status-pill-label">{shown.text}</span>
+            </>
+          ),
+          ariaLabel: `Publish state: ${shown.text}`,
+          title: shown.title,
+          busy: publishing,
+        }}
+      />
+      {gateFailure !== null && (
+        <EvalGateDialog
+          open
+          onClose={() => setGateFailure(null)}
+          version={gateFailure.version}
+          result={gateFailure.result}
+        />
+      )}
+    </>
   );
 }
 

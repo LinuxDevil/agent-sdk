@@ -1,0 +1,84 @@
+/* EvalGateDialog (X01b): the 409 publish gate's per-set breakdown. */
+.eval-gate-sets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.eval-gate-set {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: var(--space-3);
+}
+
+.eval-gate-set-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.eval-gate-set-name {
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.eval-gate-set-rate {
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  white-space: nowrap;
+}
+
+.eval-gate-set-error {
+  color: var(--danger);
+  font-size: var(--fs-meta);
+}
+
+.eval-gate-examples {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2) 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.eval-gate-example {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.eval-gate-example-id {
+  font-size: var(--fs-table);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.eval-gate-example-failures {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--space-3);
+  color: var(--danger);
+  font-size: var(--fs-meta);
+}
+
+.eval-gate-trace {
+  font-size: var(--fs-meta);
+  color: var(--accent);
+  align-self: flex-start;
+}
+
+.eval-gate-more {
+  color: var(--text-faint);
+  font-size: var(--fs-meta);
+}

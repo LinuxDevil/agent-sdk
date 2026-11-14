@@ -193,6 +193,7 @@ export function agentRunSpanInit(
     name: `${GenAiOperation.INVOKE_AGENT} ${name}`,
     kind: 'internal',
     attributes: defined({
+      ...agent.spanAttributes,
       [GenAiAttr.OPERATION_NAME]: GenAiOperation.INVOKE_AGENT,
       [GenAiAttr.AGENT_NAME]: name,
       [SdkAttr.SUBAGENT_NAME]: subagent?.name,

@@ -25,6 +25,17 @@ vi.mock('../../../runtime/runtimeClient', () => ({
     restoreVersion: mocks.restoreVersion,
     publish: mocks.publish,
   },
+  RuntimeApiError: class RuntimeApiError extends Error {
+    constructor(
+      message: string,
+      public readonly status: number,
+      public readonly code?: string,
+      public readonly details?: unknown,
+      public readonly body?: unknown,
+    ) {
+      super(message);
+    }
+  },
 }));
 
 const appState = vi.hoisted(() => ({
@@ -41,6 +52,7 @@ vi.mock('../../../state/useStudioEvents', () => ({
 
 import { AgentDetailContext } from '../AgentDetailContext';
 import { VersionsTab } from '../VersionsTab';
+import { RuntimeApiError } from '../../../runtime/runtimeClient';
 
 function meta(): AgentRecord['meta'] {
   return {
@@ -468,10 +480,72 @@ describe('VersionsTab', () => {
     });
     await flush();
 
-    expect(mocks.publish).toHaveBeenCalledWith('support-bot', 3);
+    expect(mocks.publish).toHaveBeenCalledWith('support-bot', { version: 3 });
     expect(document.querySelector('[role="alertdialog"]')).toBeNull();
     expect(document.querySelector('.toast-message')?.textContent).toBe('Published v3');
     expect(refresh).toHaveBeenCalled();
     expect(mocks.listVersions).toHaveBeenCalledTimes(2);
+  });
+
+  it('"Publish this" swaps to the eval gate dialog on a 409 LOUSHO_EVAL_GATE_FAILED (X01b)', async () => {
+    publishedPin = 1;
+    mocks.listVersions.mockResolvedValue([item({ version: 3 }), item({ version: 2 }), item({ version: 1 })]);
+    const evalResult = {
+      passed: false,
+      gates: [
+        {
+          dataset: 'ds',
+          passRate: 0.5,
+          minPassRate: 0.8,
+          passed: false,
+          examples: [{ exampleId: 'abcdef123456', passed: false, failures: ['Took 9 steps, limit 5'] }],
+        },
+      ],
+      ranAt: '2026-01-02T03:04:05.000Z',
+    };
+    mocks.publish.mockRejectedValue(
+      new RuntimeApiError('Eval gate failed', 409, 'LOUSHO_EVAL_GATE_FAILED', evalResult, {
+        error: 'Eval gate failed',
+        code: 'LOUSHO_EVAL_GATE_FAILED',
+        version: 3,
+        details: evalResult,
+      }),
+    );
+    const refresh = vi.fn();
+    render(
+      <ToastProvider>
+        <AgentDetailContext.Provider value={{ record: record(), refresh, setRecord: () => {} }}>
+          <VersionsTab />
+        </AgentDetailContext.Provider>
+      </ToastProvider>,
+    );
+    await flush();
+
+    const rows = [...document.querySelectorAll<HTMLElement>('.version-item')];
+    const publishButton = [...rows[0].querySelectorAll<HTMLButtonElement>('.version-actions button')].find((b) =>
+      b.textContent?.includes('Publish this'),
+    )!;
+    act(() => publishButton.click());
+    await flush();
+
+    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]')!;
+    const confirm = [...dialog.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+      b.textContent?.includes('Publish v3'),
+    )!;
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+    await flush();
+
+    // The confirm dialog closed; the eval gate dialog shows the full result.
+    expect(document.querySelector('.dialog-title')?.textContent).toBe('Eval gate failed');
+    expect(document.querySelector('.dialog-description')?.textContent).toBe(
+      'v3 was not published. Fix the failures or change the gate, then publish again.',
+    );
+    expect(document.querySelector('.eval-gate-set-name')?.textContent).toBe('ds');
+    expect(document.querySelector('.eval-gate-example-failures li')?.textContent).toBe('Took 9 steps, limit 5');
+    expect(refresh).not.toHaveBeenCalled();
+    expect(document.querySelector('.toast-message')).toBeNull();
   });
 });

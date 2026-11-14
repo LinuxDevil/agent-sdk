@@ -56,17 +56,19 @@ describe('parseAgentSpecV2', () => {
     expect(error.message).not.toContain('did you mean');
   });
 
-  it('throws LOUSHO_SPEC_UNSUPPORTED when only placeholder sections are set', () => {
-    const error = thrown({ ...base, evals: [] });
+  it('throws LOUSHO_SPEC_UNSUPPORTED when only unsupported flow shapes are set', () => {
+    const editorOnly = { code: 'f', name: 'F', flow: { type: 'step', id: 'x' } };
+    const error = thrown({ ...base, flow: editorOnly });
     expect(error.code).toBe('LOUSHO_SPEC_UNSUPPORTED');
     expect(error.message).toContain('uses fields this SDK cannot run yet');
-    expect(error.message).toContain("'evals'");
+    expect(error.message).toContain("'flow.flow'");
   });
 
   it('throws LOUSHO_SPEC_INVALID when unsupported and invalid problems mix', () => {
-    const error = thrown({ ...base, evals: [], model: 'gpt-4o' });
+    const editorOnly = { code: 'f', name: 'F', flow: { type: 'step', id: 'x' } };
+    const error = thrown({ ...base, flow: editorOnly, model: 'gpt-4o' });
     expect(error.code).toBe('LOUSHO_SPEC_INVALID');
-    expect(error.errors).toHaveProperty('evals');
+    expect(error.errors).toHaveProperty('flow.flow');
     expect(error.errors).toHaveProperty('model');
   });
 

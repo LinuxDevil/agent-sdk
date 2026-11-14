@@ -15,6 +15,8 @@ import { useSaveVersionShortcut } from './useSaveVersionShortcut';
 import { useAuthorCanvasSync } from '../../author/useAuthorCanvasSync';
 import { useAuthorDock } from '../../author/authorDock';
 import { focusProposalCard } from '../../author/proposalFocus';
+import { hostReadOnlyTitle, useHostStatus } from '../../state/useHostStatus';
+import { useWorkspacesMaybe } from '../../workspace/WorkspacesProvider';
 
 /**
  * Below 860px the rail and the Inspector are slide-over drawers,
@@ -68,6 +70,12 @@ export function AgentsScreen() {
     window.setTimeout(() => focusProposalCard(overlayProposalId), 0);
   }, [overlayProposalId, openAuthorDock]);
   const inspector = useInspectorCollapsed(selectedNodeId);
+  // W11c: a read-only workspace's banner text disables the toolbar's
+  // Run/Save (the server refuses the writes with the same message).
+  // `activeId` is the provider's reactive workspace (URL `#/w/` else launch).
+  const workspaces = useWorkspacesMaybe();
+  const host = useHostStatus(workspaces?.activeId);
+  const readOnlyTitle = hostReadOnlyTitle(host.status);
   // The agent tab strip shows only for a saved agent (BuilderTabs renders null otherwise).
   const showBuilderTabs = agents.some((a) => a.id === agentId);
   const shellClass = `shell${panels.open ? ` ${panels.open}-open` : ''}${inspector.collapsed ? ' inspector-collapsed' : ''}`;
@@ -75,7 +83,7 @@ export function AgentsScreen() {
     <div className={`app${showBuilderTabs ? ' app-builder-tabs' : ''}`}>
       {showBuilderTabs && <BuilderTabs />}
       <h1 className="visually-hidden">Agent Forge</h1>
-      <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} />
+      <Topbar narrow={panels.narrow} openPanel={panels.open} onTogglePanel={panels.toggle} readOnlyTitle={readOnlyTitle} />
       <div className={shellClass}>
         <LeftRail />
         <CanvasArea

@@ -5,9 +5,10 @@
  * settings, secrets, Author sessions, the pass spend log, the workspace
  * registry itself. Those files live under the Studio home directory, and
  * their paths come from here so no code joins `baseDir` with `.lousho`
- * ad hoc. Today `home` is still `<launchDir>/.lousho` (the files stay
- * exactly where they were); moving it to `~/.lousho/studio` is a later
- * change of one default, not a repo-wide rewrite.
+ * ad hoc. The home is `~/.lousho/studio` (or `LOUSHO_STUDIO_HOME`) -
+ * `defaultStudioHome()` - so global state survives across projects;
+ * `legacyImport.ts` offers to copy a workspace's old project-level
+ * settings/secrets into it once.
  *
  * `studioPaths()` is process-wide and set once while wiring
  * (`createApp`/`startStudioServer` call `configureStudioHome`). Request
@@ -15,7 +16,19 @@
  * wiring time and close over them, so a request's workspace can't change
  * which global file a handler touches.
  */
+import * as os from 'node:os';
 import * as path from 'node:path';
+
+/**
+ * The Studio home directory when the caller names none:
+ * `LOUSHO_STUDIO_HOME` (resolved to absolute) when set, else
+ * `<os.homedir()>/.lousho/studio`. Read once while wiring - tests set the
+ * env var (or pass `studioHome`) so they never touch a real home.
+ */
+export function defaultStudioHome(): string {
+  const env = process.env.LOUSHO_STUDIO_HOME;
+  return env !== undefined && env.trim() !== '' ? path.resolve(env) : path.join(os.homedir(), '.lousho', 'studio');
+}
 
 /** Every Studio-global file, derived from the Studio home directory. */
 export interface StudioPaths {
@@ -37,6 +50,8 @@ export interface StudioPaths {
   alerts: string;
   /** Published-agent serve config. */
   serve: string;
+  /** One-time legacy settings/secrets import records, per workspace id. */
+  legacyImports: string;
 }
 
 /** The `StudioPaths` for a given home directory - pure; sets nothing. */
@@ -51,6 +66,7 @@ export function studioPathsFor(home: string): StudioPaths {
     spend: path.join(home, 'passes', 'spend.jsonl'),
     alerts: path.join(home, 'inbox', 'alerts.json'),
     serve: path.join(home, 'serve.json'),
+    legacyImports: path.join(home, 'legacy-imports.json'),
   };
 }
 

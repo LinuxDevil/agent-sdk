@@ -1,5 +1,8 @@
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 
+import type { EvalGateResult } from '../../../shared/wireTypes';
+import { EvalGateDialog } from '../../components/EvalGateDialog';
+import { evalGateFailureOf } from '../../components/evalGateFailure';
 import { runtimeClient } from '../../runtime/runtimeClient';
 import { PendingActionDialog } from './PendingActionDialog';
 
@@ -18,7 +21,9 @@ export interface PublishVersionDialogProps {
  * The "Publish this" confirmation (L14b): copy names the version about to
  * go live and reassures that the working copy does not change. The shared
  * {@link PendingActionDialog} owns the pending/error/close mechanics;
- * this wrapper only runs `POST .../publish { version }`.
+ * this wrapper only runs `POST .../publish { version }`. A 409 eval-gate
+ * failure (X01b) swaps this dialog for {@link EvalGateDialog} carrying the
+ * full result; any other failure stays in the confirm dialog's error line.
  */
 export function PublishVersionDialog({
   agentId,
@@ -27,17 +32,35 @@ export function PublishVersionDialog({
   onClose,
   onPublished,
 }: PublishVersionDialogProps): JSX.Element | null {
+  const [gateFailure, setGateFailure] = useState<{ version: number; result: EvalGateResult } | null>(null);
   return (
-    <PendingActionDialog
-      open={open}
-      onClose={onClose}
-      title={`Publish v${version}?`}
-      description={`v${version} becomes the live version. Serve, deploy and triggers use it. Your working copy does not change.`}
-      confirmLabel={`Publish v${version}`}
-      onConfirm={async () => {
-        const { publishedVersion } = await runtimeClient.publish(agentId, version);
-        onPublished(publishedVersion);
-      }}
-    />
+    <>
+      <PendingActionDialog
+        open={open}
+        onClose={onClose}
+        title={`Publish v${version}?`}
+        description={`v${version} becomes the live version. Serve, deploy and triggers use it. Your working copy does not change.`}
+        confirmLabel={`Publish v${version}`}
+        onConfirm={async () => {
+          try {
+            const { publishedVersion } = await runtimeClient.publish(agentId, { version });
+            onPublished(publishedVersion);
+          } catch (error) {
+            const failure = evalGateFailureOf(error);
+            if (failure === null) throw error;
+            setGateFailure(failure);
+            onClose();
+          }
+        }}
+      />
+      {gateFailure !== null && (
+        <EvalGateDialog
+          open
+          onClose={() => setGateFailure(null)}
+          version={gateFailure.version}
+          result={gateFailure.result}
+        />
+      )}
+    </>
   );
 }

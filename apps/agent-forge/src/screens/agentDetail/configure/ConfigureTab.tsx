@@ -73,6 +73,7 @@ function SaveBar({
   issueCount,
   saving,
   canvasDirty,
+  readOnlyTitle,
   onDiscard,
   onSave,
 }: {
@@ -80,6 +81,8 @@ function SaveBar({
   issueCount: number;
   saving: boolean;
   canvasDirty: boolean;
+  /** W11c: the read-only workspace's banner text - Save disables with it as `title`. */
+  readOnlyTitle?: string;
   onDiscard(): void;
   onSave(): void;
 }): JSX.Element {
@@ -99,8 +102,10 @@ function SaveBar({
       <button
         type="button"
         className="btn btn-primary"
-        disabled={issueCount > 0 || saving}
-        title={issueCount > 0 ? `Fix ${issueCount} problem${issueCount === 1 ? '' : 's'} first` : undefined}
+        disabled={issueCount > 0 || saving || readOnlyTitle !== undefined}
+        title={
+          readOnlyTitle ?? (issueCount > 0 ? `Fix ${issueCount} problem${issueCount === 1 ? '' : 's'} first` : undefined)
+        }
         onClick={onSave}
       >
         {saving ? 'Saving…' : 'Save'}
@@ -117,7 +122,7 @@ function SaveBar({
  * sticky index tracks the section nearest the top and mirrors `?section=`.
  */
 export function ConfigureTab(): JSX.Element {
-  const { record, refresh } = useAgentDetail();
+  const { record, refresh, readOnlyTitle } = useAgentDetail();
   const app = useAppState();
   const { draft, issues, errors, changed, issueCounts, dirty, reset, applySection } =
     useConfigureDraft(record);
@@ -204,6 +209,7 @@ export function ConfigureTab(): JSX.Element {
             issueCount={totalIssues}
             saving={saving}
             canvasDirty={canvasDirty}
+            readOnlyTitle={readOnlyTitle}
             onDiscard={reset}
             onSave={() => void save()}
           />

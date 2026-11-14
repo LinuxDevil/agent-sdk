@@ -20,13 +20,4 @@ export function isUnsupportedIssue(issue: { message: string }): boolean {
   return issue.message.startsWith(UNSUPPORTED_PREFIX);
 }
 
-/** A top-level key whose section has not landed yet: absent is fine, any value is "not supported yet". */
-export function pendingField(key: string) {
-  // `.optional()` outermost on purpose: in zod 4 a checked `z.any()` reports an absent key as Required.
-  return z
-    .any()
-    .superRefine((value, ctx) => {
-      if (value !== undefined) addUnsupportedIssue(ctx, `'${key}' cannot be run by this version of the SDK`);
-    })
-    .optional();
-}
+

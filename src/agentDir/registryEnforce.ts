@@ -35,7 +35,7 @@ import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import { RECEIPT_FILE, readReceipt, type Receipt, type ReceiptEntry } from '../cli/addReceipt';
 import { SDKError } from '../execution/errors';
-import { enforceApproval, hasEnforcedApproval } from '../execution/permissions';
+import { alwaysAsk, hasEnforcedApproval } from '../execution/permissions';
 import type { ApproveToolCall } from '../createAgentApprovals';
 import { isPartialStream } from '../execution/toolPartials';
 import { commandEnv } from '../security/commandEnv';
@@ -43,7 +43,7 @@ import { matchesHost } from '../security/hostPattern';
 import type { SandboxAdapter, SandboxRunOptions } from '../security/sandboxCore';
 import { legacyAiTool } from '../tools/toolContract';
 import type { DefinedTool } from '../tools/defineTool';
-import type { ApprovalCheckContext, ApprovalOutcome, ToolDescriptor, ToolExecutionContext } from '../types';
+import type { ToolExecutionContext } from '../types';
 import { isFile, readText } from './fsUtil';
 import type { LoadedTool } from './collectTools';
 
@@ -261,20 +261,6 @@ function confineStream(envelope: Envelope, value: unknown): unknown {
 }
 
 /**
- * The approval policy of a tool whose manifest asks for it (`exec: true` or
- * `needsApproval: true`): the call always asks. The tool's own `needsApproval`
- * still runs first so a deny stays a deny; anything else becomes `'ask'`.
- */
-function enforcedApproval(own: ToolDescriptor['needsApproval']): NonNullable<ToolDescriptor['needsApproval']> {
-  // Enforced: no permission rule or mode turns the 'ask' into a run, and the directory's own approver defers it.
-  return enforceApproval(async (args: unknown, ctx: ApprovalCheckContext): Promise<ApprovalOutcome> => {
-    const outcome = typeof own === 'function' ? await own(args, ctx) : own;
-    if (outcome === 'deny' || (typeof outcome === 'object' && outcome !== null)) return outcome;
-    return 'ask';
-  });
-}
-
-/**
  * The adapter a confined `sandboxExecute` sees: commands need `exec: true`,
  * file writes need `filesystem: "write"`, and a command's environment is the
  * SDK's usual non-secret base plus the declared variables only - never the
@@ -324,7 +310,7 @@ function confineTool(tool: DefinedTool, item: RegistryItemStatus): DefinedTool {
   // 'exec' / 'needsApproval' ask for approval by declaration; an unattested item asks too - the stale
   // receipt must not silently certify the modified code, and an approval prompt is what surfaces it.
   const mustAsk = item.status === 'unattested' || item.permissions.exec === true || item.permissions.needsApproval === true;
-  const needsApproval = mustAsk ? enforcedApproval(tool.needsApproval) : tool.needsApproval;
+  const needsApproval = mustAsk ? alwaysAsk(tool.needsApproval, 'its install receipt requires approval') : tool.needsApproval;
   return {
     ...tool,
     execute,

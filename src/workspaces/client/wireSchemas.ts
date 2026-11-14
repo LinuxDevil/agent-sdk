@@ -12,7 +12,7 @@ import { PAGE_RUN_STATUSES, STEP_KINDS, type ArtifactRef, type PageInput, type P
 import { WORK_TYPES, type WorkType } from '../contracts/page';
 import type { EffectiveHarness } from '../contracts/compose';
 import type { HarnessLayer } from '../contracts/baseHarness';
-import type { PageRunStatus } from '../contracts/execution';
+import type { PageRunStatus, PageUsage } from '../contracts/execution';
 import type {
   AgentOwnedView,
   ApplyOpsBody,
@@ -79,13 +79,22 @@ const artifactRefSchema: z.ZodType<ArtifactRef> = z.object({ name: id, mediaType
 
 const statusSchema = oneOf<PageRunStatus>(PAGE_RUN_STATUSES);
 
+const usageSchema: z.ZodType<PageUsage> = z.object({
+  inputTokens: count,
+  outputTokens: count,
+  totalTokens: count,
+  costUsd: z.number().min(0).optional(),
+  costPartial: z.boolean().optional(),
+  modelCalls: count.optional(),
+});
+
 export const pageRunEventSchema: z.ZodType<PageRunEvent> = z.discriminatedUnion('type', [
   z.object({ type: z.literal('started'), page: id, harnessHash: id, executionType: stepLabels.executionType }),
   z.object({ type: z.literal('step'), phase: z.enum(['start', 'done']), ...stepLabels }),
   z.object({ type: z.literal('artifact'), artifact: artifactRefSchema }),
   z.object({ type: z.literal('approval'), approvalId: id, kind: z.enum(['tool', 'question', 'sign-in']), expiresAt: iso.optional() }),
   z.object({ type: z.literal('progress'), message: text, fraction: z.number().min(0).max(1).optional() }),
-  z.object({ type: z.literal('finished'), status: statusSchema }),
+  z.object({ type: z.literal('finished'), status: statusSchema, usage: usageSchema.optional() }),
 ]);
 
 export const RUN_EVENT_TYPES: readonly string[] = ['started', 'step', 'artifact', 'approval', 'progress', 'finished'];
@@ -107,14 +116,7 @@ const pageResultSchema: z.ZodType<PageResult> = z.object({
   output: z.unknown().optional(),
   artifacts: z.array(artifactRefSchema),
   summary: text,
-  usage: z.object({
-    inputTokens: count,
-    outputTokens: count,
-    totalTokens: count,
-    costUsd: z.number().min(0).optional(),
-    costPartial: z.boolean().optional(),
-    modelCalls: count.optional(),
-  }),
+  usage: usageSchema,
   runId: id,
   traceId: id.optional(),
   checkpointId: id.optional(),
