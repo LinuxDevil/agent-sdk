@@ -16,11 +16,13 @@ This doc covers: installation, the `lousho studio` quickstart, the
 authoring, time travel (replaying a run from a past step), the playground
 endpoint, and how settings/secrets/deploy wiring works.
 
-Two features have their own pages: [the visual
+Three features have their own pages: [the visual
 builder](./forge-builder.md) — the canvas, Inspector, Configure tab,
-in-place testing and Code tab — and [the Agent
+in-place testing and Code tab — [the Agent
 Author](./forge-author.md) — the chat that drafts agents as proposals you
-review before anything is saved.
+review before anything is saved — and [versions, triggers and
+publishing](./forge-lifecycle.md) — the working copy, drafts, the inbox,
+the eval gate, Serve and Deploy.
 
 ![The builder: nav, agent rail, the fitted canvas with the Inspector folded, and the bottom drawer](./images/studio-agents.png)
 
