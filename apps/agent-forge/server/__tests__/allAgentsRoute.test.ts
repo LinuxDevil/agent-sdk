@@ -96,7 +96,7 @@ describe('GET /agents?ws=all (cross-workspace aggregate)', () => {
       passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
       spendLog,
       alerts,
-      collector: () => ({ url: 'http://127.0.0.1:1' }),
+      collector: { url: () => 'http://127.0.0.1:1', token: () => undefined },
       studioVersion: VERSION,
     };
     registry = new WorkspaceRegistry(path.join(studioDir, 'workspaces.json'));
@@ -294,7 +294,7 @@ describe('GET /agents?ws=all - observed agents (W07a)', () => {
       passRunner: new PassRunner({ baseDir: studioDir, spendLog, isEnabled: () => false }),
       spendLog,
       alerts,
-      collector: () => ({ url: 'http://127.0.0.1:1' }),
+      collector: { url: () => 'http://127.0.0.1:1', token: () => undefined },
       studioVersion: VERSION,
     };
     registry = new WorkspaceRegistry(path.join(studioDir, 'workspaces.json'));

@@ -433,6 +433,8 @@ export interface SettingsFile {
   author?: Partial<AuthorSettings>;
   /** Stored partial overrides for the background passes' model choices and per-kind switches; `SettingsStore.passes()` merges the defaults under them. */
   passes?: PassSettings;
+  /** The collector (observe daemon) Studio reads and reports to; absent `url` means this machine's own daemon. */
+  collector?: { url: string | null };
 }
 
 /**
@@ -497,6 +499,32 @@ export interface PassSpendSummary {
   totalUsd: number;
   calls: number;
   byKind: Partial<Record<PassKind, { calls: number; costUsd: number }>>;
+}
+
+/** How the collector the Studio talks to was reached: a daemon already running, one Studio started, a remote one, or none. */
+export type CollectorMode = 'attached' | 'started' | 'remote' | 'down';
+
+/** `GET /settings/collector`'s answer: which collector is in effect and whether it answers. */
+export interface CollectorStatus {
+  mode: CollectorMode;
+  /** The effective base URL, no trailing slash. */
+  url: string;
+  /** `settings.json`'s `collector.url` (`null` = this machine). */
+  configuredUrl: string | null;
+  /** `LOUSHO_OBSERVE_URL` is set in Studio's environment, so the setting is ignored. */
+  lockedByEnv: boolean;
+  /** A bearer token is configured (env `LOUSHO_OBSERVE_TOKEN` or the named secret); the value never crosses the wire. */
+  hasToken: boolean;
+  /** `HealthProbe.version` when the daemon answered, the SDK `VERSION` for a Studio-started one. */
+  daemonVersion: string | null;
+  /** Why `mode` is `'down'`. */
+  error: string | null;
+}
+
+/** `PUT /settings/collector`'s body: `url` null clears the setting; `token` undefined keeps, null removes, a string sets the named secret. */
+export interface CollectorUpdate {
+  url: string | null;
+  token?: string | null;
 }
 
 /** R2: `POST /agents/:id/deploy`'s result - the shelled-out `lousho build` child process's outcome. */

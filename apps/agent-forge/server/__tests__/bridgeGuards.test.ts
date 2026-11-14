@@ -118,7 +118,7 @@ describe('bridge-mode guards (W11c)', () => {
       passRunner,
       spendLog,
       alerts,
-      collector: () => ({ url: 'http://127.0.0.1:9' }),
+      collector: { url: () => 'http://127.0.0.1:9', token: () => undefined },
       studioVersion: '9.9.9-studio',
       selectHost: (ref, deps: SelectHostDeps) =>
         ref.root === bridgeRoot ? stubBridgeSelector(stubBridgeHost()) : new WorkspaceHostSelector(ref, deps),

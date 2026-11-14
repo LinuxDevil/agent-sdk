@@ -28,7 +28,7 @@ import { FileApprovalStore } from '../approvalStore';
 import { FileCheckpointStore } from '../checkpointStore';
 import { StudioEventBus } from '../events/eventBus';
 import { InProcessAgentHost } from '../host/inProcessAgentHost';
-import { WorkspaceHostSelector, type SelectHostDeps } from '../host/hostSelector';
+import { WorkspaceHostSelector, envCollector, type SelectHostDeps } from '../host/hostSelector';
 import { hostStatusOf } from '../host/hostStatus';
 import type { AgentHost } from '../host/agentHost';
 import { RunManager } from '../runRegistry';
@@ -161,14 +161,14 @@ export interface WorkspaceServices {
   settingsStore: SettingsStore;
   /** Report runs to the observe daemon (`true` in the studio, `false` in embeddings/tests). */
   observe: boolean;
+  /** The Studio collector run reporting reads `url()`/`token()` from (collector.ts); absent falls back to env. Bridge children get the same daemon through the host selector's env. */
+  collector?: import('../collector').CollectorSource;
   /** The app's one PassRunner, stamped onto every context this builds. */
   passRunner: PassRunner;
   /** The app's one spend log (R01b): auto-approval decisions append `auto_approval` records to it directly, off the PassRunner. */
   spendLog: SpendLog;
   /** The Studio-global inbox alert store (L12) every workspace's failure-streak pass writes to. */
   alerts: AlertStore;
-  /** Where bridge children report runs (W12's CollectorManager; env fallback until then). */
-  collector: () => { url: string; token?: string };
   /** Studio's own SDK `VERSION`, for host-selection banners and `hello.client`. */
   studioVersion: string;
   /**
@@ -177,6 +177,15 @@ export interface WorkspaceServices {
    * `extraEnv` reach the fake bridge child.
    */
   selectHost?: (ref: WorkspaceRef, deps: SelectHostDeps) => WorkspaceHostSelector;
+}
+
+/** Adapts the app's CollectorSource to the `() => { url, token? }` thunk the host selector calls per bridge spawn. */
+function collectorSourceThunk(source: import('../collector').CollectorSource): () => { url: string; token?: string } {
+  return () => {
+    const url = source.url();
+    const token = source.token();
+    return token === undefined ? { url } : { url, token };
+  };
 }
 
 /**
@@ -223,7 +232,9 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
         spend: services.spendLog,
       }),
     secretsStore: services.secretsStore,
-    collector: services.collector,
+    // W12's CollectorManager feeds bridge children the same daemon Studio
+    // reports to; without one the pre-W12 env fallback applies.
+    collector: services.collector ? collectorSourceThunk(services.collector) : envCollector,
     studioVersion: services.studioVersion,
   });
   const host = hostSelector.host;
@@ -246,6 +257,7 @@ export function createWorkspaceContext(ref: WorkspaceRef, services: WorkspaceSer
     // A bridge host reports through its own child (LOUSHO_OBSERVE_* env),
     // so RunManager adds no second reporter for it.
     ...(services.observe && hostSelector.reportsToObserve ? { observe: true as const } : {}),
+    ...(services.collector ? { collector: services.collector } : {}),
   });
   // Rows 3-7: kick the handshake now so the banner settles early; ready()
   // never rejects (every outcome - bridge, read-only, crash - is a
