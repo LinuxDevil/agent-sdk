@@ -173,6 +173,23 @@ describe('CronTriggers', () => {
     expect(log).toHaveBeenCalledWith('a', 'Cron trigger t1 fired');
   });
 
+  it('skips a disabled agent, logs the contract line and still advances the cursor (R09)', async () => {
+    const { cron, dispatch, log } = make({ a: [CRON] }, { ok: false, reason: 'disabled' });
+    await cron.tick();
+    now = new Date('2026-01-01T10:05:00.000Z');
+    await cron.tick();
+
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith('a', 'Cron trigger t1 skipped: the agent is turned off', 'warn');
+    // The claim moved the cursor before the dispatch, so re-enabling later
+    // never bursts the missed window.
+    expect(readState(baseDir, 'a').t1.lastRunAt).toBe('2026-01-01T10:05:00.000Z');
+
+    now = new Date('2026-01-01T10:10:00.000Z');
+    await cron.tick();
+    expect(dispatch).toHaveBeenCalledTimes(2);
+  });
+
   it('deletes state entries for triggers removed from the spec', async () => {
     const specs: Record<string, TriggerSpec[]> = { a: [CRON, CRON2] };
     const { cron, triggersOf } = make(specs);

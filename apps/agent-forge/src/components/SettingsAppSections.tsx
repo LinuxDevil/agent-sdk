@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Keyboard, Monitor, Moon, Palette, Sun, type LucideIcon } from 'lucide-react';
-import { useCollectorStatus, type CollectorState } from '../shell/DaemonStatus';
+import { Keyboard, Monitor, Moon, Palette, Sun, type LucideIcon } from 'lucide-react';
 import { SHORTCUTS } from '../shell/shortcuts';
 import {
   THEME_EVENT,
@@ -12,7 +11,7 @@ import {
   type ThemeChoice,
 } from '../shell/theme';
 import { AuthorSettingsCard } from './AuthorSettingsCard';
-import { SettingRow, SettingsCard, TonePill } from './SettingsCard';
+import { SettingRow, SettingsCard } from './SettingsCard';
 import '../ui/filterBar.css';
 
 /*
@@ -97,33 +96,6 @@ export function AppearanceSection() {
         hint={density ? <DensityResetHint onReset={() => pick(null)} /> : "Tables use each screen's default until you pick one."}
       >
         <DensityControl value={density} onChange={pick} />
-      </SettingRow>
-    </SettingsCard>
-  );
-}
-
-const COLLECTOR_PILLS: Record<CollectorState, { tone: 'ok' | 'error' | 'neutral'; label: string }> = {
-  up: { tone: 'ok', label: 'Running' },
-  down: { tone: 'error', label: 'Unreachable' },
-  checking: { tone: 'neutral', label: 'Checking…' },
-};
-
-/** The observe daemon the Studio reads traces from: its status, its address, and how to start it. */
-export function CollectorSection() {
-  const { state, target } = useCollectorStatus();
-  const pill = COLLECTOR_PILLS[state];
-  return (
-    <SettingsCard Icon={Activity} title="Collector" description="The observe daemon that stores traces, scores and sessions.">
-      <SettingRow label="Status" hint={state === 'down' ? <>Start it with <code>lousho observe start</code>.</> : undefined}>
-        <span role="status">
-          <span className="visually-hidden">Collector status: </span>
-          <TonePill tone={pill.tone} label={pill.label} />
-        </span>
-      </SettingRow>
-      <SettingRow label="Address" hint="Where the Studio's /observe proxy forwards.">
-        <span className="setting-mono" title={target}>
-          {target ?? '—'}
-        </span>
       </SettingRow>
     </SettingsCard>
   );

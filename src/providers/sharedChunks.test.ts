@@ -109,7 +109,9 @@ describe('shared chunks across package entries', () => {
     };
     walk(pkg.exports);
     expect(targets.length).toBeGreaterThan(20);
-    const missing = targets.filter((target) => !target.endsWith('.json') && !fs.existsSync(path.join(REPO_ROOT, target)));
+    // Wildcard/passthrough targets (e.g. './schemas/*') name a pattern, not a
+    // literal file - there is nothing to stat.
+    const missing = targets.filter((target) => !target.endsWith('.json') && !target.includes('*') && !fs.existsSync(path.join(REPO_ROOT, target)));
     expect(missing).toEqual([]);
   });
 });

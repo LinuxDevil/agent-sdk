@@ -15,13 +15,17 @@ function examplesSelfImports(): Plugin {
   // Windows and examples silently ran against dist/.
   const selfImportDirs = ['examples', 'packages/workspaces-react'].map((dir) => path.join(__dirname, dir).split(path.sep).join('/') + '/');
   const targets = new Map(
-    Object.entries(pkg.exports).map(([subpath, entry]) => [
-      subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
-      path
-        .join(__dirname, entry.require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts'))
-        .split(path.sep)
-        .join('/'),
-    ])
+    Object.entries(pkg.exports)
+      // Wildcard/passthrough entries (e.g. './schemas/*') are plain strings
+      // with no `require.types` to map onto src/ - skip them.
+      .filter(([, entry]) => typeof entry === 'object' && entry !== null && typeof (entry as { require?: { types?: unknown } }).require?.types === 'string')
+      .map(([subpath, entry]) => [
+        subpath === '.' ? pkg.name : `${pkg.name}/${subpath.slice(2)}`,
+        path
+          .join(__dirname, (entry as { require: { types: string } }).require.types.replace(/^\.\/dist\//, 'src/').replace(/\.d\.ts$/, '.ts'))
+          .split(path.sep)
+          .join('/'),
+      ])
   );
   return {
     name: 'examples-self-imports',

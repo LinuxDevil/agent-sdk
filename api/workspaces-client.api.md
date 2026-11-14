@@ -126,6 +126,9 @@ type AuthoringOp = CreateWorkspaceOp | SetWorkspaceFieldOp | CreatePageOp | Remo
 export function buildRoutePath(path: string, params: object): string;
 
 // @public
+export function checkPageInputs(schema: Record<string, unknown>, inputs: unknown): InputProblem[];
+
+// @public
 interface CreateAgentOp {
     description: string;
     instructions: string;
@@ -378,6 +381,12 @@ export interface HistoryEntryView {
 }
 
 // @public
+export interface InputProblem {
+    message: string;
+    path: string;
+}
+
+// @public
 export type JsonRouteName = Exclude<WorkspaceRouteName, 'streamRunEvents'>;
 
 // @public
@@ -496,6 +505,7 @@ type PageField = 'name' | 'description' | 'domain' | 'improve' | 'platform' | 'd
 export interface PageFinishedEvent {
     status: PageRunStatus;
     type: 'finished';
+    usage?: PageUsage;
 }
 
 // @public

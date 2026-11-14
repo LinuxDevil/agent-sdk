@@ -30,6 +30,7 @@ import { evaluatorTraceFrom, type EvaluatorTrace, type ObservationRow } from 'lo
 import { buildAgentFromSpec } from './buildAgent';
 import { daemonHeaders, observeTarget } from './observeProxy';
 import { firstJsonObject } from './passes/jsonReply';
+import type { CollectorSource } from './collector';
 import { providerOf } from './playground';
 import type { SecretsStore } from './secretsStore';
 
@@ -70,6 +71,8 @@ export interface JudgeLoopOptions {
   judge?: JudgeFn;
   /** Where the once-per-outage note goes; default `console.warn`. */
   warn?: (message: string) => void;
+  /** The Studio collector (collector.ts): its `url()`/`token()` are read per daemon call. */
+  collector?: Pick<CollectorSource, 'url' | 'token'>;
 }
 
 export interface JudgeLoop {
@@ -183,11 +186,16 @@ async function runJudge(judge: JudgeFn, rule: JudgeRule, trace: EvaluatorTrace, 
 }
 
 /** POST/GET the daemon at `path`; the response, or `undefined` when it is unreachable. */
-async function callDaemon(fetchFn: typeof fetch, path: string, body?: unknown): Promise<globalThis.Response | undefined> {
+async function callDaemon(
+  fetchFn: typeof fetch,
+  path: string,
+  body: unknown,
+  collector?: Pick<CollectorSource, 'url' | 'token'>
+): Promise<globalThis.Response | undefined> {
   try {
-    return await fetchFn(`${observeTarget()}${path}`, {
+    return await fetchFn(`${observeTarget(collector)}${path}`, {
       method: body === undefined ? 'GET' : 'POST',
-      headers: daemonHeaders(),
+      headers: daemonHeaders(true, collector),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: AbortSignal.timeout(DAEMON_TIMEOUT_MS),
     });
@@ -210,6 +218,8 @@ export function startJudgeLoop(options: JudgeLoopOptions): JudgeLoop {
   const now = options.now ?? Date.now;
   const leaseMs = options.leaseMs ?? LEASE_MS_DEFAULT;
   const judgeTimeoutMs = options.judgeTimeoutMs ?? JUDGE_TIMEOUT_MS_DEFAULT;
+  const collector = options.collector;
+  const daemonUrl = () => observeTarget(collector);
   let stopped = false;
   let down = false;
   let inFlight: Promise<void> | undefined;
@@ -218,7 +228,7 @@ export function startJudgeLoop(options: JudgeLoopOptions): JudgeLoop {
   const outage = (why: string): void => {
     if (down) return;
     down = true;
-    warn(`[lousho studio] judge evaluators paused: the observe daemon at ${observeTarget()} ${why}; retrying.`);
+    warn(`[lousho studio] judge evaluators paused: the observe daemon at ${daemonUrl()} ${why}; retrying.`);
   };
 
   /** A daemon answer: `true` when it was a 2xx. */
@@ -233,7 +243,7 @@ export function startJudgeLoop(options: JudgeLoopOptions): JudgeLoop {
 
   /** The claimed jobs, or `undefined` (an outage) when the daemon did not answer with them. */
   const claim = async (): Promise<ClaimedJob[] | undefined> => {
-    const claimed = await callDaemon(fetchFn, '/api/v1/evaluators/judge-jobs/claim', { max: CLAIM_MAX, lease_ms: leaseMs });
+    const claimed = await callDaemon(fetchFn, '/api/v1/evaluators/judge-jobs/claim', { max: CLAIM_MAX, lease_ms: leaseMs }, collector);
     if (claimed === undefined || !claimed.ok) {
       healthy(claimed);
       return undefined;
@@ -256,7 +266,7 @@ export function startJudgeLoop(options: JudgeLoopOptions): JudgeLoop {
       const budget = deadline - now() - POST_MARGIN_MS;
       if (stopped || budget <= 0) return;
       const result = await runJudge(judge, job.rule, job.trace, Math.min(judgeTimeoutMs, budget));
-      const posted = await callDaemon(fetchFn, `/api/v1/evaluators/judge-jobs/${encodeURIComponent(job.job_id)}/result`, result);
+      const posted = await callDaemon(fetchFn, `/api/v1/evaluators/judge-jobs/${encodeURIComponent(job.job_id)}/result`, result, collector);
       // A 404 is a lease that ran out (the job was requeued): not an outage.
       if (posted?.status !== 404 && !healthy(posted)) return;
     }
@@ -289,6 +299,8 @@ export interface JudgeTestRouteOptions {
   fetch?: typeof fetch;
   /** Cap on the dry run's judge call; default 20000 ms. */
   judgeTimeoutMs?: number;
+  /** The Studio collector (collector.ts): its `url()`/`token()` are read per daemon call. */
+  collector?: Pick<CollectorSource, 'url' | 'token'>;
 }
 
 const UNREACHABLE = 'The observe daemon is unreachable - run `lousho observe start` to collect agent data.';
@@ -312,12 +324,19 @@ const invalid = (res: Response, status: number, error: string): void => {
 type BoundJudge = (rule: JudgeRule, trace: EvaluatorTrace) => Promise<JudgeResult>;
 
 /** The judge dry run: the trace from the daemon, built as the daemon builds it, then the judge. */
-async function testJudgeRule(req: Request, res: Response, rule: JudgeRule, judge: BoundJudge, fetchFn: typeof fetch): Promise<void> {
+async function testJudgeRule(
+  req: Request,
+  res: Response,
+  rule: JudgeRule,
+  judge: BoundJudge,
+  fetchFn: typeof fetch,
+  collector?: Pick<CollectorSource, 'url' | 'token'>
+): Promise<void> {
   const traceId: unknown = (req.body as { trace_id?: unknown } | undefined)?.trace_id;
   if (typeof traceId !== 'string' || traceId === '' || unsafeId(traceId)) {
     return invalid(res, 400, 'Invalid evaluator test body: trace_id: must be a non-empty trace id.');
   }
-  const detail = await callDaemon(fetchFn, `/api/v1/traces/${encodeURIComponent(traceId)}`);
+  const detail = await callDaemon(fetchFn, `/api/v1/traces/${encodeURIComponent(traceId)}`, undefined, collector);
   if (detail === undefined) return void res.status(502).json({ error: UNREACHABLE });
   if (!detail.ok) return passThrough(res, detail);
   const { observations } = (await detail.json()) as { observations: ObservationRow[] };
@@ -340,17 +359,18 @@ export function registerJudgeTestRoute(app: Express, options: JudgeTestRouteOpti
   const timeoutMs = options.judgeTimeoutMs ?? JUDGE_TIMEOUT_MS_DEFAULT;
   const judge: BoundJudge = (rule, trace) => runJudge(judgeFn, rule, trace, timeoutMs);
   const fetchFn = options.fetch ?? fetch;
+  const collector = options.collector;
   app.post('/observe/api/v1/evaluators/:id/test', async (req, res, next) => {
     try {
       const id = String(req.params.id);
       if (unsafeId(id)) return invalid(res, 400, 'Invalid evaluator rule id.');
       const rulePath = `/api/v1/evaluators/${encodeURIComponent(id)}`;
-      const found = await callDaemon(fetchFn, rulePath);
+      const found = await callDaemon(fetchFn, rulePath, undefined, collector);
       if (found === undefined) return void res.status(502).json({ error: UNREACHABLE });
       if (!found.ok) return passThrough(res, found);
       const { evaluator } = (await found.json()) as { evaluator: JudgeRule | { kind: string } };
-      if (evaluator.kind === 'judge') return testJudgeRule(req, res, evaluator as JudgeRule, judge, fetchFn);
-      const forwarded = await callDaemon(fetchFn, `${rulePath}/test`, req.body ?? {});
+      if (evaluator.kind === 'judge') return testJudgeRule(req, res, evaluator as JudgeRule, judge, fetchFn, collector);
+      const forwarded = await callDaemon(fetchFn, `${rulePath}/test`, req.body ?? {}, collector);
       if (forwarded === undefined) return void res.status(502).json({ error: UNREACHABLE });
       return passThrough(res, forwarded);
     } catch (error) {

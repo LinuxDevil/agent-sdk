@@ -1,8 +1,7 @@
 import { join } from 'node:path';
 import { fileStore } from '../../storage/fileStore';
-import { SqliteStore } from '../../storage/sqlite/SqliteStore';
 import { fileRunLedger } from './fileLedger';
-import { migrateHostTables, postgresSqlClient, sqliteSqlClient, type PgQueryable, type PostgresOptions, type SqlClient } from './sql';
+import { migrateHostTables, postgresSqlClient, sqliteClientOnly, sqliteSqlClient, type PgQueryable, type PostgresOptions, type SqlClient } from './sql';
 import { sqlCheckpointStore, sqlRunLedger, sqlSessionStore } from './sqlBackend';
 import type { BackendParts, HostBackend } from './stores';
 
@@ -12,33 +11,30 @@ export function fileHostBackend(dir: string): HostBackend {
   return parts;
 }
 
-/** One SQLite file: the existing `SqliteStore` for sessions and checkpoints, plus the run tables. For tests and Forge-only. */
-export async function sqliteHostBackend(path: string): Promise<HostBackend> {
-  const agent = new SqliteStore(path);
-  const client = sqliteSqlClient(path);
-  await migrateHostTables(client);
-  const parts: BackendParts = {
-    agent,
-    ledger: sqlRunLedger(client),
-    async close() {
-      agent.close();
-      await client.close();
-    },
-  };
-  return parts;
+/** One SQLite file holding the `ws_*` tables for threads, checkpoints, runs and events, the same layout as Postgres. For tests and Forge-only. Given a path it opens and owns one connection; given a `sqliteSqlClient` it uses that shared connection and leaves it open, so the stores and a `sqliteWorkspaceSource` on the same file use one connection. */
+export async function sqliteHostBackend(db: string | SqlClient): Promise<HostBackend> {
+  if (typeof db !== 'string') return sqlHostBackend(sqliteClientOnly(db, 'sqliteHostBackend'), async () => undefined);
+  const client = sqliteSqlClient(db);
+  try {
+    return await sqlHostBackend(client, () => client.close());
+  } catch (error) {
+    await client.close();
+    throw error;
+  }
 }
 
-export async function sqlHostBackend(client: SqlClient): Promise<HostBackend> {
+async function sqlHostBackend(client: SqlClient, close: () => Promise<void>): Promise<HostBackend> {
   await migrateHostTables(client);
   const parts: BackendParts = {
     agent: { sessions: sqlSessionStore(client), checkpoints: sqlCheckpointStore(client) },
     ledger: sqlRunLedger(client),
-    close: () => client.close(),
+    close,
   };
   return parts;
 }
 
 /** Postgres through a `pg` Pool or Client the host owns; `close()` leaves the pool open unless `ownsPool` is set. */
 export function postgresHostBackend(pool: PgQueryable, options: PostgresOptions = {}): Promise<HostBackend> {
-  return sqlHostBackend(postgresSqlClient(pool, options));
+  const client = postgresSqlClient(pool, options);
+  return sqlHostBackend(client, () => client.close());
 }

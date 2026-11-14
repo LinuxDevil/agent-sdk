@@ -32,6 +32,14 @@ export interface CanvasNodeData extends Record<string, unknown> {
   graph?: Graph;
   /** Group nodes only: how many descendants the group hides while collapsed. */
   insideCount?: number;
+  /** `meta.enabled` of the open agent (R09); false dims non-chat trigger nodes. Absent reads enabled. */
+  agentEnabled?: boolean;
+  /**
+   * True on a canvas that shows a graph it does not own (X06b's code-agent
+   * view): node affordances that would write through `AppState.setGraph`
+   * (the group collapse toggle) render disabled.
+   */
+  readOnly?: boolean;
 }
 
 /** The flag-driven class list of a card or a group container ('rf-node' / 'rf-group' + state flags). */
@@ -190,9 +198,16 @@ export function NodeCard({
   const chips = [...(chip !== undefined ? [chip] : []), ...(extraChips ?? [])];
   // A proposal-edited node carries an "edited" marker chip (C21).
   const edited = graphNode.proposed === 'edit';
+  // R09: a turned-off agent's non-chat trigger nodes dim with the contract tooltip.
+  const triggerOff = data.agentEnabled === false && graphNode.kind === 'trigger' && graphNode.data.item.type !== 'chat';
 
   return (
-    <div className={cardClassName('rf-node', selected, data)} data-node-kind={graphNode.kind} data-node-id={graphNode.id}>
+    <div
+      className={`${cardClassName('rf-node', selected, data)}${triggerOff ? ' node-trigger-off' : ''}`}
+      data-node-kind={graphNode.kind}
+      data-node-id={graphNode.id}
+      title={triggerOff ? 'Off — triggers won\'t fire' : undefined}
+    >
       {view.ports.in && <Handle type="target" position={Position.Left} className="rf-port rf-port-in" />}
       {view.ports.out && <Handle type="source" position={Position.Right} className="rf-port rf-port-out" />}
       <NodeCardHead

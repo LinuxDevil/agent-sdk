@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from 'react';
+import { Folder, Sparkles, type LucideIcon } from 'lucide-react';
 
 import { fmtAge } from '../../observe/format';
 import { AgentTile } from '../../ui/AgentTile';
 import type { InboxItem } from '../../../shared/wireTypes';
+import { agentTabPath } from '../agents/agentTabs';
 
 /** An approval/question deadline has passed (or is missing a parseable `expiresAt`). */
 function isExpired(item: InboxItem, now: number): boolean {
@@ -31,6 +33,8 @@ interface RowProps extends InboxActionHandlers {
   acting: boolean;
   /** The screen's shared clock (ms epoch), ticking once a second. */
   now: number;
+  /** All-workspaces view only (W09b): the item's workspace name, shown as a chip before the agent name. */
+  workspaceName?: string;
 }
 
 /** The callbacks every inbox row offers, shared by the row and its group wrapper. */
@@ -39,19 +43,26 @@ export interface InboxActionHandlers {
   onAnswer: (item: InboxItem & { kind: 'question' }, answer: string) => void;
   onDismiss: (item: InboxItem & { kind: 'alert' }) => void;
   onAddToDataset: (item: InboxItem & { kind: 'alert' }) => void;
+  onSuggestFix: (item: InboxItem & { kind: 'alert' }) => void;
 }
 
-const agentHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/canvas`;
-const suggestionsHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/suggestions`;
-const overviewHref = (item: InboxItem) => `#/agents/${encodeURIComponent(item.agentId)}/overview`;
+const agentHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'canvas', item.workspaceId)}`;
+const suggestionsHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'suggestions', item.workspaceId)}`;
+const overviewHref = (item: InboxItem) => `#${agentTabPath(item.agentId, 'overview', item.workspaceId)}`;
 
-function Meta({ item, now }: { item: InboxItem; now: number }) {
+function Meta({ item, now, workspaceName }: { item: InboxItem; now: number; workspaceName?: string }) {
   const deadline = item.kind === 'approval' || item.kind === 'question' ? expiresLabel(item.expiresAt, now) : null;
   const soon = item.kind === 'approval' || item.kind === 'question'
     ? item.expiresAt !== null && Date.parse(item.expiresAt) - now < 60_000 && Date.parse(item.expiresAt) > now
     : false;
   return (
     <p className="inbox-row-meta">
+      {workspaceName !== undefined && (
+        <span className="chip inbox-row-workspace">
+          <Folder size={14} strokeWidth={1.75} aria-hidden="true" />
+          {workspaceName}
+        </span>
+      )}{' '}
       <a href={agentHref(item)}>{item.agentName}</a>
       {' · '}
       {fmtAge(now - Date.parse(item.at))}
@@ -70,16 +81,19 @@ function ActionButton({
   className,
   disabled,
   title,
+  icon: Icon,
   onClick,
 }: {
   label: string;
   className: string;
   disabled: boolean;
   title?: string;
+  icon?: LucideIcon;
   onClick: () => void;
 }) {
   return (
     <button type="button" className={className} disabled={disabled} title={title} onClick={onClick}>
+      {Icon !== undefined && <Icon size={14} strokeWidth={1.75} aria-hidden="true" />}
       {label}
     </button>
   );
@@ -159,18 +173,31 @@ function ApprovalActions({ item, expired, disabled, onApprove }: { item: InboxIt
   );
 }
 
-/** The alert row's actions: a low-rating alert also offers the regressions dataset. */
-function AlertActions({ item, disabled, onAddToDataset, onDismiss }: { item: InboxItem & { kind: 'alert' }; disabled: boolean; onAddToDataset: RowProps['onAddToDataset']; onDismiss: RowProps['onDismiss'] }) {
+/** The alert row's actions: a low-rating alert also offers the regressions dataset and "Suggest a fix". */
+function AlertActions({ item, disabled, onAddToDataset, onDismiss, onSuggestFix }: { item: InboxItem & { kind: 'alert' }; disabled: boolean; onAddToDataset: RowProps['onAddToDataset']; onDismiss: RowProps['onDismiss']; onSuggestFix: RowProps['onSuggestFix'] }) {
+  const traceId = item.alertKind === 'low_rating' ? item.payload.traceId : undefined;
   return (
     <>
       {item.alertKind === 'low_rating' && (
-        <ActionButton
-          label={`Add to dataset ${item.agentId}-regressions`}
-          className="btn btn-secondary btn-sm"
-          disabled={disabled}
-          title={actionTitle(false, disabled)}
-          onClick={() => onAddToDataset(item)}
-        />
+        <>
+          {typeof traceId === 'string' && traceId !== '' && (
+            <ActionButton
+              label="Suggest a fix"
+              className="btn btn-secondary btn-sm"
+              disabled={disabled}
+              title={actionTitle(false, disabled)}
+              icon={Sparkles}
+              onClick={() => onSuggestFix(item)}
+            />
+          )}
+          <ActionButton
+            label={`Add to dataset ${item.agentId}-regressions`}
+            className="btn btn-secondary btn-sm"
+            disabled={disabled}
+            title={actionTitle(false, disabled)}
+            onClick={() => onAddToDataset(item)}
+          />
+        </>
       )}
       <a className="btn btn-secondary btn-sm" href={overviewHref(item)}>
         Open agent
@@ -188,7 +215,7 @@ function AlertActions({ item, disabled, onAddToDataset, onDismiss }: { item: Inb
 
 /** The per-kind action cluster; a lookup keeps the row's branches flat. */
 function RowActions(props: RowProps) {
-  const { item, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset } = props;
+  const { item, acting, now, onApprove, onAnswer, onDismiss, onAddToDataset, onSuggestFix } = props;
   const expired = isExpired(item, now);
   const disabled = acting;
 
@@ -205,7 +232,15 @@ function RowActions(props: RowProps) {
         </a>
       );
     case 'alert':
-      return <AlertActions item={item} disabled={disabled} onAddToDataset={onAddToDataset} onDismiss={onDismiss} />;
+      return (
+        <AlertActions
+          item={item}
+          disabled={disabled}
+          onAddToDataset={onAddToDataset}
+          onDismiss={onDismiss}
+          onSuggestFix={onSuggestFix}
+        />
+      );
   }
 }
 
@@ -218,7 +253,7 @@ export function InboxRow(props: RowProps): ReactNode {
       <div className="inbox-row-main">
         <p className="inbox-row-title">{item.title}</p>
         {item.detail !== null && <p className="inbox-row-detail">{item.detail}</p>}
-        <Meta item={item} now={props.now} />
+        <Meta item={item} now={props.now} workspaceName={props.workspaceName} />
       </div>
       <div className="inbox-row-actions">
         <RowActions {...props} />

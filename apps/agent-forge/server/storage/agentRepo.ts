@@ -26,6 +26,7 @@ import { isValidAgentId } from '../../shared/agentId';
 import type { AgentMeta, CanvasLayout } from '../../shared/wireTypes';
 import { readJsonFile, writeFileAtomic, writeJsonAtomic } from './atomic';
 import { specHash } from './specHash';
+import { ChainInvalidError, loadSpecs, validateChains } from '../triggers/chainTriggers';
 
 /**
  * A spec that fails v2 validation for a reason other than pending
@@ -34,6 +35,7 @@ import { specHash } from './specHash';
  * SDK's spec-validation code.
  */
 export class InvalidSpecError extends Error {
+  // fallow-ignore-next-line unused-class-member -- read as `error.code` under instanceof narrowing in routes/agentRoutes.ts, which fallow's import graph does not register (ambiguous with ChainInvalidError.code since R07)
   readonly code = 'LOUSHO_SPEC_INVALID';
   constructor(readonly issues: { path: string; message: string }[]) {
     super(`Invalid agent spec: ${issues[0].path}: ${issues[0].message}`);
@@ -206,6 +208,11 @@ export class AgentRepo {
     } else {
       throw new InvalidSpecError(flattenSpecIssues(result.error.issues));
     }
+    // Cross-agent chain rules (R07) are checked against every stored spec
+    // with this write as the candidate - the same funnel PUT/import/
+    // draft/version/suggestion saves all pass through.
+    const chain = validateChains(await loadSpecs(this), id, doc);
+    if (!chain.ok) throw new ChainInvalidError(chain.error, chain.cycle);
     await writeFileAtomic(this.specPath(id), stringifyYaml(doc));
     await writeJsonAtomic(this.workingPath(id), {
       schemaVersion: 1,
