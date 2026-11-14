@@ -85,13 +85,14 @@ interface Harness {
   host: {
     runsOf: ReturnType<typeof vi.fn<[agentId: string], HostRun[]>>;
     cancel: ReturnType<typeof vi.fn<[runKey: string, reason: string], 'queued' | 'running' | undefined>>;
+    isEnabled: ReturnType<typeof vi.fn<[agentId: string], boolean>>;
   };
   baseDir: string;
 }
 
 async function harness(
   spec: AgentSpecV2,
-  options: { secrets?: Record<string, string>; agent?: SimpleAgent; runs?: HostRun[] } = {}
+  options: { secrets?: Record<string, string>; agent?: SimpleAgent; runs?: HostRun[]; enabled?: boolean } = {}
 ): Promise<Harness> {
   const baseDir = tmpDir();
   const repo = new AgentRepo(baseDir);
@@ -103,6 +104,7 @@ async function harness(
   const host = {
     runsOf: vi.fn<[agentId: string], HostRun[]>(() => options.runs ?? []),
     cancel: vi.fn<[runKey: string, reason: string], 'queued' | 'running' | undefined>(() => 'queued'),
+    isEnabled: vi.fn<[agentId: string], boolean>(() => options.enabled ?? true),
   };
   const channels = new ChannelTriggers({
     host: host as unknown as TriggerHost,
@@ -216,6 +218,23 @@ describe('ChannelTriggers.mount / status', () => {
     expect(channels.status(AGENT)).toEqual([
       { triggerId: 't-http', channel: 'http', url: `/hooks/${AGENT}/channel/http`, error: null },
     ]);
+  });
+
+  it('answers 200 skipped disabled for a turned-off agent and never calls the SDK handler (R09)', async () => {
+    const agent = createAgent({ provider: mockModel(['Pong']) });
+    const { app } = await harness(specWith([HTTP_TRIGGER]), {
+      agent: agent as unknown as SimpleAgent,
+      enabled: false,
+    });
+
+    const res = await request(app)
+      .post(`/hooks/${AGENT}/channel/http`)
+      .set('content-type', 'application/json')
+      .send({ sessionKey: 'u1', input: 'ping' });
+
+    expect(res.status).toBe(200);
+    // The SDK handler's `{ text }` reply never happens - platforms see the skip.
+    expect(res.body).toEqual({ ok: true, skipped: 'disabled' });
   });
 
   it('answers 404-shaped fallthrough for a channel path with no mounted trigger', async () => {
@@ -414,7 +433,7 @@ describe('channel route inside createApp', () => {
     const repo = new AgentRepo(baseDir);
     await repo.writeSpec(AGENT, specWith([HTTP_TRIGGER]));
     const channels = new ChannelTriggers({
-      host: { runsOf: () => [], cancel: () => undefined } as unknown as TriggerHost,
+      host: { runsOf: () => [], cancel: () => undefined, isEnabled: () => true } as unknown as TriggerHost,
       repo,
       buildAgent: async () => createAgent({ provider: mockModel(['ViaApp']) }) as unknown as SimpleAgent,
       resolve: resolver({}),
