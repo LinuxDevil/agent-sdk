@@ -2,6 +2,7 @@
 export type ScreenId =
   | 'agents'
   | 'agentList'
+  | 'codeAgent'
   | 'inbox'
   | 'agentDetail'
   | 'observedAgent'
@@ -44,6 +45,11 @@ export const ROUTES: readonly RouteEntry[] = [
   { pattern: '/w/:ws/agents/:id/canvas', screen: 'agents', example: '/w/e2e-000000/agents/e2e-agent/canvas' },
   { pattern: '/w/:ws/agents/:id/:tab', screen: 'agentDetail', example: '/w/e2e-000000/agents/e2e-agent/overview' },
   { pattern: '/observed/:agentId', screen: 'observedAgent', example: '/observed/e2e-observed' }, // read-only daemon agent (W07b)
+  // Code agents (X06b/W08b): the path is one segment - the CodeAgentDir.path
+  // encodeURIComponent'd ('agents%2Fsupport' decodes to 'agents/support').
+  // The bare '/code-agents/:path' row is the pre-W08b link; it redirects.
+  { pattern: '/code-agents/:path', screen: 'codeAgent', example: '/code-agents/agents%2Fsupport' },
+  { pattern: '/w/:ws/code-agents/:path', screen: 'codeAgent', example: '/w/e2e-000000/code-agents/agents%2Fsupport' },
   { pattern: '/inbox', screen: 'inbox', example: '/inbox' },
   { pattern: '/templates', screen: 'templates', example: '/templates' },
   { pattern: '/playground', screen: 'playground', example: '/playground' },

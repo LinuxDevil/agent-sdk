@@ -93,6 +93,10 @@ describe('screenFor', () => {
     expect(screenFor('#/w/app-1a2b3c/agents/support-bot/canvas')).toBe('agents');
     expect(screenFor('#/w/app-1a2b3c/agents/support-bot/overview')).toBe('agentDetail');
     expect(screenFor('#/observed/3f6b2a1c-9d4e-4f5a-8b7c-1d2e3f4a5b6c')).toBe('observedAgent');
+    // Code agents (W08b): legacy '/code-agents/:path' redirects into the
+    // launch workspace; the workspace-scoped row is the real route.
+    expect(screenFor('#/code-agents/agents%2Fsupport')).toBe('codeAgent');
+    expect(screenFor('#/w/app-1a2b3c/code-agents/agents%2Fsupport')).toBe('codeAgent');
     expect(screenFor('#/inbox')).toBe('inbox');
     expect(screenFor('#/templates')).toBe('templates');
     expect(screenFor('#/templates?category=Support&template=pr-reviewer')).toBe('templates');
@@ -164,6 +168,27 @@ describe('useScreen', () => {
       window.history.replaceState(null, '', '/?token=secret#/agents/x');
       probe();
       expect(window.location.hash).toBe('#/agents/x');
+    } finally {
+      workspaces.launchId = 'launch-abc123';
+    }
+  });
+
+  it('redirects the legacy #/code-agents/:path URL into the launch workspace, keeping ?token=', () => {
+    window.history.replaceState(null, '', '/?token=secret#/code-agents/agents%2Fsupport');
+    const before = window.history.length;
+    const seen = probe();
+    expect(window.location.hash).toBe('#/w/launch-abc123/code-agents/agents%2Fsupport');
+    expect(window.location.search).toBe('?token=secret');
+    expect(window.history.length).toBe(before);
+    expect(seen.every((s) => s === 'codeAgent')).toBe(true);
+  });
+
+  it('waits on a legacy #/code-agents/:path URL until the launch workspace is known', () => {
+    workspaces.launchId = undefined;
+    try {
+      window.history.replaceState(null, '', '/#/code-agents/agents%2Fsupport');
+      probe();
+      expect(window.location.hash).toBe('#/code-agents/agents%2Fsupport');
     } finally {
       workspaces.launchId = 'launch-abc123';
     }

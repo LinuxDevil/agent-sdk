@@ -483,16 +483,6 @@ describe('RuntimeClient workspace methods', () => {
     expect(init.method).toBe('DELETE');
   });
 
-  it('listCodeAgents GETs /workspace/agent-dirs (X06a)', async () => {
-    const dirs = [{ path: 'agents/a', name: 'a', configFile: 'agent.yaml', configKind: 'data' as const }];
-    const fetchMock = vi.fn(async () => jsonResponse(200, dirs));
-    vi.stubGlobal('fetch', fetchMock);
-    await expect(client.listCodeAgents()).resolves.toEqual(dirs);
-    const [path, init] = lastCall(fetchMock);
-    expect(path).toBe('/workspace/agent-dirs');
-    expect(init.method).toBe('GET');
-  });
-
   it('loadCodeAgentSpec GETs /workspace/agent-dirs/spec with the path query-encoded', async () => {
     const spec = { path: 'agents/a b', spec: { version: 2 }, warnings: [] };
     const fetchMock = vi.fn(async () => jsonResponse(200, spec));

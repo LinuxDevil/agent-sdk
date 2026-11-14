@@ -10,6 +10,8 @@ const api = vi.hoisted(() => ({
   patchAgentMeta: vi.fn(),
   createAgentRecord: vi.fn(),
   forWorkspace: vi.fn(),
+  workspaceScan: vi.fn(),
+  scanWorkspace: vi.fn(),
 }));
 vi.mock('../../../runtime/runtimeClient', () => ({ runtimeClient: api }));
 
@@ -30,7 +32,7 @@ vi.mock('../../../workspace/WorkspacesProvider', () => ({
   }),
 }));
 
-import type { AgentListItem, AgentRecord, ObservedAgentItem, WorkspaceAgentItem, WorkspaceListItem } from '../../../../shared/wireTypes';
+import type { AgentListItem, AgentRecord, CodeAgentItem, ObservedAgentItem, WorkspaceAgentItem, WorkspaceListItem } from '../../../../shared/wireTypes';
 import { AgentListScreen } from '../AgentListScreen';
 import { render } from '../../../ui/__tests__/render';
 import { ToastProvider } from '../../../ui/Toast';
@@ -140,6 +142,8 @@ beforeEach(() => {
   api.listAllAgentItems.mockResolvedValue({ items: ALL_ITEMS, skipped: [], observed: 'ok' });
   api.patchAgentMeta.mockResolvedValue({});
   api.createAgentRecord.mockResolvedValue({ id: 'untitled-1' } as AgentRecord);
+  api.workspaceScan.mockResolvedValue({ workspaceId: 'beta-2b3c4d', scannedAt: '', patterns: [], agents: [] });
+  api.scanWorkspace.mockResolvedValue({ workspaceId: 'beta-2b3c4d', scannedAt: '', patterns: [], agents: [] });
   // forWorkspace(id) answers a client-shaped object whose methods record
   // the workspace id first, so tests can assert which workspace was hit.
   api.forWorkspace.mockImplementation((wsId: string) => ({
@@ -384,5 +388,127 @@ describe('AgentListScreen - observed agents (W07b)', () => {
     expect(observed[0].textContent).toContain('billing-worker');
     expect(observed[0].querySelector('.agent-card-workspace')).toBeNull();
     expect(host.querySelector('h2.agent-list-group')).toBeNull();
+  });
+});
+
+describe('AgentListScreen - code agents (W08b)', () => {
+  const codeItem = (over: Partial<CodeAgentItem> = {}): CodeAgentItem => ({
+    kind: 'code',
+    id: 'agents/support',
+    name: 'support',
+    workspaceId: 'alpha-1a2b3c',
+    configFile: 'agent.ts',
+    configKind: 'code',
+    ...over,
+  });
+
+  it('all mode renders code items as "In code" cards after the workspace and observed agents', async () => {
+    api.listAllAgentItems.mockResolvedValue({
+      items: [
+        ...ALL_ITEMS,
+        obsItem({ id: 'obs-a1', name: 'billing-worker', workspaceId: 'alpha-1a2b3c' }),
+        codeItem(),
+        codeItem({ id: 'src/agents/billing', name: 'billing', configFile: 'agent.yaml', configKind: 'data' }),
+      ],
+      skipped: [],
+      observed: 'ok',
+    });
+    const host = await mountAt();
+    const cards = [...host.querySelectorAll('article.agent-card')];
+    // 3 workspace + 1 observed + 2 code.
+    expect(cards).toHaveLength(6);
+    const codeCards = cards.filter((c) => c.className.includes('agent-card--code'));
+    expect(codeCards).toHaveLength(2);
+    // Code cards come after the workspace and observed cards.
+    expect(cards[4].className).toContain('agent-card--code');
+    expect(cards[5].className).toContain('agent-card--code');
+    const first = codeCards[0];
+    expect(first.textContent).toContain('In code');
+    expect(first.textContent).toContain('agents/support');
+    expect(first.textContent).toContain('agent.ts');
+    expect(first.textContent).toContain('Alpha');
+    expect(first.textContent).toContain('Read-only. Edit the files to change it.');
+    const link = first.querySelector<HTMLAnchorElement>('.agent-card-link')!;
+    expect(link.getAttribute('href')).toBe('#/w/alpha-1a2b3c/code-agents/agents%2Fsupport');
+    expect(link.getAttribute('aria-label')).toBe('support, defined in code');
+    expect(first.querySelector('[role="switch"]')).toBeNull();
+    // No Rescan action in all-workspaces mode.
+    expect(buttonNamed(host, 'Rescan code')).toBeUndefined();
+  });
+
+  it('workspace mode loads code agents through workspaceScan and maps them to cards', async () => {
+    wsState.activeId = 'beta-2b3c4d';
+    api.workspaceScan.mockResolvedValue({
+      workspaceId: 'beta-2b3c4d',
+      scannedAt: '2026-10-29T12:00:00Z',
+      patterns: ['agents/*/'],
+      agents: [
+        { path: 'agents/helper', name: 'helper', configFile: 'agent.yaml', configKind: 'data' },
+        // 'support-bot' collides with a Studio agent id -> deduped (W08a rule).
+        { path: 'agents/support-bot', name: 'support-bot', configFile: 'agent.ts', configKind: 'code' },
+      ],
+    });
+    const host = await mountAt('#/w/beta-2b3c4d/agents');
+    expect(api.workspaceScan).toHaveBeenCalledWith('beta-2b3c4d');
+    const codeCards = [...host.querySelectorAll('article.agent-card--code')];
+    expect(codeCards).toHaveLength(1);
+    expect(codeCards[0].textContent).toContain('helper');
+    expect(codeCards[0].textContent).toContain('agents/helper');
+    expect(codeCards[0].querySelector('.agent-card-workspace')).toBeNull();
+    expect(codeCards[0].querySelector<HTMLAnchorElement>('.agent-card-link')!.getAttribute('href')).toBe(
+      '#/w/beta-2b3c4d/code-agents/agents%2Fhelper'
+    );
+  });
+
+  it('Rescan code POSTs the scan, swaps in the new code items and toasts the count', async () => {
+    wsState.activeId = 'beta-2b3c4d';
+    api.scanWorkspace.mockResolvedValue({
+      workspaceId: 'beta-2b3c4d',
+      scannedAt: '2026-10-29T12:05:00Z',
+      patterns: ['agents/*/'],
+      agents: [
+        { path: 'agents/helper', name: 'helper', configFile: 'agent.yaml', configKind: 'data' },
+        { path: 'agents/newcomer', name: 'newcomer', configFile: 'agent.ts', configKind: 'code' },
+      ],
+    });
+    const host = await mountAt('#/w/beta-2b3c4d/agents');
+    const button = buttonNamed(host, 'Rescan code')!;
+    expect(button).toBeDefined();
+    await act(async () => button.click());
+    await flush();
+    expect(api.scanWorkspace).toHaveBeenCalledWith('beta-2b3c4d');
+    const codeCards = [...host.querySelectorAll('article.agent-card--code')];
+    expect(codeCards).toHaveLength(2);
+    expect(host.textContent).toContain('newcomer');
+    expect(toastTexts(host)).toContain('Found 2 code agents in Beta.');
+  });
+
+  it('Rescan code toasts "Found 1 code agent" for a single result', async () => {
+    wsState.activeId = 'beta-2b3c4d';
+    api.scanWorkspace.mockResolvedValue({
+      workspaceId: 'beta-2b3c4d',
+      scannedAt: '',
+      patterns: [],
+      agents: [{ path: 'agents/solo', name: 'solo', configFile: 'agent.ts', configKind: 'code' }],
+    });
+    const host = await mountAt('#/w/beta-2b3c4d/agents');
+    await act(async () => buttonNamed(host, 'Rescan code')!.click());
+    await flush();
+    expect(toastTexts(host)).toContain('Found 1 code agent in Beta.');
+  });
+
+  it('Rescan code shows "Scanning…" while pending and toasts the server error on failure', async () => {
+    wsState.activeId = 'beta-2b3c4d';
+    let rejectScan: (e: Error) => void = () => {};
+    api.scanWorkspace.mockReturnValue(new Promise((_, reject) => (rejectScan = reject)));
+    const host = await mountAt('#/w/beta-2b3c4d/agents');
+    const button = buttonNamed(host, 'Rescan code')!;
+    await act(async () => button.click());
+    await flush();
+    expect(buttonNamed(host, 'Scanning…')).toBeDefined();
+    await act(async () => rejectScan(new Error('scan exploded')));
+    await flush();
+    expect(toastTexts(host)).toContain('scan exploded');
+    expect(buttonNamed(host, 'Rescan code')).toBeDefined();
   });
 });

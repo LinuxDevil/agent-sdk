@@ -121,6 +121,7 @@ const FILTERS: Record<ScreenId, string> = {
   agentList: '',
   agentDetail: '',
   observedAgent: '',
+  codeAgent: '',
   inbox: '',
   // The shipped templates' categories are lowercase slugs ('engineering', 'support', …).
   templates: '?category=engineering',
